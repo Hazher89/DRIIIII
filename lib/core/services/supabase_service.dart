@@ -10,6 +10,7 @@ import '../../models/user_profile.dart';
 import '../../models/sja_form.dart';
 import '../../models/safety_round.dart';
 import '../../models/hms_document.dart';
+import '../../models/whistleblowing_report.dart';
 
 /// Felles wrapper rundt Supabase-klienten med typed hjelpemetoder.
 class SupabaseService {
@@ -49,6 +50,45 @@ class SupabaseService {
         .select()
         .single() as Map<String, dynamic>;
     return Ticket.fromJson(inserted);
+  }
+
+  static Future<List<TicketComment>> fetchTicketComments(String ticketId) async {
+    final data = await client
+        .from('ticket_comments')
+        .select('*, profiles(full_name, avatar_url)')
+        .eq('ticket_id', ticketId)
+        .order('created_at', ascending: true) as List<dynamic>;
+    return data.map((e) => TicketComment.fromJson(e)).toList();
+  }
+
+  static Future<void> addTicketComment({
+    required String ticketId,
+    required String comment,
+    TicketStatus? newStatus,
+    List<String> imageUrls = const [],
+  }) async {
+    final userId = client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final Map<String, dynamic> data = {
+      'ticket_id': ticketId,
+      'user_id': userId,
+      'comment': comment,
+      'image_urls': imageUrls,
+    };
+
+    if (newStatus != null) {
+      data['new_status'] = newStatus.dbValue;
+      data['is_status_change'] = true;
+      
+      // Also update the ticket itself
+      await client.from('tickets').update({
+        'status': newStatus.dbValue,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', ticketId);
+    }
+
+    await client.from('ticket_comments').insert(data);
   }
 
   // ── Fravær ───────────────────────────────────────────────────────────────
@@ -117,6 +157,28 @@ class SupabaseService {
   static Future<RiskAssessment> createRiskAssessment(RiskAssessment ra) async {
     final data = await client.from('risk_assessments').insert(ra.toInsertJson()).select().single();
     return RiskAssessment.fromJson(data);
+  }
+
+  // ── Whistleblowing / Anonym anmeldelse ──────────────────────────────────
+
+  static Future<void> createWhistleblowingReport(WhistleblowingReport report) async {
+    await client.from('whistleblowing_reports').insert(report.toJson());
+  }
+
+  static Future<List<WhistleblowingReport>> fetchWhistleblowingReports(String companyId) async {
+    final data = await client
+        .from('whistleblowing_reports')
+        .select()
+        .eq('company_id', companyId)
+        .order('created_at', ascending: false) as List<dynamic>;
+    return data.map((e) => WhistleblowingReport.fromJson(e)).toList();
+  }
+
+  // ── File Upload ─────────────────────────────────────────────────────────
+
+  static Future<String> uploadFile(String bucket, String path, Uint8List bytes) async {
+    await client.storage.from(bucket).uploadBinary(path, bytes);
+    return client.storage.from(bucket).getPublicUrl(path);
   }
 
   // ── SJA ──────────────────────────────────────────────────────────────────

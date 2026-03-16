@@ -187,6 +187,8 @@ class Ticket {
     'gps_address': gpsAddress,
     'location_description': locationDescription,
     'is_anonymous': isAnonymous,
+    'assigned_to': assignedTo,
+    'status': status.dbValue,
   };
 
   bool get isOpen => status == TicketStatus.aapen || status == TicketStatus.underBehandling;

@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'dart:typed_data';
+import 'package:image_picker/image_picker.dart';
+import 'package:uuid/uuid.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
+import '../../models/user_profile.dart';
 
 class NewTicketScreen extends StatefulWidget {
   const NewTicketScreen({super.key});
@@ -23,6 +27,40 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   bool _isAnonymous = false;
   bool _isSubmitting = false;
   String? _error;
+
+  String? _assignedToId;
+  List<UserProfile> _allProfiles = [];
+  final List<XFile> _selectedImages = [];
+  final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfiles();
+  }
+
+  Future<void> _loadProfiles() async {
+    try {
+      final companyId = await SupabaseService.getCurrentCompanyId();
+      if (companyId != null) {
+        final profiles = await SupabaseService.fetchProfiles(companyId: companyId);
+        setState(() {
+          _allProfiles = profiles;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading profiles: $e');
+    }
+  }
+
+  Future<void> _pickImages() async {
+    final List<XFile> images = await _picker.pickMultiImage();
+    if (images.isNotEmpty) {
+      setState(() {
+        _selectedImages.addAll(images);
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -51,13 +89,20 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
     try {
       final companyId = await SupabaseService.getCurrentCompanyId();
       if (companyId == null) {
-        throw StateError(
-          'Fant ikke selskap for brukeren. Sjekk at profile.company_id er satt.',
-        );
+        throw StateError('Fant ikke selskap for brukeren.');
+      }
+
+      List<String> imageUrls = [];
+      for (var image in _selectedImages) {
+        final bytes = await image.readAsBytes();
+        final fileName = '${const Uuid().v4()}.jpg';
+        final path = 'tickets/$companyId/$fileName';
+        final url = await SupabaseService.uploadFile('tickets', path, bytes);
+        imageUrls.add(url);
       }
 
       final ticket = Ticket(
-        id: 'temp', // blir erstattet av Supabase ved insert
+        id: '', 
         companyId: companyId,
         reportedBy: user.id,
         title: _titleController.text.trim(),
@@ -67,8 +112,9 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
             : _categoryController.text.trim(),
         severity: _severity,
         isAnonymous: _isAnonymous,
-        imageUrls: const [],
-        annotatedImageUrls: const [],
+        assignedTo: _assignedToId,
+        imageUrls: imageUrls,
+        status: TicketStatus.aapen,
       );
 
       await SupabaseService.createTicket(ticket);
@@ -154,6 +200,27 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
                 onChanged: (v) => setState(() => _isAnonymous = v),
                 title: const Text(AppStrings.anonymous),
               ),
+              const SizedBox(height: 16),
+              const Text('Hvem skal behandle avviket?', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _assignedToId,
+                decoration: InputDecoration(
+                  hintText: 'Velg person',
+                  filled: true,
+                  fillColor: isDark ? DriftProTheme.cardDark : Colors.white10,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                ),
+                items: _allProfiles.map((p) => DropdownMenuItem(
+                  value: p.id,
+                  child: Text(p.fullName),
+                )).toList(),
+                onChanged: (val) => setState(() => _assignedToId = val),
+              ),
+              const SizedBox(height: 24),
+              const Text('Bilder', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              _buildImagePicker(isDark),
               if (_error != null) ...[
                 const SizedBox(height: 12),
                 Text(
@@ -186,6 +253,71 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildImagePicker(bool isDark) {
+    return Column(
+      children: [
+        if (_selectedImages.isNotEmpty)
+          Container(
+            height: 100,
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _selectedImages.length,
+              itemBuilder: (context, index) {
+                return Stack(
+                  children: [
+                    Container(
+                      width: 100,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Text("Bilde ${index + 1}"), // Simplified for web/pickers if path is not direct
+                      ),
+                    ),
+                    Positioned(
+                      top: 0,
+                      right: 8,
+                      child: GestureDetector(
+                        onTap: () => setState(() => _selectedImages.removeAt(index)),
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                          child: const Icon(Icons.close, size: 12, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+        InkWell(
+          onTap: _pickImages,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            decoration: BoxDecoration(
+              color: isDark ? DriftProTheme.cardDark : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.withOpacity(0.3), style: BorderStyle.solid),
+            ),
+            child: const Column(
+              children: [
+                Icon(Icons.add_a_photo_outlined, color: Colors.grey, size: 24),
+                SizedBox(height: 4),
+                Text('Legg til bilder', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

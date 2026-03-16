@@ -5,6 +5,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
 import 'new_ticket_screen.dart';
+import 'ticket_detail_screen.dart';
 import '../common/placeholder_screen.dart';
 
 class TicketsScreen extends StatefulWidget {
@@ -223,14 +224,9 @@ class _TicketsScreenState extends State<TicketsScreen> {
         onTap: () {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => PlaceholderScreen(
-                title: t.title,
-                description:
-                    'Her kommer detaljvisning av avvik '
-                    'med historikk og kommentarer fra Supabase.',
-              ),
+              builder: (_) => TicketDetailScreen(ticket: t),
             ),
-          );
+          ).then((_) => _loadTickets());
         },
         borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
         child: Padding(

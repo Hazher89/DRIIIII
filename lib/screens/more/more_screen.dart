@@ -14,6 +14,7 @@ import '../employees/employees_screen.dart';
 import '../profile/profile_screen.dart';
 import '../admin/access_control_screen.dart';
 import '../surveys/survey_list_screen.dart';
+import 'whistleblowing_screen.dart';
 
 class MoreScreen extends StatefulWidget {
   const MoreScreen({super.key});
@@ -153,6 +154,12 @@ class _MoreScreenState extends State<MoreScreen> {
               'Tilgangskontroll',
               isDark,
             ),
+          _buildMenuItem(
+            context,
+            Icons.record_voice_over_outlined,
+            'Anonym anmeldelse',
+            isDark,
+          ),
 
           const SizedBox(height: 20),
           _buildSectionLabel('Innstillinger', isDark),
@@ -279,6 +286,10 @@ class _MoreScreenState extends State<MoreScreen> {
           }
           if (title == 'Undersøkelser') {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SurveyListScreen()));
+            return;
+          }
+          if (title == 'Anonym anmeldelse') {
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WhistleblowingScreen()));
             return;
           }
           if (title == 'Min profil') {
