@@ -10,6 +10,7 @@ import 'core/theme/theme_notifier.dart';
 import 'screens/shell/main_shell.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/onboarding_screen.dart';
+import 'screens/auth/pending_approval_screen.dart';
 import 'core/services/supabase_service.dart';
 import 'models/user_profile.dart';
 
@@ -90,6 +91,11 @@ class DriftProApp extends StatelessWidget {
                 final profile = profileSnapshot.data;
                 if (profile != null && !profile.isOnboarded) {
                   return OnboardingScreen(profile: profile);
+                }
+                
+                // SuperAdmin trenger ikke godkjenning (viktig for å ikke låse seg ute)
+                if (profile != null && !profile.isApproved && profile.role != UserRole.superadmin) {
+                  return const PendingApprovalScreen();
                 }
                 
                 return const MainShell();

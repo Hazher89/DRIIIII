@@ -23,7 +23,7 @@ class DmsPermission {
       userId: json['user_id'] as String,
       type: DmsPermissionType.values.firstWhere(
         (e) => e.name == json['permission_type'],
-        orElse: () => DmsPermissionType.read,
+        orElse: () => DmsPermissionType.view,
       ),
     );
   }

@@ -14,6 +14,7 @@ import '../employees/employees_screen.dart';
 import '../profile/profile_screen.dart';
 import '../admin/access_control_screen.dart';
 import '../surveys/survey_list_screen.dart';
+import '../admin/user_management_screen.dart';
 import 'whistleblowing_screen.dart';
 
 class MoreScreen extends StatefulWidget {
@@ -26,6 +27,7 @@ class MoreScreen extends StatefulWidget {
 class _MoreScreenState extends State<MoreScreen> {
   UserProfile? _profile;
   bool _isLoading = true;
+  int _usersWaitingForApprovalCount = 0;
 
   @override
   void initState() {
@@ -37,7 +39,15 @@ class _MoreScreenState extends State<MoreScreen> {
     setState(() => _isLoading = true);
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
-      setState(() => _profile = profile);
+      int count = 0;
+      if (profile?.role == UserRole.superadmin && profile?.companyId != null) {
+        final users = await SupabaseService.fetchProfiles(companyId: profile!.companyId);
+        count = users.where((u) => !u.isApproved).length;
+      }
+      setState(() {
+        _profile = profile;
+        _usersWaitingForApprovalCount = count;
+      });
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -153,6 +163,14 @@ class _MoreScreenState extends State<MoreScreen> {
               Icons.lock_person_outlined,
               'Tilgangskontroll',
               isDark,
+            ),
+          if (_profile?.role == UserRole.superadmin)
+            _buildMenuItem(
+              context,
+              Icons.how_to_reg_outlined,
+              'Brukergodkjenning',
+              isDark,
+              badge: _usersWaitingForApprovalCount > 0 ? _usersWaitingForApprovalCount.toString() : null,
             ),
           _buildMenuItem(
             context,
@@ -290,6 +308,10 @@ class _MoreScreenState extends State<MoreScreen> {
           }
           if (title == 'Anonym anmeldelse') {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WhistleblowingScreen()));
+            return;
+          }
+          if (title == 'Brukergodkjenning') {
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UserManagementScreen()));
             return;
           }
           if (title == 'Min profil') {

@@ -16,6 +16,7 @@ class UserProfile {
   final bool isSafetyRepresentative;
   final bool isActive;
   final bool isOnboarded;
+  final bool isApproved;
   final DateTime? createdAt;
   final Map<String, dynamic>? accessSettings;
 
@@ -35,6 +36,7 @@ class UserProfile {
     this.isSafetyRepresentative = false,
     this.isActive = true,
     this.isOnboarded = false,
+    this.isApproved = false,
     this.createdAt,
     this.accessSettings,
   });
@@ -62,6 +64,7 @@ class UserProfile {
           json['is_safety_representative'] as bool? ?? false,
       isActive: json['is_active'] as bool? ?? true,
       isOnboarded: json['is_onboarded'] as bool? ?? false,
+      isApproved: json['is_approved'] as bool? ?? false,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -85,6 +88,7 @@ class UserProfile {
     'is_safety_representative': isSafetyRepresentative,
     'is_active': isActive,
     'is_onboarded': isOnboarded,
+    'is_approved': isApproved,
   };
 
   bool get isLeader => role == UserRole.leder || isAdmin;
