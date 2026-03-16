@@ -35,7 +35,10 @@ class _CompetenceMatrixScreenState extends State<CompetenceMatrixScreen> {
           .select()
           .eq('company_id', companyId);
       
-      final res = await Future.wait([profilesFut, docsFut]);
+      final res = await Future.wait([
+        profilesFut as Future<dynamic>,
+        docsFut as Future<dynamic>,
+      ]);
       
       setState(() {
         _profiles = res[0] as List<UserProfile>;

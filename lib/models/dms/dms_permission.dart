@@ -1,4 +1,4 @@
-enum DmsPermissionType { read, write, admin }
+enum DmsPermissionType { view, edit, admin }
 
 class DmsPermission {
   final String id;

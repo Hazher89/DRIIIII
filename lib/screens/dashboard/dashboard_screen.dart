@@ -235,7 +235,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     scrollDirection: Axis.horizontal,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     children: [
-                      QuickActionButton(icon: AppIcons.survey, label: 'Survey', color: Colors.purple, onTap: () => widget.onNavigate?.call(1)),
+                      QuickActionButton(icon: AppIcons.survey, label: AppStrings.navSurveys, color: Colors.purple, onTap: () => widget.onNavigate?.call(1)),
                       const SizedBox(width: 12),
                       QuickActionButton(icon: AppIcons.absence, label: 'Fravær', color: DriftProTheme.absenceVacation, onTap: () => widget.onNavigate?.call(2)),
                       const SizedBox(width: 12),
