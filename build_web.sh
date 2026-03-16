@@ -1,21 +1,24 @@
 #!/bin/bash
 set -e
 echo "==== STARTER CLOUDFLARE BYGG ===="
-git clone https://github.com/flutter/flutter.git -b stable --depth 1
+
+# 1. Installer Flutter
+if [ ! -d "flutter" ]; then
+  git clone https://github.com/flutter/flutter.git -b stable --depth 1
+fi
 export PATH="$PATH:`pwd`/flutter/bin"
 
-echo "==== KONFIGURERER FLUTTER ===="
+# 2. Konfigurer
+echo "==== KONFIGURERING ===="
 flutter config --no-analytics
 flutter config --enable-web
-flutter doctor -v
 
-echo "==== INITIALISERER WEB-PROSJEKT ===="
-flutter create . --platforms web
-
-echo "==== HENTER PAKKER ===="
+# 3. Rydd og hent pakker
+echo "==== PUB GET ===="
 flutter pub get
 
-echo "==== BYGGER WEB ===="
-flutter build web --release --web-renderer canvaskit
+# 4. Bygg (Forenklet uten --web-renderer for å unngå feil)
+echo "==== BYGGER WEB-VERSJON ===="
+flutter build web --release
 
-echo "==== BYGG VELLYKKET ===="
+echo "==== BYGG FERDIG! ===="
