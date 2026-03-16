@@ -7,6 +7,7 @@ import '../dashboard/dashboard_screen.dart';
 import '../absence/absence_screen.dart';
 import '../tickets/tickets_screen.dart';
 import '../hms/hms_screen.dart';
+import '../surveys/survey_list_screen.dart';
 import '../more/more_screen.dart';
 import '../../models/user_profile.dart';
 import '../../core/services/supabase_service.dart';
@@ -69,6 +70,7 @@ class _MainShellState extends State<MainShell> {
       {'screen': const AbsenceScreen(), 'icon': AppIcons.absence, 'label': AppStrings.navAbsence, 'access': 'fravaer'},
       {'screen': const TicketsScreen(), 'icon': AppIcons.ticket, 'label': AppStrings.navTickets, 'access': 'avvik'},
       {'screen': const HmsScreen(), 'icon': AppIcons.hms, 'label': AppStrings.navHMS, 'access': 'hms'},
+      {'screen': const SurveyListScreen(), 'icon': Icons.assignment_outlined, 'label': 'Survey', 'access': 'surveys'},
       {'screen': const MoreScreen(), 'icon': AppIcons.more, 'label': AppStrings.navMore, 'access': 'more'},
     ];
 
