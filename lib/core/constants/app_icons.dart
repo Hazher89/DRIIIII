@@ -32,6 +32,7 @@ class AppIcons {
   static const IconData certificate = Icons.school_rounded;
   static const IconData license = Icons.card_membership_rounded;
   static const IconData folder = Icons.folder_rounded;
+  static const IconData survey = Icons.poll_outlined;
   
   // ── Department & Users ──
   static const IconData department = Icons.business_rounded;

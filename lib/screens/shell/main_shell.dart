@@ -67,10 +67,10 @@ class _MainShellState extends State<MainShell> {
 
     final allScreens = [
       {'screen': DashboardScreen(onNavigate: _onNavigate), 'icon': AppIcons.dashboard, 'label': AppStrings.navDashboard, 'access': 'dashboard'},
+      {'screen': const SurveyListScreen(), 'icon': AppIcons.survey, 'label': AppStrings.navSurveys, 'access': 'surveys'},
       {'screen': const AbsenceScreen(), 'icon': AppIcons.absence, 'label': AppStrings.navAbsence, 'access': 'fravaer'},
       {'screen': const TicketsScreen(), 'icon': AppIcons.ticket, 'label': AppStrings.navTickets, 'access': 'avvik'},
       {'screen': const HmsScreen(), 'icon': AppIcons.hms, 'label': AppStrings.navHMS, 'access': 'hms'},
-      {'screen': const SurveyListScreen(), 'icon': Icons.assignment_outlined, 'label': 'Survey', 'access': 'surveys'},
       {'screen': const MoreScreen(), 'icon': AppIcons.more, 'label': AppStrings.navMore, 'access': 'more'},
     ];
 
