@@ -13,6 +13,7 @@ import '../departments/departments_screen.dart';
 import '../employees/employees_screen.dart';
 import '../profile/profile_screen.dart';
 import '../admin/access_control_screen.dart';
+import '../surveys/survey_list_screen.dart';
 
 class MoreScreen extends StatefulWidget {
   const MoreScreen({super.key});
@@ -138,6 +139,12 @@ class _MoreScreenState extends State<MoreScreen> {
             'Varsler',
             isDark,
             badge: '3',
+          ),
+          _buildMenuItem(
+            context,
+            Icons.assignment_outlined,
+            'Undersøkelser',
+            isDark,
           ),
           if (_profile?.isAdmin == true)
             _buildMenuItem(
@@ -268,6 +275,10 @@ class _MoreScreenState extends State<MoreScreen> {
           }
           if (title == 'Tilgangskontroll') {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccessControlScreen()));
+            return;
+          }
+          if (title == 'Undersøkelser') {
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SurveyListScreen()));
             return;
           }
           if (title == 'Min profil') {
