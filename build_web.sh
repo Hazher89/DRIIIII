@@ -9,6 +9,9 @@ flutter config --no-analytics
 flutter config --enable-web
 flutter doctor -v
 
+echo "==== INITIALISERER WEB-PROSJEKT ===="
+flutter create . --platforms web
+
 echo "==== HENTER PAKKER ===="
 flutter pub get
 
