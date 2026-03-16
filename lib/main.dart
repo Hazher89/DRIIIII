@@ -9,6 +9,9 @@ import 'core/config/supabase_config.dart';
 import 'core/theme/theme_notifier.dart';
 import 'screens/shell/main_shell.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/auth/onboarding_screen.dart';
+import 'core/services/supabase_service.dart';
+import 'models/user_profile.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -77,7 +80,21 @@ class DriftProApp extends StatelessWidget {
           final session = snapshot.data?.session;
 
           if (session != null) {
-            return const MainShell();
+            return FutureBuilder<UserProfile?>(
+              future: SupabaseService.fetchCurrentUserProfile(),
+              builder: (context, profileSnapshot) {
+                if (profileSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                }
+                
+                final profile = profileSnapshot.data;
+                if (profile != null && !profile.isOnboarded) {
+                  return OnboardingScreen(profile: profile);
+                }
+                
+                return const MainShell();
+              },
+            );
           } else {
             return const LoginScreen();
           }

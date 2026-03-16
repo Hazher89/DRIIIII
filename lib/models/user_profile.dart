@@ -10,10 +10,12 @@ class UserProfile {
   final String? avatarUrl;
   final String? employeeNumber;
   final String? phone;
+  final String? address;
   final String? jobTitle;
   final DateTime? hireDate;
   final bool isSafetyRepresentative;
   final bool isActive;
+  final bool isOnboarded;
   final DateTime? createdAt;
   final Map<String, dynamic>? accessSettings;
 
@@ -27,10 +29,12 @@ class UserProfile {
     this.avatarUrl,
     this.employeeNumber,
     this.phone,
+    this.address,
     this.jobTitle,
     this.hireDate,
     this.isSafetyRepresentative = false,
     this.isActive = true,
+    this.isOnboarded = false,
     this.createdAt,
     this.accessSettings,
   });
@@ -49,6 +53,7 @@ class UserProfile {
       avatarUrl: json['avatar_url'] as String?,
       employeeNumber: json['employee_number'] as String?,
       phone: json['phone'] as String?,
+      address: json['address'] as String?,
       jobTitle: json['job_title'] as String?,
       hireDate: json['hire_date'] != null
           ? DateTime.parse(json['hire_date'] as String)
@@ -56,6 +61,7 @@ class UserProfile {
       isSafetyRepresentative:
           json['is_safety_representative'] as bool? ?? false,
       isActive: json['is_active'] as bool? ?? true,
+      isOnboarded: json['is_onboarded'] as bool? ?? false,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -73,10 +79,12 @@ class UserProfile {
     'avatar_url': avatarUrl,
     'employee_number': employeeNumber,
     'phone': phone,
+    'address': address,
     'job_title': jobTitle,
     'hire_date': hireDate?.toIso8601String(),
     'is_safety_representative': isSafetyRepresentative,
     'is_active': isActive,
+    'is_onboarded': isOnboarded,
   };
 
   bool get isLeader => role == UserRole.leder || isAdmin;

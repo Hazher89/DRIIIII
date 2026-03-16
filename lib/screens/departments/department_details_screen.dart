@@ -325,18 +325,39 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
   }
 
   Future<void> _saveDepartment() async {
-    final updated = Department(
-      id: _currentDept.id,
-      companyId: _currentDept.companyId,
-      name: _nameController.text,
-      description: _descController.text,
-      leaderId: _selectedLeaderId,
-      colorCode: _currentDept.colorCode,
-      iconName: _currentDept.iconName,
-    );
-    if (widget.isNew) await SupabaseService.createDepartment(updated);
-    else await SupabaseService.updateDepartment(updated);
-    if (mounted) Navigator.pop(context);
+    if (_nameController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Navn må fylles ut')));
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final updated = Department(
+        id: _currentDept.id,
+        companyId: _currentDept.companyId,
+        name: _nameController.text,
+        description: _descController.text,
+        leaderId: _selectedLeaderId,
+        colorCode: _currentDept.colorCode,
+        iconName: _currentDept.iconName,
+      );
+      
+      if (widget.isNew) {
+        await SupabaseService.createDepartment(updated);
+      } else {
+        await SupabaseService.updateDepartment(updated);
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avdeling lagret!'), backgroundColor: Colors.green));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Feil ved lagring: $e'), backgroundColor: Colors.red));
+      }
+    }
   }
 
   void _showAddMemberPicker() {
