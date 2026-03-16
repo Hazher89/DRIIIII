@@ -14,6 +14,7 @@ import '../../models/hms_document.dart';
 /// Felles wrapper rundt Supabase-klienten med typed hjelpemetoder.
 class SupabaseService {
   static SupabaseClient get client => Supabase.instance.client;
+  static User? get currentUser => client.auth.currentUser;
 
   /// Sann hvis Supabase er konfigurert med ekte nøkler.
   static bool get isConfigured =>

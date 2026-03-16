@@ -31,7 +31,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
       final profile = await SupabaseService.fetchCurrentUserProfile();
       if (profile != null) {
         _companyId = profile.companyId;
-        final surveys = await SurveyService.fetchSurveys(companyId: profile.companyId);
+        final surveys = await SurveyService.fetchSurveys(companyId: profile.companyId!);
         setState(() {
           _surveys = surveys;
           _isLoading = false;
