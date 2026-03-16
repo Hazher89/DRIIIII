@@ -41,7 +41,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       // Supabase Google Login for Web
       await Supabase.instance.client.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: 'http://localhost:8080', // In production, this must match your Supabase config
+        redirectTo: 'https://driftpro.no', 
       );
     } catch (e) {
       if (mounted) {
