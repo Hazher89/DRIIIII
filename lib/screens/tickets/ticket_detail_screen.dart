@@ -107,6 +107,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     _buildDescription(isDark),
                     const SizedBox(height: 24),
                     if (_ticket.imageUrls.isNotEmpty) _buildImages(isDark),
+                    const SizedBox(height: 24),
+                    _buildRootCause(isDark),
+                    const SizedBox(height: 24),
+                    _buildActionPlan(isDark),
                     const Divider(height: 48),
                     Text('Historikk og kommentarer', style: DriftProTheme.headingMd),
                     const SizedBox(height: 16),
@@ -189,6 +193,74 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildRootCause(bool isDark) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: DriftProTheme.riskLow.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: DriftProTheme.riskLow.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.psychology_outlined, size: 20, color: Colors.indigo),
+              const SizedBox(width: 8),
+              Text('Årsaksanalyse', style: DriftProTheme.labelLg.copyWith(color: Colors.indigo)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(_ticket.rootCause ?? 'Ingen årsaksanalyse er utført ennå.', 
+            style: DriftProTheme.bodyMd.copyWith(fontStyle: _ticket.rootCause == null ? FontStyle.italic : null)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionPlan(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Tiltaksplan', style: DriftProTheme.labelLg),
+            if (_ticket.assignedTo == SupabaseService.currentUser?.id)
+              TextButton.icon(onPressed: () {}, icon: const Icon(Icons.add, size: 16), label: const Text('Nytt tiltak')),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_ticket.actionPlan.isEmpty)
+          const Text('Ingen tiltak er planlagt.', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey))
+        else
+          ..._ticket.actionPlan.map((action) => _buildActionCard(action, isDark)),
+      ],
+    );
+  }
+
+  Widget _buildActionCard(Map<String, dynamic> action, bool isDark) {
+    final isDone = action['status'] == 'done';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: isDark ? DriftProTheme.dividerDark : Colors.grey[200]!),
+      ),
+      child: Row(
+        children: [
+          Icon(isDone ? Icons.check_circle : Icons.circle_outlined, 
+              color: isDone ? Colors.green : Colors.grey, size: 20),
+          const SizedBox(width: 12),
+          Expanded(child: Text(action['title'] ?? '', style: TextStyle(decoration: isDone ? TextDecoration.lineThrough : null))),
+        ],
+      ),
     );
   }
 

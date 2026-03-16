@@ -8,6 +8,8 @@ import 'sja/sja_list_screen.dart';
 import 'safety_rounds/safety_round_list_screen.dart';
 import 'documents/document_list_screen.dart';
 import '../dms/dms_screen.dart';
+import 'equipment/equipment_registry_screen.dart';
+import 'competence/competence_matrix_screen.dart';
 
 class HmsScreen extends StatelessWidget {
   const HmsScreen({super.key});
@@ -95,12 +97,40 @@ class HmsScreen extends StatelessWidget {
           const SizedBox(height: 12),
           _buildModuleCard(
             context,
+            icon: Icons.construction_rounded,
+            title: 'Maskiner & Utstyr',
+            subtitle: 'Oversikt over verktøy, maskiner og vedlikehold',
+            color: Colors.blueGrey,
+            isDark: isDark,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const EquipmentRegistryScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _buildModuleCard(
+            context,
+            icon: Icons.card_membership_rounded,
+            title: 'Kompetanse & Kurs',
+            subtitle: 'Sertifikater, kursbevis og kompetansematrise',
+            color: Colors.indigo,
+            badge: '3 utløper',
+            badgeColor: Colors.red,
+            isDark: isDark,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const CompetenceMatrixScreen()),
+              );
+            },
+          ),
+          const SizedBox(height: 12),
+          _buildModuleCard(
+            context,
             icon: AppIcons.document,
             title: AppStrings.documents,
-            subtitle: 'Kursbevis, sertifikater og arbeidsavtaler',
+            subtitle: 'HMS-håndbok og styrende dokumenter',
             color: DriftProTheme.info,
-            badge: '5 utløper snart',
-            badgeColor: DriftProTheme.warning,
             isDark: isDark,
             onTap: () {
               Navigator.of(context).push(

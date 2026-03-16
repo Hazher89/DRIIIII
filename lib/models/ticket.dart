@@ -84,6 +84,8 @@ class Ticket {
   final String? resolvedBy;
   final String? resolutionComment;
   final bool isAnonymous;
+  final String? rootCause;
+  final List<Map<String, dynamic>> actionPlan;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -116,6 +118,8 @@ class Ticket {
     this.resolvedBy,
     this.resolutionComment,
     this.isAnonymous = false,
+    this.rootCause,
+    this.actionPlan = const [],
     this.createdAt,
     this.updatedAt,
     this.reporterName,
@@ -158,6 +162,8 @@ class Ticket {
       resolvedBy: json['resolved_by'] as String?,
       resolutionComment: json['resolution_comment'] as String?,
       isAnonymous: json['is_anonymous'] as bool? ?? false,
+      rootCause: json['root_cause'] as String?,
+      actionPlan: (json['action_plan'] as List<dynamic>?)?.map((e) => e as Map<String, dynamic>).toList() ?? [],
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -189,6 +195,8 @@ class Ticket {
     'is_anonymous': isAnonymous,
     'assigned_to': assignedTo,
     'status': status.dbValue,
+    'root_cause': rootCause,
+    'action_plan': actionPlan,
   };
 
   bool get isOpen => status == TicketStatus.aapen || status == TicketStatus.underBehandling;
