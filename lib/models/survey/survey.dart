@@ -37,6 +37,7 @@ class Survey {
   final String createdBy;
   final bool isActive;
   final bool allowAnonymous;
+  final String theme;
   final DateTime? expiresAt;
   final DateTime createdAt;
   final int totalResponses;
@@ -49,6 +50,7 @@ class Survey {
     required this.createdBy,
     required this.isActive,
     required this.allowAnonymous,
+    this.theme = 'Original',
     this.expiresAt,
     required this.createdAt,
     this.totalResponses = 0,
@@ -63,6 +65,7 @@ class Survey {
       createdBy: json['created_by'],
       isActive: json['is_active'] ?? true,
       allowAnonymous: json['allow_anonymous'] ?? true,
+      theme: json['theme'] ?? 'Original',
       expiresAt: json['expires_at'] != null ? DateTime.parse(json['expires_at']) : null,
       createdAt: DateTime.parse(json['created_at']),
       totalResponses: json['survey_responses'] != null ? (json['survey_responses'] as List).length : 0,

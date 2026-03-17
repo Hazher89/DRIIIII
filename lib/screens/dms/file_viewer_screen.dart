@@ -62,6 +62,11 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
     return Scaffold(
       backgroundColor: isDark ? DriftProTheme.bgDark : Colors.grey[100],
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => Navigator.pop(context),
+          tooltip: 'Lukk dokument',
+        ),
         title: Text(widget.file.name),
         actions: [
           IconButton(
@@ -111,12 +116,19 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
             children: [
               const Icon(Icons.insert_drive_file_outlined, size: 80, color: Colors.grey),
               const SizedBox(height: 24),
-              Text('Forhåndsvisning er ikke tilgjengelig for .$extension-filer', style: const TextStyle(color: Colors.grey)),
-              const SizedBox(height: 24),
+              Text('Kan ikke vise forhåndsvisning for .${extension?.toUpperCase() ?? 'ukjent'}-filer.', style: const TextStyle(color: Colors.grey)),
+              const SizedBox(height: 12),
+              const Text('Du kan fortsatt laste ned eller åpne filen i et annet program.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+              const SizedBox(height: 32),
               ElevatedButton.icon(
                 onPressed: () => launchUrl(Uri.parse(_url!)),
                 icon: const Icon(Icons.open_in_new),
-                label: const Text('Åpne eksternt'),
+                label: const Text('Last ned / Åpne fil'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: DriftProTheme.primaryGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                ),
               ),
             ],
           ),

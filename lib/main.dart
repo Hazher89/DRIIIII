@@ -11,6 +11,7 @@ import 'screens/shell/main_shell.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/onboarding_screen.dart';
 import 'screens/auth/pending_approval_screen.dart';
+import 'screens/surveys/survey_player_screen.dart';
 import 'core/services/supabase_service.dart';
 import 'models/user_profile.dart';
 
@@ -70,6 +71,15 @@ class DriftProApp extends StatelessWidget {
       theme: DriftProTheme.lightTheme,
       darkTheme: DriftProTheme.darkTheme,
       themeMode: themeNotifier.themeMode,
+      onGenerateRoute: (settings) {
+        if (settings.name != null && settings.name!.startsWith('/s/')) {
+          final id = settings.name!.replaceFirst('/s/', '');
+          return MaterialPageRoute(
+            builder: (_) => SurveyPlayerScreen(surveyId: id),
+          );
+        }
+        return null;
+      },
       home: StreamBuilder<AuthState>(
         key: const ValueKey('auth_stream'),
         stream: Supabase.instance.client.auth.onAuthStateChange,

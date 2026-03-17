@@ -9,10 +9,10 @@ class SurveyBuilderCanvas extends StatefulWidget {
   const SurveyBuilderCanvas({super.key, required this.survey});
 
   @override
-  State<SurveyBuilderCanvas> createState() => _SurveyBuilderCanvasState();
+  State<SurveyBuilderCanvas> createState() => SurveyBuilderCanvasState();
 }
 
-class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
+class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   bool _isLoading = true;
   bool _isSaving = false;
   List<SurveyQuestion> _questions = [];
@@ -48,6 +48,8 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
     _descriptionController = TextEditingController(text: widget.survey.description);
     _allowAnonymous = widget.survey.allowAnonymous;
     _requireLogin = !widget.survey.allowAnonymous;
+    _selectedTheme = widget.survey.theme;
+    if (!_themeColors.containsKey(_selectedTheme)) _selectedTheme = 'Original';
     _expiresAt = widget.survey.expiresAt;
     _loadQuestions();
   }
@@ -186,7 +188,7 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
     });
   }
 
-  Future<void> _saveChanges() async {
+  Future<void> saveChanges() async {
     setState(() => _isSaving = true);
     try {
       // 1. Update survey header
@@ -195,6 +197,7 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         title: _titleController.text,
         description: _descriptionController.text,
         allowAnonymous: _allowAnonymous,
+        theme: _selectedTheme,
       );
 
       // 2. Prepare questions with values from controllers
@@ -620,7 +623,7 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         child: SizedBox(
           width: 120,
           child: ElevatedButton(
-            onPressed: _isSaving ? null : _saveChanges,
+            onPressed: _isSaving ? null : saveChanges,
             style: ElevatedButton.styleFrom(
               backgroundColor: themeColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),

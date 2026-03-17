@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS surveys (
     created_by UUID NOT NULL REFERENCES profiles(id),
     is_active BOOLEAN DEFAULT TRUE,
     allow_anonymous BOOLEAN DEFAULT TRUE,
+    theme TEXT DEFAULT 'Original',
     expires_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -58,6 +59,10 @@ ALTER TABLE survey_answers ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Brukere kan se undersøkelser i sitt firma" ON surveys;
 CREATE POLICY "Brukere kan se undersøkelser i sitt firma" ON surveys
     FOR SELECT USING (company_id IN (SELECT company_id FROM profiles WHERE id = auth.uid()));
+
+DROP POLICY IF EXISTS "Alle kan se anonyme undersøkelser" ON surveys;
+CREATE POLICY "Alle kan se anonyme undersøkelser" ON surveys
+    FOR SELECT USING (allow_anonymous = TRUE AND is_active = TRUE);
 
 DROP POLICY IF EXISTS "Admin kan administrere undersøkelser" ON surveys;
 CREATE POLICY "Admin kan administrere undersøkelser" ON surveys

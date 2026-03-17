@@ -218,7 +218,14 @@ class _DmsScreenState extends State<DmsScreen> {
   Widget _sidebarItem(IconData icon, String title, DmsCategory cat) {
     final isActive = _activeCategory == cat;
     return ListTile(
-      onTap: () => setState(() => _activeCategory = cat),
+      onTap: () {
+        setState(() => _activeCategory = cat);
+        if (cat == DmsCategory.all) {
+          _navigateToFolder(null, 'Hovedarkiv');
+        } else {
+          _loadData(); // Re-filter if needed
+        }
+      },
       leading: Icon(icon, color: isActive ? DriftProTheme.primaryGreen : Colors.grey),
       title: Text(title, style: TextStyle(color: isActive ? DriftProTheme.primaryGreen : null)),
       selected: isActive,
@@ -299,42 +306,80 @@ class _DmsScreenState extends State<DmsScreen> {
 
   Widget _buildListItem({DmsFolder? folder, DmsFile? file, required bool isDark}) {
     return ListTile(
-      leading: Icon(folder != null ? Icons.folder : Icons.insert_drive_file, color: folder != null ? Colors.amber : Colors.blue),
+      leading: Icon(folder != null ? Icons.folder : Icons.insert_drive_file, color: folder != null ? Colors.amber : DriftProTheme.primaryGreen),
       title: Text(folder?.name ?? file!.name),
       onTap: folder != null ? () => _navigateToFolder(folder.id, folder.name) : () => _openFile(file!),
-      trailing: _buildMenu(folder: folder, file: file),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.person_add_outlined, color: Colors.blue),
+            tooltip: 'Del / Skjul for ansatte',
+            onPressed: () => _managePermissions(folder: folder, file: file),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            tooltip: 'Slett',
+            onPressed: () => showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Er du sikker?'),
+                content: Text('Vil du virkelig slette ${folder?.name ?? file!.name}?'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _delete(folder: folder, file: file);
+                    }, 
+                    child: const Text('Slett', style: TextStyle(color: Colors.red)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildGridItem({DmsFolder? folder, DmsFile? file, required bool isDark}) {
     return InkWell(
       onTap: folder != null ? () => _navigateToFolder(folder.id, folder.name) : () => _openFile(file!),
-      child: Column(
+      child: Stack(
         children: [
-          Icon(folder != null ? Icons.folder : Icons.insert_drive_file, size: 48, color: folder != null ? Colors.amber : Colors.blue),
-          const SizedBox(height: 8),
-          Text(folder?.name ?? file!.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(folder != null ? Icons.folder : Icons.insert_drive_file, size: 48, color: folder != null ? Colors.amber : DriftProTheme.primaryGreen),
+                const SizedBox(height: 8),
+                Text(folder?.name ?? file!.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 0,
+            right: 0,
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.person_add_outlined, size: 18, color: Colors.blue),
+                  onPressed: () => _managePermissions(folder: folder, file: file),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                  onPressed: () => _delete(folder: folder, file: file),
+                ),
+              ],
+            ),
+          )
         ],
       ),
     );
   }
 
-  Widget _buildMenu({DmsFolder? folder, DmsFile? file}) {
-    return PopupMenuButton<String>(
-      onSelected: (val) {
-        if (val == 'rename') _rename(folder: folder, file: file);
-        if (val == 'delete') _delete(folder: folder, file: file);
-        if (val == 'permissions') _managePermissions(folder: folder, file: file);
-        if (val == 'view' && file != null) _openFile(file);
-      },
-      itemBuilder: (context) => [
-        const PopupMenuItem(value: 'rename', child: Text('Gi nytt navn')),
-        const PopupMenuItem(value: 'permissions', child: Text('Del med ansatte')),
-        if (file != null) const PopupMenuItem(value: 'view', child: Text('Åpne')),
-        const PopupMenuItem(value: 'delete', child: Text('Slett', style: TextStyle(color: Colors.red))),
-      ],
-    );
-  }
+
 
   Future<void> _openFile(DmsFile file) async {
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => FileViewerScreen(file: file)));
@@ -440,7 +485,30 @@ class _PermissionsManagementSheetState extends State<_PermissionsManagementSheet
       height: MediaQuery.of(context).size.height * 0.7,
       child: Column(
         children: [
-          Text('Deling', style: DriftProTheme.headingMd),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Del / Skjul for ansatte', style: DriftProTheme.headingMd),
+              if (widget.file != null)
+                TextButton.icon(
+                  onPressed: () async {
+                    try {
+                      final url = await DmsService.getDownloadUrl(widget.file!.storagePath);
+                      Clipboard.setData(ClipboardData(text: url));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offentlig lenke kopiert!')));
+                      }
+                    } catch(e) {
+                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Feil: $e')));
+                    }
+                  },
+                  icon: const Icon(Icons.link),
+                  label: const Text('Kopier lenke'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text('Bestem hvem som skal se dette dokumentet/mappen. Skru av for å skjule.', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
           const SizedBox(height: 16),
           Expanded(
             child: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(

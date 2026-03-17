@@ -41,11 +41,13 @@ class SurveyService {
     String? title,
     String? description,
     bool? allowAnonymous,
+    String? theme,
   }) async {
     final Map<String, dynamic> data = {};
     if (title != null) data['title'] = title;
     if (description != null) data['description'] = description;
     if (allowAnonymous != null) data['allow_anonymous'] = allowAnonymous;
+    if (theme != null) data['theme'] = theme;
     
     if (data.isNotEmpty) {
       await _supabase.from('surveys').update(data).eq('id', id);
@@ -96,13 +98,22 @@ class SurveyService {
         .upsert(data)
         .select();
 
+    print('saveQuestions UPSERT RESPONSE: $response');
+    
     // 3. Delete any questions that are no longer in the list
     final remainingIds = List<String>.from(response.map((x) => x['id']));
-    await _supabase
-        .from('survey_questions')
-        .delete()
-        .eq('survey_id', surveyId)
-        .not('id', 'in', remainingIds);
+    if (remainingIds.isEmpty) {
+      await _supabase
+          .from('survey_questions')
+          .delete()
+          .eq('survey_id', surveyId);
+    } else {
+      await _supabase
+          .from('survey_questions')
+          .delete()
+          .eq('survey_id', surveyId)
+          .not('id', 'in', remainingIds);
+    }
 
     return List<SurveyQuestion>.from(response.map((x) => SurveyQuestion.fromJson(x)));
   }

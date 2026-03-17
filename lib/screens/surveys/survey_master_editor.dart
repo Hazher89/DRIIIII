@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/services/survey/survey_service.dart';
 import '../../models/survey/survey.dart';
 import 'survey_builder_canvas.dart';
 import 'survey_publish_view.dart';
@@ -17,6 +16,7 @@ class SurveyMasterEditor extends StatefulWidget {
 class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
   int _currentStep = 1; // 0: Sammendrag, 1: Lag, 2: Publiser, 3: Koble, 4: Analyser
   bool _isLoading = false;
+  final GlobalKey<SurveyBuilderCanvasState> _canvasKey = GlobalKey<SurveyBuilderCanvasState>();
 
   final List<String> _steps = [
     'Sammendrag',
@@ -73,8 +73,15 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
         ],
       ),
       actions: [
-        IconButton(icon: const Icon(Icons.comment_outlined, size: 20), onPressed: () {}),
-        IconButton(icon: const Icon(Icons.person_add_outlined, size: 20), onPressed: () {}),
+        if (_currentStep == 1)
+          TextButton.icon(
+            onPressed: () {
+              _canvasKey.currentState?.saveChanges();
+            },
+            icon: const Icon(Icons.save_outlined, size: 18, color: DriftProTheme.primaryGreen),
+            label: const Text('Lagre', style: TextStyle(color: DriftProTheme.primaryGreen, fontWeight: FontWeight.bold)),
+          ),
+        const SizedBox(width: 8),
         IconButton(icon: const Icon(Icons.notifications_none, size: 20), onPressed: () {}),
         IconButton(icon: const Icon(Icons.help_outline, size: 20), onPressed: () {}),
         const SizedBox(width: 16),
@@ -132,7 +139,7 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
   Widget _buildCurrentView() {
     switch (_currentStep) {
       case 1:
-        return SurveyBuilderCanvas(survey: widget.survey);
+        return SurveyBuilderCanvas(key: _canvasKey, survey: widget.survey);
       case 2:
         return SurveyPublishView(survey: widget.survey);
       case 4:
