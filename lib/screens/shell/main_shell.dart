@@ -34,6 +34,11 @@ class _MainShellState extends State<MainShell> {
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
       if (mounted) {
+        if (profile == null || (!profile.isOnboarded) || (!profile.isApproved && profile.role != UserRole.superadmin)) {
+           // Security leak detected! User is in MainShell but shouldn't be.
+           debugPrint('Security fallback triggered in MainShell for user ${profile?.id}');
+           // We can't easily pushReplacement here without context, but we can set state to show error
+        }
         setState(() {
           _profile = profile;
           _isLoadingAccess = false;
@@ -54,14 +59,32 @@ class _MainShellState extends State<MainShell> {
   }
 
   bool _hasAccess(String key) {
-    if (_profile == null) return true; // Default to true while loading or if no setting
-    if (_profile?.isAdmin == true) return true; // Admins see everything anyway usually, but we check map
-    return _profile?.accessSettings?[key] ?? true;
+    if (_profile == null) return false; // Default to FALSE while loading
+    if (_profile!.role == UserRole.superadmin) return true; // SuperAdmins bypass
+    
+    final settings = _profile!.accessSettings;
+    if (settings == null) return true; // Default allow if no map exists
+    
+    return settings[key] ?? true;
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoadingAccess) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    
+    // Safety check fallback
+    if (_profile == null) {
+      return const Scaffold(body: Center(child: Text('Profil ikke funnet. Prøv å logge inn på nytt.')));
+    }
+    
+    if (!_profile!.isOnboarded) {
+      // Should not happen, but safeguard
+      return Scaffold(body: Center(child: TextButton(onPressed: () => Supabase.instance.client.auth.signOut(), child: const Text('Vennligst fullfør onboarding'))));
+    }
+
+    if (!_profile!.isApproved && _profile!.role != UserRole.superadmin) {
+      return const Scaffold(body: Center(child: Text('Din konto venter på godkjenning.')));
+    }
     
     final isDark = Theme.of(context).brightness == Brightness.dark;
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -100,6 +101,11 @@ class DriftProApp extends StatelessWidget {
                 
                 final profile = profileSnapshot.data;
                 
+                // DEBUG: Log profile state to help diagnose bypass issues
+                if (kDebugMode) {
+                  print('Auth State: profile=${profile?.id}, onboarded=${profile?.isOnboarded}, approved=${profile?.isApproved}, role=${profile?.role}');
+                }
+
                 // 1. Hvis profil mangler helt (trigger feilet eller treg)
                 if (profile == null) {
                   return Scaffold(
@@ -111,13 +117,14 @@ class DriftProApp extends StatelessWidget {
                           children: [
                             const CircularProgressIndicator(),
                             const SizedBox(height: 24),
-                            const Text('Klargjør din profil...', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 8),
-                            const Text('Dette tar bare noen sekunder.', textAlign: TextAlign.center),
-                            const SizedBox(height: 24),
-                            TextButton(
+                            const Text('Klargjør din profil...', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 12),
+                            const Text('Dette tar vanligvis under 3 sekunder.', textAlign: TextAlign.center),
+                            const SizedBox(height: 48),
+                            TextButton.icon(
                               onPressed: () => Supabase.instance.client.auth.signOut(),
-                              child: const Text('Logg ut og prøv igjen'),
+                              icon: const Icon(Icons.logout),
+                              label: const Text('Logg ut og prøv på nytt'),
                             ),
                           ],
                         ),
@@ -133,7 +140,11 @@ class DriftProApp extends StatelessWidget {
                 
                 // 3. Hvis profil finnes og onboarding er ferdig, men mangler godkjenning
                 // SuperAdmin trenger ikke godkjenning (viktig for å ikke låse seg ute)
+                // Ensure superadmin check is robust.
                 if (!profile.isApproved && profile.role != UserRole.superadmin) {
+                  if (kDebugMode) {
+                    print('Profile ${profile.id} is not approved and not a superadmin. Redirecting to PendingApprovalScreen.');
+                  }
                   return const PendingApprovalScreen();
                 }
                 
