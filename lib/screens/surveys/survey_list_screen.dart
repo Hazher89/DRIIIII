@@ -88,6 +88,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
         content: TextField(
           controller: controller,
           autofocus: true,
+          contentPadding: EdgeInsets.zero,
           decoration: InputDecoration(
             labelText: label,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
@@ -306,5 +307,6 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
           style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
         ),
       ],
+    );
   }
 }

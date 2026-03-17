@@ -216,7 +216,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
               });
             },
             contentPadding: EdgeInsets.zero,
-          )).toList<Widget>(),
+          )).toList(),
         );
       case SurveyQuestionType.text:
         return TextFormField(
