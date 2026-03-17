@@ -216,7 +216,18 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
       }
 
       // 3. Save questions
-      await SurveyService.saveQuestions(widget.survey.id, updatedQuestions);
+      final newQuestions = await SurveyService.saveQuestions(widget.survey.id, updatedQuestions);
+      
+      // 4. Sync state with new questions (important for IDs)
+      setState(() {
+        _questions = newQuestions;
+        // Re-initialize controllers with exact state from DB
+        for (var q in newQuestions) {
+          _questionControllers[q.id] = TextEditingController(text: q.questionText);
+          _questionFocusNodes[q.id] = FocusNode();
+          _optionControllers[q.id] = q.options.map((opt) => TextEditingController(text: opt)).toList();
+        }
+      });
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

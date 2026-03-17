@@ -66,22 +66,24 @@ class SurveyService {
     return List<SurveyQuestion>.from(response.map((x) => SurveyQuestion.fromJson(x)));
   }
 
-  static Future<void> saveQuestions(String surveyId, List<SurveyQuestion> questions) async {
+  static Future<List<SurveyQuestion>> saveQuestions(String surveyId, List<SurveyQuestion> questions) async {
     // Basic approach: delete and re-insert for simplicity in editor
     await _supabase.from('survey_questions').delete().eq('survey_id', surveyId);
     
-    if (questions.isNotEmpty) {
-      await _supabase.from('survey_questions').insert(
-        questions.map((q) => {
-          'survey_id': surveyId,
-          'question_text': q.questionText,
-          'question_type': q.type.name,
-          'is_required': q.isRequired,
-          'options': q.options,
-          'order_index': q.orderIndex,
-        }).toList()
-      );
-    }
+    if (questions.isEmpty) return [];
+
+    final response = await _supabase.from('survey_questions').insert(
+      questions.map((q) => {
+        'survey_id': surveyId,
+        'question_text': q.questionText,
+        'question_type': q.type.toIdentifier(),
+        'is_required': q.isRequired,
+        'options': q.options,
+        'order_index': q.orderIndex,
+      }).toList()
+    ).select();
+
+    return List<SurveyQuestion>.from(response.map((x) => SurveyQuestion.fromJson(x)));
   }
 
   static Future<void> submitResponse({

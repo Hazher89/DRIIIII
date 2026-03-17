@@ -1,3 +1,4 @@
+enum SurveyQuestionType {
   text,
   paragraph,
   single_choice,
@@ -8,7 +9,7 @@
 }
 
 extension SurveyQuestionTypeExtension on SurveyQuestionType {
-  String get name {
+  String toIdentifier() {
     switch (this) {
       case SurveyQuestionType.text: return 'text';
       case SurveyQuestionType.paragraph: return 'paragraph';
@@ -21,7 +22,10 @@ extension SurveyQuestionTypeExtension on SurveyQuestionType {
   }
 
   static SurveyQuestionType fromString(String val) {
-    return SurveyQuestionType.values.firstWhere((e) => e.name == val, orElse: () => SurveyQuestionType.text);
+    return SurveyQuestionType.values.firstWhere(
+      (e) => e.toIdentifier() == val, 
+      orElse: () => SurveyQuestionType.text
+    );
   }
 }
 
