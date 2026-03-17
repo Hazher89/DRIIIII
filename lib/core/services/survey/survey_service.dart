@@ -67,21 +67,42 @@ class SurveyService {
   }
 
   static Future<List<SurveyQuestion>> saveQuestions(String surveyId, List<SurveyQuestion> questions) async {
-    // Basic approach: delete and re-insert for simplicity in editor
-    await _supabase.from('survey_questions').delete().eq('survey_id', surveyId);
-    
-    if (questions.isEmpty) return [];
+    if (questions.isEmpty) {
+      await _supabase.from('survey_questions').delete().eq('survey_id', surveyId);
+      return [];
+    }
 
-    final response = await _supabase.from('survey_questions').insert(
-      questions.map((q) => {
+    // 1. Map questions to DB format, including IDs if they exist
+    final data = questions.map((q) {
+      final map = {
         'survey_id': surveyId,
         'question_text': q.questionText,
         'question_type': q.type.toIdentifier(),
         'is_required': q.isRequired,
         'options': q.options,
         'order_index': q.orderIndex,
-      }).toList()
-    ).select();
+      };
+      
+      // If the ID is a valid UUID (not a temp one maybe), include it for upsert
+      if (q.id.length == 36) {
+        map['id'] = q.id;
+      }
+      return map;
+    }).toList();
+
+    // 2. Perform UPSERT (This is much safer than delete and re-insert)
+    final response = await _supabase
+        .from('survey_questions')
+        .upsert(data)
+        .select();
+
+    // 3. Delete any questions that are no longer in the list
+    final remainingIds = List<String>.from(response.map((x) => x['id']));
+    await _supabase
+        .from('survey_questions')
+        .delete()
+        .eq('survey_id', surveyId)
+        .not('id', 'in', remainingIds);
 
     return List<SurveyQuestion>.from(response.map((x) => SurveyQuestion.fromJson(x)));
   }

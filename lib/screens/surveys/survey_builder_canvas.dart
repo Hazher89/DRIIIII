@@ -215,17 +215,29 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         ));
       }
 
-      // 3. Save questions
+      // 3. Save questions and get updated data from DB
       final newQuestions = await SurveyService.saveQuestions(widget.survey.id, updatedQuestions);
       
-      // 4. Sync state with new questions (important for IDs)
+      // 4. Sync state without destroying controllers
       setState(() {
         _questions = newQuestions;
-        // Re-initialize controllers with exact state from DB
+        
+        // Merge DB questions into our controller map
         for (var q in newQuestions) {
-          _questionControllers[q.id] = TextEditingController(text: q.questionText);
-          _questionFocusNodes[q.id] = FocusNode();
-          _optionControllers[q.id] = q.options.map((opt) => TextEditingController(text: opt)).toList();
+          if (!_questionControllers.containsKey(q.id)) {
+            _questionControllers[q.id] = TextEditingController(text: q.questionText);
+            _questionFocusNodes[q.id] = FocusNode();
+          } else {
+            // Update controller text IF it differs from current text (and current isn't being edited)
+            if (_questionControllers[q.id]!.text != q.questionText) {
+               _questionControllers[q.id]!.text = q.questionText;
+            }
+          }
+          
+          // Same for options
+          if (!_optionControllers.containsKey(q.id) || _optionControllers[q.id]!.length != q.options.length) {
+            _optionControllers[q.id] = q.options.map((opt) => TextEditingController(text: opt)).toList();
+          }
         }
       });
       
@@ -235,6 +247,7 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
             content: const Text('Endringer lagret!'),
             backgroundColor: _themeColors[_selectedTheme],
             duration: const Duration(seconds: 2),
+            action: SnackBarAction(label: 'OK', textColor: Colors.white, onPressed: () {}),
           ),
         );
       }
