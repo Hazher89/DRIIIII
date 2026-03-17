@@ -11,6 +11,8 @@ import '../../models/user_profile.dart';
 import '../../models/sja_form.dart';
 import '../../models/safety_round.dart';
 import '../../models/risk_assessment.dart';
+import '../../models/attendance/employee_attendance.dart';
+import '../../core/services/attendance/attendance_service.dart';
 import '../../widgets/cards/stat_card.dart';
 import '../../widgets/cards/quick_action_button.dart';
 import '../../widgets/cards/glass_card.dart';
@@ -33,7 +35,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   DashboardStats _stats = const DashboardStats();
   UserProfile? _profile;
   List<dynamic> _recentActivity = [];
+  List<EmployeeAttendance> _onDutyEmployees = [];
+  EmployeeAttendance? _myAttendance;
   bool _isLoading = false;
+  int _activeTabIndex = 0;
 
   @override
   void initState() {
@@ -87,6 +92,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       final sjas = futures[4] as List<SjaForm>;
       final rounds = futures[5] as List<SafetyRound>;
 
+      final onDuty = await AttendanceService.getOnDutyEmployees(companyId);
+      final myAttendance = await AttendanceService.getMyAttendance();
+
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
@@ -103,6 +111,8 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       setState(() {
         _profile = profile;
+        _onDutyEmployees = onDuty;
+        _myAttendance = myAttendance;
         _recentActivity = [...tickets, ...absences, ...sjas].take(5).toList();
         _stats = DashboardStats(
           todayAbsences: todayAbsences,
@@ -206,8 +216,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('${_getGreeting()}, ${_profile?.fullName.split(' ').first ?? ''} 👋', style: DriftProTheme.headingLg.copyWith(color: Colors.white)),
-                        Text(_getDateString(), style: DriftProTheme.bodyMd.copyWith(color: Colors.white70)),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${_getGreeting()}, ${_profile?.fullName.split(' ').first ?? ''} 👋', style: DriftProTheme.headingLg.copyWith(color: Colors.white)),
+                                  Text(_getDateString(), style: DriftProTheme.bodyMd.copyWith(color: Colors.white70)),
+                                ],
+                              ),
+                            ),
+                            _buildAttendanceToggle(isDark),
+                          ],
+                        ),
                         const SizedBox(height: 20),
                         Row(
                           children: [
@@ -215,7 +238,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             const SizedBox(width: 12),
                             _buildMiniStat('${_stats.openTickets}', 'Åpne avvik', AppIcons.ticket),
                             const SizedBox(width: 12),
-                            _buildMiniStat('${_stats.absenceRate}%', 'Snitt fravær', AppIcons.chart),
+                            _buildMiniStat('${_onDutyEmployees.length}', 'På jobb nå', Icons.work_outline),
                           ],
                         ),
                       ],
@@ -262,20 +285,49 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
               ),
 
-              // Recent Activity
-              SliverToBoxAdapter(child: SectionHeader(title: 'Siste aktivitet')),
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    if (_recentActivity.isEmpty) {
-                      return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('Ingen nylig aktivitet')));
-                    }
-                    final item = _recentActivity[index];
-                    return _buildActivityTile(item, isDark);
-                  },
-                  childCount: _recentActivity.isEmpty ? 1 : _recentActivity.length,
+              // Tabs for Activity vs Attendance
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Row(
+                    children: [
+                      _buildTabButton(0, 'Aktivitet', isDark),
+                      const SizedBox(width: 12),
+                      _buildTabButton(1, 'På jobb (${_onDutyEmployees.length})', isDark),
+                    ],
+                  ),
                 ),
               ),
+
+              if (_activeTabIndex == 0) ...[
+                // Recent Activity
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      if (_recentActivity.isEmpty) {
+                        return const Center(child: Padding(padding: EdgeInsets.all(40), child: Text('Ingen nylig aktivitet')));
+                      }
+                      final item = _recentActivity[index];
+                      return _buildActivityTile(item, isDark);
+                    },
+                    childCount: _recentActivity.isEmpty ? 1 : _recentActivity.length,
+                  ),
+                ),
+              ] else ...[
+                // Attendance List
+                SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      if (_onDutyEmployees.isEmpty) {
+                        return const Center(child: Padding(padding: EdgeInsets.all(40), child: Text('Ingen ansatte er på jobb akkurat nå.')));
+                      }
+                      final emp = _onDutyEmployees[index];
+                      return _buildAttendanceTile(emp, isDark);
+                    },
+                    childCount: _onDutyEmployees.isEmpty ? 1 : _onDutyEmployees.length,
+                  ),
+                ),
+              ],
               const SliverToBoxAdapter(child: SizedBox(height: 100)),
             ],
           ),
@@ -343,6 +395,92 @@ class _DashboardScreenState extends State<DashboardScreen>
             Container(width: 40, height: 40, decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)), child: Icon(icon, color: color, size: 20)),
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: DriftProTheme.labelLg), Text(subtitle, style: DriftProTheme.bodySm.copyWith(color: Colors.grey))])),
+          ],
+        ),
+      ),
+    );
+  Widget _buildTabButton(int index, String label, bool isDark) {
+    final isActive = _activeTabIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _activeTabIndex = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: isActive ? DriftProTheme.primaryGreen : (isDark ? Colors.white10 : Colors.grey.shade100),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isActive ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttendanceToggle(bool isDark) {
+    final isOnDuty = _myAttendance?.isOnDuty ?? false;
+    return GestureDetector(
+      onTap: () async {
+        final newStatus = isOnDuty ? AttendanceStatus.off_duty : AttendanceStatus.on_duty;
+        HapticFeedback.lightImpact();
+        await AttendanceService.toggleStatus(newStatus);
+        _loadAllData();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isOnDuty ? Colors.green.withOpacity(0.2) : Colors.white.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isOnDuty ? Colors.green : Colors.white30, width: 1.5),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(isOnDuty ? Icons.logout : Icons.login, color: Colors.white, size: 20),
+            const SizedBox(height: 4),
+            Text(isOnDuty ? 'Gå av' : 'På jobb', style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttendanceTile(EmployeeAttendance emp, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? DriftProTheme.cardDark : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: DriftProTheme.primaryGreen.withOpacity(0.1),
+              backgroundImage: emp.avatarUrl != null ? NetworkImage(emp.avatarUrl!) : null,
+              child: emp.avatarUrl == null ? Text(emp.fullName?.characters.first.toUpperCase() ?? '?', style: const TextStyle(fontSize: 14, color: DriftProTheme.primaryGreen)) : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(emp.fullName ?? 'Ukjent ansatt', style: DriftProTheme.labelLg),
+                  Text('Sjekket inn: ${emp.checkInAt?.hour.toString().padLeft(2, '0')}:${emp.checkInAt?.minute.toString().padLeft(2, '0')}', style: DriftProTheme.bodySm.copyWith(color: Colors.grey)),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+              child: const Text('PÅ JOBB', style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+            ),
           ],
         ),
       ),
