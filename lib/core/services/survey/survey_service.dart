@@ -36,6 +36,22 @@ class SurveyService {
     return Survey.fromJson(response);
   }
 
+  static Future<void> updateSurvey({
+    required String id,
+    String? title,
+    String? description,
+    bool? allowAnonymous,
+  }) async {
+    final Map<String, dynamic> data = {};
+    if (title != null) data['title'] = title;
+    if (description != null) data['description'] = description;
+    if (allowAnonymous != null) data['allow_anonymous'] = allowAnonymous;
+    
+    if (data.isNotEmpty) {
+      await _supabase.from('surveys').update(data).eq('id', id);
+    }
+  }
+
   static Future<void> deleteSurvey(String id) async {
     await _supabase.from('surveys').delete().eq('id', id);
   }

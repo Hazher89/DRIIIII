@@ -19,12 +19,19 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   int _activeSideTab = 0; // 0 for Settings/Questions, 1 for Themes
   String _selectedTheme = 'Original';
   
-  // Survey settings state
+  // Controllers for survey header
+  late TextEditingController _titleController;
+  late TextEditingController _descriptionController;
+  
+  // Map to store controllers for questions and focus nodes
+  final Map<String, TextEditingController> _questionControllers = {};
+  final Map<String, FocusNode> _questionFocusNodes = {};
+  final Map<String, List<TextEditingController>> _optionControllers = {};
+
   late bool _allowAnonymous;
   late bool _requireLogin;
   DateTime? _expiresAt;
 
-  // Theme presets
   final Map<String, Color> _themeColors = {
     'Original': DriftProTheme.primaryGreen,
     'Enkelt': Colors.blueGrey,
@@ -37,16 +44,44 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   @override
   void initState() {
     super.initState();
+    _titleController = TextEditingController(text: widget.survey.title);
+    _descriptionController = TextEditingController(text: widget.survey.description);
     _allowAnonymous = widget.survey.allowAnonymous;
     _requireLogin = !widget.survey.allowAnonymous;
     _expiresAt = widget.survey.expiresAt;
     _loadQuestions();
   }
 
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _descriptionController.dispose();
+    for (var c in _questionControllers.values) {
+      c.dispose();
+    }
+    for (var f in _questionFocusNodes.values) {
+      f.dispose();
+    }
+    for (var list in _optionControllers.values) {
+      for (var c in list) {
+        c.dispose();
+      }
+    }
+    super.dispose();
+  }
+
   Future<void> _loadQuestions() async {
     setState(() => _isLoading = true);
     try {
       final questions = await SurveyService.fetchQuestions(widget.survey.id);
+      
+      // Initialize controllers for loaded questions
+      for (var q in questions) {
+        _questionControllers[q.id] = TextEditingController(text: q.questionText);
+        _questionFocusNodes[q.id] = FocusNode();
+        _optionControllers[q.id] = q.options.map((opt) => TextEditingController(text: opt)).toList();
+      }
+
       setState(() {
         _questions = questions;
         _isLoading = false;
@@ -56,45 +91,139 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
     }
   }
 
-  void _addQuestion() {
-    _addQuestionWithType(SurveyQuestionType.single_choice);
+  void _addQuestionWithType(SurveyQuestionType type) {
+    final id = const Uuid().v4();
+    final options = (type == SurveyQuestionType.single_choice || type == SurveyQuestionType.multiple_choice || type == SurveyQuestionType.dropdown)
+            ? ['Alternativ 1', 'Alternativ 2']
+            : <String>[];
+            
+    _questionControllers[id] = TextEditingController(text: 'Nytt spørsmål');
+    _questionFocusNodes[id] = FocusNode();
+    _optionControllers[id] = options.map((opt) => TextEditingController(text: opt)).toList();
+
+    setState(() {
+      _questions.add(SurveyQuestion(
+        id: id,
+        surveyId: widget.survey.id,
+        questionText: 'Nytt spørsmål',
+        type: type,
+        isRequired: false,
+        options: options,
+        orderIndex: _questions.length,
+      ));
+    });
+    
+    // Auto-focus the new question
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _questionFocusNodes[id]?.requestFocus();
+    });
   }
 
   void _removeQuestion(int index) {
+    final q = _questions[index];
+    _questionControllers[q.id]?.dispose();
+    _questionControllers.remove(q.id);
+    _questionFocusNodes[q.id]?.dispose();
+    _questionFocusNodes.remove(q.id);
+    _optionControllers[q.id]?.forEach((c) => c.dispose());
+    _optionControllers.remove(q.id);
+
     setState(() {
       _questions.removeAt(index);
       for (int i = 0; i < _questions.length; i++) {
-        final q = _questions[i];
+        final currentQ = _questions[i];
         _questions[i] = SurveyQuestion(
-          id: q.id,
-          surveyId: q.surveyId,
-          questionText: q.questionText,
-          type: q.type,
-          isRequired: q.isRequired,
-          options: q.options,
+          id: currentQ.id,
+          surveyId: currentQ.surveyId,
+          questionText: currentQ.questionText,
+          type: currentQ.type,
+          isRequired: currentQ.isRequired,
+          options: currentQ.options,
           orderIndex: i,
         );
       }
     });
   }
 
-  void _updateQuestion(int index, SurveyQuestion newQ) {
+  void _addOption(int qIndex) {
+    final q = _questions[qIndex];
+    final controller = TextEditingController(text: 'Nytt alternativ');
     setState(() {
-      _questions[index] = newQ;
+      _optionControllers[q.id]?.add(controller);
+      final newOpts = List<String>.from(q.options);
+      newOpts.add('Nytt alternativ');
+      _questions[qIndex] = SurveyQuestion(
+        id: q.id,
+        surveyId: q.surveyId,
+        questionText: q.questionText,
+        type: q.type,
+        isRequired: q.isRequired,
+        options: newOpts,
+        orderIndex: q.orderIndex,
+      );
+    });
+  }
+
+  void _removeOption(int qIndex, int optIndex) {
+    final q = _questions[qIndex];
+    final controllers = _optionControllers[q.id];
+    if (controllers != null && controllers.length > optIndex) {
+      controllers[optIndex].dispose();
+      controllers.removeAt(optIndex);
+    }
+    setState(() {
+      final newOpts = List<String>.from(q.options);
+      newOpts.removeAt(optIndex);
+      _questions[qIndex] = SurveyQuestion(
+        id: q.id,
+        surveyId: q.surveyId,
+        questionText: q.questionText,
+        type: q.type,
+        isRequired: q.isRequired,
+        options: newOpts,
+        orderIndex: q.orderIndex,
+      );
     });
   }
 
   Future<void> _saveChanges() async {
     setState(() => _isSaving = true);
     try {
-      // Logic to save survey settings (title, description, anonymous etc) would go here
-      // For now we primarily save questions
-      await SurveyService.saveQuestions(widget.survey.id, _questions);
+      // 1. Update survey header
+      await SurveyService.updateSurvey(
+        id: widget.survey.id,
+        title: _titleController.text,
+        description: _descriptionController.text,
+        allowAnonymous: _allowAnonymous,
+      );
+
+      // 2. Prepare questions with values from controllers
+      final List<SurveyQuestion> updatedQuestions = [];
+      for (int i = 0; i < _questions.length; i++) {
+        final q = _questions[i];
+        final textFromController = _questionControllers[q.id]?.text ?? q.questionText;
+        final optionsFromControllers = _optionControllers[q.id]?.map((c) => c.text).toList() ?? q.options;
+        
+        updatedQuestions.add(SurveyQuestion(
+          id: q.id,
+          surveyId: q.surveyId,
+          questionText: textFromController,
+          type: q.type,
+          isRequired: q.isRequired,
+          options: optionsFromControllers,
+          orderIndex: i,
+        ));
+      }
+
+      // 3. Save questions
+      await SurveyService.saveQuestions(widget.survey.id, updatedQuestions);
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Endringer lagret!'),
             backgroundColor: _themeColors[_selectedTheme],
+            duration: const Duration(seconds: 2),
           ),
         );
       }
@@ -184,14 +313,8 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
           const SizedBox(width: 8),
           _buildTabItem(1, 'Temaer', themeColor),
           const Spacer(),
-          IconButton(
-            icon: const Icon(Icons.help_outline, size: 16, color: Colors.grey),
-            onPressed: () {},
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 16, color: Colors.grey),
-            onPressed: () {},
-          ),
+          IconButton(icon: const Icon(Icons.help_outline, size: 16), onPressed: () {}),
+          IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () => Navigator.pop(context)),
         ],
       ),
     );
@@ -208,11 +331,7 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         ),
         child: Text(
           label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: active ? FontWeight.bold : FontWeight.normal,
-            color: active ? themeColor : Colors.grey,
-          ),
+          style: TextStyle(fontSize: 12, fontWeight: active ? FontWeight.bold : FontWeight.normal, color: active ? themeColor : Colors.grey),
         ),
       ),
     );
@@ -242,12 +361,19 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
           _requireLogin = v;
           if (v) _allowAnonymous = false;
         })),
-        _buildSidebarToggle('Tidsfrist', _expiresAt != null, themeColor, (v) {
-          setState(() {
-            _expiresAt = v ? DateTime.now().add(const Duration(days: 7)) : null;
-          });
-        }),
       ],
+    );
+  }
+
+  Widget _buildSidebarToggle(String label, bool value, Color themeColor, Function(bool) onChanged) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
+          SizedBox(height: 24, child: Switch.adaptive(value: value, activeColor: themeColor, onChanged: (v) => onChanged(v))),
+        ],
+      ),
     );
   }
 
@@ -295,37 +421,6 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
     );
   }
 
-  void _addQuestionWithType(SurveyQuestionType type) {
-    setState(() {
-      _questions.add(SurveyQuestion(
-        id: const Uuid().v4(),
-        surveyId: widget.survey.id,
-        questionText: 'Nytt spørsmål',
-        type: type,
-        isRequired: false,
-        options: (type == SurveyQuestionType.single_choice || type == SurveyQuestionType.multiple_choice || type == SurveyQuestionType.dropdown)
-            ? ['Alternativ 1', 'Alternativ 2']
-            : [],
-        orderIndex: _questions.length,
-      ));
-    });
-  }
-
-  Widget _buildSidebarToggle(String label, bool value, Color themeColor, Function(bool) onChanged) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 12))),
-          SizedBox(
-            height: 24,
-            child: Switch.adaptive(value: value, activeColor: themeColor, onChanged: (v) => onChanged(v)),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildCanvasHeader(Color themeColor) {
     return Container(
       padding: const EdgeInsets.all(40),
@@ -341,13 +436,13 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
           ),
           const SizedBox(height: 24),
           TextFormField(
-            initialValue: widget.survey.title,
+            controller: _titleController,
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: themeColor),
             decoration: const InputDecoration(border: InputBorder.none, hintText: 'Tittel på undersøkelse'),
           ),
           const SizedBox(height: 8),
           TextFormField(
-            initialValue: widget.survey.description,
+            controller: _descriptionController,
             style: const TextStyle(fontSize: 16, color: Colors.grey),
             decoration: const InputDecoration(border: InputBorder.none, hintText: 'Beskrivelse (valgfritt)'),
             maxLines: null,
@@ -369,13 +464,14 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
 
   Widget _buildQuestionItem(int index, bool isDark, Color themeColor) {
     final q = _questions[index];
+    final controller = _questionControllers[q.id];
+    final focusNode = _questionFocusNodes[q.id];
 
     return Container(
       padding: const EdgeInsets.all(32),
       margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
         color: isDark ? Colors.white.withOpacity(0.02) : Colors.white,
-        borderRadius: BorderRadius.circular(1), // Square look from image
         border: Border(bottom: BorderSide(color: isDark ? Colors.white10 : Colors.grey[100]!)),
       ),
       child: Column(
@@ -386,25 +482,15 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
               Text('${index + 1}. ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               Expanded(
                 child: TextFormField(
-                  initialValue: q.questionText,
+                  controller: controller,
+                  focusNode: focusNode,
                   style: const TextStyle(fontSize: 16),
                   decoration: const InputDecoration(border: InputBorder.none, hintText: 'Skriv spørsmålet ditt her...'),
-                  onChanged: (val) {
-                    _updateQuestion(index, SurveyQuestion(
-                      id: q.id,
-                      surveyId: q.surveyId,
-                      questionText: val,
-                      type: q.type,
-                      isRequired: q.isRequired,
-                      options: q.options,
-                      orderIndex: q.orderIndex,
-                    ));
-                  },
                 ),
               ),
               IconButton(
                 icon: const Icon(Icons.edit, size: 18, color: Colors.grey),
-                onPressed: () {},
+                onPressed: () => focusNode?.requestFocus(),
               )
             ],
           ),
@@ -413,7 +499,24 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              if (q.isRequired) const Text('Påkrevd', style: TextStyle(fontSize: 11, color: Colors.red)),
+              const Text('Påkrevd', style: TextStyle(fontSize: 12)),
+              Switch.adaptive(
+                value: q.isRequired,
+                activeColor: themeColor,
+                onChanged: (v) {
+                  setState(() {
+                    _questions[index] = SurveyQuestion(
+                      id: q.id,
+                      surveyId: q.surveyId,
+                      questionText: q.questionText,
+                      type: q.type,
+                      isRequired: v,
+                      options: q.options,
+                      orderIndex: q.orderIndex,
+                    );
+                  });
+                },
+              ),
               const Spacer(),
               IconButton(onPressed: () => _removeQuestion(index), icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red)),
             ],
@@ -424,13 +527,15 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   }
 
   Widget _buildQuestionBody(int index, SurveyQuestion q, Color themeColor) {
+    final controllers = _optionControllers[q.id] ?? [];
+    
     switch (q.type) {
       case SurveyQuestionType.single_choice:
       case SurveyQuestionType.multiple_choice:
       case SurveyQuestionType.dropdown:
         return Column(
           children: [
-            for (int optIndex = 0; optIndex < q.options.length; optIndex++)
+            for (int optIndex = 0; optIndex < controllers.length; optIndex++)
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
                 child: Row(
@@ -439,27 +544,21 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: TextFormField(
-                        initialValue: q.options[optIndex],
+                        controller: controllers[optIndex],
                         style: const TextStyle(fontSize: 13),
                         decoration: const InputDecoration(border: InputBorder.none, hintText: 'Alternativ...'),
-                        onChanged: (val) {
-                          final newOpts = List<String>.from(q.options);
-                          newOpts[optIndex] = val;
-                          _updateQuestion(index, SurveyQuestion(
-                            id: q.id,
-                            surveyId: q.surveyId,
-                            questionText: q.questionText,
-                            type: q.type,
-                            isRequired: q.isRequired,
-                            options: newOpts,
-                            orderIndex: q.orderIndex,
-                          ));
-                        },
                       ),
                     ),
+                    IconButton(icon: const Icon(Icons.close, size: 14), onPressed: () => _removeOption(index, optIndex)),
                   ],
                 ),
               ),
+            TextButton.icon(
+              onPressed: () => _addOption(index),
+              icon: const Icon(Icons.add, size: 14),
+              label: const Text('Legg til alternativ', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(foregroundColor: themeColor),
+            ),
           ],
         );
       default:
@@ -494,23 +593,19 @@ class _SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
     return Container(
       padding: const EdgeInsets.all(40),
       child: Center(
-        child: Column(
-          children: [
-             SizedBox(
-              width: 120,
-              child: ElevatedButton(
-                onPressed: _isSaving ? null : _saveChanges,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: themeColor,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: _isSaving 
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Ferdig', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
+        child: SizedBox(
+          width: 120,
+          child: ElevatedButton(
+            onPressed: _isSaving ? null : _saveChanges,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: themeColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(vertical: 16),
             ),
-          ],
+            child: _isSaving 
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Text('Ferdig', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
         ),
       ),
     );
