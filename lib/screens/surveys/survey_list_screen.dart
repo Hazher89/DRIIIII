@@ -88,7 +88,6 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          contentPadding: EdgeInsets.zero,
           decoration: InputDecoration(
             labelText: label,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
