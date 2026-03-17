@@ -399,6 +399,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
       ),
     );
+  }
+
   Widget _buildTabButton(int index, String label, bool isDark) {
     final isActive = _activeTabIndex == index;
     return GestureDetector(
