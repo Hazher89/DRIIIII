@@ -5,7 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/dms/dms_file.dart';
 import '../../core/services/dms/dms_service.dart';
 import 'dart:ui_web' as ui;
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 class FileViewerScreen extends StatefulWidget {
   final DmsFile file;
@@ -39,7 +39,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
         // ignore: undefined_prefixed_name
         ui.platformViewRegistry.registerViewFactory(
           'pdf-viewer-${widget.file.id}',
-          (int viewId) => html.IFrameElement()
+          (int viewId) => web.HTMLIFrameElement()
             ..src = _url!
             ..style.border = 'none'
             ..style.width = '100%'
