@@ -219,7 +219,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                       survey.isActive ? 'AKTIV' : 'INAKTIV',
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: FontWeight.black,
+                        fontWeight: FontWeight.w900,
                         letterSpacing: 0.5,
                         color: survey.isActive ? Colors.green : Colors.red,
                       ),
@@ -306,7 +306,5 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
           style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
         ),
       ],
-    );
   }
-}
 }

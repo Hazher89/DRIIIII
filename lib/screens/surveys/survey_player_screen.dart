@@ -131,7 +131,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
               children: [
                 if (_survey!.description != null && _survey!.description!.isNotEmpty)
                   Padding(
-                    padding: const EdgeInsets.bottom(32),
+                    padding: const EdgeInsets.only(bottom: 32),
                     child: Text(
                       _survey!.description!,
                       style: const TextStyle(fontSize: 16, color: Colors.grey),
@@ -216,8 +216,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
               });
             },
             contentPadding: EdgeInsets.zero,
-            controlType: ListTileControlType.leading,
-          )).toList(),
+          )).toList<Widget>(),
         );
       case SurveyQuestionType.text:
         return TextFormField(
