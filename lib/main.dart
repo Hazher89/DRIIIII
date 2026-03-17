@@ -99,15 +99,45 @@ class DriftProApp extends StatelessWidget {
                 }
                 
                 final profile = profileSnapshot.data;
-                if (profile != null && !profile.isOnboarded) {
+                
+                // 1. Hvis profil mangler helt (trigger feilet eller treg)
+                if (profile == null) {
+                  return Scaffold(
+                    body: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(32),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const CircularProgressIndicator(),
+                            const SizedBox(height: 24),
+                            const Text('Klargjør din profil...', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 8),
+                            const Text('Dette tar bare noen sekunder.', textAlign: TextAlign.center),
+                            const SizedBox(height: 24),
+                            TextButton(
+                              onPressed: () => Supabase.instance.client.auth.signOut(),
+                              child: const Text('Logg ut og prøv igjen'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                // 2. Hvis profil finnes, men onboarding mangler
+                if (!profile.isOnboarded) {
                   return OnboardingScreen(profile: profile);
                 }
                 
+                // 3. Hvis profil finnes og onboarding er ferdig, men mangler godkjenning
                 // SuperAdmin trenger ikke godkjenning (viktig for å ikke låse seg ute)
-                if (profile != null && !profile.isApproved && profile.role != UserRole.superadmin) {
+                if (!profile.isApproved && profile.role != UserRole.superadmin) {
                   return const PendingApprovalScreen();
                 }
                 
+                // 4. Alt ok!
                 return const MainShell();
               },
             );
