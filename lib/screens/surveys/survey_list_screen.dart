@@ -254,6 +254,13 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                     'Opprettet: ${survey.createdAt.day}.${survey.createdAt.month}.${survey.createdAt.year}',
                     style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                   ),
+                  const Spacer(),
+                  Icon(Icons.people_outline, size: 14, color: Colors.grey[500]),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${survey.totalResponses} svar',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.bold),
+                  ),
                 ],
               ),
             ],

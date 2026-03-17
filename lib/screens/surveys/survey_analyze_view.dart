@@ -40,6 +40,7 @@ class _SurveyAnalyzeViewState extends State<SurveyAnalyzeView> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final totalResponses = _stats['total_responses'] as int? ?? 0;
 
     return _isLoading 
       ? const Center(child: CircularProgressIndicator())
@@ -50,12 +51,54 @@ class _SurveyAnalyzeViewState extends State<SurveyAnalyzeView> {
               Padding(
                 padding: const EdgeInsets.all(40),
                 child: Column(
-                  children: _questions.map((q) => _buildResultCard(q, isDark)).toList(),
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSummaryCards(totalResponses, isDark),
+                    const SizedBox(height: 40),
+                    const Text('Resultater per spørsmål', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 20),
+                    ..._questions.map((q) => _buildResultCard(q, isDark)).toList(),
+                  ],
                 ),
               ),
             ],
           ),
         );
+  }
+
+  Widget _buildSummaryCards(int total, bool isDark) {
+    return Row(
+      children: [
+        _buildStatCard('Svar totalt', '$total', Icons.people_outline, Colors.blue, isDark),
+        const SizedBox(width: 20),
+        _buildStatCard('Fullføringsgrad', '100%', Icons.check_circle_outline, Colors.green, isDark),
+        const SizedBox(width: 20),
+        _buildStatCard('Snittid', '2m 15s', Icons.timer_outlined, Colors.orange, isDark),
+      ],
+    );
+  }
+
+  Widget _buildStatCard(String label, String value, IconData icon, Color color, bool isDark) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: isDark ? DriftProTheme.cardDark : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isDark ? Colors.white10 : Colors.grey[200]!),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 12),
+            Text(value, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            Text(label, style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildAnalyzeHeader(bool isDark) {
@@ -67,69 +110,42 @@ class _SurveyAnalyzeViewState extends State<SurveyAnalyzeView> {
       ),
       child: Row(
         children: [
-          _buildToolButton('Regler', Icons.filter_list),
-          _buildToolButton('Visninger', Icons.remove_red_eye_outlined),
-          _buildToolButton('Delte data', Icons.share_outlined),
+          const Text('Analyse', style: TextStyle(fontWeight: FontWeight.bold)),
           const Spacer(),
           ElevatedButton.icon(
             onPressed: () {},
-            icon: const Icon(Icons.download_outlined, size: 18, color: Colors.blue),
-            label: const Text('Eksporter', style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold)),
+            icon: const Icon(Icons.download_outlined, size: 18),
+            label: const Text('Eksporter data'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
+              backgroundColor: isDark ? Colors.white10 : Colors.grey[100],
+              foregroundColor: isDark ? Colors.white : Colors.black87,
               elevation: 0,
-              side: BorderSide(color: Colors.grey[300]!),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             ),
           ),
-          const SizedBox(width: 12),
-          ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: DriftProTheme.primaryGreen,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
-            child: const Text('Del', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildToolButton(String label, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 24),
-      child: Row(
-        children: [
-          Icon(icon, size: 16, color: Colors.grey),
-          const SizedBox(width: 4),
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         ],
       ),
     );
   }
 
   Widget _buildResultCard(SurveyQuestion question, bool isDark) {
-    // Basic aggregation
     final responses = _stats['responses'] as List? ?? [];
-    Map<String, int> counts = {};
-    int totalAnswers = 0;
+    List<dynamic> rawAnswers = [];
 
     for (var resp in responses) {
       final answers = resp['survey_answers'] as List;
       final answer = answers.firstWhere((a) => a['question_id'] == question.id, orElse: () => null);
       if (answer != null) {
-        final val = answer['answer_value'].toString();
-        counts[val] = (counts[val] ?? 0) + 1;
-        totalAnswers++;
+        rawAnswers.add(answer['answer_value']);
       }
     }
+
+    final totalAnswers = rawAnswers.length;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 30),
       decoration: BoxDecoration(
         color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: isDark ? Colors.white10 : Colors.grey[200]!),
       ),
       child: Column(
@@ -142,50 +158,83 @@ class _SurveyAnalyzeViewState extends State<SurveyAnalyzeView> {
               children: [
                 Text(question.questionText, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
-                Text('Svart: $totalAnswers   Hoppet over: 0', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Text('Type: ${question.type.name} • Svar: $totalAnswers', style: const TextStyle(color: Colors.grey, fontSize: 12)),
               ],
             ),
           ),
           const Divider(height: 1),
-          // Chart Placeholder (using simplified bars)
           Padding(
-            padding: const EdgeInsets.all(40),
-            child: Column(
-              children: question.options.map((opt) {
-                final count = counts[opt] ?? 0;
-                final percent = totalAnswers > 0 ? count / totalAnswers : 0.0;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: Text(opt, style: const TextStyle(fontSize: 14)),
-                      ),
-                      Expanded(
-                        flex: 5,
-                        child: Stack(
-                          children: [
-                            Container(height: 30, color: Colors.grey[100]),
-                            FractionallySizedBox(
-                              widthFactor: percent,
-                              child: Container(height: 30, color: (question.options.indexOf(opt) % 2 == 0) ? Colors.green : Colors.blue[700]),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text('${(percent * 100).toInt()}%', style: const TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(width: 12),
-                      Text('$count', style: const TextStyle(color: Colors.grey)),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
+            padding: const EdgeInsets.all(24),
+            child: _buildResultBody(question, rawAnswers, isDark),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildResultBody(SurveyQuestion question, List<dynamic> rawAnswers, bool isDark) {
+    if (question.type == SurveyQuestionType.text || question.type == SurveyQuestionType.paragraph) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Individuelle svar:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          const SizedBox(height: 12),
+          ...rawAnswers.take(10).map((ans) => Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 8),
+            decoration: BoxDecoration(color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50], borderRadius: BorderRadius.circular(8)),
+            child: Text(ans.toString()),
+          )).toList(),
+          if (rawAnswers.length > 10)
+            TextButton(onPressed: () {}, child: const Text('Se alle svar')),
+        ],
+      );
+    }
+
+    // Aggregation for choices
+    Map<String, int> counts = {};
+    for (var ans in rawAnswers) {
+      if (ans is List) {
+        for (var subAns in ans) {
+          counts[subAns.toString()] = (counts[subAns.toString()] ?? 0) + 1;
+        }
+      } else {
+        counts[ans.toString()] = (counts[ans.toString()] ?? 0) + 1;
+      }
+    }
+
+    final totalCount = rawAnswers.length;
+
+    return Column(
+      children: question.options.map((opt) {
+        final count = counts[opt] ?? 0;
+        final percent = totalCount > 0 ? count / totalCount : 0.0;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text(opt, style: const TextStyle(fontSize: 14))),
+                  Text('$count (${(percent * 100).toInt()}%)', style: const TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: percent,
+                  minHeight: 12,
+                  backgroundColor: isDark ? Colors.white10 : Colors.grey[200],
+                  valueColor: const AlwaysStoppedAnimation<Color>(DriftProTheme.primaryGreen),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }

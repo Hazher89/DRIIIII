@@ -7,7 +7,7 @@ class SurveyService {
   static Future<List<Survey>> fetchSurveys({required String companyId}) async {
     final response = await _supabase
         .from('surveys')
-        .select()
+        .select('*, survey_responses(id)')
         .eq('company_id', companyId)
         .order('created_at', ascending: false);
     

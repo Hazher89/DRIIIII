@@ -1,8 +1,7 @@
-enum SurveyQuestionType {
   text,
   paragraph,
+  single_choice,
   multiple_choice,
-  checkbox,
   dropdown,
   rating,
   date,
@@ -13,8 +12,8 @@ extension SurveyQuestionTypeExtension on SurveyQuestionType {
     switch (this) {
       case SurveyQuestionType.text: return 'text';
       case SurveyQuestionType.paragraph: return 'paragraph';
+      case SurveyQuestionType.single_choice: return 'single_choice';
       case SurveyQuestionType.multiple_choice: return 'multiple_choice';
-      case SurveyQuestionType.checkbox: return 'checkbox';
       case SurveyQuestionType.dropdown: return 'dropdown';
       case SurveyQuestionType.rating: return 'rating';
       case SurveyQuestionType.date: return 'date';
@@ -36,6 +35,7 @@ class Survey {
   final bool allowAnonymous;
   final DateTime? expiresAt;
   final DateTime createdAt;
+  final int totalResponses;
 
   Survey({
     required this.id,
@@ -47,6 +47,7 @@ class Survey {
     required this.allowAnonymous,
     this.expiresAt,
     required this.createdAt,
+    this.totalResponses = 0,
   });
 
   factory Survey.fromJson(Map<String, dynamic> json) {
@@ -60,6 +61,7 @@ class Survey {
       allowAnonymous: json['allow_anonymous'] ?? true,
       expiresAt: json['expires_at'] != null ? DateTime.parse(json['expires_at']) : null,
       createdAt: DateTime.parse(json['created_at']),
+      totalResponses: json['survey_responses'] != null ? (json['survey_responses'] as List).length : 0,
     );
   }
 }
