@@ -84,15 +84,13 @@ class DriftProApp extends StatelessWidget {
       home: StreamBuilder<AuthState>(
         key: const ValueKey('auth_stream'),
         stream: Supabase.instance.client.auth.onAuthStateChange,
-        initialData: AuthState(
-          AuthChangeEvent.initialSession,
-          Supabase.instance.client.auth.currentSession,
-        ),
         builder: (context, snapshot) {
-          final session = snapshot.data?.session;
+          final session = snapshot.data?.session ?? Supabase.instance.client.auth.currentSession;
 
           if (session != null) {
             return FutureBuilder<UserProfile?>(
+              // Force refresh the profile when auth state changes
+              key: ValueKey('profile_${session.user.id}_${snapshot.data?.event}'),
               future: SupabaseService.fetchCurrentUserProfile(),
               builder: (context, profileSnapshot) {
                 if (profileSnapshot.connectionState == ConnectionState.waiting) {
@@ -101,11 +99,6 @@ class DriftProApp extends StatelessWidget {
                 
                 final profile = profileSnapshot.data;
                 
-                // DEBUG: Log profile state to help diagnose bypass issues
-                if (kDebugMode) {
-                  print('Auth State: profile=${profile?.id}, onboarded=${profile?.isOnboarded}, approved=${profile?.isApproved}, role=${profile?.role}');
-                }
-
                 // 1. Hvis profil mangler helt (trigger feilet eller treg)
                 if (profile == null) {
                   return Scaffold(
@@ -120,6 +113,8 @@ class DriftProApp extends StatelessWidget {
                             const Text('Klargjør din profil...', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                             const SizedBox(height: 12),
                             const Text('Dette tar vanligvis under 3 sekunder.', textAlign: TextAlign.center),
+                            const SizedBox(height: 24),
+                            if (kDebugMode) Text('User ID: ${session.user.id}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
                             const SizedBox(height: 48),
                             TextButton.icon(
                               onPressed: () => Supabase.instance.client.auth.signOut(),
@@ -133,23 +128,54 @@ class DriftProApp extends StatelessWidget {
                   );
                 }
 
+                // SECURITY OVERLAY (Visible in debug mode to see EXACTLY what's happening)
+                Widget mainWidget;
+                
                 // 2. Hvis profil finnes, men onboarding mangler
                 if (!profile.isOnboarded) {
-                  return OnboardingScreen(profile: profile);
+                  mainWidget = OnboardingScreen(profile: profile);
                 }
-                
                 // 3. Hvis profil finnes og onboarding er ferdig, men mangler godkjenning
-                // SuperAdmin trenger ikke godkjenning (viktig for å ikke låse seg ute)
-                // Ensure superadmin check is robust.
-                if (!profile.isApproved && profile.role != UserRole.superadmin) {
+                else if (!profile.isApproved && profile.role != UserRole.superadmin) {
                   if (kDebugMode) {
-                    print('Profile ${profile.id} is not approved and not a superadmin. Redirecting to PendingApprovalScreen.');
+                    print('Profile ${profile.id} (Email: ${profile.email}) is not approved and not a superadmin.');
                   }
-                  return const PendingApprovalScreen();
+                  mainWidget = const PendingApprovalScreen();
                 }
-                
                 // 4. Alt ok!
-                return const MainShell();
+                else {
+                  mainWidget = const MainShell();
+                }
+
+                if (kDebugMode) {
+                  return Stack(
+                    children: [
+                      mainWidget,
+                      Positioned(
+                        top: 40,
+                        right: 10,
+                        child: Material(
+                          color: Colors.black.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('User: ${profile.email}', style: const TextStyle(color: Colors.white, fontSize: 10)),
+                                Text('Role: ${profile.role.name}', style: const TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+                                Text('Onboarded: ${profile.isOnboarded}', style: TextStyle(color: profile.isOnboarded ? Colors.green : Colors.red, fontSize: 10)),
+                                Text('Approved: ${profile.isApproved}', style: TextStyle(color: profile.isApproved ? Colors.green : Colors.red, fontSize: 10)),
+                                Text('Current View: ${mainWidget.runtimeType}', style: const TextStyle(color: Colors.yellow, fontSize: 10)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                }
+                return mainWidget;
               },
             );
           } else {

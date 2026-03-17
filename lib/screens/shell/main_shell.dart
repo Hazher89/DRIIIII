@@ -36,9 +36,10 @@ class _MainShellState extends State<MainShell> {
       final profile = await SupabaseService.fetchCurrentUserProfile();
       if (mounted) {
         if (profile == null || (!profile.isOnboarded) || (!profile.isApproved && profile.role != UserRole.superadmin)) {
-           // Security leak detected! User is in MainShell but shouldn't be.
-           debugPrint('Security fallback triggered in MainShell for user ${profile?.id}');
-           // We can't easily pushReplacement here without context, but we can set state to show error
+           // Security leak detected! Active counter-measure
+           print('SECURITY BREACH: Logged user ${profile?.email} is in MainShell but lacks approval/onboarding. Kicking out.');
+           Supabase.instance.client.auth.signOut();
+           return;
         }
         setState(() {
           _profile = profile;
@@ -64,27 +65,37 @@ class _MainShellState extends State<MainShell> {
     if (_profile!.role == UserRole.superadmin) return true; // SuperAdmins bypass
     
     final settings = _profile!.accessSettings;
-    if (settings == null) return true; // Default allow if no map exists
+    if (settings == null) return (key == 'dashboard' || key == 'more'); 
     
-    return settings[key] ?? true;
+    // Core features depend on admin approval + individual toggles
+    return settings[key] ?? (key == 'dashboard' || key == 'more');
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoadingAccess) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     
-    // Safety check fallback
-    if (_profile == null) {
-      return const Scaffold(body: Center(child: Text('Profil ikke funnet. Prøv å logge inn på nytt.')));
-    }
-    
-    if (!_profile!.isOnboarded) {
-      // Should not happen, but safeguard
-      return Scaffold(body: Center(child: TextButton(onPressed: () => Supabase.instance.client.auth.signOut(), child: const Text('Vennligst fullfør onboarding'))));
-    }
-
-    if (!_profile!.isApproved && _profile!.role != UserRole.superadmin) {
-      return const Scaffold(body: Center(child: Text('Din konto venter på godkjenning.')));
+    // Safety check fallback (Active enforcement)
+    if (_profile == null || !_profile!.isOnboarded || (!_profile!.isApproved && _profile!.role != UserRole.superadmin)) {
+      return Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.security, size: 64, color: Colors.orange),
+              const SizedBox(height: 24),
+              const Text('Tilgang nektet', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              const Text('Du har ikke tilgang til denne delen av systemet.', textAlign: TextAlign.center),
+              const SizedBox(height: 32),
+              ElevatedButton(
+                onPressed: () => Supabase.instance.client.auth.signOut(),
+                child: const Text('Logg ut'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     
     final isDark = Theme.of(context).brightness == Brightness.dark;
