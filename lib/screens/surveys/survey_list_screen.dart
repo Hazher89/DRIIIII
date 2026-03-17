@@ -48,11 +48,12 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
   }
 
   Future<void> _createSurvey() async {
-    final title = await _showInputDialog('Ny undersøkelse', 'Tittel');
+    final title = await _showInputDialog('Lag ny undersøkelse', 'Tittel på undersøkelsen');
     if (title != null && title.isNotEmpty && _companyId != null) {
       final user = SupabaseService.currentUser;
       if (user == null) return;
 
+      setState(() => _isLoading = true);
       try {
         final survey = await SurveyService.createSurvey(
           companyId: _companyId!,
@@ -63,7 +64,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => SurveyEditorScreen(survey: survey),
+              builder: (context) => SurveyMasterEditor(survey: survey),
             ),
           ).then((_) => _loadSurveys());
         }
@@ -73,24 +74,32 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
             SnackBar(content: Text('Kunne ikke opprette undersøkelse: $e')),
           );
         }
+        setState(() => _isLoading = false);
       }
     }
   }
 
   Future<String?> _showInputDialog(String title, String label) async {
-    String value = '';
+    final controller = TextEditingController();
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(title),
         content: TextField(
+          controller: controller,
           autofocus: true,
-          decoration: InputDecoration(labelText: label),
-          onChanged: (v) => value = v,
+          decoration: InputDecoration(
+            labelText: label,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Avbryt')),
-          TextButton(onPressed: () => Navigator.pop(context, value), child: const Text('Lagre')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            style: ElevatedButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+            child: const Text('Opprett', style: TextStyle(color: Colors.white)),
+          ),
         ],
       ),
     );
@@ -101,8 +110,11 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF5F7F8),
       appBar: AppBar(
         title: const Text('Undersøkelser'),
+        elevation: 0,
+        backgroundColor: isDark ? DriftProTheme.cardDark : Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -124,7 +136,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                 ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createSurvey,
-        label: const Text('Ny undersøkelse'),
+        label: const Text('Lag ny undersøkelse', style: TextStyle(fontWeight: FontWeight.bold)),
         icon: const Icon(Icons.add),
         backgroundColor: DriftProTheme.primaryGreen,
       ),
@@ -136,34 +148,50 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.assignment_outlined, size: 80, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text(
-            'Ingen undersøkelser ennå',
-            style: TextStyle(fontSize: 18, color: Colors.grey[600], fontWeight: FontWeight.w600),
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: DriftProTheme.primaryGreen.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.assignment_outlined, size: 64, color: DriftProTheme.primaryGreen),
           ),
-          const SizedBox(height: 8),
-          const Text('Opprett din første undersøkelse for å komme i gang'),
+          const SizedBox(height: 24),
+          const Text(
+            'Ingen undersøkelser ennå',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Opprett din første undersøkelse for å samle inn\nverdifull innsikt fra dine ansatte.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey[600], height: 1.5),
+          ),
+          const SizedBox(height: 32),
+          ElevatedButton.icon(
+            onPressed: _createSurvey,
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text('Kom i gang', style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: DriftProTheme.primaryGreen,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildSurveyCard(Survey survey, bool isDark) {
-    return Container(
+    return Card(
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        side: BorderSide(color: isDark ? Colors.white10 : Colors.grey[200]!),
       ),
+      color: isDark ? DriftProTheme.cardDark : Colors.white,
       child: InkWell(
         onTap: () {
           Navigator.push(
@@ -182,23 +210,24 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: survey.isActive ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      survey.isActive ? 'Aktiv' : 'Inaktiv',
+                      survey.isActive ? 'AKTIV' : 'INAKTIV',
                       style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                        fontWeight: FontWeight.black,
+                        letterSpacing: 0.5,
                         color: survey.isActive ? Colors.green : Colors.red,
                       ),
                     ),
                   ),
                   const Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.bar_chart, color: DriftProTheme.primaryGreen),
+                    icon: const Icon(Icons.bar_chart_rounded, color: DriftProTheme.primaryGreen, size: 22),
                     onPressed: () {
                       Navigator.push(
                         context,
@@ -207,19 +236,22 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                         ),
                       );
                     },
-                    tooltip: 'Se resultater',
                   ),
                   IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 20, color: Colors.grey),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 22, color: Colors.redAccent),
                     onPressed: () async {
                       final confirm = await showDialog<bool>(
                         context: context,
                         builder: (context) => AlertDialog(
                           title: const Text('Slett undersøkelse?'),
-                          content: const Text('Dette kan ikke angres.'),
+                          content: Text('Er du sikker på at du vil slette "${survey.title}"? Dette kan ikke angres.'),
                           actions: [
                             TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Avbryt')),
-                            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Slett', style: TextStyle(color: Colors.red))),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(context, true),
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                              child: const Text('Slett', style: TextStyle(color: Colors.white)),
+                            ),
                           ],
                         ),
                       );
@@ -231,36 +263,30 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Text(
                 survey.title,
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               if (survey.description != null && survey.description!.isNotEmpty) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Text(
                   survey.description!,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                  style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 14, height: 1.4),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
+              const SizedBox(height: 24),
+              const Divider(height: 1),
               const SizedBox(height: 16),
               Row(
                 children: [
-                  Icon(Icons.calendar_today, size: 14, color: Colors.grey[500]),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Opprettet: ${survey.createdAt.day}.${survey.createdAt.month}.${survey.createdAt.year}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                  ),
+                  _buildStat(Icons.people_alt_outlined, '${survey.totalResponses} svar'),
+                  const SizedBox(width: 24),
+                  _buildStat(Icons.event_outlined, '${survey.createdAt.day}.${survey.createdAt.month}.${survey.createdAt.year}'),
                   const Spacer(),
-                  Icon(Icons.people_outline, size: 14, color: Colors.grey[500]),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${survey.totalResponses} svar',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[500], fontWeight: FontWeight.bold),
-                  ),
+                  const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey),
                 ],
               ),
             ],
@@ -269,4 +295,18 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
       ),
     );
   }
+
+  Widget _buildStat(IconData icon, String label) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: Colors.grey),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
+        ),
+      ],
+    );
+  }
+}
 }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/survey/survey_service.dart';
 import '../../models/survey/survey.dart';
@@ -13,7 +14,13 @@ class SurveyEditorScreen extends StatefulWidget {
 
 class _SurveyEditorScreenState extends State<SurveyEditorScreen> {
   bool _isLoading = true;
+  bool _isSaving = false;
   List<SurveyQuestion> _questions = [];
+  
+  // Controllers and FocusNodes
+  final Map<String, TextEditingController> _questionControllers = {};
+  final Map<String, FocusNode> _questionFocusNodes = {};
+  final Map<String, List<TextEditingController>> _optionControllers = {};
 
   @override
   void initState() {
@@ -21,95 +28,180 @@ class _SurveyEditorScreenState extends State<SurveyEditorScreen> {
     _loadQuestions();
   }
 
+  @override
+  void dispose() {
+    for (var c in _questionControllers.values) c.dispose();
+    for (var f in _questionFocusNodes.values) f.dispose();
+    for (var list in _optionControllers.values) {
+      for (var c in list) c.dispose();
+    }
+    super.dispose();
+  }
+
   Future<void> _loadQuestions() async {
     setState(() => _isLoading = true);
     try {
       final questions = await SurveyService.fetchQuestions(widget.survey.id);
+      
+      // Initialize controllers
+      for (var q in questions) {
+        _questionControllers[q.id] = TextEditingController(text: q.questionText);
+        _questionFocusNodes[q.id] = FocusNode();
+        _optionControllers[q.id] = q.options.map((opt) => TextEditingController(text: opt)).toList();
+      }
+
       setState(() {
         _questions = questions;
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Feil: $e')));
+      }
     }
   }
 
   void _addQuestion() {
+    final id = const Uuid().v4();
+    final type = SurveyQuestionType.text;
+    
+    _questionControllers[id] = TextEditingController(text: 'Nytt spørsmål');
+    _questionFocusNodes[id] = FocusNode();
+    _optionControllers[id] = [];
+
     setState(() {
       _questions.add(SurveyQuestion(
-        id: DateTime.now().millisecondsSinceEpoch.toString(), // Temporary ID
+        id: id,
         surveyId: widget.survey.id,
         questionText: 'Nytt spørsmål',
-        type: SurveyQuestionType.text,
+        type: type,
         isRequired: false,
         options: [],
         orderIndex: _questions.length,
       ));
     });
+    
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _questionFocusNodes[id]?.requestFocus();
+    });
+  }
+
+  void _addOption(String qId) {
+    final controller = TextEditingController(text: 'Svaralternativ');
+    setState(() {
+      _optionControllers[qId]?.add(controller);
+    });
+  }
+
+  void _removeOption(String qId, int index) {
+    setState(() {
+      _optionControllers[qId]?[index].dispose();
+      _optionControllers[qId]?.removeAt(index);
+    });
   }
 
   Future<void> _save() async {
-    setState(() => _isLoading = true);
+    if (_isSaving) return;
+    setState(() => _isSaving = true);
+    
     try {
-      await SurveyService.saveQuestions(widget.survey.id, _questions);
+      // Collect all data from controllers
+      final List<SurveyQuestion> updatedQuestions = [];
+      for (int i = 0; i < _questions.length; i++) {
+        final q = _questions[i];
+        final text = _questionControllers[q.id]?.text ?? q.questionText;
+        final opts = _optionControllers[q.id]?.map((c) => c.text).toList() ?? q.options;
+        
+        updatedQuestions.add(SurveyQuestion(
+          id: q.id,
+          surveyId: q.surveyId,
+          questionText: text,
+          type: q.type,
+          isRequired: q.isRequired,
+          options: opts,
+          orderIndex: i,
+        ));
+      }
+
+      await SurveyService.saveQuestions(widget.survey.id, updatedQuestions);
+      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lagret')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Alle endringer er lagret!')));
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Feil ved lagring: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke lagre: $e'), backgroundColor: Colors.red));
       }
-      setState(() => _isLoading = false);
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.survey.title),
         actions: [
-          TextButton(
-            onPressed: _save,
-            child: const Text('Lagre', style: TextStyle(color: DriftProTheme.primaryGreen, fontWeight: FontWeight.bold)),
-          ),
+          if (_isSaving)
+            const Center(child: Padding(padding: EdgeInsets.only(right: 16), child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))))
+          else
+            TextButton(
+              onPressed: _save,
+              child: const Text('Lagre', style: TextStyle(color: DriftProTheme.primaryGreen, fontWeight: FontWeight.bold)),
+            ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : ReorderableListView(
-              padding: const EdgeInsets.all(16),
-              onReorder: (oldIndex, newIndex) {
-                setState(() {
-                  if (newIndex > oldIndex) newIndex -= 1;
-                  final item = _questions.removeAt(oldIndex);
-                  _questions.insert(newIndex, item);
-                });
-              },
-              children: [
-                for (int i = 0; i < _questions.length; i++)
-                  _buildQuestionCard(i),
-              ],
-            ),
+          : _questions.isEmpty
+              ? _buildEmptyState()
+              : ReorderableListView(
+                  padding: const EdgeInsets.all(16),
+                  onReorder: (oldIndex, newIndex) {
+                    setState(() {
+                      if (newIndex > oldIndex) newIndex -= 1;
+                      final item = _questions.removeAt(oldIndex);
+                      _questions.insert(newIndex, item);
+                    });
+                  },
+                  children: [
+                    for (int i = 0; i < _questions.length; i++)
+                      _buildQuestionCard(i, isDark),
+                  ],
+                ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addQuestion,
         backgroundColor: DriftProTheme.primaryGreen,
-        child: const Icon(Icons.add),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }
 
-  Widget _buildQuestionCard(int index) {
-    final question = _questions[index];
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.add_task, size: 64, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          const Text('Ingen spørsmål ennå. Trykk på + for å starte!'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuestionCard(int index, bool isDark) {
+    final q = _questions[index];
+    final controller = _questionControllers[q.id];
+    final focusNode = _questionFocusNodes[q.id];
 
     return Card(
-      key: ValueKey(question.id),
+      key: ValueKey(q.id),
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: isDark ? DriftProTheme.cardDark : Colors.white,
@@ -123,24 +215,14 @@ class _SurveyEditorScreenState extends State<SurveyEditorScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextFormField(
-                    initialValue: question.questionText,
-                    decoration: const InputDecoration(hintText: 'Spørsmålstekst', border: InputBorder.none),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                    onChanged: (v) {
-                      _questions[index] = SurveyQuestion(
-                        id: question.id,
-                        surveyId: question.surveyId,
-                        questionText: v,
-                        type: question.type,
-                        isRequired: question.isRequired,
-                        options: question.options,
-                        orderIndex: index,
-                      );
-                    },
+                    controller: controller,
+                    focusNode: focusNode,
+                    decoration: const InputDecoration(hintText: 'Hva vil du spørre om?', border: InputBorder.none),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.close, color: Colors.red, size: 20),
+                  icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
                   onPressed: () => setState(() => _questions.removeAt(index)),
                 ),
               ],
@@ -150,23 +232,32 @@ class _SurveyEditorScreenState extends State<SurveyEditorScreen> {
               children: [
                 Expanded(
                   child: DropdownButton<SurveyQuestionType>(
-                    value: question.type,
+                    value: q.type,
                     isExpanded: true,
                     items: SurveyQuestionType.values.map((t) {
-                      return DropdownMenuItem(value: t, child: Text(t.name.toUpperCase()));
+                      return DropdownMenuItem(value: t, child: Text(t.toIdentifier().toUpperCase()));
                     }).toList(),
                     onChanged: (t) {
                       if (t != null) {
                         setState(() {
                           _questions[index] = SurveyQuestion(
-                            id: question.id,
-                            surveyId: question.surveyId,
-                            questionText: question.questionText,
+                            id: q.id,
+                            surveyId: q.surveyId,
+                            questionText: q.questionText,
                             type: t,
-                            isRequired: question.isRequired,
-                            options: question.options,
+                            isRequired: q.isRequired,
+                            options: q.options,
                             orderIndex: index,
                           );
+                          // Initialize options if switching to a choice type
+                          if ([SurveyQuestionType.single_choice, SurveyQuestionType.multiple_choice, SurveyQuestionType.dropdown].contains(t)) {
+                            if (_optionControllers[q.id] == null || _optionControllers[q.id]!.isEmpty) {
+                              _optionControllers[q.id] = [
+                                TextEditingController(text: 'Alternativ 1'),
+                                TextEditingController(text: 'Alternativ 2'),
+                              ];
+                            }
+                          }
                         });
                       }
                     },
@@ -175,19 +266,19 @@ class _SurveyEditorScreenState extends State<SurveyEditorScreen> {
                 const SizedBox(width: 16),
                 Row(
                   children: [
-                    const Text('Påkrevd'),
+                    const Text('Påkrevd', style: TextStyle(fontSize: 12)),
                     Switch(
-                      value: question.isRequired,
+                      value: q.isRequired,
                       activeColor: DriftProTheme.primaryGreen,
                       onChanged: (v) {
                         setState(() {
                           _questions[index] = SurveyQuestion(
-                            id: question.id,
-                            surveyId: question.surveyId,
-                            questionText: question.questionText,
-                            type: question.type,
+                            id: q.id,
+                            surveyId: q.surveyId,
+                            questionText: q.questionText,
+                            type: q.type,
                             isRequired: v,
-                            options: question.options,
+                            options: q.options,
                             orderIndex: index,
                           );
                         });
@@ -197,82 +288,47 @@ class _SurveyEditorScreenState extends State<SurveyEditorScreen> {
                 ),
               ],
             ),
-            if ([SurveyQuestionType.multiple_choice, SurveyQuestionType.checkbox, SurveyQuestionType.dropdown].contains(question.type))
-              _buildOptionsEditor(index),
+            if ([SurveyQuestionType.single_choice, SurveyQuestionType.multiple_choice, SurveyQuestionType.dropdown].contains(q.type))
+              _buildOptionsEditor(q.id, isDark),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildOptionsEditor(int index) {
-    final question = _questions[index];
+  Widget _buildOptionsEditor(String qId, bool isDark) {
+    final controllers = _optionControllers[qId] ?? [];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 8),
-        const Text('Alternativer', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-        ...question.options.asMap().entries.map((entry) {
-          return Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  initialValue: entry.value,
-                  decoration: InputDecoration(hintText: 'Alternativ ${entry.key + 1}', isDense: true),
-                  onChanged: (v) {
-                    final newOptions = List<String>.from(question.options);
-                    newOptions[entry.key] = v;
-                    _questions[index] = SurveyQuestion(
-                      id: question.id,
-                      surveyId: question.surveyId,
-                      questionText: question.questionText,
-                      type: question.type,
-                      isRequired: question.isRequired,
-                      options: newOptions,
-                      orderIndex: index,
-                    );
-                  },
+        const SizedBox(height: 12),
+        const Text('SVARALTERNATIVER', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 10, color: Colors.grey)),
+        ...controllers.asMap().entries.map((entry) {
+          return Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Row(
+              children: [
+                const Icon(Icons.circle_outlined, size: 12, color: Colors.grey),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextFormField(
+                    controller: entry.value,
+                    decoration: InputDecoration(hintText: 'Skriv alternativ...', isDense: true, border: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey[300]!))),
+                    style: const TextStyle(fontSize: 14),
+                  ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.grey),
-                onPressed: () {
-                  setState(() {
-                    final newOptions = List<String>.from(question.options);
-                    newOptions.removeAt(entry.key);
-                    _questions[index] = SurveyQuestion(
-                      id: question.id,
-                      surveyId: question.surveyId,
-                      questionText: question.questionText,
-                      type: question.type,
-                      isRequired: question.isRequired,
-                      options: newOptions,
-                      orderIndex: index,
-                    );
-                  });
-                },
-              ),
-            ],
+                IconButton(
+                  icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.grey),
+                  onPressed: () => _removeOption(qId, entry.key),
+                ),
+              ],
+            ),
           );
         }),
         TextButton.icon(
-          onPressed: () {
-            setState(() {
-              final newOptions = List<String>.from(question.options);
-              newOptions.add('Nytt alternativ');
-              _questions[index] = SurveyQuestion(
-                id: question.id,
-                surveyId: question.surveyId,
-                questionText: question.questionText,
-                type: question.type,
-                isRequired: question.isRequired,
-                options: newOptions,
-                orderIndex: index,
-              );
-            });
-          },
-          icon: const Icon(Icons.add_circle_outline, size: 16),
-          label: const Text('Legg til alternativ'),
+          onPressed: () => _addOption(qId),
+          icon: const Icon(Icons.add_circle_outline, size: 16, color: DriftProTheme.primaryGreen),
+          label: const Text('Legg til alternativ', style: TextStyle(fontSize: 12, color: DriftProTheme.primaryGreen)),
         ),
       ],
     );
