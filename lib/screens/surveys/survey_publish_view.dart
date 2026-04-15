@@ -13,7 +13,7 @@ class SurveyPublishView extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final origin = Uri.base.origin.isEmpty ? 'https://driftpro.no' : Uri.base.origin;
-    final publicLink = '$origin/#/s/${survey.id}';
+    final publicLink = '$origin/?survey=${survey.id}';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(40),

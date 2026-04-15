@@ -63,6 +63,15 @@ class DriftProApp extends StatelessWidget {
   const DriftProApp({super.key});
 
   String? _extractPublicSurveyId() {
+    final querySurvey = Uri.base.queryParameters['survey'];
+    if (querySurvey != null && querySurvey.trim().isNotEmpty) {
+      return querySurvey.trim();
+    }
+    final queryShort = Uri.base.queryParameters['s'];
+    if (queryShort != null && queryShort.trim().isNotEmpty) {
+      return queryShort.trim();
+    }
+
     final path = Uri.base.path;
     if (path.startsWith('/s/')) {
       return path.replaceFirst('/s/', '').trim();
