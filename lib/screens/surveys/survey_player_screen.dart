@@ -29,11 +29,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
   Future<void> _loadSurveyData() async {
     setState(() => _isLoading = true);
     try {
-      // In a real public scenario, we might need a public fetch method
-      // For now, assuming authenticated or using the standard service
-      final surveys = await SurveyService.fetchSurveys(companyId: ''); // Need a way to fetch by ID
-      // Refined: Fetch specific survey
-      final survey = await _fetchSurveyById(widget.surveyId);
+      final survey = await _fetchSurveyById(widget.surveyId.trim());
       final questions = await SurveyService.fetchQuestions(widget.surveyId);
       
       setState(() {
