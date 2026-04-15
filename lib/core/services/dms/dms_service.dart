@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../models/dms/dms_folder.dart';
 import '../../../models/dms/dms_file.dart';
 import '../../../models/dms/dms_permission.dart';
-import '../supabase_service.dart';
 
 class DmsService {
   static SupabaseClient get client => Supabase.instance.client;
@@ -96,11 +95,7 @@ class DmsService {
     final storagePath = 'company_$companyId/${folderId ?? "root"}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
     // 1. Upload to Storage
-    try {
-      await client.storage.from('documents').uploadBinary(storagePath, bytes);
-    } catch (e) {
-      await client.storage.from('documents').upload(storagePath, bytes);
-    }
+    await client.storage.from('documents').uploadBinary(storagePath, bytes);
 
     // 2. Create DB Record
     return await createFile(

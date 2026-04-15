@@ -62,9 +62,26 @@ Future<void> _initSupabase() async {
 class DriftProApp extends StatelessWidget {
   const DriftProApp({super.key});
 
+  String? _extractPublicSurveyId() {
+    final path = Uri.base.path;
+    if (path.startsWith('/s/')) {
+      return path.replaceFirst('/s/', '').trim();
+    }
+
+    final fragment = Uri.base.fragment;
+    if (fragment.startsWith('/s/')) {
+      return fragment.replaceFirst('/s/', '').trim();
+    }
+    if (fragment.startsWith('s/')) {
+      return fragment.replaceFirst('s/', '').trim();
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeNotifier = context.watch<ThemeNotifier>();
+    final publicSurveyId = _extractPublicSurveyId();
 
     return MaterialApp(
       title: AppStrings.appName,
@@ -81,10 +98,12 @@ class DriftProApp extends StatelessWidget {
         }
         return null;
       },
-      home: StreamBuilder<AuthState>(
-        key: const ValueKey('auth_stream'),
-        stream: Supabase.instance.client.auth.onAuthStateChange,
-        builder: (context, snapshot) {
+      home: publicSurveyId != null && publicSurveyId.isNotEmpty
+          ? SurveyPlayerScreen(surveyId: publicSurveyId)
+          : StreamBuilder<AuthState>(
+              key: const ValueKey('auth_stream'),
+              stream: Supabase.instance.client.auth.onAuthStateChange,
+              builder: (context, snapshot) {
           final session = snapshot.data?.session ?? Supabase.instance.client.auth.currentSession;
 
           if (session != null) {

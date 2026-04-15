@@ -4,8 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/dms/dms_file.dart';
 import '../../core/services/dms/dms_service.dart';
-import 'dart:ui_web' as ui;
-import 'package:web/web.dart' as web;
 
 class FileViewerScreen extends StatefulWidget {
   final DmsFile file;
@@ -33,19 +31,6 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
         _url = url;
         _isLoading = false;
       });
-      
-      if (kIsWeb && widget.file.extension?.toLowerCase() == 'pdf') {
-        // Register the iframe for PDF
-        // ignore: undefined_prefixed_name
-        ui.platformViewRegistry.registerViewFactory(
-          'pdf-viewer-${widget.file.id}',
-          (int viewId) => web.HTMLIFrameElement()
-            ..src = _url!
-            ..style.border = 'none'
-            ..style.width = '100%'
-            ..style.height = '100%',
-        );
-      }
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -103,11 +88,28 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
         );
       
       case 'pdf':
-        if (kIsWeb) {
-          return HtmlElementView(viewType: 'pdf-viewer-${widget.file.id}');
-        } else {
-          return const Center(child: Text('PDF-visning er foreløpig kun tilgjengelig i web-versjonen.\nBruk last ned-knappen for å se filen.'));
-        }
+        return Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.picture_as_pdf, size: 72, color: Colors.grey),
+              const SizedBox(height: 16),
+              Text(
+                kIsWeb
+                    ? 'Åpne PDF i ny fane for best visning.'
+                    : 'PDF-visning åpnes i ekstern app/nettleser.',
+                style: const TextStyle(color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: () => launchUrl(Uri.parse(_url!)),
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Åpne PDF'),
+              ),
+            ],
+          ),
+        );
 
       default:
         return Center(

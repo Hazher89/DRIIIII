@@ -165,27 +165,6 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
             );
           }).toList(),
         );
-      case SurveyQuestionType.checkbox:
-        return Column(
-          children: q.options.map((opt) {
-            final list = (_answers[q.id] as List<String>?) ?? [];
-            return CheckboxListTile(
-              title: Text(opt),
-              value: list.contains(opt),
-              onChanged: (v) {
-                setState(() {
-                  if (v == true) {
-                    list.add(opt);
-                  } else {
-                    list.remove(opt);
-                  }
-                  _answers[q.id] = list;
-                });
-              },
-              activeColor: DriftProTheme.primaryGreen,
-            );
-          }).toList(),
-        );
       default:
         return const Text('Ikke støttet ennå');
     }
