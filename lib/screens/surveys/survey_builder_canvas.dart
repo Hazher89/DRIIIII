@@ -464,6 +464,22 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: themeColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              'Survey Builder V3 · fea1039',
+              style: TextStyle(
+                color: themeColor,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           Row(
             children: [
               Icon(Icons.business, color: themeColor, size: 40),
