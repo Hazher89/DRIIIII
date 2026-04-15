@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/survey/survey.dart';
+import '../../models/survey/survey_advanced.dart';
+import '../../core/services/survey/survey_advanced_service.dart';
 import '../../core/services/survey/survey_service.dart';
 import '../../core/services/supabase_service.dart';
 
@@ -16,6 +18,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
   bool _isLoading = true;
   bool _isSubmitting = false;
   Survey? _survey;
+  SurveyThemeConfig? _theme;
   List<SurveyQuestion> _questions = [];
   final Map<String, dynamic> _answers = {};
   final _formKey = GlobalKey<FormState>();
@@ -31,9 +34,11 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
     try {
       final survey = await _fetchSurveyById(widget.surveyId.trim());
       final questions = await SurveyService.fetchQuestions(widget.surveyId);
+      final theme = await SurveyAdvancedService.fetchTheme(widget.surveyId);
       
       setState(() {
         _survey = survey;
+        _theme = theme;
         _questions = questions;
         _isLoading = false;
       });
@@ -82,6 +87,31 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
     }
   }
 
+  Color _fromHex(String hex, Color fallback) {
+    final cleaned = hex.replaceAll('#', '').trim();
+    if (cleaned.length != 6) return fallback;
+    final value = int.tryParse('FF$cleaned', radix: 16);
+    if (value == null) return fallback;
+    return Color(value);
+  }
+
+  bool _isVisible(SurveyQuestion q) {
+    final dep = q.conditionQuestionId;
+    if (dep == null || dep.isEmpty) return true;
+    final answer = _answers[dep];
+    if (answer == null) return false;
+    final expected = (q.conditionValue ?? '').trim().toLowerCase();
+    if (expected.isEmpty) return true;
+    final current = answer.toString().trim().toLowerCase();
+    final op = q.conditionOperator ?? 'equals';
+    return op == 'contains' ? current.contains(expected) : current == expected;
+  }
+
+  String _estimatedTime() {
+    final mins = (_questions.length / 2).ceil().clamp(1, 30);
+    return '$mins min';
+  }
+
   void _showSuccessDialog() {
     showDialog(
       context: context,
@@ -112,9 +142,19 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
       return const Scaffold(body: Center(child: Text('Undersøkelsen ble ikke funnet.')));
     }
 
+    final cfg = _theme ?? SurveyThemeConfig(surveyId: widget.surveyId);
+    final primary = _fromHex(cfg.primaryHex, DriftProTheme.primaryGreen);
+    final bg = _fromHex(cfg.backgroundHex, const Color(0xFFF7F9F8));
+    final text = _fromHex(cfg.textHex, const Color(0xFF0F172A));
+    final progress = _questions.isEmpty
+        ? 0.0
+        : _answers.length / _questions.where(_isVisible).length.clamp(1, 9999);
+
     return Scaffold(
+      backgroundColor: bg,
       appBar: AppBar(
-        title: Text(_survey!.title),
+        title: Text(_survey!.title, style: TextStyle(color: text)),
+        backgroundColor: bg,
         elevation: 0,
       ),
       body: Center(
@@ -125,22 +165,40 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
             child: ListView(
               padding: const EdgeInsets.all(24),
               children: [
+                if (cfg.showEstimatedTime)
+                  Text(
+                    'Estimert svartid: ${_estimatedTime()}',
+                    style: TextStyle(color: text.withValues(alpha: 0.7)),
+                  ),
+                if (cfg.showProgressBar) ...[
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 8,
+                      color: primary,
+                      backgroundColor: primary.withValues(alpha: 0.2),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 16),
                 if (_survey!.description != null && _survey!.description!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 32),
                     child: Text(
                       _survey!.description!,
-                      style: const TextStyle(fontSize: 16, color: Colors.grey),
+                      style: TextStyle(fontSize: 16, color: text.withValues(alpha: 0.7)),
                     ),
                   ),
-                ..._questions.map((q) => _buildQuestionWidget(q)),
+                ..._questions.where(_isVisible).map((q) => _buildQuestionWidget(q, primary, text, cfg.compactMode)),
                 const SizedBox(height: 48),
                 SizedBox(
                   height: 56,
                   child: ElevatedButton(
                     onPressed: _isSubmitting ? null : _submit,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: DriftProTheme.primaryGreen,
+                      backgroundColor: primary,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     child: _isSubmitting
@@ -157,32 +215,48 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
     );
   }
 
-  Widget _buildQuestionWidget(SurveyQuestion q) {
+  Widget _buildQuestionWidget(
+    SurveyQuestion q,
+    Color primary,
+    Color textColor,
+    bool compact,
+  ) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 32),
+      margin: EdgeInsets.only(bottom: compact ? 18 : 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (q.sectionTitle != null && q.sectionTitle!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                q.sectionTitle!,
+                style: TextStyle(
+                  color: primary,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
           Row(
             children: [
               Expanded(
                 child: Text(
                   q.questionText,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor),
                 ),
               ),
               if (q.isRequired)
                 const Text(' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
             ],
           ),
-          const SizedBox(height: 16),
-          _buildAnswerInput(q),
+          SizedBox(height: compact ? 8 : 16),
+          _buildAnswerInput(q, primary),
         ],
       ),
     );
   }
 
-  Widget _buildAnswerInput(SurveyQuestion q) {
+  Widget _buildAnswerInput(SurveyQuestion q, Color primary) {
     switch (q.type) {
       case SurveyQuestionType.single_choice:
         return Column(
@@ -190,7 +264,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
             title: Text(opt),
             value: opt,
             groupValue: _answers[q.id],
-            activeColor: DriftProTheme.primaryGreen,
+            activeColor: primary,
             onChanged: (val) => setState(() => _answers[q.id] = val),
             contentPadding: EdgeInsets.zero,
           )).toList(),
@@ -201,7 +275,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
           children: q.options.map((opt) => CheckboxListTile(
             title: Text(opt),
             value: (_answers[q.id] as List).contains(opt),
-            activeColor: DriftProTheme.primaryGreen,
+            activeColor: primary,
             onChanged: (val) {
               setState(() {
                 if (val == true) {
@@ -240,15 +314,99 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
             return IconButton(
               icon: Icon(
                 rating <= (_answers[q.id] ?? 0) ? Icons.star : Icons.star_outline,
-                color: DriftProTheme.primaryGreen,
+                color: primary,
                 size: 40,
               ),
               onPressed: () => setState(() => _answers[q.id] = rating),
             );
           }),
         );
-      default:
-        return const SizedBox();
+      case SurveyQuestionType.yes_no:
+        return SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'yes', label: Text('Ja')),
+            ButtonSegment(value: 'no', label: Text('Nei')),
+          ],
+          selected: {_answers[q.id]?.toString() ?? ''}..remove(''),
+          onSelectionChanged: (sel) {
+            if (sel.isNotEmpty) {
+              setState(() => _answers[q.id] = sel.first);
+            }
+          },
+          style: ButtonStyle(
+            foregroundColor: WidgetStatePropertyAll(primary),
+          ),
+        );
+      case SurveyQuestionType.number:
+        return TextFormField(
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: 'Skriv et tall',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onChanged: (val) => _answers[q.id] = val,
+        );
+      case SurveyQuestionType.email:
+        return TextFormField(
+          keyboardType: TextInputType.emailAddress,
+          decoration: InputDecoration(
+            hintText: 'navn@firma.no',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onChanged: (val) => _answers[q.id] = val,
+        );
+      case SurveyQuestionType.phone:
+        return TextFormField(
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(
+            hintText: '+47 900 00 000',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onChanged: (val) => _answers[q.id] = val,
+        );
+      case SurveyQuestionType.nps:
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: List.generate(11, (index) {
+            final selected = _answers[q.id] == index;
+            return ChoiceChip(
+              label: Text('$index'),
+              selected: selected,
+              selectedColor: primary.withValues(alpha: 0.2),
+              onSelected: (_) => setState(() => _answers[q.id] = index),
+            );
+          }),
+        );
+      case SurveyQuestionType.dropdown:
+        return DropdownButtonFormField<String>(
+          value: _answers[q.id] as String?,
+          items: q.options
+              .map((o) => DropdownMenuItem<String>(value: o, child: Text(o)))
+              .toList(),
+          decoration: InputDecoration(
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onChanged: (val) => setState(() => _answers[q.id] = val),
+        );
+      case SurveyQuestionType.date:
+        return TextButton.icon(
+          onPressed: () async {
+            final picked = await showDatePicker(
+              context: context,
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+              initialDate: DateTime.now(),
+            );
+            if (picked != null) {
+              setState(() => _answers[q.id] = picked.toIso8601String());
+            }
+          },
+          icon: const Icon(Icons.event),
+          label: Text(
+            _answers[q.id] == null ? 'Velg dato' : _answers[q.id].toString().split('T').first,
+          ),
+        );
     }
   }
 }

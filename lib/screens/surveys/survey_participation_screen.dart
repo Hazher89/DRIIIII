@@ -228,6 +228,76 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
             );
           }).toList(),
         );
+      case SurveyQuestionType.yes_no:
+        return SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'yes', label: Text('Ja')),
+            ButtonSegment(value: 'no', label: Text('Nei')),
+          ],
+          selected: {_answers[q.id]?.toString() ?? ''}..remove(''),
+          onSelectionChanged: (sel) {
+            if (sel.isNotEmpty) {
+              setState(() => _answers[q.id] = sel.first);
+            }
+          },
+        );
+      case SurveyQuestionType.number:
+        return TextField(
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(
+            hintText: 'Skriv et tall',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onChanged: (v) => _answers[q.id] = v,
+        );
+      case SurveyQuestionType.email:
+        return TextField(
+          keyboardType: TextInputType.emailAddress,
+          decoration: InputDecoration(
+            hintText: 'E-postadresse',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onChanged: (v) => _answers[q.id] = v,
+        );
+      case SurveyQuestionType.phone:
+        return TextField(
+          keyboardType: TextInputType.phone,
+          decoration: InputDecoration(
+            hintText: 'Telefonnummer',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onChanged: (v) => _answers[q.id] = v,
+        );
+      case SurveyQuestionType.nps:
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: List.generate(11, (index) {
+            return ChoiceChip(
+              label: Text('$index'),
+              selected: _answers[q.id] == index,
+              onSelected: (_) => setState(() => _answers[q.id] = index),
+            );
+          }),
+        );
+      case SurveyQuestionType.date:
+        return TextButton.icon(
+          onPressed: () async {
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: DateTime.now(),
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+            );
+            if (picked != null) {
+              setState(() => _answers[q.id] = picked.toIso8601String());
+            }
+          },
+          icon: const Icon(Icons.calendar_today),
+          label: Text(
+            _answers[q.id] == null ? 'Velg dato' : _answers[q.id].toString().split('T').first,
+          ),
+        );
       default:
         return const Text('Ikke støttet ennå');
     }

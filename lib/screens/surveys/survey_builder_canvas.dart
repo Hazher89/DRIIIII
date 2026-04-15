@@ -382,6 +382,11 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         _buildQuestionTypeItem(Icons.star_outline, 'Rangering', SurveyQuestionType.rating, themeColor),
         _buildQuestionTypeItem(Icons.calendar_today_outlined, 'Dato', SurveyQuestionType.date, themeColor),
         _buildQuestionTypeItem(Icons.arrow_drop_down_circle_outlined, 'Nedtrekk', SurveyQuestionType.dropdown, themeColor),
+        _buildQuestionTypeItem(Icons.toggle_on_outlined, 'Ja/Nei', SurveyQuestionType.yes_no, themeColor),
+        _buildQuestionTypeItem(Icons.pin_outlined, 'Tall', SurveyQuestionType.number, themeColor),
+        _buildQuestionTypeItem(Icons.email_outlined, 'E-post', SurveyQuestionType.email, themeColor),
+        _buildQuestionTypeItem(Icons.phone_outlined, 'Telefon', SurveyQuestionType.phone, themeColor),
+        _buildQuestionTypeItem(Icons.insights_outlined, 'NPS (0-10)', SurveyQuestionType.nps, themeColor),
         const SizedBox(height: 32),
         const Text('INNSTILLINGER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
         const SizedBox(height: 12),
@@ -603,8 +608,38 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
       default:
         return Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text('Type: ${q.type.name.toUpperCase()}', style: TextStyle(color: Colors.grey[400], fontSize: 11)),
+          child: Text(
+            _previewLabelForType(q.type),
+            style: TextStyle(color: Colors.grey[500], fontSize: 12),
+          ),
         );
+    }
+  }
+
+  String _previewLabelForType(SurveyQuestionType type) {
+    switch (type) {
+      case SurveyQuestionType.text:
+        return 'Kort tekstfelt';
+      case SurveyQuestionType.paragraph:
+        return 'Langt tekstfelt';
+      case SurveyQuestionType.rating:
+        return '1-5 stjerner';
+      case SurveyQuestionType.date:
+        return 'Dato-velger';
+      case SurveyQuestionType.yes_no:
+        return 'Ja/Nei bryter';
+      case SurveyQuestionType.number:
+        return 'Tallfelt med validering';
+      case SurveyQuestionType.email:
+        return 'E-postfelt med formatkontroll';
+      case SurveyQuestionType.phone:
+        return 'Telefonfelt';
+      case SurveyQuestionType.nps:
+        return 'NPS-skala 0-10';
+      case SurveyQuestionType.single_choice:
+      case SurveyQuestionType.multiple_choice:
+      case SurveyQuestionType.dropdown:
+        return 'Valg med alternativer';
     }
   }
 
@@ -734,6 +769,12 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         const PopupMenuItem(value: SurveyQuestionType.text, child: Text('Kort tekst')),
         const PopupMenuItem(value: SurveyQuestionType.paragraph, child: Text('Lang tekst')),
         const PopupMenuItem(value: SurveyQuestionType.rating, child: Text('Rangering')),
+        const PopupMenuItem(value: SurveyQuestionType.date, child: Text('Dato')),
+        const PopupMenuItem(value: SurveyQuestionType.yes_no, child: Text('Ja/Nei')),
+        const PopupMenuItem(value: SurveyQuestionType.number, child: Text('Tall')),
+        const PopupMenuItem(value: SurveyQuestionType.email, child: Text('E-post')),
+        const PopupMenuItem(value: SurveyQuestionType.phone, child: Text('Telefon')),
+        const PopupMenuItem(value: SurveyQuestionType.nps, child: Text('NPS (0-10)')),
       ],
       child: Container(
         padding: const EdgeInsets.all(12),

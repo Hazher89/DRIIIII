@@ -14,6 +14,9 @@ class SurveyPublishView extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final origin = Uri.base.origin.isEmpty ? 'https://driftpro.no' : Uri.base.origin;
     final publicLink = '$origin/?survey=${survey.id}';
+    final shortLink = '$origin/s/${survey.id}';
+    final smartText =
+        'Hei! Vi vil gjerne ha din tilbakemelding. Svar her: $publicLink';
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(40),
@@ -33,6 +36,48 @@ class SurveyPublishView extends StatelessWidget {
                 style: TextStyle(color: Colors.grey, fontSize: 16),
               ),
               const SizedBox(height: 48),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _buildShareQuickButton(
+                    context,
+                    icon: Icons.copy_all_outlined,
+                    label: 'Kopier melding',
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: smartText));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Meldingsmal kopiert')),
+                      );
+                    },
+                  ),
+                  _buildShareQuickButton(
+                    context,
+                    icon: Icons.link_outlined,
+                    label: 'Kopier kortlenke',
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: shortLink));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Kortlenke kopiert')),
+                      );
+                    },
+                  ),
+                  _buildShareQuickButton(
+                    context,
+                    icon: Icons.preview_outlined,
+                    label: 'Kopier preview-lenke',
+                    onTap: () {
+                      Clipboard.setData(
+                        ClipboardData(text: '$publicLink&preview=true'),
+                      );
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Preview-lenke kopiert')),
+                      );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
 
               // Link Card
               Container(
@@ -101,6 +146,29 @@ class SurveyPublishView extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 32),
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.black26 : const Color(0xFFF7F9F8),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: isDark ? Colors.white10 : Colors.grey[200]!),
+                      ),
+                      child: const Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Smart deling',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            'Bruk kortlenke i SMS, full lenke i e-post, og preview-lenke for intern QA før utsendelse.',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
                     Row(
                       children: [
                         Expanded(
@@ -133,6 +201,22 @@ class SurveyPublishView extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildShareQuickButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       ),
     );
   }

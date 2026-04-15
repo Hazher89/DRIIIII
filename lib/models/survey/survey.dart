@@ -6,6 +6,11 @@ enum SurveyQuestionType {
   dropdown,
   rating,
   date,
+  yes_no,
+  number,
+  email,
+  phone,
+  nps,
 }
 
 extension SurveyQuestionTypeExtension on SurveyQuestionType {
@@ -18,6 +23,11 @@ extension SurveyQuestionTypeExtension on SurveyQuestionType {
       case SurveyQuestionType.dropdown: return 'dropdown';
       case SurveyQuestionType.rating: return 'rating';
       case SurveyQuestionType.date: return 'date';
+      case SurveyQuestionType.yes_no: return 'yes_no';
+      case SurveyQuestionType.number: return 'number';
+      case SurveyQuestionType.email: return 'email';
+      case SurveyQuestionType.phone: return 'phone';
+      case SurveyQuestionType.nps: return 'nps';
     }
   }
 
