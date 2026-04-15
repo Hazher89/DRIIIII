@@ -123,24 +123,11 @@ class SurveyService {
     String? userId,
     required Map<String, dynamic> answers,
   }) async {
-    final response = await _supabase
-        .from('survey_responses')
-        .insert({
-          'survey_id': surveyId,
-          'user_id': userId,
-        })
-        .select()
-        .single();
-    
-    final responseId = response['id'];
-    
-    final answerData = answers.entries.map((e) => {
-      'response_id': responseId,
-      'question_id': e.key,
-      'answer_value': e.value,
-    }).toList();
-    
-    await _supabase.from('survey_answers').insert(answerData);
+    await _supabase.rpc('submit_survey_response_public', params: {
+      'p_survey_id': surveyId,
+      'p_user_id': userId,
+      'p_answers': answers,
+    });
   }
 
   static Future<Map<String, dynamic>> fetchResults(String surveyId) async {
