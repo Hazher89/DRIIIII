@@ -18,6 +18,21 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
   final Map<String, dynamic> _answers = {};
   bool _isSubmitting = false;
 
+  bool _isQuestionVisible(SurveyQuestion q) {
+    final dependsOn = q.conditionQuestionId;
+    if (dependsOn == null || dependsOn.isEmpty) return true;
+    final triggerValue = _answers[dependsOn];
+    if (triggerValue == null) return false;
+    final expected = (q.conditionValue ?? '').trim().toLowerCase();
+    if (expected.isEmpty) return true;
+    final current = triggerValue.toString().trim().toLowerCase();
+    final op = q.conditionOperator ?? 'equals';
+    if (op == 'contains') {
+      return current.contains(expected);
+    }
+    return current == expected;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -37,8 +52,8 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
   }
 
   Future<void> _submit() async {
-    // Validation
-    for (var q in _questions) {
+    final visibleQuestions = _questions.where(_isQuestionVisible).toList();
+    for (var q in visibleQuestions) {
       if (q.isRequired && (_answers[q.id] == null || _answers[q.id].toString().isEmpty)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Vennligst svar på påkrevd spørsmål: ${q.questionText}')),
@@ -50,10 +65,34 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
     setState(() => _isSubmitting = true);
     try {
       final user = SupabaseService.currentUser;
-      await SurveyService.submitResponse(
+      final visibleAnswers = <String, dynamic>{};
+      int totalScore = 0;
+      int maxScore = 0;
+      for (final q in visibleQuestions) {
+        if (q.points > 0) {
+          maxScore += q.points;
+          final hasAnswer =
+              _answers[q.id] != null && _answers[q.id].toString().trim().isNotEmpty;
+          if (hasAnswer) {
+            totalScore += q.points;
+          }
+        }
+        if (_answers[q.id] != null) {
+          visibleAnswers[q.id] = _answers[q.id];
+        }
+      }
+
+      final responseId = await SurveyService.submitResponse(
         surveyId: widget.survey.id,
         userId: user?.id,
-        answers: _answers,
+        answers: visibleAnswers,
+      );
+      await SurveyService.saveResponseScore(
+        responseId: responseId,
+        surveyId: widget.survey.id,
+        totalScore: totalScore,
+        maxScore: maxScore,
+        answeredCount: visibleAnswers.length,
       );
       if (mounted) {
         showDialog(
@@ -61,7 +100,11 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
           barrierDismissible: false,
           builder: (context) => AlertDialog(
             title: const Text('Takk!'),
-            content: const Text('Ditt svar har blitt registrert.'),
+            content: Text(
+              maxScore > 0
+                  ? 'Ditt svar har blitt registrert.\nPoeng: $totalScore / $maxScore'
+                  : 'Ditt svar har blitt registrert.',
+            ),
             actions: [
               TextButton(onPressed: () => Navigator.popUntil(context, (r) => r.isFirst), child: const Text('Ferdig')),
             ],
@@ -93,7 +136,7 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
               Text(widget.survey.description!, style: const TextStyle(fontSize: 16)),
               const SizedBox(height: 24),
             ],
-            ..._questions.map((q) => _buildQuestionWidget(q)),
+            ..._questions.where(_isQuestionVisible).map((q) => _buildQuestionWidget(q)),
             const SizedBox(height: 32),
             SizedBox(
               width: double.infinity,
@@ -153,7 +196,27 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
           onChanged: (v) => _answers[q.id] = v,
         );
       case SurveyQuestionType.multiple_choice:
+        return Column(
+          children: q.options.map((opt) {
+            final selected = ((_answers[q.id] as List?) ?? const []).contains(opt);
+            return CheckboxListTile(
+              title: Text(opt),
+              value: selected,
+              onChanged: (checked) {
+                final list = List<String>.from((_answers[q.id] as List?) ?? const []);
+                if (checked == true) {
+                  if (!list.contains(opt)) list.add(opt);
+                } else {
+                  list.remove(opt);
+                }
+                setState(() => _answers[q.id] = list);
+              },
+              controlAffinity: ListTileControlAffinity.leading,
+            );
+          }).toList(),
+        );
       case SurveyQuestionType.dropdown:
+      case SurveyQuestionType.single_choice:
         return Column(
           children: q.options.map((opt) {
             return RadioListTile<String>(

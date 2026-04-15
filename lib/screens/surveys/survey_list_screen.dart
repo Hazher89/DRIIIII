@@ -3,8 +3,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/survey/survey_service.dart';
 import '../../models/survey/survey.dart';
-import 'survey_editor_screen.dart';
 import 'survey_master_editor.dart';
+import 'survey_archive_screen.dart';
 import 'survey_results_screen.dart';
 
 class SurveyListScreen extends StatefulWidget {
@@ -116,6 +116,15 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
         elevation: 0,
         backgroundColor: isDark ? DriftProTheme.cardDark : Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.archive_outlined),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SurveyArchiveScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadSurveys,

@@ -83,6 +83,11 @@ class SurveyService {
         'is_required': q.isRequired,
         'options': q.options,
         'order_index': q.orderIndex,
+        'section_title': q.sectionTitle,
+        'points': q.points,
+        'condition_question_id': q.conditionQuestionId,
+        'condition_operator': q.conditionOperator,
+        'condition_value': q.conditionValue,
       };
       
       // If the ID is a valid UUID (not a temp one maybe), include it for upsert
@@ -118,15 +123,32 @@ class SurveyService {
     return List<SurveyQuestion>.from(response.map((x) => SurveyQuestion.fromJson(x)));
   }
 
-  static Future<void> submitResponse({
+  static Future<String> submitResponse({
     required String surveyId,
     String? userId,
     required Map<String, dynamic> answers,
   }) async {
-    await _supabase.rpc('submit_survey_response_public', params: {
+    final responseId = await _supabase.rpc('submit_survey_response_public', params: {
       'p_survey_id': surveyId,
       'p_user_id': userId,
       'p_answers': answers,
+    });
+    return responseId.toString();
+  }
+
+  static Future<void> saveResponseScore({
+    required String responseId,
+    required String surveyId,
+    required int totalScore,
+    required int maxScore,
+    required int answeredCount,
+  }) async {
+    await _supabase.from('survey_response_scores').insert({
+      'response_id': responseId,
+      'survey_id': surveyId,
+      'total_score': totalScore,
+      'max_score': maxScore,
+      'answered_count': answeredCount,
     });
   }
 

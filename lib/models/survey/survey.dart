@@ -81,6 +81,11 @@ class SurveyQuestion {
   final bool isRequired;
   final List<String> options;
   final int orderIndex;
+  final String? sectionTitle;
+  final int points;
+  final String? conditionQuestionId;
+  final String? conditionOperator;
+  final String? conditionValue;
 
   SurveyQuestion({
     required this.id,
@@ -90,6 +95,11 @@ class SurveyQuestion {
     required this.isRequired,
     required this.options,
     required this.orderIndex,
+    this.sectionTitle,
+    this.points = 0,
+    this.conditionQuestionId,
+    this.conditionOperator,
+    this.conditionValue,
   });
 
   factory SurveyQuestion.fromJson(Map<String, dynamic> json) {
@@ -101,6 +111,11 @@ class SurveyQuestion {
       isRequired: json['is_required'] ?? false,
       options: List<String>.from(json['options'] ?? []),
       orderIndex: json['order_index'] ?? 0,
+      sectionTitle: json['section_title'],
+      points: json['points'] ?? 0,
+      conditionQuestionId: json['condition_question_id'],
+      conditionOperator: json['condition_operator'],
+      conditionValue: json['condition_value'],
     );
   }
 }

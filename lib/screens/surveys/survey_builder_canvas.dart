@@ -215,6 +215,11 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
           isRequired: q.isRequired,
           options: optionsFromControllers,
           orderIndex: i,
+          sectionTitle: q.sectionTitle,
+          points: q.points,
+          conditionQuestionId: q.conditionQuestionId,
+          conditionOperator: q.conditionOperator,
+          conditionValue: q.conditionValue,
         ));
       }
 
@@ -522,6 +527,8 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
             ],
           ),
           const SizedBox(height: 12),
+          _buildAdvancedRuleRow(index, q),
+          const SizedBox(height: 12),
           _buildQuestionBody(index, q, themeColor),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
@@ -540,6 +547,11 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
                       isRequired: v,
                       options: q.options,
                       orderIndex: q.orderIndex,
+                      sectionTitle: q.sectionTitle,
+                      points: q.points,
+                      conditionQuestionId: q.conditionQuestionId,
+                      conditionOperator: q.conditionOperator,
+                      conditionValue: q.conditionValue,
                     );
                   });
                 },
@@ -594,6 +606,121 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
           child: Text('Type: ${q.type.name.toUpperCase()}', style: TextStyle(color: Colors.grey[400], fontSize: 11)),
         );
     }
+  }
+
+  Widget _buildAdvancedRuleRow(int index, SurveyQuestion q) {
+    final candidates =
+        _questions.where((item) => item.orderIndex < q.orderIndex).toList();
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        SizedBox(
+          width: 140,
+          child: TextFormField(
+            initialValue: q.sectionTitle ?? '',
+            decoration: const InputDecoration(
+              isDense: true,
+              labelText: 'Seksjon',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (v) {
+              setState(() {
+                _questions[index] = SurveyQuestion(
+                  id: q.id,
+                  surveyId: q.surveyId,
+                  questionText: q.questionText,
+                  type: q.type,
+                  isRequired: q.isRequired,
+                  options: q.options,
+                  orderIndex: q.orderIndex,
+                  sectionTitle: v.trim().isEmpty ? null : v.trim(),
+                  points: q.points,
+                  conditionQuestionId: q.conditionQuestionId,
+                  conditionOperator: q.conditionOperator,
+                  conditionValue: q.conditionValue,
+                );
+              });
+            },
+          ),
+        ),
+        SizedBox(
+          width: 90,
+          child: TextFormField(
+            initialValue: q.points.toString(),
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              isDense: true,
+              labelText: 'Poeng',
+              border: OutlineInputBorder(),
+            ),
+            onChanged: (v) {
+              setState(() {
+                _questions[index] = SurveyQuestion(
+                  id: q.id,
+                  surveyId: q.surveyId,
+                  questionText: q.questionText,
+                  type: q.type,
+                  isRequired: q.isRequired,
+                  options: q.options,
+                  orderIndex: q.orderIndex,
+                  sectionTitle: q.sectionTitle,
+                  points: (int.tryParse(v) ?? 0).clamp(0, 9999),
+                  conditionQuestionId: q.conditionQuestionId,
+                  conditionOperator: q.conditionOperator,
+                  conditionValue: q.conditionValue,
+                );
+              });
+            },
+          ),
+        ),
+        SizedBox(
+          width: 220,
+          child: DropdownButtonFormField<String?>(
+            value: q.conditionQuestionId,
+            isDense: true,
+            decoration: const InputDecoration(
+              labelText: 'Synlig hvis spørsmål',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('Ingen betingelse'),
+              ),
+              ...candidates.map(
+                (item) => DropdownMenuItem<String?>(
+                  value: item.id,
+                  child: Text(
+                    item.questionText,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ),
+            ],
+            onChanged: (value) {
+              setState(() {
+                _questions[index] = SurveyQuestion(
+                  id: q.id,
+                  surveyId: q.surveyId,
+                  questionText: q.questionText,
+                  type: q.type,
+                  isRequired: q.isRequired,
+                  options: q.options,
+                  orderIndex: q.orderIndex,
+                  sectionTitle: q.sectionTitle,
+                  points: q.points,
+                  conditionQuestionId: value,
+                  conditionOperator: value == null ? null : (q.conditionOperator ?? 'equals'),
+                  conditionValue: value == null ? null : q.conditionValue,
+                );
+              });
+            },
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildCentralAddButton(bool isDark, Color themeColor) {
