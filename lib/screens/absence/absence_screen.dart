@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../core/constants/app_icons.dart';
-import '../../core/constants/app_strings.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/absence.dart';
 import '../../models/user_profile.dart';
 import 'new_absence_screen.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
 class AbsenceScreen extends StatefulWidget {
@@ -48,13 +45,14 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
         final mine = futures[0] as List<Absence>;
         final allInCompany = futures[1] as List<Absence>;
+        final scoped = _scopeAbsencesByRole(allInCompany, profile);
 
         setState(() {
           _myAbsences = mine;
-          _deptAbsences = allInCompany.where((a) => a.status == AbsenceStatus.godkjent).toList();
+          _deptAbsences = scoped.where((a) => a.status == AbsenceStatus.godkjent).toList();
           
           if (profile.isLeader || profile.isAdmin) {
-            _pendingApprovals = allInCompany.where((a) => 
+            _pendingApprovals = scoped.where((a) => 
                a.status == AbsenceStatus.ventende && a.userId != profile.id
             ).toList();
             
@@ -71,6 +69,16 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  List<Absence> _scopeAbsencesByRole(List<Absence> absences, UserProfile profile) {
+    if (profile.isAdmin) return absences;
+    if (profile.isLeader) {
+      return absences
+          .where((a) => a.departmentId == profile.departmentId || a.userId == profile.id)
+          .toList();
+    }
+    return absences.where((a) => a.userId == profile.id).toList();
   }
 
   Color _getAbsenceColor(AbsenceType type) {

@@ -50,8 +50,9 @@ class _TicketsScreenState extends State<TicketsScreen> {
       final tickets = cid != null
           ? await SupabaseService.fetchTickets(companyId: cid)
           : await SupabaseService.fetchTickets();
+      final scoped = _scopeTicketsByRole(tickets, _profile);
       setState(() {
-        _tickets = tickets;
+        _tickets = scoped;
       });
     } catch (e) {
       setState(() {
@@ -64,6 +65,17 @@ class _TicketsScreenState extends State<TicketsScreen> {
         });
       }
     }
+  }
+
+  List<Ticket> _scopeTicketsByRole(List<Ticket> tickets, UserProfile? profile) {
+    if (profile == null) return const [];
+    if (profile.isAdmin) return tickets;
+    if (profile.isLeader) {
+      return tickets
+          .where((t) => t.departmentId == profile.departmentId || t.reportedBy == profile.id)
+          .toList();
+    }
+    return tickets.where((t) => t.reportedBy == profile.id).toList();
   }
 
   void _openNewTicket() {

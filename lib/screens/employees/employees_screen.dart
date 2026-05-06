@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_icons.dart';
-import '../../core/constants/app_strings.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
-import '../profile/profile_screen.dart';
 
 class EmployeesScreen extends StatefulWidget {
   const EmployeesScreen({super.key});
@@ -18,6 +16,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
   bool _isLoading = true;
   String? _error;
   String _searchQuery = '';
+  UserProfile? _me;
 
   @override
   void initState() {
@@ -42,8 +41,10 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
       }
 
       final employees = await SupabaseService.fetchProfiles(companyId: companyId);
+      final me = await SupabaseService.fetchCurrentUserProfile();
       setState(() {
         _employees = employees;
+        _me = me;
         _isLoading = false;
       });
     } catch (e) {
@@ -180,7 +181,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
   void _showEmployeeActions(UserProfile employee) {
     final curUser = SupabaseService.client.auth.currentUser;
     // Only allow editing if current user is admin/superadmin and not the same user
-    final canEdit = (SupabaseService.client.auth.currentUser?.email == 'baxightsi@gmail.com') && (curUser?.id != employee.id);
+    final canEdit = (_me?.isAdmin == true) && (curUser?.id != employee.id);
 
     showModalBottomSheet(
       context: context,

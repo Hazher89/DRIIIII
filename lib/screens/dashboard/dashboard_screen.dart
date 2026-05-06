@@ -18,6 +18,9 @@ import '../../widgets/cards/quick_action_button.dart';
 import '../../widgets/cards/glass_card.dart';
 import '../../widgets/common/section_header.dart';
 import '../profile/profile_screen.dart';
+import '../admin/user_management_screen.dart';
+import '../absence/absence_screen.dart';
+import '../tickets/tickets_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Function(int)? onNavigate;
@@ -39,6 +42,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   EmployeeAttendance? _myAttendance;
   bool _isLoading = false;
   int _activeTabIndex = 0;
+  List<_DashboardNotice> _notices = const [];
 
   @override
   void initState() {
@@ -91,6 +95,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       final profiles = futures[3] as List<UserProfile>;
       final sjas = futures[4] as List<SjaForm>;
       final rounds = futures[5] as List<SafetyRound>;
+      final isCoordinator = profile?.isLeader == true || profile?.isAdmin == true;
+      final scopedTickets = _scopeTicketsByRole(tickets, profile);
+      final scopedAbsences = _scopeAbsencesByRole(absences, profile);
 
       final onDuty = await AttendanceService.getOnDutyEmployees(companyId);
       final myAttendance = await AttendanceService.getMyAttendance();
@@ -98,7 +105,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
 
-      int todayAbsences = absences.where((a) {
+      int todayAbsences = scopedAbsences.where((a) {
         final start = DateTime(a.startDate.year, a.startDate.month, a.startDate.day);
         final end = DateTime(a.endDate.year, a.endDate.month, a.endDate.day);
         return a.status == AbsenceStatus.godkjent &&
@@ -106,14 +113,47 @@ class _DashboardScreenState extends State<DashboardScreen>
             !today.isAfter(end);
       }).length;
 
-      int openTickets = tickets.where((t) => t.isOpen).length;
-      int criticalTickets = tickets.where((t) => t.severity == TicketSeverity.kritisk && t.isOpen).length;
+      int openTickets = scopedTickets.where((t) => t.isOpen).length;
+      int criticalTickets = scopedTickets.where((t) => t.severity == TicketSeverity.kritisk && t.isOpen).length;
+      final pendingApprovals = isCoordinator
+          ? scopedAbsences.where((a) => a.status == AbsenceStatus.ventende).length
+          : 0;
+      final pendingUsers = (profile?.isAdmin == true)
+          ? profiles.where((u) => !u.isApproved && !u.isPartnerPortalUser).length
+          : 0;
+      final notices = <_DashboardNotice>[
+        if (pendingUsers > 0)
+          _DashboardNotice(
+            title: '$pendingUsers nye brukere venter på godkjenning',
+            subtitle: 'Trykk for å åpne Brukergodkjenning',
+            icon: Icons.how_to_reg_outlined,
+            color: DriftProTheme.primaryGreen,
+            type: _NoticeType.pendingUsers,
+          ),
+        if (pendingApprovals > 0)
+          _DashboardNotice(
+            title: '$pendingApprovals fravær/ferie-forespørsler venter',
+            subtitle: 'Trykk for å åpne håndtering',
+            icon: AppIcons.absence,
+            color: DriftProTheme.warning,
+            type: _NoticeType.pendingAbsence,
+          ),
+        if (criticalTickets > 0)
+          _DashboardNotice(
+            title: '$criticalTickets kritiske avvik åpne',
+            subtitle: 'Trykk for å åpne avvik',
+            icon: AppIcons.ticket,
+            color: DriftProTheme.severityCritical,
+            type: _NoticeType.criticalTickets,
+          ),
+      ];
 
       setState(() {
         _profile = profile;
         _onDutyEmployees = onDuty;
         _myAttendance = myAttendance;
-        _recentActivity = [...tickets, ...absences, ...sjas].take(5).toList();
+        _recentActivity = [...scopedTickets, ...scopedAbsences, ...sjas].take(5).toList();
+        _notices = notices;
         _stats = DashboardStats(
           todayAbsences: todayAbsences,
           openTickets: openTickets,
@@ -130,6 +170,28 @@ class _DashboardScreenState extends State<DashboardScreen>
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  List<Ticket> _scopeTicketsByRole(List<Ticket> tickets, UserProfile? profile) {
+    if (profile == null) return const [];
+    if (profile.isAdmin) return tickets;
+    if (profile.isLeader) {
+      return tickets
+          .where((t) => t.departmentId == profile.departmentId || t.reportedBy == profile.id)
+          .toList();
+    }
+    return tickets.where((t) => t.reportedBy == profile.id).toList();
+  }
+
+  List<Absence> _scopeAbsencesByRole(List<Absence> absences, UserProfile? profile) {
+    if (profile == null) return const [];
+    if (profile.isAdmin) return absences;
+    if (profile.isLeader) {
+      return absences
+          .where((a) => a.departmentId == profile.departmentId || a.userId == profile.id)
+          .toList();
+    }
+    return absences.where((a) => a.userId == profile.id).toList();
   }
 
   String _getGreeting() {
@@ -190,8 +252,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 actions: [
                   IconButton(
-                    onPressed: () {},
-                    icon: Icon(AppIcons.notification, color: isDark ? Colors.white : Colors.black87),
+                    onPressed: _openNotificationsSheet,
+                    icon: Badge(
+                      isLabelVisible: _notices.isNotEmpty,
+                      backgroundColor: DriftProTheme.error,
+                      label: Text('${_notices.length}', style: const TextStyle(fontSize: 9)),
+                      child: Icon(AppIcons.notification, color: isDark ? Colors.white : Colors.black87),
+                    ),
                   ),
                   GestureDetector(
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
@@ -488,4 +555,76 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
     );
   }
+
+  void _openNotificationsSheet() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: _notices.isEmpty
+            ? const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Ingen nye varsler akkurat nå.'),
+              )
+            : ListView.separated(
+                shrinkWrap: true,
+                itemCount: _notices.length,
+                separatorBuilder: (_, _) => const Divider(height: 1),
+                itemBuilder: (_, i) {
+                  final n = _notices[i];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: n.color.withValues(alpha: 0.15),
+                      child: Icon(n.icon, color: n.color),
+                    ),
+                    title: Text(n.title),
+                    subtitle: Text(n.subtitle),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _handleNoticeTap(n.type);
+                    },
+                  );
+                },
+              ),
+      ),
+    );
+  }
+
+  void _handleNoticeTap(_NoticeType type) {
+    switch (type) {
+      case _NoticeType.pendingUsers:
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const UserManagementScreen()),
+        );
+        break;
+      case _NoticeType.pendingAbsence:
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AbsenceScreen()),
+        );
+        break;
+      case _NoticeType.criticalTickets:
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const TicketsScreen()),
+        );
+        break;
+    }
+  }
+}
+
+enum _NoticeType { pendingUsers, pendingAbsence, criticalTickets }
+
+class _DashboardNotice {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final _NoticeType type;
+
+  const _DashboardNotice({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.type,
+  });
 }
