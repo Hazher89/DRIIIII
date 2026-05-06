@@ -118,34 +118,126 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
     await _autoDistributeFromPlatformFiles(files);
   }
 
+  /// Kanonisk nøkkel: M + tall uten ledende nuller (M0044 og NO_O_M0044 → M44).
   String _normalizeUnitCode(String raw) {
-    final upper = raw.toUpperCase();
-    final withPrefix = RegExp(r'NO_O_M0*(\d{1,5})').firstMatch(upper);
-    if (withPrefix != null) {
-      final num = int.tryParse(withPrefix.group(1)!);
-      if (num != null) return 'M$num';
+    final s = raw.trim().toUpperCase();
+    if (s.isEmpty) return '';
+
+    final noOm = RegExp(
+      r'NO\s*[_-]?\s*O\s*[_-]?\s*M(\d{1,5})\b',
+      caseSensitive: false,
+    ).firstMatch(s);
+    if (noOm != null) {
+      final n = int.tryParse(noOm.group(1)!);
+      if (n != null) return 'M$n';
     }
-    final mOnly = RegExp(r'\bM0*(\d{1,5})\b').firstMatch(upper);
-    if (mOnly != null) {
-      final num = int.tryParse(mOnly.group(1)!);
-      if (num != null) return 'M$num';
+
+    final mDigits = RegExp(r'\bM(\d{1,5})\b', caseSensitive: false).firstMatch(s);
+    if (mDigits != null) {
+      final n = int.tryParse(mDigits.group(1)!);
+      if (n != null) return 'M$n';
     }
-    return upper.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
+    return s.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  }
+
+  Map<String, PartnerVehicle> _vehicleLookupMap(List<PartnerVehicle> rows) {
+    final map = <String, PartnerVehicle>{};
+    void putKey(String? key, PartnerVehicle v) {
+      if (key == null || key.isEmpty) return;
+      final k = _normalizeUnitCode(key);
+      if (k.isNotEmpty) map.putIfAbsent(k, () => v);
+      final compact = key.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+      if (compact.isNotEmpty) map.putIfAbsent(compact, () => v);
+    }
+
+    for (final v in rows) {
+      putKey(v.unitCode, v);
+      putKey(v.registrationNumber, v);
+    }
+    return map;
+  }
+
+  String? _parseResourceIdFromPdfText(String raw) {
+    if (raw.isEmpty) return null;
+    var t = raw.replaceAll('\uFF3F', '_').replaceAll('\u2013', '-');
+    final attempts = <String>[t, t.replaceAll(RegExp(r'\s+'), ' ')];
+
+    final patterns = <RegExp>[
+      RegExp(r'NO\s*[_-]?\s*O\s*[_-]?\s*M(\d{1,5})', caseSensitive: false),
+      RegExp(r'NO_O_(M\d{1,5})\b', caseSensitive: false),
+      RegExp(r'\bM(\d{1,5})\b', caseSensitive: false),
+    ];
+
+    for (final text in attempts) {
+      for (final re in patterns) {
+        final m = re.firstMatch(text);
+        if (m == null) continue;
+        final g = m.groupCount >= 1 ? m.group(1) : null;
+        if (g == null || g.isEmpty) continue;
+        final up = g.toUpperCase();
+        if (up.startsWith('M')) return up;
+        return 'M$up';
+      }
+    }
+    return null;
   }
 
   String? _extractVehicleCodeFromPdf(Uint8List bytes) {
     try {
       final doc = PdfDocument(inputBytes: bytes);
-      final text = PdfTextExtractor(doc).extractText();
+      final extractor = PdfTextExtractor(doc);
+      final lastPage = doc.pages.count - 1;
+      final earlyEnd = lastPage > 2 ? 1 : lastPage;
+
+      final layoutEarly = extractor.extractText(
+        startPageIndex: 0,
+        endPageIndex: earlyEnd,
+        layoutText: true,
+      );
+      final linearEarly = extractor.extractText(
+        startPageIndex: 0,
+        endPageIndex: earlyEnd,
+        layoutText: false,
+      );
+      var found = _parseResourceIdFromPdfText('$layoutEarly\n$linearEarly');
+      if (found == null && lastPage > earlyEnd) {
+        final rest = extractor.extractText(
+          startPageIndex: earlyEnd + 1,
+          endPageIndex: lastPage,
+          layoutText: false,
+        );
+        found = _parseResourceIdFromPdfText(rest);
+      }
+      found ??= _parseResourceIdFromPdfText(extractor.extractText());
       doc.dispose();
-      final reResource = RegExp(r'NO_O_(M\d{1,5})', caseSensitive: false);
-      final m = reResource.firstMatch(text);
-      if (m != null) return m.group(1)?.toUpperCase();
-      final fallback = RegExp(r'\bM0*\d{1,5}\b', caseSensitive: false).firstMatch(text);
-      return fallback?.group(0)?.toUpperCase();
+      return found;
     } catch (_) {
       return null;
     }
+  }
+
+  String? _extractVehicleCodeFromFilename(String fileName) {
+    final base = fileName.split(RegExp(r'[\\/]')).last;
+    return _parseResourceIdFromPdfText(base.replaceAll('_', ' '));
+  }
+
+  Future<Uint8List?> _platformFileBytes(PlatformFile file) async {
+    if (file.bytes != null && file.bytes!.isNotEmpty) return file.bytes;
+    if (!kIsWeb && file.path != null) {
+      try {
+        return await File(file.path!).readAsBytes();
+      } catch (_) {}
+    }
+    if (file.readStream != null) {
+      final out = <int>[];
+      await for (final chunk in file.readStream!) {
+        out.addAll(chunk);
+      }
+      if (out.isEmpty) return null;
+      return Uint8List.fromList(out);
+    }
+    return null;
   }
 
   Future<void> _autoDistributeFromPlatformFiles(List<PlatformFile> files) async {
@@ -161,27 +253,25 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
         final v = await PartnerService.fetchVehicles(p.id);
         vehicleRows.addAll(v);
       }
-      final vehicleMap = <String, PartnerVehicle>{};
-      for (final v in vehicleRows) {
-        vehicleMap[_normalizeUnitCode(v.unitCode)] = v;
-      }
+      final vehicleMap = _vehicleLookupMap(vehicleRows);
 
       int sent = 0;
       int skipped = 0;
       for (final file in files) {
-        final bytes = file.bytes ??
-            (file.path != null && !kIsWeb ? await File(file.path!).readAsBytes() : null);
+        final bytes = await _platformFileBytes(file);
         if (bytes == null || bytes.isEmpty) {
           skipped++;
           continue;
         }
-        final foundCode = _extractVehicleCodeFromPdf(bytes);
+        var foundCode = _extractVehicleCodeFromPdf(bytes);
+        foundCode ??= _extractVehicleCodeFromFilename(file.name);
         if (foundCode == null) {
           skipped++;
           continue;
         }
         final normalized = _normalizeUnitCode(foundCode);
-        final vehicle = vehicleMap[normalized];
+        final compact = foundCode.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+        final vehicle = vehicleMap[normalized] ?? vehicleMap[compact];
         if (vehicle == null) {
           skipped++;
           continue;
