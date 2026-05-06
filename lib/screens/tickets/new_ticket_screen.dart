@@ -1,15 +1,16 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import 'dart:typed_data';
+
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
+
 import '../../core/constants/app_strings.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
-import '../../models/user_profile.dart';
 
+/// Enkel, rask innrapportering for ansatte (tekst + bilder + alvor).
 class NewTicketScreen extends StatefulWidget {
   const NewTicketScreen({super.key});
 
@@ -21,53 +22,47 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _categoryController = TextEditingController();
 
   TicketSeverity _severity = TicketSeverity.middels;
   bool _isAnonymous = false;
   bool _isSubmitting = false;
   String? _error;
+  String? _category;
 
-  String? _assignedToId;
-  List<UserProfile> _allProfiles = [];
-  final List<XFile> _selectedImages = [];
+  static const _categories = [
+    'Helse og sikkerhet',
+    'Kvalitet',
+    'Miljø',
+    'Utstyr / teknisk',
+    'Annet',
+  ];
+
+  final List<_PickedImage> _images = [];
   final ImagePicker _picker = ImagePicker();
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProfiles();
-  }
-
-  Future<void> _loadProfiles() async {
-    try {
-      final companyId = await SupabaseService.getCurrentCompanyId();
-      if (companyId != null) {
-        final profiles = await SupabaseService.fetchProfiles(companyId: companyId);
-        setState(() {
-          _allProfiles = profiles;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading profiles: $e');
-    }
-  }
-
-  Future<void> _pickImages() async {
-    final List<XFile> images = await _picker.pickMultiImage();
-    if (images.isNotEmpty) {
-      setState(() {
-        _selectedImages.addAll(images);
-      });
-    }
-  }
 
   @override
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
-    _categoryController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickGallery() async {
+    final List<XFile> picked = await _picker.pickMultiImage();
+    await _addFiles(picked);
+  }
+
+  Future<void> _pickCamera() async {
+    final XFile? shot =
+        await _picker.pickImage(source: ImageSource.camera);
+    if (shot != null) await _addFiles([shot]);
+  }
+
+  Future<void> _addFiles(List<XFile> files) async {
+    for (final f in files) {
+      final bytes = await f.readAsBytes();
+      setState(() => _images.add(_PickedImage(bytes: bytes, name: f.name)));
+    }
   }
 
   Future<void> _submit() async {
@@ -91,28 +86,30 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
       if (companyId == null) {
         throw StateError('Fant ikke selskap for brukeren.');
       }
+      final profile = await SupabaseService.fetchCurrentUserProfile();
 
       List<String> imageUrls = [];
-      for (var image in _selectedImages) {
-        final bytes = await image.readAsBytes();
+      for (var i = 0; i < _images.length; i++) {
         final fileName = '${const Uuid().v4()}.jpg';
-        final path = 'tickets/$companyId/$fileName';
-        final url = await SupabaseService.uploadFile('tickets', path, bytes);
+        final path = '$companyId/${const Uuid().v4()}_$fileName';
+        final url = await SupabaseService.uploadFile(
+          'tickets',
+          path,
+          _images[i].bytes,
+        );
         imageUrls.add(url);
       }
 
       final ticket = Ticket(
-        id: '', 
+        id: '',
         companyId: companyId,
+        departmentId: profile?.departmentId,
         reportedBy: user.id,
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
-        category: _categoryController.text.trim().isEmpty
-            ? null
-            : _categoryController.text.trim(),
+        category: _category,
         severity: _severity,
         isAnonymous: _isAnonymous,
-        assignedTo: _assignedToId,
         imageUrls: imageUrls,
         status: TicketStatus.aapen,
       );
@@ -122,13 +119,11 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
       Navigator.of(context).pop(true);
     } catch (e) {
       setState(() {
-        _error = 'Kunne ikke lagre avvik. Prøv igjen.';
+        _error = 'Kunne ikke lagre avvik: $e';
       });
     } finally {
       if (mounted) {
-        setState(() {
-          _isSubmitting = false;
-        });
+        setState(() => _isSubmitting = false);
       }
     }
   }
@@ -143,182 +138,198 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
       ),
       backgroundColor:
           isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TextFormField(
-                controller: _titleController,
-                decoration: const InputDecoration(
-                  labelText: AppStrings.ticketTitle,
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.emergency_outlined,
+                      color: DriftProTheme.primaryGreen),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Kort beskrivelse og gjerne bilde. En leder følger opp i kontrollsenteret.',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            TextFormField(
+              controller: _titleController,
+              decoration: const InputDecoration(
+                labelText: 'Hva skjedde?',
+                hintText: 'Kort tittel',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'Påkrevd' : null,
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Beskriv situasjonen',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 5,
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'Påkrevd' : null,
+            ),
+            const SizedBox(height: 18),
+            Text('Kategori', style: DriftProTheme.labelLg),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _categories.map((c) {
+                final sel = _category == c;
+                return FilterChip(
+                  label: Text(c),
+                  selected: sel,
+                  onSelected: (_) => setState(() => _category = sel ? null : c),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 18),
+            Text(AppStrings.severity, style: DriftProTheme.labelLg),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: TicketSeverity.values.map((s) {
+                final selected = s == _severity;
+                return ChoiceChip(
+                  label: Text(s.label),
+                  selected: selected,
+                  onSelected: (_) => setState(() => _severity = s),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 14),
+            SwitchListTile.adaptive(
+              value: _isAnonymous,
+              onChanged: (v) => setState(() => _isAnonymous = v),
+              title: const Text(AppStrings.anonymous),
+              subtitle: const Text(
+                'Navnet vises ikke for saksbehandlere i listen.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Bilder', style: DriftProTheme.labelLg),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _pickGallery,
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: const Text('Galleri'),
+                  ),
                 ),
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Påkrevd' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _descriptionController,
-                decoration: const InputDecoration(
-                  labelText: AppStrings.ticketDescription,
-                ),
-                maxLines: 4,
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'Påkrevd' : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _categoryController,
-                decoration: const InputDecoration(
-                  labelText: AppStrings.ticketCategory,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                AppStrings.severity,
-                style: DriftProTheme.labelLg,
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: TicketSeverity.values.map((s) {
-                  final selected = s == _severity;
-                  return ChoiceChip(
-                    label: Text(s.label),
-                    selected: selected,
-                    onSelected: (_) {
-                      setState(() => _severity = s);
-                    },
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 16),
-              SwitchListTile.adaptive(
-                value: _isAnonymous,
-                onChanged: (v) => setState(() => _isAnonymous = v),
-                title: const Text(AppStrings.anonymous),
-              ),
-              const SizedBox(height: 16),
-              const Text('Hvem skal behandle avviket?', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _assignedToId,
-                decoration: InputDecoration(
-                  hintText: 'Velg person',
-                  filled: true,
-                  fillColor: isDark ? DriftProTheme.cardDark : Colors.white10,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                ),
-                items: _allProfiles.map((p) => DropdownMenuItem(
-                  value: p.id,
-                  child: Text(p.fullName),
-                )).toList(),
-                onChanged: (val) => setState(() => _assignedToId = val),
-              ),
-              const SizedBox(height: 24),
-              const Text('Bilder', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              _buildImagePicker(isDark),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: const TextStyle(
-                    color: DriftProTheme.error,
-                    fontSize: 13,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _pickCamera,
+                    icon: const Icon(Icons.photo_camera_outlined),
+                    label: const Text('Kamera'),
                   ),
                 ),
               ],
-              const SizedBox(height: 24),
+            ),
+            if (_images.isNotEmpty) ...[
+              const SizedBox(height: 12),
               SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _submit,
-                  child: _isSubmitting
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation<Color>(Colors.white),
+                height: 96,
+                child: ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _images.length,
+                  itemBuilder: (ctx, i) {
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Image.memory(
+                              _images[i].bytes,
+                              width: 96,
+                              height: 96,
+                              fit: BoxFit.cover,
+                            ),
                           ),
-                        )
-                      : const Text(AppStrings.save),
+                          Positioned(
+                            top: 2,
+                            right: 2,
+                            child: GestureDetector(
+                              onTap: () =>
+                                  setState(() => _images.removeAt(i)),
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
-          ),
+            if (_error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _error!,
+                style: const TextStyle(color: DriftProTheme.error, fontSize: 13),
+              ),
+            ],
+            const SizedBox(height: 28),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton(
+                onPressed: _isSubmitting ? null : _submit,
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 22,
+                        width: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Send inn avvik'),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
-
-  Widget _buildImagePicker(bool isDark) {
-    return Column(
-      children: [
-        if (_selectedImages.isNotEmpty)
-          Container(
-            height: 100,
-            margin: const EdgeInsets.only(bottom: 12),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _selectedImages.length,
-              itemBuilder: (context, index) {
-                return Stack(
-                  children: [
-                    Container(
-                      width: 100,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Text("Bilde ${index + 1}"), // Simplified for web/pickers if path is not direct
-                      ),
-                    ),
-                    Positioned(
-                      top: 0,
-                      right: 8,
-                      child: GestureDetector(
-                        onTap: () => setState(() => _selectedImages.removeAt(index)),
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                          child: const Icon(Icons.close, size: 12, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        InkWell(
-          onTap: _pickImages,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 20),
-            decoration: BoxDecoration(
-              color: isDark ? DriftProTheme.cardDark : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.withOpacity(0.3), style: BorderStyle.solid),
-            ),
-            child: const Column(
-              children: [
-                Icon(Icons.add_a_photo_outlined, color: Colors.grey, size: 24),
-                SizedBox(height: 4),
-                Text('Legg til bilder', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }
 
+class _PickedImage {
+  final Uint8List bytes;
+  final String name;
+
+  _PickedImage({required this.bytes, required this.name});
+}

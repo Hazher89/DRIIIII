@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/services/supabase_service.dart';
+import '../../core/services/ticket_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
+import '../../models/user_profile.dart';
 import 'new_ticket_screen.dart';
+import 'ticket_admin_dashboard_screen.dart';
 import 'ticket_detail_screen.dart';
-import '../common/placeholder_screen.dart';
 
 class TicketsScreen extends StatefulWidget {
   const TicketsScreen({super.key});
@@ -21,11 +23,18 @@ class _TicketsScreenState extends State<TicketsScreen> {
   List<Ticket> _tickets = const [];
   bool _isLoading = true;
   String? _error;
+  UserProfile? _profile;
 
   @override
   void initState() {
     super.initState();
-    _loadTickets();
+    _loadProfileAndTickets();
+  }
+
+  Future<void> _loadProfileAndTickets() async {
+    final p = await SupabaseService.fetchCurrentUserProfile();
+    if (mounted) setState(() => _profile = p);
+    await _loadTickets();
   }
 
   Future<void> _loadTickets() async {
@@ -34,7 +43,11 @@ class _TicketsScreenState extends State<TicketsScreen> {
       _error = null;
     });
     try {
-      final tickets = await SupabaseService.fetchTickets();
+      final cid =
+          _profile?.companyId ?? await SupabaseService.getCurrentCompanyId();
+      final tickets = cid != null
+          ? await SupabaseService.fetchTickets(companyId: cid)
+          : await SupabaseService.fetchTickets();
       setState(() {
         _tickets = tickets;
       });
@@ -88,6 +101,18 @@ class _TicketsScreenState extends State<TicketsScreen> {
       appBar: AppBar(
         title: const Text(AppStrings.navTickets),
         actions: [
+          if (_profile?.canCoordinateTickets == true)
+            IconButton(
+              icon: const Icon(Icons.dashboard_customize_outlined),
+              tooltip: 'Kontrollsenter',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const TicketAdminDashboardScreen(),
+                  ),
+                );
+              },
+            ),
           IconButton(icon: const Icon(AppIcons.search), onPressed: () {}),
         ],
       ),
@@ -222,11 +247,16 @@ class _TicketsScreenState extends State<TicketsScreen> {
       ),
       child: InkWell(
         onTap: () {
-          Navigator.of(context).push(
+          Navigator.of(context)
+              .push(
             MaterialPageRoute(
-              builder: (_) => TicketDetailScreen(ticket: t),
+              builder: (_) => TicketDetailScreen(
+                ticket: t,
+                coordinatorProfile: _profile,
+              ),
             ),
-          ).then((_) => _loadTickets());
+          )
+              .then((_) => _loadTickets());
         },
         borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
         child: Padding(

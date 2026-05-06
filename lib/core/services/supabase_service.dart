@@ -24,22 +24,64 @@ class SupabaseService {
 
   // ── Tickets / avvik ──────────────────────────────────────────────────────
 
+  /// Joiner reporter, ansvarlig og avdeling (PostgREST embed).
+  static const String ticketSelectEmbed = '''
+*,
+reporter:profiles!reported_by(full_name, avatar_url),
+assignee:profiles!assigned_to(full_name),
+department:departments!department_id(name)
+''';
+
   static Future<List<Ticket>> fetchTickets({
     String? companyId,
   }) async {
     if (!isConfigured) return const [];
 
-    final query = client.from('tickets').select();
-    if (companyId != null) {
-      query.eq('company_id', companyId);
+    try {
+      dynamic query = client
+          .from('tickets')
+          .select(ticketSelectEmbed);
+      if (companyId != null) {
+        query = query.eq('company_id', companyId);
+      }
+      final data =
+          await query.order('created_at', ascending: false) as List<dynamic>;
+      return data
+          .map((e) => Ticket.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      dynamic q2 = client.from('tickets').select();
+      if (companyId != null) {
+        q2 = q2.eq('company_id', companyId);
+      }
+      final data = await q2.order('created_at', ascending: false) as List<dynamic>;
+      return data
+          .map((e) => Ticket.fromJson(e as Map<String, dynamic>))
+          .toList();
     }
+  }
 
-    final data =
-        await query.order('created_at', ascending: false) as List<dynamic>;
+  static Future<Ticket?> fetchTicketById(String id) async {
+    if (!isConfigured) return null;
+    try {
+      final row = await client
+          .from('tickets')
+          .select(ticketSelectEmbed)
+          .eq('id', id)
+          .maybeSingle();
+      if (row == null) return null;
+      return Ticket.fromJson(row);
+    } catch (_) {
+      final row = await client.from('tickets').select().eq('id', id).maybeSingle();
+      if (row == null) return null;
+      return Ticket.fromJson(row);
+    }
+  }
 
-    return data
-        .map((e) => Ticket.fromJson(e as Map<String, dynamic>))
-        .toList();
+  static Future<void> updateTicket(String id, Map<String, dynamic> patch) async {
+    final merged = Map<String, dynamic>.from(patch);
+    merged['updated_at'] = DateTime.now().toIso8601String();
+    await client.from('tickets').update(merged).eq('id', id);
   }
 
   static Future<Ticket> createTicket(Ticket ticket) async {
@@ -70,6 +112,12 @@ class SupabaseService {
     final userId = client.auth.currentUser?.id;
     if (userId == null) return;
 
+    final current = await client
+        .from('tickets')
+        .select('status')
+        .eq('id', ticketId)
+        .single() as Map<String, dynamic>;
+
     final Map<String, dynamic> data = {
       'ticket_id': ticketId,
       'user_id': userId,
@@ -78,14 +126,19 @@ class SupabaseService {
     };
 
     if (newStatus != null) {
+      data['old_status'] = current['status'];
       data['new_status'] = newStatus.dbValue;
       data['is_status_change'] = true;
-      
-      // Also update the ticket itself
-      await client.from('tickets').update({
+
+      final upd = <String, dynamic>{
         'status': newStatus.dbValue,
         'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', ticketId);
+      };
+      if (newStatus == TicketStatus.lukket) {
+        upd['resolved_at'] = DateTime.now().toIso8601String();
+        upd['resolved_by'] = userId;
+      }
+      await client.from('tickets').update(upd).eq('id', ticketId);
     }
 
     await client.from('ticket_comments').insert(data);

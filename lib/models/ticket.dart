@@ -86,6 +86,8 @@ class Ticket {
   final bool isAnonymous;
   final String? rootCause;
   final List<Map<String, dynamic>> actionPlan;
+  /// Kun synlig for koordinatorer i detaljvisning (lagres i DB).
+  final String? internalNotes;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -120,6 +122,7 @@ class Ticket {
     this.isAnonymous = false,
     this.rootCause,
     this.actionPlan = const [],
+    this.internalNotes,
     this.createdAt,
     this.updatedAt,
     this.reporterName,
@@ -164,6 +167,7 @@ class Ticket {
       isAnonymous: json['is_anonymous'] as bool? ?? false,
       rootCause: json['root_cause'] as String?,
       actionPlan: (json['action_plan'] as List<dynamic>?)?.map((e) => e as Map<String, dynamic>).toList() ?? [],
+      internalNotes: json['internal_notes'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -175,6 +179,12 @@ class Ticket {
           : null,
       reporterAvatarUrl: json['reporter'] != null
           ? json['reporter']['avatar_url'] as String?
+          : null,
+      assigneeName: json['assignee'] != null
+          ? json['assignee']['full_name'] as String?
+          : null,
+      departmentName: json['department'] != null
+          ? json['department']['name'] as String?
           : null,
     );
   }
@@ -197,9 +207,78 @@ class Ticket {
     'status': status.dbValue,
     'root_cause': rootCause,
     'action_plan': actionPlan,
+    'internal_notes': internalNotes,
   };
 
   bool get isOpen => status == TicketStatus.aapen || status == TicketStatus.underBehandling;
+
+  Ticket copyWith({
+    String? id,
+    String? companyId,
+    String? departmentId,
+    String? reportedBy,
+    String? assignedTo,
+    int? ticketNumber,
+    String? title,
+    String? description,
+    String? category,
+    TicketSeverity? severity,
+    TicketStatus? status,
+    List<String>? imageUrls,
+    List<String>? annotatedImageUrls,
+    double? gpsLatitude,
+    double? gpsLongitude,
+    String? gpsAddress,
+    String? locationDescription,
+    DateTime? dueDate,
+    DateTime? resolvedAt,
+    String? resolvedBy,
+    String? resolutionComment,
+    bool? isAnonymous,
+    String? rootCause,
+    List<Map<String, dynamic>>? actionPlan,
+    String? internalNotes,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? reporterName,
+    String? reporterAvatarUrl,
+    String? assigneeName,
+    String? departmentName,
+  }) {
+    return Ticket(
+      id: id ?? this.id,
+      companyId: companyId ?? this.companyId,
+      departmentId: departmentId ?? this.departmentId,
+      reportedBy: reportedBy ?? this.reportedBy,
+      assignedTo: assignedTo ?? this.assignedTo,
+      ticketNumber: ticketNumber ?? this.ticketNumber,
+      title: title ?? this.title,
+      description: description ?? this.description,
+      category: category ?? this.category,
+      severity: severity ?? this.severity,
+      status: status ?? this.status,
+      imageUrls: imageUrls ?? this.imageUrls,
+      annotatedImageUrls: annotatedImageUrls ?? this.annotatedImageUrls,
+      gpsLatitude: gpsLatitude ?? this.gpsLatitude,
+      gpsLongitude: gpsLongitude ?? this.gpsLongitude,
+      gpsAddress: gpsAddress ?? this.gpsAddress,
+      locationDescription: locationDescription ?? this.locationDescription,
+      dueDate: dueDate ?? this.dueDate,
+      resolvedAt: resolvedAt ?? this.resolvedAt,
+      resolvedBy: resolvedBy ?? this.resolvedBy,
+      resolutionComment: resolutionComment ?? this.resolutionComment,
+      isAnonymous: isAnonymous ?? this.isAnonymous,
+      rootCause: rootCause ?? this.rootCause,
+      actionPlan: actionPlan ?? this.actionPlan,
+      internalNotes: internalNotes ?? this.internalNotes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      reporterName: reporterName ?? this.reporterName,
+      reporterAvatarUrl: reporterAvatarUrl ?? this.reporterAvatarUrl,
+      assigneeName: assigneeName ?? this.assigneeName,
+      departmentName: departmentName ?? this.departmentName,
+    );
+  }
 }
 
 class TicketComment {
