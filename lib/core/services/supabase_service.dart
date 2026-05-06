@@ -353,7 +353,7 @@ department:departments!department_id(name)
     if (existing != null) {
       // Self-heal: hvis profil finnes uten company_id, forsøk å sette en bootstrap company.
       if (existing.companyId == null) {
-        final bootstrapCompany = await _discoverBootstrapCompanyId();
+        final bootstrapCompany = await discoverBootstrapCompanyId();
         if (bootstrapCompany != null) {
           try {
             await client.from('profiles').update({'company_id': bootstrapCompany}).eq('id', existing.id);
@@ -376,7 +376,7 @@ department:departments!department_id(name)
       if (fullName.isEmpty) fullName = 'Ny bruker';
 
       // Velg bootstrap company for første innlogging ved manglende profil.
-      final companyId = await _discoverBootstrapCompanyId();
+      final companyId = await discoverBootstrapCompanyId();
 
       await client.from('profiles').upsert({
         'id': user.id,
@@ -396,8 +396,12 @@ department:departments!department_id(name)
     }
   }
 
-  static Future<String?> _discoverBootstrapCompanyId() async {
+  static Future<String?> discoverBootstrapCompanyId() async {
     if (SupabaseConfig.defaultCompanyId != null) return SupabaseConfig.defaultCompanyId;
+    try {
+      final rpcVal = await client.rpc('get_bootstrap_company_id');
+      if (rpcVal is String && rpcVal.isNotEmpty) return rpcVal;
+    } catch (_) {}
     try {
       // Prioriter selskaper som allerede har avdelinger.
       final byDepartments = await client

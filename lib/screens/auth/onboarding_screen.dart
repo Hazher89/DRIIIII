@@ -67,7 +67,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       _resolvedCompanyId = companyId;
 
       if (companyId != null) {
-        final depts = await SupabaseService.fetchDepartments(companyId: companyId);
+        var depts = await SupabaseService.fetchDepartments(companyId: companyId);
+        // Fallback: hvis company peker til "feil" tenant uten avdelinger, hent bootstrap-id.
+        if (depts.isEmpty) {
+          final bootstrap = await SupabaseService.discoverBootstrapCompanyId();
+          if (bootstrap != null && bootstrap != companyId) {
+            companyId = bootstrap;
+            await SupabaseService.client
+                .from('profiles')
+                .update({'company_id': companyId})
+                .eq('id', widget.profile.id);
+            depts = await SupabaseService.fetchDepartments(companyId: companyId);
+          }
+        }
+        _resolvedCompanyId = companyId;
         setState(() {
           _departments = depts;
           _isLoading = false;
