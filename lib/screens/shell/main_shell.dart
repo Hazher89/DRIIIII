@@ -65,13 +65,13 @@ class _MainShellState extends State<MainShell> {
     if (_profile == null) return false; // Default to FALSE while loading
     if (_profile!.role == UserRole.superadmin) return true; // SuperAdmins bypass
 
-    // Samarbeidspartnere: standard på for leder/admin om ikke eksplisitt av i access_settings
+    // Samarbeidspartnere: vises for alle roller med mindre den er eksplisitt slått av.
     if (key == 'partners') {
       final settings = _profile!.accessSettings;
       final explicit = settings?['partners'];
       if (explicit == false) return false;
       if (explicit == true) return true;
-      return _profile!.isAdmin || _profile!.isLeader;
+      return true;
     }
 
     final settings = _profile!.accessSettings;
