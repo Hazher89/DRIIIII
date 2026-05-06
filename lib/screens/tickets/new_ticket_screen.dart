@@ -89,15 +89,20 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
       final profile = await SupabaseService.fetchCurrentUserProfile();
 
       List<String> imageUrls = [];
+      int failedUploads = 0;
       for (var i = 0; i < _images.length; i++) {
-        final fileName = '${const Uuid().v4()}.jpg';
-        final path = '$companyId/${const Uuid().v4()}_$fileName';
-        final url = await SupabaseService.uploadFile(
-          'tickets',
-          path,
-          _images[i].bytes,
-        );
-        imageUrls.add(url);
+        try {
+          final fileName = '${const Uuid().v4()}.jpg';
+          final path = '$companyId/${const Uuid().v4()}_$fileName';
+          final url = await SupabaseService.uploadFile(
+            'tickets',
+            path,
+            _images[i].bytes,
+          );
+          imageUrls.add(url);
+        } catch (_) {
+          failedUploads++;
+        }
       }
 
       final ticket = Ticket(
@@ -116,6 +121,15 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
 
       await SupabaseService.createTicket(ticket);
       if (!mounted) return;
+      if (failedUploads > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Avvik sendt, men $failedUploads bilde(r) kunne ikke lastes opp. Be admin kjøre storage-policy SQL.',
+            ),
+          ),
+        );
+      }
       Navigator.of(context).pop(true);
     } catch (e) {
       setState(() {
