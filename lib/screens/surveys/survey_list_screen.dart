@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/build_info.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/survey/survey_service.dart';
@@ -79,6 +80,32 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
     }
   }
 
+  Widget _buildWhatsNewStrip(bool isDark) {
+    return Material(
+      color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.new_releases_outlined, size: 20, color: DriftProTheme.primaryGreen),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Nytt i byggeren: Likert, skyveknapp, klokkeslett, URL · «Ferdig — gå til Publiser» nederst i redigering · ${BuildInfo.clientTag}',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  height: 1.35,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<String?> _showInputDialog(String title, String label) async {
     final controller = TextEditingController();
     return showDialog<String>(
@@ -131,18 +158,26 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _surveys.isEmpty
-              ? _buildEmptyState()
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _surveys.length,
-                  itemBuilder: (context, index) {
-                    final survey = _surveys[index];
-                    return _buildSurveyCard(survey, isDark);
-                  },
-                ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildWhatsNewStrip(isDark),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _surveys.isEmpty
+                    ? _buildEmptyState()
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _surveys.length,
+                        itemBuilder: (context, index) {
+                          final survey = _surveys[index];
+                          return _buildSurveyCard(survey, isDark);
+                        },
+                      ),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createSurvey,
         label: const Text('Lag ny undersøkelse', style: TextStyle(fontWeight: FontWeight.bold)),

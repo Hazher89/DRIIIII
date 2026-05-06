@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/constants/build_info.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -142,7 +143,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
           children: [
             const Text(AppStrings.navTickets),
             Text(
-              'Spor hendelser · bilder · status',
+              'Operativ hub · mørk/oransje topp · ${BuildInfo.clientTag}',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.normal,

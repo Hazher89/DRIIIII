@@ -9,6 +9,7 @@ import '../absence/absence_screen.dart';
 import '../tickets/tickets_screen.dart';
 import '../hms/hms_screen.dart';
 import '../surveys/survey_list_screen.dart';
+import '../partners/partners_dashboard_screen.dart';
 import '../more/more_screen.dart';
 import '../../models/user_profile.dart';
 import '../../core/services/supabase_service.dart';
@@ -63,10 +64,19 @@ class _MainShellState extends State<MainShell> {
   bool _hasAccess(String key) {
     if (_profile == null) return false; // Default to FALSE while loading
     if (_profile!.role == UserRole.superadmin) return true; // SuperAdmins bypass
-    
+
+    // Samarbeidspartnere: standard på for leder/admin om ikke eksplisitt av i access_settings
+    if (key == 'partners') {
+      final settings = _profile!.accessSettings;
+      final explicit = settings?['partners'];
+      if (explicit == false) return false;
+      if (explicit == true) return true;
+      return _profile!.isAdmin || _profile!.isLeader;
+    }
+
     final settings = _profile!.accessSettings;
-    if (settings == null) return (key == 'dashboard' || key == 'more'); 
-    
+    if (settings == null) return (key == 'dashboard' || key == 'more');
+
     // Core features depend on admin approval + individual toggles
     return settings[key] ?? (key == 'dashboard' || key == 'more');
   }
@@ -106,6 +116,7 @@ class _MainShellState extends State<MainShell> {
       {'screen': const AbsenceScreen(), 'icon': AppIcons.absence, 'label': AppStrings.navAbsence, 'access': 'fravaer'},
       {'screen': const TicketsScreen(), 'icon': AppIcons.ticket, 'label': AppStrings.navTickets, 'access': 'avvik'},
       {'screen': const HmsScreen(), 'icon': AppIcons.hms, 'label': AppStrings.navHMS, 'access': 'hms'},
+      {'screen': const PartnersDashboardScreen(), 'icon': Icons.handshake_outlined, 'label': AppStrings.navPartners, 'access': 'partners'},
       {'screen': const MoreScreen(), 'icon': AppIcons.more, 'label': AppStrings.navMore, 'access': 'more'},
     ];
 
@@ -171,12 +182,20 @@ class _MainShellState extends State<MainShell> {
               ),
             ),
             const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? DriftProTheme.primaryGreen : (isDark ? Colors.grey[600] : Colors.grey[450]),
+            SizedBox(
+              width: 64,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected ? DriftProTheme.primaryGreen : (isDark ? Colors.grey[600] : Colors.grey[450]),
+                  ),
+                ),
               ),
             ),
           ],
