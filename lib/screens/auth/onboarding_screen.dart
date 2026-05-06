@@ -16,11 +16,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
   final _emergencyNameController = TextEditingController();
   final _emergencyPhoneController = TextEditingController();
   DateTime? _birthDate;
   
   String? _selectedDepartmentId;
+  String? _resolvedCompanyId;
   List<Department> _departments = [];
   bool _isLoading = true;
   bool _isSaving = false;
@@ -30,25 +32,39 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.initState();
     _nameController.text = widget.profile.fullName;
     _phoneController.text = widget.profile.phone ?? '';
+    _addressController.text = widget.profile.address ?? '';
     _emergencyNameController.text = widget.profile.emergencyContactName ?? '';
     _emergencyPhoneController.text = widget.profile.emergencyContactPhone ?? '';
     _birthDate = widget.profile.birthDate;
     _loadDepartments();
   }
 
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _emergencyNameController.dispose();
+    _emergencyPhoneController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadDepartments() async {
     try {
-      // For onboarding, we might not have a companyId yet if it's a totally new user.
-      // But usually they belong to a company already or we assign one.
+      // Sikre company-kontekst for nye OAuth-brukere før vi henter avdelinger.
       String? companyId = widget.profile.companyId;
-      
+
       if (companyId == null) {
-        // Find first company to assign (demo logic)
         final companies = await SupabaseService.client.from('companies').select('id').limit(1);
         if (companies.isNotEmpty) {
           companyId = companies[0]['id'] as String;
+          await SupabaseService.client
+              .from('profiles')
+              .update({'company_id': companyId})
+              .eq('id', widget.profile.id);
         }
       }
+      _resolvedCompanyId = companyId;
 
       if (companyId != null) {
         final depts = await SupabaseService.fetchDepartments(companyId: companyId);
@@ -77,7 +93,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     setState(() => _isSaving = true);
     
     try {
-      String? companyId = widget.profile.companyId;
+      String? companyId = _resolvedCompanyId ?? widget.profile.companyId;
       if (companyId == null && _departments.isNotEmpty) {
         companyId = _departments.first.companyId;
       }
@@ -85,6 +101,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       await SupabaseService.client.from('profiles').update({
         'full_name': _nameController.text,
         'phone': _phoneController.text,
+        'address': _addressController.text,
         'birth_date': _birthDate?.toIso8601String().split('T').first,
         'emergency_contact_name': _emergencyNameController.text,
         'emergency_contact_phone': _emergencyPhoneController.text,
@@ -140,6 +157,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         
                         _buildField('Fullt navn', _nameController, Icons.person_outline),
                         _buildField('Telefonnummer', _phoneController, Icons.phone_android_outlined, keyboardType: TextInputType.phone),
+                        _buildField('Adresse', _addressController, Icons.location_on_outlined),
                         _buildBirthDateField(),
                         _buildField('Pårørende - navn', _emergencyNameController, Icons.family_restroom_outlined),
                         _buildField('Pårørende - telefon', _emergencyPhoneController, Icons.contact_phone_outlined, keyboardType: TextInputType.phone),
@@ -161,6 +179,22 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                           )).toList(),
                           onChanged: (val) => setState(() => _selectedDepartmentId = val),
                           validator: (val) => val == null ? 'Vennligst velg en avdeling' : null,
+                        ),
+                        if (_departments.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              'Fant ingen avdelinger ennå. Trykk "Oppdater" eller kontakt admin.',
+                              style: TextStyle(color: Colors.orange[700], fontSize: 12),
+                            ),
+                          ),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton.icon(
+                            onPressed: _loadDepartments,
+                            icon: const Icon(Icons.refresh, size: 16),
+                            label: const Text('Oppdater avdelinger'),
+                          ),
                         ),
                         
                         const SizedBox(height: 48),
