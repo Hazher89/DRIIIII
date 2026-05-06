@@ -347,6 +347,73 @@ department:departments!department_id(name)
     }
   }
 
+  /// Henter profil, og oppretter en minimal pending-profil hvis trigger ikke gjorde det.
+  static Future<UserProfile?> fetchOrCreateCurrentUserProfile() async {
+    final existing = await fetchCurrentUserProfile();
+    if (existing != null) return existing;
+
+    try {
+      final user = client.auth.currentUser;
+      if (user == null) return null;
+
+      String fullName = (user.userMetadata?['full_name']?.toString() ??
+              user.userMetadata?['name']?.toString() ??
+              user.email?.split('@').first ??
+              'Ny bruker')
+          .trim();
+      if (fullName.isEmpty) fullName = 'Ny bruker';
+
+      // Velg default company for første innlogging ved manglende profil.
+      String? companyId = SupabaseConfig.defaultCompanyId;
+      if (companyId == null) {
+        final companies = await client.from('companies').select('id').limit(1) as List<dynamic>;
+        if (companies.isNotEmpty) {
+          companyId = companies.first['id'] as String;
+        }
+      }
+
+      await client.from('profiles').upsert({
+        'id': user.id,
+        'email': user.email ?? '${user.id}@unknown.local',
+        'full_name': fullName,
+        'role': 'ansatt',
+        'company_id': companyId,
+        'is_onboarded': false,
+        'is_approved': false,
+        'is_active': true,
+      });
+
+      return await fetchCurrentUserProfile();
+    } catch (e) {
+      debugPrint('Error creating fallback profile: $e');
+      return null;
+    }
+  }
+
+  static Future<void> updateProfileAdminFields(
+    String profileId, {
+    String? fullName,
+    String? phone,
+    String? departmentId,
+    UserRole? role,
+    DateTime? birthDate,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+    bool? approved,
+  }) async {
+    final patch = <String, dynamic>{};
+    if (fullName != null) patch['full_name'] = fullName;
+    if (phone != null) patch['phone'] = phone;
+    if (departmentId != null) patch['department_id'] = departmentId;
+    if (role != null) patch['role'] = role.name;
+    if (birthDate != null) patch['birth_date'] = birthDate.toIso8601String().split('T').first;
+    if (emergencyContactName != null) patch['emergency_contact_name'] = emergencyContactName;
+    if (emergencyContactPhone != null) patch['emergency_contact_phone'] = emergencyContactPhone;
+    if (approved != null) patch['is_approved'] = approved;
+    if (patch.isEmpty) return;
+    await client.from('profiles').update(patch).eq('id', profileId);
+  }
+
   static Future<String?> getCurrentCompanyId() async {
     try {
       if (SupabaseConfig.defaultCompanyId != null) {

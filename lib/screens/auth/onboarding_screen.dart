@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../core/constants/app_icons.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
@@ -17,8 +16,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _addressController = TextEditingController();
-  final _jobTitleController = TextEditingController();
+  final _emergencyNameController = TextEditingController();
+  final _emergencyPhoneController = TextEditingController();
+  DateTime? _birthDate;
   
   String? _selectedDepartmentId;
   List<Department> _departments = [];
@@ -30,6 +30,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.initState();
     _nameController.text = widget.profile.fullName;
     _phoneController.text = widget.profile.phone ?? '';
+    _emergencyNameController.text = widget.profile.emergencyContactName ?? '';
+    _emergencyPhoneController.text = widget.profile.emergencyContactPhone ?? '';
+    _birthDate = widget.profile.birthDate;
     _loadDepartments();
   }
 
@@ -63,6 +66,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   Future<void> _saveOnboarding() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_birthDate == null) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Vennligst velg fødselsdato')),
+      );
+      return;
+    }
     
     setState(() => _isSaving = true);
     
@@ -75,8 +85,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       await SupabaseService.client.from('profiles').update({
         'full_name': _nameController.text,
         'phone': _phoneController.text,
-        'address': _addressController.text,
-        'job_title': _jobTitleController.text,
+        'birth_date': _birthDate?.toIso8601String().split('T').first,
+        'emergency_contact_name': _emergencyNameController.text,
+        'emergency_contact_phone': _emergencyPhoneController.text,
         'department_id': _selectedDepartmentId,
         'company_id': companyId,
         'is_onboarded': true,
@@ -129,8 +140,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         
                         _buildField('Fullt navn', _nameController, Icons.person_outline),
                         _buildField('Telefonnummer', _phoneController, Icons.phone_android_outlined, keyboardType: TextInputType.phone),
-                        _buildField('Adresse', _addressController, Icons.location_on_outlined),
-                        _buildField('Stillingstittel', _jobTitleController, Icons.work_outline),
+                        _buildBirthDateField(),
+                        _buildField('Pårørende - navn', _emergencyNameController, Icons.family_restroom_outlined),
+                        _buildField('Pårørende - telefon', _emergencyPhoneController, Icons.contact_phone_outlined, keyboardType: TextInputType.phone),
                         
                         const Text('Avdeling', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         const SizedBox(height: 8),
@@ -197,6 +209,49 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
           ),
           validator: (val) => val == null || val.isEmpty ? 'Må fylles ut' : null,
         ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _buildBirthDateField() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final dateText = _birthDate == null
+        ? 'Velg fødselsdato'
+        : '${_birthDate!.day.toString().padLeft(2, '0')}.${_birthDate!.month.toString().padLeft(2, '0')}.${_birthDate!.year}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Fødselsdato', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () async {
+            final now = DateTime.now();
+            final picked = await showDatePicker(
+              context: context,
+              initialDate: _birthDate ?? DateTime(now.year - 30, 1, 1),
+              firstDate: DateTime(1900),
+              lastDate: now,
+            );
+            if (picked != null) setState(() => _birthDate = picked);
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: InputDecorator(
+            decoration: InputDecoration(
+              filled: true,
+              fillColor: isDark ? DriftProTheme.cardDark : Colors.white,
+              prefixIcon: const Icon(Icons.cake_outlined, color: DriftProTheme.primaryGreen),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            ),
+            child: Text(dateText),
+          ),
+        ),
+        if (_birthDate == null)
+          const Padding(
+            padding: EdgeInsets.only(top: 6),
+            child: Text('Fødselsdato må fylles ut', style: TextStyle(fontSize: 12, color: Colors.red)),
+          ),
         const SizedBox(height: 24),
       ],
     );

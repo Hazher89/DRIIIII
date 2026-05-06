@@ -120,7 +120,7 @@ class DriftProApp extends StatelessWidget {
             return FutureBuilder<UserProfile?>(
               // Force refresh the profile when auth state changes
               key: ValueKey('profile_${session.user.id}_${snapshot.data?.event}'),
-              future: SupabaseService.fetchCurrentUserProfile(),
+              future: SupabaseService.fetchOrCreateCurrentUserProfile(),
               builder: (context, profileSnapshot) {
                 if (profileSnapshot.connectionState == ConnectionState.waiting) {
                   return const Scaffold(body: Center(child: CircularProgressIndicator()));

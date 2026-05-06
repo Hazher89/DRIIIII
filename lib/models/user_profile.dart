@@ -13,6 +13,9 @@ class UserProfile {
   final String? address;
   final String? jobTitle;
   final DateTime? hireDate;
+  final DateTime? birthDate;
+  final String? emergencyContactName;
+  final String? emergencyContactPhone;
   final bool isSafetyRepresentative;
   final bool isActive;
   final bool isOnboarded;
@@ -35,6 +38,9 @@ class UserProfile {
     this.address,
     this.jobTitle,
     this.hireDate,
+    this.birthDate,
+    this.emergencyContactName,
+    this.emergencyContactPhone,
     this.isSafetyRepresentative = false,
     this.isActive = true,
     this.isOnboarded = false,
@@ -63,6 +69,11 @@ class UserProfile {
       hireDate: json['hire_date'] != null
           ? DateTime.parse(json['hire_date'] as String)
           : null,
+      birthDate: json['birth_date'] != null
+          ? DateTime.parse(json['birth_date'] as String)
+          : null,
+      emergencyContactName: json['emergency_contact_name'] as String?,
+      emergencyContactPhone: json['emergency_contact_phone'] as String?,
       isSafetyRepresentative:
           json['is_safety_representative'] as bool? ?? false,
       isActive: json['is_active'] as bool? ?? true,
@@ -89,6 +100,9 @@ class UserProfile {
     'address': address,
     'job_title': jobTitle,
     'hire_date': hireDate?.toIso8601String(),
+    'birth_date': birthDate?.toIso8601String(),
+    'emergency_contact_name': emergencyContactName,
+    'emergency_contact_phone': emergencyContactPhone,
     'is_safety_representative': isSafetyRepresentative,
     'is_active': isActive,
     'is_onboarded': isOnboarded,

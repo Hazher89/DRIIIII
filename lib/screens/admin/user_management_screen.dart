@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../models/department.dart';
 import '../../../models/user_profile.dart';
 
 class UserManagementScreen extends StatefulWidget {
@@ -13,6 +14,7 @@ class UserManagementScreen extends StatefulWidget {
 class _UserManagementScreenState extends State<UserManagementScreen> {
   bool _isLoading = true;
   List<UserProfile> _users = [];
+  List<Department> _departments = [];
 
   @override
   void initState() {
@@ -26,8 +28,10 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
       final companyId = await SupabaseService.getCurrentCompanyId();
       if (companyId != null) {
         final users = await SupabaseService.fetchProfiles(companyId: companyId);
+        final depts = await SupabaseService.fetchDepartments(companyId: companyId);
         setState(() {
           _users = users;
+          _departments = depts;
           _isLoading = false;
         });
       }
@@ -54,6 +58,100 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
           SnackBar(content: Text('Kunne ikke oppdatere bruker: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _editUser(UserProfile user) async {
+    final nameCtrl = TextEditingController(text: user.fullName);
+    final phoneCtrl = TextEditingController(text: user.phone ?? '');
+    final emergencyNameCtrl = TextEditingController(text: user.emergencyContactName ?? '');
+    final emergencyPhoneCtrl = TextEditingController(text: user.emergencyContactPhone ?? '');
+    UserRole selectedRole = user.role;
+    String? selectedDepartment = user.departmentId;
+    DateTime? birthDate = user.birthDate;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('Rediger bruker'),
+          content: SizedBox(
+            width: 500,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Navn')),
+                  const SizedBox(height: 8),
+                  TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Telefon')),
+                  const SizedBox(height: 8),
+                  TextField(controller: emergencyNameCtrl, decoration: const InputDecoration(labelText: 'Pårørende navn')),
+                  const SizedBox(height: 8),
+                  TextField(controller: emergencyPhoneCtrl, decoration: const InputDecoration(labelText: 'Pårørende telefon')),
+                  const SizedBox(height: 8),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      birthDate == null
+                          ? 'Fødselsdato'
+                          : 'Fødselsdato: ${birthDate!.day}.${birthDate!.month}.${birthDate!.year}',
+                    ),
+                    trailing: const Icon(Icons.calendar_today),
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx,
+                        initialDate: birthDate ?? DateTime(DateTime.now().year - 30),
+                        firstDate: DateTime(1900),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) {
+                        setSt(() => birthDate = picked);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: selectedDepartment,
+                    hint: const Text('Velg avdeling'),
+                    items: _departments
+                        .map((d) => DropdownMenuItem<String>(value: d.id, child: Text(d.name)))
+                        .toList(),
+                    onChanged: (v) => setSt(() => selectedDepartment = v),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<UserRole>(
+                    value: selectedRole,
+                    items: UserRole.values
+                        .map((r) => DropdownMenuItem(value: r, child: Text(r.name)))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setSt(() => selectedRole = v);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Lagre')),
+          ],
+        ),
+      ),
+    );
+
+    if (ok == true) {
+      await SupabaseService.updateProfileAdminFields(
+        user.id,
+        fullName: nameCtrl.text.trim(),
+        phone: phoneCtrl.text.trim(),
+        emergencyContactName: emergencyNameCtrl.text.trim(),
+        emergencyContactPhone: emergencyPhoneCtrl.text.trim(),
+        departmentId: selectedDepartment,
+        role: selectedRole,
+        birthDate: birthDate,
+      );
+      await _loadUsers();
     }
   }
 
@@ -114,6 +212,11 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                 onPressed: () => _toggleApproval(user),
                 child: const Text('Fjern tilgang', style: TextStyle(color: Colors.red)),
               ),
+            IconButton(
+              tooltip: 'Rediger',
+              onPressed: () => _editUser(user),
+              icon: const Icon(Icons.edit_outlined),
+            ),
           ],
         ),
       ),
