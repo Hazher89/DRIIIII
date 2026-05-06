@@ -184,6 +184,19 @@ department:departments!department_id(name)
     return AbsenceQuota.fromJson(data);
   }
 
+  static Future<List<AbsenceQuota>> fetchAbsenceQuotasForCompany({
+    required String companyId,
+    required int year,
+  }) async {
+    final data = await client
+        .from('absence_quotas')
+        .select()
+        .eq('company_id', companyId)
+        .eq('year', year)
+        .order('user_id', ascending: true) as List<dynamic>;
+    return data.map((e) => AbsenceQuota.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   static Future<void> updateAbsenceQuota(String userId, int year, Map<String, dynamic> updates) async {
     await client.from('absence_quotas').update(updates).eq('user_id', userId).eq('year', year);
   }
@@ -195,6 +208,26 @@ department:departments!department_id(name)
       'vacation_days_total': quota.vacationDaysTotal,
       'vacation_days_carried_over': quota.vacationDaysCarriedOver,
     });
+  }
+
+  static Future<void> upsertAbsenceQuota({
+    required String userId,
+    required String companyId,
+    required int year,
+    int? vacationDaysTotal,
+    int? vacationDaysCarriedOver,
+  }) async {
+    await client.from('absence_quotas').upsert({
+      'user_id': userId,
+      'company_id': companyId,
+      'year': year,
+      if (vacationDaysTotal != null) 'vacation_days_total': vacationDaysTotal,
+      if (vacationDaysCarriedOver != null) 'vacation_days_carried_over': vacationDaysCarriedOver,
+    }, onConflict: 'user_id,year');
+  }
+
+  static Future<void> runAnnualVacationCarryover() async {
+    await client.rpc('annual_vacation_carryover');
   }
 
   // ── Risikoanalyser ──────────────────────────────────────────────────────
@@ -441,6 +474,18 @@ department:departments!department_id(name)
     if (approved != null) patch['is_approved'] = approved;
     if (patch.isEmpty) return;
     await client.from('profiles').update(patch).eq('id', profileId);
+  }
+
+  /// Permanent sletting av bruker (auth + profil + relaterte data via FK).
+  static Future<void> deleteUserPermanently(String targetUserId) async {
+    final me = client.auth.currentUser?.id;
+    if (me == null) throw StateError('Ikke innlogget');
+    if (me == targetUserId) {
+      throw StateError('Du kan ikke slette din egen bruker.');
+    }
+    await client.rpc('admin_delete_user_hard', params: {
+      'target_user_id': targetUserId,
+    });
   }
 
   static Future<String?> getCurrentCompanyId() async {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/services/partner/partner_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -205,7 +206,7 @@ class _PartnerDocsPageState extends State<_PartnerDocsPage> {
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: _docs.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
               itemBuilder: (ctx, i) {
                 final doc = _docs[i];
                 return ListTile(
@@ -243,6 +244,67 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> {
     if (mounted) setState(() => _routes = r);
   }
 
+  Future<void> _openPdf(PartnerRouteShare r) async {
+    try {
+      final url = await PartnerService.getRoutePdfSignedUrl(r.pdfStoragePath);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke åpne PDF: $e')));
+    }
+  }
+
+  Future<void> _setAck(PartnerRouteShare r, bool accepted) async {
+    final noteCtrl = TextEditingController();
+    final shouldContinue = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(accepted ? 'Aksepter rute' : 'Avvis rute'),
+        content: TextField(
+          controller: noteCtrl,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Kommentar (valgfritt)',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Lagre')),
+        ],
+      ),
+    );
+    if (shouldContinue != true) return;
+    await PartnerService.updateRouteAcknowledgement(
+      routeShareId: r.id,
+      accepted: accepted,
+      comment: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
+    );
+    await _load();
+  }
+
+  String _ackLabel(PartnerRouteShare r) {
+    switch (r.ackStatus) {
+      case 'accepted':
+        return 'Akseptert';
+      case 'rejected':
+        return 'Ikke akseptert';
+      default:
+        return 'Venter svar';
+    }
+  }
+
+  Color _ackColor(PartnerRouteShare r) {
+    switch (r.ackStatus) {
+      case 'accepted':
+        return Colors.green;
+      case 'rejected':
+        return Colors.red;
+      default:
+        return Colors.orange;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -252,7 +314,7 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> {
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: _routes.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
               itemBuilder: (ctx, i) {
                 final r = _routes[i];
                 return ListTile(
@@ -260,7 +322,37 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> {
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   leading: const Icon(Icons.picture_as_pdf_outlined),
                   title: Text(r.title ?? 'Rute'),
-                  subtitle: Text('${r.shareDate.toString().split(' ').first}${r.isDailyShare ? ' · daglig rutine' : ''}'),
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${r.shareDate.toString().split(' ').first}${r.isDailyShare ? ' · daglig rutine' : ''}'),
+                      const SizedBox(height: 4),
+                      Text(
+                        _ackLabel(r),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: _ackColor(r),
+                        ),
+                      ),
+                    ],
+                  ),
+                  onTap: () => _openPdf(r),
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (v) async {
+                      if (v == 'open') {
+                        await _openPdf(r);
+                      } else if (v == 'accept') {
+                        await _setAck(r, true);
+                      } else if (v == 'reject') {
+                        await _setAck(r, false);
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'open', child: Text('Åpne PDF')),
+                      PopupMenuItem(value: 'accept', child: Text('Aksepter')),
+                      PopupMenuItem(value: 'reject', child: Text('Ikke aksepter')),
+                    ],
+                  ),
                 );
               },
             ),

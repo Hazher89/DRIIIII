@@ -6,6 +6,7 @@ import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
+import '../../models/partner/partner_links.dart';
 
 class NewPartnerScreen extends StatefulWidget {
   const NewPartnerScreen({super.key});
@@ -28,6 +29,10 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
   final _vehiclesCtrl = TextEditingController(text: '0');
   final _payloadCtrl = TextEditingController();
   final _inviteEmailCtrl = TextEditingController();
+  final _portalUsernameCtrl = TextEditingController();
+  final _portalLoginEmailCtrl = TextEditingController();
+  final List<TextEditingController> _unitControllers = [TextEditingController(text: 'M01')];
+  final List<TextEditingController> _regControllers = [TextEditingController()];
 
   bool _euApproved = false;
   bool _searching = false;
@@ -49,6 +54,14 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
     _vehiclesCtrl.dispose();
     _payloadCtrl.dispose();
     _inviteEmailCtrl.dispose();
+    _portalUsernameCtrl.dispose();
+    _portalLoginEmailCtrl.dispose();
+    for (final c in _unitControllers) {
+      c.dispose();
+    }
+    for (final c in _regControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -136,7 +149,12 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
       );
 
       final created = await PartnerService.createPartner(p);
-      await _tryLinkInvite(created.id);
+      await _saveVehicles(created);
+      final linkEmail = _inviteEmailCtrl.text.trim().isNotEmpty
+          ? _inviteEmailCtrl.text.trim()
+          : _portalLoginEmailCtrl.text.trim();
+      await _tryLinkInvite(created.id, emailOverride: linkEmail);
+      await _upsertPortalAccount(created.id, cid);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -147,8 +165,44 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
     }
   }
 
-  Future<void> _tryLinkInvite(String partnerId) async {
-    final email = _inviteEmailCtrl.text.trim();
+  Future<void> _saveVehicles(Partner created) async {
+    final vehicles = <PartnerVehicle>[];
+    for (int i = 0; i < _unitControllers.length; i++) {
+      final unit = _unitControllers[i].text.trim().toUpperCase();
+      final reg = _regControllers[i].text.trim().toUpperCase();
+      if (unit.isEmpty || reg.isEmpty) continue;
+      vehicles.add(
+        PartnerVehicle(
+          id: '',
+          partnerId: created.id,
+          companyId: created.companyId,
+          unitCode: unit,
+          registrationNumber: reg,
+          createdAt: DateTime.now(),
+        ),
+      );
+    }
+    await PartnerService.replaceVehicles(
+      partnerId: created.id,
+      companyId: created.companyId,
+      vehicles: vehicles,
+    );
+  }
+
+  Future<void> _upsertPortalAccount(String partnerId, String companyId) async {
+    final username = _portalUsernameCtrl.text.trim();
+    final loginEmail = _portalLoginEmailCtrl.text.trim();
+    if (username.isEmpty || loginEmail.isEmpty) return;
+    await PartnerService.upsertPortalAccount(
+      partnerId: partnerId,
+      companyId: companyId,
+      username: username,
+      loginEmail: loginEmail,
+    );
+  }
+
+  Future<void> _tryLinkInvite(String partnerId, {String? emailOverride}) async {
+    final email = (emailOverride ?? _inviteEmailCtrl.text.trim()).trim();
     if (email.isEmpty) return;
     try {
       final row = await Supabase.instance.client
@@ -334,6 +388,62 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
             maxLines: 3,
             decoration: const InputDecoration(labelText: 'Notater', border: OutlineInputBorder()),
           ),
+          const SizedBox(height: 16),
+          const Text('Bilnavn (M01+) og reg.nr', style: TextStyle(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+          ...List.generate(_unitControllers.length, (i) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _unitControllers[i],
+                      decoration: const InputDecoration(
+                        labelText: 'Bilnavn (M01, M02...)',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _regControllers[i],
+                      decoration: const InputDecoration(
+                        labelText: 'Reg.nr',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
+                  if (_unitControllers.length > 1)
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _unitControllers[i].dispose();
+                          _regControllers[i].dispose();
+                          _unitControllers.removeAt(i);
+                          _regControllers.removeAt(i);
+                        });
+                      },
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    ),
+                ],
+              ),
+            );
+          }),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () {
+                setState(() {
+                  _unitControllers.add(TextEditingController(text: 'M${(_unitControllers.length + 1).toString().padLeft(2, '0')}'));
+                  _regControllers.add(TextEditingController());
+                });
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Legg til bil'),
+            ),
+          ),
           const SizedBox(height: 24),
           const Text('Partner-portal bruker', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
@@ -349,6 +459,28 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
               labelText: 'E-post til eksisterende bruker (valgfritt)',
               border: OutlineInputBorder(),
             ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _portalUsernameCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Portal brukernavn (f.eks m01_olsen)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _portalLoginEmailCtrl,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'Portal innloggings-epost (samme som auth-bruker)',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Passord settes på Supabase Auth-brukeren. Brukernavn brukes som login-alias i partner-innlogging.',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
           const SizedBox(height: 32),
           FilledButton.icon(

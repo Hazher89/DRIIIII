@@ -97,7 +97,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
       MaterialPageRoute(
         builder: (_) => const TicketAdminDashboardScreen(),
       ),
-    );
+    ).then((_) => _loadTickets());
   }
 
   Color _sevColor(TicketSeverity s) {
@@ -171,7 +171,6 @@ class _TicketsScreenState extends State<TicketsScreen> {
               tooltip: 'Kontrollsenter',
               onPressed: _openControlCenter,
             ),
-          IconButton(icon: const Icon(AppIcons.search), onPressed: () {}),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -451,20 +450,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          FilledButton.icon(
-            onPressed: _openNewTicket,
-            style: FilledButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              backgroundColor: DriftProTheme.primaryGreen,
-            ),
-            icon: const Icon(Icons.add_circle_outline),
-            label: const Text(
-              'Meld nytt avvik',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ),
           if (coordinator) ...[
-            const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: _openControlCenter,
               style: OutlinedButton.styleFrom(

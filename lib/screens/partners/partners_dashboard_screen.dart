@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
+import '../../models/partner/partner_links.dart';
 import 'new_partner_screen.dart';
 import 'partner_detail_screen.dart';
 
@@ -19,6 +24,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
   List<Partner> _partners = [];
   bool _loading = true;
   String? _error;
+  bool _autoDistributing = false;
 
   @override
   void initState() {
@@ -64,6 +70,197 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
     if (created == true) _load();
   }
 
+  Future<void> _pickAndAutoDistributeFiles() async {
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    await _autoDistributeFromPlatformFiles(picked.files);
+  }
+
+  Future<void> _pickFolderAndAutoDistribute() async {
+    if (kIsWeb) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mappevalg støttes ikke i web. Velg flere filer i stedet.')),
+      );
+      return;
+    }
+    final dir = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Velg mappe med rute-PDF');
+    if (dir == null) return;
+    final entries = await Directory(dir).list().toList();
+    final pdfFiles = entries
+        .whereType<File>()
+        .where((f) => f.path.toLowerCase().endsWith('.pdf'))
+        .toList();
+    if (pdfFiles.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fant ingen PDF-filer i valgt mappe.')),
+      );
+      return;
+    }
+    final files = <PlatformFile>[];
+    for (final f in pdfFiles) {
+      final bytes = await f.readAsBytes();
+      files.add(
+        PlatformFile(
+          name: f.uri.pathSegments.isNotEmpty ? f.uri.pathSegments.last : 'route.pdf',
+          size: bytes.length,
+          bytes: bytes,
+          path: f.path,
+        ),
+      );
+    }
+    await _autoDistributeFromPlatformFiles(files);
+  }
+
+  String _normalizeUnitCode(String raw) {
+    final upper = raw.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (upper.startsWith('M')) {
+      final num = int.tryParse(upper.substring(1));
+      if (num != null) return 'M$num';
+    }
+    return upper;
+  }
+
+  String? _extractVehicleCodeFromPdf(Uint8List bytes) {
+    try {
+      final doc = PdfDocument(inputBytes: bytes);
+      final text = PdfTextExtractor(doc).extractText();
+      doc.dispose();
+      final reResource = RegExp(r'NO_O_(M\d{1,5})', caseSensitive: false);
+      final m = reResource.firstMatch(text);
+      if (m != null) return m.group(1)?.toUpperCase();
+      final fallback = RegExp(r'\bM0*\d{1,5}\b', caseSensitive: false).firstMatch(text);
+      return fallback?.group(0)?.toUpperCase();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _autoDistributeFromPlatformFiles(List<PlatformFile> files) async {
+    if (_autoDistributing) return;
+    setState(() => _autoDistributing = true);
+    try {
+      final cid = await SupabaseService.getCurrentCompanyId();
+      if (cid == null) throw Exception('Fant ikke company_id.');
+      final partners = await PartnerService.fetchPartners(companyId: cid);
+      final partnerById = {for (final p in partners) p.id: p};
+      final vehicleRows = <PartnerVehicle>[];
+      for (final p in partners) {
+        final v = await PartnerService.fetchVehicles(p.id);
+        vehicleRows.addAll(v);
+      }
+      final vehicleMap = <String, PartnerVehicle>{};
+      for (final v in vehicleRows) {
+        vehicleMap[_normalizeUnitCode(v.unitCode)] = v;
+      }
+
+      int sent = 0;
+      int skipped = 0;
+      for (final file in files) {
+        final bytes = file.bytes ??
+            (file.path != null && !kIsWeb ? await File(file.path!).readAsBytes() : null);
+        if (bytes == null || bytes.isEmpty) {
+          skipped++;
+          continue;
+        }
+        final foundCode = _extractVehicleCodeFromPdf(bytes);
+        if (foundCode == null) {
+          skipped++;
+          continue;
+        }
+        final normalized = _normalizeUnitCode(foundCode);
+        final vehicle = vehicleMap[normalized];
+        if (vehicle == null) {
+          skipped++;
+          continue;
+        }
+        final partner = partnerById[vehicle.partnerId];
+        if (partner == null) {
+          skipped++;
+          continue;
+        }
+        final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+        final storagePath =
+            'company_$cid/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${vehicle.unitCode}_$safeName';
+        await PartnerService.uploadPartnerRoutePdf(
+          storagePath: storagePath,
+          bytes: bytes,
+        );
+        await PartnerService.addRouteShare(
+          PartnerRouteShare(
+            id: '',
+            partnerId: partner.id,
+            companyId: cid,
+            title: 'Rute ${vehicle.unitCode}',
+            pdfStoragePath: storagePath,
+            shareDate: DateTime.now(),
+            isDailyShare: true,
+            createdAt: DateTime.now(),
+          ),
+        );
+        sent++;
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Auto-fordeling ferdig: sendt $sent, hoppet over $skipped.')),
+        );
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Auto-fordeling feilet: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _autoDistributing = false);
+    }
+  }
+
+  Future<void> _openAutoDistributeDialog() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ListTile(
+                title: Text('Smart rutefordeling'),
+                subtitle: Text('Leser PDF -> Resource ID (NO_O_Mxxxx) -> matcher bil/firma automatisk'),
+              ),
+              ListTile(
+                leading: const Icon(Icons.file_open_outlined),
+                title: const Text('Velg én eller flere PDF-filer'),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  await _pickAndAutoDistributeFiles();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder_open_outlined),
+                title: const Text('Velg mappe med PDF-filer'),
+                onTap: () async {
+                  Navigator.of(ctx).pop();
+                  await _pickFolderAndAutoDistribute();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -72,6 +269,17 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
       appBar: AppBar(
         title: const Text('Samarbeidspartnere'),
         actions: [
+          IconButton(
+            tooltip: 'Smart rutefordeling',
+            icon: _autoDistributing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.auto_awesome_outlined),
+            onPressed: _autoDistributing ? null : _openAutoDistributeDialog,
+          ),
           IconButton(
             tooltip: 'Ny samarbeidspartner',
             icon: const Icon(Icons.add_circle_outline),
@@ -92,6 +300,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
             : _error != null
                 ? ListView(
                     children: [
+                      _buildMassOutputCard(),
                       Padding(
                         padding: const EdgeInsets.all(24),
                         child: Text(_error!, textAlign: TextAlign.center),
@@ -100,31 +309,79 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
                   )
                 : _partners.isEmpty
                     ? ListView(
-                        children: const [
+                        children: [
+                          _buildMassOutputCard(),
                           SizedBox(height: 80),
                           Icon(Icons.handshake_outlined, size: 56, color: Colors.grey),
                           SizedBox(height: 16),
-                          Center(child: Text('Ingen samarbeidspartnere registrert ennå.')),
+                          const Center(child: Text('Ingen samarbeidspartnere registrert ennå.')),
                         ],
                       )
-                    : ListView.builder(
+                    : ListView(
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                        itemCount: _partners.length,
-                        itemBuilder: (ctx, i) {
-                          final p = _partners[i];
-                          return _PartnerCard(
-                            partner: p,
-                            onTap: () async {
-                              await Navigator.of(context).push<void>(
-                                MaterialPageRoute(
-                                  builder: (_) => PartnerDetailScreen(partner: p),
-                                ),
-                              );
-                              _load();
-                            },
-                          );
-                        },
+                        children: [
+                          _buildMassOutputCard(),
+                          const SizedBox(height: 8),
+                          ..._partners.map((p) {
+                            return _PartnerCard(
+                              partner: p,
+                              onTap: () async {
+                                await Navigator.of(context).push<void>(
+                                  MaterialPageRoute(
+                                    builder: (_) => PartnerDetailScreen(partner: p),
+                                  ),
+                                );
+                                _load();
+                              },
+                            );
+                          }),
+                        ],
                       ),
+      ),
+    );
+  }
+
+  Widget _buildMassOutputCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Massedistribuer ruter (smart PDF)',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Leser Resource ID i PDF (NO_O_Mxxxx) og sender automatisk til riktig bil/firma.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: _autoDistributing ? null : _pickAndAutoDistributeFiles,
+                  icon: _autoDistributing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Icon(Icons.picture_as_pdf_outlined),
+                  label: const Text('Velg PDF-filer'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _autoDistributing ? null : _pickFolderAndAutoDistribute,
+                  icon: const Icon(Icons.folder_open_outlined),
+                  label: const Text('Velg mappe'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

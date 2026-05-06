@@ -15,6 +15,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   bool _isLoading = true;
   List<UserProfile> _users = [];
   List<Department> _departments = [];
+  UserProfile? _me;
 
   @override
   void initState() {
@@ -29,9 +30,11 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
       if (companyId != null) {
         final users = await SupabaseService.fetchProfiles(companyId: companyId);
         final depts = await SupabaseService.fetchDepartments(companyId: companyId);
+        final me = await SupabaseService.fetchCurrentUserProfile();
         setState(() {
           _users = users;
           _departments = depts;
+          _me = me;
           _isLoading = false;
         });
       }
@@ -155,6 +158,42 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
     }
   }
 
+  Future<void> _deleteUser(UserProfile user) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Slett bruker permanent?'),
+        content: Text(
+          'Dette sletter ${user.fullName} fra auth og hele systemet. Handlingen kan ikke angres.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Slett permanent', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await SupabaseService.deleteUserPermanently(user.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${user.fullName} ble slettet permanent')),
+        );
+      }
+      await _loadUsers();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sletting feilet: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -193,7 +232,10 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
           child: Text(user.initials, style: const TextStyle(color: DriftProTheme.primaryGreen)),
         ),
         title: Text(user.fullName, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(user.email),
+        subtitle: Text(
+          '${user.email}\nRolle: ${user.role.name}${user.departmentId != null ? ' · Avdeling satt' : ''}',
+        ),
+        isThreeLine: true,
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -217,6 +259,12 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
               onPressed: () => _editUser(user),
               icon: const Icon(Icons.edit_outlined),
             ),
+            if ((_me?.isAdmin == true) && (_me?.id != user.id))
+              IconButton(
+                tooltip: 'Slett permanent',
+                onPressed: () => _deleteUser(user),
+                icon: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+              ),
           ],
         ),
       ),

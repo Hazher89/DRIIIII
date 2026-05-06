@@ -172,7 +172,7 @@ class _MoreScreenState extends State<MoreScreen> {
               'Tilgangskontroll',
               isDark,
             ),
-          if (_profile?.role == UserRole.superadmin)
+          if (_profile?.isAdmin == true)
             _buildMenuItem(
               context,
               Icons.how_to_reg_outlined,

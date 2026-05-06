@@ -212,6 +212,40 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
                   },
                 )).toList(),
               ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Slett ansatt permanent?'),
+                        content: Text(
+                          'Dette sletter ${employee.fullName} fra auth og hele systemet.',
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+                          ElevatedButton(
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Slett', style: TextStyle(color: Colors.white)),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok == true) {
+                      await SupabaseService.deleteUserPermanently(employee.id);
+                      if (!mounted) return;
+                      Navigator.pop(context);
+                      _loadEmployees();
+                    }
+                  },
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                  icon: const Icon(Icons.delete_forever_outlined),
+                  label: const Text('Slett ansatt permanent'),
+                ),
+              ),
               const SizedBox(height: 24),
             ],
             SizedBox(

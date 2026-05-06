@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/services/partner/partner_service.dart';
 import '../../core/theme/app_theme.dart';
 
 /// Første valg: MAVI-ansatte (OAuth) eller samarbeidspartner (brukernavn/passord).
@@ -337,30 +338,31 @@ class PartnerLoginScreen extends StatefulWidget {
 }
 
 class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
-  final _email = TextEditingController();
+  final _identifier = TextEditingController();
   final _password = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
 
   @override
   void dispose() {
-    _email.dispose();
+    _identifier.dispose();
     _password.dispose();
     super.dispose();
   }
 
   Future<void> _signIn() async {
     if (_loading) return;
-    final email = _email.text.trim();
+    final identifier = _identifier.text.trim();
     final pw = _password.text;
-    if (email.isEmpty || pw.isEmpty) {
+    if (identifier.isEmpty || pw.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Fyll inn e-post og passord')),
+        const SnackBar(content: Text('Fyll inn brukernavn/e-post og passord')),
       );
       return;
     }
     setState(() => _loading = true);
     try {
+      final email = await PartnerService.resolveLoginIdentifierToEmail(identifier) ?? identifier;
       await Supabase.instance.client.auth.signInWithPassword(email: email, password: pw);
     } catch (e) {
       if (mounted) {
@@ -402,10 +404,10 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
                 ),
                 const SizedBox(height: 24),
                 TextField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
+                  controller: _identifier,
+                  keyboardType: TextInputType.text,
                   decoration: const InputDecoration(
-                    labelText: 'E-post (brukernavn)',
+                    labelText: 'Brukernavn eller e-post',
                     border: OutlineInputBorder(),
                   ),
                 ),

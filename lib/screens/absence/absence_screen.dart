@@ -23,12 +23,21 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   UserProfile? _profile;
   bool _isLoading = true;
   DateTime _calendarMonth = DateTime.now();
+  int _selectedYear = DateTime.now().year;
+  List<UserProfile> _teamProfiles = [];
+  List<AbsenceQuota> _teamQuotas = [];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _loadAllData();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAllData() async {
@@ -40,7 +49,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         final futures = await Future.wait([
           SupabaseService.fetchAbsences(userId: profile.id),
           SupabaseService.fetchAbsences(companyId: profile.companyId),
-          SupabaseService.fetchAbsenceQuota(userId: profile.id),
+          SupabaseService.fetchAbsenceQuota(userId: profile.id, year: _selectedYear),
         ]);
 
         final mine = futures[0] as List<Absence>;
@@ -49,26 +58,41 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
         setState(() {
           _myAbsences = mine;
-          _deptAbsences = scoped.where((a) => a.status == AbsenceStatus.godkjent).toList();
+          _deptAbsences = scoped
+              .where((a) => a.status == AbsenceStatus.godkjent)
+              .toList();
           
           if (profile.isLeader || profile.isAdmin) {
             _pendingApprovals = scoped.where((a) => 
                a.status == AbsenceStatus.ventende && a.userId != profile.id
             ).toList();
-            
-            if (_tabController.length == 3) {
-              _tabController = TabController(length: 4, vsync: this);
-            }
           }
           
           _quota = futures[2] as AbsenceQuota?;
         });
+        await _loadTeamOverview(profile);
       }
     } catch (e) {
       debugPrint('Error loading absence data: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _loadTeamOverview(UserProfile profile) async {
+    if (!(profile.isLeader || profile.isAdmin) || profile.companyId == null) return;
+    final allProfiles = await SupabaseService.fetchProfiles(companyId: profile.companyId);
+    final scopedProfiles = profile.isAdmin
+        ? allProfiles
+        : allProfiles.where((p) => p.departmentId == profile.departmentId).toList();
+    final quotas = await SupabaseService.fetchAbsenceQuotasForCompany(
+      companyId: profile.companyId!,
+      year: _selectedYear,
+    );
+    setState(() {
+      _teamProfiles = scopedProfiles;
+      _teamQuotas = quotas;
+    });
   }
 
   List<Absence> _scopeAbsencesByRole(List<Absence> absences, UserProfile profile) {
@@ -97,6 +121,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isManager = _profile?.isLeader == true || _profile?.isAdmin == true;
+    final canAdmin = _profile?.isAdmin == true;
 
     return Scaffold(
       backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
@@ -105,12 +130,13 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: DriftProTheme.primaryGreen,
-          isScrollable: isManager,
+          isScrollable: true,
           tabs: [
             const Tab(text: 'Mine'),
-            if (isManager) const Tab(text: 'Håndtering'),
+            const Tab(text: 'Håndtering'),
             const Tab(text: 'Kalender'),
             const Tab(text: 'Kvote'),
+            const Tab(text: 'Team'),
           ],
         ),
       ),
@@ -123,9 +149,14 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         controller: _tabController,
         children: [
           _buildMyAbsences(isDark),
-          if (isManager) _buildHandlingTab(isDark),
+          isManager
+              ? _buildHandlingTab(isDark)
+              : _buildEmptyState('Kun ledere/admin kan håndtere forespørsler.'),
           _buildCalendarView(isDark),
           _buildQuotaView(isDark),
+          isManager
+              ? _buildTeamOverviewTab(isDark, canAdmin)
+              : _buildEmptyState('Kun ledere/admin har teamoversikt.'),
         ],
       ),
     );
@@ -328,6 +359,37 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
+          Row(
+            children: [
+              DropdownButton<int>(
+                value: _selectedYear,
+                items: List.generate(5, (i) => DateTime.now().year - 1 + i)
+                    .map((y) => DropdownMenuItem(value: y, child: Text('$y')))
+                    .toList(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _selectedYear = v);
+                  _loadAllData();
+                },
+              ),
+              const Spacer(),
+              if (_profile?.isAdmin == true)
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await SupabaseService.runAnnualVacationCarryover();
+                    await _loadAllData();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Overføring til nytt år er kjørt.')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.swap_horiz),
+                  label: const Text('Kjør overføring'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
           _buildQuotaCircle(used, total, remaining, isDark),
           const SizedBox(height: 32),
           _buildQuotaDetailRow('Egenmelding', _quota!.egenmeldingDaysUsed, 24, DriftProTheme.absenceSickSelf, isDark),
@@ -336,6 +398,100 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         ],
       ),
     );
+  }
+
+  Widget _buildTeamOverviewTab(bool isDark, bool canAdmin) {
+    if (_teamProfiles.isEmpty) {
+      return _buildEmptyState('Ingen ansatte funnet for teamoversikt.');
+    }
+    final quotaByUser = {for (final q in _teamQuotas) q.userId: q};
+    final absByUser = <String, int>{};
+    final vacByUser = <String, int>{};
+    for (final a in _deptAbsences) {
+      absByUser[a.userId] = (absByUser[a.userId] ?? 0) + 1;
+      if (a.type == AbsenceType.ferie) {
+        vacByUser[a.userId] = (vacByUser[a.userId] ?? 0) + 1;
+      }
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _teamProfiles.length,
+      itemBuilder: (context, index) {
+        final u = _teamProfiles[index];
+        final q = quotaByUser[u.id];
+        final remaining = q?.vacationDaysRemaining ?? 0;
+        final carried = q?.vacationDaysCarriedOver ?? 0;
+        return Card(
+          child: ListTile(
+            isThreeLine: true,
+            title: Text(u.fullName),
+            subtitle: Text(
+              'Ferie igjen: $remaining  | Overført: $carried  | Fravær: ${absByUser[u.id] ?? 0}  | Ferieposter: ${vacByUser[u.id] ?? 0}',
+            ),
+            trailing: canAdmin
+                ? IconButton(
+                    icon: const Icon(Icons.edit_calendar_outlined),
+                    onPressed: () => _editTeamQuota(u, q),
+                  )
+                : null,
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _editTeamQuota(UserProfile user, AbsenceQuota? existing) async {
+    final totalCtrl = TextEditingController(text: (existing?.vacationDaysTotal ?? 25).toString());
+    final carryCtrl = TextEditingController(text: (existing?.vacationDaysCarriedOver ?? 0).toString());
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Feriekvote · ${user.fullName} ($_selectedYear)'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: totalCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Tildelte feriedager', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: carryCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Overført restferie', border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Lagre')),
+        ],
+      ),
+    );
+    if (ok != true || _profile?.companyId == null) return;
+    try {
+      await SupabaseService.upsertAbsenceQuota(
+        userId: user.id,
+        companyId: _profile!.companyId!,
+        year: _selectedYear,
+        vacationDaysTotal: int.tryParse(totalCtrl.text) ?? 25,
+        vacationDaysCarriedOver: int.tryParse(carryCtrl.text) ?? 0,
+      );
+      await _loadAllData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Feriekvote oppdatert')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke oppdatere kvote: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildQuotaCircle(int used, int total, int remaining, bool isDark) {

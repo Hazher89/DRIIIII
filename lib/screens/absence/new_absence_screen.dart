@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/constants/app_strings.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/constants/app_icons.dart';
 import '../../models/absence.dart';
 import '../../models/user_profile.dart';
 

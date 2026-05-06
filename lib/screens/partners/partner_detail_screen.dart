@@ -16,12 +16,14 @@ class PartnerDetailScreen extends StatefulWidget {
 class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTickerProviderStateMixin {
   late TabController _tabs;
   late Partner _p;
+  List<PartnerVehicle> _vehicles = const [];
 
   @override
   void initState() {
     super.initState();
     _p = widget.partner;
     _tabs = TabController(length: 4, vsync: this);
+    _reload();
   }
 
   @override
@@ -32,7 +34,13 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
 
   Future<void> _reload() async {
     final fresh = await PartnerService.fetchPartner(_p.id);
-    if (fresh != null && mounted) setState(() => _p = fresh);
+    final vehicles = await PartnerService.fetchVehicles(_p.id);
+    if (fresh != null && mounted) {
+      setState(() {
+        _p = fresh;
+        _vehicles = vehicles;
+      });
+    }
   }
 
   @override
@@ -54,7 +62,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
       body: TabBarView(
         controller: _tabs,
         children: [
-          _OverviewTab(partner: _p, onSaved: _reload),
+          _OverviewTab(partner: _p, vehicles: _vehicles, onSaved: _reload),
           _DocumentsTab(partner: _p, onChanged: _reload),
           _MeetingAuditTab(partner: _p, onChanged: _reload),
           _RoutesTab(partner: _p, onChanged: _reload),
@@ -66,8 +74,9 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
 
 class _OverviewTab extends StatefulWidget {
   final Partner partner;
+  final List<PartnerVehicle> vehicles;
   final Future<void> Function() onSaved;
-  const _OverviewTab({required this.partner, required this.onSaved});
+  const _OverviewTab({required this.partner, required this.vehicles, required this.onSaved});
 
   @override
   State<_OverviewTab> createState() => _OverviewTabState();
@@ -84,6 +93,8 @@ class _OverviewTabState extends State<_OverviewTab> {
   late final TextEditingController _payload;
   late final TextEditingController _notes;
   bool? _eu;
+  final List<TextEditingController> _unitCtrls = [];
+  final List<TextEditingController> _regCtrls = [];
 
   @override
   void initState() {
@@ -99,6 +110,7 @@ class _OverviewTabState extends State<_OverviewTab> {
     _payload = TextEditingController(text: p.vehicleMaxPayloadKg?.toString() ?? '');
     _notes = TextEditingController(text: p.notes ?? '');
     _eu = p.euApproved;
+    _resetVehicleControllers();
   }
 
   @override
@@ -116,6 +128,7 @@ class _OverviewTabState extends State<_OverviewTab> {
     _payload.text = p.vehicleMaxPayloadKg?.toString() ?? '';
     _notes.text = p.notes ?? '';
     _eu = p.euApproved;
+    _resetVehicleControllers();
   }
 
   @override
@@ -129,7 +142,33 @@ class _OverviewTabState extends State<_OverviewTab> {
     _veh.dispose();
     _payload.dispose();
     _notes.dispose();
+    for (final c in _unitCtrls) {
+      c.dispose();
+    }
+    for (final c in _regCtrls) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  void _resetVehicleControllers() {
+    for (final c in _unitCtrls) {
+      c.dispose();
+    }
+    for (final c in _regCtrls) {
+      c.dispose();
+    }
+    _unitCtrls.clear();
+    _regCtrls.clear();
+    if (widget.vehicles.isEmpty) {
+      _unitCtrls.add(TextEditingController(text: 'M01'));
+      _regCtrls.add(TextEditingController());
+      return;
+    }
+    for (final v in widget.vehicles) {
+      _unitCtrls.add(TextEditingController(text: v.unitCode));
+      _regCtrls.add(TextEditingController(text: v.registrationNumber));
+    }
   }
 
   Future<void> _save() async {
@@ -158,6 +197,27 @@ class _OverviewTabState extends State<_OverviewTab> {
       createdAt: widget.partner.createdAt,
     );
     await PartnerService.updatePartner(widget.partner.id, path);
+    final vehicles = <PartnerVehicle>[];
+    for (int i = 0; i < _unitCtrls.length; i++) {
+      final unit = _unitCtrls[i].text.trim().toUpperCase();
+      final reg = _regCtrls[i].text.trim().toUpperCase();
+      if (unit.isEmpty || reg.isEmpty) continue;
+      vehicles.add(
+        PartnerVehicle(
+          id: '',
+          partnerId: widget.partner.id,
+          companyId: widget.partner.companyId,
+          unitCode: unit,
+          registrationNumber: reg,
+          createdAt: DateTime.now(),
+        ),
+      );
+    }
+    await PartnerService.replaceVehicles(
+      partnerId: widget.partner.id,
+      companyId: widget.partner.companyId,
+      vehicles: vehicles,
+    );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lagret')));
       await widget.onSaved();
@@ -239,6 +299,56 @@ class _OverviewTabState extends State<_OverviewTab> {
           controller: _notes,
           maxLines: 4,
           decoration: const InputDecoration(labelText: 'Notater', border: OutlineInputBorder()),
+        ),
+        const SizedBox(height: 16),
+        const Text('Bilnavn (M01+) og reg.nr', style: TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        ...List.generate(_unitCtrls.length, (i) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _unitCtrls[i],
+                    decoration: const InputDecoration(labelText: 'Bilnavn (M01...)', border: OutlineInputBorder()),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _regCtrls[i],
+                    decoration: const InputDecoration(labelText: 'Reg.nr', border: OutlineInputBorder()),
+                  ),
+                ),
+                if (_unitCtrls.length > 1)
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _unitCtrls[i].dispose();
+                        _regCtrls[i].dispose();
+                        _unitCtrls.removeAt(i);
+                        _regCtrls.removeAt(i);
+                      });
+                    },
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  ),
+              ],
+            ),
+          );
+        }),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () {
+              setState(() {
+                _unitCtrls.add(TextEditingController(text: 'M${(_unitCtrls.length + 1).toString().padLeft(2, '0')}'));
+                _regCtrls.add(TextEditingController());
+              });
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Legg til bil'),
+          ),
         ),
         const SizedBox(height: 20),
         FilledButton(
@@ -647,11 +757,41 @@ class _RoutesTabState extends State<_RoutesTab> {
                   itemCount: _list.length,
                   itemBuilder: (_, i) {
                     final r = _list[i];
+                    final ackColor = switch (r.ackStatus) {
+                      'accepted' => Colors.green,
+                      'rejected' => Colors.red,
+                      _ => Colors.orange,
+                    };
+                    final ackLabel = switch (r.ackStatus) {
+                      'accepted' => 'Akseptert',
+                      'rejected' => 'Ikke akseptert',
+                      _ => 'Venter svar',
+                    };
                     return Card(
                       child: ListTile(
                         title: Text(r.title ?? 'Rute'),
-                        subtitle: Text('${r.shareDate.toString().split(" ").first} · ${r.pdfStoragePath}'),
-                        trailing: r.isDailyShare ? const Chip(label: Text('Daglig')) : null,
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${r.shareDate.toString().split(" ").first} · ${r.pdfStoragePath}'),
+                            const SizedBox(height: 4),
+                            Text(
+                              ackLabel,
+                              style: TextStyle(
+                                color: ackColor,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (r.ackComment != null && r.ackComment!.trim().isNotEmpty)
+                              Text(
+                                'Kommentar: ${r.ackComment}',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                          ],
+                        ),
+                        trailing: r.isDailyShare
+                            ? const Chip(label: Text('Daglig'))
+                            : null,
                       ),
                     );
                   },

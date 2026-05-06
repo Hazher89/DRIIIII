@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:typed_data';
 
 import '../../config/supabase_config.dart';
 import '../../../models/partner/partner.dart';
@@ -102,6 +103,20 @@ class PartnerService {
     return PartnerRouteShare.fromJson(row);
   }
 
+  static Future<void> updateRouteAcknowledgement({
+    required String routeShareId,
+    required bool accepted,
+    String? comment,
+  }) async {
+    if (!_ok) return;
+    await _client.from('partner_route_shares').update({
+      'ack_status': accepted ? 'accepted' : 'rejected',
+      'ack_at': DateTime.now().toIso8601String(),
+      'ack_by': _client.auth.currentUser?.id,
+      'ack_comment': comment,
+    }).eq('id', routeShareId);
+  }
+
   /// Admin: knytt eksisterende profil til partner (krever RLS som tillater oppdatering).
   static Future<void> linkProfileToPartner({
     required String profileId,
@@ -114,5 +129,88 @@ class PartnerService {
       'is_onboarded': true,
       'is_approved': true,
     }).eq('id', profileId);
+  }
+
+  static Future<List<PartnerVehicle>> fetchVehicles(String partnerId) async {
+    if (!_ok) return const [];
+    final data = await _client
+        .from('partner_vehicles')
+        .select()
+        .eq('partner_id', partnerId)
+        .order('unit_code', ascending: true) as List<dynamic>;
+    return data.map((e) => PartnerVehicle.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  static Future<void> replaceVehicles({
+    required String partnerId,
+    required String companyId,
+    required List<PartnerVehicle> vehicles,
+  }) async {
+    if (!_ok) return;
+    await _client.from('partner_vehicles').delete().eq('partner_id', partnerId);
+    if (vehicles.isEmpty) return;
+    final payload = vehicles
+        .map((v) => {
+              'partner_id': partnerId,
+              'company_id': companyId,
+              'unit_code': v.unitCode,
+              'registration_number': v.registrationNumber,
+              'notes': v.notes,
+            })
+        .toList();
+    await _client.from('partner_vehicles').insert(payload);
+  }
+
+  static Future<void> upsertPortalAccount({
+    required String partnerId,
+    required String companyId,
+    required String username,
+    required String loginEmail,
+    String? profileId,
+  }) async {
+    if (!_ok) return;
+    await _client.from('partner_portal_accounts').upsert({
+      'partner_id': partnerId,
+      'company_id': companyId,
+      'username': username.toLowerCase().trim(),
+      'login_email': loginEmail.toLowerCase().trim(),
+      'profile_id': profileId,
+      'is_active': true,
+    }, onConflict: 'username');
+  }
+
+  static Future<String?> resolveLoginIdentifierToEmail(String identifier) async {
+    final input = identifier.trim();
+    if (input.contains('@')) return input;
+    if (!_ok) return null;
+    try {
+      final val = await _client.rpc('resolve_partner_login_email', params: {
+        'p_username': input.toLowerCase(),
+      });
+      if (val is String && val.trim().isNotEmpty) return val.trim();
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> uploadPartnerRoutePdf({
+    required String storagePath,
+    required Uint8List bytes,
+  }) async {
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    await _client.storage.from('documents').uploadBinary(
+          storagePath,
+          bytes,
+          fileOptions: const FileOptions(
+            upsert: true,
+            contentType: 'application/pdf',
+          ),
+        );
+  }
+
+  static Future<String> getRoutePdfSignedUrl(String storagePath) async {
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    return _client.storage.from('documents').createSignedUrl(storagePath, 3600);
   }
 }

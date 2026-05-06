@@ -44,7 +44,7 @@ class PartnerDocument {
       'file_name': fileName,
       'mime_type': mimeType,
       'notes': notes,
-      if (createdBy != null) 'created_by': createdBy,
+      ...?createdBy != null ? {'created_by': createdBy} : null,
     };
   }
 }
@@ -104,6 +104,10 @@ class PartnerRouteShare {
   final DateTime shareDate;
   final bool isDailyShare;
   final String? notes;
+  final String ackStatus; // pending | accepted | rejected
+  final DateTime? ackAt;
+  final String? ackBy;
+  final String? ackComment;
   final DateTime createdAt;
 
   PartnerRouteShare({
@@ -115,6 +119,10 @@ class PartnerRouteShare {
     required this.shareDate,
     this.isDailyShare = false,
     this.notes,
+    this.ackStatus = 'pending',
+    this.ackAt,
+    this.ackBy,
+    this.ackComment,
     required this.createdAt,
   });
 
@@ -128,6 +136,10 @@ class PartnerRouteShare {
       shareDate: DateTime.parse(json['share_date'] as String),
       isDailyShare: json['is_daily_share'] as bool? ?? false,
       notes: json['notes'] as String?,
+      ackStatus: (json['ack_status'] as String?) ?? 'pending',
+      ackAt: json['ack_at'] != null ? DateTime.parse(json['ack_at'] as String) : null,
+      ackBy: json['ack_by'] as String?,
+      ackComment: json['ack_comment'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -141,6 +153,87 @@ class PartnerRouteShare {
       'share_date': shareDate.toIso8601String().split('T').first,
       'is_daily_share': isDailyShare,
       'notes': notes,
+      'ack_status': ackStatus,
+      'ack_at': ackAt?.toIso8601String(),
+      'ack_by': ackBy,
+      'ack_comment': ackComment,
     };
+  }
+}
+
+class PartnerVehicle {
+  final String id;
+  final String partnerId;
+  final String companyId;
+  final String unitCode; // e.g. M01, M02
+  final String registrationNumber;
+  final String? notes;
+  final DateTime createdAt;
+
+  PartnerVehicle({
+    required this.id,
+    required this.partnerId,
+    required this.companyId,
+    required this.unitCode,
+    required this.registrationNumber,
+    this.notes,
+    required this.createdAt,
+  });
+
+  factory PartnerVehicle.fromJson(Map<String, dynamic> json) {
+    return PartnerVehicle(
+      id: json['id'] as String,
+      partnerId: json['partner_id'] as String,
+      companyId: json['company_id'] as String,
+      unitCode: json['unit_code'] as String,
+      registrationNumber: json['registration_number'] as String,
+      notes: json['notes'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+
+  Map<String, dynamic> toInsertJson() {
+    return {
+      'partner_id': partnerId,
+      'company_id': companyId,
+      'unit_code': unitCode,
+      'registration_number': registrationNumber,
+      'notes': notes,
+    };
+  }
+}
+
+class PartnerPortalAccount {
+  final String id;
+  final String partnerId;
+  final String companyId;
+  final String username;
+  final String loginEmail;
+  final String? profileId;
+  final bool isActive;
+  final DateTime createdAt;
+
+  PartnerPortalAccount({
+    required this.id,
+    required this.partnerId,
+    required this.companyId,
+    required this.username,
+    required this.loginEmail,
+    this.profileId,
+    this.isActive = true,
+    required this.createdAt,
+  });
+
+  factory PartnerPortalAccount.fromJson(Map<String, dynamic> json) {
+    return PartnerPortalAccount(
+      id: json['id'] as String,
+      partnerId: json['partner_id'] as String,
+      companyId: json['company_id'] as String,
+      username: json['username'] as String,
+      loginEmail: json['login_email'] as String,
+      profileId: json['profile_id'] as String?,
+      isActive: json['is_active'] as bool? ?? true,
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
   }
 }
