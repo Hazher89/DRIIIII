@@ -80,6 +80,7 @@ class _PartnerShellState extends State<PartnerShell> {
     final pages = [
       _PartnerOverviewPage(partner: p),
       _PartnerDocsPage(partner: p),
+      _PartnerSummaryPage(partner: p),
       _PartnerRoutesPage(partner: p),
       _PartnerProfilePage(profile: widget.profile),
     ];
@@ -92,6 +93,11 @@ class _PartnerShellState extends State<PartnerShell> {
         destinations: const [
           NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
           NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
+          NavigationDestination(
+            icon: Icon(Icons.summarize_outlined),
+            selectedIcon: Icon(Icons.summarize),
+            label: 'Oppsumm.',
+          ),
           NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Ruter'),
           NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
         ],
@@ -193,7 +199,10 @@ class _PartnerDocsPageState extends State<_PartnerDocsPage> {
   }
 
   Future<void> _load() async {
-    final d = await PartnerService.fetchDocuments(widget.partner.id);
+    final d = await PartnerService.fetchDocuments(
+      widget.partner.id,
+      docCategories: const ['general', 'agreement'],
+    );
     if (mounted) setState(() => _docs = d);
   }
 
@@ -215,6 +224,78 @@ class _PartnerDocsPageState extends State<_PartnerDocsPage> {
                   leading: const Icon(Icons.description_outlined),
                   title: Text(doc.title),
                   subtitle: Text(doc.fileName ?? doc.storagePath ?? ''),
+                );
+              },
+            ),
+    );
+  }
+}
+
+class _PartnerSummaryPage extends StatefulWidget {
+  final Partner partner;
+  const _PartnerSummaryPage({required this.partner});
+
+  @override
+  State<_PartnerSummaryPage> createState() => _PartnerSummaryPageState();
+}
+
+class _PartnerSummaryPageState extends State<_PartnerSummaryPage> {
+  List<PartnerDocument> _docs = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final d = await PartnerService.fetchDocuments(
+      widget.partner.id,
+      docCategories: const ['summary'],
+    );
+    if (mounted) setState(() => _docs = d);
+  }
+
+  Future<void> _open(PartnerDocument doc) async {
+    final p = doc.storagePath;
+    if (p == null || p.isEmpty) return;
+    try {
+      final url = await PartnerService.getDocumentPdfSignedUrl(p);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke åpne PDF: $e')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Oppsummering')),
+      body: _docs.isEmpty
+          ? const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Ingen oppsummering er delt med dere ennå.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: _docs.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (ctx, i) {
+                final doc = _docs[i];
+                return ListTile(
+                  tileColor: Theme.of(context).brightness == Brightness.dark ? DriftProTheme.cardDark : Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  leading: const Icon(Icons.picture_as_pdf_outlined),
+                  title: Text(doc.title),
+                  subtitle: Text(doc.fileName ?? ''),
+                  trailing: const Icon(Icons.open_in_new),
+                  onTap: () => _open(doc),
                 );
               },
             ),

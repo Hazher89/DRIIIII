@@ -75,7 +75,8 @@ class AuthGateScreen extends StatelessWidget {
                     _GateCard(
                       icon: Icons.handshake_outlined,
                       title: 'Samarbeidspartner',
-                      subtitle: 'E-post og passord opprettet av administrator i Samarbeidspartnere.',
+                      subtitle:
+                          'Innloggingslenke på e-post fra administrator, eller brukernavn og passord etter oppsett.',
                       color: const Color(0xFF1565C0),
                       onTap: () {
                         Navigator.of(context).push(
@@ -329,7 +330,7 @@ class _AuthButton extends StatelessWidget {
   }
 }
 
-/// Partner: e-post + passord (standard Supabase auth).
+/// Partner: e-post/brukernavn + passord, eller magic link.
 class PartnerLoginScreen extends StatefulWidget {
   const PartnerLoginScreen({super.key});
 
@@ -368,6 +369,52 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Innlogging feilet: $e'), backgroundColor: DriftProTheme.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _sendMagicLink() async {
+    if (_loading) return;
+    final raw = _identifier.text.trim();
+    if (raw.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Skriv innloggings-e-post eller brukernavn først')),
+      );
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      var email = await PartnerService.resolveLoginIdentifierToEmail(raw);
+      if (email == null || !email.contains('@')) {
+        if (raw.contains('@')) {
+          email = raw;
+        }
+      }
+      if (email == null || !email.contains('@')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Fant ikke e-post for dette brukernavnet. Bruk e-postadressen du fikk tildelt.')),
+          );
+        }
+        return;
+      }
+      await Supabase.instance.client.auth.signInWithOtp(
+        email: email.trim().toLowerCase(),
+        emailRedirectTo: 'https://driftpro.no',
+        shouldCreateUser: true,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lenke sendt til $email. Sjekk innboks og spam.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke sende lenke: $e'), backgroundColor: DriftProTheme.error),
         );
       }
     } finally {
@@ -416,7 +463,7 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
                   controller: _password,
                   obscureText: _obscure,
                   decoration: InputDecoration(
-                    labelText: 'Passord',
+                    labelText: 'Passord (hvis du har satt det)',
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
@@ -440,9 +487,18 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
                         )
                       : const Text('Logg inn'),
                 ),
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: _loading ? null : _sendMagicLink,
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    foregroundColor: const Color(0xFF1565C0),
+                  ),
+                  child: const Text('Send innloggingslenke på e-post'),
+                ),
                 const SizedBox(height: 16),
                 Text(
-                  'Administrator oppretter bruker og knytter den til din bedrift under Samarbeidspartnere. Kontakt MAVI ved behov.',
+                  'Administrator registrerer partner og portal under Samarbeidspartnere. Du får typisk en e-post med lenke; da trenger du ikke passord her.',
                   style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : Colors.grey[600]),
                 ),
               ],

@@ -1,4 +1,9 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/services/partner/partner_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -22,7 +27,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
   void initState() {
     super.initState();
     _p = widget.partner;
-    _tabs = TabController(length: 4, vsync: this);
+    _tabs = TabController(length: 5, vsync: this);
     _reload();
   }
 
@@ -56,6 +61,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
             Tab(text: 'Dokumenter'),
             Tab(text: 'Møte & revisjon'),
             Tab(text: 'Rute-PDF'),
+            Tab(text: 'Oppsummering'),
           ],
         ),
       ),
@@ -66,6 +72,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
           _DocumentsTab(partner: _p, onChanged: _reload),
           _MeetingAuditTab(partner: _p, onChanged: _reload),
           _RoutesTab(partner: _p, onChanged: _reload),
+          _SummaryTab(partner: _p, onChanged: _reload),
         ],
       ),
     );
@@ -401,7 +408,10 @@ class _DocumentsTabState extends State<_DocumentsTab> {
   }
 
   Future<void> _load() async {
-    final d = await PartnerService.fetchDocuments(widget.partner.id);
+    final d = await PartnerService.fetchDocuments(
+      widget.partner.id,
+      docCategories: const ['general', 'agreement'],
+    );
     if (mounted) setState(() => _list = d);
   }
 
@@ -439,6 +449,7 @@ class _DocumentsTabState extends State<_DocumentsTab> {
           companyId: widget.partner.companyId,
           title: title.text.trim(),
           storagePath: path.text.trim().isEmpty ? null : path.text.trim(),
+          docCategory: 'general',
           createdAt: DateTime.now(),
         ),
       );
@@ -680,6 +691,169 @@ class _MeetingAuditTabState extends State<_MeetingAuditTab> {
   }
 
   String _d(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, "0")}-${d.day.toString().padLeft(2, "0")}';
+}
+
+/// Oppsummerings-PDF: egen kategori (doc_category=summary). RLS: kun MAVI i selskapet + denne partneren.
+class _SummaryTab extends StatefulWidget {
+  final Partner partner;
+  final Future<void> Function() onChanged;
+  const _SummaryTab({required this.partner, required this.onChanged});
+
+  @override
+  State<_SummaryTab> createState() => _SummaryTabState();
+}
+
+class _SummaryTabState extends State<_SummaryTab> {
+  List<PartnerDocument> _list = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final d = await PartnerService.fetchDocuments(
+      widget.partner.id,
+      docCategories: const ['summary'],
+    );
+    if (mounted) setState(() => _list = d);
+  }
+
+  Future<void> _uploadPdf() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      withData: true,
+    );
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.first;
+    final bytes = file.bytes ??
+        (file.path != null && !kIsWeb ? await File(file.path!).readAsBytes() : null);
+    if (bytes == null || bytes.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kunne ikke lese PDF-fil.')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final title = TextEditingController(text: 'Oppsummering');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Last opp oppsummering (PDF)'),
+        content: TextField(
+          controller: title,
+          decoration: const InputDecoration(
+            labelText: 'Tittel',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Last opp')),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final storagePath =
+        'company_${widget.partner.companyId}/partner_summaries/${widget.partner.id}/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+    try {
+      await PartnerService.uploadPartnerDocumentPdf(storagePath: storagePath, bytes: bytes);
+      await PartnerService.addDocument(
+        PartnerDocument(
+          id: '',
+          partnerId: widget.partner.id,
+          companyId: widget.partner.companyId,
+          title: title.text.trim().isEmpty ? 'Oppsummering' : title.text.trim(),
+          storagePath: storagePath,
+          fileName: file.name,
+          mimeType: 'application/pdf',
+          docCategory: 'summary',
+          createdAt: DateTime.now(),
+        ),
+      );
+      await _load();
+      await widget.onChanged();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Oppsummering er delt med partner (kun deres tilgang).')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Opplasting feilet: $e')));
+      }
+    } finally {
+      title.dispose();
+    }
+  }
+
+  Future<void> _open(PartnerDocument d) async {
+    final p = d.storagePath;
+    if (p == null || p.isEmpty) return;
+    try {
+      final url = await PartnerService.getDocumentPdfSignedUrl(p);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke åpne: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+          child: Text(
+            'Oppsummerings-PDF er kun synlig for dere internt og for denne samarbeidspartneren (dataminimering).',
+            style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              onPressed: _uploadPdf,
+              icon: const Icon(Icons.summarize_outlined),
+              label: const Text('Last opp oppsummering-PDF'),
+              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+            ),
+          ),
+        ),
+        Expanded(
+          child: _list.isEmpty
+              ? const Center(child: Text('Ingen oppsummering delt ennå.'))
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: _list.length,
+                  itemBuilder: (_, i) {
+                    final d = _list[i];
+                    return Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.picture_as_pdf_outlined),
+                        title: Text(d.title),
+                        subtitle: Text(d.fileName ?? d.storagePath ?? ''),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.open_in_new),
+                          onPressed: () => _open(d),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
 }
 
 class _RoutesTab extends StatefulWidget {

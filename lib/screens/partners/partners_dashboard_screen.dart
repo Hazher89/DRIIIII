@@ -9,6 +9,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
+import 'bulk_partners_screen.dart';
 import 'new_partner_screen.dart';
 import 'partner_detail_screen.dart';
 
@@ -68,6 +69,46 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
       MaterialPageRoute(builder: (_) => const NewPartnerScreen()),
     );
     if (created == true) _load();
+  }
+
+  Future<void> _openBulkImport() async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const BulkPartnersScreen()),
+    );
+    if (created == true) _load();
+  }
+
+  Future<void> _openRegisterMenu() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.person_add_outlined),
+              title: const Text('Registrer én partner'),
+              subtitle: const Text('Brreg, kjøretøy, portal'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openNew();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.playlist_add_outlined),
+              title: const Text('Masseimport fra Brreg'),
+              subtitle: const Text('Lim inn mange org.nr eller navn'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _openBulkImport();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _pickAndAutoDistributeFiles() async {
@@ -377,16 +418,16 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
             onPressed: _autoDistributing ? null : _openAutoDistributeDialog,
           ),
           IconButton(
-            tooltip: 'Ny samarbeidspartner',
+            tooltip: 'Ny / masseimport',
             icon: const Icon(Icons.add_circle_outline),
-            onPressed: _openNew,
+            onPressed: _openRegisterMenu,
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openNew,
+        onPressed: _openRegisterMenu,
         icon: const Icon(Icons.add),
-        label: const Text('Registrer partner'),
+        label: const Text('Registrer'),
         backgroundColor: DriftProTheme.primaryGreen,
       ),
       body: RefreshIndicator(

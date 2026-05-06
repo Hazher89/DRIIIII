@@ -7,6 +7,8 @@ class PartnerDocument {
   final String? fileName;
   final String? mimeType;
   final String? notes;
+  /// general | summary | agreement — summary = oppsummerings-PDF (kun delt med denne partneren)
+  final String docCategory;
   final DateTime createdAt;
 
   PartnerDocument({
@@ -18,6 +20,7 @@ class PartnerDocument {
     this.fileName,
     this.mimeType,
     this.notes,
+    this.docCategory = 'general',
     required this.createdAt,
   });
 
@@ -31,6 +34,7 @@ class PartnerDocument {
       fileName: json['file_name'] as String?,
       mimeType: json['mime_type'] as String?,
       notes: json['notes'] as String?,
+      docCategory: json['doc_category'] as String? ?? 'general',
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -44,6 +48,7 @@ class PartnerDocument {
       'file_name': fileName,
       'mime_type': mimeType,
       'notes': notes,
+      'doc_category': docCategory,
       ...?createdBy != null ? {'created_by': createdBy} : null,
     };
   }

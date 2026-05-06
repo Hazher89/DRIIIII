@@ -382,25 +382,43 @@ department:departments!department_id(name)
 
   /// Henter profil, og oppretter en minimal pending-profil hvis trigger ikke gjorde det.
   static Future<UserProfile?> fetchOrCreateCurrentUserProfile() async {
-    final existing = await fetchCurrentUserProfile();
-    if (existing != null) {
-      // Self-heal: hvis profil finnes uten company_id, forsøk å sette en bootstrap company.
-      if (existing.companyId == null) {
-        final bootstrapCompany = await discoverBootstrapCompanyId();
-        if (bootstrapCompany != null) {
-          try {
-            await client.from('profiles').update({'company_id': bootstrapCompany}).eq('id', existing.id);
-            return await fetchCurrentUserProfile();
-          } catch (_) {}
-        }
+    final user = client.auth.currentUser;
+    if (user == null) return null;
+
+    try {
+      await client.rpc('apply_partner_bootstrap_to_profile');
+    } catch (_) {}
+
+    var existing = await fetchCurrentUserProfile();
+    if (existing == null) {
+      try {
+        await client.rpc('ensure_partner_profile_from_portal');
+        existing = await fetchCurrentUserProfile();
+      } catch (e) {
+        debugPrint('ensure_partner_profile_from_portal: $e');
       }
-      return existing;
+    }
+
+    if (existing != null) {
+      try {
+        await client.rpc('apply_partner_bootstrap_to_profile');
+        existing = await fetchCurrentUserProfile();
+      } catch (_) {}
+      if (existing != null) {
+        if (existing.companyId == null && existing.partnerId == null) {
+          final bootstrapCompany = await discoverBootstrapCompanyId();
+          if (bootstrapCompany != null) {
+            try {
+              await client.from('profiles').update({'company_id': bootstrapCompany}).eq('id', existing.id);
+              return await fetchCurrentUserProfile();
+            } catch (_) {}
+          }
+        }
+        return existing;
+      }
     }
 
     try {
-      final user = client.auth.currentUser;
-      if (user == null) return null;
-
       String fullName = (user.userMetadata?['full_name']?.toString() ??
               user.userMetadata?['name']?.toString() ??
               user.email?.split('@').first ??
@@ -408,7 +426,6 @@ department:departments!department_id(name)
           .trim();
       if (fullName.isEmpty) fullName = 'Ny bruker';
 
-      // Velg bootstrap company for første innlogging ved manglende profil.
       final companyId = await discoverBootstrapCompanyId();
 
       await client.from('profiles').upsert({

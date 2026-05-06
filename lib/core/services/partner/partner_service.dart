@@ -45,14 +45,32 @@ class PartnerService {
     await _client.from('partners').update(patch.toUpdateJson()).eq('id', id);
   }
 
-  static Future<List<PartnerDocument>> fetchDocuments(String partnerId) async {
+  static Future<List<PartnerDocument>> fetchDocuments(
+    String partnerId, {
+    List<String>? docCategories,
+  }) async {
     if (!_ok) return const [];
-    final data = await _client
-        .from('partner_documents')
-        .select()
-        .eq('partner_id', partnerId)
-        .order('created_at', ascending: false) as List<dynamic>;
+    var q = _client.from('partner_documents').select().eq('partner_id', partnerId);
+    if (docCategories != null && docCategories.isNotEmpty) {
+      q = q.inFilter('doc_category', docCategories);
+    }
+    final data = await q.order('created_at', ascending: false) as List<dynamic>;
     return data.map((e) => PartnerDocument.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Sender magic link / OTP til portal-e-post (ingen passord i skjema). Krever e-postmal i Supabase.
+  static Future<void> sendPartnerPortalMagicLink({
+    required String email,
+    String? redirectTo,
+  }) async {
+    if (!_ok) return;
+    final em = email.trim().toLowerCase();
+    if (!em.contains('@')) return;
+    await _client.auth.signInWithOtp(
+      email: em,
+      emailRedirectTo: redirectTo ?? 'https://driftpro.no',
+      shouldCreateUser: true,
+    );
   }
 
   static Future<PartnerDocument> addDocument(PartnerDocument doc, {String? createdBy}) async {
@@ -251,5 +269,24 @@ class PartnerService {
   static Future<String> getRoutePdfSignedUrl(String storagePath) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
     return _client.storage.from('documents').createSignedUrl(storagePath, 3600);
+  }
+
+  static Future<void> uploadPartnerDocumentPdf({
+    required String storagePath,
+    required Uint8List bytes,
+  }) async {
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    await _client.storage.from('documents').uploadBinary(
+          storagePath,
+          bytes,
+          fileOptions: const FileOptions(
+            upsert: true,
+            contentType: 'application/pdf',
+          ),
+        );
+  }
+
+  static Future<String> getDocumentPdfSignedUrl(String storagePath) async {
+    return getRoutePdfSignedUrl(storagePath);
   }
 }

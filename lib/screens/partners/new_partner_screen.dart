@@ -156,6 +156,28 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
         await _tryLinkInvite(created.id, emailOverride: linkEmail);
       }
       await _upsertPortalAccount(created.id, cid);
+      final portalEmail = _portalLoginEmailCtrl.text.trim();
+      final portalUser = _portalUsernameCtrl.text.trim();
+      if (portalUser.isNotEmpty && portalEmail.contains('@')) {
+        try {
+          await PartnerService.sendPartnerPortalMagicLink(email: portalEmail);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Innloggingslenke er sendt til $portalEmail. Be partneren åpne e-posten og følge lenken.',
+                ),
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Kunne ikke sende innloggingslenke (sjekk Supabase e-post / spam): $e')),
+            );
+          }
+        }
+      }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -466,7 +488,8 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
           const Text('Partner-portal bruker', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           Text(
-            'Hvis en profil allerede finnes med samme e-post, knyttes den til denne partneren etter lagring.',
+            'Ingen passord lagres her. Når brukernavn og innloggings-e-post er fylt ut, sendes en sikker innloggingslenke (e-post). '
+            'Partneren ser kun dokumenter, avtaler, oppsummering og ruter som er delt med dem (GDPR).',
             style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
           const SizedBox(height: 8),
@@ -474,7 +497,7 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
             controller: _inviteEmailCtrl,
             keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(
-              labelText: 'E-post til eksisterende bruker (valgfritt)',
+              labelText: 'E-post til eksisterende MAVI-bruker (valgfritt, Google/Apple)',
               border: OutlineInputBorder(),
             ),
           ),
@@ -482,7 +505,7 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
           TextField(
             controller: _portalUsernameCtrl,
             decoration: const InputDecoration(
-              labelText: 'Portal brukernavn (f.eks m01_olsen)',
+              labelText: 'Portal brukernavn (f.eks. m01_olsen)',
               border: OutlineInputBorder(),
             ),
           ),
@@ -491,13 +514,13 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
             controller: _portalLoginEmailCtrl,
             keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(
-              labelText: 'Portal innloggings-epost (samme som auth-bruker)',
+              labelText: 'Portal innloggings-e-post (mottar lenke)',
               border: OutlineInputBorder(),
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Passord settes på Supabase Auth-brukeren. Brukernavn brukes som login-alias i partner-innlogging.',
+            'Brukernavn kan brukes i stedet for e-post ved innlogging. Passord velger partneren via lenken i e-posten.',
             style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
           const SizedBox(height: 32),
