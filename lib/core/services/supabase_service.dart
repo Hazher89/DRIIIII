@@ -350,7 +350,19 @@ department:departments!department_id(name)
   /// Henter profil, og oppretter en minimal pending-profil hvis trigger ikke gjorde det.
   static Future<UserProfile?> fetchOrCreateCurrentUserProfile() async {
     final existing = await fetchCurrentUserProfile();
-    if (existing != null) return existing;
+    if (existing != null) {
+      // Self-heal: hvis profil finnes uten company_id, forsøk å sette en bootstrap company.
+      if (existing.companyId == null) {
+        final bootstrapCompany = await _discoverBootstrapCompanyId();
+        if (bootstrapCompany != null) {
+          try {
+            await client.from('profiles').update({'company_id': bootstrapCompany}).eq('id', existing.id);
+            return await fetchCurrentUserProfile();
+          } catch (_) {}
+        }
+      }
+      return existing;
+    }
 
     try {
       final user = client.auth.currentUser;
@@ -363,14 +375,8 @@ department:departments!department_id(name)
           .trim();
       if (fullName.isEmpty) fullName = 'Ny bruker';
 
-      // Velg default company for første innlogging ved manglende profil.
-      String? companyId = SupabaseConfig.defaultCompanyId;
-      if (companyId == null) {
-        final companies = await client.from('companies').select('id').limit(1) as List<dynamic>;
-        if (companies.isNotEmpty) {
-          companyId = companies.first['id'] as String;
-        }
-      }
+      // Velg bootstrap company for første innlogging ved manglende profil.
+      final companyId = await _discoverBootstrapCompanyId();
 
       await client.from('profiles').upsert({
         'id': user.id,
@@ -388,6 +394,25 @@ department:departments!department_id(name)
       debugPrint('Error creating fallback profile: $e');
       return null;
     }
+  }
+
+  static Future<String?> _discoverBootstrapCompanyId() async {
+    if (SupabaseConfig.defaultCompanyId != null) return SupabaseConfig.defaultCompanyId;
+    try {
+      // Prioriter selskaper som allerede har avdelinger.
+      final byDepartments = await client
+          .from('departments')
+          .select('company_id')
+          .limit(1) as List<dynamic>;
+      if (byDepartments.isNotEmpty && byDepartments.first['company_id'] != null) {
+        return byDepartments.first['company_id'] as String;
+      }
+    } catch (_) {}
+    try {
+      final companies = await client.from('companies').select('id').limit(1) as List<dynamic>;
+      if (companies.isNotEmpty) return companies.first['id'] as String;
+    } catch (_) {}
+    return null;
   }
 
   static Future<void> updateProfileAdminFields(
