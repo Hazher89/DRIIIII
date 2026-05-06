@@ -169,14 +169,53 @@ class PartnerService {
     String? profileId,
   }) async {
     if (!_ok) return;
-    await _client.from('partner_portal_accounts').upsert({
+    final normalizedUsername = username.toLowerCase().trim();
+    final normalizedEmail = loginEmail.toLowerCase().trim();
+
+    // Robust i både nye og eksisterende databaser:
+    // ikke avhengig av at ON CONFLICT matcher eksakt unik constraint.
+    final existingByUsername = await _client
+        .from('partner_portal_accounts')
+        .select('id')
+        .eq('username', normalizedUsername)
+        .maybeSingle();
+
+    if (existingByUsername != null) {
+      await _client.from('partner_portal_accounts').update({
+        'partner_id': partnerId,
+        'company_id': companyId,
+        'login_email': normalizedEmail,
+        'profile_id': profileId,
+        'is_active': true,
+      }).eq('id', existingByUsername['id'] as String);
+      return;
+    }
+
+    final existingByEmail = await _client
+        .from('partner_portal_accounts')
+        .select('id')
+        .eq('login_email', normalizedEmail)
+        .maybeSingle();
+
+    if (existingByEmail != null) {
+      await _client.from('partner_portal_accounts').update({
+        'partner_id': partnerId,
+        'company_id': companyId,
+        'username': normalizedUsername,
+        'profile_id': profileId,
+        'is_active': true,
+      }).eq('id', existingByEmail['id'] as String);
+      return;
+    }
+
+    await _client.from('partner_portal_accounts').insert({
       'partner_id': partnerId,
       'company_id': companyId,
-      'username': username.toLowerCase().trim(),
-      'login_email': loginEmail.toLowerCase().trim(),
+      'username': normalizedUsername,
+      'login_email': normalizedEmail,
       'profile_id': profileId,
       'is_active': true,
-    }, onConflict: 'username');
+    });
   }
 
   static Future<String?> resolveLoginIdentifierToEmail(String identifier) async {

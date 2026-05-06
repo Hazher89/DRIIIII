@@ -31,8 +31,10 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
   final _inviteEmailCtrl = TextEditingController();
   final _portalUsernameCtrl = TextEditingController();
   final _portalLoginEmailCtrl = TextEditingController();
-  final List<TextEditingController> _unitControllers = [TextEditingController(text: 'M01')];
+  final List<String> _unitCodes = ['NO_O_M0001'];
   final List<TextEditingController> _regControllers = [TextEditingController()];
+  final List<String> _resourceIdOptions =
+      List.generate(9999, (i) => 'NO_O_M${(i + 1).toString().padLeft(4, '0')}');
 
   bool _euApproved = false;
   bool _searching = false;
@@ -56,9 +58,6 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
     _inviteEmailCtrl.dispose();
     _portalUsernameCtrl.dispose();
     _portalLoginEmailCtrl.dispose();
-    for (final c in _unitControllers) {
-      c.dispose();
-    }
     for (final c in _regControllers) {
       c.dispose();
     }
@@ -153,7 +152,9 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
       final linkEmail = _inviteEmailCtrl.text.trim().isNotEmpty
           ? _inviteEmailCtrl.text.trim()
           : _portalLoginEmailCtrl.text.trim();
-      await _tryLinkInvite(created.id, emailOverride: linkEmail);
+      if (linkEmail.contains('@')) {
+        await _tryLinkInvite(created.id, emailOverride: linkEmail);
+      }
       await _upsertPortalAccount(created.id, cid);
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -167,8 +168,8 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
 
   Future<void> _saveVehicles(Partner created) async {
     final vehicles = <PartnerVehicle>[];
-    for (int i = 0; i < _unitControllers.length; i++) {
-      final unit = _unitControllers[i].text.trim().toUpperCase();
+    for (int i = 0; i < _unitCodes.length; i++) {
+      final unit = _unitCodes[i].trim().toUpperCase();
       final reg = _regControllers[i].text.trim().toUpperCase();
       if (unit.isEmpty || reg.isEmpty) continue;
       vehicles.add(
@@ -193,6 +194,16 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
     final username = _portalUsernameCtrl.text.trim();
     final loginEmail = _portalLoginEmailCtrl.text.trim();
     if (username.isEmpty || loginEmail.isEmpty) return;
+    if (!loginEmail.contains('@')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Portal innloggings-epost må være en gyldig e-postadresse.'),
+          ),
+        );
+      }
+      return;
+    }
     await PartnerService.upsertPortalAccount(
       partnerId: partnerId,
       companyId: companyId,
@@ -389,18 +400,25 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
             decoration: const InputDecoration(labelText: 'Notater', border: OutlineInputBorder()),
           ),
           const SizedBox(height: 16),
-          const Text('Bilnavn (M01+) og reg.nr', style: TextStyle(fontWeight: FontWeight.w800)),
+          const Text('Bilnavn (NO_O_M0001+) og reg.nr', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
-          ...List.generate(_unitControllers.length, (i) {
+          ...List.generate(_unitCodes.length, (i) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
                   Expanded(
-                    child: TextField(
-                      controller: _unitControllers[i],
+                    child: DropdownButtonFormField<String>(
+                      value: _unitCodes[i],
+                      items: _resourceIdOptions
+                          .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                          .toList(),
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _unitCodes[i] = v);
+                      },
                       decoration: const InputDecoration(
-                        labelText: 'Bilnavn (M01, M02...)',
+                        labelText: 'Bilnavn (Resource ID)',
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -415,13 +433,12 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
                       ),
                     ),
                   ),
-                  if (_unitControllers.length > 1)
+                  if (_unitCodes.length > 1)
                     IconButton(
                       onPressed: () {
                         setState(() {
-                          _unitControllers[i].dispose();
                           _regControllers[i].dispose();
-                          _unitControllers.removeAt(i);
+                          _unitCodes.removeAt(i);
                           _regControllers.removeAt(i);
                         });
                       },
@@ -436,7 +453,8 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
             child: TextButton.icon(
               onPressed: () {
                 setState(() {
-                  _unitControllers.add(TextEditingController(text: 'M${(_unitControllers.length + 1).toString().padLeft(2, '0')}'));
+                  final next = _unitCodes.length + 1;
+                  _unitCodes.add('NO_O_M${next.toString().padLeft(4, '0')}');
                   _regControllers.add(TextEditingController());
                 });
               },

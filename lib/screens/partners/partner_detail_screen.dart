@@ -93,8 +93,10 @@ class _OverviewTabState extends State<_OverviewTab> {
   late final TextEditingController _payload;
   late final TextEditingController _notes;
   bool? _eu;
-  final List<TextEditingController> _unitCtrls = [];
+  final List<String> _unitCodes = [];
   final List<TextEditingController> _regCtrls = [];
+  final List<String> _resourceIdOptions =
+      List.generate(9999, (i) => 'NO_O_M${(i + 1).toString().padLeft(4, '0')}');
 
   @override
   void initState() {
@@ -142,9 +144,6 @@ class _OverviewTabState extends State<_OverviewTab> {
     _veh.dispose();
     _payload.dispose();
     _notes.dispose();
-    for (final c in _unitCtrls) {
-      c.dispose();
-    }
     for (final c in _regCtrls) {
       c.dispose();
     }
@@ -152,23 +151,35 @@ class _OverviewTabState extends State<_OverviewTab> {
   }
 
   void _resetVehicleControllers() {
-    for (final c in _unitCtrls) {
-      c.dispose();
-    }
     for (final c in _regCtrls) {
       c.dispose();
     }
-    _unitCtrls.clear();
+    _unitCodes.clear();
     _regCtrls.clear();
     if (widget.vehicles.isEmpty) {
-      _unitCtrls.add(TextEditingController(text: 'M01'));
+      _unitCodes.add('NO_O_M0001');
       _regCtrls.add(TextEditingController());
       return;
     }
     for (final v in widget.vehicles) {
-      _unitCtrls.add(TextEditingController(text: v.unitCode));
+      _unitCodes.add(_toResourceId(v.unitCode));
       _regCtrls.add(TextEditingController(text: v.registrationNumber));
     }
+  }
+
+  String _toResourceId(String raw) {
+    final upper = raw.toUpperCase();
+    final has = RegExp(r'NO_O_M0*(\d{1,5})').firstMatch(upper);
+    if (has != null) {
+      final n = int.tryParse(has.group(1)!);
+      if (n != null) return 'NO_O_M${n.toString().padLeft(4, '0')}';
+    }
+    final simple = RegExp(r'\bM0*(\d{1,5})\b').firstMatch(upper);
+    if (simple != null) {
+      final n = int.tryParse(simple.group(1)!);
+      if (n != null) return 'NO_O_M${n.toString().padLeft(4, '0')}';
+    }
+    return upper;
   }
 
   Future<void> _save() async {
@@ -198,8 +209,8 @@ class _OverviewTabState extends State<_OverviewTab> {
     );
     await PartnerService.updatePartner(widget.partner.id, path);
     final vehicles = <PartnerVehicle>[];
-    for (int i = 0; i < _unitCtrls.length; i++) {
-      final unit = _unitCtrls[i].text.trim().toUpperCase();
+    for (int i = 0; i < _unitCodes.length; i++) {
+      final unit = _unitCodes[i].trim().toUpperCase();
       final reg = _regCtrls[i].text.trim().toUpperCase();
       if (unit.isEmpty || reg.isEmpty) continue;
       vehicles.add(
@@ -301,17 +312,27 @@ class _OverviewTabState extends State<_OverviewTab> {
           decoration: const InputDecoration(labelText: 'Notater', border: OutlineInputBorder()),
         ),
         const SizedBox(height: 16),
-        const Text('Bilnavn (M01+) og reg.nr', style: TextStyle(fontWeight: FontWeight.w800)),
+        const Text('Bilnavn (NO_O_M0001+) og reg.nr', style: TextStyle(fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
-        ...List.generate(_unitCtrls.length, (i) {
+        ...List.generate(_unitCodes.length, (i) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _unitCtrls[i],
-                    decoration: const InputDecoration(labelText: 'Bilnavn (M01...)', border: OutlineInputBorder()),
+                  child: DropdownButtonFormField<String>(
+                    value: _unitCodes[i],
+                    items: _resourceIdOptions
+                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _unitCodes[i] = v);
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Bilnavn (Resource ID)',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -321,13 +342,12 @@ class _OverviewTabState extends State<_OverviewTab> {
                     decoration: const InputDecoration(labelText: 'Reg.nr', border: OutlineInputBorder()),
                   ),
                 ),
-                if (_unitCtrls.length > 1)
+                if (_unitCodes.length > 1)
                   IconButton(
                     onPressed: () {
                       setState(() {
-                        _unitCtrls[i].dispose();
                         _regCtrls[i].dispose();
-                        _unitCtrls.removeAt(i);
+                        _unitCodes.removeAt(i);
                         _regCtrls.removeAt(i);
                       });
                     },
@@ -342,7 +362,8 @@ class _OverviewTabState extends State<_OverviewTab> {
           child: TextButton.icon(
             onPressed: () {
               setState(() {
-                _unitCtrls.add(TextEditingController(text: 'M${(_unitCtrls.length + 1).toString().padLeft(2, '0')}'));
+                final next = _unitCodes.length + 1;
+                _unitCodes.add('NO_O_M${next.toString().padLeft(4, '0')}');
                 _regCtrls.add(TextEditingController());
               });
             },

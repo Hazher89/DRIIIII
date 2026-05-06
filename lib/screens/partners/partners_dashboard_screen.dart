@@ -119,12 +119,18 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
   }
 
   String _normalizeUnitCode(String raw) {
-    final upper = raw.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    if (upper.startsWith('M')) {
-      final num = int.tryParse(upper.substring(1));
+    final upper = raw.toUpperCase();
+    final withPrefix = RegExp(r'NO_O_M0*(\d{1,5})').firstMatch(upper);
+    if (withPrefix != null) {
+      final num = int.tryParse(withPrefix.group(1)!);
       if (num != null) return 'M$num';
     }
-    return upper;
+    final mOnly = RegExp(r'\bM0*(\d{1,5})\b').firstMatch(upper);
+    if (mOnly != null) {
+      final num = int.tryParse(mOnly.group(1)!);
+      if (num != null) return 'M$num';
+    }
+    return upper.replaceAll(RegExp(r'[^A-Z0-9]'), '');
   }
 
   String? _extractVehicleCodeFromPdf(Uint8List bytes) {
