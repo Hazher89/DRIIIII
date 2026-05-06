@@ -11,6 +11,10 @@ enum SurveyQuestionType {
   email,
   phone,
   nps,
+  likert,
+  slider,
+  time,
+  url,
 }
 
 extension SurveyQuestionTypeExtension on SurveyQuestionType {
@@ -28,13 +32,20 @@ extension SurveyQuestionTypeExtension on SurveyQuestionType {
       case SurveyQuestionType.email: return 'email';
       case SurveyQuestionType.phone: return 'phone';
       case SurveyQuestionType.nps: return 'nps';
+      case SurveyQuestionType.likert: return 'likert';
+      case SurveyQuestionType.slider: return 'slider';
+      case SurveyQuestionType.time: return 'time';
+      case SurveyQuestionType.url: return 'url';
     }
   }
 
   static SurveyQuestionType fromString(String val) {
     return SurveyQuestionType.values.firstWhere(
-      (e) => e.toIdentifier() == val, 
-      orElse: () => SurveyQuestionType.text
+      (e) => e.toIdentifier() == val,
+      orElse: () {
+        // Nyere typer i DB som appen ikke kjenner — fall tilbake til tekst.
+        return SurveyQuestionType.text;
+      },
     );
   }
 }

@@ -1,4 +1,4 @@
-enum UserRole { ansatt, leder, admin, superadmin }
+enum UserRole { ansatt, leder, admin, superadmin, samarbeidspartner }
 
 class UserProfile {
   final String id;
@@ -19,6 +19,8 @@ class UserProfile {
   final bool isApproved;
   final DateTime? createdAt;
   final Map<String, dynamic>? accessSettings;
+  /// Når satt, representerer brukeren en ekstern samarbeidspartner (portal).
+  final String? partnerId;
 
   const UserProfile({
     required this.id,
@@ -39,6 +41,7 @@ class UserProfile {
     this.isApproved = false,
     this.createdAt,
     this.accessSettings,
+    this.partnerId,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -69,6 +72,7 @@ class UserProfile {
           ? DateTime.parse(json['created_at'] as String)
           : null,
       accessSettings: json['access_settings'] as Map<String, dynamic>?,
+      partnerId: json['partner_id'] as String?,
     );
   }
 
@@ -89,8 +93,11 @@ class UserProfile {
     'is_active': isActive,
     'is_onboarded': isOnboarded,
     'is_approved': isApproved,
+    'partner_id': partnerId,
   };
 
+  bool get isPartnerPortalUser =>
+      partnerId != null || role == UserRole.samarbeidspartner;
   bool get isLeader => role == UserRole.leder || isAdmin;
   bool get isAdmin =>
       role == UserRole.admin || role == UserRole.superadmin;

@@ -177,7 +177,14 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
       case 0:
         return _buildSummaryView();
       case 1:
-        return SurveyBuilderCanvas(key: _canvasKey, survey: widget.survey);
+        return SurveyBuilderCanvas(
+          key: _canvasKey,
+          survey: widget.survey,
+          onAfterSuccessfulSave: () {
+            if (!mounted) return;
+            setState(() => _currentStep = 2);
+          },
+        );
       case 2:
         return SurveyPublishView(survey: widget.survey);
       case 3:

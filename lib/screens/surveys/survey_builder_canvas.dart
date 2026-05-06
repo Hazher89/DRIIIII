@@ -6,7 +6,14 @@ import '../../core/services/survey/survey_service.dart';
 
 class SurveyBuilderCanvas extends StatefulWidget {
   final Survey survey;
-  const SurveyBuilderCanvas({super.key, required this.survey});
+  /// Kalles etter vellykket lagring når brukeren trykker «Ferdig» (f.eks. gå til Publiser).
+  final VoidCallback? onAfterSuccessfulSave;
+
+  const SurveyBuilderCanvas({
+    super.key,
+    required this.survey,
+    this.onAfterSuccessfulSave,
+  });
 
   @override
   State<SurveyBuilderCanvas> createState() => SurveyBuilderCanvasState();
@@ -32,13 +39,54 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   late bool _requireLogin;
   DateTime? _expiresAt;
 
-  final Map<String, Color> _themeColors = {
+  /// Svært stort temautvalg (visuelt «studio») — hvert navn er et ferdig fargetema.
+  static final Map<String, Color> _themeColors = {
     'Original': DriftProTheme.primaryGreen,
     'Enkelt': Colors.blueGrey,
     'Helfarget': Colors.indigo,
     'Skyskråper': Colors.blue,
     'Duggdråpe': Colors.teal,
     'Pastell': Colors.purpleAccent,
+    'Midnatt': const Color(0xFF1A237E),
+    'Skog': const Color(0xFF1B5E20),
+    'Hav': const Color(0xFF006064),
+    'Lava': const Color(0xFFBF360C),
+    'Soloppgang': const Color(0xFFE65100),
+    'Lavendel': const Color(0xFF6A1B9A),
+    'Bær': const Color(0xFF880E4F),
+    'Stål': const Color(0xFF455A64),
+    'Isbre': const Color(0xFF4FC3F7),
+    'Korall': const Color(0xFFFF7043),
+    'Oliven': const Color(0xFF827717),
+    'Monokrom': const Color(0xFF212121),
+    'Sand': const Color(0xFFBCAAA4),
+    'Neon lime': const Color(0xFF76FF03),
+    'Magenta': const Color(0xFFC51162),
+    'Turkis dyp': const Color(0xFF00838F),
+    'Sapphire': const Color(0xFF0D47A1),
+    'Amber': const Color(0xFFFFA000),
+    'Jord': const Color(0xFF5D4037),
+    'Granitt': const Color(0xFF37474F),
+    'Petroleum': const Color(0xFF004D40),
+    'Rose': const Color(0xFFAD1457),
+    'Elektrisk blå': const Color(0xFF2962FF),
+    'Vårgrønn': const Color(0xFF558B2F),
+    'Twilight': const Color(0xFF4527A0),
+    'Kobber': const Color(0xFFA1887F),
+    'Arktisk blå': const Color(0xFF0277BD),
+    'Rav': const Color(0xFFFF6F00),
+    'Skifer': const Color(0xFF546E7A),
+    'Drue': const Color(0xFF4A148C),
+    'Mynte': const Color(0xFF00BFA5),
+    'Rød alarm': const Color(0xFFC62828),
+    'Profesjonell': const Color(0xFF263238),
+    'Lys Nordic': const Color(0xFF90A4AE),
+    'Emblem gull': const Color(0xFFF9A825),
+    'Fjord': const Color(0xFF00897B),
+    'Orchid': const Color(0xFFAB47BC),
+    'Aske': const Color(0xFF757575),
+    'Brand blå': const Color(0xFF1565C0),
+    'Safety orange': const Color(0xFFE65100),
   };
 
   @override
@@ -95,9 +143,22 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
 
   void _addQuestionWithType(SurveyQuestionType type) {
     final id = const Uuid().v4();
-    final options = (type == SurveyQuestionType.single_choice || type == SurveyQuestionType.multiple_choice || type == SurveyQuestionType.dropdown)
-            ? ['Alternativ 1', 'Alternativ 2']
-            : <String>[];
+    final List<String> options;
+    switch (type) {
+      case SurveyQuestionType.single_choice:
+      case SurveyQuestionType.multiple_choice:
+      case SurveyQuestionType.dropdown:
+        options = ['Alternativ 1', 'Alternativ 2'];
+        break;
+      case SurveyQuestionType.likert:
+        options = ['Helt uenig', 'Uenig', 'Nøytral', 'Enig', 'Helt enig'];
+        break;
+      case SurveyQuestionType.slider:
+        options = ['0', '100'];
+        break;
+      default:
+        options = <String>[];
+    }
             
     _questionControllers[id] = TextEditingController(text: 'Nytt spørsmål');
     _questionFocusNodes[id] = FocusNode();
@@ -188,7 +249,7 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
     });
   }
 
-  Future<void> saveChanges() async {
+  Future<bool> saveChanges() async {
     setState(() => _isSaving = true);
     try {
       // 1. Update survey header
@@ -259,15 +320,23 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
           ),
         );
       }
+      return true;
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Kunne ikke lagre: $e'), backgroundColor: Colors.red),
         );
       }
+      return false;
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  Future<void> _finishAndProceed() async {
+    final ok = await saveChanges();
+    if (!mounted || !ok) return;
+    widget.onAfterSuccessfulSave?.call();
   }
 
   @override
@@ -387,6 +456,10 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         _buildQuestionTypeItem(Icons.email_outlined, 'E-post', SurveyQuestionType.email, themeColor),
         _buildQuestionTypeItem(Icons.phone_outlined, 'Telefon', SurveyQuestionType.phone, themeColor),
         _buildQuestionTypeItem(Icons.insights_outlined, 'NPS (0-10)', SurveyQuestionType.nps, themeColor),
+        _buildQuestionTypeItem(Icons.view_column_outlined, 'Likert-skala', SurveyQuestionType.likert, themeColor),
+        _buildQuestionTypeItem(Icons.tune_outlined, 'Skyveknapp (tall)', SurveyQuestionType.slider, themeColor),
+        _buildQuestionTypeItem(Icons.schedule_outlined, 'Klokkeslett', SurveyQuestionType.time, themeColor),
+        _buildQuestionTypeItem(Icons.link_outlined, 'URL / lenke', SurveyQuestionType.url, themeColor),
         const SizedBox(height: 32),
         const Text('INNSTILLINGER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
         const SizedBox(height: 12),
@@ -593,6 +666,7 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
       case SurveyQuestionType.single_choice:
       case SurveyQuestionType.multiple_choice:
       case SurveyQuestionType.dropdown:
+      case SurveyQuestionType.likert:
         return Column(
           children: [
             for (int optIndex = 0; optIndex < controllers.length; optIndex++)
@@ -618,6 +692,52 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
               icon: const Icon(Icons.add, size: 14),
               label: const Text('Legg til alternativ', style: TextStyle(fontSize: 12)),
               style: TextButton.styleFrom(foregroundColor: themeColor),
+            ),
+          ],
+        );
+      case SurveyQuestionType.slider:
+        if (controllers.length < 2) {
+          return Text(
+            'Skyveknapp krever min og maks',
+            style: TextStyle(color: Colors.grey[500], fontSize: 12),
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: controllers[0],
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: const InputDecoration(
+                      labelText: 'Min',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: controllers[1],
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: const InputDecoration(
+                      labelText: 'Maks',
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Forhåndsvisning: kontinuerlig skyver (svaret lagres som tall)',
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
             ),
           ],
         );
@@ -656,6 +776,14 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
       case SurveyQuestionType.multiple_choice:
       case SurveyQuestionType.dropdown:
         return 'Valg med alternativer';
+      case SurveyQuestionType.likert:
+        return 'Likert — rediger skalaetikketter';
+      case SurveyQuestionType.slider:
+        return 'Skyveknapp mellom min og maks';
+      case SurveyQuestionType.time:
+        return 'Velg klokkeslett (tidsvelger)';
+      case SurveyQuestionType.url:
+        return 'Lenke med formatkontroll';
     }
   }
 
@@ -791,6 +919,10 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         const PopupMenuItem(value: SurveyQuestionType.email, child: Text('E-post')),
         const PopupMenuItem(value: SurveyQuestionType.phone, child: Text('Telefon')),
         const PopupMenuItem(value: SurveyQuestionType.nps, child: Text('NPS (0-10)')),
+        const PopupMenuItem(value: SurveyQuestionType.likert, child: Text('Likert-skala')),
+        const PopupMenuItem(value: SurveyQuestionType.slider, child: Text('Skyveknapp')),
+        const PopupMenuItem(value: SurveyQuestionType.time, child: Text('Klokkeslett')),
+        const PopupMenuItem(value: SurveyQuestionType.url, child: Text('URL')),
       ],
       child: Container(
         padding: const EdgeInsets.all(12),
@@ -802,20 +934,50 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
 
   Widget _buildCanvasFooter(Color themeColor) {
     return Container(
-      padding: const EdgeInsets.all(40),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 48),
       child: Center(
-        child: SizedBox(
-          width: 120,
-          child: ElevatedButton(
-            onPressed: _isSaving ? null : saveChanges,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: themeColor,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: _isSaving 
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : const Text('Ferdig', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 360),
+          child: Column(
+            children: [
+              Text(
+                'Neste steg: publiser og del lenke med respondenter',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _isSaving ? null : _finishAndProceed,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: themeColor,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'Ferdig — gå til Publiser',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

@@ -9,7 +9,8 @@ import 'core/theme/app_theme.dart';
 import 'core/config/supabase_config.dart';
 import 'core/theme/theme_notifier.dart';
 import 'screens/shell/main_shell.dart';
-import 'screens/auth/login_screen.dart';
+import 'screens/auth/auth_gate_screen.dart';
+import 'screens/partners/partner_shell.dart';
 import 'screens/auth/onboarding_screen.dart';
 import 'screens/auth/pending_approval_screen.dart';
 import 'screens/surveys/survey_player_screen.dart';
@@ -126,7 +127,7 @@ class DriftProApp extends StatelessWidget {
                 }
                 
                 final profile = profileSnapshot.data;
-                
+
                 // 1. Hvis profil mangler helt (trigger feilet eller treg)
                 if (profile == null) {
                   return Scaffold(
@@ -156,21 +157,27 @@ class DriftProApp extends StatelessWidget {
                   );
                 }
 
+                final skipEmployeeFlow = profile.isPartnerPortalUser;
+
                 // SECURITY OVERLAY (Visible in debug mode to see EXACTLY what's happening)
                 Widget mainWidget;
                 
-                // 2. Hvis profil finnes, men onboarding mangler
-                if (!profile.isOnboarded) {
+                // 2. Samarbeidspartner-portal (OAuth + e-post/passord via profil)
+                if (skipEmployeeFlow) {
+                  mainWidget = PartnerShell(profile: profile);
+                }
+                // 3. Hvis profil finnes, men onboarding mangler (kun ansatte)
+                else if (!profile.isOnboarded) {
                   mainWidget = OnboardingScreen(profile: profile);
                 }
-                // 3. Hvis profil finnes og onboarding er ferdig, men mangler godkjenning
+                // 4. Hvis profil finnes og onboarding er ferdig, men mangler godkjenning
                 else if (!profile.isApproved && profile.role != UserRole.superadmin) {
                   if (kDebugMode) {
                     print('Profile ${profile.id} (Email: ${profile.email}) is not approved and not a superadmin.');
                   }
                   mainWidget = const PendingApprovalScreen();
                 }
-                // 4. Alt ok!
+                // 5. Alt ok!
                 else {
                   mainWidget = const MainShell();
                 }
@@ -207,7 +214,7 @@ class DriftProApp extends StatelessWidget {
               },
             );
           } else {
-            return const LoginScreen();
+            return const AuthGateScreen();
           }
         },
       ),

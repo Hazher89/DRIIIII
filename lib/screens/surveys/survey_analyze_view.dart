@@ -173,7 +173,10 @@ class _SurveyAnalyzeViewState extends State<SurveyAnalyzeView> {
   }
 
   Widget _buildResultBody(SurveyQuestion question, List<dynamic> rawAnswers, bool isDark) {
-    if (question.type == SurveyQuestionType.text || question.type == SurveyQuestionType.paragraph) {
+    if (question.type == SurveyQuestionType.text ||
+        question.type == SurveyQuestionType.paragraph ||
+        question.type == SurveyQuestionType.url ||
+        question.type == SurveyQuestionType.time) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -192,8 +195,42 @@ class _SurveyAnalyzeViewState extends State<SurveyAnalyzeView> {
       );
     }
 
-    // Aggregation for choices
-    Map<String, int> counts = {};
+    if (question.type == SurveyQuestionType.slider) {
+      final values = rawAnswers
+          .map((a) => double.tryParse(a.toString()))
+          .whereType<double>()
+          .toList();
+      if (values.isEmpty) {
+        return const Text('Ingen numeriske svar ennå.');
+      }
+      values.sort();
+      final sum = values.fold<double>(0, (a, b) => a + b);
+      final avg = sum / values.length;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Gjennomsnitt ${avg.toStringAsFixed(2)} · min ${values.first.toStringAsFixed(2)} · maks ${values.last.toStringAsFixed(2)} · n = ${values.length}',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          const SizedBox(height: 12),
+          Text('Viser opptil 20 enkeltverdier:', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+          const SizedBox(height: 8),
+          ...values.take(20).map((v) => Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(v.toStringAsFixed(4)),
+              )),
+          if (values.length > 20)
+            Text(
+              '… og ${values.length - 20} til',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+        ],
+      );
+    }
+
+    // Aggregation for valg / NPS / rangering m.m.
+    final Map<String, int> counts = {};
     for (var ans in rawAnswers) {
       if (ans is List) {
         for (var subAns in ans) {
@@ -206,8 +243,21 @@ class _SurveyAnalyzeViewState extends State<SurveyAnalyzeView> {
 
     final totalCount = rawAnswers.length;
 
+    final List<String> labels = [
+      SurveyQuestionType.single_choice,
+      SurveyQuestionType.multiple_choice,
+      SurveyQuestionType.dropdown,
+      SurveyQuestionType.likert,
+    ].contains(question.type)
+        ? List<String>.from(question.options)
+        : (counts.keys.toList()..sort());
+
+    if (labels.isEmpty) {
+      return const Text('Ingen svar å visualisere.');
+    }
+
     return Column(
-      children: question.options.map((opt) {
+      children: labels.map((opt) {
         final count = counts[opt] ?? 0;
         final percent = totalCount > 0 ? count / totalCount : 0.0;
         return Padding(

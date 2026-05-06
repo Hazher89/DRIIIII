@@ -159,6 +159,9 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
       case UserRole.superadmin: color = Colors.purple; break;
       case UserRole.admin: color = DriftProTheme.error; break;
       case UserRole.leder: color = DriftProTheme.primaryGreen; break;
+      case UserRole.samarbeidspartner:
+        color = Colors.deepOrange;
+        break;
       case UserRole.ansatt: color = Colors.blue; break;
     }
     return Container(

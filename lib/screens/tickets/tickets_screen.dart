@@ -277,23 +277,25 @@ class _TicketsScreenState extends State<TicketsScreen> {
       begin: Alignment.topLeft,
       end: Alignment.bottomRight,
       colors: [
-        DriftProTheme.primaryGreen,
-        DriftProTheme.primaryGreen.withValues(alpha: 0.85),
-        const Color(0xFF0A3D12),
+        const Color(0xFF0D1B2A),
+        const Color(0xFF1B263B),
+        const Color(0xFFE65100),
       ],
+      stops: const [0.0, 0.55, 1.0],
     );
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
         gradient: gradient,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
         boxShadow: [
           BoxShadow(
-            color: DriftProTheme.primaryGreen.withValues(alpha: 0.35),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+            color: const Color(0xFFE65100).withValues(alpha: 0.28),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -306,11 +308,12 @@ class _TicketsScreenState extends State<TicketsScreen> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
+                  color: Colors.white.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
                 ),
                 child: const Icon(
-                  Icons.hub_outlined,
+                  Icons.shield_moon_outlined,
                   color: Colors.white,
                   size: 26,
                 ),
@@ -320,18 +323,39 @@ class _TicketsScreenState extends State<TicketsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Avvik‑hub',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                      ),
+                    Row(
+                      children: [
+                        const Text(
+                          'Avvik — operativ hub',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFB74D).withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: Colors.white24),
+                          ),
+                          child: const Text(
+                            '3.0',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Live oversikt for din bedrift · ${s.total} saker totalt',
+                      'Operativ sikkerhet · ${s.total} saker · live tall og filter',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.88),
                         fontSize: 13,

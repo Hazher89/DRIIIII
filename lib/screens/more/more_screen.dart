@@ -15,6 +15,7 @@ import '../profile/profile_screen.dart';
 import '../admin/access_control_screen.dart';
 import '../surveys/survey_list_screen.dart';
 import '../admin/user_management_screen.dart';
+import '../partners/partners_dashboard_screen.dart';
 import 'whistleblowing_screen.dart';
 
 class MoreScreen extends StatefulWidget {
@@ -138,6 +139,13 @@ class _MoreScreenState extends State<MoreScreen> {
             'Ansatte',
             isDark,
           ),
+          if (_profile?.isAdmin == true || _profile?.isLeader == true)
+            _buildMenuItem(
+              context,
+              Icons.handshake_outlined,
+              'Samarbeidspartnere',
+              isDark,
+            ),
           _buildMenuItem(
             context,
             AppIcons.folder,
@@ -290,6 +298,10 @@ class _MoreScreenState extends State<MoreScreen> {
           ],
         ),
         onTap: () {
+          if (title == 'Samarbeidspartnere') {
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PartnersDashboardScreen()));
+            return;
+          }
           if (title == 'Avdelinger') {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DepartmentsScreen()));
             return;

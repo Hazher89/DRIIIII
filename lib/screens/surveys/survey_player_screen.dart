@@ -250,13 +250,13 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
             ],
           ),
           SizedBox(height: compact ? 8 : 16),
-          _buildAnswerInput(q, primary),
+          _buildAnswerInput(q, primary, textColor),
         ],
       ),
     );
   }
 
-  Widget _buildAnswerInput(SurveyQuestion q, Color primary) {
+  Widget _buildAnswerInput(SurveyQuestion q, Color primary, Color textColor) {
     switch (q.type) {
       case SurveyQuestionType.single_choice:
         return Column(
@@ -406,6 +406,87 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
           label: Text(
             _answers[q.id] == null ? 'Velg dato' : _answers[q.id].toString().split('T').first,
           ),
+        );
+      case SurveyQuestionType.likert:
+        return Column(
+          children: q.options.map((opt) => RadioListTile<String>(
+            title: Text(opt),
+            value: opt,
+            groupValue: _answers[q.id],
+            activeColor: primary,
+            onChanged: (val) => setState(() => _answers[q.id] = val),
+            contentPadding: EdgeInsets.zero,
+          )).toList(),
+        );
+      case SurveyQuestionType.slider:
+        final minVal = double.tryParse(q.options.isNotEmpty ? q.options[0] : '0') ?? 0;
+        final maxVal = double.tryParse(q.options.length > 1 ? q.options[1] : '100') ?? 100;
+        final span = maxVal - minVal;
+        if (span <= 0) {
+          return Text(
+            'Skyveknapp er ikke konfigurert (min < maks).',
+            style: TextStyle(color: Colors.red[700]),
+          );
+        }
+        final current =
+            ((_answers[q.id] as num?)?.toDouble()) ?? (minVal + span / 2);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Slider(
+              value: current.clamp(minVal, maxVal),
+              min: minVal,
+              max: maxVal,
+              activeColor: primary,
+              onChanged: (v) => setState(() => _answers[q.id] = v),
+            ),
+            Text(
+              'Verdi: ${current.clamp(minVal, maxVal).toStringAsFixed(2)}',
+              style: TextStyle(color: textColor.withValues(alpha: 0.75)),
+            ),
+          ],
+        );
+      case SurveyQuestionType.time:
+        return TextButton.icon(
+          onPressed: () async {
+            final picked = await showTimePicker(
+              context: context,
+              initialTime: TimeOfDay.now(),
+            );
+            if (picked != null) {
+              final h = picked.hour.toString().padLeft(2, '0');
+              final m = picked.minute.toString().padLeft(2, '0');
+              setState(() => _answers[q.id] = '$h:$m');
+            }
+          },
+          icon: const Icon(Icons.schedule),
+          label: Text(_answers[q.id]?.toString() ?? 'Velg klokkeslett'),
+        );
+      case SurveyQuestionType.url:
+        return TextFormField(
+          keyboardType: TextInputType.url,
+          decoration: InputDecoration(
+            hintText: 'https://…',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onChanged: (val) => _answers[q.id] = val,
+          validator: q.isRequired
+              ? (v) {
+                  if (v == null || v.trim().isEmpty) return 'Vennligst fyll inn en lenke';
+                  final u = Uri.tryParse(v.trim());
+                  if (u == null || !(u.isScheme('http') || u.isScheme('https'))) {
+                    return 'Oppgi en gyldig http(s)-lenke';
+                  }
+                  return null;
+                }
+              : (v) {
+                  if (v == null || v.trim().isEmpty) return null;
+                  final u = Uri.tryParse(v.trim());
+                  if (u == null || !(u.isScheme('http') || u.isScheme('https'))) {
+                    return 'Oppgi en gyldig http(s)-lenke';
+                  }
+                  return null;
+                },
         );
     }
   }

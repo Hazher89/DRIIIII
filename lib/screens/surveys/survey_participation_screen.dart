@@ -298,8 +298,85 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
             _answers[q.id] == null ? 'Velg dato' : _answers[q.id].toString().split('T').first,
           ),
         );
-      default:
-        return const Text('Ikke støttet ennå');
+      case SurveyQuestionType.rating:
+        return Row(
+          children: List.generate(5, (index) {
+            final rating = index + 1;
+            return IconButton(
+              icon: Icon(
+                rating <= ((_answers[q.id] as int?) ?? 0)
+                    ? Icons.star
+                    : Icons.star_outline,
+                color: DriftProTheme.primaryGreen,
+                size: 36,
+              ),
+              onPressed: () => setState(() => _answers[q.id] = rating),
+            );
+          }),
+        );
+      case SurveyQuestionType.likert:
+        return Column(
+          children: q.options.map((opt) {
+            return RadioListTile<String>(
+              title: Text(opt),
+              value: opt,
+              groupValue: _answers[q.id],
+              onChanged: (v) => setState(() => _answers[q.id] = v),
+              activeColor: DriftProTheme.primaryGreen,
+            );
+          }).toList(),
+        );
+      case SurveyQuestionType.slider:
+        final minVal = double.tryParse(q.options.isNotEmpty ? q.options[0] : '0') ?? 0;
+        final maxVal = double.tryParse(q.options.length > 1 ? q.options[1] : '100') ?? 100;
+        final span = maxVal - minVal;
+        if (span <= 0) {
+          return Text(
+            'Skyveknapp er ikke konfigurert (sett min < maks i redigering).',
+            style: TextStyle(color: Colors.red[700]),
+          );
+        }
+        final current = ((_answers[q.id] as num?)?.toDouble()) ?? (minVal + span / 2);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Slider(
+              value: current.clamp(minVal, maxVal),
+              min: minVal,
+              max: maxVal,
+              activeColor: DriftProTheme.primaryGreen,
+              onChanged: (v) => setState(() => _answers[q.id] = v),
+            ),
+            Text(
+              'Verdi: ${current.clamp(minVal, maxVal).toStringAsFixed(2)}',
+            ),
+          ],
+        );
+      case SurveyQuestionType.time:
+        return TextButton.icon(
+          onPressed: () async {
+            final picked = await showTimePicker(
+              context: context,
+              initialTime: TimeOfDay.now(),
+            );
+            if (picked != null) {
+              final h = picked.hour.toString().padLeft(2, '0');
+              final m = picked.minute.toString().padLeft(2, '0');
+              setState(() => _answers[q.id] = '$h:$m');
+            }
+          },
+          icon: const Icon(Icons.schedule),
+          label: Text(_answers[q.id]?.toString() ?? 'Velg klokkeslett'),
+        );
+      case SurveyQuestionType.url:
+        return TextField(
+          keyboardType: TextInputType.url,
+          decoration: InputDecoration(
+            hintText: 'https://…',
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onChanged: (v) => _answers[q.id] = v,
+        );
     }
   }
 }
