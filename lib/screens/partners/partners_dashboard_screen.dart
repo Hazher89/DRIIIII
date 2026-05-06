@@ -9,7 +9,9 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
+import '../../models/partner/fleet_shift.dart';
 import 'bulk_partners_screen.dart';
+import 'fleet_route_dashboard_screen.dart';
 import 'new_partner_screen.dart';
 import 'partner_detail_screen.dart';
 
@@ -111,7 +113,72 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
     );
   }
 
+  Future<FleetShiftDefinition?> _pickRouteShift(String companyId) async {
+    await PartnerService.ensureDefaultFleetShifts(companyId);
+    final shifts = await PartnerService.fetchFleetShifts(companyId);
+    final ops = shifts.where((s) => !s.isAvailability).toList();
+    if (!mounted) return null;
+    if (ops.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ingen ruteskift funnet. Opprett skift i flåtedashboard.')),
+      );
+      return null;
+    }
+    return showModalBottomSheet<FleetShiftDefinition>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.55,
+        maxChildSize: 0.9,
+        minChildSize: 0.35,
+        builder: (_, scroll) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 8, 20, 8),
+              child: Text(
+                'Velg skift for rutefordeling',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                'Samme skift brukes i sporingsdashboard (hvem som har fått rute / ledige biler).',
+                style: TextStyle(fontSize: 12, color: Colors.grey[700]),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ListView.builder(
+                controller: scroll,
+                itemCount: ops.length,
+                itemBuilder: (_, i) {
+                  final s = ops[i];
+                  return ListTile(
+                    leading: CircleAvatar(backgroundColor: s.color, radius: 10),
+                    title: Text(s.name),
+                    subtitle: Text(
+                      [s.regionGroup, s.timeBand].whereType<String>().where((e) => e.isNotEmpty).join(' · '),
+                    ),
+                    onTap: () => Navigator.pop(ctx, s),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickAndAutoDistributeFiles() async {
+    final cid = await SupabaseService.getCurrentCompanyId();
+    if (cid == null || !mounted) return;
+    final shift = await _pickRouteShift(cid);
+    if (shift == null) return;
     final picked = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       type: FileType.custom,
@@ -119,7 +186,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
       withData: true,
     );
     if (picked == null || picked.files.isEmpty) return;
-    await _autoDistributeFromPlatformFiles(picked.files);
+    await _autoDistributeFromPlatformFiles(picked.files, shiftId: shift.id);
   }
 
   Future<void> _pickFolderAndAutoDistribute() async {
@@ -130,6 +197,10 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
       );
       return;
     }
+    final cid = await SupabaseService.getCurrentCompanyId();
+    if (cid == null || !mounted) return;
+    final shift = await _pickRouteShift(cid);
+    if (shift == null) return;
     final dir = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Velg mappe med rute-PDF');
     if (dir == null) return;
     final entries = await Directory(dir).list().toList();
@@ -156,7 +227,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
         ),
       );
     }
-    await _autoDistributeFromPlatformFiles(files);
+    await _autoDistributeFromPlatformFiles(files, shiftId: shift.id);
   }
 
   /// Kanonisk nøkkel: M + tall uten ledende nuller (M0044 og NO_O_M0044 → M44).
@@ -281,7 +352,10 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
     return null;
   }
 
-  Future<void> _autoDistributeFromPlatformFiles(List<PlatformFile> files) async {
+  Future<void> _autoDistributeFromPlatformFiles(
+    List<PlatformFile> files, {
+    required String shiftId,
+  }) async {
     if (_autoDistributing) return;
     setState(() => _autoDistributing = true);
     try {
@@ -298,6 +372,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
 
       int sent = 0;
       int skipped = 0;
+      final vehicleToShare = <String, String>{};
       for (final file in files) {
         final bytes = await _platformFileBytes(file);
         if (bytes == null || bytes.isEmpty) {
@@ -329,7 +404,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
           storagePath: storagePath,
           bytes: bytes,
         );
-        await PartnerService.addRouteShare(
+        final share = await PartnerService.addRouteShare(
           PartnerRouteShare(
             id: '',
             partnerId: partner.id,
@@ -339,14 +414,28 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
             shareDate: DateTime.now(),
             isDailyShare: true,
             createdAt: DateTime.now(),
+            shiftId: shiftId,
+            partnerVehicleId: vehicle.id,
           ),
         );
+        vehicleToShare[vehicle.id] = share.id;
         sent++;
       }
 
+      await PartnerService.syncFleetAfterMassRoute(
+        companyId: cid,
+        date: DateTime.now(),
+        shiftId: shiftId,
+        vehicleIdToRouteShareId: vehicleToShare,
+      );
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Auto-fordeling ferdig: sendt $sent, hoppet over $skipped.')),
+          SnackBar(
+            content: Text(
+              'Auto-fordeling ferdig: sendt $sent, hoppet over $skipped. Flåtestatus oppdatert for valgt skift.',
+            ),
+          ),
         );
       }
       await _load();
@@ -373,7 +462,10 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
             children: [
               const ListTile(
                 title: Text('Smart rutefordeling'),
-                subtitle: Text('Leser PDF -> Resource ID (NO_O_Mxxxx) -> matcher bil/firma automatisk'),
+                subtitle: Text(
+                  'Velg skift (område/dag/kveld), deretter PDF. Leser Resource ID (NO_O_Mxxxx). '
+                  'Biler uten rute markeres som ledige i flåtedashboard.',
+                ),
               ),
               ListTile(
                 leading: const Icon(Icons.file_open_outlined),
@@ -407,6 +499,20 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
         title: const Text('Samarbeidspartnere'),
         actions: [
           IconButton(
+            tooltip: 'Flåte & rutesporing',
+            icon: const Icon(Icons.dashboard_customize_outlined),
+            onPressed: () async {
+              final nav = Navigator.of(context);
+              final cid = await SupabaseService.getCurrentCompanyId();
+              if (cid == null || !mounted) return;
+              await PartnerService.ensureDefaultFleetShifts(cid);
+              if (!mounted) return;
+              await nav.push<void>(
+                MaterialPageRoute(builder: (_) => const FleetRouteDashboardScreen()),
+              );
+            },
+          ),
+          IconButton(
             tooltip: 'Smart rutefordeling',
             icon: _autoDistributing
                 ? const SizedBox(
@@ -438,6 +544,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
                 ? ListView(
                     children: [
                       _buildMassOutputCard(),
+                      _buildFleetPromoCard(),
                       Padding(
                         padding: const EdgeInsets.all(24),
                         child: Text(_error!, textAlign: TextAlign.center),
@@ -448,6 +555,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
                     ? ListView(
                         children: [
                           _buildMassOutputCard(),
+                          _buildFleetPromoCard(),
                           SizedBox(height: 80),
                           Icon(Icons.handshake_outlined, size: 56, color: Colors.grey),
                           SizedBox(height: 16),
@@ -458,6 +566,8 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
                         children: [
                           _buildMassOutputCard(),
+                          const SizedBox(height: 8),
+                          _buildFleetPromoCard(),
                           const SizedBox(height: 8),
                           ..._partners.map((p) {
                             return _PartnerCard(
@@ -474,6 +584,30 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen> {
                           }),
                         ],
                       ),
+      ),
+    );
+  }
+
+  Widget _buildFleetPromoCard() {
+    return Card(
+      color: const Color(0xFF1565C0).withValues(alpha: 0.07),
+      child: ListTile(
+        leading: const Icon(Icons.dashboard_customize, color: Color(0xFF1565C0), size: 32),
+        title: const Text('Flåte & rutesporing', style: TextStyle(fontWeight: FontWeight.w800)),
+        subtitle: const Text(
+          'Skift med farger (område, dag/kveld), live status: har rute / ledig / fri / gitt bort, og statistikk per bil.',
+        ),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () async {
+          final nav = Navigator.of(context);
+          final cid = await SupabaseService.getCurrentCompanyId();
+          if (cid == null || !mounted) return;
+          await PartnerService.ensureDefaultFleetShifts(cid);
+          if (!mounted) return;
+          await nav.push<void>(
+            MaterialPageRoute(builder: (_) => const FleetRouteDashboardScreen()),
+          );
+        },
       ),
     );
   }

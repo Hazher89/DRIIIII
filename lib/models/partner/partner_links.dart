@@ -113,6 +113,8 @@ class PartnerRouteShare {
   final DateTime? ackAt;
   final String? ackBy;
   final String? ackComment;
+  final String? shiftId;
+  final String? partnerVehicleId;
   final DateTime createdAt;
 
   PartnerRouteShare({
@@ -128,6 +130,8 @@ class PartnerRouteShare {
     this.ackAt,
     this.ackBy,
     this.ackComment,
+    this.shiftId,
+    this.partnerVehicleId,
     required this.createdAt,
   });
 
@@ -145,6 +149,8 @@ class PartnerRouteShare {
       ackAt: json['ack_at'] != null ? DateTime.parse(json['ack_at'] as String) : null,
       ackBy: json['ack_by'] as String?,
       ackComment: json['ack_comment'] as String?,
+      shiftId: json['shift_id'] as String?,
+      partnerVehicleId: json['partner_vehicle_id'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -162,6 +168,8 @@ class PartnerRouteShare {
       'ack_at': ackAt?.toIso8601String(),
       'ack_by': ackBy,
       'ack_comment': ackComment,
+      if (shiftId != null) 'shift_id': shiftId,
+      if (partnerVehicleId != null) 'partner_vehicle_id': partnerVehicleId,
     };
   }
 }
