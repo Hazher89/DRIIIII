@@ -11,6 +11,7 @@ import '../../models/sja_form.dart';
 import '../../models/safety_round.dart';
 import '../../models/hms_document.dart';
 import '../../models/whistleblowing_report.dart';
+import '../../models/kiosk_settings.dart';
 
 /// Felles wrapper rundt Supabase-klienten med typed hjelpemetoder.
 class SupabaseService {
@@ -528,5 +529,54 @@ department:departments!department_id(name)
       debugPrint('Error getting company ID: $e');
       return null;
     }
+  }
+
+  /// Navn og infoskjerm-innstillinger for dashbord.
+  static Future<({String? companyName, KioskSettings kiosk})>
+      fetchCompanyDashboardMeta(String companyId) async {
+    if (!isConfigured) {
+      return (companyName: null, kiosk: KioskSettings.defaults);
+    }
+    try {
+      final row = await client
+          .from('companies')
+          .select('name,kiosk_settings')
+          .eq('id', companyId)
+          .maybeSingle();
+      if (row == null) {
+        return (companyName: null, kiosk: KioskSettings.defaults);
+      }
+      final name = row['name'] as String?;
+      final raw = row['kiosk_settings'];
+      Map<String, dynamic>? map;
+      if (raw is Map<String, dynamic>) {
+        map = raw;
+      } else if (raw is Map) {
+        map = Map<String, dynamic>.from(raw);
+      }
+      return (
+        companyName: name,
+        kiosk: KioskSettings.fromJson(map),
+      );
+    } catch (e) {
+      debugPrint('fetchCompanyDashboardMeta: $e');
+      return (companyName: null, kiosk: KioskSettings.defaults);
+    }
+  }
+
+  /// Kun admin/superadmin (sjekkes i databasen).
+  static Future<KioskSettings> saveCompanyKioskSettings(
+    KioskSettings settings,
+  ) async {
+    if (!isConfigured) throw StateError('Not configured');
+    final result = await client.rpc(
+      'set_company_kiosk_settings',
+      params: {'p_settings': settings.toJson()},
+    );
+    if (result == null) return settings;
+    final map = result is Map<String, dynamic>
+        ? result
+        : Map<String, dynamic>.from(result as Map);
+    return KioskSettings.fromJson(map);
   }
 }

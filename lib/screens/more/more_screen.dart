@@ -13,6 +13,7 @@ import '../departments/departments_screen.dart';
 import '../employees/employees_screen.dart';
 import '../profile/profile_screen.dart';
 import '../admin/access_control_screen.dart';
+import '../admin/kiosk_settings_screen.dart';
 import '../surveys/survey_list_screen.dart';
 import '../admin/user_management_screen.dart';
 import '../partners/partners_dashboard_screen.dart';
@@ -180,6 +181,13 @@ class _MoreScreenState extends State<MoreScreen> {
               isDark,
               badge: _usersWaitingForApprovalCount > 0 ? _usersWaitingForApprovalCount.toString() : null,
             ),
+          if (_profile?.isAdmin == true)
+            _buildMenuItem(
+              context,
+              Icons.display_settings_outlined,
+              'Infoskjerm',
+              isDark,
+            ),
           _buildMenuItem(
             context,
             Icons.record_voice_over_outlined,
@@ -324,6 +332,10 @@ class _MoreScreenState extends State<MoreScreen> {
           }
           if (title == 'Brukergodkjenning') {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UserManagementScreen()));
+            return;
+          }
+          if (title == 'Infoskjerm') {
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const KioskSettingsScreen()));
             return;
           }
           if (title == 'Min profil') {
