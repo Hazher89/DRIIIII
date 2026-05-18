@@ -38,6 +38,10 @@ class AccessPresets {
         AccessKeys.hmsDokumenter: true,
         AccessKeys.surveyResultater: true,
         AccessKeys.samarbeidspartnere: true,
+        AccessKeys.partners: true,
+        AccessKeys.partnersAdmin: true,
+        AccessKeys.fleetRuter: true,
+        AccessKeys.ferieAdmin: true,
       };
 
   static Map<String, dynamic> companyAdmin() => {
