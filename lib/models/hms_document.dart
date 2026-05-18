@@ -26,6 +26,9 @@ class HmsDocument {
   final bool isVerified;
   final String? verifiedBy;
   final String uploadedBy;
+  final bool employeeVisible;
+  final String? courseId;
+  final List<String> tags;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -43,6 +46,9 @@ class HmsDocument {
     this.isVerified = false,
     this.verifiedBy,
     required this.uploadedBy,
+    this.employeeVisible = false,
+    this.courseId,
+    this.tags = const [],
     this.createdAt,
     this.updatedAt,
   });
@@ -65,6 +71,9 @@ class HmsDocument {
       isVerified: json['is_verified'] as bool? ?? false,
       verifiedBy: json['verified_by'] as String?,
       uploadedBy: json['uploaded_by'] as String,
+      employeeVisible: json['employee_visible'] as bool? ?? false,
+      courseId: json['course_id'] as String?,
+      tags: (json['tags'] as List<dynamic>?)?.map((e) => e as String).toList() ?? const [],
       createdAt: json['created_at'] != null ? DateTime.parse(json['created_at'] as String) : null,
       updatedAt: json['updated_at'] != null ? DateTime.parse(json['updated_at'] as String) : null,
     );
@@ -81,5 +90,17 @@ class HmsDocument {
     'file_size': fileSize,
     'expires_at': expiresAt?.toIso8601String(),
     'uploaded_by': uploadedBy,
+    'employee_visible': employeeVisible,
+    if (courseId != null) 'course_id': courseId,
+    'tags': tags,
   };
+
+  bool get isExpired =>
+      expiresAt != null && expiresAt!.isBefore(DateTime.now());
+
+  bool get expiresSoon {
+    if (expiresAt == null) return false;
+    final limit = DateTime.now().add(const Duration(days: 60));
+    return !expiresAt!.isBefore(DateTime.now()) && expiresAt!.isBefore(limit);
+  }
 }

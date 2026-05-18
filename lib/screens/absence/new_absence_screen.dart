@@ -1,14 +1,28 @@
 import 'package:flutter/material.dart';
 
+import '../../core/constants/leave_rules.dart';
+import '../../core/services/absence/absence_service.dart';
+import '../../core/services/absence/department_leave_conflict_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/absence.dart';
 import '../../models/user_profile.dart';
+import 'widgets/department_leave_tip_card.dart';
+import 'widgets/leave_rules_panel.dart';
 
 class NewAbsenceScreen extends StatefulWidget {
   final AbsenceType type;
+  final DateTime? initialStart;
+  final DateTime? initialEnd;
+  final bool allowPickEmployee;
 
-  const NewAbsenceScreen({super.key, required this.type});
+  const NewAbsenceScreen({
+    super.key,
+    required this.type,
+    this.initialStart,
+    this.initialEnd,
+    this.allowPickEmployee = false,
+  });
 
   @override
   State<NewAbsenceScreen> createState() => _NewAbsenceScreenState();
@@ -20,18 +34,23 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
   final _commentController = TextEditingController();
   bool _isSubmitting = false;
   String? _error;
-  
+
   UserProfile? _profile;
-  List<UserProfile> _departmentEmployees = [];
+  List<UserProfile> _selectableEmployees = [];
   UserProfile? _selectedEmployee;
-  
+
   AbsenceQuota? _quota;
-  List<Absence> _potentialConflicts = [];
+  CompanyLeaveSettings _companySettings = const CompanyLeaveSettings();
+  List<DepartmentLeaveOverlap> _overlaps = [];
+  String? _departmentName;
+  int _childrenCount = 1;
   bool _isLoadingContext = true;
 
   @override
   void initState() {
     super.initState();
+    _startDate = widget.initialStart;
+    _endDate = widget.initialEnd ?? widget.initialStart;
     _loadContext();
   }
 
@@ -39,20 +58,31 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
     setState(() => _isLoadingContext = true);
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
-      if (profile != null) {
-        _profile = profile;
-        _selectedEmployee = profile;
-        
-        // If leader/admin, fetch all employees to allow registering for them
-        if (profile.isLeader || profile.isAdmin) {
-          _departmentEmployees = await SupabaseService.fetchProfiles(
-            companyId: profile.companyId,
-            departmentId: profile.departmentId,
-          );
-        }
+      if (profile == null || profile.companyId == null) return;
 
-        await _loadQuotaForSelected();
+      _profile = profile;
+      _selectedEmployee = profile;
+
+      if (widget.allowPickEmployee && (profile.isLeader || profile.isAdmin)) {
+        final all = await SupabaseService.fetchProfiles(companyId: profile.companyId);
+        _selectableEmployees = profile.isAdmin
+            ? all.where((p) => !p.isPartnerPortalUser && p.isActive).toList()
+            : all
+                .where((p) =>
+                    p.departmentId == profile.departmentId &&
+                    !p.isPartnerPortalUser &&
+                    p.isActive)
+                .toList();
+        if (!_selectableEmployees.any((p) => p.id == profile.id)) {
+          _selectableEmployees = [profile, ..._selectableEmployees];
+        }
+      } else {
+        _selectableEmployees = [profile];
       }
+
+      _companySettings =
+          await SupabaseService.fetchCompanyLeaveSettings(profile.companyId!);
+      await _loadQuotaForSelected();
     } finally {
       if (mounted) setState(() => _isLoadingContext = false);
     }
@@ -60,8 +90,17 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
 
   Future<void> _loadQuotaForSelected() async {
     if (_selectedEmployee == null) return;
-    final quota = await SupabaseService.fetchAbsenceQuota(userId: _selectedEmployee!.id);
-    setState(() => _quota = quota);
+    final year = _startDate?.year ?? DateTime.now().year;
+    try {
+      final quota = await SupabaseService.ensureAbsenceQuota(
+        userId: _selectedEmployee!.id,
+        companyId: _profile!.companyId!,
+        year: year,
+      );
+      if (mounted) setState(() => _quota = quota);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
   }
 
   @override
@@ -70,22 +109,49 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
     super.dispose();
   }
 
-  Future<void> _checkConflicts() async {
-    if (_startDate == null || _endDate == null || _selectedEmployee?.departmentId == null) return;
+  bool get _isSelfRequest => _selectedEmployee?.id == _profile?.id;
 
+  bool get _managerRegistersForOther =>
+      !_isSelfRequest && (_profile?.isLeader == true || _profile?.isAdmin == true);
+
+  Future<void> _checkConflicts() async {
+    if (_startDate == null ||
+        _endDate == null ||
+        _selectedEmployee?.departmentId == null ||
+        _profile?.companyId == null) {
+      return;
+    }
+
+    final deptId = _selectedEmployee!.departmentId!;
     final absences = await SupabaseService.fetchAbsences(
-      departmentId: _selectedEmployee!.departmentId,
+      departmentId: deptId,
+    );
+    final depts = await SupabaseService.fetchDepartments(
+      companyId: _profile!.companyId!,
+    );
+    String? deptName;
+    for (final d in depts) {
+      if (d.id == deptId) {
+        deptName = d.name;
+        break;
+      }
+    }
+
+    final overlaps = DepartmentLeaveConflictService.findOverlaps(
+      departmentId: deptId,
+      startDate: _startDate!,
+      endDate: _endDate!,
+      pool: absences,
+      excludeUserId: _selectedEmployee!.id,
+      vacationOnly: widget.type == AbsenceType.ferie,
     );
 
-    final conflicts = absences.where((a) {
-      if (a.userId == _selectedEmployee!.id) return false;
-      if (a.status == AbsenceStatus.avvist) return false;
-      return !(_endDate!.isBefore(a.startDate) || _startDate!.isAfter(a.endDate));
-    }).toList();
-
-    setState(() {
-      _potentialConflicts = conflicts;
-    });
+    if (mounted) {
+      setState(() {
+        _overlaps = overlaps;
+        _departmentName = deptName;
+      });
+    }
   }
 
   Future<void> _pickDateRange() async {
@@ -115,6 +181,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
         _startDate = picked.start;
         _endDate = picked.end;
       });
+      await _loadQuotaForSelected();
       _checkConflicts();
     }
   }
@@ -124,8 +191,20 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
       setState(() => _error = 'Velg tidsperiode.');
       return;
     }
-
     if (_selectedEmployee == null || _profile == null) return;
+
+    final validationError = AbsenceService.validateRequest(
+      type: widget.type,
+      start: _startDate!,
+      end: _endDate!,
+      quota: _quota,
+      company: _companySettings,
+      childrenCount: _childrenCount,
+    );
+    if (validationError != null) {
+      setState(() => _error = validationError);
+      return;
+    }
 
     setState(() {
       _isSubmitting = true;
@@ -133,6 +212,10 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
     });
 
     try {
+      final status = _managerRegistersForOther
+          ? AbsenceStatus.godkjent
+          : AbsenceStatus.ventende;
+
       final absence = Absence(
         id: 'temp',
         userId: _selectedEmployee!.id,
@@ -141,15 +224,26 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
         type: widget.type,
         startDate: _startDate!,
         endDate: _endDate!,
-        status: (_profile?.id == _selectedEmployee?.id) ? AbsenceStatus.ventende : AbsenceStatus.godkjent,
-        comment: _commentController.text.trim().isEmpty ? null : _commentController.text.trim(),
+        status: status,
+        comment: _commentController.text.trim().isEmpty
+            ? null
+            : _commentController.text.trim(),
+        quotaYear: _startDate!.year,
       );
 
-      await SupabaseService.createAbsence(absence);
+      await SupabaseService.createAbsence(
+        absence,
+        approverId: _managerRegistersForOther ? _profile!.id : null,
+      );
+
       if (!mounted) return;
+      final msg = status == AbsenceStatus.godkjent
+          ? 'Fravær registrert og godkjent.'
+          : 'Søknad sendt. Leder og admin får beskjed.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       Navigator.of(context).pop(true);
     } catch (e) {
-      setState(() => _error = 'Kunne ikke lagre fravær: $e');
+      setState(() => _error = 'Kunne ikke lagre: $e');
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
     }
@@ -159,88 +253,96 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final totalDays = _startDate != null && _endDate != null
-        ? _endDate!.difference(_startDate!).inDays + 1
+        ? AbsenceService.dayCount(_startDate!, _endDate!)
         : 0;
 
     return Scaffold(
-      backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+      backgroundColor:
+          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       appBar: AppBar(
         title: Text('Registrer ${widget.type.label.toLowerCase()}'),
       ),
-      body: _isLoadingContext 
-        ? const Center(child: CircularProgressIndicator())
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Employee Selector (only for leaders)
-                if (_profile?.isLeader == true || _profile?.isAdmin == true) ...[
-                  _buildSectionHeader('Gjelder ansatt', isDark),
+      body: _isLoadingContext
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (widget.allowPickEmployee && _selectableEmployees.length > 1) ...[
+                    _sectionHeader('Gjelder ansatt', isDark),
+                    const SizedBox(height: 12),
+                    _buildEmployeeSelector(isDark),
+                    const SizedBox(height: 24),
+                  ],
+                  if (widget.type == AbsenceType.ferie && _quota != null)
+                    _buildQuotaInfo(isDark, totalDays),
+                  if (widget.type == AbsenceType.syktBarn) ...[
+                    _sectionHeader('Antall barn under 12 år', isDark),
+                    const SizedBox(height: 8),
+                    SegmentedButton<int>(
+                      segments: const [
+                        ButtonSegment(value: 1, label: Text('1 barn')),
+                        ButtonSegment(value: 2, label: Text('2+')),
+                      ],
+                      selected: {_childrenCount >= 2 ? 2 : 1},
+                      onSelectionChanged: (s) {
+                        setState(() => _childrenCount = s.first);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  _sectionHeader('Tidsperiode', isDark),
                   const SizedBox(height: 12),
-                  _buildEmployeeSelector(isDark),
+                  _buildDatePickerCard(isDark, totalDays),
+                  if (_overlaps.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    DepartmentLeaveTipCard(
+                      overlaps: _overlaps,
+                      departmentName: _departmentName,
+                      isApprovalContext:
+                          _managerRegistersForOther && widget.type == AbsenceType.ferie,
+                    ),
+                  ],
+                  const SizedBox(height: 20),
+                  LeaveRulesPanel(highlightType: widget.type, compact: true),
+                  const SizedBox(height: 20),
+                  _sectionHeader('Kommentar (valgfritt)', isDark),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _commentController,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      hintText: 'Utfyllende informasjon…',
+                      fillColor: isDark ? DriftProTheme.cardDark : Colors.white,
+                    ),
+                  ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 16),
+                    Text(_error!, style: const TextStyle(color: DriftProTheme.error)),
+                  ],
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton(
+                      onPressed: _isSubmitting ? null : _submit,
+                      child: _isSubmitting
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : Text(
+                              (_isSelfRequest ? 'Send søknad' : 'Registrer og godkjenn')
+                                  .toUpperCase(),
+                              style: const TextStyle(
+                                letterSpacing: 1.2,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                    ),
+                  ),
                   const SizedBox(height: 24),
                 ],
-
-                // Quota Info Card
-                if (widget.type == AbsenceType.ferie && _quota != null)
-                  _buildQuotaInfo(isDark),
-
-                const SizedBox(height: 24),
-                
-                // Date Picker Card
-                _buildSectionHeader('Tidsperiode', isDark),
-                const SizedBox(height: 12),
-                _buildDatePickerCard(isDark, totalDays),
-
-                const SizedBox(height: 24),
-
-                // Conflict Warning
-                if (_potentialConflicts.isNotEmpty)
-                  _buildConflictWarning(isDark),
-
-                const SizedBox(height: 24),
-
-                // Norwegian Law Tip
-                _buildLegalTip(isDark),
-
-                const SizedBox(height: 24),
-
-                // Comment
-                _buildSectionHeader('Kommentar (valgfritt)', isDark),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _commentController,
-                  maxLines: 3,
-                  decoration: InputDecoration(
-                    hintText: 'Legg til utfyllende informasjon...',
-                    fillColor: isDark ? DriftProTheme.cardDark : Colors.white,
-                  ),
-                ),
-
-                if (_error != null) ...[
-                  const SizedBox(height: 16),
-                  Text(_error!, style: const TextStyle(color: DriftProTheme.error)),
-                ],
-
-                const SizedBox(height: 40),
-
-                // Submit Button
-                SizedBox(
-                  width: double.infinity,
-                  height: 56,
-                  child: ElevatedButton(
-                    onPressed: _isSubmitting ? null : _submit,
-                    child: _isSubmitting
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : Text((_selectedEmployee?.id == _profile?.id) ? 'Send søknad'.toUpperCase() : 'Registrer fravær'.toUpperCase(), 
-                            style: const TextStyle(letterSpacing: 1.2, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-                const SizedBox(height: 40),
-              ],
+              ),
             ),
-          ),
     );
   }
 
@@ -250,16 +352,24 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
       decoration: BoxDecoration(
         color: isDark ? DriftProTheme.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
+        ),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<UserProfile>(
           isExpanded: true,
           value: _selectedEmployee,
-          items: _departmentEmployees.map((e) => DropdownMenuItem(
-            value: e,
-            child: Text(e.id == _profile?.id ? 'Meg selv (${e.fullName})' : e.fullName),
-          )).toList(),
+          items: _selectableEmployees
+              .map(
+                (e) => DropdownMenuItem(
+                  value: e,
+                  child: Text(
+                    e.id == _profile?.id ? 'Meg selv (${e.fullName})' : e.fullName,
+                  ),
+                ),
+              )
+              .toList(),
           onChanged: (val) {
             setState(() => _selectedEmployee = val);
             _loadQuotaForSelected();
@@ -270,7 +380,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title, bool isDark) {
+  Widget _sectionHeader(String title, bool isDark) {
     return Text(
       title.toUpperCase(),
       style: DriftProTheme.labelSm.copyWith(
@@ -280,34 +390,40 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
     );
   }
 
-  Widget _buildQuotaInfo(bool isDark) {
+  Widget _buildQuotaInfo(bool isDark, int requestedDays) {
     final remaining = _quota!.vacationDaysRemaining;
+    final after = remaining - requestedDays;
     return Container(
+      margin: const EdgeInsets.only(bottom: 20),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: DriftProTheme.primaryGreen.withOpacity(0.1),
+        color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DriftProTheme.primaryGreen.withOpacity(0.2)),
+        border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.2)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.info_outline_rounded, color: DriftProTheme.primaryGreen),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Feriekvote for ${DateTime.now().year} (${_selectedEmployee?.fullName})',
-                  style: DriftProTheme.labelSm.copyWith(color: DriftProTheme.primaryGreen),
-                ),
-                Text(
-                  'Gjenstående dager: $remaining',
-                  style: DriftProTheme.bodyMd.copyWith(fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
+          Text(
+            'Feriebalanse ${_quota!.year}',
+            style: DriftProTheme.labelSm.copyWith(color: DriftProTheme.primaryGreen),
           ),
+          const SizedBox(height: 8),
+          Text(
+            'Tildelt ${ _quota!.vacationDaysTotal} + overført ${_quota!.vacationDaysCarriedOver} '
+            '− brukt ${_quota!.vacationDaysUsed} = $remaining igjen',
+            style: DriftProTheme.bodySm,
+          ),
+          if (requestedDays > 0)
+            Text(
+              after >= 0
+                  ? 'Etter denne søknaden: $after dager igjen.'
+                  : 'Advarsel: du søker $requestedDays dager, men har bare $remaining igjen.',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                color: after >= 0 ? DriftProTheme.primaryGreen : DriftProTheme.error,
+              ),
+            ),
         ],
       ),
     );
@@ -321,7 +437,9 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
         decoration: BoxDecoration(
           color: isDark ? DriftProTheme.cardDark : Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200),
+          border: Border.all(
+            color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
+          ),
           boxShadow: DriftProTheme.cardShadow,
         ),
         child: Row(
@@ -330,14 +448,15 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                   Text('Fra - Til', style: DriftProTheme.caption),
-                   const SizedBox(height: 4),
-                   Text(
-                     _startDate != null && _endDate != null
-                       ? '${_startDate!.day}. ${_getMonth(_startDate!.month)} - ${_endDate!.day}. ${_getMonth(_endDate!.month)}'
-                       : 'Velg dager',
-                     style: DriftProTheme.headingSm.copyWith(fontSize: 18),
-                   ),
+                  Text('Fra – til', style: DriftProTheme.caption),
+                  const SizedBox(height: 4),
+                  Text(
+                    _startDate != null && _endDate != null
+                        ? '${_startDate!.day}. ${_month(_startDate!.month)} – '
+                            '${_endDate!.day}. ${_month(_endDate!.month)}'
+                        : 'Velg dager',
+                    style: DriftProTheme.headingSm.copyWith(fontSize: 18),
+                  ),
                 ],
               ),
             ),
@@ -350,83 +469,29 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                 ),
                 child: Text(
                   '$totalDays dager',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             const SizedBox(width: 8),
-            Icon(Icons.calendar_today_rounded, color: DriftProTheme.primaryGreen.withOpacity(0.5)),
+            Icon(
+              Icons.calendar_today_rounded,
+              color: DriftProTheme.primaryGreen.withValues(alpha: 0.5),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildConflictWarning(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: DriftProTheme.warning.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DriftProTheme.warning.withOpacity(0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.warning_amber_rounded, color: DriftProTheme.warning),
-              const SizedBox(width: 12),
-              Text(
-                'Mulig overlapping (krasj)',
-                style: DriftProTheme.labelLg.copyWith(color: DriftProTheme.warning),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Det er ${_potentialConflicts.length} andre kollegaer i avdelingen som har registrert fravær i denne perioden.',
-            style: DriftProTheme.bodySm,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLegalTip(bool isDark) {
-    String tipTitle;
-    String tipText;
-
-    if (widget.type == AbsenceType.ferie) {
-      tipTitle = 'Lovdata: Ferieloven';
-      tipText = 'Arbeidstaker har rett på 25 virkedager ferie hvert år. Du kan kreve at hovedferie (18 dager) gis i tiden 1. juni til 30. september.';
-    } else if (widget.type == AbsenceType.egenmelding) {
-      tipTitle = 'Lovdata: Folketrygdloven';
-      tipText = 'Egenmelding kan brukes i opptil 3 kalenderdager om gangen. For lengre fravær kreves sykmelding fra lege.';
-    } else {
-      tipTitle = 'HMS Tips';
-      tipText = 'Husk å registrere alle avvik og fravær tidlig for å sikre god ressursplanlegging i din avdeling.';
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: isDark ? Colors.blueGrey.withOpacity(0.1) : Colors.blue.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? Colors.blueGrey.withOpacity(0.2) : Colors.blue.withOpacity(0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(tipTitle, style: DriftProTheme.labelSm.copyWith(color: Colors.blue[800])),
-          const SizedBox(height: 8),
-          Text(tipText, style: DriftProTheme.bodySm.copyWith(fontStyle: FontStyle.italic)),
-        ],
-      ),
-    );
-  }
-
-  String _getMonth(int m) {
-    const names = ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des'];
+  String _month(int m) {
+    const names = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des',
+    ];
     return names[m - 1];
   }
 }

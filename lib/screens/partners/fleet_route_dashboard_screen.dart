@@ -2,11 +2,13 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/services/partner/fleet_analytics_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/fleet_shift.dart';
 import '../../models/partner/partner_links.dart';
+import 'fleet_shift_admin_screen.dart';
 
 /// Avansert oversikt: skift (område/dag/kveld), hvem som har rute vs ledig/fri, statistikk.
 class FleetRouteDashboardScreen extends StatefulWidget {
@@ -30,12 +32,12 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
   Map<String, PartnerVehicleFleetSnapshot> _snapByVehicle = {};
   List<PartnerRouteShare> _recentShares = [];
   List<PartnerVehicleFleetSnapshot> _rangeSnaps = [];
-  int _statsDays = 30;
+  FleetStatsPeriod _statsPeriod = FleetStatsPeriod.days30;
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
     _load();
   }
 
@@ -71,13 +73,12 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
         snaps = {for (final s in list) s.partnerVehicleId: s};
       }
 
-      final shares = await PartnerService.fetchRouteSharesForCompany(cid, limit: 1200);
-      final from = DateTime.now().subtract(Duration(days: _statsDays));
-      final to = DateTime.now();
+      final shares = await PartnerService.fetchRouteSharesForCompany(cid, limit: 2000);
+      final from = _statsPeriod.cutoff(DateTime.now()) ?? DateTime(2020);
       final rangeSnaps = await PartnerService.fetchFleetSnapshotsRange(
         companyId: cid,
         from: from,
-        to: to,
+        to: DateTime.now(),
       );
 
       if (mounted) {
@@ -140,35 +141,23 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
     }
   }
 
-  Map<String, int> _routeCountsByVehicle() {
-    final cutoff = DateTime.now().subtract(Duration(days: _statsDays));
-    final m = <String, int>{};
-    for (final s in _recentShares) {
-      final vid = s.partnerVehicleId;
-      if (vid == null) continue;
-      if (s.createdAt.isBefore(cutoff)) continue;
-      m[vid] = (m[vid] ?? 0) + 1;
-    }
-    return m;
+  Map<String, String> get _vehicleLabels {
+    return {for (final r in _fleet) r.vehicle.id: r.vehicle.unitCode};
   }
 
-  Map<String, int> _ledigCountsByVehicle() {
-    final cutoff = DateTime.now().subtract(Duration(days: _statsDays));
-    final m = <String, int>{};
-    for (final s in _rangeSnaps) {
-      if (s.status != 'ledig') continue;
-      if (s.snapshotDate.isBefore(cutoff)) continue;
-      m[s.partnerVehicleId] = (m[s.partnerVehicleId] ?? 0) + 1;
-    }
-    return m;
+  Map<String, String> get _partnerNames {
+    return {for (final r in _fleet) r.vehicle.id: r.partner.name};
   }
 
-  String _vehicleLabel(String vehicleId) {
-    for (final r in _fleet) {
-      if (r.vehicle.id == vehicleId) return r.vehicle.unitCode;
-    }
-    return vehicleId.substring(0, 8);
-  }
+  FleetAnalyticsSummary get _analytics => FleetAnalyticsService.build(
+        period: _statsPeriod,
+        shares: _recentShares,
+        snapshots: _rangeSnaps,
+        vehicleLabels: _vehicleLabels,
+        partnerNames: _partnerNames,
+      );
+
+  String _vehicleLabel(String vehicleId) => _vehicleLabels[vehicleId] ?? vehicleId.substring(0, 8);
 
   Future<void> _setStatus(FleetPartnerVehicleRow row, String status) async {
     final cid = _companyId;
@@ -571,42 +560,163 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
     );
   }
 
+  Widget _kpiOverviewCard() {
+    final a = _analytics;
+    Widget cell(String label, int n, Color c) {
+      return Expanded(
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          decoration: BoxDecoration(
+            color: c.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: c.withValues(alpha: 0.35)),
+          ),
+          child: Column(
+            children: [
+              Text('$n', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: c)),
+              Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Periode: ${_statsPeriod.label}', style: DriftProTheme.headingSm),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              cell('Ruter mottatt', a.routesReceived, DriftProTheme.primaryGreen),
+              cell('Har rute (dager)', a.harRuteDays, _statusColor('har_rute')),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              cell('Fri / søkt fri', a.friDays, _statusColor('fri')),
+              cell('Ledig bil', a.ledigDays, _statusColor('ledig')),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              cell('Gitt bort', a.gittBortDays, _statusColor('gitt_bort')),
+              const Expanded(child: SizedBox()),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _rankingSection(String title, List<FleetVehicleRanking> items, Color color) {
+    if (items.isEmpty) {
+      return Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: ListTile(title: Text(title), subtitle: const Text('Ingen data i perioden')),
+      );
+    }
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            ...items.asMap().entries.map((e) {
+              final r = e.value;
+              return ListTile(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                leading: CircleAvatar(
+                  radius: 14,
+                  backgroundColor: color.withValues(alpha: 0.15),
+                  child: Text('${e.key + 1}', style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w800)),
+                ),
+                title: Text(r.label, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                subtitle: Text(r.partnerName, style: const TextStyle(fontSize: 11)),
+                trailing: Text('${r.count}', style: TextStyle(fontWeight: FontWeight.w900, color: color)),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _statsTab() {
+    final a = _analytics;
     return ListView(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 7, label: Text('7 d')),
-              ButtonSegment(value: 30, label: Text('30 d')),
-              ButtonSegment(value: 90, label: Text('90 d')),
-            ],
-            selected: {_statsDays},
-            onSelectionChanged: (s) {
-              setState(() => _statsDays = s.first);
-              _load();
-            },
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: FleetStatsPeriod.values.map((p) {
+              return ChoiceChip(
+                label: Text(p.label),
+                selected: _statsPeriod == p,
+                onSelected: (_) {
+                  setState(() => _statsPeriod = p);
+                  _load();
+                },
+              );
+            }).toList(),
           ),
         ),
+        _kpiOverviewCard(),
         _barChart(
-          'Flest mottatte ruter (PDF) per bil — siste $_statsDays dager',
-          _routeCountsByVehicle(),
+          'Flest mottatte ruter (PDF)',
+          {for (final r in a.topRoutes) r.vehicleId: r.count},
           DriftProTheme.primaryGreen,
         ),
         _barChart(
-          'Flest «ledig bil»-registreringer — siste $_statsDays dager',
-          _ledigCountsByVehicle(),
-          const Color(0xFF546E7A),
+          'Mest «fri» / søkt fri',
+          {for (final r in a.topFri) r.vehicleId: r.count},
+          _statusColor('fri'),
+        ),
+        _barChart(
+          'Mest ledig bil',
+          {for (final r in a.topLedig) r.vehicleId: r.count},
+          _statusColor('ledig'),
+        ),
+        _barChart(
+          'Mest gitt bort rute',
+          {for (final r in a.topGittBort) r.vehicleId: r.count},
+          _statusColor('gitt_bort'),
         ),
         const Padding(
           padding: EdgeInsets.all(16),
           child: Text(
-            'Statistikken bygger på faktiske rute-PDF-er og flåte-snapshot. '
-            'Eldre data før migrering kan mangle kjøretøy-kobling.',
+            'Full oversikt per bil, dag og skift. Data fra rute-PDF (sendt) og flåte-snapshot.',
             style: TextStyle(fontSize: 12, color: Colors.grey),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _rankingTab() {
+    final a = _analytics;
+    return ListView(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Text('Rangering — ${_statsPeriod.label}', style: DriftProTheme.headingMd),
+        ),
+        _rankingSection('🏆 Flest ruter mottatt', a.topRoutes, DriftProTheme.primaryGreen),
+        _rankingSection('🕊️ Mest fri / søkt fri', a.topFri, _statusColor('fri')),
+        _rankingSection('🚛 Mest ledig', a.topLedig, _statusColor('ledig')),
+        _rankingSection('↗️ Mest gitt bort', a.topGittBort, _statusColor('gitt_bort')),
+        const SizedBox(height: 24),
       ],
     );
   }
@@ -639,9 +749,14 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
           right: 16,
           bottom: 16,
           child: FloatingActionButton.extended(
-            onPressed: _addCustomShift,
-            icon: const Icon(Icons.add),
-            label: const Text('Nytt skift'),
+            onPressed: () async {
+              await Navigator.of(context).push<void>(
+                MaterialPageRoute(builder: (_) => const FleetShiftAdminScreen()),
+              );
+              await _load();
+            },
+            icon: const Icon(Icons.settings),
+            label: const Text('Administrer skift'),
             backgroundColor: DriftProTheme.primaryGreen,
           ),
         ),
@@ -662,6 +777,7 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
           tabs: const [
             Tab(text: 'Live oversikt'),
             Tab(text: 'Statistikk'),
+            Tab(text: 'Rangering'),
             Tab(text: 'Skift'),
           ],
         ),
@@ -682,6 +798,7 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
                   children: [
                     _overviewTab(),
                     _statsTab(),
+                    _rankingTab(),
                     _shiftsTab(),
                   ],
                 ),

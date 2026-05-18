@@ -1,145 +1,330 @@
 import 'package:flutter/material.dart';
+
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/permissions/access_keys.dart';
+import '../../core/permissions/permission_gate.dart';
+import '../../core/permissions/user_access.dart';
+import '../../core/services/hms/hms_service.dart';
+import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
-import '../common/placeholder_screen.dart';
-import 'risk_assessment/risk_assessment_list_screen.dart';
-import 'sja/sja_list_screen.dart';
-import 'safety_rounds/safety_round_list_screen.dart';
-import 'documents/document_list_screen.dart';
+import '../../models/user_profile.dart';
 import '../dms/dms_screen.dart';
-import 'equipment/equipment_registry_screen.dart';
-import 'competence/competence_matrix_screen.dart';
+import 'competence/competence_hub_screen.dart';
+import 'equipment/equipment_hub_screen.dart';
+import 'risk_assessment/risk_assessment_list_screen.dart';
+import 'risk_assessment/risk_matrix_screen.dart';
+import 'safety_rounds/safety_round_list_screen.dart';
+import 'sja/sja_list_screen.dart';
 
-class HmsScreen extends StatelessWidget {
+/// HMS-hub — 7 moduler + risikomatrise (Landax-inspirert).
+class HmsScreen extends StatefulWidget {
   const HmsScreen({super.key});
+
+  @override
+  State<HmsScreen> createState() => _HmsScreenState();
+}
+
+class _HmsScreenState extends State<HmsScreen> {
+  UserProfile? _profile;
+  HmsDashboardStats _stats = const HmsDashboardStats();
+  bool _statsLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final p = await SupabaseService.fetchCurrentUserProfile();
+    if (!mounted) return;
+    setState(() => _profile = p);
+    if (p?.companyId != null) {
+      setState(() => _statsLoading = true);
+      final s = await HmsService.loadDashboardStats(p!.companyId!);
+      if (mounted) {
+        setState(() {
+          _stats = s;
+          _statsLoading = false;
+        });
+      }
+    } else {
+      setState(() => _statsLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final a = _profile?.access;
+    final modules = <Widget>[];
 
-    return Scaffold(
-      backgroundColor:
-          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-      appBar: AppBar(title: const Text(AppStrings.navHMS)),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        physics: const BouncingScrollPhysics(),
-        children: [
-          _buildModuleCard(
-            context,
-            icon: AppIcons.riskAssessment,
-            title: AppStrings.riskAssessment,
-            subtitle: 'Opprett og administrer risikoanalyser med 5×5 matrise',
-            color: DriftProTheme.riskHigh,
-            badge: '2 høyrisiko',
-            badgeColor: DriftProTheme.error,
-            isDark: isDark,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RiskAssessmentListScreen()),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildModuleCard(
-            context,
-            icon: AppIcons.sja,
-            title: AppStrings.sjaTitle,
-            subtitle: 'Fyll ut og signer SJA før risikofylt arbeid',
-            color: DriftProTheme.accentBlue,
-            badge: '4 ventende',
-            badgeColor: DriftProTheme.warning,
-            isDark: isDark,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SjaListScreen()),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildModuleCard(
-            context,
-            icon: AppIcons.safetyRound,
-            title: AppStrings.safetyRound,
-            subtitle: 'Planlegg og gjennomfør sikkerhetsrunder',
-            color: DriftProTheme.success,
-            badge: '1 planlagt',
-            badgeColor: DriftProTheme.info,
-            isDark: isDark,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SafetyRoundListScreen()),
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          _buildModuleCard(
-            context,
-            icon: AppIcons.riskMatrix,
-            title: AppStrings.riskMatrix,
-            subtitle: 'Visuell oversikt over alle risikoer',
-            color: DriftProTheme.warning,
-            isDark: isDark,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const PlaceholderScreen(
-                    title: 'Risiko-matrise',
-                    description:
-                        'Her kommer en interaktiv risiko-matrise '
-                        'bygget på Supabase-data.',
+    if (a?.canHmsRisk == true) {
+      modules.add(_buildModuleCard(
+        context,
+        icon: AppIcons.riskAssessment,
+        title: AppStrings.riskAssessment,
+        subtitle: 'Risikoanalyser med 5×5 matrise og maler',
+        color: DriftProTheme.riskHigh,
+        isDark: isDark,
+        badge: _statsLoading ? null : '${_stats.riskCount}',
+        badgeColor: _stats.highRiskCount > 0 ? DriftProTheme.error : null,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const RiskAssessmentListScreen()),
+        ),
+      ));
+    }
+    if (a?.canHmsRiskMatrix == true) {
+      modules.add(_buildModuleCard(
+        context,
+        icon: AppIcons.riskMatrix,
+        title: AppStrings.riskMatrix,
+        subtitle: 'Interaktiv heatmap fra Supabase',
+        color: DriftProTheme.warning,
+        isDark: isDark,
+        badge: _statsLoading ? null : '${_stats.highRiskCount} høy',
+        badgeColor: DriftProTheme.riskHigh,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const RiskMatrixScreen()),
+        ),
+      ));
+    }
+    if (a?.canHmsSja == true) {
+      modules.add(_buildModuleCard(
+        context,
+        icon: AppIcons.sja,
+        title: AppStrings.sjaTitle,
+        subtitle: 'SJA med maler, PPE og farepunkter',
+        color: DriftProTheme.accentBlue,
+        isDark: isDark,
+        badge: _statsLoading ? null : '${_stats.sjaOpen} åpne',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const SjaListScreen()),
+        ),
+      ));
+    }
+    if (a?.canHmsSafetyRound == true) {
+      modules.add(_buildModuleCard(
+        context,
+        icon: AppIcons.safetyRound,
+        title: AppStrings.safetyRound,
+        subtitle: 'Vernerunder med sjekklister fra mal',
+        color: DriftProTheme.success,
+        isDark: isDark,
+        badge: _statsLoading ? null : '${_stats.safetyPlanned} planlagt',
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const SafetyRoundListScreen()),
+        ),
+      ));
+    }
+    if (a?.canHmsEquipment == true) {
+      modules.add(_buildModuleCard(
+        context,
+        icon: Icons.construction_rounded,
+        title: 'Maskiner & utstyr',
+        subtitle: 'Register, service og status',
+        color: Colors.blueGrey,
+        isDark: isDark,
+        badge: _stats.equipmentNeedsService > 0
+            ? '${_stats.equipmentNeedsService} service'
+            : null,
+        badgeColor: DriftProTheme.warning,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const EquipmentHubScreen()),
+        ),
+      ));
+    }
+    if (a?.canHmsCompetence == true) {
+      modules.add(_buildModuleCard(
+        context,
+        icon: Icons.card_membership_rounded,
+        title: 'Kompetanse & kurs',
+        subtitle: 'Kurs, bevis, PDF og kompetansematrise',
+        color: Colors.indigo,
+        isDark: isDark,
+        badge: _stats.expiringCertificates > 0
+            ? '${_stats.expiringCertificates} utløper'
+            : null,
+        badgeColor: DriftProTheme.warning,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const CompetenceHubScreen()),
+        ),
+      ));
+    }
+    if (a?.canHmsDocuments == true) {
+      modules.add(_buildModuleCard(
+        context,
+        icon: AppIcons.document,
+        title: AppStrings.documents,
+        subtitle: 'HMS-håndbok og styrende dokumenter (DMS)',
+        color: DriftProTheme.info,
+        isDark: isDark,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const DmsScreen()),
+        ),
+      ));
+    }
+
+    return PermissionGuard(
+      profile: _profile,
+      accessKey: AccessKeys.hms,
+      child: Scaffold(
+        backgroundColor:
+            isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+        appBar: AppBar(
+          title: const Text(AppStrings.navHMS),
+          actions: [
+            IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+          ],
+        ),
+        body: _profile == null
+            ? const Center(child: CircularProgressIndicator())
+            : modules.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Text(
+                        'Du har ikke tilgang til HMS-moduler.\n'
+                        'Kontakt superadmin.',
+                        textAlign: TextAlign.center,
+                        style: DriftProTheme.bodyMd
+                            .copyWith(color: Colors.grey),
+                      ),
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      children: [
+                        _buildVersionBanner(isDark),
+                        const SizedBox(height: 12),
+                        _buildKpiRow(isDark),
+                        const SizedBox(height: 20),
+                        Text('Moduler', style: DriftProTheme.headingSm),
+                        const SizedBox(height: 12),
+                        for (var i = 0; i < modules.length; i++) ...[
+                          if (i > 0) const SizedBox(height: 12),
+                          modules[i],
+                        ],
+                        const SizedBox(height: 24),
+                        Text(
+                          'Maler er tilgjengelig når du oppretter risiko, SJA eller vernerunde — velg «Ny» og «Start fra mal».',
+                          style: DriftProTheme.caption,
+                        ),
+                      ],
+                    ),
                   ),
+      ),
+    );
+  }
+
+  /// Synlig markør — bekreft at ny HMS-hub er lastet (ikke gammel cache).
+  Widget _buildVersionBanner(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            DriftProTheme.primaryGreen.withValues(alpha: 0.9),
+            DriftProTheme.accentBlue.withValues(alpha: 0.85),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.verified_outlined, color: Colors.white, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'HMS Plattform v2',
+                  style: DriftProTheme.labelMd.copyWith(color: Colors.white),
                 ),
-              );
-            },
+                Text(
+                  'KPI · maler · risikomatrise · Supabase',
+                  style: DriftProTheme.caption.copyWith(color: Colors.white70),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          _buildModuleCard(
-            context,
-            icon: Icons.construction_rounded,
-            title: 'Maskiner & Utstyr',
-            subtitle: 'Oversikt over verktøy, maskiner og vedlikehold',
-            color: Colors.blueGrey,
-            isDark: isDark,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const EquipmentRegistryScreen()),
-              );
-            },
+          Text(
+            '18.05.26',
+            style: DriftProTheme.caption.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-          const SizedBox(height: 12),
-          _buildModuleCard(
-            context,
-            icon: Icons.card_membership_rounded,
-            title: 'Kompetanse & Kurs',
-            subtitle: 'Sertifikater, kursbevis og kompetansematrise',
-            color: Colors.indigo,
-            badge: '3 utløper',
-            badgeColor: Colors.red,
-            isDark: isDark,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const CompetenceMatrixScreen()),
-              );
-            },
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKpiRow(bool isDark) {
+    return Row(
+      children: [
+        Expanded(
+          child: _kpiTile(
+            isDark,
+            'Risikoer',
+            '${_stats.riskCount}',
+            Icons.warning_amber_rounded,
+            DriftProTheme.riskHigh,
           ),
-          const SizedBox(height: 12),
-          _buildModuleCard(
-            context,
-            icon: AppIcons.document,
-            title: AppStrings.documents,
-            subtitle: 'HMS-håndbok og styrende dokumenter',
-            color: DriftProTheme.info,
-            isDark: isDark,
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DmsScreen()),
-              );
-            },
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _kpiTile(
+            isDark,
+            'Høy risiko',
+            '${_stats.highRiskCount}',
+            Icons.priority_high,
+            DriftProTheme.error,
           ),
-          const SizedBox(height: 24),
-          _buildRiskMatrixPreview(isDark),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _kpiTile(
+            isDark,
+            'SJA åpne',
+            '${_stats.sjaOpen}',
+            AppIcons.sja,
+            DriftProTheme.accentBlue,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _kpiTile(
+    bool isDark,
+    String label,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 8),
+          Text(value, style: DriftProTheme.headingSm),
+          Text(label, style: DriftProTheme.caption),
         ],
       ),
     );
@@ -151,153 +336,62 @@ class HmsScreen extends StatelessWidget {
     required String title,
     required String subtitle,
     required Color color,
+    required bool isDark,
+    required VoidCallback onTap,
     String? badge,
     Color? badgeColor,
-    required bool isDark,
-    VoidCallback? onTap,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-        border: Border.all(
-          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100,
-        ),
-        boxShadow: DriftProTheme.cardShadow,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-          child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Row(
-              children: [
+    return Material(
+      color: isDark ? DriftProTheme.cardDark : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: color, size: 28),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: DriftProTheme.labelLg),
+                    const SizedBox(height: 4),
+                    Text(subtitle, style: DriftProTheme.caption),
+                  ],
+                ),
+              ),
+              if (badge != null)
                 Container(
-                  width: 48,
-                  height: 48,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+                    color: (badgeColor ?? color).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(icon, color: color, size: 24),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(title, style: DriftProTheme.headingSm.copyWith(
-                        color: isDark ? Colors.white : Colors.grey[900],
-                      )),
-                      const SizedBox(height: 4),
-                      Text(subtitle, style: DriftProTheme.bodySm.copyWith(
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      )),
-                      if (badge != null) ...[
-                        const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: (badgeColor ?? color).withOpacity(0.12),
-                            borderRadius: BorderRadius.circular(DriftProTheme.radiusRound),
-                          ),
-                          child: Text(badge, style: DriftProTheme.labelSm.copyWith(
-                            color: badgeColor ?? color, fontSize: 10,
-                          )),
-                        ),
-                      ],
-                    ],
+                  child: Text(
+                    badge,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: badgeColor ?? color,
+                    ),
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios_rounded, size: 16,
-                  color: isDark ? Colors.grey[600] : Colors.grey[400]),
-              ],
-            ),
+              const Icon(Icons.chevron_right),
+            ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildRiskMatrixPreview(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-        border: Border.all(
-          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100,
-        ),
-        boxShadow: DriftProTheme.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(AppStrings.riskMatrix, style: DriftProTheme.headingSm.copyWith(
-            color: isDark ? Colors.white : Colors.grey[900],
-          )),
-          const SizedBox(height: 4),
-          Text('${AppStrings.probability} × ${AppStrings.consequence}',
-            style: DriftProTheme.bodySm.copyWith(
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-            )),
-          const SizedBox(height: 16),
-          _buildMatrix(isDark),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMatrix(bool isDark) {
-    Color getCellColor(int p, int c) {
-      final score = p * c;
-      if (score <= 4) return DriftProTheme.riskLow;
-      if (score <= 9) return DriftProTheme.riskMedium;
-      if (score <= 14) return DriftProTheme.riskHigh;
-      if (score <= 19) return DriftProTheme.riskCritical;
-      return DriftProTheme.riskExtreme;
-    }
-
-    return Column(
-      children: List.generate(5, (row) {
-        final prob = 5 - row;
-        return Row(
-          children: [
-            SizedBox(
-              width: 24,
-              child: Text('$prob', textAlign: TextAlign.center,
-                style: DriftProTheme.labelSm.copyWith(
-                  color: isDark ? Colors.grey[500] : Colors.grey[500],
-                )),
-            ),
-            ...List.generate(5, (col) {
-              final cons = col + 1;
-              final score = prob * cons;
-              final color = getCellColor(prob, cons);
-              return Expanded(
-                child: Container(
-                  height: 36,
-                  margin: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.25),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: color.withOpacity(0.4), width: 1),
-                  ),
-                  child: Center(
-                    child: Text('$score', style: DriftProTheme.labelSm.copyWith(
-                      color: color,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
-                    )),
-                  ),
-                ),
-              );
-            }),
-          ],
-        );
-      }),
     );
   }
 }

@@ -1,3 +1,5 @@
+import '../../core/utils/file_type_resolver.dart';
+
 class DmsFile {
   final String id;
   final String companyId;
@@ -40,6 +42,14 @@ class DmsFile {
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
   }
+
+  /// Gyldig filendelse (ignorerer feil lagret «extension» uten punktum i navn).
+  String? get resolvedExtension =>
+      FileTypeResolver.extensionFromName(name) ??
+      FileTypeResolver.extensionFromStoragePath(storagePath) ??
+      (extension != null && !extension!.contains(' ')
+          ? extension!.toLowerCase()
+          : null);
 
   Map<String, dynamic> toJson() => {
     'id': id,

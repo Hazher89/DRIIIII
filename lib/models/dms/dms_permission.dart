@@ -1,4 +1,4 @@
-enum DmsPermissionType { view, edit, admin }
+enum DmsPermissionType { read, write, admin }
 
 class DmsPermission {
   final String id;
@@ -16,14 +16,15 @@ class DmsPermission {
   });
 
   factory DmsPermission.fromJson(Map<String, dynamic> json) {
+    final raw = json['permission_type'] as String? ?? 'read';
     return DmsPermission(
       id: json['id'] as String,
       folderId: json['folder_id'] as String?,
       fileId: json['file_id'] as String?,
       userId: json['user_id'] as String,
       type: DmsPermissionType.values.firstWhere(
-        (e) => e.name == json['permission_type'],
-        orElse: () => DmsPermissionType.view,
+        (e) => e.name == raw,
+        orElse: () => DmsPermissionType.read,
       ),
     );
   }

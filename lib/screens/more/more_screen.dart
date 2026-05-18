@@ -8,14 +8,16 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_notifier.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
+import '../../core/permissions/user_access.dart';
+import '../employees/employee_hub_screen.dart';
 import '../common/placeholder_screen.dart';
 import '../departments/departments_screen.dart';
 import '../employees/employees_screen.dart';
+import '../employees/employee_personal_folder_screen.dart';
 import '../profile/profile_screen.dart';
 import '../admin/access_control_screen.dart';
 import '../admin/kiosk_settings_screen.dart';
 import '../surveys/survey_list_screen.dart';
-import '../admin/user_management_screen.dart';
 import '../partners/partners_dashboard_screen.dart';
 import 'whistleblowing_screen.dart';
 
@@ -42,9 +44,11 @@ class _MoreScreenState extends State<MoreScreen> {
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
       int count = 0;
-      if (profile?.role == UserRole.superadmin && profile?.companyId != null) {
-        final users = await SupabaseService.fetchProfiles(companyId: profile!.companyId);
-        count = users.where((u) => !u.isApproved).length;
+      if (profile?.isSuperAdmin == true && profile?.companyId != null) {
+        final users = await SupabaseService.fetchProfiles(companyId: profile!.companyId!);
+        count = users
+            .where((u) => u.isOnboarded && !u.isApproved && !u.isPartnerPortalUser)
+            .length;
       }
       setState(() {
         _profile = profile;
@@ -127,89 +131,86 @@ class _MoreScreenState extends State<MoreScreen> {
           ),
           const SizedBox(height: 24),
 
-          _buildSectionLabel('Administrasjon', isDark),
-          _buildMenuItem(
-            context,
-            AppIcons.department,
-            'Avdelinger',
-            isDark,
-          ),
-          _buildMenuItem(
-            context,
-            AppIcons.employees,
-            'Ansatte',
-            isDark,
-          ),
-          if (_profile?.isAdmin == true || _profile?.isLeader == true)
-            _buildMenuItem(
-              context,
-              Icons.handshake_outlined,
-              'Samarbeidspartnere',
-              isDark,
-            ),
-          _buildMenuItem(
-            context,
-            AppIcons.folder,
-            'Personalmappe',
-            isDark,
-          ),
-          _buildMenuItem(
-            context,
-            AppIcons.notification,
-            'Varsler',
-            isDark,
-            badge: '3',
-          ),
-          _buildMenuItem(
-            context,
-            Icons.assignment_outlined,
-            'Undersøkelser',
-            isDark,
-          ),
-          if (_profile?.isAdmin == true)
-            _buildMenuItem(
-              context,
-              Icons.lock_person_outlined,
-              'Tilgangskontroll',
-              isDark,
-            ),
-          if (_profile?.isAdmin == true)
-            _buildMenuItem(
-              context,
-              Icons.how_to_reg_outlined,
-              'Brukergodkjenning',
-              isDark,
-              badge: _usersWaitingForApprovalCount > 0 ? _usersWaitingForApprovalCount.toString() : null,
-            ),
-          if (_profile?.isAdmin == true)
-            _buildMenuItem(
-              context,
-              Icons.display_settings_outlined,
-              'Infoskjerm',
-              isDark,
-            ),
-          _buildMenuItem(
-            context,
-            Icons.record_voice_over_outlined,
-            'Anonym anmeldelse',
-            isDark,
-          ),
+          if (_profile != null && _hasAnyAdminMenu) ...[
+            _buildSectionLabel('Administrasjon', isDark),
+            if (_profile!.access.canDepartments)
+              _buildMenuItem(context, AppIcons.department, 'Avdelinger', isDark),
+            if (_profile!.isSuperAdmin || _profile!.access.canEmployeesList)
+              _buildMenuItem(context, AppIcons.employees, 'Ansatte', isDark),
+            if (_profile!.access.canPartnersMenu)
+              _buildMenuItem(
+                context,
+                Icons.handshake_outlined,
+                'Samarbeidspartnere',
+                isDark,
+              ),
+            if (_profile!.access.canPersonalFolder)
+              _buildMenuItem(context, AppIcons.folder, 'Personalmappe', isDark),
+            if (_profile!.access.canNotifications)
+              _buildMenuItem(
+                context,
+                AppIcons.notification,
+                'Varsler',
+                isDark,
+                badge: '3',
+              ),
+            if (_profile!.access.canSurveysMenu)
+              _buildMenuItem(
+                context,
+                Icons.assignment_outlined,
+                'Undersøkelser',
+                isDark,
+              ),
+            if (_profile!.access.canAccessControl)
+              _buildMenuItem(
+                context,
+                Icons.lock_person_outlined,
+                'Tilgangskontroll',
+                isDark,
+              ),
+            if (_profile!.isSuperAdmin)
+              _buildMenuItem(
+                context,
+                Icons.how_to_reg_outlined,
+                'Brukergodkjenning',
+                isDark,
+                badge: _usersWaitingForApprovalCount > 0
+                    ? _usersWaitingForApprovalCount.toString()
+                    : null,
+              ),
+            if (_profile!.access.canKiosk)
+              _buildMenuItem(
+                context,
+                Icons.display_settings_outlined,
+                'Infoskjerm',
+                isDark,
+              ),
+            if (_profile!.access.canWhistleblowing)
+              _buildMenuItem(
+                context,
+                Icons.record_voice_over_outlined,
+                'Anonym anmeldelse',
+                isDark,
+              ),
+          ],
 
           const SizedBox(height: 20),
           _buildSectionLabel('Innstillinger', isDark),
-          _buildMenuItem(
-            context,
-            AppIcons.profile,
-            'Min profil',
-            isDark,
-          ),
+          if (_profile?.access.canProfile ?? true)
+            _buildMenuItem(
+              context,
+              AppIcons.profile,
+              'Min profil',
+              isDark,
+            ),
           _buildThemeToggle(context, isDark),
-          _buildMenuItem(
-            context,
-            AppIcons.settings,
-            'Appinnstillinger',
-            isDark,
-          ),
+          if (_profile?.access.canAppSettings ?? false)
+            _buildMenuItem(
+              context,
+              AppIcons.settings,
+              'Appinnstillinger',
+              isDark,
+            ),
 
           const SizedBox(height: 20),
           _buildSectionLabel('Info', isDark),
@@ -238,6 +239,23 @@ class _MoreScreenState extends State<MoreScreen> {
         ],
       ),
     );
+  }
+
+  bool get _hasAnyAdminMenu {
+    final p = _profile;
+    if (p == null) return false;
+    final a = p.access;
+    return a.canDepartments ||
+        a.canEmployeesList ||
+        a.canEditEmployees ||
+        a.canPartnersMenu ||
+        a.canPersonalFolder ||
+        a.canNotifications ||
+        a.canSurveysMenu ||
+        a.canAccessControl ||
+        p.isSuperAdmin ||
+        a.canKiosk ||
+        a.canWhistleblowing;
   }
 
   Widget _buildSectionLabel(String label, bool isDark) {
@@ -315,7 +333,9 @@ class _MoreScreenState extends State<MoreScreen> {
             return;
           }
           if (title == 'Ansatte') {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const EmployeesScreen()));
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const EmployeesScreen()),
+            );
             return;
           }
           if (title == 'Tilgangskontroll') {
@@ -331,7 +351,9 @@ class _MoreScreenState extends State<MoreScreen> {
             return;
           }
           if (title == 'Brukergodkjenning') {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const UserManagementScreen()));
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const EmployeeHubScreen()),
+            );
             return;
           }
           if (title == 'Infoskjerm') {
@@ -340,6 +362,12 @@ class _MoreScreenState extends State<MoreScreen> {
           }
           if (title == 'Min profil') {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+            return;
+          }
+          if (title == 'Personalmappe') {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const EmployeePersonalFolderScreen()),
+            );
             return;
           }
           Navigator.of(context).push(

@@ -38,7 +38,8 @@ class PendingApprovalScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                'Din profil er nå sendt til administrator for godkjenning. Du vil få tilgang til systemet så snart kontoen din er bekreftet.',
+                'Profilen din er sendt til superadmin. Du får kun tilgang til sider og data '
+                'som er eksplisitt tildelt etter godkjenning (GDPR).',
                 style: DriftProTheme.bodyMd.copyWith(color: Colors.grey),
                 textAlign: TextAlign.center,
               ),

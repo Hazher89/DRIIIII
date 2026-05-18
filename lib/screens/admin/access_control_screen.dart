@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+
+import '../../core/permissions/access_presets.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
+import '../employees/widgets/permission_matrix_editor.dart';
 
+/// Tilgangskontroll — samme matrise som i Ansatt-hub.
 class AccessControlScreen extends StatefulWidget {
   const AccessControlScreen({super.key});
 
@@ -26,7 +30,7 @@ class _AccessControlScreenState extends State<AccessControlScreen> {
       final companyId = await SupabaseService.getCurrentCompanyId();
       if (companyId != null) {
         final users = await SupabaseService.fetchProfiles(companyId: companyId);
-        setState(() => _users = users);
+        setState(() => _users = users.where((u) => !u.isPartnerPortalUser).toList());
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -39,7 +43,12 @@ class _AccessControlScreenState extends State<AccessControlScreen> {
 
     return Scaffold(
       backgroundColor: isDark ? DriftProTheme.bgDark : DriftProTheme.bgLight,
-      appBar: AppBar(title: const Text('Tilgangskontroll')),
+      appBar: AppBar(
+        title: const Text('Tilgangskontroll'),
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadUsers),
+        ],
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView.builder(
@@ -64,7 +73,7 @@ class _AccessControlScreenState extends State<AccessControlScreen> {
       child: ListTile(
         leading: CircleAvatar(child: Text(user.initials)),
         title: Text(user.fullName),
-        subtitle: Text('Rolle: ${user.role.name}'),
+        subtitle: Text('${user.role.name} · ${user.isApproved ? 'Godkjent' : 'Venter'}'),
         trailing: const Icon(Icons.settings_outlined, color: DriftProTheme.primaryGreen),
         onTap: () => _showAccessSettings(user),
       ),
@@ -72,62 +81,65 @@ class _AccessControlScreenState extends State<AccessControlScreen> {
   }
 
   void _showAccessSettings(UserProfile user) {
-    // Default settings
-    Map<String, dynamic> settings = Map<String, dynamic>.from(user.accessSettings ?? {
-      'hms': true,
-      'fravaer': true,
-      'avvik': true,
-      'avdelinger': user.isAdmin,
-      'ansatte': user.isAdmin,
-    });
+    Map<String, dynamic> settings = Map<String, dynamic>.from(
+      user.accessSettings ?? AccessPresets.forRole(user.role),
+    );
 
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          padding: const EdgeInsets.fromLTRB(24, 12, 24, 40),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 24),
-              Text('Tilgang for ${user.fullName}', style: DriftProTheme.headingSm),
-              const Divider(height: 32),
-              
-              _buildToggle('HMS Modul', 'hms', settings, setModalState),
-              _buildToggle('Fravær & Ferie', 'fravaer', settings, setModalState),
-              _buildToggle('Avvikshåndtering', 'avvik', settings, setModalState),
-              _buildToggle('Avdelingsstyring', 'avdelinger', settings, setModalState),
-              _buildToggle('Ansattliste', 'ansatte', settings, setModalState),
-              
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    await SupabaseService.updateProfileAccess(user.id, settings);
-                    Navigator.pop(context);
-                    _loadUsers();
-                  },
-                  child: const Text('LAGRE ENDRINGER'),
+        builder: (context, setModalState) => DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.85,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (_, scroll) => Padding(
+            padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+            child: Column(
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                Text('Tilgang for ${user.fullName}', style: DriftProTheme.headingSm),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ListView(
+                    controller: scroll,
+                    children: [
+                      PermissionMatrixEditor(
+                        settings: settings,
+                        onChanged: (s) => setModalState(() => settings = s),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await SupabaseService.updateProfileAccess(user.id, settings);
+                      if (context.mounted) Navigator.pop(context);
+                      _loadUsers();
+                    },
+                    child: const Text('LAGRE ENDRINGER'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildToggle(String title, String key, Map<String, dynamic> settings, StateSetter setState) {
-    return SwitchListTile.adaptive(
-      title: Text(title, style: DriftProTheme.labelLg),
-      value: settings[key] ?? false,
-      activeColor: DriftProTheme.primaryGreen,
-      onChanged: (val) => setState(() => settings[key] = val),
     );
   }
 }

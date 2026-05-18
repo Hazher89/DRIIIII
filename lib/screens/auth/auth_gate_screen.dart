@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/config/app_origin.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/theme/app_theme.dart';
 
@@ -195,7 +196,7 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
     try {
       await Supabase.instance.client.auth.signInWithOAuth(
         provider,
-        redirectTo: 'https://driftpro.no',
+        redirectTo: appAuthRedirectOrigin,
       );
     } catch (e) {
       if (mounted) {
@@ -403,7 +404,7 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
       }
       await Supabase.instance.client.auth.signInWithOtp(
         email: email.trim().toLowerCase(),
-        emailRedirectTo: 'https://driftpro.no',
+        emailRedirectTo: appAuthRedirectOrigin,
         shouldCreateUser: true,
       );
       if (mounted) {

@@ -1,21 +1,18 @@
-import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:cross_file/cross_file.dart';
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:open_filex/open_filex.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../core/theme/app_theme.dart';
+
+import '../../core/services/dms/dms_password.dart';
 import '../../core/services/dms/dms_service.dart';
 import '../../core/services/supabase_service.dart';
-import '../../models/dms/dms_folder.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/dms/dms_file.dart';
-import '../../models/dms/dms_permission.dart';
-import '../../models/user_profile.dart';
-import '../../core/constants/app_strings.dart';
-import 'package:desktop_drop/desktop_drop.dart';
-import 'package:cross_file/cross_file.dart';
-import 'package:flutter/services.dart';
+import '../../models/dms/dms_folder.dart';
 import 'file_viewer_screen.dart';
+import 'widgets/dms_create_folder_sheet.dart';
+import 'widgets/dms_permissions_sheet.dart';
 
 class DmsScreen extends StatefulWidget {
   final String? initialFolderId;
@@ -28,23 +25,30 @@ class DmsScreen extends StatefulWidget {
 }
 
 enum DmsViewMode { grid, list }
-enum DmsCategory { all, recent, starred, shared, images, docs }
+
+enum DmsSort { nameAsc, nameDesc, dateDesc, sizeDesc }
 
 class _DmsScreenState extends State<DmsScreen> {
   bool _isLoading = true;
   List<DmsFolder> _folders = [];
   List<DmsFile> _files = [];
-  
   String? _currentFolderId;
-  List<Map<String, String?>> _breadcrumb = [];
+  DmsFolder? _currentFolder;
+  final List<Map<String, String?>> _breadcrumb = [];
   String? _companyId;
-  
-  DmsViewMode _viewMode = DmsViewMode.grid;
-  DmsCategory _activeCategory = DmsCategory.all;
+  DmsViewMode _viewMode = DmsViewMode.list;
   String _searchQuery = '';
-  Set<String> _selectedItems = {};
   bool _isDragging = false;
+  DmsSort _sort = DmsSort.nameAsc;
+  final Set<String> _unlockedFolderIds = {};
   Map<String, dynamic> _stats = {'total_files': 0, 'total_size': 0};
+
+  bool get _canGoBack => _breadcrumb.length > 1;
+
+  String get _currentTitle {
+    if (_breadcrumb.isEmpty) return 'Dokumentarkiv';
+    return _breadcrumb.last['name'] ?? 'Dokumentarkiv';
+  }
 
   @override
   void initState() {
@@ -52,7 +56,10 @@ class _DmsScreenState extends State<DmsScreen> {
     _currentFolderId = widget.initialFolderId;
     _breadcrumb.add({'id': null, 'name': 'Hovedarkiv'});
     if (widget.initialFolderId != null) {
-      _breadcrumb.add({'id': widget.initialFolderId, 'name': widget.initialFolderName});
+      _breadcrumb.add({
+        'id': widget.initialFolderId,
+        'name': widget.initialFolderName ?? 'Mappe',
+      });
     }
     _loadData();
   }
@@ -63,31 +70,140 @@ class _DmsScreenState extends State<DmsScreen> {
       _companyId ??= await SupabaseService.getCurrentCompanyId();
       if (_companyId == null) return;
 
-      final foldersFut = DmsService.fetchFolders(parentId: _currentFolderId, companyId: _companyId!);
-      final filesFut = DmsService.fetchFiles(folderId: _currentFolderId, companyId: _companyId!);
-      final statsFut = DmsService.getStorageStats(_companyId!);
+      if (_currentFolderId != null) {
+        _currentFolder = await DmsService.fetchFolder(_currentFolderId!);
+      } else {
+        _currentFolder = null;
+      }
 
-      final results = await Future.wait([foldersFut, filesFut, statsFut]);
-      
+      final results = await Future.wait([
+        DmsService.fetchFolders(
+          parentId: _currentFolderId,
+          companyId: _companyId!,
+        ),
+        DmsService.fetchFiles(
+          folderId: _currentFolderId,
+          companyId: _companyId!,
+        ),
+        DmsService.getStorageStats(_companyId!),
+      ]);
+
+      if (!mounted) return;
       setState(() {
-        _folders = results[0] as List<DmsFolder>;
-        _files = results[1] as List<DmsFile>;
+        _folders = _sortedFolders(results[0] as List<DmsFolder>);
+        _files = _sortedFiles(results[1] as List<DmsFile>);
         _stats = results[2] as Map<String, dynamic>;
       });
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Feil ved lasting: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Feil ved lasting: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  void _navigateToFolder(String? id, String name) {
+  List<DmsFolder> _sortedFolders(List<DmsFolder> list) {
+    final copy = List<DmsFolder>.from(list);
+    switch (_sort) {
+      case DmsSort.nameAsc:
+        copy.sort((a, b) => a.name.compareTo(b.name));
+      case DmsSort.nameDesc:
+        copy.sort((a, b) => b.name.compareTo(a.name));
+      case DmsSort.dateDesc:
+        copy.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      case DmsSort.sizeDesc:
+        copy.sort((a, b) => a.name.compareTo(b.name));
+    }
+    return copy;
+  }
+
+  List<DmsFile> _sortedFiles(List<DmsFile> list) {
+    final copy = List<DmsFile>.from(list);
+    switch (_sort) {
+      case DmsSort.nameAsc:
+        copy.sort((a, b) => a.name.compareTo(b.name));
+      case DmsSort.nameDesc:
+        copy.sort((a, b) => b.name.compareTo(a.name));
+      case DmsSort.dateDesc:
+        copy.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+      case DmsSort.sizeDesc:
+        copy.sort((a, b) => (b.fileSize ?? 0).compareTo(a.fileSize ?? 0));
+    }
+    return copy;
+  }
+
+  void _goBack() {
+    if (!_canGoBack) return;
+    final parent = _breadcrumb[_breadcrumb.length - 2];
+    _navigateToFolder(parent['id'], parent['name'] ?? 'Hovedarkiv', skipLockCheck: true);
+  }
+
+  Future<void> _enterFolder(DmsFolder folder) async {
+    if (folder.isPasswordProtected && !_unlockedFolderIds.contains(folder.id)) {
+      final ok = await _promptFolderPassword(folder);
+      if (!ok) return;
+      _unlockedFolderIds.add(folder.id);
+    }
+    _navigateToFolder(folder.id, folder.name);
+  }
+
+  Future<bool> _promptFolderPassword(DmsFolder folder) async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.lock_outline),
+        title: Text('${folder.name} er passordbeskyttet'),
+        content: TextField(
+          controller: ctrl,
+          obscureText: true,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Skriv passord',
+            border: OutlineInputBorder(),
+          ),
+          onSubmitted: (_) => Navigator.pop(
+            ctx,
+            DmsPassword.verify(ctrl.text, folder.passwordHash),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Avbryt'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              ctx,
+              DmsPassword.verify(ctrl.text, folder.passwordHash),
+            ),
+            child: const Text('Åpne mappe'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (ok != true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Feil passord')),
+      );
+    }
+    return ok == true;
+  }
+
+  void _navigateToFolder(
+    String? id,
+    String name, {
+    bool skipLockCheck = false,
+  }) {
     setState(() {
       _currentFolderId = id;
-      _activeCategory = DmsCategory.all;
-      final index = _breadcrumb.indexWhere((element) => element['id'] == id);
+      final index = _breadcrumb.indexWhere((e) => e['id'] == id);
       if (index != -1) {
-        _breadcrumb = _breadcrumb.sublist(0, index + 1);
+        _breadcrumb.removeRange(index + 1, _breadcrumb.length);
       } else {
         _breadcrumb.add({'id': id, 'name': name});
       }
@@ -96,441 +212,716 @@ class _DmsScreenState extends State<DmsScreen> {
   }
 
   List<dynamic> get _filteredItems {
-    if (_searchQuery.isEmpty) return [..._folders, ..._files];
-    return [..._folders, ..._files].where((item) {
+    final all = <dynamic>[..._folders, ..._files];
+    if (_searchQuery.isEmpty) return all;
+    final q = _searchQuery.toLowerCase();
+    return all.where((item) {
       final name = item is DmsFolder ? item.name : (item as DmsFile).name;
-      return name.toLowerCase().contains(_searchQuery.toLowerCase());
+      return name.toLowerCase().contains(q);
     }).toList();
   }
 
   Future<void> _performGlobalSearch(String query) async {
-    if (query.length < 3) return;
+    if (query.length < 3 || _companyId == null) return;
     setState(() => _isLoading = true);
     try {
       final files = await DmsService.searchAllFiles(query, _companyId!);
       setState(() {
-        _activeCategory = DmsCategory.all;
         _files = files;
-        _folders = []; 
+        _folders = [];
       });
-    } catch (e) {
-      debugPrint('Search error: $e');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showSortMenu() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('Navn A–Å'),
+              onTap: () {
+                setState(() => _sort = DmsSort.nameAsc);
+                Navigator.pop(ctx);
+                _loadData();
+              },
+            ),
+            ListTile(
+              title: const Text('Navn Å–A'),
+              onTap: () {
+                setState(() => _sort = DmsSort.nameDesc);
+                Navigator.pop(ctx);
+                _loadData();
+              },
+            ),
+            ListTile(
+              title: const Text('Nyeste først'),
+              onTap: () {
+                setState(() => _sort = DmsSort.dateDesc);
+                Navigator.pop(ctx);
+                _loadData();
+              },
+            ),
+            ListTile(
+              title: const Text('Største filer'),
+              onTap: () {
+                setState(() => _sort = DmsSort.sizeDesc);
+                Navigator.pop(ctx);
+                _loadData();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showActionsMenu() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.create_new_folder),
+              title: const Text('Ny mappe (smart)'),
+              subtitle: Text(
+                _currentFolderId == null
+                    ? 'I hovedarkiv'
+                    : 'Inne i $_currentTitle',
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _createFolderSmart();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file),
+              title: const Text('Last opp fil(er)'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _uploadFile();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.sort),
+              title: const Text('Sorter'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showSortMenu();
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createFolderSmart() async {
+    if (_companyId == null) return;
+    final ok = await DmsCreateFolderSheet.show(
+      context,
+      companyId: _companyId!,
+      parentFolderId: _currentFolderId,
+      parentFolderName: _currentTitle,
+    );
+    if (ok == true) _loadData();
+  }
+
+  Future<void> _uploadFile() async {
+    final result = await FilePicker.platform.pickFiles(withData: true);
+    if (result == null || _companyId == null) return;
+    for (final f in result.files) {
+      if (f.bytes == null) continue;
+      await DmsService.uploadFile(
+        bytes: f.bytes!,
+        fileName: f.name,
+        folderId: _currentFolderId,
+        companyId: _companyId!,
+      );
+    }
+    _loadData();
+  }
+
+  Future<void> _onFilesDropped(List<XFile> files) async {
+    if (_companyId == null) return;
+    for (final file in files) {
+      final bytes = await file.readAsBytes();
+      await DmsService.uploadFile(
+        bytes: bytes,
+        fileName: file.name,
+        folderId: _currentFolderId,
+        companyId: _companyId!,
+      );
+    }
+    _loadData();
+  }
+
+  Future<void> _downloadFile(DmsFile file) async {
+    try {
+      final url = await DmsService.getDownloadUrl(file.storagePath);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Nedlasting feilet: $e')),
+        );
+      }
+    }
+  }
+
+  void _openFile(DmsFile file) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => FileViewerScreen(file: file)),
+    );
+  }
+
+  Future<void> _renameFolder(DmsFolder folder) async {
+    final ctrl = TextEditingController(text: folder.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gi nytt navn'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Lagre'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    await DmsService.renameFolder(folder.id, name);
+    _loadData();
+  }
+
+  Future<void> _renameFile(DmsFile file) async {
+    final ctrl = TextEditingController(text: file.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gi nytt navn'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Lagre'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.isEmpty) return;
+    await DmsService.renameFile(file.id, name);
+    _loadData();
+  }
+
+  Future<void> _deleteFolder(DmsFolder folder) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Slett mappe?'),
+        content: Text(
+          '«${folder.name}» og alt innhold slettes permanent.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Slett', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await DmsService.deleteFolder(folder.id);
+    _loadData();
+  }
+
+  Future<void> _deleteFile(DmsFile file) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Slett fil?'),
+        content: Text('«${file.name}» slettes permanent.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Slett', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await DmsService.deleteFile(file.id, file.storagePath);
+    _loadData();
+  }
+
+  void _showItemMenu({DmsFolder? folder, DmsFile? file}) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (folder != null) ...[
+              ListTile(
+                leading: const Icon(Icons.folder_open),
+                title: const Text('Åpne mappe'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _enterFolder(folder);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.drive_file_rename_outline),
+                title: const Text('Gi nytt navn'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _renameFolder(folder);
+                },
+              ),
+            ],
+            if (file != null) ...[
+              ListTile(
+                leading: const Icon(Icons.visibility_outlined),
+                title: const Text('Forhåndsvis / les'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _openFile(file);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.download_outlined),
+                title: const Text('Last ned'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _downloadFile(file);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.drive_file_rename_outline),
+                title: const Text('Gi nytt navn'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _renameFile(file);
+                },
+              ),
+            ],
+            ListTile(
+              leading: const Icon(Icons.people_outline, color: Colors.blue),
+              title: const Text('Del & tilgang'),
+              onTap: () {
+                Navigator.pop(ctx);
+                if (_companyId != null) {
+                  DmsPermissionsSheet.show(
+                    context,
+                    folder: folder,
+                    file: file,
+                    companyId: _companyId!,
+                  );
+                }
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: Colors.red),
+              title: const Text('Slett', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                if (folder != null) {
+                  _deleteFolder(folder);
+                } else if (file != null) {
+                  _deleteFile(file);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final size = MediaQuery.of(context).size;
-    final isDesktop = size.width > 900;
 
     return Scaffold(
-      backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.bgLight,
-      appBar: _buildAppBar(isDark),
-      body: Row(
-        children: [
-          if (isDesktop) Container(
-            width: 280,
-            decoration: BoxDecoration(
-              border: Border(right: BorderSide(color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200)),
-            ),
-            child: _buildSidebar(isDark),
+      backgroundColor:
+          isDark ? DriftProTheme.surfaceDark : DriftProTheme.bgLight,
+      appBar: AppBar(
+        leading: _canGoBack
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Tilbake til forrige mappe',
+                onPressed: _goBack,
+              )
+            : null,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(_currentTitle, style: const TextStyle(fontSize: 18)),
+            if (!_isLoading)
+              Text(
+                _currentFolder?.description?.isNotEmpty == true
+                    ? _currentFolder!.description!
+                    : '${_folders.length} mapper · ${_files.length} filer',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.sort),
+            tooltip: 'Sorter',
+            onPressed: _showSortMenu,
           ),
+          IconButton(
+            icon: Icon(
+              _viewMode == DmsViewMode.grid
+                  ? Icons.view_list_rounded
+                  : Icons.grid_view_rounded,
+            ),
+            onPressed: () => setState(() {
+              _viewMode = _viewMode == DmsViewMode.grid
+                  ? DmsViewMode.list
+                  : DmsViewMode.grid;
+            }),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          _buildBreadcrumb(isDark),
+          _buildSearchAndStats(isDark),
           Expanded(
-            child: Column(
-              children: [
-                _buildBreadcrumb(isDark),
-                _buildStatsBanner(isDark),
-                Expanded(
-                  child: DropTarget(
-                    onDragDone: (detail) => _onFilesDropped(detail.files),
-                    onDragEntered: (detail) => setState(() => _isDragging = true),
-                    onDragExited: (detail) => setState(() => _isDragging = false),
-                    child: Stack(
-                      children: [
-                        _isLoading 
-                          ? const Center(child: CircularProgressIndicator())
-                          : _buildMainContent(isDark),
-                        if (_isDragging)
-                          Container(
-                            color: DriftProTheme.primaryGreen.withOpacity(0.15),
-                            child: Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.cloud_upload_outlined, size: 80, color: DriftProTheme.primaryGreen),
-                                  const SizedBox(height: 16),
-                                  Text('Slipp filer her for å laste opp', style: DriftProTheme.headingMd),
-                                ],
-                              ),
-                            ),
+            child: DropTarget(
+              onDragDone: (d) => _onFilesDropped(d.files),
+              onDragEntered: (_) => setState(() => _isDragging = true),
+              onDragExited: (_) => setState(() => _isDragging = false),
+              child: Stack(
+                children: [
+                  _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _buildMainContent(isDark),
+                  if (_isDragging)
+                    Container(
+                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                      child: Center(
+                        child: Text(
+                          'Slipp for å laste opp her',
+                          style: DriftProTheme.headingMd.copyWith(
+                            color: DriftProTheme.primaryGreen,
                           ),
-                      ],
+                        ),
+                      ),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: _selectedItems.isEmpty ? FloatingActionButton.extended(
-        onPressed: _showUploadOptions,
-        icon: const Icon(Icons.add),
-        label: const Text('Ny / Last opp'),
-        backgroundColor: DriftProTheme.primaryGreen,
-      ) : null,
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar(bool isDark) {
-    return AppBar(
-      title: Text(_selectedItems.isEmpty ? 'Dokumentarkiv' : '${_selectedItems.length} valgt'),
-      actions: [
-        if (_selectedItems.isNotEmpty) ...[
-          IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: _deleteSelected),
-          IconButton(icon: const Icon(Icons.share_outlined), onPressed: () {}),
-        ],
-        IconButton(
-          icon: Icon(_viewMode == DmsViewMode.grid ? Icons.view_list_rounded : Icons.grid_view_rounded),
-          onPressed: () => setState(() => _viewMode = _viewMode == DmsViewMode.grid ? DmsViewMode.list : DmsViewMode.grid),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSidebar(bool isDark) {
-    return ListView(
-      children: [
-        const SizedBox(height: 20),
-        _sidebarItem(Icons.folder_copy_outlined, 'Alle filer', DmsCategory.all),
-        _sidebarItem(Icons.access_time_rounded, 'Nylige', DmsCategory.recent),
-        _sidebarItem(Icons.star_outline_rounded, 'Stjernemerket', DmsCategory.starred),
-        _sidebarItem(Icons.people_outline_rounded, 'Delt med meg', DmsCategory.shared),
-        const Divider(height: 32, indent: 20, endIndent: 20),
-        _sidebarItem(Icons.image_outlined, 'Bilder', DmsCategory.images),
-        _sidebarItem(Icons.description_outlined, 'Dokumenter', DmsCategory.docs),
-      ],
-    );
-  }
-
-  Widget _sidebarItem(IconData icon, String title, DmsCategory cat) {
-    final isActive = _activeCategory == cat;
-    return ListTile(
-      onTap: () {
-        setState(() => _activeCategory = cat);
-        if (cat == DmsCategory.all) {
-          _navigateToFolder(null, 'Hovedarkiv');
-        } else {
-          _loadData(); // Re-filter if needed
-        }
-      },
-      leading: Icon(icon, color: isActive ? DriftProTheme.primaryGreen : Colors.grey),
-      title: Text(title, style: TextStyle(color: isActive ? DriftProTheme.primaryGreen : null)),
-      selected: isActive,
-    );
-  }
-
-  Widget _buildStatsBanner(bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: TextField(
-        onChanged: (val) {
-          setState(() => _searchQuery = val);
-          if (val.length > 2) _performGlobalSearch(val);
-          else if (val.isEmpty) _loadData();
-        },
-        decoration: InputDecoration(
-          hintText: 'Søk i hele arkivet...',
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: _searchQuery.isNotEmpty 
-              ? IconButton(icon: const Icon(Icons.close), onPressed: () {
-                  setState(() => _searchQuery = '');
-                  _loadData();
-                }) 
-              : null,
-          filled: true,
-          fillColor: isDark ? DriftProTheme.cardDark : Colors.white,
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBreadcrumb(bool isDark) {
-    return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: _breadcrumb.length,
-        separatorBuilder: (_, __) => const Icon(Icons.chevron_right, size: 16),
-        itemBuilder: (context, index) {
-          final item = _breadcrumb[index];
-          return InkWell(
-            onTap: () => _navigateToFolder(item['id'], item['name']!),
-            child: Center(child: Text(item['name']!, style: TextStyle(fontWeight: index == _breadcrumb.length-1 ? FontWeight.bold : FontWeight.normal))),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildMainContent(bool isDark) {
-    final items = _filteredItems;
-    if (items.isEmpty) return const Center(child: Text('Ingen filer funnet'));
-
-    if (_viewMode == DmsViewMode.list) {
-      return ListView.builder(
-        itemCount: items.length,
-        itemBuilder: (context, index) {
-          final item = items[index];
-          if (item is DmsFolder) return _buildListItem(folder: item, isDark: isDark);
-          return _buildListItem(file: item as DmsFile, isDark: isDark);
-        },
-      );
-    }
-
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 150, mainAxisSpacing: 16, crossAxisSpacing: 16),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        if (item is DmsFolder) return _buildGridItem(folder: item, isDark: isDark);
-        return _buildGridItem(file: item as DmsFile, isDark: isDark);
-      },
-    );
-  }
-
-  Widget _buildListItem({DmsFolder? folder, DmsFile? file, required bool isDark}) {
-    return ListTile(
-      leading: Icon(folder != null ? Icons.folder : Icons.insert_drive_file, color: folder != null ? Colors.amber : DriftProTheme.primaryGreen),
-      title: Text(folder?.name ?? file!.name),
-      onTap: folder != null ? () => _navigateToFolder(folder.id, folder.name) : () => _openFile(file!),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.person_add_outlined, color: Colors.blue),
-            tooltip: 'Del / Skjul for ansatte',
-            onPressed: () => _managePermissions(folder: folder, file: file),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            tooltip: 'Slett',
-            onPressed: () => showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('Er du sikker?'),
-                content: Text('Vil du virkelig slette ${folder?.name ?? file!.name}?'),
-                actions: [
-                  TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _delete(folder: folder, file: file);
-                    }, 
-                    child: const Text('Slett', style: TextStyle(color: Colors.red)),
-                  ),
                 ],
               ),
             ),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildGridItem({DmsFolder? folder, DmsFile? file, required bool isDark}) {
-    return InkWell(
-      onTap: folder != null ? () => _navigateToFolder(folder.id, folder.name) : () => _openFile(file!),
-      child: Stack(
-        children: [
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(folder != null ? Icons.folder : Icons.insert_drive_file, size: 48, color: folder != null ? Colors.amber : DriftProTheme.primaryGreen),
-                const SizedBox(height: 8),
-                Text(folder?.name ?? file!.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          Positioned(
-            top: 0,
-            right: 0,
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.person_add_outlined, size: 18, color: Colors.blue),
-                  onPressed: () => _managePermissions(folder: folder, file: file),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
-                  onPressed: () => _delete(folder: folder, file: file),
-                ),
-              ],
-            ),
-          )
-        ],
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showActionsMenu,
+        icon: const Icon(Icons.add),
+        label: Text(_currentFolderId == null ? 'Ny / Last opp' : 'Legg til'),
+        backgroundColor: DriftProTheme.primaryGreen,
       ),
     );
   }
 
-
-
-  Future<void> _openFile(DmsFile file) async {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => FileViewerScreen(file: file)));
-  }
-
-  void _managePermissions({DmsFolder? folder, DmsFile? file}) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => _PermissionsManagementSheet(folder: folder, file: file, companyId: _companyId!),
-    );
-  }
-
-  void _showUploadOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(leading: const Icon(Icons.create_new_folder), title: const Text('Ny mappe'), onTap: () { Navigator.pop(context); _createFolder(); }),
-          ListTile(leading: const Icon(Icons.upload_file), title: const Text('Last opp fil'), onTap: () { Navigator.pop(context); _uploadFile(); }),
-        ],
+  Widget _buildBreadcrumb(bool isDark) {
+    return Material(
+      color: isDark ? DriftProTheme.cardDark : Colors.grey.shade50,
+      child: SizedBox(
+        height: 44,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          itemCount: _breadcrumb.length,
+          separatorBuilder: (_, __) =>
+              Icon(Icons.chevron_right, size: 18, color: Colors.grey.shade500),
+          itemBuilder: (_, index) {
+            final item = _breadcrumb[index];
+            final isLast = index == _breadcrumb.length - 1;
+            return Center(
+              child: InkWell(
+                onTap: isLast
+                    ? null
+                    : () => _navigateToFolder(
+                          item['id'],
+                          item['name'] ?? 'Hovedarkiv',
+                          skipLockCheck: true,
+                        ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (index == 0)
+                        const Icon(Icons.home_outlined, size: 16),
+                      if (index == 0) const SizedBox(width: 4),
+                      Text(
+                        item['name'] ?? '',
+                        style: TextStyle(
+                          fontWeight:
+                              isLast ? FontWeight.bold : FontWeight.normal,
+                          color: isLast
+                              ? DriftProTheme.primaryGreen
+                              : null,
+                          decoration:
+                              isLast ? null : TextDecoration.underline,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
 
-  Future<void> _createFolder() async {
-    // Basic impl
-    final name = 'Ny mappe ${DateTime.now().millisecondsSinceEpoch}';
-    await DmsService.createFolder(name: name, parentId: _currentFolderId, companyId: _companyId!);
-    _loadData();
-  }
-
-  Future<void> _uploadFile() async {
-    final result = await FilePicker.platform.pickFiles(withData: true);
-    if (result != null && result.files.single.bytes != null) {
-      await DmsService.uploadFile(bytes: result.files.single.bytes!, fileName: result.files.single.name, folderId: _currentFolderId, companyId: _companyId!);
-      _loadData();
-    }
-  }
-
-  Future<void> _onFilesDropped(List<XFile> files) async {
-    for (var file in files) {
-      final bytes = await file.readAsBytes();
-      await DmsService.uploadFile(bytes: bytes, fileName: file.name, folderId: _currentFolderId, companyId: _companyId!);
-    }
-    _loadData();
-  }
-
-  Future<void> _rename({DmsFolder? folder, DmsFile? file}) async {
-    await DmsService.renameFolder(folder?.id ?? '', 'Nytt navn');
-    _loadData();
-  }
-
-  Future<void> _delete({DmsFolder? folder, DmsFile? file}) async {
-    if (folder != null) await DmsService.deleteFolder(folder.id);
-    if (file != null) await DmsService.deleteFile(file.id, file.storagePath);
-    _loadData();
-  }
-
-  void _deleteSelected() {}
-}
-
-class _PermissionsManagementSheet extends StatefulWidget {
-  final DmsFolder? folder;
-  final DmsFile? file;
-  final String companyId;
-  const _PermissionsManagementSheet({this.folder, this.file, required this.companyId});
-  @override
-  State<_PermissionsManagementSheet> createState() => _PermissionsManagementSheetState();
-}
-
-class _PermissionsManagementSheetState extends State<_PermissionsManagementSheet> {
-  List<DmsPermission> _permissions = [];
-  List<UserProfile> _allUsers = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _isLoading = true);
-    final permsFut = DmsService.fetchPermissions(folderId: widget.folder?.id, fileId: widget.file?.id);
-    final usersFut = SupabaseService.fetchProfiles(companyId: widget.companyId);
-    final res = await Future.wait([permsFut, usersFut]);
-    setState(() {
-      _permissions = res[0] as List<DmsPermission>;
-      _allUsers = res[1] as List<UserProfile>;
-      _isLoading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(color: isDark ? DriftProTheme.cardDark : Colors.white, borderRadius: const BorderRadius.vertical(top: Radius.circular(24))),
-      padding: const EdgeInsets.all(24),
-      height: MediaQuery.of(context).size.height * 0.7,
+  Widget _buildSearchAndStats(bool isDark) {
+    final totalSize = _stats['total_size'] as int? ?? 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Column(
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Del / Skjul for ansatte', style: DriftProTheme.headingMd),
-              if (widget.file != null)
-                TextButton.icon(
-                  onPressed: () async {
-                    try {
-                      final url = await DmsService.getDownloadUrl(widget.file!.storagePath);
-                      Clipboard.setData(ClipboardData(text: url));
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Offentlig lenke kopiert!')));
-                      }
-                    } catch(e) {
-                      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Feil: $e')));
-                    }
-                  },
-                  icon: const Icon(Icons.link),
-                  label: const Text('Kopier lenke'),
-                ),
-            ],
+          TextField(
+            decoration: InputDecoration(
+              hintText: 'Søk i arkivet…',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () {
+                        setState(() => _searchQuery = '');
+                        _loadData();
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: isDark ? DriftProTheme.cardDark : Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            onChanged: (v) {
+              setState(() => _searchQuery = v);
+              if (v.length > 2) {
+                _performGlobalSearch(v);
+              } else if (v.isEmpty) {
+                _loadData();
+              }
+            },
           ),
-          const SizedBox(height: 8),
-          Text('Bestem hvem som skal se dette dokumentet/mappen. Skru av for å skjule.', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _isLoading ? const Center(child: CircularProgressIndicator()) : ListView.builder(
-              itemCount: _allUsers.length,
-              itemBuilder: (context, index) {
-                final user = _allUsers[index];
-                final hasAccess = _permissions.any((p) => p.userId == user.id);
-                return ListTile(
-                  title: Text(user.fullName),
-                  trailing: Switch.adaptive(
-                    value: hasAccess, 
-                    onChanged: (val) async {
-                      await DmsService.grantPermission(folderId: widget.folder?.id, fileId: widget.file?.id, userId: user.id, type: DmsPermissionType.view);
-                      _load();
-                    },
-                  ),
-                );
-              },
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Bedrift: ${_stats['total_files'] ?? 0} filer · ${_formatBytes(totalSize)}',
+              style: DriftProTheme.caption,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMainContent(bool isDark) {
+    final items = _filteredItems;
+    if (items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.folder_open, size: 72, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            Text(
+              _searchQuery.isNotEmpty
+                  ? 'Ingen treff'
+                  : 'Tom mappe – opprett eller last opp',
+              style: DriftProTheme.bodyMd.copyWith(color: Colors.grey),
+            ),
+            const SizedBox(height: 20),
+            Wrap(
+              spacing: 12,
+              alignment: WrapAlignment.center,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _createFolderSmart,
+                  icon: const Icon(Icons.create_new_folder),
+                  label: const Text('Ny mappe'),
+                ),
+                FilledButton.icon(
+                  onPressed: _uploadFile,
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Last opp'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DriftProTheme.primaryGreen,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_viewMode == DmsViewMode.grid) {
+      return GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 160,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+        ),
+        itemCount: items.length,
+        itemBuilder: (_, i) {
+          final item = items[i];
+          if (item is DmsFolder) return _gridFolder(item);
+          return _gridFile(item as DmsFile);
+        },
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      itemCount: items.length,
+      itemBuilder: (_, i) {
+        final item = items[i];
+        if (item is DmsFolder) return _listFolder(item, isDark);
+        return _listFile(item as DmsFile, isDark);
+      },
+    );
+  }
+
+  Widget _folderBadges(DmsFolder folder) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (folder.isPasswordProtected)
+          const Icon(Icons.lock, size: 14, color: Colors.orange),
+        if (folder.isPrivate)
+          const Padding(
+            padding: EdgeInsets.only(left: 4),
+            child: Icon(Icons.visibility_off, size: 14, color: Colors.blueGrey),
+          ),
+      ],
+    );
+  }
+
+  Widget _listFolder(DmsFolder folder, bool isDark) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: ListTile(
+        leading: Icon(Icons.folder, color: Colors.amber.shade700, size: 36),
+        title: Row(
+          children: [
+            Expanded(child: Text(folder.name, style: const TextStyle(fontWeight: FontWeight.w600))),
+            _folderBadges(folder),
+          ],
+        ),
+        subtitle: folder.description != null && folder.description!.isNotEmpty
+            ? Text(folder.description!, maxLines: 1, overflow: TextOverflow.ellipsis)
+            : const Text('Dobbelttrykk for meny · trykk for å åpne'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => _enterFolder(folder),
+        onLongPress: () => _showItemMenu(folder: folder),
+      ),
+    );
+  }
+
+  Widget _listFile(DmsFile file, bool isDark) {
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: ListTile(
+        leading: Icon(Icons.insert_drive_file, color: DriftProTheme.primaryGreen, size: 32),
+        title: Text(file.name),
+        subtitle: Text(
+          '${file.extension?.toUpperCase() ?? "FIL"} · ${_formatBytes(file.fileSize ?? 0)}',
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.more_vert),
+          onPressed: () => _showItemMenu(file: file),
+        ),
+        onTap: () => _openFile(file),
+        onLongPress: () => _showItemMenu(file: file),
+      ),
+    );
+  }
+
+  Widget _gridFolder(DmsFolder folder) {
+    return InkWell(
+      onTap: () => _enterFolder(folder),
+      onLongPress: () => _showItemMenu(folder: folder),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Stack(
+                alignment: Alignment.topRight,
+                children: [
+                  Icon(Icons.folder, size: 48, color: Colors.amber.shade700),
+                  _folderBadges(folder),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(folder.name, maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _gridFile(DmsFile file) {
+    return InkWell(
+      onTap: () => _openFile(file),
+      onLongPress: () => _showItemMenu(file: file),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.insert_drive_file, size: 44, color: DriftProTheme.primaryGreen),
+              const SizedBox(height: 8),
+              Text(file.name, maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
       ),
     );
   }

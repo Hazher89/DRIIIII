@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_icons.dart';
+import '../../../core/hms/hms_templates.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/sja_form.dart';
 import 'package:intl/intl.dart';
+import '../widgets/hms_template_picker_sheet.dart';
 import 'new_sja_screen.dart';
 
 class SjaListScreen extends StatefulWidget {
@@ -122,6 +124,17 @@ class _SjaListScreenState extends State<SjaListScreen> {
   }
 
   void _createNew(BuildContext context) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const NewSjaScreen())).then((v) { if (v == true) _loadData(); });
+    HmsTemplatePickerSheet.show(
+      context,
+      kind: HmsModuleKind.sja,
+      onSelected: (t) => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => NewSjaScreen(template: t as HmsSjaTemplate)),
+      ).then((v) { if (v == true) _loadData(); }),
+      onBlank: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NewSjaScreen()),
+      ).then((v) { if (v == true) _loadData(); }),
+    );
   }
 }

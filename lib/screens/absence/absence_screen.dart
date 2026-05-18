@@ -1,10 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../../core/constants/leave_rules.dart';
+import '../../core/services/absence/absence_service.dart';
+import '../../core/services/absence/department_leave_conflict_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/absence.dart';
+import '../../models/department.dart';
 import '../../models/user_profile.dart';
+import '../../core/permissions/permission_gate.dart';
+import '../../core/permissions/access_keys.dart';
+import '../../core/permissions/user_access.dart';
 import 'new_absence_screen.dart';
-import 'package:intl/intl.dart';
+import 'vacation_admin_screen.dart';
+import 'widgets/department_leave_tip_card.dart';
+import 'widgets/leave_quick_actions.dart';
+import 'widgets/leave_rules_panel.dart';
+import 'widgets/leave_saldo_panel.dart';
+import 'widgets/leave_team_table.dart';
+import 'widgets/team_leave_calendar.dart';
 
 class AbsenceScreen extends StatefulWidget {
   const AbsenceScreen({super.key});
@@ -13,82 +28,203 @@ class AbsenceScreen extends StatefulWidget {
   State<AbsenceScreen> createState() => _AbsenceScreenState();
 }
 
+class _AbsenceTabSpec {
+  final Tab tab;
+  final Widget body;
+  const _AbsenceTabSpec({required this.tab, required this.body});
+}
+
 class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  
+  TabController? _tabController;
+  List<_AbsenceTabSpec> _tabSpecs = [];
+  int _calendarTabIndex = 0;
+
   List<Absence> _myAbsences = [];
-  List<Absence> _deptAbsences = [];
+  List<Absence> _scopedAbsences = [];
   List<Absence> _pendingApprovals = [];
+  Map<String, List<DepartmentLeaveOverlap>> _approvalOverlaps = {};
+  Map<String, String> _departmentNames = {};
   AbsenceQuota? _quota;
+  CompanyLeaveSettings _companySettings = const CompanyLeaveSettings();
   UserProfile? _profile;
   bool _isLoading = true;
+  bool _saldoLoading = false;
+  String? _loadError;
+  String? _saldoError;
   DateTime _calendarMonth = DateTime.now();
   int _selectedYear = DateTime.now().year;
   List<UserProfile> _teamProfiles = [];
   List<AbsenceQuota> _teamQuotas = [];
+  String? _calendarUserFilter;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
     _loadAllData();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabController?.dispose();
     super.dispose();
   }
 
+  void _rebuildTabs(bool isDark, bool isManager, bool canAdmin) {
+    final specs = <_AbsenceTabSpec>[
+      _AbsenceTabSpec(
+        tab: const Tab(icon: Icon(Icons.dashboard_outlined, size: 20), text: 'Dashboard'),
+        body: _buildDashboardTab(isDark, isManager),
+      ),
+      _AbsenceTabSpec(
+        tab: const Tab(icon: Icon(Icons.list_alt_outlined, size: 20), text: 'Søknader'),
+        body: _buildAllRequestsTab(isDark),
+      ),
+      if (isManager)
+        _AbsenceTabSpec(
+          tab: Tab(
+            icon: const Icon(Icons.fact_check_outlined, size: 20),
+            text: 'Godkjenn (${_pendingApprovals.length})',
+          ),
+          body: _buildHandlingTab(isDark),
+        ),
+    ];
+    final calIdx = specs.length;
+    specs.add(
+      _AbsenceTabSpec(
+        tab: const Tab(icon: Icon(Icons.calendar_month_outlined, size: 20), text: 'Kalender'),
+        body: _buildCalendarTab(isDark, isManager),
+      ),
+    );
+    specs.add(
+      _AbsenceTabSpec(
+        tab: Tab(
+          icon: Icon(Icons.groups_outlined, size: 20),
+          text: isManager ? (canAdmin ? 'Ansatte' : 'Team') : 'Hjelp',
+        ),
+        body: isManager ? _buildTeamTab(isDark, canAdmin) : _buildRulesTab(isDark),
+      ),
+    );
+    _tabController?.dispose();
+    _tabController = TabController(length: specs.length, vsync: this);
+    _tabSpecs = specs;
+    _calendarTabIndex = calIdx;
+  }
+
   Future<void> _loadAllData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
-      if (profile != null) {
-        _profile = profile;
-        final futures = await Future.wait([
-          SupabaseService.fetchAbsences(userId: profile.id),
-          SupabaseService.fetchAbsences(companyId: profile.companyId),
-          SupabaseService.fetchAbsenceQuota(userId: profile.id, year: _selectedYear),
-        ]);
+      if (profile == null || profile.companyId == null) {
+        setState(() => _loadError = 'Kunne ikke laste brukerprofil. Logg inn på nytt.');
+        return;
+      }
 
-        final mine = futures[0] as List<Absence>;
-        final allInCompany = futures[1] as List<Absence>;
-        final scoped = _scopeAbsencesByRole(allInCompany, profile);
+      _profile = profile;
+      final companyId = profile.companyId!;
 
+      final results = await Future.wait([
+        SupabaseService.fetchAbsences(userId: profile.id),
+        SupabaseService.fetchAbsences(companyId: companyId),
+        SupabaseService.fetchCompanyLeaveSettings(companyId),
+        SupabaseService.fetchDepartments(companyId: companyId),
+      ]);
+
+      final mine = results[0] as List<Absence>;
+      final allInCompany = results[1] as List<Absence>;
+      final scoped = _scopeAbsencesByRole(allInCompany, profile);
+      final depts = results[3] as List<Department>;
+      final pending = profile.access.canApproveLeave
+          ? scoped
+              .where((a) =>
+                  a.status == AbsenceStatus.ventende && a.userId != profile.id)
+              .toList()
+          : <Absence>[];
+
+      final overlaps = <String, List<DepartmentLeaveOverlap>>{};
+      for (final a in pending) {
+        overlaps[a.id] = DepartmentLeaveConflictService.forRequest(
+          a,
+          allInCompany,
+          vacationOnly: a.type == AbsenceType.ferie,
+        );
+      }
+
+      setState(() {
+        _myAbsences = mine;
+        _scopedAbsences = scoped;
+        _companySettings = results[2] as CompanyLeaveSettings;
+        _pendingApprovals = pending;
+        _approvalOverlaps = overlaps;
+        _departmentNames = {for (final d in depts) d.id: d.name};
+      });
+
+      await _loadSaldo(profile);
+      await _loadTeamOverview(profile);
+
+      if (mounted) {
         setState(() {
-          _myAbsences = mine;
-          _deptAbsences = scoped
-              .where((a) => a.status == AbsenceStatus.godkjent)
-              .toList();
-          
-          if (profile.isLeader || profile.isAdmin) {
-            _pendingApprovals = scoped.where((a) => 
-               a.status == AbsenceStatus.ventende && a.userId != profile.id
-            ).toList();
-          }
-          
-          _quota = futures[2] as AbsenceQuota?;
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          _rebuildTabs(
+            isDark,
+            profile.access.canApproveLeave,
+            profile.access.canVacationAdmin,
+          );
         });
-        await _loadTeamOverview(profile);
       }
     } catch (e) {
       debugPrint('Error loading absence data: $e');
+      setState(() => _loadError = 'Kunne ikke laste fravær: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  Future<void> _loadSaldo(UserProfile profile) async {
+    if (profile.companyId == null) return;
+    setState(() {
+      _saldoLoading = true;
+      _saldoError = null;
+    });
+    try {
+      var quota = await SupabaseService.fetchAbsenceQuota(
+        userId: profile.id,
+        year: _selectedYear,
+      );
+      quota ??= await SupabaseService.ensureAbsenceQuota(
+        userId: profile.id,
+        companyId: profile.companyId!,
+        year: _selectedYear,
+      );
+      if (mounted) setState(() => _quota = quota);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _quota = null;
+          _saldoError = e.toString();
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _saldoLoading = false);
+    }
+  }
+
   Future<void> _loadTeamOverview(UserProfile profile) async {
-    if (!(profile.isLeader || profile.isAdmin) || profile.companyId == null) return;
+    if (!profile.access.canApproveLeave || profile.companyId == null) return;
     final allProfiles = await SupabaseService.fetchProfiles(companyId: profile.companyId);
-    final scopedProfiles = profile.isAdmin
-        ? allProfiles
-        : allProfiles.where((p) => p.departmentId == profile.departmentId).toList();
+    final scopedProfiles = profile.access.dataScopeCompany
+        ? allProfiles.where((p) => !p.isPartnerPortalUser).toList()
+        : allProfiles
+            .where((p) =>
+                p.departmentId == profile.departmentId && !p.isPartnerPortalUser)
+            .toList();
     final quotas = await SupabaseService.fetchAbsenceQuotasForCompany(
       companyId: profile.companyId!,
       year: _selectedYear,
     );
+    if (!mounted) return;
     setState(() {
       _teamProfiles = scopedProfiles;
       _teamQuotas = quotas;
@@ -99,351 +235,602 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     if (profile.isAdmin) return absences;
     if (profile.isLeader) {
       return absences
-          .where((a) => a.departmentId == profile.departmentId || a.userId == profile.id)
+          .where((a) =>
+              a.departmentId == profile.departmentId || a.userId == profile.id)
           .toList();
     }
     return absences.where((a) => a.userId == profile.id).toList();
   }
 
-  Color _getAbsenceColor(AbsenceType type) {
+  Color _colorForType(AbsenceType type) {
     switch (type) {
-      case AbsenceType.ferie: return DriftProTheme.absenceVacation;
-      case AbsenceType.egenmelding: return DriftProTheme.absenceSickSelf;
-      case AbsenceType.syktBarn: return DriftProTheme.absenceSickChild;
-      case AbsenceType.permisjon: return DriftProTheme.absenceLeave;
-      case AbsenceType.sykmelding: return DriftProTheme.absenceSickNote;
+      case AbsenceType.ferie:
+        return DriftProTheme.absenceVacation;
+      case AbsenceType.egenmelding:
+        return DriftProTheme.absenceSickSelf;
+      case AbsenceType.syktBarn:
+        return DriftProTheme.absenceSickChild;
+      case AbsenceType.permisjon:
+        return DriftProTheme.absenceLeave;
+      case AbsenceType.sykmelding:
+        return DriftProTheme.absenceSickNote;
     }
   }
 
+  IconData _iconForType(AbsenceType t) {
+    switch (t) {
+      case AbsenceType.ferie:
+        return Icons.wb_sunny_rounded;
+      case AbsenceType.egenmelding:
+        return Icons.person_outline_rounded;
+      case AbsenceType.syktBarn:
+        return Icons.child_care_rounded;
+      case AbsenceType.permisjon:
+        return Icons.timer_outlined;
+      case AbsenceType.sykmelding:
+        return Icons.medical_services_outlined;
+    }
+  }
+
+  int _days(Absence a) => a.totalDays ?? (a.endDate.difference(a.startDate).inDays + 1);
+
   @override
   Widget build(BuildContext context) {
-    if (_profile == null && _isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final isManager = _profile?.isLeader == true || _profile?.isAdmin == true;
-    final canAdmin = _profile?.isAdmin == true;
+    if (_profile == null && _isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
-    return Scaffold(
-      backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+    if (_tabController == null || _tabSpecs.isEmpty) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final access = _profile?.access;
+
+    return PermissionGuard(
+      profile: _profile,
+      accessKey: AccessKeys.fravaer,
+      child: Scaffold(
+      backgroundColor:
+          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       appBar: AppBar(
         title: const Text('Fravær & Ferie'),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: DriftProTheme.primaryGreen,
-          isScrollable: true,
-          tabs: [
-            const Tab(text: 'Mine'),
-            const Tab(text: 'Håndtering'),
-            const Tab(text: 'Kalender'),
-            const Tab(text: 'Kvote'),
-            const Tab(text: 'Team'),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showRegisterOptions(context),
-        label: const Text('Registrer fravær'),
-        icon: const Icon(Icons.add),
-      ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          _buildMyAbsences(isDark),
-          isManager
-              ? _buildHandlingTab(isDark)
-              : _buildEmptyState('Kun ledere/admin kan håndtere forespørsler.'),
-          _buildCalendarView(isDark),
-          _buildQuotaView(isDark),
-          isManager
-              ? _buildTeamOverviewTab(isDark, canAdmin)
-              : _buildEmptyState('Kun ledere/admin har teamoversikt.'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMyAbsences(bool isDark) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_myAbsences.isEmpty) return _buildEmptyState('Ingen fravær registrert ennå.');
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _myAbsences.length,
-      itemBuilder: (context, index) {
-        final a = _myAbsences[index];
-        final days = a.endDate.difference(a.startDate).inDays + 1;
-        return _buildAbsenceCard(a, days, isDark, showActions: false);
-      },
-    );
-  }
-
-  Widget _buildHandlingTab(bool isDark) {
-    if (_pendingApprovals.isEmpty) return _buildEmptyState('Ingen ventende forespørsler.');
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _pendingApprovals.length,
-      itemBuilder: (context, index) {
-        final a = _pendingApprovals[index];
-        final days = a.endDate.difference(a.startDate).inDays + 1;
-        return _buildAbsenceCard(a, days, isDark, showActions: true);
-      },
-    );
-  }
-
-  Widget _buildAbsenceCard(Absence a, int days, bool isDark, {required bool showActions}) {
-    final color = _getAbsenceColor(a.type);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100),
-      ),
-      child: Column(
-        children: [
-          ListTile(
-            contentPadding: const EdgeInsets.all(16),
-            leading: Container(
-              width: 48, height: 48,
-              decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-              child: Icon(_getIconForType(a.type), color: color),
-            ),
-            title: Row(
-              children: [
-                Expanded(child: Text(a.type.label, style: DriftProTheme.labelLg)),
-                _buildStatusBadge(a.status),
-              ],
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (a.userName != null) Text('Fra: ${a.userName!}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text('${DateFormat('d. MMM').format(a.startDate)} - ${DateFormat('d. MMM').format(a.endDate)} ($days dager)', style: DriftProTheme.bodySm),
-                if (a.comment != null) Text('"${a.comment!}"', style: DriftProTheme.bodySm.copyWith(fontStyle: FontStyle.italic)),
-              ],
-            ),
-          ),
-          if (showActions)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _updateStatus(a.id, AbsenceStatus.avvist),
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                      child: const Text('Avvis'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => _updateStatus(a.id, AbsenceStatus.godkjent),
-                      style: ElevatedButton.styleFrom(backgroundColor: DriftProTheme.success),
-                      child: const Text('Godkjenn'),
-                    ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            onPressed: () => showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Regler og hjelp'),
+                content: const SingleChildScrollView(child: LeaveRulesPanel()),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Lukk'),
                   ),
                 ],
               ),
             ),
+            tooltip: 'Regler (Lovdata)',
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadAllData,
+            tooltip: 'Oppdater',
+          ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          indicatorColor: DriftProTheme.primaryGreen,
+          tabs: _tabSpecs.map((s) => s.tab).toList(),
+        ),
       ),
+      floatingActionButton: access?.canFravaer != false
+          ? FloatingActionButton.extended(
+              onPressed: () => _showRegisterOptions(context),
+              icon: const Icon(Icons.add),
+              label: const Text('Søk / registrer'),
+            )
+          : null,
+      body: TabBarView(
+        controller: _tabController,
+        children: _tabSpecs.map((s) => s.body).toList(),
+      ),
+    ),
     );
   }
 
-  Future<void> _updateStatus(String id, AbsenceStatus status) async {
-    try {
-      await SupabaseService.updateAbsenceStatus(id, status);
-      _loadAllData();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Feil: $e')));
+  Widget _buildDashboardTab(bool isDark, bool isManager) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
+    if (_loadError != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.cloud_off, size: 48, color: DriftProTheme.error),
+              const SizedBox(height: 16),
+              Text(_loadError!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              FilledButton(onPressed: _loadAllData, child: const Text('Prøv igjen')),
+            ],
+          ),
+        ),
+      );
     }
-  }
 
-  Widget _buildStatusBadge(AbsenceStatus status) {
-    Color color;
-    switch (status) {
-      case AbsenceStatus.godkjent: color = DriftProTheme.success; break;
-      case AbsenceStatus.avvist: color = DriftProTheme.error; break;
-      case AbsenceStatus.ventende: color = DriftProTheme.warning; break;
-    }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-      child: Text(status.label, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+    final todayOut = AbsenceService.filterActiveOnDate(
+      _scopedAbsences.where((a) => a.status == AbsenceStatus.godkjent).toList(),
+      DateTime.now(),
     );
-  }
+    final pendingVacation = _scopedAbsences
+        .where((a) => a.type == AbsenceType.ferie && a.status == AbsenceStatus.ventende)
+        .length;
+    final approvedVacation = AbsenceService.approvedVacation(_scopedAbsences).length;
+    final ferieIgjen = _quota?.vacationDaysRemaining;
 
-  Widget _buildCalendarView(bool isDark) {
-    return Column(
-      children: [
-        _buildCalendarHeader(isDark),
-        Expanded(child: _buildCalendarGrid(isDark)),
-        _buildCalendarLegend(isDark),
-      ],
-    );
-  }
-
-  Widget _buildCalendarHeader(bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return RefreshIndicator(
+      onRefresh: _loadAllData,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => setState(() => _calendarMonth = DateTime(_calendarMonth.year, _calendarMonth.month - 1))),
-          Text(DateFormat('MMMM yyyy').format(_calendarMonth), style: DriftProTheme.headingSm),
-          IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => setState(() => _calendarMonth = DateTime(_calendarMonth.year, _calendarMonth.month + 1))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCalendarGrid(bool isDark) {
-    final daysInMonth = DateUtils.getDaysInMonth(_calendarMonth.year, _calendarMonth.month);
-    final firstDay = DateTime(_calendarMonth.year, _calendarMonth.month, 1);
-    final firstWeekday = firstDay.weekday - 1;
-
-    return GridView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 7, childAspectRatio: 1),
-      itemCount: 42,
-      itemBuilder: (context, index) {
-        if (index < firstWeekday || index >= daysInMonth + firstWeekday) return const SizedBox();
-        final day = index - firstWeekday + 1;
-        final date = DateTime(_calendarMonth.year, _calendarMonth.month, day);
-        
-        final dayAbsences = _deptAbsences.where((a) =>
-            !date.isBefore(DateTime(a.startDate.year, a.startDate.month, a.startDate.day)) &&
-            !date.isAfter(DateTime(a.endDate.year, a.endDate.month, a.endDate.day))).toList();
-
-        return Column(
-          children: [
-            Text('$day', style: TextStyle(fontSize: 12, color: isDark ? Colors.white70 : Colors.black87)),
-            const SizedBox(height: 2),
-            Wrap(
-              spacing: 2, runSpacing: 2,
-              children: dayAbsences.take(3).map((a) => Container(
-                width: 6, height: 6,
-                decoration: BoxDecoration(color: _getAbsenceColor(a.type), shape: BoxShape.circle),
-              )).toList(),
+          Text(
+            'Fraværskontroll for bedriften',
+            style: DriftProTheme.headingSm.copyWith(
+              color: isDark ? Colors.white : Colors.grey[900],
             ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildCalendarLegend(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: isDark ? DriftProTheme.cardDark : Colors.white, border: Border(top: BorderSide(color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100))),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: AbsenceType.values.take(3).map((t) => Row(children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: _getAbsenceColor(t), shape: BoxShape.circle)),
-          const SizedBox(width: 4),
-          Text(t.label, style: const TextStyle(fontSize: 10)),
-        ])).toList(),
-      ),
-    );
-  }
-
-  Widget _buildQuotaView(bool isDark) {
-    if (_quota == null) return const Center(child: Text('Laster kvote...'));
-    final total = _quota!.totalVacationDays;
-    final used = _quota!.vacationDaysUsed;
-    final remaining = total - used;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Ferie, egenmelding, sykt barn — med godkjenning, kalender og Lovdata-regler.',
+            style: DriftProTheme.bodySm,
+          ),
+          const SizedBox(height: 16),
+          LeaveQuickActions(onTypeSelected: (t) => _openNewRequest(t)),
+          const SizedBox(height: 20),
           Row(
             children: [
+              Text('Din saldo $_selectedYear', style: DriftProTheme.headingSm),
+              const Spacer(),
               DropdownButton<int>(
                 value: _selectedYear,
                 items: List.generate(5, (i) => DateTime.now().year - 1 + i)
                     .map((y) => DropdownMenuItem(value: y, child: Text('$y')))
                     .toList(),
-                onChanged: (v) {
-                  if (v == null) return;
+                onChanged: (v) async {
+                  if (v == null || _profile == null) return;
                   setState(() => _selectedYear = v);
-                  _loadAllData();
+                  await _loadSaldo(_profile!);
                 },
               ),
-              const Spacer(),
-              if (_profile?.isAdmin == true)
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    await SupabaseService.runAnnualVacationCarryover();
-                    await _loadAllData();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Overføring til nytt år er kjørt.')),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.swap_horiz),
-                  label: const Text('Kjør overføring'),
-                ),
             ],
           ),
+          const SizedBox(height: 8),
+          LeaveSaldoPanel(
+            quota: _quota,
+            company: _companySettings,
+            isLoading: _saldoLoading,
+            error: _saldoError,
+            onRetry: () {
+              if (_profile != null) _loadSaldo(_profile!);
+            },
+            onRequestSetup: _profile == null
+                ? null
+                : () async {
+                    try {
+                      final q = await SupabaseService.ensureAbsenceQuota(
+                        userId: _profile!.id,
+                        companyId: _profile!.companyId!,
+                        year: _selectedYear,
+                      );
+                      setState(() => _quota = q);
+                    } catch (e) {
+                      setState(() => _saldoError = e.toString());
+                    }
+                  },
+          ),
+          const SizedBox(height: 20),
+          _statRow(isDark, [
+            _StatChip(
+              label: 'Fravær i dag',
+              value: '${todayOut.length}',
+              icon: Icons.people_outline,
+              color: DriftProTheme.primaryGreen,
+            ),
+            _StatChip(
+              label: 'Venter godkjenning',
+              value: '${_pendingApprovals.length}',
+              icon: Icons.hourglass_top,
+              color: DriftProTheme.warning,
+            ),
+            _StatChip(
+              label: 'Ferie igjen',
+              value: ferieIgjen != null ? '$ferieIgjen d' : '—',
+              icon: Icons.beach_access,
+              color: DriftProTheme.absenceVacation,
+            ),
+            _StatChip(
+              label: 'Ferie venter',
+              value: '$pendingVacation',
+              icon: Icons.pending_actions,
+              color: Colors.blue,
+            ),
+          ]),
+          const SizedBox(height: 20),
+          Text('På fravær i dag', style: DriftProTheme.headingSm),
+          const SizedBox(height: 8),
+          if (todayOut.isEmpty)
+            Text('Ingen godkjent fravær i dag.', style: DriftProTheme.bodySm)
+          else
+            ...todayOut.take(8).map((a) => _absenceListTile(a, isDark)),
+          if (isManager && _pendingApprovals.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Text('Trenger din godkjenning', style: DriftProTheme.headingSm),
+            const SizedBox(height: 8),
+            ..._pendingApprovals.take(5).map(
+                  (a) => _buildAbsenceCard(a, _days(a), isDark, showActions: true),
+                ),
+          ],
           const SizedBox(height: 12),
-          _buildQuotaCircle(used, total, remaining, isDark),
-          const SizedBox(height: 32),
-          _buildQuotaDetailRow('Egenmelding', _quota!.egenmeldingDaysUsed, 24, DriftProTheme.absenceSickSelf, isDark),
-          const SizedBox(height: 12),
-          _buildQuotaDetailRow('Sykt barn', _quota!.syktBarnDaysUsed, 10, DriftProTheme.absenceSickChild, isDark),
+          Text(
+            'Godkjente ferieperioder i år: $approvedVacation',
+            style: DriftProTheme.caption,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTeamOverviewTab(bool isDark, bool canAdmin) {
-    if (_teamProfiles.isEmpty) {
-      return _buildEmptyState('Ingen ansatte funnet for teamoversikt.');
-    }
-    final quotaByUser = {for (final q in _teamQuotas) q.userId: q};
-    final absByUser = <String, int>{};
-    final vacByUser = <String, int>{};
-    for (final a in _deptAbsences) {
-      absByUser[a.userId] = (absByUser[a.userId] ?? 0) + 1;
-      if (a.type == AbsenceType.ferie) {
-        vacByUser[a.userId] = (vacByUser[a.userId] ?? 0) + 1;
-      }
+  Widget _statRow(bool isDark, List<_StatChip> chips) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = (constraints.maxWidth - 8) / 2;
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: chips
+              .map(
+                (c) => SizedBox(
+                  width: w,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isDark ? DriftProTheme.cardDark : Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(c.icon, color: c.color, size: 22),
+                        const SizedBox(height: 6),
+                        Text(c.value, style: DriftProTheme.labelLg),
+                        Text(
+                          c.label,
+                          textAlign: TextAlign.center,
+                          style: DriftProTheme.caption,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+        );
+      },
+    );
+  }
+
+  Widget _buildAllRequestsTab(bool isDark) {
+    if (_isLoading) return const Center(child: CircularProgressIndicator());
+
+    final list = _myAbsences;
+    if (list.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.event_available, size: 64, color: Colors.grey.shade400),
+              const SizedBox(height: 16),
+              Text('Ingen søknader ennå', style: DriftProTheme.headingSm),
+              const SizedBox(height: 8),
+              Text(
+                'Bruk hurtigvalg på Dashboard for å søke ferie, egenmelding eller sykt barn.',
+                textAlign: TextAlign.center,
+                style: DriftProTheme.bodySm,
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: () => _openNewRequest(AbsenceType.ferie),
+                icon: const Icon(Icons.add),
+                label: const Text('Ny søknad'),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return ListView.builder(
       padding: const EdgeInsets.all(16),
-      itemCount: _teamProfiles.length,
-      itemBuilder: (context, index) {
-        final u = _teamProfiles[index];
-        final q = quotaByUser[u.id];
-        final remaining = q?.vacationDaysRemaining ?? 0;
-        final carried = q?.vacationDaysCarriedOver ?? 0;
-        return Card(
-          child: ListTile(
-            isThreeLine: true,
-            title: Text(u.fullName),
-            subtitle: Text(
-              'Ferie igjen: $remaining  | Overført: $carried  | Fravær: ${absByUser[u.id] ?? 0}  | Ferieposter: ${vacByUser[u.id] ?? 0}',
+      itemCount: list.length,
+      itemBuilder: (_, i) => _buildAbsenceCard(list[i], _days(list[i]), isDark),
+    );
+  }
+
+  void _openNewRequest(AbsenceType type) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NewAbsenceScreen(
+          type: type,
+          allowPickEmployee: _profile?.access.canRegisterLeaveForOthers == true,
+        ),
+      ),
+    ).then((v) {
+      if (v == true) _loadAllData();
+    });
+  }
+
+  Widget _buildHandlingTab(bool isDark) {
+    if (_pendingApprovals.isEmpty) {
+      return _empty('Ingen ventende forespørsler.');
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _pendingApprovals.length,
+      itemBuilder: (_, i) {
+        final a = _pendingApprovals[i];
+        return _buildAbsenceCard(a, _days(a), isDark, showActions: true);
+      },
+    );
+  }
+
+  Widget _buildCalendarTab(bool isDark, bool isManager) {
+  final approved = _scopedAbsences
+        .where((a) => a.status == AbsenceStatus.godkjent)
+        .toList();
+
+    return Column(
+      children: [
+        if (isManager)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: DropdownButtonFormField<String?>(
+              value: _calendarUserFilter,
+              decoration: const InputDecoration(
+                labelText: 'Vis ansatt',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: [
+                const DropdownMenuItem(value: null, child: Text('Hele teamet')),
+                ..._teamProfiles.map(
+                  (p) => DropdownMenuItem(value: p.id, child: Text(p.fullName)),
+                ),
+              ],
+              onChanged: (v) => setState(() => _calendarUserFilter = v),
             ),
-            trailing: canAdmin
-                ? IconButton(
-                    icon: const Icon(Icons.edit_calendar_outlined),
-                    onPressed: () => _editTeamQuota(u, q),
-                  )
-                : null,
+          ),
+        Expanded(
+          child: TeamLeaveCalendar(
+            month: _calendarMonth,
+            absences: approved,
+            employees: _teamProfiles,
+            filterUserId: _calendarUserFilter,
+            colorForType: _colorForType,
+            onMonthChanged: (m) => setState(() => _calendarMonth = m),
+            onDayTap: isManager ? _onCalendarDayTap : null,
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _onCalendarDayTap(DateTime date, List<Absence> dayAbsences) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  DateFormat('EEEE d. MMMM', 'nb_NO').format(date),
+                  style: DriftProTheme.headingSm,
+                ),
+                const SizedBox(height: 12),
+                if (dayAbsences.isEmpty)
+                  const Text('Ingen registrert fravær denne dagen.')
+                else
+                  ...dayAbsences.map(
+                    (a) => ListTile(
+                      leading: Icon(_iconForType(a.type), color: _colorForType(a.type)),
+                      title: Text(a.userName ?? 'Ansatt'),
+                      subtitle: Text('${a.type.label} · ${_days(a)} dager'),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _openRegisterForDate(date);
+                  },
+                  icon: const Icon(Icons.add),
+                  label: const Text('Legg inn fravær / ferie'),
+                ),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
+  void _openRegisterForDate(DateTime date) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: AbsenceType.values
+            .map(
+              (t) => ListTile(
+                leading: Icon(_iconForType(t), color: _colorForType(t)),
+                title: Text(t.label),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => NewAbsenceScreen(
+                        type: t,
+                        initialStart: date,
+                        initialEnd: date,
+                        allowPickEmployee: true,
+                      ),
+                    ),
+                  ).then((v) {
+                    if (v == true) _loadAllData();
+                  });
+                },
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
+  Widget _buildRulesTab(bool isDark) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: const [
+        LeaveRulesPanel(),
+        SizedBox(height: 16),
+        _InfoBox(
+          title: 'Automatisk registrering',
+          body:
+              'Når du søker om fravær, får avdelingsleder og admin beskjed. '
+              'Ved godkjenning trekkes dager fra kvoten og fraværet vises i kalenderen.',
+        ),
+        SizedBox(height: 12),
+        _InfoBox(
+          title: 'Ferie over nyttår',
+          body:
+              'Eksempel: 35 dager tildelt, 30 brukt → 5 dager kan overføres (maks '
+              '${LeaveRules.defaultMaxCarryoverDays} etter avtale). Neste år: 35 nye + 5 overført = 40 dager totalt.',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTeamTab(bool isDark, bool canAdmin) {
+    return Column(
+      children: [
+        if (canAdmin)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Material(
+              color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => VacationAdminScreen(
+                        companyId: _profile!.companyId!,
+                        companySettings: _companySettings,
+                      ),
+                    ),
+                  );
+                  await _loadAllData();
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: DriftProTheme.primaryGreen.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.admin_panel_settings_outlined,
+                          color: DriftProTheme.primaryGreen,
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Avansert ferieadministrasjon',
+                              style: DriftProTheme.labelLg.copyWith(
+                                color: DriftProTheme.primaryGreen,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Enkel oversikt: velg år, del ut feriedager til alle eller valgte ansatte, '
+                              'se hvem som har dager igjen.',
+                              style: DriftProTheme.bodySm,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios, size: 16),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: LeaveTeamTable(
+              employees: _teamProfiles,
+              quotas: _teamQuotas,
+              absences: _scopedAbsences,
+              company: _companySettings,
+              year: _selectedYear,
+              canEdit: canAdmin,
+              onEditQuota: _editTeamQuota,
+              onTapEmployee: (u) {
+                setState(() => _calendarUserFilter = u.id);
+                _tabController?.animateTo(_calendarTabIndex);
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _editTeamQuota(UserProfile user, AbsenceQuota? existing) async {
-    final totalCtrl = TextEditingController(text: (existing?.vacationDaysTotal ?? 25).toString());
-    final carryCtrl = TextEditingController(text: (existing?.vacationDaysCarriedOver ?? 0).toString());
+    final totalCtrl =
+        TextEditingController(text: '${existing?.vacationDaysTotal ?? 25}');
+    final carryCtrl =
+        TextEditingController(text: '${existing?.vacationDaysCarriedOver ?? 0}');
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -454,14 +841,29 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
             TextField(
               controller: totalCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Tildelte feriedager', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Tildelte feriedager i år',
+                border: OutlineInputBorder(),
+              ),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: carryCtrl,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Overført restferie', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Overført fra i fjor',
+                border: OutlineInputBorder(),
+              ),
             ),
+            if (existing != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Brukt: ${existing.vacationDaysUsed} · '
+                'Totalt: ${existing.totalVacationDays} · '
+                'Igjen: ${existing.vacationDaysRemaining}',
+                style: DriftProTheme.caption,
+              ),
+            ],
           ],
         ),
         actions: [
@@ -488,74 +890,257 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke oppdatere kvote: $e')),
+          SnackBar(content: Text('Feil: $e')),
         );
       }
     }
   }
 
-  Widget _buildQuotaCircle(int used, int total, int remaining, bool isDark) {
+  Widget _buildAbsenceCard(
+    Absence a,
+    int days,
+    bool isDark, {
+    bool showActions = false,
+  }) {
+    final color = _colorForType(a.type);
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(color: DriftProTheme.primaryGreen.withOpacity(0.05), borderRadius: BorderRadius.circular(24)),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100,
+        ),
+      ),
       child: Column(
         children: [
-          Text('Gjenstående ferie', style: DriftProTheme.bodyMd),
-          const SizedBox(height: 8),
-          Text('$remaining', style: DriftProTheme.headingXl.copyWith(fontSize: 64, color: DriftProTheme.primaryGreen)),
-          Text('av $total dager', style: DriftProTheme.caption),
+          _absenceListTile(a, isDark, days: days, color: color),
+          if (showActions) ...[
+            if ((_approvalOverlaps[a.id] ?? []).isNotEmpty)
+              DepartmentLeaveTipCard(
+                overlaps: _approvalOverlaps[a.id]!,
+                departmentName: a.departmentId != null
+                    ? _departmentNames[a.departmentId!]
+                    : null,
+                compact: true,
+                isApprovalContext: true,
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _updateStatus(a.id, AbsenceStatus.avvist),
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                      child: const Text('Avvis'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => _updateStatus(a.id, AbsenceStatus.godkjent),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: DriftProTheme.success,
+                      ),
+                      child: const Text('Godkjenn'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildQuotaDetailRow(String label, int used, int total, Color color, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: isDark ? DriftProTheme.cardDark : Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100)),
-      child: Column(
+  Widget _absenceListTile(Absence a, bool isDark, {int? days, Color? color}) {
+    final d = days ?? _days(a);
+    final c = color ?? _colorForType(a.type);
+    return ListTile(
+      contentPadding: const EdgeInsets.all(16),
+      leading: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: c.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Icon(_iconForType(a.type), color: c),
+      ),
+      title: Row(
         children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(label, style: DriftProTheme.labelLg), Text('$used/$total dager', style: DriftProTheme.bodySm)]),
-          const SizedBox(height: 12),
-          ClipRRect(borderRadius: BorderRadius.circular(4), child: LinearProgressIndicator(value: used / total, backgroundColor: color.withOpacity(0.1), valueColor: AlwaysStoppedAnimation(color), minHeight: 8)),
+          Expanded(child: Text(a.type.label, style: DriftProTheme.labelLg)),
+          _statusBadge(a.status),
+        ],
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (a.userName != null)
+            Text('${a.userName}', style: const TextStyle(fontWeight: FontWeight.bold)),
+          Text(
+            '${DateFormat('d. MMM').format(a.startDate)} – '
+            '${DateFormat('d. MMM').format(a.endDate)} ($d dager)',
+            style: DriftProTheme.bodySm,
+          ),
+          if (a.comment != null)
+            Text('"${a.comment!}"', style: DriftProTheme.bodySm.copyWith(fontStyle: FontStyle.italic)),
         ],
       ),
     );
   }
 
-  IconData _getIconForType(AbsenceType t) {
-    switch (t) {
-      case AbsenceType.ferie: return Icons.wb_sunny_rounded;
-      case AbsenceType.egenmelding: return Icons.person_outline_rounded;
-      case AbsenceType.syktBarn: return Icons.child_care_rounded;
-      case AbsenceType.permisjon: return Icons.timer_outlined;
-      case AbsenceType.sykmelding: return Icons.medical_services_outlined;
+  Future<void> _updateStatus(String id, AbsenceStatus status) async {
+    if (status == AbsenceStatus.godkjent) {
+      final overlaps = _approvalOverlaps[id] ?? [];
+      final approved = DepartmentLeaveConflictService.approvedVacation(overlaps);
+      if (approved.isNotEmpty) {
+        Absence? request;
+        for (final a in _pendingApprovals) {
+          if (a.id == id) {
+            request = a;
+            break;
+          }
+        }
+        final names = approved
+            .map((o) => o.other.userName ?? 'Kollega')
+            .take(4)
+            .join(', ');
+        final go = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            icon: const Icon(Icons.groups_2_outlined, color: Colors.orange),
+            title: const Text('Overlappende ferie i avdelingen'),
+            content: Text(
+              '${approved.length} kollega${approved.length == 1 ? "" : "er"} har '
+              'allerede godkjent ferie i samme periode'
+              '${request != null ? " som ${request.userName ?? "søkeren"}" : ""}:\n\n'
+              '$names\n\n'
+              'Vil du likevel godkjenne?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Avbryt'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Godkjenn likevel'),
+              ),
+            ],
+          ),
+        );
+        if (go != true) return;
+      }
     }
+
+    try {
+      await SupabaseService.updateAbsenceStatus(id, status);
+      await _loadAllData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              status == AbsenceStatus.godkjent
+                  ? 'Godkjent — registrert i kalender og kvote'
+                  : 'Avvist',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Feil: $e')));
+      }
+    }
+  }
+
+  Widget _statusBadge(AbsenceStatus status) {
+    Color color;
+    switch (status) {
+      case AbsenceStatus.godkjent:
+        color = DriftProTheme.success;
+        break;
+      case AbsenceStatus.avvist:
+        color = DriftProTheme.error;
+        break;
+      case AbsenceStatus.ventende:
+        color = DriftProTheme.warning;
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        status.label,
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+      ),
+    );
   }
 
   void _showRegisterOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: AbsenceType.values.map((t) => ListTile(
-            leading: Icon(_getIconForType(t), color: _getAbsenceColor(t)),
-            title: Text(t.label),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.push(context, MaterialPageRoute(builder: (_) => NewAbsenceScreen(type: t))).then((v) { if (v == true) _loadAllData(); });
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: LeaveQuickActions(
+            onTypeSelected: (t) {
+              Navigator.pop(ctx);
+              _openNewRequest(t);
             },
-          )).toList(),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState(String msg) {
-    return Center(child: Text(msg, style: DriftProTheme.bodyMd.copyWith(color: Colors.grey)));
+  Widget _empty(String msg) => Center(child: Text(msg, style: DriftProTheme.bodyMd.copyWith(color: Colors.grey)));
+}
+
+class _StatChip {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+  const _StatChip({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+}
+
+class _InfoBox extends StatelessWidget {
+  final String title;
+  final String body;
+  const _InfoBox({required this.title, required this.body});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? DriftProTheme.cardDark : Colors.blue.shade50,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: DriftProTheme.labelLg),
+          const SizedBox(height: 6),
+          Text(body, style: DriftProTheme.bodySm),
+        ],
+      ),
+    );
   }
 }

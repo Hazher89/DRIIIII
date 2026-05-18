@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/constants/build_info.dart';
+import '../../core/permissions/access_keys.dart';
+import '../../core/permissions/permission_gate.dart';
+import '../../core/permissions/user_access.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -143,9 +146,13 @@ class _TicketsScreenState extends State<TicketsScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final stats = TicketDashboardStats.fromTickets(_tickets);
-    final coord = _profile?.canCoordinateTickets == true;
+    final coord = _profile?.access.canCoordinateTickets == true;
+    final ticketAdmin = _profile?.access.canTicketAdmin == true;
 
-    return Scaffold(
+    return PermissionGuard(
+      profile: _profile,
+      accessKey: AccessKeys.avvik,
+      child: Scaffold(
       backgroundColor:
           isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       appBar: AppBar(
@@ -165,7 +172,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
           ],
         ),
         actions: [
-          if (coord)
+          if (coord || ticketAdmin)
             IconButton(
               icon: const Icon(Icons.dashboard_customize_outlined),
               tooltip: 'Kontrollsenter',
@@ -247,6 +254,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 

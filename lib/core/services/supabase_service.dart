@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import '../config/supabase_config.dart';
 import '../../models/ticket.dart';
 import '../../models/absence.dart';
+import '../constants/leave_rules.dart';
 import '../../models/department.dart';
 import '../../models/risk_assessment.dart';
 import '../../models/user_profile.dart';
@@ -153,16 +154,26 @@ department:departments!department_id(name)
     String? departmentId,
   }) async {
     if (!isConfigured) return const [];
-    var query = client.from('absences').select('*, profiles(full_name, avatar_url, department_id)');
+    var query = client.from('absences').select(
+      '*, profiles!absences_user_id_fkey(full_name, avatar_url, department_id)',
+    );
     if (userId != null) query = query.eq('user_id', userId);
     if (companyId != null) query = query.eq('company_id', companyId);
+    if (departmentId != null) query = query.eq('department_id', departmentId);
     final data = await query.order('start_date', ascending: false) as List<dynamic>;
     return data.map((e) => Absence.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  static Future<Absence> createAbsence(Absence absence) async {
+  static Future<Absence> createAbsence(Absence absence, {String? approverId}) async {
     if (!isConfigured) throw StateError('Not configured');
-    final inserted = await client.from('absences').insert(absence.toInsertJson()).select().single();
+    final approver = approverId ?? client.auth.currentUser?.id;
+    final inserted = await client
+        .from('absences')
+        .insert(absence.toInsertJson(approverId: approver))
+        .select(
+          '*, profiles!absences_user_id_fkey(full_name, avatar_url, department_id)',
+        )
+        .single();
     return Absence.fromJson(inserted);
   }
 
@@ -180,9 +191,53 @@ department:departments!department_id(name)
 
   static Future<AbsenceQuota?> fetchAbsenceQuota({required String userId, int? year}) async {
     final y = year ?? DateTime.now().year;
-    final data = await client.from('absence_quotas').select().eq('user_id', userId).eq('year', y).maybeSingle();
+    final data = await client
+        .from('absence_quotas')
+        .select()
+        .eq('user_id', userId)
+        .eq('year', y)
+        .maybeSingle();
     if (data == null) return null;
     return AbsenceQuota.fromJson(data);
+  }
+
+  /// Henter eller oppretter årets ferie-/fraværssaldo (kalles «saldo» i UI).
+  static Future<AbsenceQuota> ensureAbsenceQuota({
+    required String userId,
+    required String companyId,
+    int? year,
+  }) async {
+    final y = year ?? DateTime.now().year;
+    final existing = await fetchAbsenceQuota(userId: userId, year: y);
+    if (existing != null) return existing;
+
+    try {
+      final row = await client.rpc(
+        'ensure_absence_quota',
+        params: {'p_user_id': userId, 'p_year': y},
+      );
+      if (row is Map<String, dynamic>) {
+        return AbsenceQuota.fromJson(row);
+      }
+    } catch (_) {
+      // RPC ikke deployet ennå — prøv direkte upsert (admin) eller vis feil.
+    }
+
+    try {
+      await upsertAbsenceQuota(
+        userId: userId,
+        companyId: companyId,
+        year: y,
+        vacationDaysTotal: LeaveRules.ferieLegalMinimumDays,
+      );
+      final created = await fetchAbsenceQuota(userId: userId, year: y);
+      if (created != null) return created;
+    } catch (_) {}
+
+    throw StateError(
+      'Kunne ikke opprette feriedager for $y. Be admin om å dele ut feriedager, '
+      'eller kjør migrasjonen absence_quota_auto_provision.sql i Supabase.',
+    );
   }
 
   static Future<List<AbsenceQuota>> fetchAbsenceQuotasForCompany({
@@ -196,6 +251,40 @@ department:departments!department_id(name)
         .eq('year', year)
         .order('user_id', ascending: true) as List<dynamic>;
     return data.map((e) => AbsenceQuota.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  static Future<List<AbsenceQuota>> fetchAbsenceQuotasForCompanyRange({
+    required String companyId,
+    required int fromYear,
+    required int toYear,
+  }) async {
+    final data = await client
+        .from('absence_quotas')
+        .select()
+        .eq('company_id', companyId)
+        .gte('year', fromYear)
+        .lte('year', toYear)
+        .order('year', ascending: true) as List<dynamic>;
+    return data.map((e) => AbsenceQuota.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  static Future<Map<String, dynamic>> carryoverVacationBetweenYears({
+    required String companyId,
+    required int fromYear,
+    int? toYear,
+    String? userId,
+  }) async {
+    final result = await client.rpc(
+      'carryover_vacation_between_years',
+      params: {
+        'p_company_id': companyId,
+        'p_from_year': fromYear,
+        'p_to_year': toYear ?? fromYear + 1,
+        'p_user_id': userId,
+      },
+    );
+    if (result is Map<String, dynamic>) return result;
+    return Map<String, dynamic>.from(result as Map);
   }
 
   static Future<void> updateAbsenceQuota(String userId, int year, Map<String, dynamic> updates) async {
@@ -229,6 +318,33 @@ department:departments!department_id(name)
 
   static Future<void> runAnnualVacationCarryover() async {
     await client.rpc('annual_vacation_carryover');
+  }
+
+  static Future<int> distributeVacationDays({
+    required String companyId,
+    required int year,
+    required int days,
+  }) async {
+    final result = await client.rpc(
+      'distribute_vacation_days',
+      params: {
+        'p_company_id': companyId,
+        'p_year': year,
+        'p_days': days,
+      },
+    );
+    return result as int? ?? 0;
+  }
+
+  static Future<CompanyLeaveSettings> fetchCompanyLeaveSettings(String companyId) async {
+    final data = await client
+        .from('companies')
+        .select(
+          'egenmelding_days_per_year, egenmelding_consecutive_max, max_vacation_carryover',
+        )
+        .eq('id', companyId)
+        .single();
+    return CompanyLeaveSettings.fromJson(data);
   }
 
   // ── Risikoanalyser ──────────────────────────────────────────────────────
@@ -358,6 +474,48 @@ department:departments!department_id(name)
     await client.from('profiles').update({'access_settings': settings}).eq('id', profileId);
   }
 
+  /// Godkjenner ny ansatt med rolle, avdeling og granulære tilganger (kun superadmin i DB).
+  static Future<void> approveEmployee({
+    required String profileId,
+    required UserRole role,
+    required String? departmentId,
+    required Map<String, dynamic> accessSettings,
+    bool setDepartmentLeader = false,
+  }) async {
+    await client.rpc('approve_employee_profile', params: {
+      'p_profile_id': profileId,
+      'p_role': role.name,
+      'p_department_id': departmentId,
+      'p_access_settings': accessSettings,
+      'p_set_department_leader': setDepartmentLeader,
+    });
+  }
+
+  /// Oppdaterer rolle, avdeling, tilganger og godkjenningsstatus.
+  static Future<void> updateEmployeeAccess({
+    required String profileId,
+    required UserRole role,
+    required String? departmentId,
+    required Map<String, dynamic> accessSettings,
+    required bool isApproved,
+    bool setDepartmentLeader = false,
+  }) async {
+    await client.from('profiles').update({
+      'role': role.name,
+      'department_id': departmentId,
+      'access_settings': accessSettings,
+      'is_approved': isApproved,
+      'is_active': isApproved,
+    }).eq('id', profileId);
+
+    if (setDepartmentLeader && departmentId != null) {
+      await client
+          .from('departments')
+          .update({'leader_id': profileId})
+          .eq('id', departmentId);
+    }
+  }
+
   static Future<UserProfile?> fetchCurrentUserProfile() async {
     try {
       final user = client.auth.currentUser;
@@ -481,15 +639,69 @@ department:departments!department_id(name)
     String? emergencyContactPhone,
     bool? approved,
   }) async {
+    await updateEmployeeProfile(
+      profileId,
+      fullName: fullName,
+      phone: phone,
+      departmentId: departmentId,
+      role: role,
+      birthDate: birthDate,
+      emergencyContactName: emergencyContactName,
+      emergencyContactPhone: emergencyContactPhone,
+    );
+    if (approved != null) {
+      await client.from('profiles').update({'is_approved': approved}).eq('id', profileId);
+    }
+  }
+
+  /// Full oppdatering av ansattprofil (telefon → Sveve via phone_normalized trigger).
+  static Future<void> updateEmployeeProfile(
+    String profileId, {
+    String? fullName,
+    String? phone,
+    String? address,
+    String? jobTitle,
+    String? employeeNumber,
+    String? departmentId,
+    UserRole? role,
+    DateTime? birthDate,
+    DateTime? hireDate,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+    bool? isSafetyRepresentative,
+    bool? isActive,
+    bool? smsOptIn,
+  }) async {
     final patch = <String, dynamic>{};
     if (fullName != null) patch['full_name'] = fullName;
-    if (phone != null) patch['phone'] = phone;
+    if (phone != null) patch['phone'] = phone.trim().isEmpty ? null : phone.trim();
+    if (address != null) patch['address'] = address.trim().isEmpty ? null : address.trim();
+    if (jobTitle != null) patch['job_title'] = jobTitle.trim().isEmpty ? null : jobTitle.trim();
+    if (employeeNumber != null) {
+      patch['employee_number'] =
+          employeeNumber.trim().isEmpty ? null : employeeNumber.trim();
+    }
     if (departmentId != null) patch['department_id'] = departmentId;
     if (role != null) patch['role'] = role.name;
-    if (birthDate != null) patch['birth_date'] = birthDate.toIso8601String().split('T').first;
-    if (emergencyContactName != null) patch['emergency_contact_name'] = emergencyContactName;
-    if (emergencyContactPhone != null) patch['emergency_contact_phone'] = emergencyContactPhone;
-    if (approved != null) patch['is_approved'] = approved;
+    if (birthDate != null) {
+      patch['birth_date'] = birthDate.toIso8601String().split('T').first;
+    }
+    if (hireDate != null) {
+      patch['hire_date'] = hireDate.toIso8601String().split('T').first;
+    }
+    if (emergencyContactName != null) {
+      patch['emergency_contact_name'] =
+          emergencyContactName.trim().isEmpty ? null : emergencyContactName.trim();
+    }
+    if (emergencyContactPhone != null) {
+      patch['emergency_contact_phone'] =
+          emergencyContactPhone.trim().isEmpty ? null : emergencyContactPhone.trim();
+    }
+    if (isSafetyRepresentative != null) {
+      patch['is_safety_representative'] = isSafetyRepresentative;
+    }
+    if (isActive != null) patch['is_active'] = isActive;
+    if (smsOptIn != null) patch['sms_opt_in'] = smsOptIn;
     if (patch.isEmpty) return;
     await client.from('profiles').update(patch).eq('id', profileId);
   }

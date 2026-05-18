@@ -13,6 +13,9 @@ import '../partners/partners_dashboard_screen.dart';
 import '../more/more_screen.dart';
 import '../../models/user_profile.dart';
 import '../../core/services/supabase_service.dart';
+import '../../core/permissions/permission_gate.dart';
+import '../../core/permissions/access_keys.dart';
+import '../../core/permissions/user_access.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -61,24 +64,28 @@ class _MainShellState extends State<MainShell> {
     setState(() => _currentIndex = index);
   }
 
+  /// Naviger til fane som matcher tilgangsnøkkel (f.eks. [AccessKeys.avvik]).
+  void _navigateByAccess(String accessKey) {
+    if (_profile == null) return;
+    final allScreens = _allShellEntries;
+    final visible = allScreens.where((s) => _hasAccess(s['access'] as String)).toList();
+    final idx = visible.indexWhere((s) => s['access'] == accessKey);
+    if (idx >= 0) _onNavigate(idx);
+  }
+
+  static final _allShellEntries = [
+    {'access': AccessKeys.dashboard},
+    {'access': AccessKeys.surveys},
+    {'access': AccessKeys.fravaer},
+    {'access': AccessKeys.avvik},
+    {'access': AccessKeys.hms},
+    {'access': AccessKeys.partners},
+    {'access': AccessKeys.more},
+  ];
+
   bool _hasAccess(String key) {
-    if (_profile == null) return false; // Default to FALSE while loading
-    if (_profile!.role == UserRole.superadmin) return true; // SuperAdmins bypass
-
-    // Samarbeidspartnere: vises for alle roller med mindre den er eksplisitt slått av.
-    if (key == 'partners') {
-      final settings = _profile!.accessSettings;
-      final explicit = settings?['partners'];
-      if (explicit == false) return false;
-      if (explicit == true) return true;
-      return true;
-    }
-
-    final settings = _profile!.accessSettings;
-    if (settings == null) return (key == 'dashboard' || key == 'more');
-
-    // Core features depend on admin approval + individual toggles
-    return settings[key] ?? (key == 'dashboard' || key == 'more');
+    if (_profile == null) return false;
+    return _profile!.access.can(key);
   }
 
   @override
@@ -111,13 +118,18 @@ class _MainShellState extends State<MainShell> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final allScreens = [
-      {'screen': DashboardScreen(onNavigate: _onNavigate), 'icon': AppIcons.dashboard, 'label': AppStrings.navDashboard, 'access': 'dashboard'},
-      {'screen': const SurveyListScreen(), 'icon': AppIcons.survey, 'label': AppStrings.navSurveys, 'access': 'surveys'},
-      {'screen': const AbsenceScreen(), 'icon': AppIcons.absence, 'label': AppStrings.navAbsence, 'access': 'fravaer'},
-      {'screen': const TicketsScreen(), 'icon': AppIcons.ticket, 'label': AppStrings.navTickets, 'access': 'avvik'},
-      {'screen': const HmsScreen(), 'icon': AppIcons.hms, 'label': AppStrings.navHMS, 'access': 'hms'},
-      {'screen': const PartnersDashboardScreen(), 'icon': Icons.handshake_outlined, 'label': AppStrings.navPartners, 'access': 'partners'},
-      {'screen': const MoreScreen(), 'icon': AppIcons.more, 'label': AppStrings.navMore, 'access': 'more'},
+      {
+        'screen': DashboardScreen(onNavigateByAccess: _navigateByAccess),
+        'icon': AppIcons.dashboard,
+        'label': AppStrings.navDashboard,
+        'access': AccessKeys.dashboard,
+      },
+      {'screen': const SurveyListScreen(), 'icon': AppIcons.survey, 'label': AppStrings.navSurveys, 'access': AccessKeys.surveys},
+      {'screen': const AbsenceScreen(), 'icon': AppIcons.absence, 'label': AppStrings.navAbsence, 'access': AccessKeys.fravaer},
+      {'screen': const TicketsScreen(), 'icon': AppIcons.ticket, 'label': AppStrings.navTickets, 'access': AccessKeys.avvik},
+      {'screen': const HmsScreen(), 'icon': AppIcons.hms, 'label': AppStrings.navHMS, 'access': AccessKeys.hms},
+      {'screen': const PartnersDashboardScreen(), 'icon': Icons.handshake_outlined, 'label': AppStrings.navPartners, 'access': AccessKeys.partners},
+      {'screen': const MoreScreen(), 'icon': AppIcons.more, 'label': AppStrings.navMore, 'access': AccessKeys.more},
     ];
 
     // Filter screens based on access settings

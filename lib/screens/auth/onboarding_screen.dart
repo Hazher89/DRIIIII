@@ -163,13 +163,19 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'Vennligst fullfør din profil for å komme i gang.',
-                          style: TextStyle(fontSize: 18, color: Colors.grey),
+                          'Fyll ut skjemaet. Telefonnummer brukes til SMS-varsler senere. '
+                          'Du får ikke tilgang før superadmin har godkjent deg.',
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
                         ),
                         const SizedBox(height: 48),
                         
                         _buildField('Fullt navn', _nameController, Icons.person_outline),
-                        _buildField('Telefonnummer', _phoneController, Icons.phone_android_outlined, keyboardType: TextInputType.phone),
+                        _buildField(
+                          'Telefonnummer (påkrevd for varsler)',
+                          _phoneController,
+                          Icons.phone_android_outlined,
+                          keyboardType: TextInputType.phone,
+                        ),
                         _buildField('Adresse', _addressController, Icons.location_on_outlined),
                         _buildBirthDateField(),
                         _buildField('Pårørende - navn', _emergencyNameController, Icons.family_restroom_outlined),
@@ -223,7 +229,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ),
                             child: _isSaving
                                 ? const CircularProgressIndicator(color: Colors.white)
-                                : const Text('Fullfør og start', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                                : const Text('Send inn til godkjenning', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ],

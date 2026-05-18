@@ -1,12 +1,22 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_icons.dart';
+import '../../../core/hms/hms_templates.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/risk_assessment.dart';
 import 'package:uuid/uuid.dart';
 
 class NewRiskAssessmentScreen extends StatefulWidget {
-  const NewRiskAssessmentScreen({super.key});
+  final HmsRiskTemplate? template;
+  final int? initialProbability;
+  final int? initialConsequence;
+
+  const NewRiskAssessmentScreen({
+    super.key,
+    this.template,
+    this.initialProbability,
+    this.initialConsequence,
+  });
 
   @override
   State<NewRiskAssessmentScreen> createState() => _NewRiskAssessmentScreenState();
@@ -16,11 +26,27 @@ class _NewRiskAssessmentScreenState extends State<NewRiskAssessmentScreen> {
   final _titleController = TextEditingController();
   final _areaController = TextEditingController();
   final _descController = TextEditingController();
+  final _existingMeasuresController = TextEditingController();
   final _measuresController = TextEditingController();
   
-  int _probability = 1;
-  int _consequence = 1;
+  late int _probability;
+  late int _consequence;
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.template;
+    _probability = widget.initialProbability ?? t?.probability ?? 1;
+    _consequence = widget.initialConsequence ?? t?.consequence ?? 1;
+    if (t != null) {
+      _titleController.text = t.title;
+      _areaController.text = t.area;
+      _descController.text = t.description;
+      _existingMeasuresController.text = t.existingMeasures;
+      _measuresController.text = t.proposedMeasures;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,7 +77,9 @@ class _NewRiskAssessmentScreenState extends State<NewRiskAssessmentScreen> {
 
             _buildInput('Faremoment / Beskrivelse', _descController, maxLines: 3, isDark: isDark),
             const SizedBox(height: 16),
-            _buildInput('Tiltak', _measuresController, maxLines: 3, hint: 'Hva gjøres for å redusere risikoen?', isDark: isDark),
+            _buildInput('Eksisterende tiltak', _existingMeasuresController, maxLines: 2, isDark: isDark),
+            const SizedBox(height: 16),
+            _buildInput('Foreslåtte tiltak', _measuresController, maxLines: 3, hint: 'Hva gjøres for å redusere risikoen?', isDark: isDark),
             const SizedBox(height: 40),
           ],
         ),
@@ -182,6 +210,9 @@ class _NewRiskAssessmentScreenState extends State<NewRiskAssessmentScreen> {
         title: _titleController.text,
         area: _areaController.text,
         description: _descController.text,
+        existingMeasures: _existingMeasuresController.text.isEmpty
+            ? null
+            : _existingMeasuresController.text,
         proposedMeasures: _measuresController.text,
         probability: _probability,
         consequence: _consequence,

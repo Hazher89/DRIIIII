@@ -24,6 +24,8 @@ class UserProfile {
   final Map<String, dynamic>? accessSettings;
   /// Når satt, representerer brukeren en ekstern samarbeidspartner (portal).
   final String? partnerId;
+  /// Når satt, ser portalbrukeren kun ruter for dette MAVI-kjøretøyet.
+  final String? partnerVehicleId;
 
   const UserProfile({
     required this.id,
@@ -48,6 +50,7 @@ class UserProfile {
     this.createdAt,
     this.accessSettings,
     this.partnerId,
+    this.partnerVehicleId,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -84,6 +87,7 @@ class UserProfile {
           : null,
       accessSettings: json['access_settings'] as Map<String, dynamic>?,
       partnerId: json['partner_id'] as String?,
+      partnerVehicleId: json['partner_vehicle_id'] as String?,
     );
   }
 
@@ -108,6 +112,7 @@ class UserProfile {
     'is_onboarded': isOnboarded,
     'is_approved': isApproved,
     'partner_id': partnerId,
+    'partner_vehicle_id': partnerVehicleId,
   };
 
   bool get isPartnerPortalUser =>

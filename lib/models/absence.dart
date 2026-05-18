@@ -128,15 +128,20 @@ class Absence {
     );
   }
 
-  Map<String, dynamic> toInsertJson() => {
+  Map<String, dynamic> toInsertJson({String? approverId}) => {
     'user_id': userId,
     'company_id': companyId,
     'department_id': departmentId,
     'type': type.dbValue,
     'start_date': startDate.toIso8601String().split('T').first,
     'end_date': endDate.toIso8601String().split('T').first,
+    'status': status.name,
     'comment': comment,
     'quota_year': quotaYear ?? startDate.year,
+    if (status == AbsenceStatus.godkjent && approverId != null) ...{
+      'approved_by': approverId,
+      'approved_at': DateTime.now().toUtc().toIso8601String(),
+    },
   };
 
   bool get isActive {
@@ -189,4 +194,11 @@ class AbsenceQuota {
   int get vacationDaysRemaining => totalVacationDays - vacationDaysUsed;
   double get vacationUsagePercent =>
       totalVacationDays > 0 ? vacationDaysUsed / totalVacationDays : 0;
+
+  /// Dager som kan overføres til neste år (begrenses av bedriftens maks).
+  int carryoverEligible(int maxCarryover) {
+    final r = vacationDaysRemaining;
+    if (r <= 0) return 0;
+    return r > maxCarryover ? maxCarryover : r;
+  }
 }

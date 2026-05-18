@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_icons.dart';
+import '../../../core/hms/hms_templates.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/safety_round.dart';
 import 'package:uuid/uuid.dart';
 
 class NewSafetyRoundScreen extends StatefulWidget {
-  const NewSafetyRoundScreen({super.key});
+  final HmsSafetyRoundTemplate? template;
+
+  const NewSafetyRoundScreen({super.key, this.template});
 
   @override
   State<NewSafetyRoundScreen> createState() => _NewSafetyRoundScreenState();
@@ -16,17 +19,35 @@ class _NewSafetyRoundScreenState extends State<NewSafetyRoundScreen> {
   final _titleController = TextEditingController();
   DateTime _scheduledDate = DateTime.now();
   
-  final List<Map<String, dynamic>> _checklist = [
-    {'task': 'Nødutganger er frie og merket', 'status': 'ok'},
-    {'task': 'Brannslokkingsutstyr er tilgjengelig', 'status': 'ok'},
-    {'task': 'Førstehjelpsutstyr er komplett', 'status': 'ok'},
-    {'task': 'Ryddighet på arbeidsplassen', 'status': 'ok'},
-    {'task': 'Bruk av personlig verneutstyr', 'status': 'ok'},
-    {'task': 'Elektriske anlegg og ledninger', 'status': 'ok'},
-  ];
+  late List<Map<String, dynamic>> _checklist;
   
   final List<Map<String, dynamic>> _findings = [];
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.template;
+    if (t != null) {
+      _titleController.text = t.title;
+      _checklist = t.checklist
+          .map((e) => {
+                'task': e['item'] ?? e['task'] ?? '',
+                'status': 'pending',
+                'comment': e['comment'] ?? '',
+              })
+          .toList();
+    } else {
+      _checklist = [
+        {'task': 'Nødutganger er frie og merket', 'status': 'pending'},
+        {'task': 'Brannslokkingsutstyr er tilgjengelig', 'status': 'pending'},
+        {'task': 'Førstehjelpsutstyr er komplett', 'status': 'pending'},
+        {'task': 'Ryddighet på arbeidsplassen', 'status': 'pending'},
+        {'task': 'Bruk av personlig verneutstyr', 'status': 'pending'},
+        {'task': 'Elektriske anlegg og ledninger', 'status': 'pending'},
+      ];
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

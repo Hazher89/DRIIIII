@@ -15,6 +15,11 @@ class Partner {
   final int vehicleCountRegistered;
   final int? vehicleMaxPayloadKg;
   final bool? euApproved;
+  final bool hasTransportLicense;
+  final int transportLicenseCount;
+  final int? employeeCount;
+  final String auditStatus;
+  final String? auditPlate;
   final Map<String, dynamic>? brregSnapshot;
   final DateTime? lastMeetingAt;
   final DateTime? nextMeetingAt;
@@ -39,6 +44,11 @@ class Partner {
     this.vehicleCountRegistered = 0,
     this.vehicleMaxPayloadKg,
     this.euApproved,
+    this.hasTransportLicense = false,
+    this.transportLicenseCount = 0,
+    this.employeeCount,
+    this.auditStatus = 'ukjent',
+    this.auditPlate,
     this.brregSnapshot,
     this.lastMeetingAt,
     this.nextMeetingAt,
@@ -65,11 +75,24 @@ class Partner {
       vehicleCountRegistered: json['vehicle_count_registered'] as int? ?? 0,
       vehicleMaxPayloadKg: json['vehicle_max_payload_kg'] as int?,
       euApproved: json['eu_approved'] as bool?,
+      hasTransportLicense: json['has_transport_license'] as bool? ?? false,
+      transportLicenseCount: json['transport_license_count'] as int? ?? 0,
+      employeeCount: json['employee_count'] as int?,
+      auditStatus: json['audit_status'] as String? ?? 'ukjent',
+      auditPlate: json['audit_plate'] as String?,
       brregSnapshot: json['brreg_snapshot'] as Map<String, dynamic>?,
-      lastMeetingAt: json['last_meeting_at'] != null ? DateTime.parse(json['last_meeting_at'] as String) : null,
-      nextMeetingAt: json['next_meeting_at'] != null ? DateTime.parse(json['next_meeting_at'] as String) : null,
-      lastAuditAt: json['last_audit_at'] != null ? DateTime.parse(json['last_audit_at'] as String) : null,
-      nextAuditAt: json['next_audit_at'] != null ? DateTime.parse(json['next_audit_at'] as String) : null,
+      lastMeetingAt: json['last_meeting_at'] != null
+          ? DateTime.parse(json['last_meeting_at'] as String)
+          : null,
+      nextMeetingAt: json['next_meeting_at'] != null
+          ? DateTime.parse(json['next_meeting_at'] as String)
+          : null,
+      lastAuditAt: json['last_audit_at'] != null
+          ? DateTime.parse(json['last_audit_at'] as String)
+          : null,
+      nextAuditAt: json['next_audit_at'] != null
+          ? DateTime.parse(json['next_audit_at'] as String)
+          : null,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -91,6 +114,11 @@ class Partner {
       'vehicle_count_registered': vehicleCountRegistered,
       'vehicle_max_payload_kg': vehicleMaxPayloadKg,
       'eu_approved': euApproved,
+      'has_transport_license': hasTransportLicense,
+      'transport_license_count': transportLicenseCount,
+      'employee_count': employeeCount,
+      'audit_status': auditStatus,
+      'audit_plate': auditPlate,
       'brreg_snapshot': brregSnapshot,
       'last_meeting_at': lastMeetingAt?.toIso8601String(),
       'next_meeting_at': nextMeetingAt?.toIso8601String(),
@@ -116,6 +144,11 @@ class Partner {
       'vehicle_count_registered': vehicleCountRegistered,
       'vehicle_max_payload_kg': vehicleMaxPayloadKg,
       'eu_approved': euApproved,
+      'has_transport_license': hasTransportLicense,
+      'transport_license_count': transportLicenseCount,
+      'employee_count': employeeCount,
+      'audit_status': auditStatus,
+      'audit_plate': auditPlate,
       'brreg_snapshot': brregSnapshot,
       'last_meeting_at': lastMeetingAt?.toIso8601String(),
       'next_meeting_at': nextMeetingAt?.toIso8601String(),
@@ -123,5 +156,20 @@ class Partner {
       'next_audit_at': nextAuditAt?.toIso8601String().split('T').first,
       'updated_at': DateTime.now().toIso8601String(),
     };
+  }
+
+  String get auditStatusLabel {
+    switch (auditStatus) {
+      case 'planlagt':
+        return 'Planlagt';
+      case 'ok':
+        return 'OK';
+      case 'avvik':
+        return 'Avvik';
+      case 'utlopt':
+        return 'Utløpt';
+      default:
+        return 'Ukjent';
+    }
   }
 }

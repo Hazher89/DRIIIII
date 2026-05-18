@@ -1,5 +1,6 @@
 import '../../models/ticket.dart';
 import '../../models/user_profile.dart';
+import '../permissions/user_access.dart';
 
 /// Aggregerte tall for avvik-dashboard (beregnes på klientsiden fra full liste).
 class TicketDashboardStats {
@@ -66,6 +67,6 @@ class TicketDashboardStats {
 }
 
 extension TicketRoles on UserProfile {
-  /// Leder og administratorer kan bruke kontrollsenter og full saksbehandling.
-  bool get canCoordinateTickets => isLeader;
+  /// Kontrollsenter styres av tilgangsinnstilling, ikke bare rolle.
+  bool get canCoordinateTickets => access.canCoordinateTickets;
 }

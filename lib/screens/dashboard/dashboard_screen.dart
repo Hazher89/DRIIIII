@@ -6,7 +6,11 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/permissions/access_keys.dart';
+import '../../core/permissions/permission_gate.dart';
+import '../../core/permissions/user_access.dart';
 import '../../core/services/supabase_service.dart';
+import '../employees/employee_hub_screen.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/dashboard_stats.dart';
 import '../../models/absence.dart';
@@ -24,14 +28,11 @@ import '../../widgets/cards/quick_action_button.dart';
 import '../../widgets/cards/glass_card.dart';
 import '../../widgets/common/section_header.dart';
 import '../profile/profile_screen.dart';
-import '../admin/user_management_screen.dart';
-import '../absence/absence_screen.dart';
-import '../tickets/tickets_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  final Function(int)? onNavigate;
+  final NavigateByAccess? onNavigateByAccess;
 
-  const DashboardScreen({super.key, this.onNavigate});
+  const DashboardScreen({super.key, this.onNavigateByAccess});
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -91,6 +92,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   double get _kioskFontFactor => _kiosk.infoscreenLayoutEnabled ? 1.14 : 1.0;
 
+  UserAccess? get _access => _profile?.access;
+
+  void _go(String accessKey) => widget.onNavigateByAccess?.call(accessKey);
+
   Future<void> _loadAllData() async {
     setState(() => _isLoading = true);
     try {
@@ -113,22 +118,27 @@ class _DashboardScreenState extends State<DashboardScreen>
         return;
       }
 
-      final futures = await Future.wait([
-        SupabaseService.fetchTickets(companyId: companyId),
-        SupabaseService.fetchAbsences(companyId: companyId),
-        SupabaseService.fetchRiskAssessments(companyId: companyId),
-        SupabaseService.fetchProfiles(companyId: companyId),
-        SupabaseService.fetchSjaForms(companyId: companyId),
-        SupabaseService.fetchSafetyRounds(companyId: companyId),
-      ]);
+      final access = profile?.access;
+      final canAvvik = access?.canAvvik ?? false;
+      final canFravaer = access?.canFravaer ?? false;
+      final tickets = canAvvik
+          ? await SupabaseService.fetchTickets(companyId: companyId)
+          : <Ticket>[];
+      final absences = canFravaer
+          ? await SupabaseService.fetchAbsences(companyId: companyId)
+          : <Absence>[];
+      final risks = (access?.canHmsRisk ?? false)
+          ? await SupabaseService.fetchRiskAssessments(companyId: companyId)
+          : <RiskAssessment>[];
+      final profiles = await SupabaseService.fetchProfiles(companyId: companyId);
+      final sjas = (access?.canHmsSja ?? false)
+          ? await SupabaseService.fetchSjaForms(companyId: companyId)
+          : <SjaForm>[];
+      final rounds = (access?.canHmsSafetyRound ?? false)
+          ? await SupabaseService.fetchSafetyRounds(companyId: companyId)
+          : <SafetyRound>[];
 
-      final tickets = futures[0] as List<Ticket>;
-      final absences = futures[1] as List<Absence>;
-      final risks = futures[2] as List<RiskAssessment>;
-      final profiles = futures[3] as List<UserProfile>;
-      final sjas = futures[4] as List<SjaForm>;
-      final rounds = futures[5] as List<SafetyRound>;
-      final isCoordinator = profile?.isLeader == true || profile?.isAdmin == true;
+      final isCoordinator = access?.canApproveLeave == true;
       final scopedTickets = _scopeTicketsByRole(tickets, profile);
       final scopedAbsences = _scopeAbsencesByRole(absences, profile);
 
@@ -151,19 +161,19 @@ class _DashboardScreenState extends State<DashboardScreen>
       final pendingApprovals = isCoordinator
           ? scopedAbsences.where((a) => a.status == AbsenceStatus.ventende).length
           : 0;
-      final pendingUsers = (profile?.isAdmin == true)
+      final pendingUsers = (profile?.isSuperAdmin == true)
           ? profiles.where((u) => !u.isApproved && !u.isPartnerPortalUser).length
           : 0;
       final notices = <_DashboardNotice>[
-        if (pendingUsers > 0)
+        if (pendingUsers > 0 && profile?.isSuperAdmin == true)
           _DashboardNotice(
             title: '$pendingUsers nye brukere venter på godkjenning',
-            subtitle: 'Trykk for å åpne Brukergodkjenning',
+            subtitle: 'Trykk for å åpne godkjenning',
             icon: Icons.how_to_reg_outlined,
             color: DriftProTheme.primaryGreen,
             type: _NoticeType.pendingUsers,
           ),
-        if (pendingApprovals > 0)
+        if (pendingApprovals > 0 && access?.canApproveLeave == true)
           _DashboardNotice(
             title: '$pendingApprovals fravær/ferie-forespørsler venter',
             subtitle: 'Trykk for å åpne håndtering',
@@ -171,7 +181,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             color: DriftProTheme.warning,
             type: _NoticeType.pendingAbsence,
           ),
-        if (criticalTickets > 0)
+        if (criticalTickets > 0 && canAvvik)
           _DashboardNotice(
             title: '$criticalTickets kritiske avvik åpne',
             subtitle: 'Trykk for å åpne avvik',
@@ -188,15 +198,28 @@ class _DashboardScreenState extends State<DashboardScreen>
         _scopedAbsences = scopedAbsences;
         _onDutyEmployees = onDuty;
         _myAttendance = myAttendance;
-        _recentActivity = [...scopedTickets, ...scopedAbsences, ...sjas].take(5).toList();
+        _recentActivity = [
+          if (canAvvik) ...scopedTickets,
+          if (canFravaer) ...scopedAbsences,
+          if (access?.canHmsSja == true) ...sjas,
+        ].take(5).toList();
         _notices = notices;
         _stats = DashboardStats(
           todayAbsences: todayAbsences,
           openTickets: openTickets,
           criticalTickets: criticalTickets,
-          highRiskCount: risks.where((r) => r.isHighRisk).length,
-          pendingSja: sjas.where((s) => s.status == SjaStatus.utkast || s.status == SjaStatus.signert).length,
-          upcomingSafetyRounds: rounds.where((r) => r.overallStatus == 'planlagt').length,
+          highRiskCount: (access?.canHmsRisk ?? false)
+              ? risks.where((r) => r.isHighRisk).length
+              : 0,
+          pendingSja: (access?.canHmsSja ?? false)
+              ? sjas
+                  .where((s) =>
+                      s.status == SjaStatus.utkast || s.status == SjaStatus.signert)
+                  .length
+              : 0,
+          upcomingSafetyRounds: (access?.canHmsSafetyRound ?? false)
+              ? rounds.where((r) => r.overallStatus == 'planlagt').length
+              : 0,
           totalEmployees: profiles.length,
           absenceRate: profiles.isEmpty ? 0 : (todayAbsences / profiles.length * 100),
         );
@@ -310,24 +333,25 @@ class _DashboardScreenState extends State<DashboardScreen>
       '${_stats.todayAbsences}',
       'Fravær i dag',
       AppIcons.absence,
-      _kiosk.showAbsenceAggregate,
+      _kiosk.showAbsenceAggregate && (_access?.canFravaer ?? false),
     );
     add(
       '${_stats.openTickets}',
       'Åpne avvik',
       AppIcons.ticket,
-      _kiosk.showTicketStats,
+      _kiosk.showTicketStats && (_access?.canAvvik ?? false),
     );
     add(
       '${_onDutyEmployees.length}',
       'På jobb nå',
       Icons.work_outline,
-      _kiosk.showAttendanceSummary,
+      _kiosk.showAttendanceSummary && (_access?.canFravaer ?? false),
     );
     return parts;
   }
 
   Widget _buildAbsenceAggregateSection(bool isDark) {
+    if (_access?.canFravaer != true) return const SizedBox.shrink();
     final counts = _absenceTypeCountsToday();
     if (counts.isEmpty) {
       return Padding(
@@ -398,10 +422,126 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  List<Widget> _buildQuickActionButtons() {
+    final actions = <Widget>[];
+    void add(Widget w) {
+      if (actions.isNotEmpty) actions.add(const SizedBox(width: 12));
+      actions.add(w);
+    }
+
+    if (_access?.canSurveys == true) {
+      add(QuickActionButton(
+        icon: AppIcons.survey,
+        label: AppStrings.navSurveys,
+        color: Colors.purple,
+        onTap: () => _go(AccessKeys.surveys),
+      ));
+    }
+    if (_access?.canFravaer == true) {
+      add(QuickActionButton(
+        icon: AppIcons.absence,
+        label: 'Fravær',
+        color: DriftProTheme.absenceVacation,
+        onTap: () => _go(AccessKeys.fravaer),
+      ));
+    }
+    if (_access?.canAvvik == true) {
+      add(QuickActionButton(
+        icon: AppIcons.newTicket,
+        label: 'Nytt avvik',
+        color: DriftProTheme.warning,
+        onTap: () => _go(AccessKeys.avvik),
+      ));
+    }
+    if (_access?.canHmsSja == true) {
+      add(QuickActionButton(
+        icon: AppIcons.sja,
+        label: 'Ny SJA',
+        color: DriftProTheme.accentBlue,
+        onTap: () => _go(AccessKeys.hms),
+      ));
+    }
+    if (_access?.canHmsRisk == true) {
+      add(QuickActionButton(
+        icon: AppIcons.riskAssessment,
+        label: 'Risiko',
+        color: DriftProTheme.riskHigh,
+        onTap: () => _go(AccessKeys.hms),
+      ));
+    }
+    return actions;
+  }
+
+  List<Widget> _buildOverviewStatCards() {
+    final cards = <Widget>[];
+    if (_kiosk.showTicketStats && _access?.canAvvik == true) {
+      cards.add(StatCard(
+        title: 'Åpne avvik',
+        value: '${_stats.openTickets}',
+        icon: AppIcons.ticket,
+        color: DriftProTheme.warning,
+        subtitle: '${_stats.criticalTickets} kritiske',
+        isAlert: _stats.criticalTickets > 0,
+        onTap: () => _go(AccessKeys.avvik),
+      ));
+    }
+    if (_kiosk.showTicketStats && _access?.canFravaer == true) {
+      cards.add(StatCard(
+        title: 'Fravær i dag',
+        value: '${_stats.todayAbsences}',
+        icon: AppIcons.absence,
+        color: DriftProTheme.absenceVacation,
+        onTap: () => _go(AccessKeys.fravaer),
+      ));
+    }
+    if (_kiosk.showHmsHighlights && _access?.canHmsRisk == true) {
+      cards.add(StatCard(
+        title: 'Høy risiko',
+        value: '${_stats.highRiskCount}',
+        icon: AppIcons.riskAssessment,
+        color: DriftProTheme.riskHigh,
+        onTap: () => _go(AccessKeys.hms),
+      ));
+    }
+    if (_kiosk.showHmsHighlights && _access?.canHmsSja == true) {
+      cards.add(StatCard(
+        title: 'SJA (åpne)',
+        value: '${_stats.pendingSja}',
+        icon: AppIcons.sja,
+        color: DriftProTheme.accentBlue,
+        onTap: () => _go(AccessKeys.hms),
+      ));
+    }
+    if (_kiosk.showHmsHighlights && _access?.canHmsSafetyRound == true) {
+      cards.add(StatCard(
+        title: 'Vernerunder',
+        value: '${_stats.upcomingSafetyRounds}',
+        subtitle: 'planlagt',
+        icon: Icons.health_and_safety_outlined,
+        color: DriftProTheme.primaryGreen,
+        onTap: () => _go(AccessKeys.hms),
+      ));
+    }
+    if (_kiosk.showHmsHighlights && _access?.canFravaer == true) {
+      cards.add(StatCard(
+        title: 'Bemanningsdekning',
+        value:
+            '${_stats.totalEmployees > 0 ? (100 - _stats.absenceRate).clamp(0, 100).toStringAsFixed(0) : '—'}%',
+        subtitle: 'anslått tilstedeværelse',
+        icon: Icons.groups_outlined,
+        color: DriftProTheme.primaryGreen,
+        onTap: () => _go(AccessKeys.fravaer),
+      ));
+    }
+    return cards;
+  }
+
   List<Widget> _buildActivityAttendanceSlivers(bool isDark) {
-    final showActivity = _kiosk.showActivityFeed;
-    final showAttendanceList =
-        _kiosk.showAttendanceSummary && !_anonymizeSharedScreen;
+    final showActivity =
+        _kiosk.showActivityFeed && _recentActivity.isNotEmpty;
+    final showAttendanceList = _kiosk.showAttendanceSummary &&
+        !_anonymizeSharedScreen &&
+        (_access?.canFravaer == true || _access?.canEmployeesList == true);
 
     if (!showActivity && !showAttendanceList) {
       return const [];
@@ -563,7 +703,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                   actions: [
-                    if (_profile?.isAdmin == true)
+                    if (_access?.canKiosk == true)
                       IconButton(
                         tooltip: 'Infoskjerm',
                         onPressed: () async {
@@ -577,18 +717,20 @@ class _DashboardScreenState extends State<DashboardScreen>
                         icon: Icon(Icons.display_settings_outlined,
                             color: isDark ? Colors.white : Colors.black87),
                       ),
-                    IconButton(
-                      onPressed: _openNotificationsSheet,
-                      icon: Badge(
-                        isLabelVisible: _notices.isNotEmpty,
-                        backgroundColor: DriftProTheme.error,
-                        label: Text('${_notices.length}',
-                            style: const TextStyle(fontSize: 9)),
-                        child: Icon(AppIcons.notification,
-                            color: isDark ? Colors.white : Colors.black87),
+                    if (_access?.canNotifications == true)
+                      IconButton(
+                        onPressed: _openNotificationsSheet,
+                        icon: Badge(
+                          isLabelVisible: _notices.isNotEmpty,
+                          backgroundColor: DriftProTheme.error,
+                          label: Text('${_notices.length}',
+                              style: const TextStyle(fontSize: 9)),
+                          child: Icon(AppIcons.notification,
+                              color: isDark ? Colors.white : Colors.black87),
+                        ),
                       ),
-                    ),
-                    GestureDetector(
+                    if (_access?.canProfile != false)
+                      GestureDetector(
                       onTap: () => Navigator.of(context).push(
                           MaterialPageRoute(
                               builder: (_) => const ProfileScreen())),
@@ -700,7 +842,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   SliverToBoxAdapter(child: _buildAbsenceAggregateSection(isDark)),
                 ],
 
-                if (_kiosk.showQuickActions) ...[
+                if (_kiosk.showQuickActions && _buildQuickActionButtons().isNotEmpty) ...[
                   const SliverToBoxAdapter(child: SectionHeader(title: 'Hurtigvalg')),
                   SliverToBoxAdapter(
                     child: SizedBox(
@@ -708,43 +850,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                       child: ListView(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 16),
-                        children: [
-                          QuickActionButton(
-                              icon: AppIcons.survey,
-                              label: AppStrings.navSurveys,
-                              color: Colors.purple,
-                              onTap: () => widget.onNavigate?.call(1)),
-                          const SizedBox(width: 12),
-                          QuickActionButton(
-                              icon: AppIcons.absence,
-                              label: 'Fravær',
-                              color: DriftProTheme.absenceVacation,
-                              onTap: () => widget.onNavigate?.call(2)),
-                          const SizedBox(width: 12),
-                          QuickActionButton(
-                              icon: AppIcons.newTicket,
-                              label: 'Nytt avvik',
-                              color: DriftProTheme.warning,
-                              onTap: () => widget.onNavigate?.call(3)),
-                          const SizedBox(width: 12),
-                          QuickActionButton(
-                              icon: AppIcons.sja,
-                              label: 'Ny SJA',
-                              color: DriftProTheme.accentBlue,
-                              onTap: () => widget.onNavigate?.call(4)),
-                          const SizedBox(width: 12),
-                          QuickActionButton(
-                              icon: AppIcons.riskAssessment,
-                              label: 'Risiko',
-                              color: DriftProTheme.riskHigh,
-                              onTap: () => widget.onNavigate?.call(4)),
-                        ],
+                        children: _buildQuickActionButtons(),
                       ),
                     ),
                   ),
                 ],
 
-                if (_kiosk.showTicketStats || _kiosk.showHmsHighlights) ...[
+                if (_buildOverviewStatCards().isNotEmpty) ...[
                   const SliverToBoxAdapter(child: SectionHeader(title: 'Oversikt')),
                   SliverPadding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -756,64 +868,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         crossAxisSpacing: 12,
                         childAspectRatio: 1.35,
                       ),
-                      delegate: SliverChildListDelegate(
-                        [
-                          if (_kiosk.showTicketStats)
-                            StatCard(
-                              title: 'Åpne avvik',
-                              value: '${_stats.openTickets}',
-                              icon: AppIcons.ticket,
-                              color: DriftProTheme.warning,
-                              subtitle:
-                                  '${_stats.criticalTickets} kritiske',
-                              isAlert: _stats.criticalTickets > 0,
-                              onTap: () => widget.onNavigate?.call(3),
-                            ),
-                          if (_kiosk.showTicketStats)
-                            StatCard(
-                              title: 'Fravær i dag',
-                              value: '${_stats.todayAbsences}',
-                              icon: AppIcons.absence,
-                              color: DriftProTheme.absenceVacation,
-                              onTap: () => widget.onNavigate?.call(2),
-                            ),
-                          if (_kiosk.showHmsHighlights)
-                            StatCard(
-                              title: 'Høy risiko',
-                              value: '${_stats.highRiskCount}',
-                              icon: AppIcons.riskAssessment,
-                              color: DriftProTheme.riskHigh,
-                              onTap: () => widget.onNavigate?.call(4),
-                            ),
-                          if (_kiosk.showHmsHighlights)
-                            StatCard(
-                              title: 'SJA (åpne)',
-                              value: '${_stats.pendingSja}',
-                              icon: AppIcons.sja,
-                              color: DriftProTheme.accentBlue,
-                              onTap: () => widget.onNavigate?.call(4),
-                            ),
-                          if (_kiosk.showHmsHighlights)
-                            StatCard(
-                              title: 'Vernerunder',
-                              value: '${_stats.upcomingSafetyRounds}',
-                              subtitle: 'planlagt',
-                              icon: Icons.health_and_safety_outlined,
-                              color: DriftProTheme.primaryGreen,
-                              onTap: () => widget.onNavigate?.call(4),
-                            ),
-                          if (_kiosk.showHmsHighlights)
-                            StatCard(
-                              title: 'Bemanningsdekning',
-                              value:
-                                  '${_stats.totalEmployees > 0 ? (100 - _stats.absenceRate).clamp(0, 100).toStringAsFixed(0) : '—'}%',
-                              subtitle: 'anslått tilstedeværelse',
-                              icon: Icons.groups_outlined,
-                              color: DriftProTheme.primaryGreen,
-                              onTap: () => widget.onNavigate?.call(2),
-                            ),
-                        ],
-                      ),
+                      delegate: SliverChildListDelegate(_buildOverviewStatCards()),
                     ),
                   ),
                 ],
@@ -1046,19 +1101,21 @@ class _DashboardScreenState extends State<DashboardScreen>
   void _handleNoticeTap(_NoticeType type) {
     switch (type) {
       case _NoticeType.pendingUsers:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const UserManagementScreen()),
-        );
+        if (_profile?.isSuperAdmin == true) {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const EmployeeHubScreen()),
+          );
+        }
         break;
       case _NoticeType.pendingAbsence:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AbsenceScreen()),
-        );
+        if (_access?.canApproveLeave == true) {
+          _go(AccessKeys.fravaer);
+        }
         break;
       case _NoticeType.criticalTickets:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const TicketsScreen()),
-        );
+        if (_access?.canAvvik == true) {
+          _go(AccessKeys.avvik);
+        }
         break;
     }
   }

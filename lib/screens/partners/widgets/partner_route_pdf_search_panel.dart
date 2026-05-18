@@ -1,0 +1,228 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/partner/route_pdf_text_service.dart';
+import '../../../core/services/supabase_service.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../models/partner/partner_links.dart';
+
+class _PdfSearchHit {
+  final PartnerRouteShare share;
+  final int score;
+  final String snippet;
+
+  const _PdfSearchHit({
+    required this.share,
+    required this.score,
+    required this.snippet,
+  });
+}
+
+/// Smart søk i alle indekserte rute-PDF-er.
+class PartnerRoutePdfSearchPanel extends StatefulWidget {
+  final List<FleetPartnerVehicleRow> fleet;
+  final TextEditingController? searchController;
+
+  const PartnerRoutePdfSearchPanel({
+    super.key,
+    this.fleet = const [],
+    this.searchController,
+  });
+
+  @override
+  State<PartnerRoutePdfSearchPanel> createState() => _PartnerRoutePdfSearchPanelState();
+}
+
+class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel> {
+  late final TextEditingController _ctrl;
+  late final bool _ownsCtrl;
+  Timer? _debounce;
+  bool _searching = false;
+  List<_PdfSearchHit> _hits = [];
+  List<PartnerRouteShare> _allShares = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _ownsCtrl = widget.searchController == null;
+    _ctrl = widget.searchController ?? TextEditingController();
+    _ctrl.addListener(_onQueryChanged);
+    _preload();
+  }
+
+  Future<void> _preload() async {
+    final cid = await SupabaseService.getCurrentCompanyId();
+    if (cid == null) return;
+    final shares = await PartnerService.fetchRouteSharesForCompany(cid, limit: 600);
+    if (mounted) setState(() => _allShares = shares);
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _ctrl.removeListener(_onQueryChanged);
+    if (_ownsCtrl) _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _onQueryChanged() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), _runSearch);
+  }
+
+  String? _maviForShare(PartnerRouteShare share) {
+    for (final row in widget.fleet) {
+      if (row.vehicle.id == share.partnerVehicleId) {
+        return MaviUnitCodes.normalize(row.vehicle.unitCode);
+      }
+    }
+    return null;
+  }
+
+  Future<void> _runSearch() async {
+    final q = _ctrl.text.trim();
+    if (q.length < 2) {
+      setState(() => _hits = []);
+      return;
+    }
+    setState(() => _searching = true);
+    try {
+      final cid = await SupabaseService.getCurrentCompanyId();
+      if (cid == null) return;
+
+      var pool = await PartnerService.searchRoutePdfText(cid, q, limit: 80);
+      if (pool.isEmpty) {
+        pool = _allShares;
+      }
+
+      final hits = <_PdfSearchHit>[];
+      for (final share in pool) {
+        final text = share.pdfSearchText ?? '';
+        final score = RoutePdfTextService.scoreMatch(
+          query: q,
+          pdfText: text,
+          title: share.title,
+          fileName: share.pdfStoragePath,
+          maviCode: _maviForShare(share),
+        );
+        if (score < 8 && text.isNotEmpty && !text.toLowerCase().contains(q.toLowerCase())) {
+          continue;
+        }
+        if (score == 0 && text.isEmpty) continue;
+        hits.add(
+          _PdfSearchHit(
+            share: share,
+            score: score,
+            snippet: RoutePdfTextService.snippet(text, q),
+          ),
+        );
+      }
+      hits.sort((a, b) => b.score.compareTo(a.score));
+      if (mounted) setState(() => _hits = hits.take(25).toList());
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  Future<void> _openPdf(PartnerRouteShare share) async {
+    try {
+      final url = await PartnerService.getRoutePdfSignedUrl(share.pdfStoragePath);
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke åpne PDF: $e')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _ctrl,
+          decoration: InputDecoration(
+            hintText: 'Søk i alle rute-PDF-er (adresse, kunde, MAVI, sted…)',
+            prefixIcon: const Icon(Icons.manage_search, color: DriftProTheme.primaryGreen),
+            suffixIcon: _searching
+                ? const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : _ctrl.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _ctrl.clear();
+                          setState(() => _hits = []);
+                        },
+                      )
+                    : null,
+            border: const OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Jo mer du skriver, desto mer presise forslag. Systemet leser og lagrer PDF-tekst ved fordeling.',
+          style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+        ),
+        const SizedBox(height: 10),
+        if (_ctrl.text.trim().length >= 2 && !_searching && _hits.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('Ingen treff. Prøv gate, postnr, kundenavn eller MAVI.'),
+          ),
+        ..._hits.map((hit) {
+          final mavi = _maviForShare(hit.share);
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              leading: Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  const Icon(Icons.picture_as_pdf, color: Colors.red, size: 32),
+                  if (hit.score >= 50)
+                    const Icon(Icons.verified, color: DriftProTheme.primaryGreen, size: 14),
+                ],
+              ),
+              title: Text(
+                hit.share.title ?? 'Rute-PDF',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (mavi != null)
+                    Text(mavi, style: const TextStyle(color: DriftProTheme.primaryGreen, fontSize: 12)),
+                  const SizedBox(height: 4),
+                  Text(hit.snippet, maxLines: 3, style: const TextStyle(fontSize: 11)),
+                  Text(
+                    'Treff-score ${hit.score}% · ${hit.share.dispatchStatus == 'staged' ? 'Ikke sendt' : 'Sendt'}',
+                    style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+              trailing: IconButton(
+                icon: const Icon(Icons.open_in_new),
+                onPressed: () => _openPdf(hit.share),
+              ),
+              onTap: () => _openPdf(hit.share),
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}

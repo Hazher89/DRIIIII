@@ -9,6 +9,9 @@ import '../../core/services/partner/partner_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
+import 'widgets/partner_assigned_routes_tab.dart';
+import 'widgets/partner_fri_tab.dart';
+import 'widgets/partner_overview_tab.dart';
 
 class PartnerDetailScreen extends StatefulWidget {
   final Partner partner;
@@ -27,7 +30,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
   void initState() {
     super.initState();
     _p = widget.partner;
-    _tabs = TabController(length: 5, vsync: this);
+    _tabs = TabController(length: 7, vsync: this);
     _reload();
   }
 
@@ -48,346 +51,77 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
     }
   }
 
+  Future<void> _confirmDelete() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Slett samarbeidspartner?'),
+        content: Text(
+          '«${_p.name}» og alle tilknyttede data (biler, ruter, dokumenter) '
+          'fjernes permanent fra systemet.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Slett'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await PartnerService.deletePartner(_p.id);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Partner slettet')),
+      );
+      Navigator.pop(context, true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(_p.name),
+        actions: [
+          IconButton(
+            tooltip: 'Slett partner',
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            onPressed: _confirmDelete,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabs,
           isScrollable: true,
           tabs: const [
             Tab(text: 'Oversikt'),
+            Tab(text: 'Tildelte ruter'),
             Tab(text: 'Dokumenter'),
             Tab(text: 'Møte & revisjon'),
             Tab(text: 'Rute-PDF'),
             Tab(text: 'Oppsummering'),
+            Tab(text: 'Fri'),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabs,
         children: [
-          _OverviewTab(partner: _p, vehicles: _vehicles, onSaved: _reload),
+          PartnerOverviewTab(partner: _p, vehicles: _vehicles, onSaved: _reload),
+          PartnerAssignedRoutesTab(partner: _p),
           _DocumentsTab(partner: _p, onChanged: _reload),
           _MeetingAuditTab(partner: _p, onChanged: _reload),
           _RoutesTab(partner: _p, onChanged: _reload),
           _SummaryTab(partner: _p, onChanged: _reload),
+          PartnerFriTab(partner: _p, vehicles: _vehicles),
         ],
       ),
     );
   }
 }
 
-class _OverviewTab extends StatefulWidget {
-  final Partner partner;
-  final List<PartnerVehicle> vehicles;
-  final Future<void> Function() onSaved;
-  const _OverviewTab({required this.partner, required this.vehicles, required this.onSaved});
-
-  @override
-  State<_OverviewTab> createState() => _OverviewTabState();
-}
-
-class _OverviewTabState extends State<_OverviewTab> {
-  late final TextEditingController _owner;
-  late final TextEditingController _phone;
-  late final TextEditingController _email;
-  late final TextEditingController _address;
-  late final TextEditingController _postal;
-  late final TextEditingController _city;
-  late final TextEditingController _veh;
-  late final TextEditingController _payload;
-  late final TextEditingController _notes;
-  bool? _eu;
-  final List<String> _unitCodes = [];
-  final List<TextEditingController> _regCtrls = [];
-  final List<String> _resourceIdOptions =
-      List.generate(9999, (i) => 'NO_O_M${(i + 1).toString().padLeft(4, '0')}');
-
-  @override
-  void initState() {
-    super.initState();
-    final p = widget.partner;
-    _owner = TextEditingController(text: p.ownerName ?? '');
-    _phone = TextEditingController(text: p.phone ?? '');
-    _email = TextEditingController(text: p.email ?? '');
-    _address = TextEditingController(text: p.address ?? '');
-    _postal = TextEditingController(text: p.postalCode ?? '');
-    _city = TextEditingController(text: p.city ?? '');
-    _veh = TextEditingController(text: '${p.vehicleCountRegistered}');
-    _payload = TextEditingController(text: p.vehicleMaxPayloadKg?.toString() ?? '');
-    _notes = TextEditingController(text: p.notes ?? '');
-    _eu = p.euApproved;
-    _resetVehicleControllers();
-  }
-
-  @override
-  void didUpdateWidget(covariant _OverviewTab oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.partner.id != widget.partner.id) return;
-    final p = widget.partner;
-    _owner.text = p.ownerName ?? '';
-    _phone.text = p.phone ?? '';
-    _email.text = p.email ?? '';
-    _address.text = p.address ?? '';
-    _postal.text = p.postalCode ?? '';
-    _city.text = p.city ?? '';
-    _veh.text = '${p.vehicleCountRegistered}';
-    _payload.text = p.vehicleMaxPayloadKg?.toString() ?? '';
-    _notes.text = p.notes ?? '';
-    _eu = p.euApproved;
-    _resetVehicleControllers();
-  }
-
-  @override
-  void dispose() {
-    _owner.dispose();
-    _phone.dispose();
-    _email.dispose();
-    _address.dispose();
-    _postal.dispose();
-    _city.dispose();
-    _veh.dispose();
-    _payload.dispose();
-    _notes.dispose();
-    for (final c in _regCtrls) {
-      c.dispose();
-    }
-    super.dispose();
-  }
-
-  void _resetVehicleControllers() {
-    for (final c in _regCtrls) {
-      c.dispose();
-    }
-    _unitCodes.clear();
-    _regCtrls.clear();
-    if (widget.vehicles.isEmpty) {
-      _unitCodes.add('NO_O_M0001');
-      _regCtrls.add(TextEditingController());
-      return;
-    }
-    for (final v in widget.vehicles) {
-      _unitCodes.add(_toResourceId(v.unitCode));
-      _regCtrls.add(TextEditingController(text: v.registrationNumber));
-    }
-  }
-
-  String _toResourceId(String raw) {
-    final upper = raw.toUpperCase();
-    final has = RegExp(r'NO_O_M0*(\d{1,5})').firstMatch(upper);
-    if (has != null) {
-      final n = int.tryParse(has.group(1)!);
-      if (n != null) return 'NO_O_M${n.toString().padLeft(4, '0')}';
-    }
-    final simple = RegExp(r'\bM0*(\d{1,5})\b').firstMatch(upper);
-    if (simple != null) {
-      final n = int.tryParse(simple.group(1)!);
-      if (n != null) return 'NO_O_M${n.toString().padLeft(4, '0')}';
-    }
-    return upper;
-  }
-
-  Future<void> _save() async {
-    final path = Partner(
-      id: widget.partner.id,
-      companyId: widget.partner.companyId,
-      orgNumber: widget.partner.orgNumber,
-      name: widget.partner.name,
-      tradeName: widget.partner.tradeName,
-      ownerName: _owner.text.trim().isEmpty ? null : _owner.text.trim(),
-      phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
-      email: _email.text.trim().isEmpty ? null : _email.text.trim(),
-      address: _address.text.trim().isEmpty ? null : _address.text.trim(),
-      postalCode: _postal.text.trim().isEmpty ? null : _postal.text.trim(),
-      city: _city.text.trim().isEmpty ? null : _city.text.trim(),
-      country: widget.partner.country,
-      notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-      vehicleCountRegistered: int.tryParse(_veh.text) ?? 0,
-      vehicleMaxPayloadKg: int.tryParse(_payload.text),
-      euApproved: _eu,
-      brregSnapshot: widget.partner.brregSnapshot,
-      lastMeetingAt: widget.partner.lastMeetingAt,
-      nextMeetingAt: widget.partner.nextMeetingAt,
-      lastAuditAt: widget.partner.lastAuditAt,
-      nextAuditAt: widget.partner.nextAuditAt,
-      createdAt: widget.partner.createdAt,
-    );
-    await PartnerService.updatePartner(widget.partner.id, path);
-    final vehicles = <PartnerVehicle>[];
-    for (int i = 0; i < _unitCodes.length; i++) {
-      final unit = _unitCodes[i].trim().toUpperCase();
-      final reg = _regCtrls[i].text.trim().toUpperCase();
-      if (unit.isEmpty || reg.isEmpty) continue;
-      vehicles.add(
-        PartnerVehicle(
-          id: '',
-          partnerId: widget.partner.id,
-          companyId: widget.partner.companyId,
-          unitCode: unit,
-          registrationNumber: reg,
-          createdAt: DateTime.now(),
-        ),
-      );
-    }
-    await PartnerService.replaceVehicles(
-      partnerId: widget.partner.id,
-      companyId: widget.partner.companyId,
-      vehicles: vehicles,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lagret')));
-      await widget.onSaved();
-      setState(() {});
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = widget.partner;
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        Text('Org.nr ${p.orgNumber ?? "—"}', style: const TextStyle(color: Colors.grey)),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _owner,
-          decoration: const InputDecoration(labelText: 'Eier / kontakt', border: OutlineInputBorder()),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _phone,
-          decoration: const InputDecoration(labelText: 'Telefon', border: OutlineInputBorder()),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _email,
-          decoration: const InputDecoration(labelText: 'E-post', border: OutlineInputBorder()),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _address,
-          decoration: const InputDecoration(labelText: 'Adresse', border: OutlineInputBorder()),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _postal,
-                decoration: const InputDecoration(labelText: 'Postnr', border: OutlineInputBorder()),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _city,
-                decoration: const InputDecoration(labelText: 'Sted', border: OutlineInputBorder()),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _veh,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Ant. kjøretøy', border: OutlineInputBorder()),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _payload,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Nyttelast kg', border: OutlineInputBorder()),
-              ),
-            ),
-          ],
-        ),
-        SwitchListTile(
-          title: const Text('EU-godkjent (oppgitt)'),
-          value: _eu ?? false,
-          onChanged: (v) => setState(() => _eu = v),
-        ),
-        TextField(
-          controller: _notes,
-          maxLines: 4,
-          decoration: const InputDecoration(labelText: 'Notater', border: OutlineInputBorder()),
-        ),
-        const SizedBox(height: 16),
-        const Text('Bilnavn (NO_O_M0001+) og reg.nr', style: TextStyle(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        ...List.generate(_unitCodes.length, (i) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _unitCodes[i],
-                    items: _resourceIdOptions
-                        .map((v) => DropdownMenuItem(value: v, child: Text(v)))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() => _unitCodes[i] = v);
-                    },
-                    decoration: const InputDecoration(
-                      labelText: 'Bilnavn (Resource ID)',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _regCtrls[i],
-                    decoration: const InputDecoration(labelText: 'Reg.nr', border: OutlineInputBorder()),
-                  ),
-                ),
-                if (_unitCodes.length > 1)
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _regCtrls[i].dispose();
-                        _unitCodes.removeAt(i);
-                        _regCtrls.removeAt(i);
-                      });
-                    },
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  ),
-              ],
-            ),
-          );
-        }),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: () {
-              setState(() {
-                final next = _unitCodes.length + 1;
-                _unitCodes.add('NO_O_M${next.toString().padLeft(4, '0')}');
-                _regCtrls.add(TextEditingController());
-              });
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('Legg til bil'),
-          ),
-        ),
-        const SizedBox(height: 20),
-        FilledButton(
-          onPressed: _save,
-          style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-          child: const Text('Lagre endringer'),
-        ),
-      ],
-    );
-  }
-}
 
 class _DocumentsTab extends StatefulWidget {
   final Partner partner;
@@ -560,6 +294,11 @@ class _MeetingAuditTabState extends State<_MeetingAuditTab> {
       vehicleCountRegistered: p.vehicleCountRegistered,
       vehicleMaxPayloadKg: p.vehicleMaxPayloadKg,
       euApproved: p.euApproved,
+      hasTransportLicense: p.hasTransportLicense,
+      transportLicenseCount: p.transportLicenseCount,
+      employeeCount: p.employeeCount,
+      auditStatus: p.auditStatus,
+      auditPlate: p.auditPlate,
       brregSnapshot: p.brregSnapshot,
       lastMeetingAt: p.lastMeetingAt,
       nextMeetingAt: p.nextMeetingAt,
@@ -641,6 +380,11 @@ class _MeetingAuditTabState extends State<_MeetingAuditTab> {
           vehicleCountRegistered: widget.partner.vehicleCountRegistered,
           vehicleMaxPayloadKg: widget.partner.vehicleMaxPayloadKg,
           euApproved: widget.partner.euApproved,
+          hasTransportLicense: widget.partner.hasTransportLicense,
+          transportLicenseCount: widget.partner.transportLicenseCount,
+          employeeCount: widget.partner.employeeCount,
+          auditStatus: widget.partner.auditStatus,
+          auditPlate: widget.partner.auditPlate,
           brregSnapshot: widget.partner.brregSnapshot,
           lastMeetingAt: widget.partner.lastMeetingAt,
           nextMeetingAt: when,
@@ -654,6 +398,40 @@ class _MeetingAuditTabState extends State<_MeetingAuditTab> {
     }
   }
 
+  Future<void> _notifyMeetingSms() async {
+    final p = widget.partner;
+    if (p.phone == null || p.phone!.trim().length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Legg inn telefonnummer på partneren først')),
+      );
+      return;
+    }
+    final when = p.nextMeetingAt;
+    final msg = when != null
+        ? 'Hei ${p.name}. Påminnelse: møte ${when.day}.${when.month}.${when.year} kl ${when.hour}:${when.minute.toString().padLeft(2, "0")}. Mvh MAVI'
+        : 'Hei ${p.name}. Påminnelse om planlagt møte med MAVI. Ta kontakt for tidspunkt. Mvh MAVI';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send SMS-varsel om møte?'),
+        content: Text('Til ${p.phone}:\n\n$msg'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send SMS')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final n = await PartnerService.notifyMeetingSms(partnerId: p.id, message: msg);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(n > 0 ? 'SMS lagt i kø' : 'Kunne ikke sende SMS — sjekk telefon og SMS-oppsett'),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = widget.partner;
@@ -662,14 +440,30 @@ class _MeetingAuditTabState extends State<_MeetingAuditTab> {
       children: [
         Card(
           child: ListTile(
-            title: const Text('Revisjon / audit (datoer)'),
+            title: const Text('Revisjon / audit'),
             subtitle: Text(
+              'Status: ${p.auditStatusLabel}'
+              '${p.auditPlate != null ? " · ${p.auditPlate}" : ""}\n'
               'Siste: ${p.lastAuditAt != null ? _d(p.lastAuditAt!) : "—"} | Neste: ${p.nextAuditAt != null ? _d(p.nextAuditAt!) : "—"}',
             ),
             trailing: const Icon(Icons.edit),
             onTap: _pickAuditDates,
           ),
         ),
+        if (p.nextMeetingAt != null)
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.sms_outlined, color: DriftProTheme.primaryGreen),
+              title: const Text('Varsle om neste møte (SMS)'),
+              subtitle: Text(
+                'Neste møte: ${p.nextMeetingAt!.day}.${p.nextMeetingAt!.month}.${p.nextMeetingAt!.year}',
+              ),
+              trailing: FilledButton(
+                onPressed: _notifyMeetingSms,
+                child: const Text('Send'),
+              ),
+            ),
+          ),
         const SizedBox(height: 12),
         Row(
           children: [

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/services/partner/partner_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/partner/fleet_shift.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
 import '../../models/user_profile.dart';
@@ -81,7 +83,8 @@ class _PartnerShellState extends State<PartnerShell> {
       _PartnerOverviewPage(partner: p),
       _PartnerDocsPage(partner: p),
       _PartnerSummaryPage(partner: p),
-      _PartnerRoutesPage(partner: p),
+      _PartnerRoutesPage(partner: p, profile: widget.profile),
+      _PartnerFriPage(partner: p, profile: widget.profile),
       _PartnerProfilePage(profile: widget.profile),
     ];
 
@@ -99,6 +102,11 @@ class _PartnerShellState extends State<PartnerShell> {
             label: 'Oppsumm.',
           ),
           NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Ruter'),
+          NavigationDestination(
+            icon: Icon(Icons.beach_access_outlined),
+            selectedIcon: Icon(Icons.beach_access),
+            label: 'Fri',
+          ),
           NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
         ],
       ),
@@ -305,24 +313,71 @@ class _PartnerSummaryPageState extends State<_PartnerSummaryPage> {
 
 class _PartnerRoutesPage extends StatefulWidget {
   final Partner partner;
-  const _PartnerRoutesPage({required this.partner});
+  final UserProfile profile;
+  const _PartnerRoutesPage({required this.partner, required this.profile});
 
   @override
   State<_PartnerRoutesPage> createState() => _PartnerRoutesPageState();
 }
 
-class _PartnerRoutesPageState extends State<_PartnerRoutesPage> {
-  List<PartnerRouteShare> _routes = [];
+class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTickerProviderStateMixin {
+  late TabController _tab;
+  List<PartnerRouteShare> _active = [];
+  List<PartnerRouteShare> _history = [];
+  Map<String, FleetShiftDefinition> _shifts = {};
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
+    _tab = TabController(length: 2, vsync: this);
     _load();
   }
 
+  @override
+  void dispose() {
+    _tab.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
-    final r = await PartnerService.fetchRouteShares(widget.partner.id);
-    if (mounted) setState(() => _routes = r);
+    setState(() => _loading = true);
+    final vid = widget.profile.partnerVehicleId;
+    final all = await PartnerService.fetchRouteShares(
+      widget.partner.id,
+      partnerVehicleId: vid,
+      sentOnly: true,
+    );
+    final cid = widget.partner.companyId;
+    final shifts = await PartnerService.fetchFleetShifts(cid);
+    final shiftMap = {for (final s in shifts) s.id: s};
+    final now = DateTime.now();
+    final active = all.where((r) {
+      if (r.ackStatus == 'pending') return true;
+      final d = DateTime(r.shareDate.year, r.shareDate.month, r.shareDate.day);
+      return !d.isBefore(DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1)));
+    }).toList();
+    final history = all.where((r) => !active.contains(r)).toList();
+    if (mounted) {
+      setState(() {
+        _active = active;
+        _history = history;
+        _shifts = shiftMap;
+        _loading = false;
+      });
+    }
+  }
+
+  String _shiftLabel(PartnerRouteShare r) {
+    final id = r.shiftId;
+    if (id == null) return '';
+    return _shifts[id]?.name ?? '';
+  }
+
+  String _startLabel(PartnerRouteShare r) {
+    if (r.routeStartAt == null) return '';
+    final t = r.routeStartAt!.toLocal();
+    return 'Start ${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
   }
 
   Future<void> _openPdf(PartnerRouteShare r) async {
@@ -386,57 +441,231 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> {
     }
   }
 
+  Widget _routeTile(PartnerRouteShare r, {bool showActions = true}) {
+    final shift = _shiftLabel(r);
+    final start = _startLabel(r);
+    return ListTile(
+      tileColor: Theme.of(context).brightness == Brightness.dark ? DriftProTheme.cardDark : Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      leading: const Icon(Icons.picture_as_pdf_outlined),
+      title: Text(r.title ?? 'Rute'),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(DateFormat('d. MMM yyyy', 'nb').format(r.shareDate)),
+          if (shift.isNotEmpty) Text('Skift: $shift', style: const TextStyle(fontWeight: FontWeight.w600)),
+          if (start.isNotEmpty) Text(start),
+          const SizedBox(height: 4),
+          Text(
+            _ackLabel(r),
+            style: TextStyle(fontWeight: FontWeight.w700, color: _ackColor(r)),
+          ),
+        ],
+      ),
+      onTap: () => _openPdf(r),
+      trailing: showActions && r.ackStatus == 'pending'
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Aksepter — skal kjøre',
+                  icon: const Icon(Icons.check_circle_outline, color: Colors.green),
+                  onPressed: () => _setAck(r, true),
+                ),
+                IconButton(
+                  tooltip: 'Avvis',
+                  icon: const Icon(Icons.cancel_outlined, color: Colors.red),
+                  onPressed: () => _setAck(r, false),
+                ),
+              ],
+            )
+          : IconButton(icon: const Icon(Icons.open_in_new), onPressed: () => _openPdf(r)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Rute-PDF')),
-      body: _routes.isEmpty
-          ? const Center(child: Text('Ingen rutedeling registrert.'))
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: _routes.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (ctx, i) {
-                final r = _routes[i];
-                return ListTile(
-                  tileColor: Theme.of(context).brightness == Brightness.dark ? DriftProTheme.cardDark : Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  leading: const Icon(Icons.picture_as_pdf_outlined),
-                  title: Text(r.title ?? 'Rute'),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('${r.shareDate.toString().split(' ').first}${r.isDailyShare ? ' · daglig rutine' : ''}'),
-                      const SizedBox(height: 4),
-                      Text(
-                        _ackLabel(r),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: _ackColor(r),
+      appBar: AppBar(
+        title: const Text('Mine ruter'),
+        bottom: TabBar(
+          controller: _tab,
+          tabs: [
+            Tab(text: 'Aktive (${_active.length})'),
+            Tab(text: 'Historikk (${_history.length})'),
+          ],
+        ),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : TabBarView(
+              controller: _tab,
+              children: [
+                _active.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Ingen nye ruter. Du får SMS når noe er tildelt.',
+                          textAlign: TextAlign.center,
                         ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _active.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, i) => _routeTile(_active[i]),
+                      ),
+                _history.isEmpty
+                    ? const Center(child: Text('Ingen tidligere ruter.'))
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _history.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (_, i) => _routeTile(_history[i], showActions: false),
+                      ),
+              ],
+            ),
+    );
+  }
+}
+
+class _PartnerFriPage extends StatefulWidget {
+  final Partner partner;
+  final UserProfile profile;
+  const _PartnerFriPage({required this.partner, required this.profile});
+
+  @override
+  State<_PartnerFriPage> createState() => _PartnerFriPageState();
+}
+
+class _PartnerFriPageState extends State<_PartnerFriPage> {
+  List<PartnerFriRequest> _mine = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final all = await PartnerService.fetchFriRequests(partnerId: widget.partner.id);
+    final vid = widget.profile.partnerVehicleId;
+    if (mounted) {
+      setState(() {
+        _mine = vid == null ? all : all.where((r) => r.partnerVehicleId == vid).toList();
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _requestFri() async {
+    final reasonCtrl = TextEditingController();
+    var date = DateTime.now().add(const Duration(days: 1));
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Søk fri'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('Dato'),
+                subtitle: Text(DateFormat('d. MMM yyyy', 'nb').format(date)),
+                onTap: () async {
+                  final d = await showDatePicker(
+                    context: ctx,
+                    initialDate: date,
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (d != null) setLocal(() => date = d);
+                },
+              ),
+              TextField(
+                controller: reasonCtrl,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Begrunnelse',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) return;
+    final cid = widget.partner.companyId;
+    await PartnerService.createFriRequest(
+      companyId: cid,
+      partnerId: widget.partner.id,
+      partnerVehicleId: widget.profile.partnerVehicleId,
+      requestDate: date,
+      reason: reasonCtrl.text.trim().isEmpty ? null : reasonCtrl.text.trim(),
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fri-forespørsel sendt. Venter godkjenning fra MAVI.')),
+      );
+    }
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Fri'),
+        actions: [
+          IconButton(
+            tooltip: 'Søk fri',
+            onPressed: _requestFri,
+            icon: const Icon(Icons.add),
+          ),
+        ],
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _mine.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('Ingen fri-forespørsler ennå.'),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _requestFri,
+                        icon: const Icon(Icons.beach_access),
+                        label: const Text('Søk fri'),
                       ),
                     ],
                   ),
-                  onTap: () => _openPdf(r),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (v) async {
-                      if (v == 'open') {
-                        await _openPdf(r);
-                      } else if (v == 'accept') {
-                        await _setAck(r, true);
-                      } else if (v == 'reject') {
-                        await _setAck(r, false);
-                      }
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(value: 'open', child: Text('Åpne PDF')),
-                      PopupMenuItem(value: 'accept', child: Text('Aksepter')),
-                      PopupMenuItem(value: 'reject', child: Text('Ikke aksepter')),
-                    ],
-                  ),
-                );
-              },
-            ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _mine.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final r = _mine[i];
+                    Color c = Colors.orange;
+                    if (r.status == 'approved') c = Colors.green;
+                    if (r.status == 'rejected') c = Colors.red;
+                    return ListTile(
+                      tileColor: Theme.of(context).brightness == Brightness.dark
+                          ? DriftProTheme.cardDark
+                          : Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      title: Text(DateFormat('d. MMM yyyy', 'nb').format(r.requestDate)),
+                      subtitle: Text(r.reason ?? '—'),
+                      trailing: Text(r.status, style: TextStyle(color: c, fontWeight: FontWeight.w700)),
+                    );
+                  },
+                ),
     );
   }
 }

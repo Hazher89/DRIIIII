@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:ui';
+import '../../core/config/app_origin.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_strings.dart';
 
@@ -41,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       // Supabase Google Login for Web
       await Supabase.instance.client.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: 'https://driftpro.no', 
+        redirectTo: appAuthRedirectOrigin,
       );
     } catch (e) {
       if (mounted) {

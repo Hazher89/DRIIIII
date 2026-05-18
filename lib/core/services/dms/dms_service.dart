@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../models/dms/dms_folder.dart';
 import '../../../models/dms/dms_file.dart';
 import '../../../models/dms/dms_permission.dart';
+import '../../utils/file_type_resolver.dart';
 
 class DmsService {
   static SupabaseClient get client => Supabase.instance.client;
@@ -21,22 +22,111 @@ class DmsService {
     return data.map((e) => DmsFolder.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  static Future<DmsFolder?> fetchFolder(String id) async {
+    final row = await client.from('dms_folders').select().eq('id', id).maybeSingle();
+    if (row == null) return null;
+    return DmsFolder.fromJson(row);
+  }
+
   static Future<DmsFolder> createFolder({
     required String name,
     String? parentId,
     required String companyId,
+    String? description,
+    String? passwordHash,
+    bool isPrivate = false,
   }) async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('Ingen innlogget bruker funnet.');
-    
-    final data = await client.from('dms_folders').insert({
+
+    final payload = <String, dynamic>{
       'name': name,
       'parent_id': parentId,
       'company_id': companyId,
       'created_by': user.id,
-    }).select().single();
-    
+      'is_private': isPrivate,
+    };
+    if (description != null && description.isNotEmpty) {
+      payload['description'] = description;
+    }
+    if (passwordHash != null && passwordHash.isNotEmpty) {
+      payload['password_hash'] = passwordHash;
+    }
+
+    Map<String, dynamic> data;
+    try {
+      data = await client.from('dms_folders').insert(payload).select().single();
+    } catch (e) {
+      payload.remove('password_hash');
+      payload.remove('is_private');
+      payload.remove('description');
+      data = await client.from('dms_folders').insert({
+        'name': name,
+        'parent_id': parentId,
+        'company_id': companyId,
+        'created_by': user.id,
+      }).select().single();
+    }
+
     return DmsFolder.fromJson(data);
+  }
+
+  /// Opprett mappe + deling til ansatte/avdelinger i én operasjon.
+  static Future<DmsFolder> createFolderWithSharing({
+    required String name,
+    String? parentId,
+    required String companyId,
+    String? description,
+    String? passwordHash,
+    bool isPrivate = false,
+    List<String> shareUserIds = const [],
+    List<String> shareDepartmentIds = const [],
+  }) async {
+    final folder = await createFolder(
+      name: name,
+      parentId: parentId,
+      companyId: companyId,
+      description: description,
+      passwordHash: passwordHash,
+      isPrivate: isPrivate,
+    );
+    for (final uid in shareUserIds) {
+      await grantPermission(
+        folderId: folder.id,
+        userId: uid,
+        type: DmsPermissionType.read,
+      );
+    }
+    for (final deptId in shareDepartmentIds) {
+      await grantPermissionToDepartment(
+        folderId: folder.id,
+        departmentId: deptId,
+        companyId: companyId,
+      );
+    }
+    return folder;
+  }
+
+  static Future<void> updateFolder(
+    String id, {
+    String? name,
+    String? description,
+    String? passwordHash,
+    bool clearPassword = false,
+    bool? isPrivate,
+  }) async {
+    final patch = <String, dynamic>{
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    };
+    if (name != null) patch['name'] = name;
+    if (description != null) patch['description'] = description;
+    if (clearPassword) {
+      patch['password_hash'] = null;
+    } else if (passwordHash != null) {
+      patch['password_hash'] = passwordHash;
+    }
+    if (isPrivate != null) patch['is_private'] = isPrivate;
+    await client.from('dms_folders').update(patch).eq('id', id);
   }
 
   static Future<void> renameFolder(String id, String newName) async {
@@ -71,7 +161,8 @@ class DmsService {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('Ingen innlogget bruker funnet.');
     
-    final extension = name.split('.').last;
+    final extension = FileTypeResolver.extensionFromName(name) ??
+        FileTypeResolver.extensionFromStoragePath(storagePath);
 
     final data = await client.from('dms_files').insert({
       'company_id': companyId,
@@ -109,6 +200,27 @@ class DmsService {
 
   static Future<void> renameFile(String id, String newName) async {
     await client.from('dms_files').update({'name': newName}).eq('id', id);
+  }
+
+  static Future<void> moveFile(String fileId, String? targetFolderId) async {
+    await client
+        .from('dms_files')
+        .update({'folder_id': targetFolderId})
+        .eq('id', fileId);
+  }
+
+  static Future<int> countFolderContents(String folderId, String companyId) async {
+    final sub = await client
+        .from('dms_folders')
+        .select('id')
+        .eq('parent_id', folderId)
+        .eq('company_id', companyId);
+    final files = await client
+        .from('dms_files')
+        .select('id')
+        .eq('folder_id', folderId)
+        .eq('company_id', companyId);
+    return (sub as List).length + (files as List).length;
   }
 
   static Future<void> deleteFile(String fileId, String storagePath) async {
@@ -170,6 +282,47 @@ class DmsService {
       'user_id': userId,
       'permission_type': type.name,
     });
+  }
+
+  static Future<void> revokePermission({
+    String? folderId,
+    String? fileId,
+    required String userId,
+  }) async {
+    var q = client.from('dms_permissions').delete().eq('user_id', userId);
+    if (folderId != null) q = q.eq('folder_id', folderId);
+    if (fileId != null) q = q.eq('file_id', fileId);
+    await q;
+  }
+
+  /// Gir alle ansatte i avdelingen lesetilgang automatisk.
+  static Future<int> grantPermissionToDepartment({
+    String? folderId,
+    String? fileId,
+    required String departmentId,
+    required String companyId,
+    DmsPermissionType type = DmsPermissionType.read,
+  }) async {
+    final profiles = await client
+        .from('profiles')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('department_id', departmentId);
+    var count = 0;
+    for (final row in profiles as List) {
+      await grantPermission(
+        folderId: folderId,
+        fileId: fileId,
+        userId: row['id'] as String,
+        type: type,
+      );
+      count++;
+    }
+    return count;
+  }
+
+  static Future<Uint8List> downloadFileBytes(String storagePath) async {
+    return client.storage.from('documents').download(storagePath);
   }
 
   static Future<List<DmsPermission>> fetchPermissions({String? folderId, String? fileId}) async {

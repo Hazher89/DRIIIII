@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_icons.dart';
+import '../../../core/hms/hms_templates.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/risk_assessment.dart';
+import '../widgets/hms_template_picker_sheet.dart';
 import 'new_risk_assessment_screen.dart';
 import 'package:intl/intl.dart';
 
@@ -132,9 +134,19 @@ class _RiskAssessmentListScreenState extends State<RiskAssessmentListScreen> {
   }
 
   void _createNew(BuildContext context) {
-    Navigator.push(
+    HmsTemplatePickerSheet.show(
       context,
-      MaterialPageRoute(builder: (context) => const NewRiskAssessmentScreen()),
-    ).then((v) { if (v == true) _loadData(); });
+      kind: HmsModuleKind.risk,
+      onSelected: (t) => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => NewRiskAssessmentScreen(template: t as HmsRiskTemplate),
+        ),
+      ).then((v) { if (v == true) _loadData(); }),
+      onBlank: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const NewRiskAssessmentScreen()),
+      ).then((v) { if (v == true) _loadData(); }),
+    );
   }
 }

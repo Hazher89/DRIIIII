@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_icons.dart';
+import '../../../core/hms/hms_templates.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/sja_form.dart';
 import 'package:uuid/uuid.dart';
 
 class NewSjaScreen extends StatefulWidget {
-  const NewSjaScreen({super.key});
+  final HmsSjaTemplate? template;
+
+  const NewSjaScreen({super.key, this.template});
 
   @override
   State<NewSjaScreen> createState() => _NewSjaScreenState();
@@ -18,10 +21,25 @@ class _NewSjaScreenState extends State<NewSjaScreen> {
   final _locationController = TextEditingController();
   DateTime _plannedDate = DateTime.now();
   
-  final List<Map<String, dynamic>> _hazards = [];
-  final List<String> _selectedPpe = [];
+  late List<Map<String, dynamic>> _hazards;
+  late List<Map<String, dynamic>> _measures;
+  late List<String> _selectedPpe;
   
   bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.template;
+    _hazards = List.from(t?.hazards ?? []);
+    _measures = List.from(t?.measures ?? []);
+    _selectedPpe = List.from(t?.ppe ?? []);
+    if (t != null) {
+      _titleController.text = t.title;
+      _workDescController.text = t.workDescription;
+      _locationController.text = t.location;
+    }
+  }
 
   final List<String> _ppeOptions = [
     'Hjelm', 'Verneskog', 'Hansker', 'Hørselsvern', 'Øyebeskyttelse', 'Andedrettsvern', 'Fallsikring', 'Synlighetsbekledning'
@@ -208,7 +226,7 @@ class _NewSjaScreenState extends State<NewSjaScreen> {
         plannedDate: _plannedDate,
         status: SjaStatus.utkast,
         hazards: _hazards,
-        measures: [], // redundant with hazards list for now
+        measures: _measures,
         requiredPpe: _selectedPpe,
       );
       

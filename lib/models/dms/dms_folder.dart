@@ -1,11 +1,12 @@
-import 'package:uuid/uuid.dart';
-
 class DmsFolder {
   final String id;
   final String companyId;
   final String name;
   final String? parentId;
   final String? createdBy;
+  final String? description;
+  final String? passwordHash;
+  final bool isPrivate;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -14,10 +15,16 @@ class DmsFolder {
     required this.companyId,
     required this.name,
     this.parentId,
-    required this.createdBy,
+    this.createdBy,
+    this.description,
+    this.passwordHash,
+    this.isPrivate = false,
     required this.createdAt,
     required this.updatedAt,
   });
+
+  bool get isPasswordProtected =>
+      passwordHash != null && passwordHash!.isNotEmpty;
 
   factory DmsFolder.fromJson(Map<String, dynamic> json) {
     return DmsFolder(
@@ -26,16 +33,26 @@ class DmsFolder {
       name: json['name'] as String,
       parentId: json['parent_id'] as String?,
       createdBy: json['created_by'] as String?,
+      description: json['description'] as String?,
+      passwordHash: json['password_hash'] as String?,
+      isPrivate: json['is_private'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
   }
 
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'company_id': companyId,
-    'name': name,
-    'parent_id': parentId,
-    'created_by': createdBy,
-  };
+  Map<String, dynamic> toInsertJson({
+    String? passwordHash,
+    bool? isPrivate,
+    String? description,
+  }) =>
+      {
+        'company_id': companyId,
+        'name': name,
+        'parent_id': parentId,
+        if (description != null) 'description': description,
+        if (passwordHash != null && passwordHash.isNotEmpty)
+          'password_hash': passwordHash,
+        if (isPrivate != null) 'is_private': isPrivate,
+      };
 }

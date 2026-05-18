@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/services/brreg_service.dart';
+import '../../core/services/partner/mavi_unit_codes.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -31,10 +32,10 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
   final _inviteEmailCtrl = TextEditingController();
   final _portalUsernameCtrl = TextEditingController();
   final _portalLoginEmailCtrl = TextEditingController();
-  final List<String> _unitCodes = ['NO_O_M0001'];
+  final List<TextEditingController> _maviControllers = [
+    TextEditingController(text: 'NO_O_M0001'),
+  ];
   final List<TextEditingController> _regControllers = [TextEditingController()];
-  final List<String> _resourceIdOptions =
-      List.generate(9999, (i) => 'NO_O_M${(i + 1).toString().padLeft(4, '0')}');
 
   bool _euApproved = false;
   bool _searching = false;
@@ -61,7 +62,55 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
     for (final c in _regControllers) {
       c.dispose();
     }
+    for (final c in _maviControllers) {
+      c.dispose();
+    }
     super.dispose();
+  }
+
+  List<String> get _existingMavi => _maviControllers
+      .map((c) => MaviUnitCodes.normalize(c.text))
+      .where((s) => s.isNotEmpty)
+      .toList();
+
+  void _addMaviRow() {
+    setState(() {
+      _maviControllers.add(TextEditingController(text: MaviUnitCodes.suggestNext(_existingMavi)));
+      _regControllers.add(TextEditingController());
+    });
+  }
+
+  Future<void> _bulkAddMavi() async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Legg til flere MAVI-nummer'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 8,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            hintText: 'M0001\nM0002\nNO_O_M0003',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Legg til')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final codes = MaviUnitCodes.parseBulk(ctrl.text);
+    final seen = _existingMavi.toSet();
+    setState(() {
+      for (final code in codes) {
+        if (seen.contains(code)) continue;
+        seen.add(code);
+        _maviControllers.add(TextEditingController(text: code));
+        _regControllers.add(TextEditingController());
+      }
+    });
   }
 
   Future<void> _runBrregNameSearch() async {
@@ -190,10 +239,13 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
 
   Future<void> _saveVehicles(Partner created) async {
     final vehicles = <PartnerVehicle>[];
-    for (int i = 0; i < _unitCodes.length; i++) {
-      final unit = _unitCodes[i].trim().toUpperCase();
-      final reg = _regControllers[i].text.trim().toUpperCase();
-      if (unit.isEmpty || reg.isEmpty) continue;
+    final seen = <String>{};
+    for (int i = 0; i < _maviControllers.length; i++) {
+      final unit = MaviUnitCodes.normalize(_maviControllers[i].text);
+      if (unit.isEmpty || seen.contains(unit)) continue;
+      seen.add(unit);
+      final regRaw = _regControllers[i].text.trim().toUpperCase();
+      final reg = regRaw.isEmpty ? MaviUnitCodes.regNrPlaceholder : regRaw;
       vehicles.add(
         PartnerVehicle(
           id: '',
@@ -422,25 +474,28 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
             decoration: const InputDecoration(labelText: 'Notater', border: OutlineInputBorder()),
           ),
           const SizedBox(height: 16),
-          const Text('Bilnavn (NO_O_M0001+) og reg.nr', style: TextStyle(fontWeight: FontWeight.w800)),
+          Text(
+            'MAVI-nummer (${_maviControllers.length}) — flere per bedrift',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Reg.nr kan fylles ut senere. MAVI er påkrevd for rutefordeling.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
           const SizedBox(height: 8),
-          ...List.generate(_unitCodes.length, (i) {
+          ...List.generate(_maviControllers.length, (i) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<String>(
-                      value: _unitCodes[i],
-                      items: _resourceIdOptions
-                          .map((v) => DropdownMenuItem(value: v, child: Text(v)))
-                          .toList(),
-                      onChanged: (v) {
-                        if (v == null) return;
-                        setState(() => _unitCodes[i] = v);
-                      },
+                    flex: 2,
+                    child: TextField(
+                      controller: _maviControllers[i],
                       decoration: const InputDecoration(
-                        labelText: 'Bilnavn (Resource ID)',
+                        labelText: 'MAVI-nummer',
+                        hintText: 'NO_O_M0001',
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -450,39 +505,44 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
                     child: TextField(
                       controller: _regControllers[i],
                       decoration: const InputDecoration(
-                        labelText: 'Reg.nr',
+                        labelText: 'Reg.nr (valgfritt)',
                         border: OutlineInputBorder(),
                       ),
                     ),
                   ),
-                  if (_unitCodes.length > 1)
-                    IconButton(
-                      onPressed: () {
-                        setState(() {
-                          _regControllers[i].dispose();
-                          _unitCodes.removeAt(i);
-                          _regControllers.removeAt(i);
-                        });
-                      },
-                      icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    ),
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        _maviControllers[i].dispose();
+                        _regControllers[i].dispose();
+                        _maviControllers.removeAt(i);
+                        _regControllers.removeAt(i);
+                      });
+                    },
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  ),
                 ],
               ),
             );
           }),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () {
-                setState(() {
-                  final next = _unitCodes.length + 1;
-                  _unitCodes.add('NO_O_M${next.toString().padLeft(4, '0')}');
-                  _regControllers.add(TextEditingController());
-                });
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Legg til bil'),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _addMaviRow,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Legg til MAVI'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _bulkAddMavi,
+                  icon: const Icon(Icons.playlist_add),
+                  label: const Text('Flere på en gang'),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 24),
           const Text('Partner-portal bruker', style: TextStyle(fontWeight: FontWeight.w800)),

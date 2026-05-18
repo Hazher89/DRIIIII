@@ -115,6 +115,10 @@ class PartnerRouteShare {
   final String? ackComment;
   final String? shiftId;
   final String? partnerVehicleId;
+  final DateTime? routeStartAt;
+  /// staged = fordelt internt; sent = sendt til sjåfør/partner
+  final String dispatchStatus;
+  final String? pdfSearchText;
   final DateTime createdAt;
 
   PartnerRouteShare({
@@ -132,6 +136,9 @@ class PartnerRouteShare {
     this.ackComment,
     this.shiftId,
     this.partnerVehicleId,
+    this.routeStartAt,
+    this.dispatchStatus = 'sent',
+    this.pdfSearchText,
     required this.createdAt,
   });
 
@@ -151,9 +158,16 @@ class PartnerRouteShare {
       ackComment: json['ack_comment'] as String?,
       shiftId: json['shift_id'] as String?,
       partnerVehicleId: json['partner_vehicle_id'] as String?,
+      routeStartAt: json['route_start_at'] != null
+          ? DateTime.parse(json['route_start_at'] as String)
+          : null,
+      dispatchStatus: (json['dispatch_status'] as String?) ?? 'sent',
+      pdfSearchText: json['pdf_search_text'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
+
+  bool get isStaged => dispatchStatus == 'staged';
 
   Map<String, dynamic> toInsertJson() {
     return {
@@ -168,6 +182,8 @@ class PartnerRouteShare {
       'ack_at': ackAt?.toIso8601String(),
       'ack_by': ackBy,
       'ack_comment': ackComment,
+      'dispatch_status': dispatchStatus,
+      if (pdfSearchText != null && pdfSearchText!.isNotEmpty) 'pdf_search_text': pdfSearchText,
       if (shiftId != null) 'shift_id': shiftId,
       if (partnerVehicleId != null) 'partner_vehicle_id': partnerVehicleId,
     };
@@ -178,9 +194,17 @@ class PartnerVehicle {
   final String id;
   final String partnerId;
   final String companyId;
-  final String unitCode; // e.g. M01, M02
+  final String unitCode;
   final String registrationNumber;
+  final String? phone;
   final String? notes;
+  final int? modelYear;
+  final int? payloadKg;
+  final DateTime? euLastAt;
+  final DateTime? euNextAt;
+  final bool? euApproved;
+  final List<String> imageUrls;
+  final Map<String, dynamic>? vegvesenSnapshot;
   final DateTime createdAt;
 
   PartnerVehicle({
@@ -189,30 +213,73 @@ class PartnerVehicle {
     required this.companyId,
     required this.unitCode,
     required this.registrationNumber,
+    this.phone,
     this.notes,
+    this.modelYear,
+    this.payloadKg,
+    this.euLastAt,
+    this.euNextAt,
+    this.euApproved,
+    this.imageUrls = const [],
+    this.vegvesenSnapshot,
     required this.createdAt,
   });
 
   factory PartnerVehicle.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic v) {
+      if (v == null) return null;
+      return DateTime.tryParse(v.toString());
+    }
+
     return PartnerVehicle(
       id: json['id'] as String,
       partnerId: json['partner_id'] as String,
       companyId: json['company_id'] as String,
       unitCode: json['unit_code'] as String,
       registrationNumber: json['registration_number'] as String,
+      phone: json['phone'] as String?,
       notes: json['notes'] as String?,
+      modelYear: json['model_year'] as int?,
+      payloadKg: json['payload_kg'] as int?,
+      euLastAt: parseDate(json['eu_last_at']),
+      euNextAt: parseDate(json['eu_next_at']),
+      euApproved: json['eu_approved'] as bool?,
+      imageUrls: (json['image_urls'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          const [],
+      vegvesenSnapshot: json['vegvesen_snapshot'] as Map<String, dynamic>?,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
 
-  Map<String, dynamic> toInsertJson() {
+  Map<String, dynamic> toUpsertJson() {
     return {
+      if (id.isNotEmpty) 'id': id,
       'partner_id': partnerId,
       'company_id': companyId,
       'unit_code': unitCode,
       'registration_number': registrationNumber,
+      if (phone != null) 'phone': phone,
       'notes': notes,
+      'model_year': modelYear,
+      'payload_kg': payloadKg,
+      'eu_last_at': euLastAt?.toIso8601String().split('T').first,
+      'eu_next_at': euNextAt?.toIso8601String().split('T').first,
+      'eu_approved': euApproved,
+      'image_urls': imageUrls,
+      'vegvesen_snapshot': vegvesenSnapshot,
+      'updated_at': DateTime.now().toIso8601String(),
     };
+  }
+
+  bool get euOverdue =>
+      euNextAt != null && euNextAt!.isBefore(DateTime.now());
+
+  bool get euDueSoon {
+    if (euNextAt == null) return false;
+    final limit = DateTime.now().add(const Duration(days: 60));
+    return !euNextAt!.isBefore(DateTime.now()) && euNextAt!.isBefore(limit);
   }
 }
 
@@ -220,8 +287,10 @@ class PartnerPortalAccount {
   final String id;
   final String partnerId;
   final String companyId;
+  final String? partnerVehicleId;
   final String username;
   final String loginEmail;
+  final String? phone;
   final String? profileId;
   final bool isActive;
   final DateTime createdAt;
@@ -230,8 +299,10 @@ class PartnerPortalAccount {
     required this.id,
     required this.partnerId,
     required this.companyId,
+    this.partnerVehicleId,
     required this.username,
     required this.loginEmail,
+    this.phone,
     this.profileId,
     this.isActive = true,
     required this.createdAt,
@@ -242,10 +313,55 @@ class PartnerPortalAccount {
       id: json['id'] as String,
       partnerId: json['partner_id'] as String,
       companyId: json['company_id'] as String,
+      partnerVehicleId: json['partner_vehicle_id'] as String?,
       username: json['username'] as String,
       loginEmail: json['login_email'] as String,
+      phone: json['phone'] as String?,
       profileId: json['profile_id'] as String?,
       isActive: json['is_active'] as bool? ?? true,
+      createdAt: DateTime.parse(json['created_at'] as String),
+    );
+  }
+}
+
+class PartnerFriRequest {
+  final String id;
+  final String companyId;
+  final String partnerId;
+  final String? partnerVehicleId;
+  final DateTime requestDate;
+  final String? reason;
+  final String status;
+  final DateTime? reviewedAt;
+  final String? reviewNote;
+  final DateTime createdAt;
+
+  const PartnerFriRequest({
+    required this.id,
+    required this.companyId,
+    required this.partnerId,
+    this.partnerVehicleId,
+    required this.requestDate,
+    this.reason,
+    this.status = 'pending',
+    this.reviewedAt,
+    this.reviewNote,
+    required this.createdAt,
+  });
+
+  factory PartnerFriRequest.fromJson(Map<String, dynamic> json) {
+    return PartnerFriRequest(
+      id: json['id'] as String,
+      companyId: json['company_id'] as String,
+      partnerId: json['partner_id'] as String,
+      partnerVehicleId: json['partner_vehicle_id'] as String?,
+      requestDate: DateTime.parse(json['request_date'] as String),
+      reason: json['reason'] as String?,
+      status: (json['status'] as String?) ?? 'pending',
+      reviewedAt: json['reviewed_at'] != null
+          ? DateTime.parse(json['reviewed_at'] as String)
+          : null,
+      reviewNote: json['review_note'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
