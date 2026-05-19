@@ -79,36 +79,43 @@ class _PartnerShellState extends State<PartnerShell> {
     }
 
     final p = _partner!;
+    final isOwner = widget.profile.partnerVehicleId == null;
     final pages = [
       _PartnerOverviewPage(partner: p),
       _PartnerDocsPage(partner: p),
       _PartnerSummaryPage(partner: p),
-      _PartnerRoutesPage(partner: p, profile: widget.profile),
-      _PartnerFriPage(partner: p, profile: widget.profile),
-      _PartnerProfilePage(profile: widget.profile),
+      _PartnerRoutesPage(partner: p, profile: widget.profile, isOwner: isOwner),
+      if (!isOwner) _PartnerFriPage(partner: p, profile: widget.profile),
+      _PartnerProfilePage(profile: widget.profile, isOwner: isOwner),
+    ];
+    final destinations = [
+      const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
+      const NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
+      const NavigationDestination(
+        icon: Icon(Icons.summarize_outlined),
+        selectedIcon: Icon(Icons.summarize),
+        label: 'Oppsumm.',
+      ),
+      NavigationDestination(
+        icon: const Icon(Icons.map_outlined),
+        selectedIcon: const Icon(Icons.map),
+        label: isOwner ? 'Alle ruter' : 'Mine ruter',
+      ),
+      if (!isOwner)
+        const NavigationDestination(
+          icon: Icon(Icons.beach_access_outlined),
+          selectedIcon: Icon(Icons.beach_access),
+          label: 'Fri',
+        ),
+      const NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
     ];
 
     return Scaffold(
       body: IndexedStack(index: _index, children: pages),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
+        selectedIndex: _index.clamp(0, destinations.length - 1),
         onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
-          NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
-          NavigationDestination(
-            icon: Icon(Icons.summarize_outlined),
-            selectedIcon: Icon(Icons.summarize),
-            label: 'Oppsumm.',
-          ),
-          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Ruter'),
-          NavigationDestination(
-            icon: Icon(Icons.beach_access_outlined),
-            selectedIcon: Icon(Icons.beach_access),
-            label: 'Fri',
-          ),
-          NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
-        ],
+        destinations: destinations,
       ),
     );
   }
@@ -314,7 +321,12 @@ class _PartnerSummaryPageState extends State<_PartnerSummaryPage> {
 class _PartnerRoutesPage extends StatefulWidget {
   final Partner partner;
   final UserProfile profile;
-  const _PartnerRoutesPage({required this.partner, required this.profile});
+  final bool isOwner;
+  const _PartnerRoutesPage({
+    required this.partner,
+    required this.profile,
+    this.isOwner = false,
+  });
 
   @override
   State<_PartnerRoutesPage> createState() => _PartnerRoutesPageState();
@@ -342,7 +354,7 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final vid = widget.profile.partnerVehicleId;
+    final vid = widget.isOwner ? null : widget.profile.partnerVehicleId;
     final all = await PartnerService.fetchRouteShares(
       widget.partner.id,
       partnerVehicleId: vid,
@@ -487,7 +499,7 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mine ruter'),
+        title: Text(widget.isOwner ? 'Alle ruter' : 'Mine ruter'),
         bottom: TabBar(
           controller: _tab,
           tabs: [
@@ -672,7 +684,8 @@ class _PartnerFriPageState extends State<_PartnerFriPage> {
 
 class _PartnerProfilePage extends StatelessWidget {
   final UserProfile profile;
-  const _PartnerProfilePage({required this.profile});
+  final bool isOwner;
+  const _PartnerProfilePage({required this.profile, this.isOwner = false});
 
   @override
   Widget build(BuildContext context) {
@@ -693,7 +706,7 @@ class _PartnerProfilePage extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.badge_outlined),
             title: const Text('Rolle'),
-            subtitle: const Text('Samarbeidspartner'),
+            subtitle: Text(isOwner ? 'Bil-eier (hele bedriften)' : 'Sjåfør (MAVI-bil)'),
           ),
           const SizedBox(height: 24),
           FilledButton.icon(

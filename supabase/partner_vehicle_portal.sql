@@ -74,7 +74,8 @@ BEGIN
   SELECT jsonb_build_object(
     'partner_id', ppa.partner_id,
     'company_id', ppa.company_id,
-    'partner_vehicle_id', ppa.partner_vehicle_id
+    'partner_vehicle_id', ppa.partner_vehicle_id,
+    'account_kind', coalesce(ppa.account_kind, case when ppa.partner_vehicle_id is null then 'owner' else 'driver' end)
   )
   INTO r
   FROM public.partner_portal_accounts ppa

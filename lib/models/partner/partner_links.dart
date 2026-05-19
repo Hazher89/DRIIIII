@@ -292,6 +292,8 @@ class PartnerPortalAccount {
   final String loginEmail;
   final String? phone;
   final String? profileId;
+  /// owner = bil-eier (hele bedriften), driver = MAVI-sjåfør
+  final String accountKind;
   final bool isActive;
   final DateTime createdAt;
 
@@ -304,9 +306,13 @@ class PartnerPortalAccount {
     required this.loginEmail,
     this.phone,
     this.profileId,
+    this.accountKind = 'driver',
     this.isActive = true,
     required this.createdAt,
   });
+
+  bool get isOwner => accountKind == 'owner';
+  bool get isDriver => accountKind == 'driver';
 
   factory PartnerPortalAccount.fromJson(Map<String, dynamic> json) {
     return PartnerPortalAccount(
@@ -318,10 +324,26 @@ class PartnerPortalAccount {
       loginEmail: json['login_email'] as String,
       phone: json['phone'] as String?,
       profileId: json['profile_id'] as String?,
+      accountKind: (json['account_kind'] as String?) ??
+          (json['partner_vehicle_id'] == null ? 'owner' : 'driver'),
       isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
+}
+
+class PortalProvisionResult {
+  final String username;
+  final String loginEmail;
+  final String password;
+  final bool smsSent;
+
+  const PortalProvisionResult({
+    required this.username,
+    required this.loginEmail,
+    required this.password,
+    this.smsSent = false,
+  });
 }
 
 class PartnerFriRequest {

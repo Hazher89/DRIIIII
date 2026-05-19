@@ -6,6 +6,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function randomPassword(len = 10): string {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let out = "";
+  const arr = new Uint8Array(len);
+  crypto.getRandomValues(arr);
+  for (let i = 0; i < len; i++) out += chars[arr[i] % chars.length];
+  return out;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -16,8 +25,7 @@ Deno.serve(async (req) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const admin = createClient(supabaseUrl, serviceKey);
 
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    if (!req.headers.get("Authorization")) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -33,82 +41,129 @@ Deno.serve(async (req) => {
       login_email,
       phone,
       password,
+      account_kind = "driver",
       delete_account,
+      send_credentials_sms = true,
+      regenerate_password = false,
     } = body;
 
-    if (!partner_id || !company_id || !username || !login_email) {
-      return new Response(JSON.stringify({ error: "Missing fields" }), {
+    const kind = account_kind === "owner" ? "owner" : "driver";
+    const isOwner = kind === "owner";
+
+    if (!partner_id || !company_id) {
+      return new Response(JSON.stringify({ error: "Missing partner_id or company_id" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const email = String(login_email).trim().toLowerCase();
-    const user = String(username).trim().toLowerCase();
-
-    if (partner_vehicle_id && phone) {
-      await admin.from("partner_vehicles").update({ phone }).eq("id", partner_vehicle_id);
-    }
-
     if (delete_account) {
-      await admin
-        .from("partner_portal_accounts")
-        .update({ is_active: false })
-        .eq("partner_vehicle_id", partner_vehicle_id);
+      let q = admin.from("partner_portal_accounts").update({ is_active: false }).eq("partner_id", partner_id);
+      if (isOwner) {
+        q = q.eq("account_kind", "owner");
+      } else if (partner_vehicle_id) {
+        q = q.eq("partner_vehicle_id", partner_vehicle_id);
+      }
+      await q;
       return new Response(JSON.stringify({ ok: true, deleted: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    let profileId: string | null = null;
-
-    if (password && String(password).length >= 6) {
-      const { data: created, error: createErr } = await admin.auth.admin.createUser({
-        email,
-        password: String(password),
-        email_confirm: true,
+    if (!phone || String(phone).trim().length < 8) {
+      return new Response(JSON.stringify({ error: "Telefonnummer påkrevd (min 8 siffer)" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
-      if (createErr && !createErr.message.includes("already")) {
-        const { data: listed } = await admin.auth.admin.listUsers();
-        const existing = listed?.users?.find((u) => u.email?.toLowerCase() === email);
-        if (existing) {
-          await admin.auth.admin.updateUserById(existing.id, { password: String(password) });
-          profileId = existing.id;
-        } else {
-          throw createErr;
-        }
-      } else if (created?.user) {
-        profileId = created.user.id;
-        await admin.from("profiles").upsert({
-          id: profileId,
-          email,
-          full_name: user,
-          role: "samarbeidspartner",
-          company_id,
-          partner_id,
-          partner_vehicle_id: partner_vehicle_id ?? null,
-          phone: phone ?? null,
-          is_onboarded: true,
-          is_approved: true,
-          is_active: true,
-        });
-      }
     }
 
-    const { data: existing } = await admin
+    const normalizedPhone = String(phone).trim();
+    const user = String(username ?? "").trim().toLowerCase();
+    if (!user) {
+      return new Response(JSON.stringify({ error: "username required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const cidShort = String(company_id).replace(/-/g, "").slice(0, 8);
+    const email =
+      login_email && String(login_email).includes("@")
+        ? String(login_email).trim().toLowerCase()
+        : `${user}@${isOwner ? "eier" : "mavi"}.${cidShort}.portal`;
+
+    if (!isOwner && partner_vehicle_id) {
+      await admin.from("partner_vehicles").update({ phone: normalizedPhone }).eq("id", partner_vehicle_id);
+    }
+
+    let existingQuery = admin
       .from("partner_portal_accounts")
-      .select("id")
-      .eq("partner_vehicle_id", partner_vehicle_id)
-      .maybeSingle();
+      .select("id, profile_id, login_email")
+      .eq("partner_id", partner_id)
+      .eq("is_active", true);
+
+    if (isOwner) {
+      existingQuery = existingQuery.eq("account_kind", "owner");
+    } else {
+      existingQuery = existingQuery.eq("partner_vehicle_id", partner_vehicle_id);
+    }
+
+    const { data: existing } = await existingQuery.maybeSingle();
+
+    let pw = password && String(password).length >= 6 ? String(password) : randomPassword(10);
+    if (existing && !regenerate_password && password && String(password).length >= 6) {
+      pw = String(password);
+    } else if (existing && !regenerate_password && (!password || String(password).length < 6)) {
+      pw = randomPassword(10);
+    }
+
+    let profileId: string | null = existing?.profile_id ?? null;
+    const authEmail = existing?.login_email ?? email;
+
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email: authEmail,
+      password: pw,
+      email_confirm: true,
+    });
+
+    if (createErr) {
+      const { data: listed } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      const found = listed?.users?.find((u) => u.email?.toLowerCase() === authEmail.toLowerCase());
+      if (found) {
+        await admin.auth.admin.updateUserById(found.id, { password: pw });
+        profileId = found.id;
+      } else {
+        throw createErr;
+      }
+    } else if (created?.user) {
+      profileId = created.user.id;
+    }
+
+    if (profileId) {
+      await admin.from("profiles").upsert({
+        id: profileId,
+        email: authEmail,
+        full_name: user,
+        role: "samarbeidspartner",
+        company_id,
+        partner_id,
+        partner_vehicle_id: isOwner ? null : partner_vehicle_id,
+        phone: normalizedPhone,
+        is_onboarded: true,
+        is_approved: true,
+        is_active: true,
+      });
+    }
 
     const row = {
       partner_id,
       company_id,
-      partner_vehicle_id: partner_vehicle_id ?? null,
+      partner_vehicle_id: isOwner ? null : partner_vehicle_id,
       username: user,
-      login_email: email,
-      phone: phone ?? null,
+      login_email: authEmail,
+      phone: normalizedPhone,
       profile_id: profileId,
+      account_kind: kind,
       is_active: true,
     };
 
@@ -118,9 +173,29 @@ Deno.serve(async (req) => {
       await admin.from("partner_portal_accounts").insert(row);
     }
 
-    return new Response(JSON.stringify({ ok: true, login_email: email }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    let smsSent = false;
+    if (send_credentials_sms) {
+      const { error: smsErr } = await admin.rpc("notify_partner_portal_credentials_sms", {
+        p_company_id: company_id,
+        p_phone: normalizedPhone,
+        p_username: user,
+        p_password: pw,
+        p_is_owner: isOwner,
+      });
+      smsSent = !smsErr;
+    }
+
+    return new Response(
+      JSON.stringify({
+        ok: true,
+        username: user,
+        login_email: authEmail,
+        password: pw,
+        sms_sent: smsSent,
+        account_kind: kind,
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
   } catch (e) {
     return new Response(JSON.stringify({ error: String(e) }), {
       status: 500,

@@ -6,6 +6,7 @@ import '../../config/supabase_config.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/fleet_shift.dart';
+import '../../utils/portal_credentials.dart';
 import 'fleet_shift_seed.dart';
 
 class PartnerService {
@@ -273,45 +274,119 @@ class PartnerService {
     }
   }
 
-  static Future<void> provisionVehiclePortal({
+  static Future<PortalProvisionResult> provisionDriverPortal({
     required String partnerId,
     required String companyId,
     required String partnerVehicleId,
-    required String username,
-    required String loginEmail,
+    required String unitCode,
     required String phone,
-    String? password,
+    bool regeneratePassword = false,
   }) async {
-    if (!_ok) return;
-    await _client.from('partner_vehicles').update({'phone': phone.trim()}).eq('id', partnerVehicleId);
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final username = PortalCredentials.driverUsername(unitCode);
+    final password = PortalCredentials.generatePassword();
+    final loginEmail = PortalCredentials.loginEmail(
+      username: username,
+      companyId: companyId,
+      isOwner: false,
+    );
+    final res = await _invokePortalProvision(
+      partnerId: partnerId,
+      companyId: companyId,
+      partnerVehicleId: partnerVehicleId,
+      username: username,
+      loginEmail: loginEmail,
+      phone: phone,
+      password: password,
+      accountKind: 'driver',
+      sendCredentialsSms: true,
+      regeneratePassword: regeneratePassword,
+    );
+    return res;
+  }
 
-    try {
-      await _client.functions.invoke(
-        'partner-portal-provision',
-        body: {
-          'partner_id': partnerId,
-          'company_id': companyId,
-          'partner_vehicle_id': partnerVehicleId,
-          'username': username.trim().toLowerCase(),
-          'login_email': loginEmail.trim().toLowerCase(),
-          'phone': phone.trim(),
-          if (password != null && password.isNotEmpty) 'password': password,
-        },
-      );
-      return;
-    } catch (_) {}
-
-    await upsertPortalAccount(
+  static Future<PortalProvisionResult> provisionOwnerPortal({
+    required String partnerId,
+    required String companyId,
+    required String phone,
+    bool regeneratePassword = false,
+  }) async {
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final username = PortalCredentials.ownerUsername(partnerId);
+    final password = PortalCredentials.generatePassword();
+    final loginEmail = PortalCredentials.loginEmail(
+      username: username,
+      companyId: companyId,
+      isOwner: true,
+    );
+    return _invokePortalProvision(
       partnerId: partnerId,
       companyId: companyId,
       username: username,
       loginEmail: loginEmail,
-      partnerVehicleId: partnerVehicleId,
       phone: phone,
+      password: password,
+      accountKind: 'owner',
+      sendCredentialsSms: true,
+      regeneratePassword: regeneratePassword,
     );
   }
 
-  static Future<void> deleteVehiclePortal({
+  static Future<PortalProvisionResult> _invokePortalProvision({
+    required String partnerId,
+    required String companyId,
+    String? partnerVehicleId,
+    required String username,
+    required String loginEmail,
+    required String phone,
+    required String password,
+    required String accountKind,
+    bool sendCredentialsSms = true,
+    bool regeneratePassword = false,
+  }) async {
+    final response = await _client.functions.invoke(
+      'partner-portal-provision',
+      body: {
+        'partner_id': partnerId,
+        'company_id': companyId,
+        if (partnerVehicleId != null) 'partner_vehicle_id': partnerVehicleId,
+        'username': username,
+        'login_email': loginEmail,
+        'phone': phone.trim(),
+        'password': password,
+        'account_kind': accountKind,
+        'send_credentials_sms': sendCredentialsSms,
+        'regenerate_password': regeneratePassword,
+      },
+    );
+    final data = response.data;
+    if (data is Map<String, dynamic>) {
+      if (data['error'] != null) {
+        throw Exception(data['error'].toString());
+      }
+      return PortalProvisionResult(
+        username: (data['username'] as String?) ?? username,
+        loginEmail: (data['login_email'] as String?) ?? loginEmail,
+        password: (data['password'] as String?) ?? password,
+        smsSent: data['sms_sent'] == true,
+      );
+    }
+    return PortalProvisionResult(
+      username: username,
+      loginEmail: loginEmail,
+      password: password,
+    );
+  }
+
+  static Future<PartnerPortalAccount?> fetchOwnerPortalAccount(String partnerId) async {
+    final accounts = await fetchPortalAccounts(partnerId);
+    for (final a in accounts) {
+      if (a.isOwner) return a;
+    }
+    return null;
+  }
+
+  static Future<void> deleteDriverPortal({
     required String partnerVehicleId,
     required String partnerId,
     required String companyId,
@@ -324,8 +399,7 @@ class PartnerService {
           'partner_id': partnerId,
           'company_id': companyId,
           'partner_vehicle_id': partnerVehicleId,
-          'username': 'deleted',
-          'login_email': 'deleted@local',
+          'account_kind': 'driver',
           'delete_account': true,
         },
       );
@@ -334,6 +408,29 @@ class PartnerService {
         .from('partner_portal_accounts')
         .update({'is_active': false})
         .eq('partner_vehicle_id', partnerVehicleId);
+  }
+
+  static Future<void> deleteOwnerPortal({
+    required String partnerId,
+    required String companyId,
+  }) async {
+    if (!_ok) return;
+    try {
+      await _client.functions.invoke(
+        'partner-portal-provision',
+        body: {
+          'partner_id': partnerId,
+          'company_id': companyId,
+          'account_kind': 'owner',
+          'delete_account': true,
+        },
+      );
+    } catch (_) {}
+    await _client
+        .from('partner_portal_accounts')
+        .update({'is_active': false})
+        .eq('partner_id', partnerId)
+        .eq('account_kind', 'owner');
   }
 
   static Future<PartnerFriRequest> createFriRequest({

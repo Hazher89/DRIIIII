@@ -33,9 +33,7 @@ class _VehicleRowState {
   final TextEditingController payload;
   final TextEditingController year;
   final TextEditingController portalPhone;
-  final TextEditingController portalUsername;
-  final TextEditingController portalPassword;
-  final TextEditingController portalEmail;
+  String? portalUsername;
   DateTime? euNext;
   DateTime? euLast;
   bool? euApproved;
@@ -50,8 +48,7 @@ class _VehicleRowState {
     required this.payload,
     required this.year,
     String? phone,
-    String? portalUser,
-    String? portalMail,
+    this.portalUsername,
     this.euNext,
     this.euLast,
     this.euApproved,
@@ -59,11 +56,8 @@ class _VehicleRowState {
     this.vegvesenSnapshot,
     this.id,
     this.hasPortalAccount = false,
-  })  : mavi = TextEditingController(text: unitCode),
-        portalPhone = TextEditingController(text: phone ?? ''),
-        portalUsername = TextEditingController(text: portalUser ?? ''),
-        portalPassword = TextEditingController(),
-        portalEmail = TextEditingController(text: portalMail ?? '');
+  }) : mavi = TextEditingController(text: unitCode),
+       portalPhone = TextEditingController(text: phone ?? '');
 }
 
 class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
@@ -85,6 +79,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   bool _portalSaving = false;
   Timer? _vegvesenDebounce;
   Map<String, PartnerPortalAccount> _portalByVehicle = {};
+  PartnerPortalAccount? _ownerPortal;
+  final TextEditingController _ownerPortalPhone = TextEditingController();
 
   @override
   void initState() {
@@ -103,6 +99,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _notes = TextEditingController(text: p.notes ?? '');
     _hasTransportLicense = p.hasTransportLicense;
     _auditStatus = p.auditStatus;
+    _ownerPortalPhone.text = widget.partner.phone ?? '';
     _resetVehicles(widget.vehicles);
     _loadPortals();
   }
@@ -110,21 +107,47 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   Future<void> _loadPortals() async {
     final accounts = await PartnerService.fetchPortalAccounts(widget.partner.id);
     if (!mounted) return;
+    PartnerPortalAccount? owner;
+    final byVehicle = <String, PartnerPortalAccount>{};
+    for (final a in accounts) {
+      if (a.isOwner) {
+        owner = a;
+      } else if (a.partnerVehicleId != null) {
+        byVehicle[a.partnerVehicleId!] = a;
+      }
+    }
     setState(() {
-      _portalByVehicle = {
-        for (final a in accounts)
-          if (a.partnerVehicleId != null) a.partnerVehicleId!: a,
-      };
+      _ownerPortal = owner;
+      _portalByVehicle = byVehicle;
+      if (owner?.phone != null) _ownerPortalPhone.text = owner!.phone!;
     });
     for (final row in _rows) {
       if (row.id == null) continue;
       final acc = _portalByVehicle[row.id];
       if (acc == null) continue;
-      row.portalUsername.text = acc.username;
-      row.portalEmail.text = acc.loginEmail;
+      row.portalUsername = acc.username;
       row.portalPhone.text = acc.phone ?? row.portalPhone.text;
       row.hasPortalAccount = true;
     }
+  }
+
+  Future<void> _showCredentialsDialog(PortalProvisionResult res, {required String title}) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SelectableText(
+          'Brukernavn: ${res.username}\n'
+          'Passord: ${res.password}\n'
+          'E-post (innlogging): ${res.loginEmail}\n\n'
+          '${res.smsSent ? "Sendt på SMS til telefonnummeret." : "SMS kunne ikke sendes — del opplysningene manuelt."}',
+        ),
+        actions: [
+          FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+        ],
+      ),
+    );
   }
 
   @override
@@ -150,9 +173,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       r.payload.dispose();
       r.year.dispose();
       r.portalPhone.dispose();
-      r.portalUsername.dispose();
-      r.portalPassword.dispose();
-      r.portalEmail.dispose();
     }
     _rows.clear();
     if (vehicles.isEmpty) return;
@@ -165,8 +185,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         id: v.id,
         unitCode: MaviUnitCodes.normalize(v.unitCode),
         phone: v.phone ?? acc?.phone,
-        portalUser: acc?.username,
-        portalMail: acc?.loginEmail,
+        portalUsername: acc?.username,
         hasPortalAccount: acc != null,
         reg: TextEditingController(text: regDisplay),
         payload: TextEditingController(text: v.payloadKg?.toString() ?? ''),
@@ -180,52 +199,77 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     }
   }
 
-  Future<void> _saveVehiclePortal(_VehicleRowState row) async {
-    if (row.id == null) {
+  Future<void> _saveOwnerPortal({bool newPassword = false}) async {
+    final phone = _ownerPortalPhone.text.trim();
+    if (phone.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lagre MAVI først, deretter portal-konto.')),
+        const SnackBar(content: Text('Telefon til bil-eier er påkrevd (SMS med innlogging).')),
       );
       return;
-    }
-    final user = row.portalUsername.text.trim();
-    final phone = row.portalPhone.text.trim();
-    if (user.isEmpty || phone.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Brukernavn og telefon (SMS) er påkrevd.')),
-      );
-      return;
-    }
-    var email = row.portalEmail.text.trim();
-    if (!email.contains('@')) {
-      email = PartnerService.suggestedPortalLoginEmail(
-        username: user,
-        companyId: widget.partner.companyId,
-      );
-      row.portalEmail.text = email;
     }
     setState(() => _portalSaving = true);
     try {
-      await PartnerService.provisionVehiclePortal(
+      final res = await PartnerService.provisionOwnerPortal(
         partnerId: widget.partner.id,
         companyId: widget.partner.companyId,
-        partnerVehicleId: row.id!,
-        username: user,
-        loginEmail: email,
         phone: phone,
-        password: row.portalPassword.text.trim().isEmpty ? null : row.portalPassword.text,
+        regeneratePassword: newPassword || _ownerPortal != null,
       );
-      row.hasPortalAccount = true;
-      row.portalPassword.clear();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Portal lagret for $user · SMS til $phone')),
-        );
-      }
+      await _showCredentialsDialog(res, title: 'Bil-eier portal opprettet');
       await _loadPortals();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke lagre portal: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Kunne ikke opprette bil-eier: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _portalSaving = false);
+    }
+  }
+
+  Future<void> _saveVehiclePortal(_VehicleRowState row, {bool newPassword = false}) async {
+    if (row.id == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lagre bedriften først (MAVI), deretter sjåfør-portal.')),
+      );
+      return;
+    }
+    final phone = row.portalPhone.text.trim();
+    if (phone.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Telefon (SMS) er påkrevd for sjåfør.')),
+      );
+      return;
+    }
+    final unit = MaviUnitCodes.normalize(row.mavi.text);
+    if (unit.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fyll inn MAVI-nummer først.')),
+      );
+      return;
+    }
+    setState(() => _portalSaving = true);
+    try {
+      final res = await PartnerService.provisionDriverPortal(
+        partnerId: widget.partner.id,
+        companyId: widget.partner.companyId,
+        partnerVehicleId: row.id!,
+        unitCode: unit,
+        phone: phone,
+        regeneratePassword: newPassword || row.hasPortalAccount,
+      );
+      row.hasPortalAccount = true;
+      row.portalUsername = res.username;
+      await _showCredentialsDialog(
+        res,
+        title: row.hasPortalAccount ? 'Sjåfør oppdatert' : 'Sjåfør opprettet',
+      );
+      await _loadPortals();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sjåfør-portal feilet: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -238,8 +282,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Slett portal-konto?'),
-        content: const Text('Brukeren kan ikke lenger logge inn. Dette deaktiveres i Supabase.'),
+        title: const Text('Slett sjåfør-portal?'),
+        content: const Text('Sjåføren kan ikke lenger logge inn på DriftPro.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
           FilledButton(
@@ -251,17 +295,15 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       ),
     );
     if (ok != true) return;
-    await PartnerService.deleteVehiclePortal(
+    await PartnerService.deleteDriverPortal(
       partnerVehicleId: row.id!,
       partnerId: widget.partner.id,
       companyId: widget.partner.companyId,
     );
-    row.portalUsername.clear();
-    row.portalPassword.clear();
-    row.portalEmail.clear();
+    row.portalUsername = null;
     row.hasPortalAccount = false;
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Portal-konto deaktivert')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sjåfør-portal deaktivert')));
     }
     await _loadPortals();
   }
@@ -360,11 +402,13 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _transportCount.dispose();
     _auditPlate.dispose();
     _notes.dispose();
+    _ownerPortalPhone.dispose();
     for (final r in _rows) {
       r.mavi.dispose();
       r.reg.dispose();
       r.payload.dispose();
       r.year.dispose();
+      r.portalPhone.dispose();
     }
     super.dispose();
   }
@@ -539,6 +583,43 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
             _field('Eier / kontakt', _owner),
             _field('Telefon (SMS-varsler)', _phone),
             _field('E-post', _email),
+            const Divider(height: 28),
+            Text('Bil-eier portal', style: DriftProTheme.headingSm),
+            const SizedBox(height: 4),
+            const Text(
+              'Egen innlogging for eier: dokumenter, avtaler, møter, revisjon og alle ruter for bedriften. '
+              'Brukernavn og passord genereres og sendes på SMS.',
+              style: TextStyle(fontSize: 11, height: 1.35, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _ownerPortalPhone,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Bil-eier telefon (SMS) *',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            if (_ownerPortal != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 6),
+                child: Text(
+                  'Aktiv bruker: ${_ownerPortal!.username}',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                ),
+              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton(
+                  onPressed: _portalSaving ? null : () => _saveOwnerPortal(newPassword: _ownerPortal != null),
+                  style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+                  child: Text(_ownerPortal == null ? 'Opprett bil-eier (SMS)' : 'Nytt passord (SMS)'),
+                ),
+              ],
+            ),
+            const Divider(height: 28),
             _field('Adresse', _address),
             Row(
               children: [
@@ -710,9 +791,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                       row.payload.dispose();
                       row.year.dispose();
                       row.portalPhone.dispose();
-                      row.portalUsername.dispose();
-                      row.portalPassword.dispose();
-                      row.portalEmail.dispose();
                       _rows.removeAt(index);
                     });
                   },
@@ -794,72 +872,42 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               value: row.euApproved ?? false,
               onChanged: (v) => setState(() => row.euApproved = v),
             ),
-            const Divider(height: 24),
-            Text('Sjåførportal (per MAVI)', style: DriftProTheme.headingSm.copyWith(fontSize: 14)),
+            const Divider(height: 20),
+            Text('Sjåfør (dette MAVI-nummeret)', style: DriftProTheme.headingSm.copyWith(fontSize: 13)),
             const SizedBox(height: 4),
-            const Text(
-              'Telefon brukes til SMS når rute sendes. Brukernavn/passord gir innlogging på samarbeidspartner-siden.',
-              style: TextStyle(fontSize: 11, height: 1.3, color: Colors.grey),
+            Text(
+              row.hasPortalAccount
+                  ? 'Portal aktiv${row.portalUsername != null ? " · ${row.portalUsername}" : ""}'
+                  : 'Ingen portal — opprett for SMS ved ruter + innlogging',
+              style: TextStyle(
+                fontSize: 11,
+                color: row.hasPortalAccount ? Colors.green.shade700 : Colors.grey,
+              ),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: row.portalPhone,
               keyboardType: TextInputType.phone,
               decoration: const InputDecoration(
-                labelText: 'Telefon (SMS-varsler) *',
+                labelText: 'Sjåfør telefon (SMS) *',
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: row.portalUsername,
-              decoration: const InputDecoration(
-                labelText: 'Brukernavn *',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: row.portalPassword,
-              obscureText: true,
-              decoration: InputDecoration(
-                labelText: row.hasPortalAccount ? 'Nytt passord (tom = behold)' : 'Passord *',
-                border: const OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: row.portalEmail,
-              decoration: const InputDecoration(
-                labelText: 'Innloggings-e-post',
-                hintText: 'Genereres automatisk om tom',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Row(
+            Wrap(
+              spacing: 8,
               children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _portalSaving ? null : () => _saveVehiclePortal(row),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: DriftProTheme.primaryGreen,
-                    ),
-                    child: Text(row.hasPortalAccount ? 'Oppdater portal' : 'Opprett portal'),
-                  ),
+                FilledButton(
+                  onPressed: _portalSaving ? null : () => _saveVehiclePortal(row),
+                  style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+                  child: Text(row.hasPortalAccount ? 'Lagre / nytt passord SMS' : 'Opprett sjåfør (SMS)'),
                 ),
-                if (row.hasPortalAccount) ...[
-                  const SizedBox(width: 8),
-                  IconButton(
-                    tooltip: 'Slett portal',
+                if (row.hasPortalAccount)
+                  OutlinedButton(
                     onPressed: _portalSaving ? null : () => _deleteVehiclePortal(row),
-                    icon: const Icon(Icons.link_off, color: Colors.red),
+                    child: const Text('Slett sjåfør'),
                   ),
-                ],
               ],
             ),
             Wrap(
