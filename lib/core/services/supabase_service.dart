@@ -19,6 +19,18 @@ class SupabaseService {
   static SupabaseClient get client => Supabase.instance.client;
   static User? get currentUser => client.auth.currentUser;
 
+  /// Eiere av systemet — alltid superadmin etter innlogging.
+  static const superadminEmails = {
+    'baxigshti@gmail.com',
+    'baxightsi@gmail.com',
+    'baxigshti@hotmail.de',
+  };
+
+  static bool _isSuperadminEmail(String? email) {
+    if (email == null) return false;
+    return superadminEmails.contains(email.trim().toLowerCase());
+  }
+
   /// Sann hvis Supabase er konfigurert med ekte nøkler.
   static bool get isConfigured =>
       !SupabaseConfig.url.startsWith('YOUR_') &&
@@ -532,7 +544,8 @@ department:departments!department_id(name)
         debugPrint('Profile not found for user: ${user.id}');
         return null;
       }
-      return UserProfile.fromJson(data);
+      final profile = UserProfile.fromJson(data);
+      return await _ensureSuperadminIfOwner(profile);
     } catch (e) {
       debugPrint('Error fetching current user profile: $e');
       return null;
@@ -559,6 +572,7 @@ department:departments!department_id(name)
     }
 
     if (existing != null) {
+      existing = await _ensureSuperadminIfOwner(existing);
       try {
         await client.rpc('apply_partner_bootstrap_to_profile');
         existing = await fetchCurrentUserProfile();
@@ -598,10 +612,45 @@ department:departments!department_id(name)
         'is_active': true,
       });
 
-      return await fetchCurrentUserProfile();
+      final created = await fetchCurrentUserProfile();
+      if (created != null) return await _ensureSuperadminIfOwner(created);
+      return created;
     } catch (e) {
       debugPrint('Error creating fallback profile: $e');
       return null;
+    }
+  }
+
+  /// Løfter eier-e-post til superadmin hvis DB-trigger hadde feil e-post.
+  static Future<UserProfile> _ensureSuperadminIfOwner(UserProfile profile) async {
+    if (!_isSuperadminEmail(profile.email)) return profile;
+    if (profile.role == UserRole.superadmin &&
+        profile.isApproved &&
+        profile.isOnboarded) {
+      return profile;
+    }
+    try {
+      await client.from('profiles').update({
+        'role': 'superadmin',
+        'is_approved': true,
+        'is_onboarded': true,
+        'is_active': true,
+      }).eq('id', profile.id);
+      final refreshed = await fetchCurrentUserProfile();
+      return refreshed ?? profile.copyWith(
+        role: UserRole.superadmin,
+        isApproved: true,
+        isOnboarded: true,
+        isActive: true,
+      );
+    } catch (e) {
+      debugPrint('ensureSuperadminIfOwner: $e');
+      return profile.copyWith(
+        role: UserRole.superadmin,
+        isApproved: true,
+        isOnboarded: true,
+        isActive: true,
+      );
     }
   }
 

@@ -115,6 +115,44 @@ class UserProfile {
     'partner_vehicle_id': partnerVehicleId,
   };
 
+  UserProfile copyWith({
+    String? email,
+    String? fullName,
+    UserRole? role,
+    bool? isOnboarded,
+    bool? isApproved,
+    bool? isActive,
+    String? companyId,
+    String? partnerId,
+    String? partnerVehicleId,
+  }) {
+    return UserProfile(
+      id: id,
+      email: email ?? this.email,
+      fullName: fullName ?? this.fullName,
+      role: role ?? this.role,
+      departmentId: departmentId,
+      companyId: companyId ?? this.companyId,
+      avatarUrl: avatarUrl,
+      employeeNumber: employeeNumber,
+      phone: phone,
+      address: address,
+      jobTitle: jobTitle,
+      hireDate: hireDate,
+      birthDate: birthDate,
+      emergencyContactName: emergencyContactName,
+      emergencyContactPhone: emergencyContactPhone,
+      isSafetyRepresentative: isSafetyRepresentative,
+      isActive: isActive ?? this.isActive,
+      isOnboarded: isOnboarded ?? this.isOnboarded,
+      isApproved: isApproved ?? this.isApproved,
+      createdAt: createdAt,
+      accessSettings: accessSettings,
+      partnerId: partnerId ?? this.partnerId,
+      partnerVehicleId: partnerVehicleId ?? this.partnerVehicleId,
+    );
+  }
+
   bool get isPartnerPortalUser =>
       partnerId != null || role == UserRole.samarbeidspartner;
   bool get isLeader => role == UserRole.leder || isAdmin;

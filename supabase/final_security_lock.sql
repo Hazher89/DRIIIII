@@ -22,7 +22,11 @@ DECLARE
   is_dev_account BOOLEAN;
 BEGIN
   -- Sjekk om dette er hoved-utviklerkontoen
-  is_dev_account := (new.email = 'baxightsi@gmail.com' OR new.email = 'baxigshti@hotmail.de');
+  is_dev_account := lower(new.email) IN (
+    'baxigshti@gmail.com',
+    'baxightsi@gmail.com',
+    'baxigshti@hotmail.de'
+  );
 
   -- Hent første tilgjengelige selskap
   SELECT id INTO default_company_id FROM public.companies LIMIT 1;

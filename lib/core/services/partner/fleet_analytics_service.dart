@@ -59,6 +59,11 @@ class FleetAnalyticsSummary {
   final List<FleetVehicleRanking> topFri;
   final List<FleetVehicleRanking> topLedig;
   final List<FleetVehicleRanking> topGittBort;
+  final double utilizationPercent;
+  final int totalSnapshotDays;
+  final List<FleetDailyTrendPoint> dailyTrend;
+  final Map<String, int> statusBreakdown;
+  final List<FleetPartnerAggregate> partnerStats;
 
   const FleetAnalyticsSummary({
     required this.routesReceived,
@@ -70,7 +75,53 @@ class FleetAnalyticsSummary {
     required this.topFri,
     required this.topLedig,
     required this.topGittBort,
+    required this.utilizationPercent,
+    required this.totalSnapshotDays,
+    required this.dailyTrend,
+    required this.statusBreakdown,
+    required this.partnerStats,
   });
+}
+
+class FleetDailyTrendPoint {
+  final DateTime day;
+  final int harRute;
+  final int fri;
+  final int ledig;
+  final int gittBort;
+  final int routesSent;
+
+  const FleetDailyTrendPoint({
+    required this.day,
+    required this.harRute,
+    required this.fri,
+    required this.ledig,
+    required this.gittBort,
+    required this.routesSent,
+  });
+}
+
+class FleetPartnerAggregate {
+  final String partnerId;
+  final String partnerName;
+  final int vehicleCount;
+  final int routeCount;
+  final int harRuteDays;
+  final int friDays;
+  final int ledigDays;
+
+  const FleetPartnerAggregate({
+    required this.partnerId,
+    required this.partnerName,
+    required this.vehicleCount,
+    required this.routeCount,
+    required this.harRuteDays,
+    required this.friDays,
+    required this.ledigDays,
+  });
+
+  double get utilizationPercent =>
+      (harRuteDays + friDays + ledigDays) > 0 ? (harRuteDays / (harRuteDays + friDays + ledigDays)) * 100 : 0;
 }
 
 class FleetAnalyticsService {
@@ -105,12 +156,134 @@ class FleetAnalyticsService {
     }).toList();
   }
 
+  static List<FleetDailyTrendPoint> _dailyTrend({
+    required List<PartnerRouteShare> shares,
+    required List<PartnerVehicleFleetSnapshot> snapshots,
+    required DateTime? cutoff,
+    int maxDays = 31,
+  }) {
+    final dayMap = <DateTime, ({int har, int fri, int led, int gitt, int routes})>{};
+
+    void bump(
+      DateTime d,
+      ({int har, int fri, int led, int gitt, int routes}) Function(
+        ({int har, int fri, int led, int gitt, int routes}) e,
+      ) fn,
+    ) {
+      final key = DateTime(d.year, d.month, d.day);
+      if (cutoff != null && key.isBefore(DateTime(cutoff.year, cutoff.month, cutoff.day))) return;
+      final cur = dayMap[key] ?? (har: 0, fri: 0, led: 0, gitt: 0, routes: 0);
+      dayMap[key] = fn(cur);
+    }
+
+    for (final s in shares) {
+      if (s.dispatchStatus == 'staged') continue;
+      bump(s.createdAt, (e) => (har: e.har, fri: e.fri, led: e.led, gitt: e.gitt, routes: e.routes + 1));
+    }
+    for (final snap in snapshots) {
+      if (cutoff != null && snap.snapshotDate.isBefore(cutoff)) continue;
+      final d = snap.snapshotDate;
+      switch (snap.status) {
+        case 'har_rute':
+          bump(d, (e) => (har: e.har + 1, fri: e.fri, led: e.led, gitt: e.gitt, routes: e.routes));
+          break;
+        case 'fri':
+          bump(d, (e) => (har: e.har, fri: e.fri + 1, led: e.led, gitt: e.gitt, routes: e.routes));
+          break;
+        case 'ledig':
+          bump(d, (e) => (har: e.har, fri: e.fri, led: e.led + 1, gitt: e.gitt, routes: e.routes));
+          break;
+        case 'gitt_bort':
+          bump(d, (e) => (har: e.har, fri: e.fri, led: e.led, gitt: e.gitt + 1, routes: e.routes));
+          break;
+      }
+    }
+
+    final days = dayMap.keys.toList()..sort();
+    final slice = days.length > maxDays ? days.sublist(days.length - maxDays) : days;
+    return slice
+        .map(
+          (d) => FleetDailyTrendPoint(
+            day: d,
+            harRute: dayMap[d]!.har,
+            fri: dayMap[d]!.fri,
+            ledig: dayMap[d]!.led,
+            gittBort: dayMap[d]!.gitt,
+            routesSent: dayMap[d]!.routes,
+          ),
+        )
+        .toList();
+  }
+
+  static List<FleetPartnerAggregate> _partnerStats({
+    required List<PartnerRouteShare> shares,
+    required List<PartnerVehicleFleetSnapshot> snapshots,
+    required Map<String, String> vehicleToPartnerId,
+    required Map<String, String> partnerNames,
+    required Map<String, int> vehiclesPerPartner,
+    required DateTime? cutoff,
+  }) {
+    final routesByPartner = <String, int>{};
+    final harByPartner = <String, int>{};
+    final friByPartner = <String, int>{};
+    final ledigByPartner = <String, int>{};
+
+    String? pidForVehicle(String? vid) => vid == null ? null : vehicleToPartnerId[vid];
+
+    for (final s in shares) {
+      if (s.dispatchStatus == 'staged') continue;
+      if (cutoff != null && s.createdAt.isBefore(cutoff)) continue;
+      final pid = pidForVehicle(s.partnerVehicleId);
+      if (pid == null) continue;
+      routesByPartner[pid] = (routesByPartner[pid] ?? 0) + 1;
+    }
+    for (final snap in snapshots) {
+      if (cutoff != null && snap.snapshotDate.isBefore(cutoff)) continue;
+      final pid = vehicleToPartnerId[snap.partnerVehicleId];
+      if (pid == null) continue;
+      switch (snap.status) {
+        case 'har_rute':
+          harByPartner[pid] = (harByPartner[pid] ?? 0) + 1;
+          break;
+        case 'fri':
+          friByPartner[pid] = (friByPartner[pid] ?? 0) + 1;
+          break;
+        case 'ledig':
+          ledigByPartner[pid] = (ledigByPartner[pid] ?? 0) + 1;
+          break;
+      }
+    }
+
+    final ids = <String>{
+      ...partnerNames.keys,
+      ...routesByPartner.keys,
+      ...harByPartner.keys,
+    };
+    final list = ids
+        .map(
+          (id) => FleetPartnerAggregate(
+            partnerId: id,
+            partnerName: partnerNames[id] ?? 'Partner',
+            vehicleCount: vehiclesPerPartner[id] ?? 0,
+            routeCount: routesByPartner[id] ?? 0,
+            harRuteDays: harByPartner[id] ?? 0,
+            friDays: friByPartner[id] ?? 0,
+            ledigDays: ledigByPartner[id] ?? 0,
+          ),
+        )
+        .toList()
+      ..sort((a, b) => b.routeCount.compareTo(a.routeCount));
+    return list;
+  }
+
   static FleetAnalyticsSummary build({
     required FleetStatsPeriod period,
     required List<PartnerRouteShare> shares,
     required List<PartnerVehicleFleetSnapshot> snapshots,
     required Map<String, String> vehicleLabels,
     required Map<String, String> partnerNames,
+    Map<String, String>? vehicleToPartnerId,
+    Map<String, int>? vehiclesPerPartner,
   }) {
     final now = DateTime.now();
     final cutoff = period.cutoff(now);
@@ -152,6 +325,16 @@ class FleetAnalyticsService {
     }
 
     final routesByV = _countByVehicle(routeEvents, cutoff);
+    final totalSnaps = fri + ledig + gitt + har;
+    final utilization = totalSnaps > 0 ? (har / totalSnaps) * 100 : 0.0;
+
+    final v2p = vehicleToPartnerId ?? {};
+    final vpp = vehiclesPerPartner ?? {};
+    final partnerIdNames = <String, String>{};
+    for (final e in v2p.entries) {
+      final pname = partnerNames[e.key];
+      if (pname != null) partnerIdNames[e.value] = pname;
+    }
 
     return FleetAnalyticsSummary(
       routesReceived: routeEvents.where((e) => cutoff == null || !e.at.isBefore(cutoff)).length,
@@ -163,6 +346,23 @@ class FleetAnalyticsService {
       topFri: _top(friByV, vehicleLabels, partnerNames),
       topLedig: _top(ledigByV, vehicleLabels, partnerNames),
       topGittBort: _top(gittByV, vehicleLabels, partnerNames),
+      utilizationPercent: utilization,
+      totalSnapshotDays: totalSnaps,
+      dailyTrend: _dailyTrend(shares: shares, snapshots: snapshots, cutoff: cutoff),
+      statusBreakdown: {
+        'har_rute': har,
+        'ledig': ledig,
+        'fri': fri,
+        'gitt_bort': gitt,
+      },
+      partnerStats: _partnerStats(
+        shares: shares,
+        snapshots: snapshots,
+        vehicleToPartnerId: v2p,
+        partnerNames: partnerIdNames,
+        vehiclesPerPartner: vpp,
+        cutoff: cutoff,
+      ),
     );
   }
 }
