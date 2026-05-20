@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/auth/employee_oauth_sign_in.dart';
-import '../../core/config/app_origin.dart';
 import '../../core/services/partner/partner_service.dart';
+import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 
 /// Første valg: MAVI-ansatte (OAuth) eller samarbeidspartner (brukernavn/passord).
@@ -78,8 +78,7 @@ class AuthGateScreen extends StatelessWidget {
                     _GateCard(
                       icon: Icons.handshake_outlined,
                       title: 'Samarbeidspartner',
-                      subtitle:
-                          'Innloggingslenke på e-post fra administrator, eller brukernavn og passord etter oppsett.',
+                      subtitle: 'Bil-eier og sjåfør: brukernavn og passord fra MAVI (SMS).',
                       color: const Color(0xFF1565C0),
                       onTap: () {
                         Navigator.of(context).push(
@@ -385,15 +384,29 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
   }
 
   Future<String?> _resolveLoginEmail(String identifier) async {
-    final raw = identifier.trim();
-    if (raw.contains('@')) return raw.toLowerCase();
-    final resolved = await PartnerService.resolveLoginIdentifierToEmail(raw);
-    if (resolved != null && resolved.contains('@')) return resolved.toLowerCase();
-    return null;
+    try {
+      return await PartnerService.resolveLoginIdentifierToEmail(identifier);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: DriftProTheme.error),
+        );
+      }
+      return null;
+    }
   }
 
   Future<void> _signIn() async {
     if (_loading) return;
+    if (!SupabaseService.isConfigured) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Appen er ikke koblet til server. Last siden på nytt (Ctrl+F5).'),
+          backgroundColor: DriftProTheme.error,
+        ),
+      );
+      return;
+    }
     final identifier = _identifier.text.trim();
     final pw = _password.text;
     if (identifier.isEmpty || pw.isEmpty) {
@@ -409,7 +422,9 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Fant ikke bruker «$identifier». Sjekk staving eller bruk e-posten du fikk.'),
+              content: Text(
+                'Fant ikke brukernavn «$identifier». Sjekk staving eller bruk «Glemt passord?».',
+              ),
               backgroundColor: DriftProTheme.error,
             ),
           );
@@ -420,15 +435,17 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
         email: email,
         password: pw,
       );
+      await SupabaseService.ensureSessionLinkedToCompany();
       if (!mounted) return;
       _leaveLoginScreen();
     } on AuthException catch (e) {
       if (mounted) {
+        final msg = e.message.toLowerCase();
+        final hint = msg.contains('invalid') || msg.contains('credentials')
+            ? 'Feil brukernavn eller passord. Prøv «Glemt passord?» for nytt passord på SMS.'
+            : (e.message.isNotEmpty ? e.message : 'Innlogging feilet');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.message.isNotEmpty ? e.message : 'Feil brukernavn eller passord'),
-            backgroundColor: DriftProTheme.error,
-          ),
+          SnackBar(content: Text(hint), backgroundColor: DriftProTheme.error),
         );
       }
     } catch (e) {
@@ -442,47 +459,61 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
     }
   }
 
-  Future<void> _sendMagicLink() async {
+  Future<void> _forgotPassword() async {
     if (_loading) return;
-    final raw = _identifier.text.trim();
-    if (raw.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Skriv innloggings-e-post eller brukernavn først')),
-      );
-      return;
-    }
+    final usernameCtrl = TextEditingController(text: _identifier.text.trim());
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Glemt passord?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Skriv brukernavnet ditt (fra SMS fra MAVI). Du får nytt passord på SMS. '
+              'Det gamle passordet slutter å virke med én gang.',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: usernameCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Brukernavn',
+                border: OutlineInputBorder(),
+              ),
+              textInputAction: TextInputAction.done,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Send nytt passord på SMS'),
+          ),
+        ],
+      ),
+    );
+    final username = usernameCtrl.text.trim();
+    usernameCtrl.dispose();
+    if (confirmed != true || username.isEmpty) return;
+
     setState(() => _loading = true);
     try {
-      var email = await PartnerService.resolveLoginIdentifierToEmail(raw);
-      if (email == null || !email.contains('@')) {
-        if (raw.contains('@')) {
-          email = raw;
-        }
-      }
-      if (email == null || !email.contains('@')) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Fant ikke e-post for dette brukernavnet. Bruk e-postadressen du fikk tildelt.')),
-          );
-        }
-        return;
-      }
-      await Supabase.instance.client.auth.signInWithOtp(
-        email: email.trim().toLowerCase(),
-        emailRedirectTo: appAuthRedirectOrigin,
-        shouldCreateUser: true,
+      final result = await PartnerService.resetPortalPasswordByUsername(username);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.success
+                ? (result.message ?? 'Nytt passord sendt på SMS.')
+                : (result.error ?? 'Kunne ikke tilbakestille passord'),
+          ),
+          backgroundColor: result.success ? Colors.green : DriftProTheme.error,
+          duration: const Duration(seconds: 6),
+        ),
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lenke sendt til $email. Sjekk innboks og spam.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke sende lenke: $e'), backgroundColor: DriftProTheme.error),
-        );
-      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -530,7 +561,7 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
                   controller: _password,
                   obscureText: _obscure,
                   decoration: InputDecoration(
-                    labelText: 'Passord (hvis du har satt det)',
+                    labelText: 'Passord',
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
                       icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
@@ -539,9 +570,17 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
                   ),
                   onSubmitted: (_) => _signIn(),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _loading ? null : _forgotPassword,
+                    child: const Text('Glemt passord?'),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 FilledButton(
-                  onPressed: _loading ? null : _signIn,
+                  onPressed: _loading ? null : () => _signIn(),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     backgroundColor: const Color(0xFF1565C0),
@@ -554,19 +593,11 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
                         )
                       : const Text('Logg inn'),
                 ),
-                const SizedBox(height: 12),
-                OutlinedButton(
-                  onPressed: _loading ? null : _sendMagicLink,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    foregroundColor: const Color(0xFF1565C0),
-                  ),
-                  child: const Text('Send innloggingslenke på e-post'),
-                ),
                 const SizedBox(height: 16),
                 Text(
-                  'Administrator registrerer partner og portal under Samarbeidspartnere. Du får typisk en e-post med lenke; da trenger du ikke passord her.',
-                  style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : Colors.grey[600]),
+                  'Bruk brukernavn og passord fra SMS når MAVI oppretter kontoen din. '
+                  'Har du glemt passordet, trykk «Glemt passord?» — nytt passord sendes på SMS.',
+                  style: TextStyle(fontSize: 12, color: isDark ? Colors.white38 : Colors.grey[600], height: 1.4),
                 ),
               ],
             ),

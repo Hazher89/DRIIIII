@@ -1211,16 +1211,60 @@ class PartnerService {
 
   static Future<String?> resolveLoginIdentifierToEmail(String identifier) async {
     final input = identifier.trim();
-    if (input.contains('@')) return input;
-    if (!_ok) return null;
+    if (input.isEmpty) return null;
+    if (input.contains('@')) return input.toLowerCase();
+    if (!_ok) {
+      throw StateError('Appen er ikke koblet til Supabase. Kontakt administrator.');
+    }
+    final val = await _client.rpc('resolve_partner_login_email', params: {
+      'p_username': input.toLowerCase(),
+    });
+    if (val is String && val.trim().isNotEmpty) return val.trim().toLowerCase();
+    return null;
+  }
+
+  /// Glemt passord: nytt passord i Supabase Auth + SMS til registrert telefon.
+  static Future<PartnerPortalPasswordResetResult> resetPortalPasswordByUsername(
+    String username,
+  ) async {
+    if (!_ok) {
+      return const PartnerPortalPasswordResetResult(
+        success: false,
+        error: 'Appen er ikke koblet til Supabase.',
+      );
+    }
+    final u = username.trim().toLowerCase();
+    if (u.length < 2) {
+      return const PartnerPortalPasswordResetResult(
+        success: false,
+        error: 'Skriv brukernavnet ditt.',
+      );
+    }
     try {
-      final val = await _client.rpc('resolve_partner_login_email', params: {
-        'p_username': input.toLowerCase(),
-      });
-      if (val is String && val.trim().isNotEmpty) return val.trim();
-      return null;
-    } catch (_) {
-      return null;
+      final res = await _client.functions.invoke(
+        'partner-portal-reset-password',
+        body: {'username': u},
+      );
+      final data = res.data;
+      if (data is Map<String, dynamic>) {
+        if (data['error'] != null) {
+          return PartnerPortalPasswordResetResult(
+            success: false,
+            error: data['error'].toString(),
+          );
+        }
+        return PartnerPortalPasswordResetResult(
+          success: data['ok'] == true,
+          message: data['message'] as String? ??
+              'Nytt passord er sendt på SMS.',
+        );
+      }
+      return const PartnerPortalPasswordResetResult(
+        success: false,
+        error: 'Uventet svar fra server.',
+      );
+    } catch (e) {
+      return PartnerPortalPasswordResetResult(success: false, error: e.toString());
     }
   }
 

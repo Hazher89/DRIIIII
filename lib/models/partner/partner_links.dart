@@ -599,6 +599,18 @@ class PortalProvisionResult {
   });
 }
 
+class PartnerPortalPasswordResetResult {
+  final bool success;
+  final String? message;
+  final String? error;
+
+  const PartnerPortalPasswordResetResult({
+    required this.success,
+    this.message,
+    this.error,
+  });
+}
+
 class PartnerFriRequest {
   final String id;
   final String companyId;
