@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:typed_data';
 
+import 'package:http/http.dart' as http;
+
 import '../../config/app_origin.dart';
 import '../../config/supabase_config.dart';
 import '../../../models/partner/partner.dart';
@@ -11,6 +13,7 @@ import '../../utils/portal_credentials.dart';
 import '../sms/sms_phone_utils.dart';
 import 'fleet_shift_seed.dart';
 import 'mavi_unit_codes.dart';
+import 'route_pdf_text_service.dart';
 
 class PartnerService {
   static SupabaseClient get _client => Supabase.instance.client;
@@ -1288,6 +1291,59 @@ class PartnerService {
     final path = storagePath.trim().replaceFirst(RegExp(r'^/'), '');
     if (path.isEmpty) throw ArgumentError('PDF-sti mangler');
     return _client.storage.from('documents').createSignedUrl(path, 3600);
+  }
+
+  /// Leser kunder (navn + telefon) fra rute-PDF for sjåfør på valgt dag.
+  static Future<List<RoutePdfCustomer>> fetchRouteCustomersForVehicleDay({
+    required String companyId,
+    required String partnerVehicleId,
+    required DateTime day,
+  }) async {
+    if (!_ok) return const [];
+    final d = DateTime(day.year, day.month, day.day);
+    final routes = await fetchRouteSharesForCompany(
+      companyId,
+      shareDateFrom: d,
+      shareDateTo: d,
+    );
+    final forVehicle = routes
+        .where(
+          (r) =>
+              r.partnerVehicleId == partnerVehicleId &&
+              r.dispatchStatus == 'sent' &&
+              r.pdfStoragePath.trim().isNotEmpty,
+        )
+        .toList();
+    if (forVehicle.isEmpty) return const [];
+
+    final merged = <RoutePdfCustomer>[];
+    final seenPhones = <String>{};
+
+    for (final route in forVehicle) {
+      var parsed = <RoutePdfCustomer>[];
+      final cached = route.pdfSearchText?.trim();
+      if (cached != null && cached.isNotEmpty) {
+        parsed = RoutePdfTextService.parseCustomers(cached);
+      } else {
+        try {
+          final url = await getRoutePdfSignedUrl(route.pdfStoragePath);
+          final res = await http.get(Uri.parse(url));
+          if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+            parsed = RoutePdfTextService.parseCustomersFromBytes(res.bodyBytes);
+          }
+        } catch (_) {
+          parsed = const [];
+        }
+      }
+      for (final c in parsed) {
+        if (seenPhones.add(c.phoneNormalizedKey)) {
+          merged.add(c);
+        }
+      }
+    }
+
+    merged.sort((a, b) => a.sequence.compareTo(b.sequence));
+    return merged;
   }
 
   static Future<void> uploadPartnerDocumentPdf({

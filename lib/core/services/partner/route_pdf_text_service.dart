@@ -2,6 +2,27 @@ import 'dart:typed_data';
 
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import '../sms/sms_phone_utils.dart';
+
+/// Kunde fra MAVI-rute-PDF (Trip Overview / stopp).
+class RoutePdfCustomer {
+  final int sequence;
+  final String name;
+  final String phoneDisplay;
+  final String phoneNormalizedKey;
+  final String? freightUnit;
+  final String? addressHint;
+
+  const RoutePdfCustomer({
+    required this.sequence,
+    required this.name,
+    required this.phoneDisplay,
+    required this.phoneNormalizedKey,
+    this.freightUnit,
+    this.addressHint,
+  });
+}
+
 /// Dato/tid hentet fra MAVI-rute-PDF (Trip Overview / stopp-liste).
 class RoutePdfSchedule {
   final DateTime routeDate;
@@ -102,6 +123,92 @@ class RoutePdfTextService {
         .replaceAll('\uFF3F', '_')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  /// Henter kundenavn og telefon fra Elkjøp/MAVI Trip Overview-PDF.
+  static List<RoutePdfCustomer> parseCustomers(String raw) {
+    if (raw.trim().isEmpty) return const [];
+    final fromOverview = _parseCustomersFromTripOverview(raw);
+    if (fromOverview.isNotEmpty) return fromOverview;
+    return _parseCustomersFromStopBlocks(raw);
+  }
+
+  static List<RoutePdfCustomer> parseCustomersFromBytes(Uint8List bytes) {
+    return parseCustomers(extractFullText(bytes));
+  }
+
+  static List<RoutePdfCustomer> _parseCustomersFromTripOverview(String raw) {
+    final flat = raw.replaceAll('\uFF3F', '_').replaceAll(RegExp(r'[\r\n]+'), ' ');
+    final re = RegExp(
+      r'(\d+)\s+(\d{8,12})\s+(.+?),\s*\+47\s*\(?(\d{8})\)?',
+      caseSensitive: false,
+    );
+    final out = <RoutePdfCustomer>[];
+    final seenSeq = <int>{};
+    for (final m in re.allMatches(flat)) {
+      final seq = int.tryParse(m.group(1)!);
+      if (seq == null || !seenSeq.add(seq)) continue;
+      final phoneRaw = m.group(4)!;
+      final norm = normalizePhoneNo(phoneRaw);
+      if (norm == null) continue;
+      final rest = m.group(3)!.trim();
+      out.add(
+        RoutePdfCustomer(
+          sequence: seq,
+          name: _customerNameFromRest(rest),
+          phoneDisplay: displayPhoneNo(norm),
+          phoneNormalizedKey: norm,
+          freightUnit: m.group(2),
+          addressHint: rest.contains(',') ? rest : null,
+        ),
+      );
+    }
+    out.sort((a, b) => a.sequence.compareTo(b.sequence));
+    return out;
+  }
+
+  static List<RoutePdfCustomer> _parseCustomersFromStopBlocks(String raw) {
+    final text = raw.replaceAll('\uFF3F', '_');
+    final out = <RoutePdfCustomer>[];
+    final seenSeq = <int>{};
+    final stopRe = RegExp(
+      r'Stop\s*#\s*Customer[^\d]*(\d+)\s+(.+?)\s+(\d{1,2}\.\d{1,2}\.\d{2,4}\s+\d{1,2}:\d{2})',
+      caseSensitive: false,
+      dotAll: true,
+    );
+    for (final m in stopRe.allMatches(text)) {
+      final seq = int.tryParse(m.group(1)!);
+      if (seq == null || !seenSeq.add(seq)) continue;
+      final blockStart = m.start;
+      final blockEnd = (blockStart + 1200).clamp(0, text.length);
+      final block = text.substring(blockStart, blockEnd);
+      final phoneM = RegExp(r'\+\s*47\s*\(?(\d{8})\)?', caseSensitive: false).firstMatch(block);
+      if (phoneM == null) continue;
+      final norm = normalizePhoneNo(phoneM.group(1)!);
+      if (norm == null) continue;
+      final rest = m.group(2)!.trim();
+      out.add(
+        RoutePdfCustomer(
+          sequence: seq,
+          name: _customerNameFromRest(rest),
+          phoneDisplay: displayPhoneNo(norm),
+          phoneNormalizedKey: norm,
+          addressHint: rest.contains(',') ? rest : null,
+        ),
+      );
+    }
+    out.sort((a, b) => a.sequence.compareTo(b.sequence));
+    return out;
+  }
+
+  static String _customerNameFromRest(String rest) {
+    final comma = rest.indexOf(',');
+    if (comma > 0) return rest.substring(0, comma).trim();
+    final digits = RegExp(r'\s\d{4}\s').firstMatch(rest);
+    if (digits != null && digits.start > 0) {
+      return rest.substring(0, digits.start).trim();
+    }
+    return rest.trim();
   }
 
   /// Score 0–100: høyere = bedre treff.
