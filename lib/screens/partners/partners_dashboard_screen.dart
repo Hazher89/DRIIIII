@@ -356,7 +356,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
               icon: const Icon(Icons.refresh_rounded),
               onPressed: () => _routesKey.currentState?.reload(),
             ),
-          if (onCompaniesTab && canRegister)
+          if (onCompaniesTab && !onSmsTab && canRegister)
             IconButton(
               tooltip: 'Ny / masseimport',
               icon: const Icon(Icons.add_circle_outline),
@@ -364,7 +364,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
             ),
         ],
       ),
-      floatingActionButton: onCompaniesTab && canRegister
+      floatingActionButton: onCompaniesTab && !onSmsTab && canRegister
           ? FloatingActionButton.extended(
               onPressed: _openRegisterMenu,
               icon: const Icon(Icons.add),

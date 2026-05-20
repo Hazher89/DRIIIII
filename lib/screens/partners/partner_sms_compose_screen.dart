@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/partner_sms_templates.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/partner/route_pdf_text_service.dart';
 import '../../core/services/sms/sms_phone_utils.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
+import 'widgets/partner_sms_message_section.dart';
 import 'widgets/partner_sms_route_customers_tab.dart';
 import 'widgets/partner_ui.dart';
 
@@ -88,14 +88,12 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
   List<Partner> _partners = [];
   List<PartnerSmsContact> _contacts = [];
   List<FleetPartnerVehicleRow> _fleet = [];
-  final Set<String> _selectedRoutePhoneKeys = {};
-  Map<String, RoutePdfCustomer> _routeCustomerByPhone = {};
   bool _sending = false;
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 2, vsync: this);
     _searchCtrl.addListener(() => setState(() {}));
     _messageCtrl.addListener(() => setState(() {}));
     _manualPhonesCtrl.addListener(() => setState(() {}));
@@ -239,11 +237,13 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     required List<String> phones,
     required String title,
     List<String> labels = const [],
+    bool skipConfirm = false,
   }) async {
     final cid = _companyId;
     final msg = _messageCtrl.text.trim();
     if (cid == null || msg.isEmpty || phones.isEmpty) return;
 
+    if (!skipConfirm) {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -270,6 +270,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
       ),
     );
     if (!mounted || ok != true) return;
+    }
 
     setState(() => _sending = true);
     var queued = 0;
@@ -407,13 +408,6 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     for (final p in manual) {
       add(p, p);
     }
-    for (final key in _selectedRoutePhoneKeys) {
-      final c = _routeCustomerByPhone[key];
-      if (c != null) {
-        add(c.phoneDisplay, '${c.sequence}. ${c.name} (${c.phoneDisplay})');
-      }
-    }
-
     if (phones.isEmpty || _messageCtrl.text.trim().isEmpty) return;
 
     await _sendToPhones(
@@ -425,13 +419,21 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
 
   Future<void> _sendOne(PartnerSmsContact c) async {
     if (_messageCtrl.text.trim().isEmpty) {
-      _tabs.animateTo(1);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Skriv melding på «Send SMS»-fanen først')),
+        const SnackBar(content: Text('Skriv melding under kontaktlisten først')),
       );
       return;
     }
     await _send(targets: [c]);
+  }
+
+  Future<void> _sendRouteCustomers(List<RoutePdfCustomer> customers) async {
+    await _sendToPhones(
+      phones: customers.map((c) => c.phoneDisplay).toList(),
+      title: 'Send SMS til ${customers.length} kunde${customers.length == 1 ? '' : 'r'}?',
+      labels: customers.map((c) => '${c.sequence}. ${c.name} (${c.phoneDisplay})').toList(),
+      skipConfirm: true,
+    );
   }
 
   @override
@@ -439,18 +441,17 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final manualCount = _manualPhones.length;
     final selectedCount = _selected.length;
-    final routeCount = _selectedRoutePhoneKeys.length;
-    final totalRecipients = selectedCount + manualCount + routeCount;
+    final totalRecipients = selectedCount + manualCount;
 
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PartnerHeroBanner(
           compact: true,
-          title: 'SMS til samarbeidspartnere',
+          title: 'SMS',
           subtitle: _loading
-              ? 'Laster kontakter…'
-              : '${_contacts.length} kontakter · ${_partners.length} bedrifter',
+              ? 'Laster…'
+              : 'Kontakter: ${_contacts.length} · Rute-kunder fra PDF på «Send SMS til kunder»',
           leading: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -467,35 +468,25 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
           unselectedLabelColor: PartnerUi.mutedText(context),
           isScrollable: true,
           tabAlignment: TabAlignment.start,
-          tabs: [
-            Tab(text: 'Kontakter ($selectedCount)'),
-            Tab(text: 'Rute-kunder ($routeCount)'),
-            Tab(text: 'Send SMS (${_messageCtrl.text.trim().length}/1071)'),
+          tabs: const [
+            Tab(text: 'Kontakter'),
+            Tab(text: 'Send SMS til kunder'),
           ],
         ),
         Expanded(
           child: TabBarView(
             controller: _tabs,
             children: [
-              _buildContactsTab(isDark),
+              _buildContactsTab(isDark, totalRecipients, manualCount, selectedCount),
               _companyId == null
                   ? const Center(child: Text('Laster…'))
                   : PartnerSmsRouteCustomersTab(
                       companyId: _companyId!,
                       fleet: _fleet,
-                      selectedPhoneKeys: _selectedRoutePhoneKeys,
-                      onSelectionChanged: (keys) => setState(() {
-                        _selectedRoutePhoneKeys
-                          ..clear()
-                          ..addAll(keys);
-                      }),
-                      onCustomersLoaded: (list) => setState(() {
-                        _routeCustomerByPhone = {
-                          for (final c in list) c.phoneNormalizedKey: c,
-                        };
-                      }),
+                      messageCtrl: _messageCtrl,
+                      sending: _sending,
+                      onSend: _sendRouteCustomers,
                     ),
-              _buildComposeTab(isDark, totalRecipients, manualCount, selectedCount, routeCount),
             ],
           ),
         ),
@@ -512,7 +503,12 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     );
   }
 
-  Widget _buildContactsTab(bool isDark) {
+  Widget _buildContactsTab(
+    bool isDark,
+    int totalRecipients,
+    int manualCount,
+    int selectedCount,
+  ) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen));
     }
@@ -552,8 +548,9 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
           ),
         ),
         Expanded(
+          flex: 3,
           child: ListView(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
             children: [
               for (final entry in _grouped.entries) ...[
                 Padding(
@@ -608,61 +605,49 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
             ],
           ),
         ),
+        Expanded(
+          flex: 2,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Divider(),
+                const SizedBox(height: 8),
+                const Text(
+                  'SMS til valgte kontakter / egne nummer',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 8),
+                PartnerSmsMessageSection(
+                  messageCtrl: _messageCtrl,
+                  onChanged: () => setState(() {}),
+                  minLines: 3,
+                ),
+                const SizedBox(height: 12),
+                _buildContactsSendSection(isDark, totalRecipients, manualCount, selectedCount),
+              ],
+            ),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildComposeTab(
+  Widget _buildContactsSendSection(
     bool isDark,
     int totalRecipients,
     int manualCount,
     int selectedCount,
-    int routeCount,
   ) {
     final selectedContacts =
         _contacts.where((c) => _selected.contains(c.id)).toList(growable: false);
     final manualPhones = _manualPhones;
-    final routeCustomers = _selectedRoutePhoneKeys
-        .map((k) => _routeCustomerByPhone[k])
-        .whereType<RoutePdfCustomer>()
-        .toList();
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Maler',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            color: isDark ? Colors.grey[200] : Colors.grey[900],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final t in kPartnerSmsTemplates)
-              ActionChip(
-                label: Text(t.title, style: const TextStyle(fontSize: 12)),
-                onPressed: () => setState(() => _messageCtrl.text = t.body),
-              ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _messageCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Melding',
-            hintText: 'Velg mal over eller skriv egen tekst…',
-            border: OutlineInputBorder(),
-            alignLabelWithHint: true,
-          ),
-          minLines: 5,
-          maxLines: 10,
-          maxLength: 1071,
-        ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 4),
         Text(
           'Egne nummer (ikke registrert i systemet)',
           style: TextStyle(
@@ -741,30 +726,19 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  'Kontakter: $selectedCount · Rute-kunder: $routeCount · Egne nummer: $manualCount',
+                  'Kontakter: $selectedCount · Egne nummer: $manualCount',
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
-                if (selectedContacts.isEmpty && manualPhones.isEmpty && routeCustomers.isEmpty)
+                if (selectedContacts.isEmpty && manualPhones.isEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      'Velg kontakter, rute-kunder (PDF) og/eller skriv egne nummer.',
+                      'Velg kontakter over og/eller skriv egne nummer. '
+                      'For rute-kunder fra PDF, bruk fanen «Send SMS til kunder».',
                       style: TextStyle(color: PartnerUi.mutedText(context)),
                     ),
                   )
                 else ...[
-                  if (routeCustomers.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    const Text('Fra rute-PDF:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                    ...routeCustomers.take(6).map(
-                          (c) => Text(
-                            '• ${c.sequence}. ${c.name} (${c.phoneDisplay})',
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                    if (routeCustomers.length > 6)
-                      Text('… og ${routeCustomers.length - 6} til', style: const TextStyle(fontSize: 12)),
-                  ],
                   if (selectedContacts.isNotEmpty) ...[
                     const SizedBox(height: 8),
                     const Text('Fra kontaktliste:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
@@ -812,26 +786,6 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                 : () => _send(targets: selectedContacts),
             icon: const Icon(Icons.contacts_outlined),
             label: Text('Kun valgte kontakter ($selectedCount)'),
-          ),
-        ],
-        if (routeCount > 0) ...[
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: _sending || _messageCtrl.text.trim().isEmpty
-                ? null
-                : () {
-                    final phones = routeCustomers.map((c) => c.phoneDisplay).toList();
-                    final labels = routeCustomers
-                        .map((c) => '${c.sequence}. ${c.name} (${c.phoneDisplay})')
-                        .toList();
-                    _sendToPhones(
-                      phones: phones,
-                      title: 'Send SMS til $routeCount rute-kunder?',
-                      labels: labels,
-                    );
-                  },
-            icon: const Icon(Icons.route_outlined),
-            label: Text('Kun rute-kunder ($routeCount)'),
           ),
         ],
       ],
