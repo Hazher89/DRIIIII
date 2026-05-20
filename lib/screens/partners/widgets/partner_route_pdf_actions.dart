@@ -1,27 +1,96 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/utils/open_external_url.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../widgets/platform_pdf_view.dart';
 
 /// Delte PDF-handlinger for ruteplanlegging og sjåførportal.
 class PartnerRoutePdfActions {
   PartnerRoutePdfActions._();
 
   static Future<void> openPdf(BuildContext context, PartnerRouteShare share) async {
+    final path = share.pdfStoragePath.trim();
+    if (path.isEmpty) {
+      _snack(context, 'PDF mangler for denne ruten.', isError: true);
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            ),
+            SizedBox(width: 12),
+            Text('Henter PDF…'),
+          ],
+        ),
+        duration: Duration(seconds: 45),
+      ),
+    );
+
     try {
-      final url = await PartnerService.getRoutePdfSignedUrl(share.pdfStoragePath);
-      final uri = Uri.parse(url);
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-        throw Exception('Kunne ikke åpne lenken');
+      final url = await PartnerService.getRoutePdfSignedUrl(path);
+      messenger?.hideCurrentSnackBar();
+      if (!context.mounted) return;
+
+      final opened = await openExternalUrl(url);
+      if (!opened && context.mounted) {
+        if (kIsWeb) {
+          await _showPdfViewer(context, url, share.title ?? 'Rute-PDF');
+        } else {
+          _snack(context, 'Kunne ikke åpne PDF. Prøv igjen.', isError: true);
+        }
       }
     } catch (e) {
+      messenger?.hideCurrentSnackBar();
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke åpne PDF: $e'), backgroundColor: Colors.red),
-        );
+        _snack(context, 'Kunne ikke åpne PDF: $e', isError: true);
       }
     }
+  }
+
+  static Future<void> _showPdfViewer(BuildContext context, String url, String title) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => Dialog.fullscreen(
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(title, overflow: TextOverflow.ellipsis),
+            actions: [
+              IconButton(
+                tooltip: 'Åpne i ny fane',
+                icon: const Icon(Icons.open_in_new),
+                onPressed: () => openExternalUrl(url),
+              ),
+              IconButton(
+                tooltip: 'Lukk',
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+          body: PlatformPdfView(url: url),
+        ),
+      ),
+    );
+  }
+
+  static void _snack(BuildContext context, String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Colors.red.shade700 : null,
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   static Color ackDotColor(PartnerRouteShare share) {

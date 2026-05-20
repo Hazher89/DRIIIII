@@ -1285,7 +1285,9 @@ class PartnerService {
 
   static Future<String> getRoutePdfSignedUrl(String storagePath) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
-    return _client.storage.from('documents').createSignedUrl(storagePath, 3600);
+    final path = storagePath.trim().replaceFirst(RegExp(r'^/'), '');
+    if (path.isEmpty) throw ArgumentError('PDF-sti mangler');
+    return _client.storage.from('documents').createSignedUrl(path, 3600);
   }
 
   static Future<void> uploadPartnerDocumentPdf({
