@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/utils/business_days.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
@@ -41,7 +42,8 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
 
   Future<void> _requestFri() async {
     final reasonCtrl = TextEditingController();
-    var date = DateTime.now().add(const Duration(days: 1));
+    final earliest = BusinessDays.earliestAllowedDate(minBusinessDays: 3);
+    var date = earliest;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
@@ -49,16 +51,25 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
           title: const Text('Søk fri'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                'Du må søke minst 3 virkedager i forveien (uten lørdag, søndag og helligdager). '
+                'Tidligste dato: ${DateFormat('d. MMM yyyy', 'nb').format(earliest)}.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.35),
+              ),
+              const SizedBox(height: 12),
               ListTile(
-                title: const Text('Dato'),
-                subtitle: Text(DateFormat('d. MMM yyyy', 'nb').format(date)),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Første fri-dag'),
+                subtitle: Text(DateFormat('EEEE d. MMM yyyy', 'nb').format(date)),
                 onTap: () async {
                   final d = await showDatePicker(
                     context: ctx,
-                    initialDate: date,
-                    firstDate: DateTime.now(),
+                    initialDate: date.isBefore(earliest) ? earliest : date,
+                    firstDate: earliest,
                     lastDate: DateTime.now().add(const Duration(days: 365)),
+                    selectableDayPredicate: BusinessDays.isBusinessDay,
                   );
                   if (d != null) setLocal(() => date = d);
                 },
@@ -86,6 +97,19 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
     }
     final reason = reasonCtrl.text.trim();
     reasonCtrl.dispose();
+    if (date.isBefore(earliest) || !BusinessDays.isBusinessDay(date)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Velg en virkedag minst ${DateFormat('d.M.y').format(earliest)} (3 virkedager + helligdager).',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
     await PartnerService.createFriRequest(
       companyId: widget.partner.companyId,
       partnerId: widget.partner.id,

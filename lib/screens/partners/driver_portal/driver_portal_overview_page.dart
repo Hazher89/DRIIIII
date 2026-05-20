@@ -4,11 +4,13 @@ import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
+import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
 import '../owner_portal/owner_portal_common.dart';
 import '../partner_shell.dart';
 import '../widgets/partner_ui.dart';
 import 'driver_portal_common.dart';
+import 'driver_portal_route_card.dart';
 
 class DriverPortalOverviewPage extends StatefulWidget {
   final Partner partner;
@@ -39,11 +41,34 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
     if (mounted) setState(() { _data = d; _loading = false; });
   }
 
+  List<PartnerRouteShare> get _highlightRoutes {
+    if (_data == null) return const [];
+    final pending = _data!.routes.where((r) => r.ackStatus == 'pending').toList();
+    final today = _data!.routesToday.where((r) => r.ackStatus != 'pending').toList();
+    final seen = <String>{};
+    final out = <PartnerRouteShare>[];
+    for (final r in [...pending, ...today]) {
+      if (seen.add(r.id)) out.add(r);
+    }
+    out.sort((a, b) {
+      if (a.ackStatus == 'pending' && b.ackStatus != 'pending') return -1;
+      if (b.ackStatus == 'pending' && a.ackStatus != 'pending') return 1;
+      return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
+    });
+    return out;
+  }
+
   @override
   Widget build(BuildContext context) {
     final v = _data?.vehicle;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final surface = isDark ? const Color(0xFF0F1419) : const Color(0xFFF4F6F8);
+
     return Scaffold(
+      backgroundColor: surface,
       appBar: AppBar(
+        backgroundColor: surface,
+        surfaceTintColor: Colors.transparent,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -69,7 +94,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
               onRefresh: _load,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.only(bottom: 24),
+                padding: const EdgeInsets.only(bottom: 100),
                 children: [
                   PartnerHeroBanner(
                     title: v != null
@@ -80,15 +105,44 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                         : 'Dine tildelte ruter',
                     leading: const Icon(Icons.local_shipping_outlined, color: Colors.white, size: 32),
                   ),
+                  if (_highlightRoutes.isNotEmpty) ...[
+                    const OwnerSectionTitle(
+                      title: 'Nye og dagens ruter',
+                      subtitle: 'Starttid, skift, PDF — aksepter eller avvis med kommentar',
+                    ),
+                    ..._highlightRoutes.map(
+                      (r) => Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: DriverPortalRouteCard(
+                          route: r,
+                          shifts: _data!.shiftsById,
+                          onReload: _load,
+                        ),
+                      ),
+                    ),
+                  ] else
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Text(
+                            'Ingen ruter i dag. Du får SMS når MAVI tildeler en ny rute.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: PartnerUi.mutedText(context)),
+                          ),
+                        ),
+                      ),
+                    ),
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     child: GridView.count(
                       crossAxisCount: 2,
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       mainAxisSpacing: 10,
                       crossAxisSpacing: 10,
-                      childAspectRatio: 1.2,
+                      childAspectRatio: 1.25,
                       children: [
                         OwnerKpiCard(
                           label: 'Ruter i dag',
@@ -97,7 +151,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                           accent: DriftProTheme.accentBlue,
                         ),
                         OwnerKpiCard(
-                          label: 'Til godkjenning',
+                          label: 'Til svar',
                           value: '${_data!.pendingAck}',
                           icon: Icons.hourglass_top,
                           accent: _data!.pendingAck > 0 ? Colors.orange : Colors.grey,
@@ -115,77 +169,9 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                       ],
                     ),
                   ),
-                  if (_data!.pendingAck > 0) ...[
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Material(
-                        color: Colors.orange.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(12),
-                        child: ListTile(
-                          leading: const Icon(Icons.notifications_active, color: Colors.orange),
-                          title: const Text(
-                            'Du har ruter som venter på svar',
-                            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                          ),
-                          subtitle: Text(
-                            'Gå til «Mine ruter» for PDF, starttid og godkjenning.',
-                            style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context)),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                  const OwnerSectionTitle(
-                    title: 'Bedrift',
-                    subtitle: 'Kontakt MAVI / bil-eier',
-                  ),
-                  Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        children: [
-                          _row(Icons.person_outline, 'Kontakt', widget.partner.ownerName ?? '—'),
-                          _row(Icons.phone_outlined, 'Telefon', widget.partner.phone ?? '—'),
-                          _row(Icons.email_outlined, 'E-post', widget.partner.email ?? '—'),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Text(
-                      'Du forblir innlogget til du trykker «Logg ut». Du får SMS når MAVI publiserer nye ruter.',
-                      style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context), height: 1.4),
-                    ),
-                  ),
                 ],
               ),
             ),
-    );
-  }
-
-  Widget _row(IconData icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: DriftProTheme.primaryGreen),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w600)),
-                Text(value, style: const TextStyle(fontSize: 14)),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

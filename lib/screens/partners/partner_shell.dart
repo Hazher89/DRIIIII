@@ -54,7 +54,7 @@ List<Widget> _partnerLogoutActions(BuildContext context) => [
 /// Begrenset portal for [UserProfile] som er knyttet til en samarbeidspartner.
 /// Versjonsmerke — synlig for bil-eier når ny portal er lastet.
 const kOwnerPortalBuildLabel = 'Bil-eier v3';
-const kDriverPortalBuildLabel = 'Sjåfør v1';
+const kDriverPortalBuildLabel = 'Sjåfør v2';
 
 class PartnerShell extends StatefulWidget {
   final UserProfile profile;

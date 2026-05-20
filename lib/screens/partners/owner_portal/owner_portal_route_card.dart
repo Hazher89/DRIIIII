@@ -74,7 +74,8 @@ class OwnerPortalRouteCard extends StatelessWidget {
                 ),
               ),
             const SizedBox(height: 8),
-            _infoRow(Icons.map_outlined, 'Område / skift', area),
+            if (area != (shifts[route.shiftId]?.name ?? ''))
+              _infoRow(Icons.map_outlined, 'Område', area),
             if (route.shiftId != null)
               _infoRow(
                 Icons.category_outlined,
@@ -86,13 +87,29 @@ class OwnerPortalRouteCard extends StatelessWidget {
               'Rutedag',
               DateFormat('EEEE d. MMM yyyy', 'nb').format(day),
             ),
-            if (route.routeStartAt != null)
-              _infoRow(
-                Icons.schedule,
-                'Starttid',
-                DateFormat('HH:mm', 'nb').format(route.routeStartAt!.toLocal()),
-                highlight: true,
+            if (route.routeStartAt != null) ...[
+              const SizedBox(height: 4),
+              Center(
+                child: Text(
+                  DateFormat('HH:mm', 'nb').format(route.routeStartAt!.toLocal()),
+                  style: TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.w900,
+                    color: DriftProTheme.accentBlue,
+                    letterSpacing: 1,
+                  ),
+                ),
               ),
+              const SizedBox(height: 4),
+              Center(
+                child: Text(
+                  'Starttid',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+                ),
+              ),
+            ],
+            if (route.shiftId != null)
+              _infoRow(Icons.route_outlined, 'Skift', shifts[route.shiftId]?.name ?? '—', bold: true),
             if ((route.notes ?? '').trim().isNotEmpty)
               _infoRow(Icons.notes_outlined, 'Notat fra MAVI', route.notes!.trim()),
             if ((route.ackComment ?? '').trim().isNotEmpty)
@@ -117,6 +134,7 @@ class OwnerPortalRouteCard extends StatelessWidget {
                         route,
                         accepted: true,
                         onDone: onReload,
+                        onBehalfOfDriver: onBehalfOfDriver,
                       ),
                       icon: const Icon(Icons.check_circle_outline),
                       label: const Text('Godkjenn'),
@@ -153,7 +171,7 @@ class OwnerPortalRouteCard extends StatelessWidget {
     );
   }
 
-  Widget _infoRow(IconData icon, String label, String value, {bool highlight = false}) {
+  Widget _infoRow(IconData icon, String label, String value, {bool highlight = false, bool bold = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
@@ -169,9 +187,9 @@ class OwnerPortalRouteCard extends StatelessWidget {
                 Text(
                   value,
                   style: TextStyle(
-                    fontSize: highlight ? 18 : 14,
-                    fontWeight: highlight ? FontWeight.w900 : FontWeight.w600,
-                    color: highlight ? DriftProTheme.accentBlue : null,
+                    fontSize: highlight ? 18 : (bold ? 16 : 14),
+                    fontWeight: highlight || bold ? FontWeight.w800 : FontWeight.w600,
+                    color: highlight ? DriftProTheme.accentBlue : (bold ? DriftProTheme.primaryGreen : null),
                   ),
                 ),
               ],
