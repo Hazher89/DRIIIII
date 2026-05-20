@@ -184,7 +184,8 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
               const SizedBox(height: 6),
               ...selected.take(8).map(
                     (c) => Text(
-                      '• ${c.sequence}. ${c.name} (${c.phoneDisplay})',
+                      '• ${c.sequence}. ${c.name} (${c.phoneDisplay})'
+                      '${c.deliveryWindow != null ? ' · ${c.deliveryWindow}' : ''}',
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),
@@ -386,10 +387,8 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
                               '${c.sequence}. ${c.name}',
                               style: const TextStyle(fontWeight: FontWeight.w800),
                             ),
-                            subtitle: Text(
-                              c.phoneDisplay,
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                            ),
+                            subtitle: _customerSubtitle(c),
+                            isThreeLine: c.deliveryWindow != null,
                             onTap: () => _toggleOne(c, !selected),
                           ),
                         );
@@ -411,6 +410,36 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
             ),
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _customerSubtitle(RoutePdfCustomer c) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          c.phoneDisplay,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+        if (c.deliveryWindow != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Row(
+              children: [
+                Icon(Icons.schedule, size: 14, color: Colors.grey.shade600),
+                const SizedBox(width: 4),
+                Text(
+                  'Levering: ${c.deliveryWindow}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: DriftProTheme.accentBlue,
+                  ),
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }

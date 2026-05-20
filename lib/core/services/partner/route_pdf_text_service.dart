@@ -12,6 +12,8 @@ class RoutePdfCustomer {
   final String phoneNormalizedKey;
   final String? freightUnit;
   final String? addressHint;
+  /// Leveringsvindu fra PDF, f.eks. «08:00–13:00».
+  final String? deliveryWindow;
 
   const RoutePdfCustomer({
     required this.sequence,
@@ -20,6 +22,7 @@ class RoutePdfCustomer {
     required this.phoneNormalizedKey,
     this.freightUnit,
     this.addressHint,
+    this.deliveryWindow,
   });
 }
 
@@ -145,13 +148,17 @@ class RoutePdfTextService {
     );
     final out = <RoutePdfCustomer>[];
     final seenSeq = <int>{};
-    for (final m in re.allMatches(flat)) {
+    final matches = re.allMatches(flat).toList();
+    for (var i = 0; i < matches.length; i++) {
+      final m = matches[i];
       final seq = int.tryParse(m.group(1)!);
       if (seq == null || !seenSeq.add(seq)) continue;
       final phoneRaw = m.group(4)!;
       final norm = normalizePhoneNo(phoneRaw);
       if (norm == null) continue;
       final rest = m.group(3)!.trim();
+      final tailEnd = i + 1 < matches.length ? matches[i + 1].start : flat.length;
+      final tail = flat.substring(m.end, tailEnd);
       out.add(
         RoutePdfCustomer(
           sequence: seq,
@@ -160,6 +167,7 @@ class RoutePdfTextService {
           phoneNormalizedKey: norm,
           freightUnit: m.group(2),
           addressHint: rest.contains(',') ? rest : null,
+          deliveryWindow: _extractDeliveryWindowFromSnippet(tail),
         ),
       );
     }
@@ -172,7 +180,7 @@ class RoutePdfTextService {
     final out = <RoutePdfCustomer>[];
     final seenSeq = <int>{};
     final stopRe = RegExp(
-      r'Stop\s*#\s*Customer[^\d]*(\d+)\s+(.+?)\s+(\d{1,2}\.\d{1,2}\.\d{2,4}\s+\d{1,2}:\d{2})',
+      r'Stop\s*#\s*Customer[^\d]*(\d+)\s+(.+?)\s+(\d{1,2}\.\d{1,2}\.\d{2,4})\s+(\d{1,2}:\d{2})(?::\d{2})?\s+(\d{1,2}\.\d{1,2}\.\d{2,4})\s+(\d{1,2}:\d{2})(?::\d{2})?',
       caseSensitive: false,
       dotAll: true,
     );
@@ -187,6 +195,8 @@ class RoutePdfTextService {
       final norm = normalizePhoneNo(phoneM.group(1)!);
       if (norm == null) continue;
       final rest = m.group(2)!.trim();
+      final startT = _shortTime(m.group(4)!);
+      final endT = _shortTime(m.group(6)!);
       out.add(
         RoutePdfCustomer(
           sequence: seq,
@@ -194,11 +204,36 @@ class RoutePdfTextService {
           phoneDisplay: displayPhoneNo(norm),
           phoneNormalizedKey: norm,
           addressHint: rest.contains(',') ? rest : null,
+          deliveryWindow: startT != null && endT != null ? '$startT–$endT' : null,
         ),
       );
     }
     out.sort((a, b) => a.sequence.compareTo(b.sequence));
     return out;
+  }
+
+  /// Finner «08:00 13:00» etter telefon i Trip Overview-raden.
+  static String? _extractDeliveryWindowFromSnippet(String snippet) {
+    final times = RegExp(r'\b(\d{1,2}:\d{2})\b')
+        .allMatches(snippet)
+        .map((m) => m.group(1)!)
+        .toList();
+    if (times.length >= 2) {
+      final start = _shortTime(times[times.length - 2]);
+      final end = _shortTime(times.last);
+      if (start != null && end != null) return '$start–$end';
+    }
+    if (times.length == 1) return _shortTime(times.first);
+    return null;
+  }
+
+  static String? _shortTime(String t) {
+    final parts = t.split(':');
+    if (parts.length < 2) return t;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return t;
+    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
   }
 
   static String _customerNameFromRest(String rest) {
