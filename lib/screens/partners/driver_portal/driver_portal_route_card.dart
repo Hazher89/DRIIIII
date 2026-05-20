@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/nb_date_format.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import '../owner_portal/owner_portal_common.dart';
@@ -85,7 +84,7 @@ class DriverPortalRouteCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    DateFormat('EEEE d. MMMM yyyy', 'nb').format(day),
+                    NbDateFormat.format(day, 'EEEE d. MMMM yyyy'),
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
@@ -95,7 +94,7 @@ class DriverPortalRouteCard extends StatelessWidget {
                   if (route.routeStartAt != null) ...[
                     const SizedBox(height: 6),
                     Text(
-                      'START ${DateFormat('HH:mm', 'nb').format(route.routeStartAt!.toLocal())}',
+                      'START ${NbDateFormat.format(route.routeStartAt!.toLocal(), 'HH:mm')}',
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.w900,

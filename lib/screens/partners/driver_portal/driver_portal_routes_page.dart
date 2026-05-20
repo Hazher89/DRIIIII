@@ -76,14 +76,11 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
                   ),
                 ),
                 Expanded(
-                  child: IndexedStack(
-                    index: _tab,
-                    children: [
-                      _routeList(_data!.routesToday, 'Ingen ruter i dag.'),
-                      _routeList(_data!.routesUpcoming, 'Ingen kommende ruter.'),
-                      _routeList(_data!.routesArchive, 'Ingen ruter i arkivet.', archive: true),
-                    ],
-                  ),
+                  child: switch (_tab) {
+                    0 => _routeList(_data!.routesToday, 'Ingen ruter i dag.'),
+                    1 => _routeList(_data!.routesUpcoming, 'Ingen kommende ruter.'),
+                    _ => _routeList(_data!.routesArchive, 'Ingen ruter i arkivet.', archive: true),
+                  },
                 ),
               ],
             ),

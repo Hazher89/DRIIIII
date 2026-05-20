@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/utils/business_days.dart';
+import '../../../core/utils/nb_date_format.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
@@ -62,7 +63,7 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Første fri-dag'),
-                subtitle: Text(DateFormat('EEEE d. MMM yyyy', 'nb').format(date)),
+                subtitle: Text(NbDateFormat.format(date, 'EEEE d. MMM yyyy')),
                 onTap: () async {
                   final d = await showDatePicker(
                     context: ctx,
@@ -102,7 +103,7 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Velg en virkedag minst ${DateFormat('d.M.y').format(earliest)} (3 virkedager + helligdager).',
+              'Velg en virkedag minst ${NbDateFormat.format(earliest, 'd.M.y')} (3 virkedager + helligdager).',
             ),
             backgroundColor: Colors.orange,
           ),
@@ -171,7 +172,7 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
                         elevation: 0,
                         child: ListTile(
                           title: Text(
-                            DateFormat('d. MMM yyyy', 'nb').format(r.requestDate),
+                            NbDateFormat.format(r.requestDate, 'd. MMM yyyy'),
                             style: const TextStyle(fontWeight: FontWeight.w800),
                           ),
                           subtitle: Text(r.reason ?? '—'),

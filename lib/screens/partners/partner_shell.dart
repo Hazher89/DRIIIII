@@ -54,7 +54,7 @@ List<Widget> _partnerLogoutActions(BuildContext context) => [
 /// Begrenset portal for [UserProfile] som er knyttet til en samarbeidspartner.
 /// Versjonsmerke — synlig for bil-eier når ny portal er lastet.
 const kOwnerPortalBuildLabel = 'Bil-eier v3';
-const kDriverPortalBuildLabel = 'Sjåfør v2';
+const kDriverPortalBuildLabel = 'Sjåfør v3';
 
 class PartnerShell extends StatefulWidget {
   final UserProfile profile;
@@ -187,8 +187,10 @@ class _PartnerShellState extends State<PartnerShell> {
             NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
           ];
 
+    final pageIndex = _index.clamp(0, pages.length - 1);
     return Scaffold(
-      body: IndexedStack(index: _index, children: pages),
+      // IndexedStack + nested Scaffold gir grå tom flate på Flutter web (Safari).
+      body: pages[pageIndex],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index.clamp(0, destinations.length - 1),
         onDestinationSelected: (i) => setState(() => _index = i),

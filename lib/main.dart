@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -30,6 +31,7 @@ void main() async {
   );
 
   await _initSupabase();
+  await _initDateLocales();
 
   runApp(
     ChangeNotifierProvider(
@@ -37,6 +39,15 @@ void main() async {
       child: const DriftProApp(),
     ),
   );
+}
+
+Future<void> _initDateLocales() async {
+  try {
+    await initializeDateFormatting('nb');
+    await initializeDateFormatting('nb_NO');
+  } catch (_) {
+    // Appen bruker NbDateFormat-fallback hvis locale-data mangler.
+  }
 }
 
 Future<void> _initSupabase() async {
