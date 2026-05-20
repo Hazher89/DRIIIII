@@ -3,12 +3,17 @@ import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+import '../../../core/services/sms/sms_phone_utils.dart';
+import '../../../core/utils/portal_credentials.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/supabase_service.dart';
+import '../../../core/permissions/user_access.dart';
 import '../../../core/services/vegvesen/vehicle_registry_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import 'partner_ui.dart';
 
 /// Oversikt: bedriftsinfo, transportløyve, ansatte, kjøretøy med EU per bil.
 class PartnerOverviewTab extends StatefulWidget {
@@ -28,12 +33,15 @@ class PartnerOverviewTab extends StatefulWidget {
 }
 
 class _VehicleRowState {
+  final bool isRegOnly;
   final TextEditingController mavi;
   final TextEditingController reg;
+  final TextEditingController driverName;
   final TextEditingController payload;
   final TextEditingController year;
   final TextEditingController portalPhone;
   String? portalUsername;
+  String? generatedPasswordPreview;
   DateTime? euNext;
   DateTime? euLast;
   bool? euApproved;
@@ -43,12 +51,15 @@ class _VehicleRowState {
   bool hasPortalAccount;
 
   _VehicleRowState({
+    this.isRegOnly = false,
     required String unitCode,
     required this.reg,
+    String? driverNameText,
     required this.payload,
     required this.year,
     String? phone,
     this.portalUsername,
+    this.generatedPasswordPreview,
     this.euNext,
     this.euLast,
     this.euApproved,
@@ -56,8 +67,16 @@ class _VehicleRowState {
     this.vegvesenSnapshot,
     this.id,
     this.hasPortalAccount = false,
-  }) : mavi = TextEditingController(text: unitCode),
-       portalPhone = TextEditingController(text: phone ?? '');
+  })  : mavi = TextEditingController(text: isRegOnly ? '' : unitCode),
+        driverName = TextEditingController(text: driverNameText ?? ''),
+        portalPhone = TextEditingController(text: phone ?? '');
+
+  String get previewUsername {
+    if (isRegOnly) return '';
+    final unit = MaviUnitCodes.normalize(mavi.text);
+    if (unit.isEmpty) return '';
+    return PortalCredentials.driverUsername(unit);
+  }
 }
 
 class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
@@ -77,7 +96,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   final List<_VehicleRowState> _rows = [];
   bool _saving = false;
   bool _portalSaving = false;
+  bool _isSuperAdmin = false;
   Timer? _vegvesenDebounce;
+  final Set<_VehicleRowState> _vegvesenLoading = {};
   Map<String, PartnerPortalAccount> _portalByVehicle = {};
   PartnerPortalAccount? _ownerPortal;
   final TextEditingController _ownerPortalPhone = TextEditingController();
@@ -102,6 +123,31 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _ownerPortalPhone.text = widget.partner.phone ?? '';
     _resetVehicles(widget.vehicles);
     _loadPortals();
+    _loadCurrentUser();
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final profile = await SupabaseService.fetchEffectiveUserProfile();
+    if (!mounted) return;
+    setState(() => _isSuperAdmin = profile?.isSuperAdmin == true);
+  }
+
+  Future<bool> _confirmSendNewPassword({required String who, required String phone}) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send nytt passord?'),
+        content: Text(
+          'Generer nytt passord og send på SMS til $who ($phone)?\n\n'
+          'Gammelt passord slutter å virke umiddelbart.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send SMS')),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   Future<void> _loadPortals() async {
@@ -131,6 +177,21 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     }
   }
 
+  String _portalSmsStatusLine(PortalProvisionResult res) {
+    if (res.smsSent) {
+      final dest = res.phone != null ? ' (${displayPhoneNo(res.phone!)})' : '';
+      return 'Sendt på SMS til telefonnummeret$dest.';
+    }
+    if (res.smsQueued) {
+      return 'SMS ligger i sendekø — ikke bekreftet levert. Del opplysningene manuelt hvis den ikke kommer.';
+    }
+    final err = res.smsError?.trim();
+    if (err != null && err.isNotEmpty) {
+      return 'SMS kunne ikke sendes: $err\nDel opplysningene manuelt.';
+    }
+    return 'SMS kunne ikke sendes — del opplysningene manuelt.';
+  }
+
   Future<void> _showCredentialsDialog(PortalProvisionResult res, {required String title}) async {
     if (!mounted) return;
     await showDialog<void>(
@@ -139,11 +200,37 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         title: Text(title),
         content: SelectableText(
           'Brukernavn: ${res.username}\n'
-          'Passord: ${res.password}\n'
-          'E-post (innlogging): ${res.loginEmail}\n\n'
-          '${res.smsSent ? "Sendt på SMS til telefonnummeret." : "SMS kunne ikke sendes — del opplysningene manuelt."}',
+          'Passord: ${res.password}\n\n'
+          'Logg inn på driftpro.no med brukernavn og passord.\n\n'
+          '${_portalSmsStatusLine(res)}',
         ),
         actions: [
+          if (!res.smsSent)
+            TextButton(
+              onPressed: () async {
+                final flush = await PartnerService.flushSmsOutbox();
+                if (!ctx.mounted) return;
+                final sent = (flush?['sent'] as num?)?.toInt() ?? 0;
+                if (sent > 0) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('SMS sendt via Sveve')),
+                  );
+                } else {
+                  final err = flush?['error'] as String? ??
+                      (flush?['details'] is List && (flush!['details'] as List).isNotEmpty
+                          ? ((flush['details'] as List).first as Map)['error']?.toString()
+                          : null);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(err ?? 'Kunne ikke sende SMS — sjekk telefonnummer og Sveve'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              child: const Text('Prøv SMS igjen'),
+            ),
           FilledButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
         ],
       ),
@@ -170,24 +257,28 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     for (final r in _rows) {
       r.mavi.dispose();
       r.reg.dispose();
+      r.driverName.dispose();
       r.payload.dispose();
       r.year.dispose();
       r.portalPhone.dispose();
     }
     _rows.clear();
     if (vehicles.isEmpty) return;
-    for (final v in vehicles) {
-      final acc = _portalByVehicle[v.id];
-      final regDisplay = v.registrationNumber == MaviUnitCodes.regNrPlaceholder
-          ? ''
-          : v.registrationNumber;
+
+    final regPlatesAdded = <String>{};
+
+    void addRegRow(PartnerVehicle v, {required String regDisplay}) {
+      final plate = regDisplay.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+      if (plate.length < 4 || regPlatesAdded.contains(plate)) return;
+      regPlatesAdded.add(plate);
       _rows.add(_VehicleRowState(
-        id: v.id,
-        unitCode: MaviUnitCodes.normalize(v.unitCode),
-        phone: v.phone ?? acc?.phone,
-        portalUsername: acc?.username,
-        hasPortalAccount: acc != null,
-        reg: TextEditingController(text: regDisplay),
+        isRegOnly: true,
+        id: v.vehicleKind == 'registration' ||
+                MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode)
+            ? v.id
+            : null,
+        unitCode: '',
+        reg: TextEditingController(text: plate),
         payload: TextEditingController(text: v.payloadKg?.toString() ?? ''),
         year: TextEditingController(text: v.modelYear?.toString() ?? ''),
         euNext: v.euNextAt,
@@ -197,9 +288,73 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         vegvesenSnapshot: v.vegvesenSnapshot,
       ));
     }
+
+    for (final v in vehicles) {
+      if (v.vehicleKind != 'registration' &&
+          !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode)) {
+        continue;
+      }
+      final regDisplay = MaviUnitCodes.plateFromRegistrationUnit(v.unitCode).isNotEmpty
+          ? MaviUnitCodes.plateFromRegistrationUnit(v.unitCode)
+          : (v.registrationNumber == MaviUnitCodes.regNrPlaceholder
+              ? ''
+              : v.registrationNumber);
+      addRegRow(v, regDisplay: regDisplay);
+    }
+
+    for (final v in vehicles) {
+      if (v.vehicleKind == 'registration' ||
+          MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode)) {
+        continue;
+      }
+      final acc = _portalByVehicle[v.id];
+      final regLink = v.registrationNumber == MaviUnitCodes.regNrPlaceholder
+          ? ''
+          : v.registrationNumber.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+      final hasVehicleMeta = v.modelYear != null ||
+          v.payloadKg != null ||
+          v.euNextAt != null ||
+          v.euLastAt != null ||
+          v.euApproved != null ||
+          v.vegvesenSnapshot != null;
+      if (regLink.length >= 4 && hasVehicleMeta) {
+        addRegRow(v, regDisplay: regLink);
+      }
+      _rows.add(_VehicleRowState(
+        isRegOnly: false,
+        id: v.id,
+        unitCode: MaviUnitCodes.normalize(v.unitCode),
+        driverNameText: v.driverName,
+        phone: v.phone ?? acc?.phone,
+        portalUsername: acc?.username,
+        hasPortalAccount: acc != null,
+        reg: TextEditingController(text: regLink),
+        payload: TextEditingController(),
+        year: TextEditingController(),
+        imagePaths: List.from(v.imageUrls),
+      ));
+    }
+
+    _scheduleInitialVegvesenLookups();
   }
 
-  Future<void> _saveOwnerPortal({bool newPassword = false}) async {
+  void _scheduleInitialVegvesenLookups() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final row in _rows.where((r) => r.isRegOnly)) {
+        final plate = row.reg.text.trim().replaceAll(RegExp(r'\s'), '');
+        if (plate.length < 4) continue;
+        if (row.euNext == null ||
+            row.year.text.trim().isEmpty ||
+            row.payload.text.trim().isEmpty) {
+          _scheduleVegvesenLookup(row);
+        }
+      }
+    });
+  }
+
+  Future<void> _saveOwnerPortal() async {
+    if (_ownerPortal != null) return;
     final phone = _ownerPortalPhone.text.trim();
     if (phone.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -213,7 +368,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         partnerId: widget.partner.id,
         companyId: widget.partner.companyId,
         phone: phone,
-        regeneratePassword: newPassword || _ownerPortal != null,
+        partnerName: widget.partner.name,
+        orgNumber: widget.partner.orgNumber,
       );
       await _showCredentialsDialog(res, title: 'Bil-eier portal opprettet');
       await _loadPortals();
@@ -228,7 +384,39 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     }
   }
 
-  Future<void> _saveVehiclePortal(_VehicleRowState row, {bool newPassword = false}) async {
+  Future<void> _resendOwnerPortalPassword() async {
+    if (_ownerPortal == null) return;
+    final phone = _ownerPortalPhone.text.trim();
+    if (phone.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Telefon til bil-eier er påkrevd (SMS med innlogging).')),
+      );
+      return;
+    }
+    if (!await _confirmSendNewPassword(who: 'bil-eier', phone: phone)) return;
+    setState(() => _portalSaving = true);
+    try {
+      final res = await PartnerService.resendOwnerPortalPassword(
+        partnerId: widget.partner.id,
+        companyId: widget.partner.companyId,
+        phone: phone,
+        partnerName: widget.partner.name,
+        orgNumber: widget.partner.orgNumber,
+      );
+      await _showCredentialsDialog(res, title: 'Nytt passord sendt til bil-eier');
+      await _loadPortals();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke sende nytt passord: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _portalSaving = false);
+    }
+  }
+
+  Future<void> _saveVehiclePortal(_VehicleRowState row) async {
     if (row.id == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Lagre bedriften først (MAVI), deretter sjåfør-portal.')),
@@ -242,6 +430,13 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       );
       return;
     }
+    final driverName = row.driverName.text.trim();
+    if (driverName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Skriv inn sjåførens navn.')),
+      );
+      return;
+    }
     final unit = MaviUnitCodes.normalize(row.mavi.text);
     if (unit.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -249,6 +444,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       );
       return;
     }
+    if (row.hasPortalAccount) return;
     setState(() => _portalSaving = true);
     try {
       final res = await PartnerService.provisionDriverPortal(
@@ -257,19 +453,66 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         partnerVehicleId: row.id!,
         unitCode: unit,
         phone: phone,
-        regeneratePassword: newPassword || row.hasPortalAccount,
+        driverName: driverName,
       );
       row.hasPortalAccount = true;
       row.portalUsername = res.username;
-      await _showCredentialsDialog(
-        res,
-        title: row.hasPortalAccount ? 'Sjåfør oppdatert' : 'Sjåfør opprettet',
-      );
+      row.generatedPasswordPreview = res.password;
+      await _showCredentialsDialog(res, title: 'Sjåfør opprettet');
       await _loadPortals();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Sjåfør-portal feilet: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _portalSaving = false);
+    }
+  }
+
+  Future<void> _resendDriverPortalPassword(_VehicleRowState row) async {
+    if (row.id == null || !row.hasPortalAccount) return;
+    final phone = row.portalPhone.text.trim();
+    if (phone.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Telefon (SMS) er påkrevd for sjåfør.')),
+      );
+      return;
+    }
+    final driverName = row.driverName.text.trim();
+    if (driverName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Skriv inn sjåførens navn.')),
+      );
+      return;
+    }
+    final unit = MaviUnitCodes.normalize(row.mavi.text);
+    if (unit.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fyll inn MAVI-nummer først.')),
+      );
+      return;
+    }
+    if (!await _confirmSendNewPassword(who: driverName, phone: phone)) return;
+    setState(() => _portalSaving = true);
+    try {
+      final res = await PartnerService.resendDriverPortalPassword(
+        partnerId: widget.partner.id,
+        companyId: widget.partner.companyId,
+        partnerVehicleId: row.id!,
+        unitCode: unit,
+        phone: phone,
+        driverName: driverName,
+      );
+      row.portalUsername = res.username;
+      row.generatedPasswordPreview = res.password;
+      await _showCredentialsDialog(res, title: 'Nytt passord sendt til sjåfør');
+      await _loadPortals();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke sende nytt passord: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -309,18 +552,40 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   }
 
   List<String> get _existingMaviCodes => _rows
+      .where((r) => !r.isRegOnly)
       .map((r) => MaviUnitCodes.normalize(r.mavi.text))
       .where((s) => s.isNotEmpty)
       .toList();
 
-  void _addMaviRow({String? unitCode}) {
+  List<String> get _registeredPlates => _rows
+      .where((r) => r.isRegOnly)
+      .map((r) => r.reg.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), ''))
+      .where((s) => s.length >= 4)
+      .toList();
+
+  void _addRegRow() {
     setState(() {
       _rows.add(_VehicleRowState(
-        unitCode: unitCode ?? MaviUnitCodes.suggestNext(_existingMaviCodes),
+        isRegOnly: true,
+        unitCode: '',
         reg: TextEditingController(),
         payload: TextEditingController(),
         year: TextEditingController(),
       ));
+    });
+  }
+
+  void _addMaviRow({String? unitCode}) {
+    setState(() {
+      final row = _VehicleRowState(
+        isRegOnly: false,
+        unitCode: unitCode ?? MaviUnitCodes.suggestNext(_existingMaviCodes),
+        reg: TextEditingController(),
+        payload: TextEditingController(),
+        year: TextEditingController(),
+      );
+      row.generatedPasswordPreview = PortalCredentials.generatePassword();
+      _rows.add(row);
     });
   }
 
@@ -370,10 +635,12 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         if (existing.contains(code)) continue;
         existing.add(code);
         _rows.add(_VehicleRowState(
+          isRegOnly: false,
           unitCode: code,
           reg: TextEditingController(),
           payload: TextEditingController(),
           year: TextEditingController(),
+          generatedPasswordPreview: PortalCredentials.generatePassword(),
         ));
       }
     });
@@ -406,6 +673,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     for (final r in _rows) {
       r.mavi.dispose();
       r.reg.dispose();
+      r.driverName.dispose();
       r.payload.dispose();
       r.year.dispose();
       r.portalPhone.dispose();
@@ -417,6 +685,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     final plate = row.reg.text.trim().replaceAll(RegExp(r'\s'), '');
     if (plate.length < 4) return;
     if (!silent) setState(() => _saving = true);
+    if (mounted) setState(() => _vegvesenLoading.add(row));
     try {
       final data = await VehicleRegistryService.lookup(plate);
       if (data == null) {
@@ -440,16 +709,32 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
             !data.euNextAt!.isBefore(DateTime.now());
         row.vegvesenSnapshot = data.raw;
       });
+      final gotFields = data.modelYear != null ||
+          data.payloadKg != null ||
+          data.euNextAt != null ||
+          (data.make?.isNotEmpty ?? false);
       if (mounted && !silent) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              data.euNextAt != null
-                  ? 'Hentet fra Vegvesen — neste EU ${data.euNextAt!.day}.${data.euNextAt!.month}.${data.euNextAt!.year}'
-                  : 'Hentet data for $plate fra Vegvesen',
+        if (!gotFields) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Vegvesen fant ikke tekniske data for $plate. '
+                'Sjekk at reg.nr er riktig og registrert i Norge.',
+              ),
+              backgroundColor: Colors.orange.shade800,
             ),
-          ),
-        );
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                data.euNextAt != null
+                    ? 'Hentet fra Vegvesen — neste EU ${data.euNextAt!.day}.${data.euNextAt!.month}.${data.euNextAt!.year}'
+                    : 'Hentet fra Vegvesen — $plate (år ${data.modelYear ?? '—'}, nyttelast ${data.payloadKg ?? '—'} kg)',
+              ),
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted && !silent) {
@@ -458,7 +743,10 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         );
       }
     } finally {
-      if (mounted && !silent) setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _vegvesenLoading.remove(row));
+        if (!silent) setState(() => _saving = false);
+      }
     }
   }
 
@@ -509,13 +797,11 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         vehicleCountRegistered: int.tryParse(_veh.text) ?? _rows.length,
         vehicleMaxPayloadKg: null,
         euApproved: null,
-        hasTransportLicense: _hasTransportLicense,
-        transportLicenseCount:
-            int.tryParse(_transportCount.text) ?? 0,
+        hasTransportLicense: widget.partner.hasTransportLicense,
+        transportLicenseCount: widget.partner.transportLicenseCount,
         employeeCount: int.tryParse(_employees.text),
-        auditStatus: _auditStatus,
-        auditPlate:
-            _auditPlate.text.trim().isEmpty ? null : _auditPlate.text.trim(),
+        auditStatus: widget.partner.auditStatus,
+        auditPlate: widget.partner.auditPlate,
         brregSnapshot: p.brregSnapshot,
         lastMeetingAt: p.lastMeetingAt,
         nextMeetingAt: p.nextMeetingAt,
@@ -527,20 +813,21 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
 
       final vehicles = <PartnerVehicle>[];
       final seenUnits = <String>{};
-      for (final row in _rows) {
-        final unit = MaviUnitCodes.normalize(row.mavi.text);
+
+      for (final row in _rows.where((r) => r.isRegOnly)) {
+        final regRaw = row.reg.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+        if (regRaw.length < 4) continue;
+        final unit = MaviUnitCodes.registrationUnitCode(regRaw);
         if (unit.isEmpty || seenUnits.contains(unit)) continue;
         seenUnits.add(unit);
-        final regRaw = row.reg.text.trim().toUpperCase();
-        final reg = regRaw.isEmpty ? MaviUnitCodes.regNrPlaceholder : regRaw;
         vehicles.add(
           PartnerVehicle(
             id: row.id ?? '',
             partnerId: p.id,
             companyId: p.companyId,
             unitCode: unit,
-            registrationNumber: reg,
-            phone: row.portalPhone.text.trim().isEmpty ? null : row.portalPhone.text.trim(),
+            registrationNumber: regRaw,
+            vehicleKind: 'registration',
             modelYear: int.tryParse(row.year.text),
             payloadKg: int.tryParse(row.payload.text),
             euLastAt: row.euLast,
@@ -552,11 +839,47 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           ),
         );
       }
-      await PartnerService.replaceVehicles(
+
+      for (final row in _rows.where((r) => !r.isRegOnly)) {
+        final unit = MaviUnitCodes.normalize(row.mavi.text);
+        if (unit.isEmpty || seenUnits.contains(unit)) continue;
+        seenUnits.add(unit);
+        final regRaw = row.reg.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+        final reg = regRaw.isEmpty ? MaviUnitCodes.regNrPlaceholder : regRaw;
+        final driverName = row.driverName.text.trim();
+        vehicles.add(
+          PartnerVehicle(
+            id: row.id ?? '',
+            partnerId: p.id,
+            companyId: p.companyId,
+            unitCode: unit,
+            registrationNumber: reg,
+            vehicleKind: 'mavi',
+            driverName: driverName.isEmpty ? null : driverName,
+            phone: row.portalPhone.text.trim().isEmpty ? null : row.portalPhone.text.trim(),
+            imageUrls: row.imagePaths,
+            createdAt: DateTime.now(),
+          ),
+        );
+      }
+      final saved = await PartnerService.replaceVehicles(
         partnerId: p.id,
         companyId: p.companyId,
         vehicles: vehicles,
       );
+      // Synk ids tilbake til rader
+      for (final row in _rows) {
+        if (row.isRegOnly) {
+          final regRaw = row.reg.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+          final unit = MaviUnitCodes.registrationUnitCode(regRaw);
+          final match = saved.where((v) => v.unitCode == unit).toList();
+          if (match.isNotEmpty) row.id = match.first.id;
+        } else {
+          final unit = MaviUnitCodes.normalize(row.mavi.text);
+          final match = saved.where((v) => v.unitCode == unit).toList();
+          if (match.isNotEmpty) row.id = match.first.id;
+        }
+      }
       await _loadPortals();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -572,183 +895,221 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   @override
   Widget build(BuildContext context) {
     final p = widget.partner;
+    final regRows = _rows.where((r) => r.isRegOnly).toList();
+    final maviRows = _rows.where((r) => !r.isRegOnly).toList();
+
     return Stack(
       children: [
         ListView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
           children: [
-            Text('Org.nr ${p.orgNumber ?? "—"}',
-                style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            _field('Eier / kontakt', _owner),
-            _field('Telefon (SMS-varsler)', _phone),
-            _field('E-post', _email),
-            const Divider(height: 28),
-            Text('Bil-eier portal', style: DriftProTheme.headingSm),
-            const SizedBox(height: 4),
-            const Text(
-              'Egen innlogging for eier: dokumenter, avtaler, møter, revisjon og alle ruter for bedriften. '
-              'Brukernavn og passord genereres og sendes på SMS.',
-              style: TextStyle(fontSize: 11, height: 1.35, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _ownerPortalPhone,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'Bil-eier telefon (SMS) *',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            if (_ownerPortal != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 6, bottom: 6),
-                child: Text(
-                  'Aktiv bruker: ${_ownerPortal!.username}',
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                ),
-              ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            PartnerSectionCard(
+              icon: Icons.sticky_note_2_outlined,
+              iconColor: Colors.amber.shade800,
+              title: 'Kommentar om bedriften',
+              subtitle: 'Synlig internt på alle bedrifter i listen.',
               children: [
-                FilledButton(
-                  onPressed: _portalSaving ? null : () => _saveOwnerPortal(newPassword: _ownerPortal != null),
-                  style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-                  child: Text(_ownerPortal == null ? 'Opprett bil-eier (SMS)' : 'Nytt passord (SMS)'),
+                TextField(
+                  controller: _notes,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Kommentar / notater',
+                    hintText: 'F.eks. avtaler, spesielle forhold, kontaktperson …',
+                  ),
                 ),
               ],
             ),
-            const Divider(height: 28),
-            _field('Adresse', _address),
-            Row(
+            PartnerSectionCard(
+              icon: Icons.contact_page_outlined,
+              title: 'Kontakt & bedrift',
+              subtitle: 'Org.nr ${p.orgNumber ?? "—"}',
               children: [
-                Expanded(child: _field('Postnr', _postal)),
-                const SizedBox(width: 8),
-                Expanded(child: _field('Sted', _city)),
+                _field('Eier / kontakt', _owner),
+                _field('Telefon (SMS-varsler)', _phone),
+                _field('E-post', _email),
+                _field('Adresse', _address),
+                Row(
+                  children: [
+                    Expanded(child: _field('Postnr', _postal)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _field('Sted', _city)),
+                  ],
+                ),
+                Row(
+                  children: [
+                    Expanded(child: _field('Ant. kjøretøy (bedrift)', _veh)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _field('Ant. ansatte', _employees)),
+                  ],
+                ),
               ],
             ),
-            Row(
+            PartnerSectionCard(
+              icon: Icons.admin_panel_settings_outlined,
+              iconColor: DriftProTheme.accentBlue,
+              title: 'Bil-eier portal',
+              subtitle:
+                  'Auto-generert brukernavn og passord registreres i Supabase og sendes på SMS. '
+                  'Eier får tilgang til dokumenter, møter og revisjon — ikke sjåfører.',
               children: [
-                Expanded(child: _field('Ant. kjøretøy (bedrift)', _veh)),
-                const SizedBox(width: 8),
-                Expanded(child: _field('Ant. ansatte', _employees)),
-              ],
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Har transportløyve'),
-              value: _hasTransportLicense,
-              onChanged: (v) => setState(() => _hasTransportLicense = v),
-            ),
-            if (_hasTransportLicense)
-              _field('Antall transportløyver', _transportCount),
-            const Divider(height: 32),
-            Text('Revisjon / audit', style: DriftProTheme.headingSm),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: _auditStatus,
-              decoration: const InputDecoration(
-                labelText: 'Audit-status',
-                border: OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'ukjent', child: Text('Ukjent')),
-                DropdownMenuItem(value: 'planlagt', child: Text('Planlagt')),
-                DropdownMenuItem(value: 'ok', child: Text('OK')),
-                DropdownMenuItem(value: 'avvik', child: Text('Avvik')),
-                DropdownMenuItem(value: 'utlopt', child: Text('Utløpt')),
-              ],
-              onChanged: (v) => setState(() => _auditStatus = v ?? 'ukjent'),
-            ),
-            const SizedBox(height: 8),
-            _field('Audit — reg.nr / skilt', _auditPlate),
-            const Divider(height: 32),
-            Row(
-              children: [
-                Expanded(
+                TextField(
+                  controller: _ownerPortalPhone,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(labelText: 'Bil-eier telefon (SMS) *'),
+                ),
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: DriftProTheme.accentBlue.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+                    border: Border.all(color: DriftProTheme.accentBlue.withValues(alpha: 0.2)),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('MAVI-nummer', style: DriftProTheme.headingSm),
+                      Text('Auto brukernavn', style: DriftProTheme.labelSm),
                       Text(
-                        '${_rows.length} registrert på denne bedriften — du kan legge til så mange du vil.',
+                        PortalCredentials.ownerUsername(
+                          partnerName: widget.partner.name,
+                          orgNumber: widget.partner.orgNumber,
+                        ),
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Passord genereres automatisk ved opprettelse og sendes på SMS.',
                         style: DriftProTheme.caption,
                       ),
                     ],
                   ),
                 ),
-                Text('${_rows.length}', style: DriftProTheme.headingMd),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (_rows.isEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Ingen MAVI-nummer ennå. Legg til ett eller flere under.',
-                  textAlign: TextAlign.center,
-                ),
-              )
-            else
-              ..._rows.asMap().entries.map((e) => _vehicleCard(e.key, e.value)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _addMaviRow,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Legg til MAVI'),
+                if (_ownerPortal != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Aktiv brukernavn: ${_ownerPortal!.username}',
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _bulkAddMavi,
-                    icon: const Icon(Icons.playlist_add),
-                    label: const Text('Flere på en gang'),
-                  ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (_ownerPortal == null)
+                      FilledButton.icon(
+                        onPressed: _portalSaving ? null : _saveOwnerPortal,
+                        icon: const Icon(Icons.sms_outlined, size: 18),
+                        label: const Text('Opprett bil-eier (SMS)'),
+                        style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+                      )
+                    else if (_isSuperAdmin)
+                      FilledButton.icon(
+                        onPressed: _portalSaving ? null : _resendOwnerPortalPassword,
+                        icon: const Icon(Icons.lock_reset, size: 18),
+                        label: const Text('Send nytt passord (SMS)'),
+                        style: FilledButton.styleFrom(backgroundColor: DriftProTheme.accentBlue),
+                      ),
+                  ],
                 ),
               ],
             ),
-            _field('Notater', _notes, maxLines: 3),
-            const SizedBox(height: 80),
-            FilledButton(
-              onPressed: _saving ? null : _save,
-              style: FilledButton.styleFrom(
-                backgroundColor: DriftProTheme.primaryGreen,
-                minimumSize: const Size(double.infinity, 48),
+            PartnerSectionCard(
+              icon: Icons.directions_car_outlined,
+              iconColor: DriftProTheme.accentBlue,
+              title: 'Registrerte biler (reg.nr)',
+              subtitle:
+                  'Reg.nr, årsmodell, nyttelast og EU-kontroll. '
+                  'EU-dato hentes automatisk fra Vegvesen når du skriver reg.nr.',
+              trailing: PartnerStatusBadge(
+                label: '${regRows.length} bil${regRows.length == 1 ? '' : 'er'}',
+                color: DriftProTheme.accentBlue,
               ),
-              child: const Text('Lagre endringer'),
+              children: [
+                if (regRows.isEmpty)
+                  PartnerEmptyState(
+                    icon: Icons.add_road_outlined,
+                    title: 'Ingen reg.nr registrert',
+                    subtitle: 'Legg til alle registreringsnummer uavhengig av MAVI.',
+                  )
+                else
+                  ...regRows.map(_regCard),
+                OutlinedButton.icon(
+                  onPressed: _addRegRow,
+                  icon: const Icon(Icons.add),
+                  label: const Text('Legg til reg.nr'),
+                ),
+              ],
+            ),
+            PartnerSectionCard(
+              icon: Icons.local_shipping_outlined,
+              title: 'MAVI-nummer & sjåfør',
+              subtitle:
+                  'Brukernavn genereres automatisk per MAVI. Passord sendes på SMS ved «Opprett sjåfør».',
+              trailing: PartnerStatusBadge(
+                label: '${maviRows.length} MAVI',
+                color: DriftProTheme.primaryGreen,
+              ),
+              children: [
+                if (maviRows.isEmpty)
+                  PartnerEmptyState(
+                    icon: Icons.add_box_outlined,
+                    title: 'Ingen MAVI-nummer ennå',
+                    subtitle: 'Legg til MAVI og koble valgfritt til reg.nr fra listen over.',
+                  )
+                else
+                  ...maviRows.map(_vehicleCard),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _addMaviRow,
+                        icon: const Icon(Icons.add),
+                        label: const Text('Legg til MAVI'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _bulkAddMavi,
+                        icon: const Icon(Icons.playlist_add),
+                        label: const Text('Flere MAVI'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ],
         ),
-        if (_saving)
-          const ModalBarrier(dismissible: false),
-        if (_saving)
-          const Center(child: CircularProgressIndicator()),
+        PartnerStickySaveBar(
+          label: 'Lagre endringer',
+          loading: _saving,
+          onPressed: _saving ? null : _save,
+        ),
+        if (_saving) const ModalBarrier(dismissible: false),
       ],
     );
   }
 
   Widget _field(String label, TextEditingController c, {int maxLines = 1}) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
         controller: c,
         maxLines: maxLines,
-        decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+        decoration: InputDecoration(labelText: label),
       ),
     );
   }
 
-  Widget _vehicleCard(int index, _VehicleRowState row) {
+  Widget _regCard(_VehicleRowState row) {
     Color? border;
     if (row.euNext != null && row.euNext!.isBefore(DateTime.now())) {
       border = DriftProTheme.error;
@@ -757,47 +1118,17 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       border = DriftProTheme.warning;
     }
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(
-        side: BorderSide(color: border ?? Colors.grey.shade300),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: border != null ? border.withValues(alpha: 0.04) : Colors.grey.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+        border: Border.all(color: border ?? Colors.grey.withValues(alpha: 0.2)),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  flex: 2,
-                  child: TextField(
-                    controller: row.mavi,
-                    decoration: const InputDecoration(
-                      labelText: 'MAVI-nummer *',
-                      hintText: 'NO_O_M0001 eller M1',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Fjern MAVI',
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: () {
-                    setState(() {
-                      row.mavi.dispose();
-                      row.reg.dispose();
-                      row.payload.dispose();
-                      row.year.dispose();
-                      row.portalPhone.dispose();
-                      _rows.removeAt(index);
-                    });
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -805,18 +1136,43 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                     controller: row.reg,
                     textCapitalization: TextCapitalization.characters,
                     decoration: const InputDecoration(
-                      labelText: 'Reg.nr (valgfritt)',
-                      hintText: 'EU hentes automatisk',
+                      labelText: 'Registreringsnummer *',
+                      hintText: 'AB12345',
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
                     onChanged: (_) => _scheduleVegvesenLookup(row),
                   ),
                 ),
+                if (_vegvesenLoading.contains(row))
+                  const Padding(
+                    padding: EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else
+                  IconButton(
+                    tooltip: 'Oppdater fra Vegvesen',
+                    onPressed: () => _lookupVegvesen(row),
+                    icon: const Icon(Icons.cloud_download_outlined),
+                  ),
                 IconButton(
-                  tooltip: 'Hent fra Vegvesen nå',
-                  onPressed: () => _lookupVegvesen(row),
-                  icon: const Icon(Icons.cloud_download_outlined),
+                  tooltip: 'Fjern bil',
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: () {
+                    setState(() {
+                      row.reg.dispose();
+                      row.driverName.dispose();
+                      row.payload.dispose();
+                      row.year.dispose();
+                      row.portalPhone.dispose();
+                      row.mavi.dispose();
+                      _rows.remove(row);
+                    });
+                  },
                 ),
               ],
             ),
@@ -851,9 +1207,11 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               contentPadding: EdgeInsets.zero,
               title: const Text('Neste EU-kontroll'),
               subtitle: Text(
-                row.euNext != null
-                    ? '${row.euNext!.day}.${row.euNext!.month}.${row.euNext!.year}'
-                    : 'Ikke satt — bruk Vegvesen-knapp',
+                _vegvesenLoading.contains(row)
+                    ? 'Henter fra Vegvesen …'
+                    : row.euNext != null
+                        ? '${row.euNext!.day}.${row.euNext!.month}.${row.euNext!.year}'
+                        : 'Hentes automatisk når reg.nr er fylt ut',
               ),
               trailing: const Icon(Icons.calendar_today, size: 20),
               onTap: () async {
@@ -872,16 +1230,104 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               value: row.euApproved ?? false,
               onChanged: (v) => setState(() => row.euApproved = v),
             ),
-            const Divider(height: 20),
-            Text('Sjåfør (dette MAVI-nummeret)', style: DriftProTheme.headingSm.copyWith(fontSize: 13)),
-            const SizedBox(height: 4),
-            Text(
-              row.hasPortalAccount
-                  ? 'Portal aktiv${row.portalUsername != null ? " · ${row.portalUsername}" : ""}'
-                  : 'Ingen portal — opprett for SMS ved ruter + innlogging',
-              style: TextStyle(
-                fontSize: 11,
-                color: row.hasPortalAccount ? Colors.green.shade700 : Colors.grey,
+          ],
+        ),
+    );
+  }
+
+  Widget _vehicleCard(_VehicleRowState row) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: DriftProTheme.primaryGreen.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+        border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: TextField(
+                    controller: row.mavi,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'MAVI-nummer *',
+                      hintText: 'NO_O_M0001 eller M1',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Fjern MAVI',
+                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  onPressed: () {
+                    setState(() {
+                      row.mavi.dispose();
+                      row.reg.dispose();
+                      row.driverName.dispose();
+                      row.payload.dispose();
+                      row.year.dispose();
+                      row.portalPhone.dispose();
+                      _rows.remove(row);
+                    });
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (_registeredPlates.isNotEmpty && row.reg.text.trim().isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Koblet reg.nr (fra registrerte biler)',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  child: Text(
+                    row.reg.text.trim().toUpperCase(),
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+              )
+            else if (_registeredPlates.isNotEmpty)
+              DropdownButtonFormField<String>(
+                value: () {
+                  final p = row.reg.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+                  return _registeredPlates.contains(p) ? p : null;
+                }(),
+                decoration: const InputDecoration(
+                  labelText: 'Koble MAVI til reg.nr (valgfritt)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('— ingen kobling —')),
+                  ..._registeredPlates.map(
+                    (p) => DropdownMenuItem(value: p, child: Text(p)),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v != null) {
+                    row.reg.text = v;
+                    setState(() {});
+                  }
+                },
+              ),
+            const Divider(height: 16),
+            Text('Sjåfør og innlogging', style: DriftProTheme.headingSm.copyWith(fontSize: 13)),
+            TextField(
+              controller: row.driverName,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Sjåfør navn *',
+                border: OutlineInputBorder(),
+                isDense: true,
               ),
             ),
             const SizedBox(height: 8),
@@ -895,19 +1341,70 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               ),
             ),
             const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Auto innlogging (genereres per MAVI)',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    row.previewUsername.isEmpty
+                        ? 'Fyll inn MAVI for å se brukernavn'
+                        : 'Brukernavn: ${row.previewUsername}',
+                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  ),
+                  Text(
+                    row.hasPortalAccount && row.generatedPasswordPreview != null
+                        ? 'Passord (sist): ${row.generatedPasswordPreview}'
+                        : 'Passord: genereres ved «Opprett sjåfør» og sendes på SMS',
+                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              row.hasPortalAccount
+                  ? 'Portal aktiv${row.portalUsername != null ? " · ${row.portalUsername}" : ""}'
+                  : 'Trykk «Opprett sjåfør» for SMS med brukernavn og passord til samarbeidspartner-innlogging',
+              style: TextStyle(
+                fontSize: 11,
+                color: row.hasPortalAccount ? Colors.green.shade700 : Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: [
-                FilledButton(
-                  onPressed: _portalSaving ? null : () => _saveVehiclePortal(row),
-                  style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-                  child: Text(row.hasPortalAccount ? 'Lagre / nytt passord SMS' : 'Opprett sjåfør (SMS)'),
-                ),
-                if (row.hasPortalAccount)
+                if (!row.hasPortalAccount)
+                  FilledButton.icon(
+                    onPressed: _portalSaving ? null : () => _saveVehiclePortal(row),
+                    icon: const Icon(Icons.sms_outlined, size: 18),
+                    label: const Text('Opprett sjåfør (SMS)'),
+                    style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+                  )
+                else if (_isSuperAdmin) ...[
+                  FilledButton.icon(
+                    onPressed: _portalSaving ? null : () => _resendDriverPortalPassword(row),
+                    icon: const Icon(Icons.lock_reset, size: 18),
+                    label: const Text('Send nytt passord (SMS)'),
+                    style: FilledButton.styleFrom(backgroundColor: DriftProTheme.accentBlue),
+                  ),
                   OutlinedButton(
                     onPressed: _portalSaving ? null : () => _deleteVehiclePortal(row),
                     child: const Text('Slett sjåfør'),
                   ),
+                ],
               ],
             ),
             Wrap(
@@ -935,7 +1432,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               ),
           ],
         ),
-      ),
     );
   }
 }

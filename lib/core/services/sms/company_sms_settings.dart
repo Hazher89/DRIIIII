@@ -8,6 +8,7 @@ class CompanySmsSettings {
   final bool smsTicketStatus;
   final bool smsTicketCritical;
   final bool smsEquipment;
+  final bool smsUserApproval;
   final bool smsGeneral;
 
   const CompanySmsSettings({
@@ -18,6 +19,7 @@ class CompanySmsSettings {
     this.smsTicketStatus = true,
     this.smsTicketCritical = true,
     this.smsEquipment = true,
+    this.smsUserApproval = true,
     this.smsGeneral = true,
   });
 
@@ -30,6 +32,7 @@ class CompanySmsSettings {
       smsTicketStatus: json['sms_ticket_status'] as bool? ?? true,
       smsTicketCritical: json['sms_ticket_critical'] as bool? ?? true,
       smsEquipment: json['sms_equipment'] as bool? ?? true,
+      smsUserApproval: json['sms_user_approval'] as bool? ?? true,
       smsGeneral: json['sms_general'] as bool? ?? true,
     );
   }
@@ -41,6 +44,7 @@ class CompanySmsSettings {
     bool? smsTicketStatus,
     bool? smsTicketCritical,
     bool? smsEquipment,
+    bool? smsUserApproval,
     bool? smsGeneral,
   }) {
     return CompanySmsSettings(
@@ -51,6 +55,7 @@ class CompanySmsSettings {
       smsTicketStatus: smsTicketStatus ?? this.smsTicketStatus,
       smsTicketCritical: smsTicketCritical ?? this.smsTicketCritical,
       smsEquipment: smsEquipment ?? this.smsEquipment,
+      smsUserApproval: smsUserApproval ?? this.smsUserApproval,
       smsGeneral: smsGeneral ?? this.smsGeneral,
     );
   }
@@ -63,6 +68,7 @@ class CompanySmsSettings {
         'sms_ticket_status': smsTicketStatus,
         'sms_ticket_critical': smsTicketCritical,
         'sms_equipment': smsEquipment,
+        'sms_user_approval': smsUserApproval,
         'sms_general': smsGeneral,
       };
 }

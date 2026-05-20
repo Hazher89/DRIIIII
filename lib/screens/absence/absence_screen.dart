@@ -116,9 +116,11 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       _loadError = null;
     });
     try {
-      final profile = await SupabaseService.fetchCurrentUserProfile();
+      final profile = await SupabaseService.fetchEffectiveUserProfile();
       if (profile == null || profile.companyId == null) {
-        setState(() => _loadError = 'Kunne ikke laste brukerprofil. Logg inn på nytt.');
+        setState(() => _loadError =
+            'Profilen er ikke koblet til et selskap — data fra Supabase vises ikke. '
+            'Logg ut, logg inn på nytt, eller kjør ensure_internal_profile_missing.sql i Supabase.');
         return;
       }
 
@@ -161,9 +163,8 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         _departmentNames = {for (final d in depts) d.id: d.name};
       });
 
-      await _loadSaldo(profile);
-      await _loadTeamOverview(profile);
-
+      // Bygg faner før saldo/lagliste så siden ikke henger i evig spinner
+      // om kvoteprofiler eller teamhenting tar tid eller stopper opp.
       if (mounted) {
         setState(() {
           final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -174,6 +175,11 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
           );
         });
       }
+
+      await Future.wait([
+        _loadSaldo(profile),
+        _loadTeamOverview(profile),
+      ]);
     } catch (e) {
       debugPrint('Error loading absence data: $e');
       setState(() => _loadError = 'Kunne ikke laste fravær: $e');
@@ -276,12 +282,31 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    if (_profile == null && _isLoading) {
+    if (_isLoading && _profile == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    if (_tabController == null || _tabSpecs.isEmpty) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (!_isLoading && (_tabController == null || _tabSpecs.isEmpty)) {
+      final msg = _loadError ??
+          (_profile != null ? 'Kunne ikke laste innhold på fraværssiden.' : 'Fant ikke pålogget bruker eller bedrift.');
+      return Scaffold(
+        appBar: AppBar(title: const Text('Fravær & Ferie')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.warning_amber_rounded, size: 52, color: DriftProTheme.warning),
+                const SizedBox(height: 16),
+                Text(msg, textAlign: TextAlign.center),
+                const SizedBox(height: 16),
+                FilledButton(onPressed: _loadAllData, child: const Text('Prøv igjen')),
+              ],
+            ),
+          ),
+        ),
+      );
     }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;

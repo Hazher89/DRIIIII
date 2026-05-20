@@ -54,4 +54,20 @@ class MaviUnitCodes {
   }
 
   static const regNrPlaceholder = '—';
+
+  /// Enhetskode for kun reg.nr (flere biler på bedriften uten MAVI ennå).
+  static String registrationUnitCode(String registration) {
+    final plate = registration.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+    if (plate.isEmpty || plate == regNrPlaceholder) return '';
+    return 'REG-$plate';
+  }
+
+  static bool isRegistrationOnlyUnit(String unitCode) {
+    return unitCode.trim().toUpperCase().startsWith('REG-');
+  }
+
+  static String plateFromRegistrationUnit(String unitCode) {
+    if (!isRegistrationOnlyUnit(unitCode)) return '';
+    return unitCode.trim().toUpperCase().replaceFirst('REG-', '');
+  }
 }

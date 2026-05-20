@@ -120,6 +120,49 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
     }
   }
 
+  Future<void> _deleteEmployee() async {
+    if (!widget.isSuperAdmin) return;
+    final e = widget.employee;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Slett ansatt permanent?'),
+        content: Text(
+          '«${e.fullName}» fjernes fra auth og hele systemet. '
+          'Handlingen kan ikke angres.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Slett permanent'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _saving = true);
+    try {
+      await SupabaseService.deleteUserPermanently(e.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${e.fullName} ble slettet')),
+        );
+        widget.onSaved?.call();
+        Navigator.pop(context, true);
+      }
+    } catch (err) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sletting feilet: $err'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
   Future<void> _approve() async {
     final ok = await EmployeeApprovalSheet.show(
       context,
@@ -176,6 +219,14 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
               )
             : null,
         actions: [
+          if (widget.isSuperAdmin &&
+              widget.employee.id != _currentUser?.id &&
+              widget.employee.role != UserRole.superadmin)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.red),
+              tooltip: 'Slett ansatt permanent',
+              onPressed: _deleteEmployee,
+            ),
           if (widget.canEditProfile || widget.isSuperAdmin)
             IconButton(
               icon: const Icon(Icons.edit),

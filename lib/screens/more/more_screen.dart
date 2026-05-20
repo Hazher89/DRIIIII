@@ -8,6 +8,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_notifier.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
+import '../../core/permissions/access_keys.dart';
+import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
 import '../employees/employee_hub_screen.dart';
 import '../common/placeholder_screen.dart';
@@ -325,48 +327,102 @@ class _MoreScreenState extends State<MoreScreen> {
         ),
         onTap: () {
           if (title == 'Samarbeidspartnere') {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PartnersDashboardScreen()));
+            Navigator.of(context).push(
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.samarbeidspartnere,
+                child: const PartnersDashboardScreen(),
+              ),
+            );
             return;
           }
           if (title == 'Avdelinger') {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DepartmentsScreen()));
+            Navigator.of(context).push(
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.avdelinger,
+                child: const DepartmentsScreen(),
+              ),
+            );
             return;
           }
           if (title == 'Ansatte') {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const EmployeesScreen()),
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.ansatte,
+                child: const EmployeesScreen(),
+              ),
             );
             return;
           }
           if (title == 'Tilgangskontroll') {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccessControlScreen()));
+            Navigator.of(context).push(
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.tilgangskontroll,
+                child: const AccessControlScreen(),
+              ),
+            );
             return;
           }
           if (title == 'Undersøkelser') {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SurveyListScreen()));
+            Navigator.of(context).push(
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.undersokelser,
+                child: const SurveyListScreen(),
+              ),
+            );
             return;
           }
           if (title == 'Anonym anmeldelse') {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WhistleblowingScreen()));
+            Navigator.of(context).push(
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.whistleblowing,
+                child: const WhistleblowingScreen(),
+              ),
+            );
             return;
           }
           if (title == 'Brukergodkjenning') {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const EmployeeHubScreen()),
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.brukergodkjenning,
+                child: const EmployeeHubScreen(),
+              ),
             );
             return;
           }
           if (title == 'Infoskjerm') {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const KioskSettingsScreen()));
+            Navigator.of(context).push(
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.kiosk,
+                child: const KioskSettingsScreen(),
+              ),
+            );
             return;
           }
           if (title == 'Min profil') {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen()));
+            Navigator.of(context).push(
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.profil,
+                child: const ProfileScreen(),
+              ),
+            );
             return;
           }
           if (title == 'Personalmappe') {
             Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const EmployeePersonalFolderScreen()),
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.personalmappe,
+                child: const EmployeePersonalFolderScreen(),
+              ),
             );
             return;
           }

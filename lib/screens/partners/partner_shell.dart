@@ -3,17 +3,64 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/auth/session_sign_out.dart';
+import '../../core/services/partner/mavi_unit_codes.dart';
 import '../../core/services/partner/partner_service.dart';
+import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/fleet_shift.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
+import '../../models/partner/vehicle_inspection.dart';
 import '../../models/user_profile.dart';
+import 'driver_portal/driver_portal_docs_page.dart';
+import 'driver_portal/driver_portal_fri_page.dart';
+import 'driver_portal/driver_portal_overview_page.dart';
+import 'driver_portal/driver_portal_profile_page.dart';
+import 'driver_portal/driver_portal_routes_page.dart';
+import 'owner_portal/owner_portal_docs_page.dart';
+import 'owner_portal/owner_portal_inspections_page.dart';
+import 'owner_portal/owner_portal_meetings_page.dart';
+import 'owner_portal/owner_portal_overview_page.dart';
+import 'owner_portal/owner_portal_routes_page.dart';
+import 'owner_portal/owner_portal_summary_page.dart';
+import 'widgets/partner_route_pdf_actions.dart';
+import 'widgets/partner_ui.dart' show PartnerStatusBadge;
+
+DateTime _routeCalendarDay(PartnerRouteShare r) {
+  final t = r.routeStartAt ?? r.shareDate;
+  return DateTime(t.year, t.month, t.day);
+}
+
+bool _isActivePortalRoute(PartnerRouteShare r) {
+  if (r.ackStatus == 'pending') return true;
+  final now = DateTime.now();
+  final startOfToday = DateTime(now.year, now.month, now.day);
+  return !_routeCalendarDay(r).isBefore(startOfToday.subtract(const Duration(days: 1)));
+}
+
+int _compareRoutesByStartDesc(PartnerRouteShare a, PartnerRouteShare b) {
+  return _routeCalendarDay(b).compareTo(_routeCalendarDay(a));
+}
+
+List<Widget> _partnerLogoutActions(BuildContext context) => [
+      IconButton(
+        tooltip: 'Logg ut',
+        icon: const Icon(Icons.logout),
+        onPressed: () => signOutFromPortal(context),
+      ),
+    ];
 
 /// Begrenset portal for [UserProfile] som er knyttet til en samarbeidspartner.
+/// Versjonsmerke — synlig for bil-eier når ny portal er lastet.
+const kOwnerPortalBuildLabel = 'Bil-eier v3';
+const kDriverPortalBuildLabel = 'Sjåfør v1';
+
 class PartnerShell extends StatefulWidget {
   final UserProfile profile;
-  const PartnerShell({super.key, required this.profile});
+  /// `owner` | `driver` fra [PartnerService.resolvePortalSession].
+  final String? portalAccountKind;
+  const PartnerShell({super.key, required this.profile, this.portalAccountKind});
 
   @override
   State<PartnerShell> createState() => _PartnerShellState();
@@ -53,7 +100,10 @@ class _PartnerShellState extends State<PartnerShell> {
 
     if (widget.profile.partnerId == null || _partner == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Partner')),
+        appBar: AppBar(
+          title: const Text('Partner'),
+          actions: _partnerLogoutActions(context),
+        ),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -63,12 +113,33 @@ class _PartnerShellState extends State<PartnerShell> {
                 const Icon(Icons.warning_amber_rounded, size: 48, color: Colors.orange),
                 const SizedBox(height: 16),
                 const Text(
-                  'Kontoen er ikke knyttet til en samarbeidspartner ennå.',
+                  'Kontoen er ikke knyttet til en samarbeidspartner ennå.\n'
+                  'Be MAVI om å opprette portal på nytt, eller prøv å koble kontoen på nytt.',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
+                FilledButton(
+                  onPressed: () async {
+                    setState(() => _loading = true);
+                    await SupabaseService.ensureSessionLinkedToCompany();
+                    final fresh = await SupabaseService.fetchCurrentUserProfile();
+                    if (!mounted) return;
+                    if (fresh?.partnerId != null) {
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute<void>(builder: (_) => PartnerShell(profile: fresh!)),
+                      );
+                      return;
+                    }
+                    setState(() => _loading = false);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Fant fortsatt ingen partner-kobling.')),
+                    );
+                  },
+                  child: const Text('Koble konto på nytt'),
+                ),
+                const SizedBox(height: 12),
                 ElevatedButton(
-                  onPressed: () => Supabase.instance.client.auth.signOut(),
+                  onPressed: () => signOutFromPortal(context),
                   child: const Text('Logg ut'),
                 ),
               ],
@@ -79,42 +150,49 @@ class _PartnerShellState extends State<PartnerShell> {
     }
 
     final p = _partner!;
-    final isOwner = widget.profile.partnerVehicleId == null;
-    final pages = [
-      _PartnerOverviewPage(partner: p),
-      _PartnerDocsPage(partner: p),
-      _PartnerSummaryPage(partner: p),
-      _PartnerRoutesPage(partner: p, profile: widget.profile, isOwner: isOwner),
-      if (!isOwner) _PartnerFriPage(partner: p, profile: widget.profile),
-      _PartnerProfilePage(profile: widget.profile, isOwner: isOwner),
-    ];
-    final destinations = [
-      const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
-      const NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
-      const NavigationDestination(
-        icon: Icon(Icons.summarize_outlined),
-        selectedIcon: Icon(Icons.summarize),
-        label: 'Oppsumm.',
-      ),
-      NavigationDestination(
-        icon: const Icon(Icons.map_outlined),
-        selectedIcon: const Icon(Icons.map),
-        label: isOwner ? 'Alle ruter' : 'Mine ruter',
-      ),
-      if (!isOwner)
-        const NavigationDestination(
-          icon: Icon(Icons.beach_access_outlined),
-          selectedIcon: Icon(Icons.beach_access),
-          label: 'Fri',
-        ),
-      const NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
-    ];
+    final isOwner = widget.portalAccountKind == 'owner' ||
+        (widget.portalAccountKind == null && widget.profile.isPartnerPortalOwner);
+    final pages = isOwner
+        ? [
+            OwnerPortalOverviewPage(partner: p),
+            OwnerPortalSummaryPage(partner: p),
+            OwnerPortalDocsPage(partner: p),
+            OwnerPortalRoutesPage(partner: p),
+            OwnerPortalMeetingsPage(partner: p),
+            OwnerPortalInspectionsPage(partner: p),
+            _PartnerProfilePage(profile: widget.profile, isOwner: true),
+          ]
+        : [
+            DriverPortalOverviewPage(partner: p, profile: widget.profile),
+            DriverPortalRoutesPage(partner: p, profile: widget.profile),
+            DriverPortalDocsPage(partner: p),
+            DriverPortalFriPage(partner: p, profile: widget.profile),
+            DriverPortalProfilePage(profile: widget.profile),
+          ];
+    final destinations = isOwner
+        ? const [
+            NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
+            NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Oppsummering'),
+            NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
+            NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Alle ruter'),
+            NavigationDestination(icon: Icon(Icons.event_note_outlined), selectedIcon: Icon(Icons.event_note), label: 'Møter'),
+            NavigationDestination(icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Bilkontroll'),
+            NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
+          ]
+        : const [
+            NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
+            NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Mine ruter'),
+            NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
+            NavigationDestination(icon: Icon(Icons.beach_access_outlined), selectedIcon: Icon(Icons.beach_access), label: 'Fri'),
+            NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
+          ];
 
     return Scaffold(
       body: IndexedStack(index: _index, children: pages),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index.clamp(0, destinations.length - 1),
         onDestinationSelected: (i) => setState(() => _index = i),
+        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
         destinations: destinations,
       ),
     );
@@ -123,18 +201,22 @@ class _PartnerShellState extends State<PartnerShell> {
 
 class _PartnerOverviewPage extends StatelessWidget {
   final Partner partner;
-  const _PartnerOverviewPage({required this.partner});
+  final bool isOwner;
+  const _PartnerOverviewPage({required this.partner, this.isOwner = false});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      appBar: AppBar(title: Text(partner.name)),
+      appBar: AppBar(
+        title: Text(partner.name),
+        actions: _partnerLogoutActions(context),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
           Text(
-            'Leverandør / samarbeidspartner',
+            isOwner ? 'Bil-eier portal — din bedrift' : 'Sjåfør-portal — dine tildelte ruter',
             style: TextStyle(
               fontSize: 12,
               color: isDark ? Colors.white54 : Colors.grey[600],
@@ -198,7 +280,8 @@ class _PartnerOverviewPage extends StatelessWidget {
 
 class _PartnerDocsPage extends StatefulWidget {
   final Partner partner;
-  const _PartnerDocsPage({required this.partner});
+  final bool isOwner;
+  const _PartnerDocsPage({required this.partner, this.isOwner = true});
 
   @override
   State<_PartnerDocsPage> createState() => _PartnerDocsPageState();
@@ -214,60 +297,9 @@ class _PartnerDocsPageState extends State<_PartnerDocsPage> {
   }
 
   Future<void> _load() async {
-    final d = await PartnerService.fetchDocuments(
-      widget.partner.id,
-      docCategories: const ['general', 'agreement'],
-    );
-    if (mounted) setState(() => _docs = d);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Delte dokumenter')),
-      body: _docs.isEmpty
-          ? const Center(child: Text('Ingen dokumenter delt ennå.'))
-          : ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: _docs.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (ctx, i) {
-                final doc = _docs[i];
-                return ListTile(
-                  tileColor: Theme.of(context).brightness == Brightness.dark ? DriftProTheme.cardDark : Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  leading: const Icon(Icons.description_outlined),
-                  title: Text(doc.title),
-                  subtitle: Text(doc.fileName ?? doc.storagePath ?? ''),
-                );
-              },
-            ),
-    );
-  }
-}
-
-class _PartnerSummaryPage extends StatefulWidget {
-  final Partner partner;
-  const _PartnerSummaryPage({required this.partner});
-
-  @override
-  State<_PartnerSummaryPage> createState() => _PartnerSummaryPageState();
-}
-
-class _PartnerSummaryPageState extends State<_PartnerSummaryPage> {
-  List<PartnerDocument> _docs = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final d = await PartnerService.fetchDocuments(
-      widget.partner.id,
-      docCategories: const ['summary'],
-    );
+    final d = widget.isOwner
+        ? await PartnerService.fetchOwnerPortalDocuments(widget.partner.id)
+        : await PartnerService.fetchDriverPortalDocuments(widget.partner.id);
     if (mounted) setState(() => _docs = d);
   }
 
@@ -279,36 +311,41 @@ class _PartnerSummaryPageState extends State<_PartnerSummaryPage> {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke åpne PDF: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke åpne: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Oppsummering')),
+      appBar: AppBar(
+        title: Text(widget.isOwner ? 'Dokumenter (bedrift)' : 'Dokumenter (sjåfør)'),
+        actions: _partnerLogoutActions(context),
+      ),
       body: _docs.isEmpty
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  'Ingen oppsummering er delt med dere ennå.',
-                  textAlign: TextAlign.center,
-                ),
+          ? Center(
+              child: Text(
+                widget.isOwner
+                    ? 'Ingen dokumenter delt med bil-eier ennå.'
+                    : 'Ingen dokumenter delt med sjåfør ennå.',
+                textAlign: TextAlign.center,
               ),
             )
           : ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: _docs.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (ctx, i) {
                 final doc = _docs[i];
                 return ListTile(
                   tileColor: Theme.of(context).brightness == Brightness.dark ? DriftProTheme.cardDark : Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  leading: const Icon(Icons.picture_as_pdf_outlined),
+                  leading: const Icon(Icons.description_outlined),
                   title: Text(doc.title),
-                  subtitle: Text(doc.fileName ?? ''),
+                  subtitle: Text(
+                    '${PartnerDocument.documentTypeLabel(doc.documentType)} · '
+                    '${doc.fileName ?? doc.storagePath ?? ''}',
+                  ),
                   trailing: const Icon(Icons.open_in_new),
                   onTap: () => _open(doc),
                 );
@@ -337,6 +374,7 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
   List<PartnerRouteShare> _active = [];
   List<PartnerRouteShare> _history = [];
   Map<String, FleetShiftDefinition> _shifts = {};
+  Map<String, PartnerVehicle> _vehiclesById = {};
   bool _loading = true;
 
   @override
@@ -363,18 +401,19 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
     final cid = widget.partner.companyId;
     final shifts = await PartnerService.fetchFleetShifts(cid);
     final shiftMap = {for (final s in shifts) s.id: s};
-    final now = DateTime.now();
-    final active = all.where((r) {
-      if (r.ackStatus == 'pending') return true;
-      final d = DateTime(r.shareDate.year, r.shareDate.month, r.shareDate.day);
-      return !d.isBefore(DateTime(now.year, now.month, now.day).subtract(const Duration(days: 1)));
-    }).toList();
-    final history = all.where((r) => !active.contains(r)).toList();
+    Map<String, PartnerVehicle> vehicleMap = {};
+    if (widget.isOwner) {
+      final vehicles = await PartnerService.fetchVehicles(widget.partner.id);
+      vehicleMap = {for (final v in vehicles) v.id: v};
+    }
+    final active = all.where(_isActivePortalRoute).toList()..sort(_compareRoutesByStartDesc);
+    final history = all.where((r) => !_isActivePortalRoute(r)).toList()..sort(_compareRoutesByStartDesc);
     if (mounted) {
       setState(() {
         _active = active;
         _history = history;
         _shifts = shiftMap;
+        _vehiclesById = vehicleMap;
         _loading = false;
       });
     }
@@ -393,13 +432,7 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
   }
 
   Future<void> _openPdf(PartnerRouteShare r) async {
-    try {
-      final url = await PartnerService.getRoutePdfSignedUrl(r.pdfStoragePath);
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke åpne PDF: $e')));
-    }
+    await PartnerRoutePdfActions.openPdf(context, r);
   }
 
   Future<void> _setAck(PartnerRouteShare r, bool accepted) async {
@@ -407,27 +440,61 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
     final shouldContinue = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(accepted ? 'Aksepter rute' : 'Avvis rute'),
+        title: Text(accepted ? 'Aksepter rute' : 'Avlys rute'),
         content: TextField(
           controller: noteCtrl,
           maxLines: 3,
-          decoration: const InputDecoration(
-            labelText: 'Kommentar (valgfritt)',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: accepted ? 'Kommentar (valgfritt)' : 'Begrunnelse til MAVI *',
+            hintText: accepted ? null : 'F.eks. bil i verksted, sykdom …',
+            border: const OutlineInputBorder(),
           ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Lagre')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(accepted ? 'Aksepter' : 'Send avlysning')),
         ],
       ),
     );
-    if (shouldContinue != true) return;
-    await PartnerService.updateRouteAcknowledgement(
-      routeShareId: r.id,
-      accepted: accepted,
-      comment: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
-    );
+    if (shouldContinue != true) {
+      noteCtrl.dispose();
+      return;
+    }
+    final comment = noteCtrl.text.trim();
+    noteCtrl.dispose();
+    if (!accepted && comment.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Skriv en begrunnelse når du avlyser ruten.')),
+        );
+      }
+      return;
+    }
+    try {
+      await PartnerService.updateRouteAcknowledgement(
+        routeShareId: r.id,
+        accepted: accepted,
+        comment: comment.isEmpty ? null : comment,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              accepted
+                  ? 'Ruten er akseptert. MAVI er varslet.'
+                  : 'Ruten er avlyst. Begrunnelsen er sendt til MAVI.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke lagre: $e'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
     await _load();
   }
 
@@ -456,42 +523,94 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
   Widget _routeTile(PartnerRouteShare r, {bool showActions = true}) {
     final shift = _shiftLabel(r);
     final start = _startLabel(r);
-    return ListTile(
-      tileColor: Theme.of(context).brightness == Brightness.dark ? DriftProTheme.cardDark : Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      leading: const Icon(Icons.picture_as_pdf_outlined),
-      title: Text(r.title ?? 'Rute'),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(DateFormat('d. MMM yyyy', 'nb').format(r.shareDate)),
-          if (shift.isNotEmpty) Text('Skift: $shift', style: const TextStyle(fontWeight: FontWeight.w600)),
-          if (start.isNotEmpty) Text(start),
-          const SizedBox(height: 4),
-          Text(
-            _ackLabel(r),
-            style: TextStyle(fontWeight: FontWeight.w700, color: _ackColor(r)),
-          ),
-        ],
-      ),
-      onTap: () => _openPdf(r),
-      trailing: showActions && r.ackStatus == 'pending'
-          ? Row(
-              mainAxisSize: MainAxisSize.min,
+    final vehicle = r.partnerVehicleId != null ? _vehiclesById[r.partnerVehicleId] : null;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                IconButton(
-                  tooltip: 'Aksepter — skal kjøre',
-                  icon: const Icon(Icons.check_circle_outline, color: Colors.green),
-                  onPressed: () => _setAck(r, true),
+                PartnerRoutePdfActions.ackDot(r, size: 12),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(r.title ?? 'Rute', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                 ),
-                IconButton(
-                  tooltip: 'Avvis',
-                  icon: const Icon(Icons.cancel_outlined, color: Colors.red),
-                  onPressed: () => _setAck(r, false),
+                Text(
+                  _ackLabel(r),
+                  style: TextStyle(fontWeight: FontWeight.w700, color: _ackColor(r), fontSize: 12),
                 ),
               ],
-            )
-          : IconButton(icon: const Icon(Icons.open_in_new), onPressed: () => _openPdf(r)),
+            ),
+            const SizedBox(height: 6),
+            if (vehicle != null)
+              Text(
+                'MAVI ${MaviUnitCodes.normalize(vehicle.unitCode)}',
+                style: const TextStyle(fontWeight: FontWeight.w800, color: DriftProTheme.primaryGreen),
+              ),
+            Text(
+              'Rutedag: ${DateFormat('EEEE d. MMM yyyy', 'nb').format(_routeCalendarDay(r))}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            if (shift.isNotEmpty) Text('Skift: $shift'),
+            if (start.isNotEmpty)
+              Text(
+                start,
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: DriftProTheme.accentBlue),
+              ),
+            if ((r.notes ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('Melding fra MAVI: ${r.notes}', style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
+            ],
+            if ((r.ackComment ?? '').trim().isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Din tilbakemelding: ${r.ackComment}',
+                style: TextStyle(color: Colors.grey.shade800, fontSize: 12, fontStyle: FontStyle.italic),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _openPdf(r),
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                  label: const Text('Vis rute-PDF'),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _openPdf(r),
+                  icon: const Icon(Icons.download_outlined, size: 18),
+                  label: const Text('Last ned'),
+                ),
+              ],
+            ),
+            if (showActions && r.ackStatus == 'pending') ...[
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: () => _setAck(r, true),
+                      style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('Aksepter rute'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _setAck(r, false),
+                    icon: const Icon(Icons.cancel_outlined, color: Colors.red),
+                    label: const Text('Avlys'),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -500,6 +619,7 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.isOwner ? 'Alle ruter' : 'Mine ruter'),
+        actions: _partnerLogoutActions(context),
         bottom: TabBar(
           controller: _tab,
           tabs: [
@@ -510,32 +630,188 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tab,
-              children: [
-                _active.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Ingen nye ruter. Du får SMS når noe er tildelt.',
-                          textAlign: TextAlign.center,
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: TabBarView(
+                controller: _tab,
+                children: [
+                  _active.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: const [
+                            SizedBox(height: 120),
+                            Center(
+                              child: Text(
+                                'Ingen aktive ruter.\nDu får SMS når MAVI tildeler en ny rute.',
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ],
+                        )
+                      : ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _active.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (_, i) => _routeTile(_active[i]),
                         ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _active.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (_, i) => _routeTile(_active[i]),
-                      ),
-                _history.isEmpty
-                    ? const Center(child: Text('Ingen tidligere ruter.'))
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _history.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
-                        itemBuilder: (_, i) => _routeTile(_history[i], showActions: false),
-                      ),
-              ],
+                  _history.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: const [
+                            SizedBox(height: 120),
+                            Center(child: Text('Ingen tidligere ruter.')),
+                          ],
+                        )
+                      : ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.all(16),
+                          itemCount: _history.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 8),
+                          itemBuilder: (_, i) => _routeTile(_history[i], showActions: false),
+                        ),
+                ],
+              ),
             ),
+    );
+  }
+}
+
+class _PartnerMeetingsPage extends StatefulWidget {
+  final Partner partner;
+  const _PartnerMeetingsPage({required this.partner});
+
+  @override
+  State<_PartnerMeetingsPage> createState() => _PartnerMeetingsPageState();
+}
+
+class _PartnerMeetingsPageState extends State<_PartnerMeetingsPage> {
+  List<PartnerMeeting> _meetings = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final m = await PartnerService.fetchPortalMeetings(widget.partner.id);
+    if (mounted) {
+      setState(() {
+        _meetings = m.where((x) => !x.isArchived).toList();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Møter & audit'),
+        actions: _partnerLogoutActions(context),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _meetings.isEmpty
+              ? const Center(child: Text('Ingen planlagte møter.'))
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _meetings.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final m = _meetings[i];
+                    return ListTile(
+                      tileColor: Theme.of(context).brightness == Brightness.dark
+                          ? DriftProTheme.cardDark
+                          : Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      leading: Icon(
+                        m.isAudit ? Icons.fact_check_outlined : Icons.event_outlined,
+                        color: DriftProTheme.primaryGreen,
+                      ),
+                      title: Text(m.title, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text(
+                        '${PartnerMeeting.meetingTypeLabel(m.meetingType)}\n'
+                        '${DateFormat('d. MMM yyyy HH:mm', 'nb').format(m.scheduledAt.toLocal())}',
+                      ),
+                      isThreeLine: true,
+                      trailing: PartnerStatusBadge(
+                        label: PartnerMeeting.statusLabel(m.status),
+                        color: DriftProTheme.info,
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}
+
+class _PartnerInspectionsPage extends StatefulWidget {
+  final Partner partner;
+  const _PartnerInspectionsPage({required this.partner});
+
+  @override
+  State<_PartnerInspectionsPage> createState() => _PartnerInspectionsPageState();
+}
+
+class _PartnerInspectionsPageState extends State<_PartnerInspectionsPage> {
+  List<PartnerVehicleInspection> _items = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final list = await PartnerService.fetchVehicleInspections(widget.partner.id);
+    if (mounted) {
+      setState(() {
+        _items = list.take(30).toList();
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Bilkontroll'),
+        actions: _partnerLogoutActions(context),
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _items.isEmpty
+              ? const Center(child: Text('Ingen registrerte bilkontroller ennå.'))
+              : ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _items.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (_, i) {
+                    final ins = _items[i];
+                    final label = ins.registrationNumber ?? ins.unitCode ?? 'Bil';
+                    return ListTile(
+                      tileColor: Theme.of(context).brightness == Brightness.dark
+                          ? DriftProTheme.cardDark
+                          : Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      leading: Icon(
+                        ins.hasDeviation ? Icons.warning_amber : Icons.check_circle,
+                        color: ins.hasDeviation ? Colors.orange : Colors.green,
+                      ),
+                      title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text(
+                        '${DateFormat('d. MMM yyyy', 'nb').format(ins.inspectedAt.toLocal())}\n'
+                        '${ins.hasDeviation ? (ins.deviationNotes ?? "Avvik registrert") : "OK — ingen avvik"}',
+                      ),
+                      isThreeLine: true,
+                    );
+                  },
+                ),
     );
   }
 }
@@ -639,6 +915,7 @@ class _PartnerFriPageState extends State<_PartnerFriPage> {
             onPressed: _requestFri,
             icon: const Icon(Icons.add),
           ),
+          ..._partnerLogoutActions(context),
         ],
       ),
       body: _loading
@@ -690,7 +967,10 @@ class _PartnerProfilePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Profil')),
+      appBar: AppBar(
+        title: const Text('Profil'),
+        actions: _partnerLogoutActions(context),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -710,7 +990,7 @@ class _PartnerProfilePage extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           FilledButton.icon(
-            onPressed: () => Supabase.instance.client.auth.signOut(),
+            onPressed: () => signOutFromPortal(context),
             icon: const Icon(Icons.logout),
             label: const Text('Logg ut'),
           ),

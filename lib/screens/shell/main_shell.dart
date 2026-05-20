@@ -1,19 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/constants/app_icons.dart';
+import '../auth/onboarding_screen.dart';
+import '../auth/pending_approval_screen.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../absence/absence_screen.dart';
 import '../tickets/tickets_screen.dart';
 import '../hms/hms_screen.dart';
 import '../surveys/survey_list_screen.dart';
 import '../partners/partners_dashboard_screen.dart';
+import '../partners/partner_shell.dart';
 import '../more/more_screen.dart';
 import '../../models/user_profile.dart';
+import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
-import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/user_access.dart';
 
@@ -27,6 +32,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
   UserProfile? _profile;
+  String? _portalAccountKind;
   bool _isLoadingAccess = true;
 
   @override
@@ -35,26 +41,126 @@ class _MainShellState extends State<MainShell> {
     _loadAccess();
   }
 
+  /// true = vi forlater MainShell (onboarding / ventende godkjenning).
+  bool _scheduleProfileGate(UserProfile profile) {
+    if (!profile.isOnboarded) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(builder: (_) => OnboardingScreen(profile: profile)),
+          (_) => false,
+        );
+      });
+      return true;
+    }
+
+    if (!profile.isApproved && profile.role != UserRole.superadmin) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()),
+          (_) => false,
+        );
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  /// Når appen startet med nød-superadmin (DB tom): prøv igjen etter at du har kjørt SQL.
+  Future<void> _syncDbProfileAfterRecovery() async {
+    for (var i = 0; i < 12; i++) {
+      if (!mounted) return;
+      await Future<void>.delayed(Duration(milliseconds: i == 0 ? 400 : 850));
+      if (!mounted) return;
+
+      await SupabaseService.rpcEnsureInternalProfileMissing();
+      if (!mounted) return;
+
+      final real = await SupabaseService.fetchCurrentUserProfile();
+      if (!mounted) return;
+      if (real == null) continue;
+
+      if (_scheduleProfileGate(real)) return;
+
+      setState(() => _profile = real);
+
+      if (mounted && i >= 1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profilen er hentet fra databasen.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      return;
+    }
+  }
+
   Future<void> _loadAccess() async {
     try {
-      final profile = await SupabaseService.fetchCurrentUserProfile();
-      if (mounted) {
-        if (profile == null || (!profile.isOnboarded) || (!profile.isApproved && profile.role != UserRole.superadmin)) {
-           // Security leak detected! Active counter-measure
-           print('SECURITY BREACH: Logged user ${profile?.email} is in MainShell but lacks approval/onboarding. Kicking out.');
-           Supabase.instance.client.auth.signOut();
-           return;
-        }
+      var profile = await SupabaseService.fetchOrCreateCurrentUserProfile();
+      final portalEmail = Supabase.instance.client.auth.currentUser?.email?.trim().toLowerCase() ?? '';
+      final looksLikePortal = portalEmail.endsWith('.portal') ||
+          portalEmail.endsWith('@portal.driftpro.no');
+      if (profile != null &&
+          profile.partnerId == null &&
+          (looksLikePortal || profile.role == UserRole.samarbeidspartner)) {
+        profile = await SupabaseService.ensureSessionLinkedToCompany() ?? profile;
+      } else if (profile != null && profile.companyId == null && !profile.isPartnerPortalUser) {
+        profile = await SupabaseService.ensureSessionLinkedToCompany() ?? profile;
+      }
+      if (!mounted) return;
+
+      if (profile == null) {
         setState(() {
-          _profile = profile;
+          _profile = null;
           _isLoadingAccess = false;
         });
+        return;
+      }
+
+      if (_scheduleProfileGate(profile)) {
+        setState(() => _isLoadingAccess = false);
+        return;
+      }
+
+      var portalKind = _portalAccountKind;
+      if (profile.isPartnerPortalUser) {
+        await SupabaseService.ensureSessionLinkedToCompany();
+        profile = await SupabaseService.fetchCurrentUserProfile() ?? profile;
+        final session = await PartnerService.resolvePortalSession();
+        portalKind = session?.accountKind;
+        if (session != null) {
+          profile = profile.copyWith(
+            partnerId: session.partnerId,
+            partnerVehicleId: session.isOwner ? null : session.partnerVehicleId,
+          );
+        }
+      }
+
+      setState(() {
+        _profile = profile;
+        _portalAccountKind = portalKind;
+        _isLoadingAccess = false;
+      });
+
+      if (profile.isRecoverySession) {
+        unawaited(_syncDbProfileAfterRecovery());
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           _isLoadingAccess = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Kunne ikke laste profil etter innlogging: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 8),
+          ),
+        );
       }
     }
   }
@@ -91,9 +197,18 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     if (_isLoadingAccess) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    
+
+    if (_profile != null && _profile!.isPartnerPortalUser) {
+      return PartnerShell(
+        profile: _profile!,
+        portalAccountKind: _portalAccountKind,
+      );
+    }
+
     // Safety check fallback (Active enforcement)
-    if (_profile == null || !_profile!.isOnboarded || (!_profile!.isApproved && _profile!.role != UserRole.superadmin)) {
+    if (_profile == null ||
+        !_profile!.isOnboarded ||
+        (!_profile!.isApproved && _profile!.role != UserRole.superadmin)) {
       return Scaffold(
         body: Center(
           child: Column(
@@ -114,7 +229,7 @@ class _MainShellState extends State<MainShell> {
         ),
       );
     }
-    
+
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     final allScreens = [

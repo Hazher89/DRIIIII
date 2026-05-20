@@ -1,10 +1,29 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { readSveveConfig, sendViaSveve } from "../_shared/sveve.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+/** GoTrue mangler stabilt «getUserByEmail»; paginer til treff eller sluttliste. */
+async function findAuthUserIdByEmail(
+  admin: ReturnType<typeof createClient>,
+  emailNorm: string,
+): Promise<string | null> {
+  const want = emailNorm.toLowerCase();
+  const perPage = 1000;
+  for (let page = 1; page <= 50; page++) {
+    const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
+    if (error) throw error;
+    const users = data?.users ?? [];
+    const hit = users.find((u) => (u.email ?? "").toLowerCase() === want);
+    if (hit?.id) return hit.id;
+    if (users.length < perPage) break;
+  }
+  return null;
+}
 
 function randomPassword(len = 10): string {
   const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -13,6 +32,17 @@ function randomPassword(len = 10): string {
   crypto.getRandomValues(arr);
   for (let i = 0; i < len; i++) out += chars[arr[i] % chars.length];
   return out;
+}
+
+/** Matcher `public.normalize_phone_no` / Dart `normalizePhoneNo`. */
+function normalizePhoneNo(phone: string): string | null {
+  const d = phone.replace(/[^0-9]/g, "");
+  if (!d) return null;
+  if (d.length === 8 && /^[49]/.test(d)) return `47${d}`;
+  if (d.length === 10 && /^47[49]/.test(d)) return d;
+  if (d.length === 11 && d.startsWith("047")) return d.slice(1);
+  if (d.length >= 10 && d.startsWith("47")) return d.slice(0, Math.min(d.length, 11));
+  return null;
 }
 
 Deno.serve(async (req) => {
@@ -41,6 +71,7 @@ Deno.serve(async (req) => {
       login_email,
       phone,
       password,
+      driver_name,
       account_kind = "driver",
       delete_account,
       send_credentials_sms = true,
@@ -77,8 +108,18 @@ Deno.serve(async (req) => {
       });
     }
 
-    const normalizedPhone = String(phone).trim();
-    const user = String(username ?? "").trim().toLowerCase();
+    const normalizedPhone = normalizePhoneNo(String(phone).trim());
+    if (!normalizedPhone) {
+      return new Response(
+        JSON.stringify({ error: "Ugyldig norsk mobilnummer (8 siffer, 4/9xxx)" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    let user = String(username ?? "").trim().toLowerCase();
+    const displayName =
+      driver_name && String(driver_name).trim().length > 0
+        ? String(driver_name).trim()
+        : user;
     if (!user) {
       return new Response(JSON.stringify({ error: "username required" }), {
         status: 400,
@@ -86,19 +127,26 @@ Deno.serve(async (req) => {
       });
     }
 
-    const cidShort = String(company_id).replace(/-/g, "").slice(0, 8);
+    const scopeId = isOwner ? String(partner_id) : String(partner_vehicle_id ?? partner_id);
+    const scopeHex = scopeId.replace(/-/g, "");
+    const scopeShort = scopeHex.length >= 8 ? scopeHex.slice(0, 8) : scopeHex.padEnd(8, "0");
     const email =
       login_email && String(login_email).includes("@")
         ? String(login_email).trim().toLowerCase()
-        : `${user}@${isOwner ? "eier" : "mavi"}.${cidShort}.portal`;
+        : `${isOwner ? "o" : "d"}.${scopeShort}@portal.driftpro.no`;
 
     if (!isOwner && partner_vehicle_id) {
-      await admin.from("partner_vehicles").update({ phone: normalizedPhone }).eq("id", partner_vehicle_id);
+      await admin.from("partner_vehicles").update({
+        phone: normalizedPhone,
+        ...(driver_name && String(driver_name).trim()
+          ? { driver_name: String(driver_name).trim() }
+          : {}),
+      }).eq("id", partner_vehicle_id);
     }
 
     let existingQuery = admin
       .from("partner_portal_accounts")
-      .select("id, profile_id, login_email")
+      .select("id, profile_id, login_email, username")
       .eq("partner_id", partner_id)
       .eq("is_active", true);
 
@@ -110,6 +158,10 @@ Deno.serve(async (req) => {
 
     const { data: existing } = await existingQuery.maybeSingle();
 
+    if (existing?.username && String(existing.username).trim().length > 0) {
+      user = String(existing.username).trim().toLowerCase();
+    }
+
     let pw = password && String(password).length >= 6 ? String(password) : randomPassword(10);
     if (existing && !regenerate_password && password && String(password).length >= 6) {
       pw = String(password);
@@ -118,32 +170,59 @@ Deno.serve(async (req) => {
     }
 
     let profileId: string | null = existing?.profile_id ?? null;
-    const authEmail = existing?.login_email ?? email;
+    const authEmail = (existing?.login_email ?? email).toLowerCase();
 
-    const { data: created, error: createErr } = await admin.auth.admin.createUser({
-      email: authEmail,
-      password: pw,
-      email_confirm: true,
-    });
+    const userMetadata: Record<string, unknown> = {
+      portal_provision: true,
+      company_id,
+      partner_id,
+      partner_vehicle_id: isOwner ? null : partner_vehicle_id ?? null,
+      phone: normalizedPhone,
+      full_name: displayName,
+    };
 
-    if (createErr) {
-      const { data: listed } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-      const found = listed?.users?.find((u) => u.email?.toLowerCase() === authEmail.toLowerCase());
-      if (found) {
-        await admin.auth.admin.updateUserById(found.id, { password: pw });
-        profileId = found.id;
-      } else {
-        throw createErr;
+    let existingAuthId = await findAuthUserIdByEmail(admin, authEmail);
+
+    if (existingAuthId) {
+      const { error: updateErr } = await admin.auth.admin.updateUserById(existingAuthId, {
+        password: pw,
+        email_confirm: true,
+        user_metadata: userMetadata,
+      });
+      if (updateErr) throw updateErr;
+      profileId = existingAuthId;
+    } else {
+      const { data: created, error: createErr } = await admin.auth.admin.createUser({
+        email: authEmail,
+        password: pw,
+        email_confirm: true,
+        user_metadata: userMetadata,
+      });
+
+      if (createErr) {
+        existingAuthId = await findAuthUserIdByEmail(admin, authEmail);
+        if (existingAuthId) {
+          await admin.auth.admin.updateUserById(existingAuthId, {
+            password: pw,
+            user_metadata: userMetadata,
+          });
+          profileId = existingAuthId;
+        } else {
+          const msg = createErr.message ?? String(createErr);
+          throw new Error(
+            `Kunne ikke opprette Auth-bruker: ${msg}. Kjør migrasjon partner_portal_user_fix i Supabase.`,
+          );
+        }
+      } else if (created?.user) {
+        profileId = created.user.id;
       }
-    } else if (created?.user) {
-      profileId = created.user.id;
     }
 
     if (profileId) {
-      await admin.from("profiles").upsert({
+      const { error: profErr } = await admin.from("profiles").upsert({
         id: profileId,
         email: authEmail,
-        full_name: user,
+        full_name: displayName,
         role: "samarbeidspartner",
         company_id,
         partner_id,
@@ -152,7 +231,12 @@ Deno.serve(async (req) => {
         is_onboarded: true,
         is_approved: true,
         is_active: true,
+        access_settings: {},
       });
+      if (profErr) {
+        console.error("profiles upsert:", profErr);
+        throw new Error(`Profil kunne ikke lagres: ${profErr.message}`);
+      }
     }
 
     const row = {
@@ -174,15 +258,68 @@ Deno.serve(async (req) => {
     }
 
     let smsSent = false;
+    let smsQueued = false;
+    let smsError: string | null = null;
     if (send_credentials_sms) {
-      const { error: smsErr } = await admin.rpc("notify_partner_portal_credentials_sms", {
+      const { data: smsId, error: smsErr } = await admin.rpc("notify_partner_portal_credentials_sms", {
         p_company_id: company_id,
         p_phone: normalizedPhone,
         p_username: user,
         p_password: pw,
         p_is_owner: isOwner,
       });
-      smsSent = !smsErr;
+      if (smsErr) {
+        smsError = smsErr.message;
+        console.error("notify_partner_portal_credentials_sms failed:", smsErr);
+      } else if (!smsId) {
+        smsError = `Kunne ikke legge SMS i kø for ${normalizedPhone}`;
+      } else {
+        smsQueued = true;
+        const { data: smsRow, error: rowErr } = await admin
+          .from("sms_outbox")
+          .select("id, to_phone, message, attempts")
+          .eq("id", smsId)
+          .maybeSingle();
+
+        if (rowErr || !smsRow) {
+          smsError = rowErr?.message ?? "Fant ikke SMS-rad etter køing";
+        } else {
+          const sveve = readSveveConfig();
+          if ("error" in sveve) {
+            smsError = sveve.error;
+          } else {
+            const result = await sendViaSveve(
+              sveve.user,
+              sveve.passwd,
+              smsRow.to_phone,
+              smsRow.message,
+              sveve.from,
+              sveve.test,
+            );
+            if (result.ok) {
+              await admin
+                .from("sms_outbox")
+                .update({
+                  sent_at: new Date().toISOString(),
+                  sveve_message_id: result.id ?? null,
+                  error_message: null,
+                  attempts: (smsRow.attempts ?? 0) + 1,
+                })
+                .eq("id", smsRow.id);
+              smsSent = true;
+            } else {
+              await admin
+                .from("sms_outbox")
+                .update({
+                  error_message: result.error ?? "Ukjent feil",
+                  attempts: (smsRow.attempts ?? 0) + 1,
+                })
+                .eq("id", smsRow.id);
+              smsError = result.error ?? "Sveve avviste SMS";
+            }
+          }
+        }
+      }
     }
 
     return new Response(
@@ -192,6 +329,9 @@ Deno.serve(async (req) => {
         login_email: authEmail,
         password: pw,
         sms_sent: smsSent,
+        sms_queued: smsQueued,
+        phone: normalizedPhone,
+        ...(smsError ? { sms_error: smsError } : {}),
         account_kind: kind,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },

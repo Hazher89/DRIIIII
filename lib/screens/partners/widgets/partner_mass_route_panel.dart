@@ -184,6 +184,7 @@ class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
           bytes: bytes,
         );
         final pdfText = RoutePdfTextService.extractFullText(bytes);
+        final schedule = RoutePdfTextService.resolveSchedule(pdfText, fallbackDate: DateTime.now());
         final share = await PartnerService.addRouteShare(
           PartnerRouteShare(
             id: '',
@@ -191,7 +192,7 @@ class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
             companyId: cid,
             title: 'Rute ${vehicle.unitCode} — ${file.name}',
             pdfStoragePath: storagePath,
-            shareDate: DateTime.now(),
+            shareDate: schedule.routeDate,
             isDailyShare: true,
             createdAt: DateTime.now(),
             dispatchStatus: 'staged',
@@ -201,6 +202,11 @@ class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
         );
         if (pdfText.isNotEmpty) {
           await PartnerService.saveRoutePdfSearchText(share.id, pdfText);
+        }
+        if (schedule.routeStartAt != null) {
+          await PartnerService.updateRouteShareFields(share.id, {
+            'route_start_at': schedule.routeStartAt!.toUtc().toIso8601String(),
+          });
         }
         staged++;
       }

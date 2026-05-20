@@ -70,43 +70,53 @@ end;
 $$;
 
 -- ── Legg SMS i kø ──────────────────────────────────────────────────────────
+drop function if exists public.queue_sms(uuid, text, text, text, text, uuid);
+
 create or replace function public.queue_sms(
   p_company_id uuid,
   p_to_phone text,
   p_message text,
   p_category text default null,
   p_reference_type text default null,
-  p_reference_id uuid default null
+  p_reference_id uuid default null,
+  p_to_user_id uuid default null,
+  p_triggered_by_user_id uuid default null
 )
-returns void
+returns uuid
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
   normalized text;
+  new_id uuid;
 begin
   normalized := public.normalize_phone_no(p_to_phone);
   if normalized is null then
-    return;
+    return null;
   end if;
   if p_message is null or length(trim(p_message)) = 0 then
-    return;
+    return null;
   end if;
   insert into public.sms_outbox (
-    company_id, to_phone, message, category, reference_type, reference_id
+    company_id, to_phone, message, category, reference_type, reference_id,
+    to_user_id, triggered_by_user_id
   ) values (
     p_company_id,
     normalized,
     left(trim(p_message), 1071),
     p_category,
     p_reference_type,
-    p_reference_id
-  );
+    p_reference_id,
+    p_to_user_id,
+    coalesce(p_triggered_by_user_id, auth.uid())
+  )
+  returning id into new_id;
+  return new_id;
 end;
 $$;
 
-grant execute on function public.queue_sms(uuid, text, text, text, text, uuid) to authenticated, service_role;
+grant execute on function public.queue_sms(uuid, text, text, text, text, uuid, uuid, uuid) to authenticated, service_role;
 
 -- ── SMS til ledere (avdeling + admin) ──────────────────────────────────────
 create or replace function public.queue_sms_to_leaders(

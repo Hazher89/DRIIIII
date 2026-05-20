@@ -70,6 +70,18 @@ class UserAccess {
   bool get canSurveyResults => can(AccessKeys.surveyResultater);
   bool get canPartnersAdmin => can(AccessKeys.partnersAdmin);
   bool get canFleetRoutes => can(AccessKeys.fleetRuter);
+  bool get canPartnersCreate => can(AccessKeys.partnersCreate);
+  bool get canPartnersDelete => can(AccessKeys.partnersDelete);
+  bool get canPartnersEdit => can(AccessKeys.partnersEdit);
+
+  bool get canPartnersTabOversikt => can(AccessKeys.partnersTabOversikt);
+  bool get canPartnersTabBilkontroll => can(AccessKeys.partnersTabBilkontroll);
+  bool get canPartnersTabRuter => can(AccessKeys.partnersTabRuter);
+  bool get canPartnersTabDokumenter => can(AccessKeys.partnersTabDokumenter);
+  bool get canPartnersTabLoyver => can(AccessKeys.partnersTabLoyver);
+  bool get canPartnersTabOppfolging => can(AccessKeys.partnersTabOppfolging);
+  bool get canPartnersTabOppsummering => can(AccessKeys.partnersTabOppsummering);
+  bool get canPartnersTabFri => can(AccessKeys.partnersTabFri);
 
   // HMS undermoduler
   bool get canHmsRisk => can(AccessKeys.hmsRisikovurdering);

@@ -116,6 +116,16 @@ class _CompanySmsSettingsPanelState extends State<CompanySmsSettingsPanel> {
                 onChanged: (v) => _patch((x) => x.copyWith(smsTicketCritical: v)),
               ),
               const Divider(height: 32),
+              Text('Brukere', style: DriftProTheme.headingSm),
+              SwitchListTile(
+                title: const Text('Ny ansatt venter godkjenning → superadmin'),
+                subtitle: const Text(
+                  'Sendes når ansatt har fullført onboarding og venter på godkjenning.',
+                ),
+                value: s.smsUserApproval,
+                onChanged: (v) => _patch((x) => x.copyWith(smsUserApproval: v)),
+              ),
+              const Divider(height: 32),
               SwitchListTile(
                 title: const Text('Utstyr / truck-påminnelser'),
                 value: s.smsEquipment,

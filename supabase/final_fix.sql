@@ -8,16 +8,26 @@ VALUES ('00000000-0000-0000-0000-000000000000', 'DriftPro Demo Selskap', '999999
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. Reparer funksjoner for å unngå RLS-rekursjon
+-- OBS: behold returtype public.user_role (ikke text) — ellers feiler med 42P13.
 CREATE OR REPLACE FUNCTION public.get_user_role()
-RETURNS text AS $$
-  -- Bruk SECURITY DEFINER for å omgå RLS og unngå "recursive search"
-  SELECT role::text FROM public.profiles WHERE id = auth.uid();
-$$ LANGUAGE sql SECURITY DEFINER STABLE;
+RETURNS public.user_role
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT role FROM public.profiles WHERE id = auth.uid();
+$$;
 
 CREATE OR REPLACE FUNCTION public.get_user_company_id()
-RETURNS uuid AS $$
+RETURNS uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
   SELECT company_id FROM public.profiles WHERE id = auth.uid();
-$$ LANGUAGE sql SECURITY DEFINER STABLE;
+$$;
 
 -- 3. Åpne opp PROFILES slik at man alltid kan se sin egen profil (viktig for login)
 ALTER TABLE public.profiles DISABLE ROW LEVEL SECURITY;
@@ -26,13 +36,10 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Se egen profil" ON public.profiles;
 CREATE POLICY "Se egen profil" ON public.profiles FOR SELECT USING (id = auth.uid());
 
+-- IKKE subquery mot profiles her — gir infinite recursion (42P17).
+-- Kjør fix_profiles_rls_recursion.sql for full policy-reset.
 DROP POLICY IF EXISTS "Se selskapsprofiler" ON public.profiles;
-CREATE POLICY "Se selskapsprofiler" ON public.profiles FOR SELECT 
-USING (company_id = (SELECT p.company_id FROM public.profiles p WHERE p.id = auth.uid()));
-
 DROP POLICY IF EXISTS "Admin full tilgang" ON public.profiles;
-CREATE POLICY "Admin full tilgang" ON public.profiles FOR ALL 
-USING (auth.jwt() ->> 'email' = 'baxightsi@gmail.com' OR (SELECT role FROM public.profiles WHERE id = auth.uid()) IN ('admin', 'superadmin'));
 
 -- 4. Knytt baxightsi@gmail.com til selskapet og gi rolle
 UPDATE public.profiles 

@@ -71,7 +71,11 @@ class _HmsScreenState extends State<HmsScreen> {
         badge: _statsLoading ? null : '${_stats.riskCount}',
         badgeColor: _stats.highRiskCount > 0 ? DriftProTheme.error : null,
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const RiskAssessmentListScreen()),
+          guardedMaterialRoute(
+            profile: _profile,
+            accessKey: AccessKeys.hmsRisikovurdering,
+            child: const RiskAssessmentListScreen(),
+          ),
         ),
       ));
     }
@@ -86,7 +90,11 @@ class _HmsScreenState extends State<HmsScreen> {
         badge: _statsLoading ? null : '${_stats.highRiskCount} høy',
         badgeColor: DriftProTheme.riskHigh,
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const RiskMatrixScreen()),
+          guardedMaterialRoute(
+            profile: _profile,
+            accessKey: AccessKeys.hmsRisikomatrise,
+            child: const RiskMatrixScreen(),
+          ),
         ),
       ));
     }
@@ -100,7 +108,11 @@ class _HmsScreenState extends State<HmsScreen> {
         isDark: isDark,
         badge: _statsLoading ? null : '${_stats.sjaOpen} åpne',
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const SjaListScreen()),
+          guardedMaterialRoute(
+            profile: _profile,
+            accessKey: AccessKeys.hmsSja,
+            child: const SjaListScreen(),
+          ),
         ),
       ));
     }
@@ -114,7 +126,11 @@ class _HmsScreenState extends State<HmsScreen> {
         isDark: isDark,
         badge: _statsLoading ? null : '${_stats.safetyPlanned} planlagt',
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const SafetyRoundListScreen()),
+          guardedMaterialRoute(
+            profile: _profile,
+            accessKey: AccessKeys.hmsSikkerhetsrunde,
+            child: const SafetyRoundListScreen(),
+          ),
         ),
       ));
     }
@@ -131,7 +147,11 @@ class _HmsScreenState extends State<HmsScreen> {
             : null,
         badgeColor: DriftProTheme.warning,
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const EquipmentHubScreen()),
+          guardedMaterialRoute(
+            profile: _profile,
+            accessKey: AccessKeys.hmsUtstyr,
+            child: const EquipmentHubScreen(),
+          ),
         ),
       ));
     }
@@ -148,7 +168,11 @@ class _HmsScreenState extends State<HmsScreen> {
             : null,
         badgeColor: DriftProTheme.warning,
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const CompetenceHubScreen()),
+          guardedMaterialRoute(
+            profile: _profile,
+            accessKey: AccessKeys.hmsKompetanse,
+            child: const CompetenceHubScreen(),
+          ),
         ),
       ));
     }
@@ -161,7 +185,11 @@ class _HmsScreenState extends State<HmsScreen> {
         color: DriftProTheme.info,
         isDark: isDark,
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const DmsScreen()),
+          guardedMaterialRoute(
+            profile: _profile,
+            accessKey: AccessKeys.hmsDokumenter,
+            child: const DmsScreen(),
+          ),
         ),
       ));
     }

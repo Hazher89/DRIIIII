@@ -6,6 +6,23 @@ import 'user_access.dart';
 /// Naviger til en hovedfane via tilgangsnøkkel (ikke hardkodet indeks).
 typedef NavigateByAccess = void Function(String accessKey);
 
+/// MaterialRoute som blokkerer innhold uten tilgang (direkte lenker / dyp navigasjon).
+Route<T> guardedMaterialRoute<T>({
+  required UserProfile? profile,
+  required String accessKey,
+  required Widget child,
+  String deniedMessage = 'Du har ikke tilgang til denne siden.',
+}) {
+  return MaterialPageRoute<T>(
+    builder: (_) => PermissionGuard(
+      profile: profile,
+      accessKey: accessKey,
+      deniedMessage: deniedMessage,
+      child: child,
+    ),
+  );
+}
+
 /// Viser [child] bare når brukeren har tilgang til [accessKey].
 class PermissionGate extends StatelessWidget {
   final UserProfile? profile;

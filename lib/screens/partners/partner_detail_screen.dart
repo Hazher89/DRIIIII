@@ -5,13 +5,25 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/permissions/access_keys.dart';
+import '../../core/permissions/partner_access.dart';
+import '../../core/permissions/permission_gate.dart';
+import '../../core/permissions/user_access.dart';
 import '../../core/services/partner/partner_service.dart';
+import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
+import '../../models/user_profile.dart';
+import '../../core/services/partner/mavi_unit_codes.dart';
 import 'widgets/partner_assigned_routes_tab.dart';
+import 'widgets/partner_compliance_tab.dart';
+import 'widgets/partner_documents_tab.dart';
 import 'widgets/partner_fri_tab.dart';
 import 'widgets/partner_overview_tab.dart';
+import 'widgets/partner_transport_licenses_tab.dart';
+import 'widgets/partner_ui.dart';
+import 'widgets/partner_vehicle_inspection_tab.dart';
 
 class PartnerDetailScreen extends StatefulWidget {
   final Partner partner;
@@ -22,21 +34,39 @@ class PartnerDetailScreen extends StatefulWidget {
 }
 
 class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTickerProviderStateMixin {
-  late TabController _tabs;
+  TabController? _tabs;
   late Partner _p;
   List<PartnerVehicle> _vehicles = const [];
+  UserProfile? _profile;
+  List<PartnerDetailTabDef> _visibleTabs = const [];
+  bool _accessLoading = true;
 
   @override
   void initState() {
     super.initState();
     _p = widget.partner;
-    _tabs = TabController(length: 7, vsync: this);
-    _reload();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    final profile = await SupabaseService.fetchCurrentUserProfile();
+    final tabs = PartnerAccess.visibleDetailTabs(profile?.access);
+    if (!mounted) return;
+    _tabs?.dispose();
+    setState(() {
+      _profile = profile;
+      _visibleTabs = tabs;
+      _accessLoading = false;
+      if (tabs.isNotEmpty) {
+        _tabs = TabController(length: tabs.length, vsync: this);
+      }
+    });
+    await _reload();
   }
 
   @override
   void dispose() {
-    _tabs.dispose();
+    _tabs?.dispose();
     super.dispose();
   }
 
@@ -52,6 +82,10 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
   }
 
   Future<void> _confirmDelete() async {
+    if (_profile?.access.canPartnersDelete != true &&
+        _profile?.access.canPartnersAdmin != true) {
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -80,412 +114,136 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
     }
   }
 
+  int get _maviCount => _vehicles
+      .where((v) =>
+          v.vehicleKind != 'registration' && !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
+      .length;
+
+  int get _regCount => _vehicles.length - _maviCount;
+
+  Widget _buildTabBody(PartnerDetailTabDef tab) {
+    final child = switch (tab.accessKey) {
+      AccessKeys.partnersTabOversikt =>
+        PartnerOverviewTab(partner: _p, vehicles: _vehicles, onSaved: _reload),
+      AccessKeys.partnersTabBilkontroll =>
+        PartnerVehicleInspectionTab(partner: _p, vehicles: _vehicles),
+      AccessKeys.partnersTabRuter => PartnerAssignedRoutesTab(partner: _p),
+      AccessKeys.partnersTabDokumenter =>
+        PartnerDocumentsTab(partner: _p, onChanged: _reload),
+      AccessKeys.partnersTabLoyver =>
+        PartnerTransportLicensesTab(partner: _p, onChanged: _reload),
+      AccessKeys.partnersTabOppfolging =>
+        PartnerComplianceTab(partner: _p, onChanged: _reload),
+      AccessKeys.partnersTabOppsummering =>
+        _SummaryTab(partner: _p, onChanged: _reload),
+      AccessKeys.partnersTabFri => PartnerFriTab(partner: _p, vehicles: _vehicles),
+      _ => const SizedBox.shrink(),
+    };
+    return PermissionGuard(
+      profile: _profile,
+      accessKey: tab.accessKey,
+      child: child,
+    );
+  }
+
+  List<(IconData, String)> get _tabBarEntries =>
+      _visibleTabs.map((t) => (t.icon, t.label)).toList();
+
   @override
   Widget build(BuildContext context) {
+    if (_accessLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (!PartnerAccess.canOpenPartnerDetail(_profile?.access)) {
+      return PermissionGuard(
+        profile: _profile,
+        accessKey: AccessKeys.partnersTabOversikt,
+        deniedMessage: 'Du har ikke tilgang til denne samarbeidspartneren.',
+        child: const SizedBox.shrink(),
+      );
+    }
+
+    final loc = [_p.city, _p.postalCode]
+        .whereType<String>()
+        .where((s) => s.isNotEmpty)
+        .join(' · ');
+
     return Scaffold(
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? DriftProTheme.surfaceDark
+          : DriftProTheme.surfaceLight,
       appBar: AppBar(
-        title: Text(_p.name),
+        title: Text(_p.name, style: DriftProTheme.headingSm),
         actions: [
           IconButton(
-            tooltip: 'Slett partner',
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
-            onPressed: _confirmDelete,
+            tooltip: 'Oppdater',
+            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _reload,
           ),
+          if (_profile?.access.canPartnersDelete == true ||
+              _profile?.access.canPartnersAdmin == true)
+            IconButton(
+              tooltip: 'Slett partner',
+              icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+              onPressed: _confirmDelete,
+            ),
         ],
-        bottom: TabBar(
-          controller: _tabs,
-          isScrollable: true,
-          tabs: const [
-            Tab(text: 'Oversikt'),
-            Tab(text: 'Tildelte ruter'),
-            Tab(text: 'Dokumenter'),
-            Tab(text: 'Møte & revisjon'),
-            Tab(text: 'Rute-PDF'),
-            Tab(text: 'Oppsummering'),
-            Tab(text: 'Fri'),
-          ],
-        ),
       ),
-      body: TabBarView(
-        controller: _tabs,
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PartnerOverviewTab(partner: _p, vehicles: _vehicles, onSaved: _reload),
-          PartnerAssignedRoutesTab(partner: _p),
-          _DocumentsTab(partner: _p, onChanged: _reload),
-          _MeetingAuditTab(partner: _p, onChanged: _reload),
-          _RoutesTab(partner: _p, onChanged: _reload),
-          _SummaryTab(partner: _p, onChanged: _reload),
-          PartnerFriTab(partner: _p, vehicles: _vehicles),
-        ],
-      ),
-    );
-  }
-}
-
-
-class _DocumentsTab extends StatefulWidget {
-  final Partner partner;
-  final Future<void> Function() onChanged;
-  const _DocumentsTab({required this.partner, required this.onChanged});
-
-  @override
-  State<_DocumentsTab> createState() => _DocumentsTabState();
-}
-
-class _DocumentsTabState extends State<_DocumentsTab> {
-  List<PartnerDocument> _list = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final d = await PartnerService.fetchDocuments(
-      widget.partner.id,
-      docCategories: const ['general', 'agreement'],
-    );
-    if (mounted) setState(() => _list = d);
-  }
-
-  Future<void> _add() async {
-    final title = TextEditingController();
-    final path = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Del dokument'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: title, decoration: const InputDecoration(labelText: 'Tittel')),
-            TextField(
-              controller: path,
-              decoration: const InputDecoration(
-                labelText: 'Storage-sti eller URL',
-                hintText: 'bucket/path eller https://...',
+          PartnerHeroBanner(
+            compact: true,
+            title: _p.tradeName?.isNotEmpty == true ? _p.tradeName! : _p.name,
+            subtitle: [
+              if (_p.orgNumber != null) 'Org.nr ${_p.orgNumber}',
+              if (_p.ownerName != null && _p.ownerName!.isNotEmpty) _p.ownerName!,
+              if (loc.isNotEmpty) loc,
+            ].join(' · '),
+            leading: Container(
+              width: 42,
+              height: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                _p.name.isNotEmpty ? _p.name.characters.first.toUpperCase() : '?',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
               ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Legg til')),
-        ],
-      ),
-    );
-    if (ok == true && title.text.trim().isNotEmpty) {
-      await PartnerService.addDocument(
-        PartnerDocument(
-          id: '',
-          partnerId: widget.partner.id,
-          companyId: widget.partner.companyId,
-          title: title.text.trim(),
-          storagePath: path.text.trim().isEmpty ? null : path.text.trim(),
-          docCategory: 'general',
-          createdAt: DateTime.now(),
-        ),
-      );
-      await _load();
-      await widget.onChanged();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: _add,
-              icon: const Icon(Icons.add),
-              label: const Text('Legg til dokument'),
-              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-            ),
-          ),
-        ),
-        Expanded(
-          child: _list.isEmpty
-              ? const Center(child: Text('Ingen dokumenter.'))
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _list.length,
-                  itemBuilder: (_, i) {
-                    final d = _list[i];
-                    return Card(
-                      child: ListTile(
-                        title: Text(d.title),
-                        subtitle: Text(d.storagePath ?? ''),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            await PartnerService.deleteDocument(d.id);
-                            await _load();
-                            await widget.onChanged();
-                          },
-                        ),
-                      ),
-                    );
-                  },
+            trailing: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '$_maviCount MAVI',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
                 ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MeetingAuditTab extends StatefulWidget {
-  final Partner partner;
-  final Future<void> Function() onChanged;
-  const _MeetingAuditTab({required this.partner, required this.onChanged});
-
-  @override
-  State<_MeetingAuditTab> createState() => _MeetingAuditTabState();
-}
-
-class _MeetingAuditTabState extends State<_MeetingAuditTab> {
-  List<PartnerMeeting> _meetings = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _loadMeetings();
-  }
-
-  Future<void> _loadMeetings() async {
-    final m = await PartnerService.fetchMeetings(widget.partner.id);
-    if (mounted) setState(() => _meetings = m);
-  }
-
-  Future<void> _pickAuditDates() async {
-    final p = widget.partner;
-    final last = await showDatePicker(
-      context: context,
-      initialDate: p.lastAuditAt ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (last == null) return;
-    final next = await showDatePicker(
-      context: context,
-      initialDate: p.nextAuditAt ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime(2100),
-    );
-    if (next == null) return;
-    final upd = Partner(
-      id: p.id,
-      companyId: p.companyId,
-      orgNumber: p.orgNumber,
-      name: p.name,
-      tradeName: p.tradeName,
-      ownerName: p.ownerName,
-      phone: p.phone,
-      email: p.email,
-      address: p.address,
-      postalCode: p.postalCode,
-      city: p.city,
-      country: p.country,
-      notes: p.notes,
-      vehicleCountRegistered: p.vehicleCountRegistered,
-      vehicleMaxPayloadKg: p.vehicleMaxPayloadKg,
-      euApproved: p.euApproved,
-      hasTransportLicense: p.hasTransportLicense,
-      transportLicenseCount: p.transportLicenseCount,
-      employeeCount: p.employeeCount,
-      auditStatus: p.auditStatus,
-      auditPlate: p.auditPlate,
-      brregSnapshot: p.brregSnapshot,
-      lastMeetingAt: p.lastMeetingAt,
-      nextMeetingAt: p.nextMeetingAt,
-      lastAuditAt: last,
-      nextAuditAt: next,
-      createdAt: p.createdAt,
-    );
-    await PartnerService.updatePartner(p.id, upd);
-    await widget.onChanged();
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _addMeeting() async {
-    final title = TextEditingController(text: 'Dirigert møte');
-    DateTime when = DateTime.now().add(const Duration(days: 7));
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: const Text('Planlegg møte'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: title, decoration: const InputDecoration(labelText: 'Tittel')),
-              ListTile(
-                title: Text('${when.day}.${when.month}.${when.year} ${when.hour}:${when.minute.toString().padLeft(2, "0")}'),
-                trailing: const Icon(Icons.edit_calendar),
-                onTap: () async {
-                  final d = await showDatePicker(
-                    context: ctx,
-                    initialDate: when,
-                    firstDate: DateTime(2000),
-                    lastDate: DateTime(2100),
-                  );
-                  if (d == null) return;
-                  final t = await showTimePicker(context: ctx, initialTime: TimeOfDay.fromDateTime(when));
-                  if (t == null) return;
-                  setSt(() {
-                    when = DateTime(d.year, d.month, d.day, t.hour, t.minute);
-                  });
-                },
-              ),
-            ],
+                Text(
+                  '$_regCount reg.nr',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: 11),
+                ),
+              ],
+            ),
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
-          ],
-        ),
-      ),
-    );
-    if (ok == true) {
-      await PartnerService.addMeeting(
-        PartnerMeeting(
-          id: '',
-          partnerId: widget.partner.id,
-          title: title.text.trim(),
-          scheduledAt: when,
-          isDirect: true,
-          createdAt: DateTime.now(),
-        ),
-      );
-      await PartnerService.updatePartner(
-        widget.partner.id,
-        Partner(
-          id: widget.partner.id,
-          companyId: widget.partner.companyId,
-          orgNumber: widget.partner.orgNumber,
-          name: widget.partner.name,
-          tradeName: widget.partner.tradeName,
-          ownerName: widget.partner.ownerName,
-          phone: widget.partner.phone,
-          email: widget.partner.email,
-          address: widget.partner.address,
-          postalCode: widget.partner.postalCode,
-          city: widget.partner.city,
-          country: widget.partner.country,
-          notes: widget.partner.notes,
-          vehicleCountRegistered: widget.partner.vehicleCountRegistered,
-          vehicleMaxPayloadKg: widget.partner.vehicleMaxPayloadKg,
-          euApproved: widget.partner.euApproved,
-          hasTransportLicense: widget.partner.hasTransportLicense,
-          transportLicenseCount: widget.partner.transportLicenseCount,
-          employeeCount: widget.partner.employeeCount,
-          auditStatus: widget.partner.auditStatus,
-          auditPlate: widget.partner.auditPlate,
-          brregSnapshot: widget.partner.brregSnapshot,
-          lastMeetingAt: widget.partner.lastMeetingAt,
-          nextMeetingAt: when,
-          lastAuditAt: widget.partner.lastAuditAt,
-          nextAuditAt: widget.partner.nextAuditAt,
-          createdAt: widget.partner.createdAt,
-        ),
-      );
-      await _loadMeetings();
-      await widget.onChanged();
-    }
-  }
-
-  Future<void> _notifyMeetingSms() async {
-    final p = widget.partner;
-    if (p.phone == null || p.phone!.trim().length < 8) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Legg inn telefonnummer på partneren først')),
-      );
-      return;
-    }
-    final when = p.nextMeetingAt;
-    final msg = when != null
-        ? 'Hei ${p.name}. Påminnelse: møte ${when.day}.${when.month}.${when.year} kl ${when.hour}:${when.minute.toString().padLeft(2, "0")}. Mvh MAVI'
-        : 'Hei ${p.name}. Påminnelse om planlagt møte med MAVI. Ta kontakt for tidspunkt. Mvh MAVI';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Send SMS-varsel om møte?'),
-        content: Text('Til ${p.phone}:\n\n$msg'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send SMS')),
+          if (_tabs != null)
+            PartnerDetailTabBar(controller: _tabs!, tabs: _tabBarEntries),
+          Expanded(
+            child: _tabs == null
+                ? const SizedBox.shrink()
+                : TabBarView(
+                    controller: _tabs,
+                    children: _visibleTabs.map(_buildTabBody).toList(),
+                  ),
+          ),
         ],
       ),
     );
-    if (ok != true) return;
-    final n = await PartnerService.notifyMeetingSms(partnerId: p.id, message: msg);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(n > 0 ? 'SMS lagt i kø' : 'Kunne ikke sende SMS — sjekk telefon og SMS-oppsett'),
-        ),
-      );
-    }
   }
-
-  @override
-  Widget build(BuildContext context) {
-    final p = widget.partner;
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Card(
-          child: ListTile(
-            title: const Text('Revisjon / audit'),
-            subtitle: Text(
-              'Status: ${p.auditStatusLabel}'
-              '${p.auditPlate != null ? " · ${p.auditPlate}" : ""}\n'
-              'Siste: ${p.lastAuditAt != null ? _d(p.lastAuditAt!) : "—"} | Neste: ${p.nextAuditAt != null ? _d(p.nextAuditAt!) : "—"}',
-            ),
-            trailing: const Icon(Icons.edit),
-            onTap: _pickAuditDates,
-          ),
-        ),
-        if (p.nextMeetingAt != null)
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.sms_outlined, color: DriftProTheme.primaryGreen),
-              title: const Text('Varsle om neste møte (SMS)'),
-              subtitle: Text(
-                'Neste møte: ${p.nextMeetingAt!.day}.${p.nextMeetingAt!.month}.${p.nextMeetingAt!.year}',
-              ),
-              trailing: FilledButton(
-                onPressed: _notifyMeetingSms,
-                child: const Text('Send'),
-              ),
-            ),
-          ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Text('Møter', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-            const Spacer(),
-            TextButton.icon(onPressed: _addMeeting, icon: const Icon(Icons.add), label: const Text('Nytt møte')),
-          ],
-        ),
-        ..._meetings.map(
-          (m) => Card(
-            child: ListTile(
-              title: Text(m.title),
-              subtitle: Text('${m.scheduledAt.toLocal()} ${m.isDirect ? "· direkte" : ""}'),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _d(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, "0")}-${d.day.toString().padLeft(2, "0")}';
 }
+
 
 /// Oppsummerings-PDF: egen kategori (doc_category=summary). RLS: kun MAVI i selskapet + denne partneren.
 class _SummaryTab extends StatefulWidget {
@@ -640,147 +398,6 @@ class _SummaryTabState extends State<_SummaryTab> {
                           icon: const Icon(Icons.open_in_new),
                           onPressed: () => _open(d),
                         ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-}
-
-class _RoutesTab extends StatefulWidget {
-  final Partner partner;
-  final Future<void> Function() onChanged;
-  const _RoutesTab({required this.partner, required this.onChanged});
-
-  @override
-  State<_RoutesTab> createState() => _RoutesTabState();
-}
-
-class _RoutesTabState extends State<_RoutesTab> {
-  List<PartnerRouteShare> _list = [];
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final r = await PartnerService.fetchRouteShares(widget.partner.id);
-    if (mounted) setState(() => _list = r);
-  }
-
-  Future<void> _add() async {
-    final title = TextEditingController(text: 'Dagens rute');
-    final path = TextEditingController();
-    var daily = true;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setSt) => AlertDialog(
-          title: const Text('Del rute-PDF'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(controller: title, decoration: const InputDecoration(labelText: 'Tittel')),
-              TextField(
-                controller: path,
-                decoration: const InputDecoration(labelText: 'PDF (storage-sti eller URL)', border: OutlineInputBorder()),
-              ),
-              CheckboxListTile(
-                value: daily,
-                onChanged: (v) => setSt(() => daily = v ?? false),
-                title: const Text('Daglig rutine / plan'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Lagre')),
-          ],
-        ),
-      ),
-    );
-    if (ok == true && path.text.trim().isNotEmpty) {
-      await PartnerService.addRouteShare(
-        PartnerRouteShare(
-          id: '',
-          partnerId: widget.partner.id,
-          companyId: widget.partner.companyId,
-          title: title.text.trim(),
-          pdfStoragePath: path.text.trim(),
-          shareDate: DateTime.now(),
-          isDailyShare: daily,
-          createdAt: DateTime.now(),
-        ),
-      );
-      await _load();
-      await widget.onChanged();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: _add,
-              icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text('Legg til rute-PDF'),
-              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-            ),
-          ),
-        ),
-        Expanded(
-          child: _list.isEmpty
-              ? const Center(child: Text('Ingen rutedeling.'))
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _list.length,
-                  itemBuilder: (_, i) {
-                    final r = _list[i];
-                    final ackColor = switch (r.ackStatus) {
-                      'accepted' => Colors.green,
-                      'rejected' => Colors.red,
-                      _ => Colors.orange,
-                    };
-                    final ackLabel = switch (r.ackStatus) {
-                      'accepted' => 'Akseptert',
-                      'rejected' => 'Ikke akseptert',
-                      _ => 'Venter svar',
-                    };
-                    return Card(
-                      child: ListTile(
-                        title: Text(r.title ?? 'Rute'),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('${r.shareDate.toString().split(" ").first} · ${r.pdfStoragePath}'),
-                            const SizedBox(height: 4),
-                            Text(
-                              ackLabel,
-                              style: TextStyle(
-                                color: ackColor,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            if (r.ackComment != null && r.ackComment!.trim().isNotEmpty)
-                              Text(
-                                'Kommentar: ${r.ackComment}',
-                                style: const TextStyle(fontSize: 12),
-                              ),
-                          ],
-                        ),
-                        trailing: r.isDailyShare
-                            ? const Chip(label: Text('Daglig'))
-                            : null,
                       ),
                     );
                   },

@@ -1,5 +1,7 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
 import '../../models/ticket.dart';
@@ -16,7 +18,21 @@ import '../../models/kiosk_settings.dart';
 
 /// Felles wrapper rundt Supabase-klienten med typed hjelpemetoder.
 class SupabaseService {
+  /// Unngår at web-klienten henger evig på RPC (viser bare «Klargjør profil …»).
+  static const Duration _rpcTimeout = Duration(seconds: 8);
+  static const Duration _writeTimeout = Duration(seconds: 14);
+  static const Duration _fetchOrCreateHardTimeout = Duration(seconds: 45);
+
   static SupabaseClient get client => Supabase.instance.client;
+
+  static Future<void> _silentRpcTimeout(String rpcName, {Duration? timeout}) async {
+    try {
+      await client.rpc(rpcName).timeout(timeout ?? _rpcTimeout);
+    } catch (e) {
+      debugPrint('RPC $rpcName: $e');
+    }
+  }
+
   static User? get currentUser => client.auth.currentUser;
 
   /// Eiere av systemet — alltid superadmin etter innlogging.
@@ -24,11 +40,126 @@ class SupabaseService {
     'baxigshti@gmail.com',
     'baxightsi@gmail.com',
     'baxigshti@hotmail.de',
+    // Vanlig skrivefeil (i/l) ved Google-innlogging — samme eier
+    'baxlgshtl@gmail.com',
   };
 
   static bool _isSuperadminEmail(String? email) {
     if (email == null) return false;
     return superadminEmails.contains(email.trim().toLowerCase());
+  }
+
+  /// Når DB/RPC feiler: tillat innlogging for whitelisted eier-e-post (superadmin i minnet).
+  /// Må fortsatt rette `profiles` i Supabase for normal drift.
+  static UserProfile? emergencySuperadminProfileFromSession() {
+    if (!isConfigured) return null;
+    final u = currentUser;
+    if (u == null) return null;
+    final email = u.email?.trim().toLowerCase();
+    if (email == null || email.isEmpty) return null;
+    if (!superadminEmails.contains(email)) return null;
+    final name = email.split('@').first;
+    return UserProfile(
+      id: u.id,
+      email: email,
+      fullName: name,
+      role: UserRole.superadmin,
+      isOnboarded: true,
+      isApproved: true,
+      isActive: true,
+      isRecoverySession: true,
+    );
+  }
+
+  /// Etter manuell SQL i Supabase: kall for å synke `profiles` uten å blokkere UI.
+  static Future<void> rpcEnsureInternalProfileMissing() async {
+    if (!isConfigured) return;
+    try {
+      await client.rpc('ensure_internal_profile_missing').timeout(const Duration(seconds: 10));
+    } catch (e) {
+      debugPrint('rpcEnsureInternalProfileMissing: $e');
+    }
+  }
+
+  /// Profil for UI — sikrer at [company_id] er satt (RLS blokkerer data uten).
+  static Future<UserProfile?> fetchEffectiveUserProfile() =>
+      ensureSessionLinkedToCompany();
+
+  /// Kobler innlogget bruker til et selskap i `profiles` (nødvendig for RLS/data).
+  static Future<UserProfile?> ensureSessionLinkedToCompany() async {
+    if (!isConfigured) return null;
+    final user = currentUser;
+    if (user == null) return null;
+
+    final email = user.email?.trim().toLowerCase() ?? '';
+    final isPortal =
+        email.endsWith('.portal') || email.endsWith('@portal.driftpro.no');
+
+    if (!isPortal) {
+      await rpcEnsureInternalProfileMissing();
+    } else {
+      try {
+        await client.rpc('ensure_partner_profile_from_portal').timeout(_rpcTimeout);
+      } catch (e) {
+        debugPrint('ensure_partner_profile_from_portal: $e');
+      }
+    }
+
+    await _silentRpcTimeout('apply_partner_bootstrap_to_profile');
+
+    var profile = await fetchCurrentUserProfile();
+    profile = profile != null ? await _ensureSuperadminIfOwner(profile) : null;
+
+    final bootstrap = await discoverBootstrapCompanyId();
+
+    if (profile != null &&
+        profile.companyId == null &&
+        profile.partnerId == null &&
+        bootstrap != null) {
+      try {
+        await client
+            .from('profiles')
+            .update({'company_id': bootstrap})
+            .eq('id', profile.id)
+            .timeout(_writeTimeout);
+        profile = await fetchCurrentUserProfile();
+        if (profile != null) profile = await _ensureSuperadminIfOwner(profile);
+      } catch (e) {
+        debugPrint('ensureSessionLinkedToCompany update company_id: $e');
+      }
+    }
+
+    if (profile == null && _isSuperadminEmail(email) && bootstrap != null) {
+      try {
+        final fn = email.split('@').first;
+        await client.from('profiles').upsert({
+          'id': user.id,
+          'email': email,
+          'full_name': fn.isEmpty ? 'Bruker' : fn,
+          'company_id': bootstrap,
+          'role': 'superadmin',
+          'is_onboarded': true,
+          'is_approved': true,
+          'is_active': true,
+        }).timeout(_writeTimeout);
+        profile = await fetchCurrentUserProfile();
+        if (profile != null) profile = await _ensureSuperadminIfOwner(profile);
+      } catch (e) {
+        debugPrint('ensureSessionLinkedToCompany superadmin upsert: $e');
+      }
+    }
+
+    if (profile != null) {
+      if (profile.companyId != null) return profile;
+      if (bootstrap != null) {
+        return profile.copyWith(companyId: bootstrap);
+      }
+      return profile;
+    }
+
+    final recovery = emergencySuperadminProfileFromSession();
+    if (recovery == null) return null;
+    return bootstrap != null ? recovery.copyWith(companyId: bootstrap) : recovery;
   }
 
   /// Sann hvis Supabase er konfigurert med ekte nøkler.
@@ -544,7 +675,11 @@ department:departments!department_id(name)
         debugPrint('Profile not found for user: ${user.id}');
         return null;
       }
-      final profile = UserProfile.fromJson(data);
+      final profile = UserProfile.fromJson(
+        Map<String, dynamic>.from(data),
+        fallbackAuthUserId: user.id,
+        fallbackAuthEmail: user.email,
+      );
       return await _ensureSuperadminIfOwner(profile);
     } catch (e) {
       debugPrint('Error fetching current user profile: $e');
@@ -552,39 +687,79 @@ department:departments!department_id(name)
     }
   }
 
-  /// Henter profil, og oppretter en minimal pending-profil hvis trigger ikke gjorde det.
+  /// Henter profil med noen forsøk (Auth → profil-race ved første innlogging).
   static Future<UserProfile?> fetchOrCreateCurrentUserProfile() async {
+    try {
+      return await _fetchOrCreateCurrentUserProfileWithRetries().timeout(
+        _fetchOrCreateHardTimeout,
+        onTimeout: () {
+          debugPrint(
+            'fetchOrCreateCurrentUserProfile: ga opp etter ${_fetchOrCreateHardTimeout.inSeconds}s (timeout)',
+          );
+          return null;
+        },
+      );
+    } catch (e, st) {
+      debugPrint('fetchOrCreateCurrentUserProfile failed: $e\n$st');
+      return null;
+    }
+  }
+
+  static Future<UserProfile?> _fetchOrCreateCurrentUserProfileWithRetries() async {
+    const attempts = 4;
+    for (var i = 0; i < attempts; i++) {
+      if (i > 0) await Future.delayed(Duration(milliseconds: 300 * i));
+      final profile = await _fetchOrCreateCurrentUserProfileOnce();
+      if (profile != null) return profile;
+    }
+    return null;
+  }
+
+  /// Én runde: hent/opprett profil og partner-bootstrap.
+  static Future<UserProfile?> _fetchOrCreateCurrentUserProfileOnce() async {
     final user = client.auth.currentUser;
     if (user == null) return null;
 
-    try {
-      await client.rpc('apply_partner_bootstrap_to_profile');
-    } catch (_) {}
+    await _silentRpcTimeout('apply_partner_bootstrap_to_profile');
 
     var existing = await fetchCurrentUserProfile();
     if (existing == null) {
       try {
-        await client.rpc('ensure_partner_profile_from_portal');
+        await client.rpc('ensure_partner_profile_from_portal').timeout(_rpcTimeout);
         existing = await fetchCurrentUserProfile();
       } catch (e) {
         debugPrint('ensure_partner_profile_from_portal: $e');
       }
     }
 
+    // Interne/admin uten profilrad: RLS blokkerer som regel klient-upsert via Flutter.
+    if (existing == null) {
+      try {
+        await client.rpc('ensure_internal_profile_missing').timeout(_rpcTimeout);
+        existing = await fetchCurrentUserProfile();
+      } catch (e) {
+        debugPrint('ensure_internal_profile_missing: $e');
+      }
+    }
+
     if (existing != null) {
       existing = await _ensureSuperadminIfOwner(existing);
-      try {
-        await client.rpc('apply_partner_bootstrap_to_profile');
-        existing = await fetchCurrentUserProfile();
-      } catch (_) {}
+      await _silentRpcTimeout('apply_partner_bootstrap_to_profile');
+      existing = await fetchCurrentUserProfile();
       if (existing != null) {
         if (existing.companyId == null && existing.partnerId == null) {
           final bootstrapCompany = await discoverBootstrapCompanyId();
           if (bootstrapCompany != null) {
             try {
-              await client.from('profiles').update({'company_id': bootstrapCompany}).eq('id', existing.id);
+              await client
+                  .from('profiles')
+                  .update({'company_id': bootstrapCompany})
+                  .eq('id', existing.id)
+                  .timeout(_writeTimeout);
               return await fetchCurrentUserProfile();
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('profiles update company_id: $e');
+            }
           }
         }
         return existing;
@@ -601,24 +776,37 @@ department:departments!department_id(name)
 
       final companyId = await discoverBootstrapCompanyId();
 
-      await client.from('profiles').upsert({
-        'id': user.id,
-        'email': user.email ?? '${user.id}@unknown.local',
-        'full_name': fullName,
-        'role': 'ansatt',
-        'company_id': companyId,
-        'is_onboarded': false,
-        'is_approved': false,
-        'is_active': true,
-      });
+      await client
+          .from('profiles')
+          .upsert({
+            'id': user.id,
+            'email': user.email ?? '${user.id}@unknown.local',
+            'full_name': fullName,
+            'role': 'ansatt',
+            'company_id': companyId,
+            'is_onboarded': false,
+            'is_approved': false,
+            'is_active': true,
+          })
+          .timeout(_writeTimeout);
 
       final created = await fetchCurrentUserProfile();
       if (created != null) return await _ensureSuperadminIfOwner(created);
-      return created;
     } catch (e) {
       debugPrint('Error creating fallback profile: $e');
-      return null;
     }
+
+    final linked = await ensureSessionLinkedToCompany();
+    if (linked != null) {
+      if (linked.isRecoverySession) {
+        debugPrint(
+          'recoverySession: data i Supabase krever profiles-rad — kjør ensure_internal_profile_missing.sql i SQL Editor.',
+        );
+      }
+      return linked;
+    }
+
+    return null;
   }
 
   /// Løfter eier-e-post til superadmin hvis DB-trigger hadde feil e-post.
@@ -630,12 +818,16 @@ department:departments!department_id(name)
       return profile;
     }
     try {
-      await client.from('profiles').update({
-        'role': 'superadmin',
-        'is_approved': true,
-        'is_onboarded': true,
-        'is_active': true,
-      }).eq('id', profile.id);
+      await client
+          .from('profiles')
+          .update({
+            'role': 'superadmin',
+            'is_approved': true,
+            'is_onboarded': true,
+            'is_active': true,
+          })
+          .eq('id', profile.id)
+          .timeout(_writeTimeout);
       final refreshed = await fetchCurrentUserProfile();
       return refreshed ?? profile.copyWith(
         role: UserRole.superadmin,
@@ -657,21 +849,25 @@ department:departments!department_id(name)
   static Future<String?> discoverBootstrapCompanyId() async {
     if (SupabaseConfig.defaultCompanyId != null) return SupabaseConfig.defaultCompanyId;
     try {
-      final rpcVal = await client.rpc('get_bootstrap_company_id');
+      final rpcVal =
+          await client.rpc('get_bootstrap_company_id').timeout(_rpcTimeout);
       if (rpcVal is String && rpcVal.isNotEmpty) return rpcVal;
     } catch (_) {}
     try {
       // Prioriter selskaper som allerede har avdelinger.
       final byDepartments = await client
-          .from('departments')
-          .select('company_id')
-          .limit(1) as List<dynamic>;
+              .from('departments')
+              .select('company_id')
+              .limit(1)
+              .timeout(_rpcTimeout)
+          as List<dynamic>;
       if (byDepartments.isNotEmpty && byDepartments.first['company_id'] != null) {
         return byDepartments.first['company_id'] as String;
       }
     } catch (_) {}
     try {
-      final companies = await client.from('companies').select('id').limit(1) as List<dynamic>;
+      final companies =
+          await client.from('companies').select('id').limit(1).timeout(_rpcTimeout) as List<dynamic>;
       if (companies.isNotEmpty) return companies.first['id'] as String;
     } catch (_) {}
     return null;
@@ -772,20 +968,11 @@ department:departments!department_id(name)
       if (SupabaseConfig.defaultCompanyId != null) {
         return SupabaseConfig.defaultCompanyId;
       }
-      
-      final profile = await fetchCurrentUserProfile();
+
+      final profile = await ensureSessionLinkedToCompany();
       if (profile?.companyId != null) return profile!.companyId;
 
-      // Selv-healing: Hvis SuperAdmin mangler selskap, sett det til første tilgjengelige
-      if (profile != null && profile.role == UserRole.superadmin) {
-        final companies = await client.from('companies').select('id').limit(1) as List<dynamic>;
-        if (companies.isNotEmpty) {
-          final cid = companies[0]['id'] as String;
-          await client.from('profiles').update({'company_id': cid}).eq('id', profile.id);
-          return cid;
-        }
-      }
-      return profile?.companyId;
+      return discoverBootstrapCompanyId();
     } catch (e) {
       debugPrint('Error getting company ID: $e');
       return null;

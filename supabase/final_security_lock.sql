@@ -69,15 +69,10 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Se egen profil" ON public.profiles;
 CREATE POLICY "Se egen profil" ON public.profiles FOR SELECT USING (id = auth.uid());
 
--- Superadmin kan se ALT
+-- Superadmin: bruk get_user_role() — ALDRI SELECT FROM profiles inne i policy
 DROP POLICY IF EXISTS "Superadmin ser alt" ON public.profiles;
-CREATE POLICY "Superadmin ser alt" ON public.profiles 
-FOR ALL USING (
-  EXISTS (
-    SELECT 1 FROM public.profiles 
-    WHERE id = auth.uid() AND role = 'superadmin'
-  )
-);
+CREATE POLICY "Superadmin ser alt" ON public.profiles
+FOR ALL USING (get_user_role() = 'superadmin'::public.user_role);
 
 -- 5. Helper to automatically sync Google metadata to profile if needed
 -- (Sometimes Google login metadata is available later)

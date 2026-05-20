@@ -82,8 +82,15 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
         snaps = {for (final s in list) s.partnerVehicleId: s};
       }
 
-      final shares = await PartnerService.fetchRouteSharesForCompany(cid, limit: 2000);
-      final from = _statsPeriod.cutoff(DateTime.now()) ?? DateTime(2020);
+      final fromCut = _statsPeriod.cutoff(DateTime.now());
+      final shares = fromCut == null
+          ? await PartnerService.fetchRouteSharesForCompany(cid, limit: 5000)
+          : await PartnerService.fetchRouteSharesForCalendarWindow(
+              companyId: cid,
+              fromDay: fromCut,
+              toDay: DateTime.now(),
+            );
+      final from = fromCut ?? DateTime(2020);
       final rangeSnaps = await PartnerService.fetchFleetSnapshotsRange(
         companyId: cid,
         from: from,
@@ -95,7 +102,7 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
           _companyId = cid;
           _shifts = shifts;
           _routeShiftId = rid;
-          _fleet = fleet;
+          _fleet = PartnerService.filterMaviFleetOnly(fleet);
           _snapByVehicle = snaps;
           _recentShares = shares;
           _rangeSnaps = rangeSnaps;

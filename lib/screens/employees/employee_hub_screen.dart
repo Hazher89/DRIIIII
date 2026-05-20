@@ -102,6 +102,43 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
     return 'Ukjent';
   }
 
+  Future<void> _deleteEmployee(UserProfile user) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Slett ansatt permanent?'),
+        content: Text(
+          '«${user.fullName}» fjernes fra auth og hele systemet. '
+          'Handlingen kan ikke angres.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Slett permanent'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await SupabaseService.deleteUserPermanently(user.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${user.fullName} ble slettet')),
+        );
+      }
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sletting feilet: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   Future<void> _openEmployee(UserProfile user) async {
     if (!user.isApproved) {
       await _approve(user);
@@ -349,6 +386,14 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                       );
                       if (ok == true) await _load();
                     },
+                  ),
+                if (_isSuperAdmin &&
+                    user.role != UserRole.superadmin &&
+                    user.id != _me?.id)
+                  IconButton(
+                    tooltip: 'Slett ansatt permanent',
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    onPressed: () => _deleteEmployee(user),
                   ),
                 const Icon(Icons.chevron_right),
               ],

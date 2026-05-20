@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:ui';
-import '../../core/config/app_origin.dart';
+import '../../core/auth/employee_oauth_sign_in.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_strings.dart';
 
@@ -39,11 +39,15 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     
     setState(() => _isLoading = true);
     try {
-      // Supabase Google Login for Web
-      await Supabase.instance.client.auth.signInWithOAuth(
-        OAuthProvider.google,
-        redirectTo: appAuthRedirectOrigin,
-      );
+      final launched = await startEmployeeOAuthSignIn(OAuthProvider.google);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kunne ikke åpne Google-innlogging.'),
+            backgroundColor: DriftProTheme.error,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

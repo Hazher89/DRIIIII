@@ -96,8 +96,22 @@ class AccessCatalog {
     ),
     AccessSection(
       id: 'partners',
-      title: 'Samarbeidspartnere & ruter',
-      keys: [AccessKeys.partnersAdmin, AccessKeys.fleetRuter],
+      title: 'Samarbeidspartnere – modul',
+      subtitle: 'Oversikt, oppretting og ruter',
+      keys: [
+        AccessKeys.partnersAdmin,
+        AccessKeys.fleetRuter,
+        AccessKeys.partnersCreate,
+        AccessKeys.partnersDelete,
+        AccessKeys.partnersEdit,
+      ],
+    ),
+    AccessSection(
+      id: 'partner_tabs',
+      title: 'Samarbeidspartnere – faner (bedriftsdetalj)',
+      subtitle:
+          'Krever tilgang til Samarbeidspartnere-modulen. Skjulte faner kan aldri åpnes.',
+      keys: AccessKeys.partnerDetailTabKeys,
     ),
     AccessSection(
       id: 'admin',

@@ -41,12 +41,17 @@ class AccessPresets {
         AccessKeys.partners: true,
         AccessKeys.partnersAdmin: true,
         AccessKeys.fleetRuter: true,
+        AccessKeys.partnersCreate: true,
+        AccessKeys.partnersDelete: true,
+        AccessKeys.partnersEdit: true,
+        for (final k in AccessKeys.partnerDetailTabKeys) k: true,
         AccessKeys.ferieAdmin: true,
       };
 
   static Map<String, dynamic> companyAdmin() => {
         ...AccessKeys.allOn(),
         AccessKeys.brukergodkjenning: false,
+        for (final k in AccessKeys.partnerDetailTabKeys) k: true,
       };
 
   static Map<String, dynamic> forRole(UserRole role) {

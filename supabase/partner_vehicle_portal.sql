@@ -172,53 +172,6 @@ BEGIN
 END;
 $$;
 
--- SMS ved sendt rute til bil-telefon
-CREATE OR REPLACE FUNCTION public.notify_partner_route_assigned_sms(p_route_share_id UUID)
-RETURNS INT
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  r RECORD;
-  shift_name TEXT;
-  msg TEXT;
-  n INT := 0;
-BEGIN
-  SELECT prs.*, pv.phone AS vehicle_phone, pv.unit_code,
-         ppa.phone AS portal_phone
-  INTO r
-  FROM public.partner_route_shares prs
-  LEFT JOIN public.partner_vehicles pv ON pv.id = prs.partner_vehicle_id
-  LEFT JOIN public.partner_portal_accounts ppa ON ppa.partner_vehicle_id = pv.id AND ppa.is_active = true
-  WHERE prs.id = p_route_share_id;
-
-  IF r IS NULL THEN
-    RETURN 0;
-  END IF;
-
-  SELECT name INTO shift_name FROM public.fleet_shift_definitions WHERE id = r.shift_id;
-
-  msg := 'Ny rute tildelt ' || coalesce(r.unit_code, '') ||
-    case when shift_name is not null then ' · Skift: ' || shift_name else '' end ||
-    case when r.route_start_at is not null then
-      ' · Start ' || to_char(r.route_start_at at time zone 'Europe/Oslo', 'DD.MM HH24:MI')
-    else '' end ||
-    '. Logg inn i DriftPro partner for PDF og aksept.';
-
-  IF coalesce(r.vehicle_phone, r.portal_phone) IS NOT NULL THEN
-    PERFORM public.queue_sms(
-      r.company_id,
-      coalesce(r.vehicle_phone, r.portal_phone),
-      msg,
-      'partner_route',
-      'partner_route_shares',
-      r.id
-    );
-    n := 1;
-  END IF;
-  RETURN n;
-END;
-$$;
+-- SMS ved sendt rute: sjåfør + bil-eier (se migrasjon 20260520210000_owner_driver_route_publish_sms.sql)
 
 GRANT EXECUTE ON FUNCTION public.notify_partner_route_assigned_sms(UUID) TO authenticated, service_role;

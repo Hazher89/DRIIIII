@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -10,12 +9,7 @@ import 'core/config/supabase_config.dart';
 import 'core/theme/theme_notifier.dart';
 import 'screens/shell/main_shell.dart';
 import 'screens/auth/auth_gate_screen.dart';
-import 'screens/partners/partner_shell.dart';
-import 'screens/auth/onboarding_screen.dart';
-import 'screens/auth/pending_approval_screen.dart';
 import 'screens/surveys/survey_player_screen.dart';
-import 'core/services/supabase_service.dart';
-import 'models/user_profile.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,10 +49,11 @@ Future<void> _initSupabase() async {
   await Supabase.initialize(
     url: SupabaseConfig.url,
     anonKey: SupabaseConfig.anonKey,
+    authOptions: const FlutterAuthClientOptions(
+      autoRefreshToken: true,
+    ),
   );
 }
-
-
 
 class DriftProApp extends StatelessWidget {
   const DriftProApp({super.key});
@@ -114,110 +109,15 @@ class DriftProApp extends StatelessWidget {
               key: const ValueKey('auth_stream'),
               stream: Supabase.instance.client.auth.onAuthStateChange,
               builder: (context, snapshot) {
-          final session = snapshot.data?.session ?? Supabase.instance.client.auth.currentSession;
+                final session =
+                    snapshot.data?.session ?? Supabase.instance.client.auth.currentSession;
 
-          if (session != null) {
-            return FutureBuilder<UserProfile?>(
-              // Force refresh the profile when auth state changes
-              key: ValueKey('profile_${session.user.id}_${snapshot.data?.event}'),
-              future: SupabaseService.fetchOrCreateCurrentUserProfile(),
-              builder: (context, profileSnapshot) {
-                if (profileSnapshot.connectionState == ConnectionState.waiting) {
-                  return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                if (session != null) {
+                  return const MainShell();
                 }
-                
-                final profile = profileSnapshot.data;
-
-                // 1. Hvis profil mangler helt (trigger feilet eller treg)
-                if (profile == null) {
-                  return Scaffold(
-                    body: Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const CircularProgressIndicator(),
-                            const SizedBox(height: 24),
-                            const Text('Klargjør din profil...', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 12),
-                            const Text('Dette tar vanligvis under 3 sekunder.', textAlign: TextAlign.center),
-                            const SizedBox(height: 24),
-                            if (kDebugMode) Text('User ID: ${session.user.id}', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                            const SizedBox(height: 48),
-                            TextButton.icon(
-                              onPressed: () => Supabase.instance.client.auth.signOut(),
-                              icon: const Icon(Icons.logout),
-                              label: const Text('Logg ut og prøv på nytt'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }
-
-                final skipEmployeeFlow = profile.isPartnerPortalUser;
-
-                // SECURITY OVERLAY (Visible in debug mode to see EXACTLY what's happening)
-                Widget mainWidget;
-                
-                // 2. Samarbeidspartner-portal (OAuth + e-post/passord via profil)
-                if (skipEmployeeFlow) {
-                  mainWidget = PartnerShell(profile: profile);
-                }
-                // 3. Hvis profil finnes, men onboarding mangler (kun ansatte)
-                else if (!profile.isOnboarded) {
-                  mainWidget = OnboardingScreen(profile: profile);
-                }
-                // 4. Hvis profil finnes og onboarding er ferdig, men mangler godkjenning
-                else if (!profile.isApproved && profile.role != UserRole.superadmin) {
-                  if (kDebugMode) {
-                    print('Profile ${profile.id} (Email: ${profile.email}) is not approved and not a superadmin.');
-                  }
-                  mainWidget = const PendingApprovalScreen();
-                }
-                // 5. Alt ok!
-                else {
-                  mainWidget = const MainShell();
-                }
-
-                if (kDebugMode) {
-                  return Stack(
-                    children: [
-                      mainWidget,
-                      Positioned(
-                        top: 40,
-                        right: 10,
-                        child: Material(
-                          color: Colors.black.withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text('User: ${profile.email}', style: const TextStyle(color: Colors.white, fontSize: 10)),
-                                Text('Role: ${profile.role.name}', style: const TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
-                                Text('Onboarded: ${profile.isOnboarded}', style: TextStyle(color: profile.isOnboarded ? Colors.green : Colors.red, fontSize: 10)),
-                                Text('Approved: ${profile.isApproved}', style: TextStyle(color: profile.isApproved ? Colors.green : Colors.red, fontSize: 10)),
-                                Text('Current View: ${mainWidget.runtimeType}', style: const TextStyle(color: Colors.yellow, fontSize: 10)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                }
-                return mainWidget;
+                return const AuthGateScreen();
               },
-            );
-          } else {
-            return const AuthGateScreen();
-          }
-        },
-      ),
+            ),
     );
   }
 }

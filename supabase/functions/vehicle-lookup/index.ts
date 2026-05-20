@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
   }
 
   const url =
-    `https://akfell-datautlevering.atlas.vegvesen.no/kjoretoyopplysninger-api/api/v1/detaljer/kjennemerke/${encodeURIComponent(plate)}`;
+    `https://www.vegvesen.no/ws/no/vegvesen/kjoretoy/felles/datautlevering/enkeltoppslag/kjoretoydata?kjennemerke=${encodeURIComponent(plate)}`;
 
   try {
     const res = await fetch(url, {
@@ -66,7 +66,35 @@ Deno.serve(async (req) => {
     }
 
     const data = await res.json();
-    const kjoretoy = data?.kjoretoydata?.[0] ?? data?.kjoretoydataListe?.[0] ?? data;
+
+    if (data?.feilmelding) {
+      const code = String(data.feilmelding);
+      const message = code === "OPPLYSNINGER_IKKE_TILGJENGELIGE"
+        ? "Kjøretøyet er avregistrert eller utilgjengelig i gratis Vegvesen-API. "
+          + "Tjenester som regnr.info viser ofte historiske data — fyll inn EU/år manuelt her."
+        : `Vegvesen: ${code}`;
+      return json({
+        error: message,
+        configured: true,
+        registration_number: plate,
+        feilmelding: code,
+      }, 404);
+    }
+
+    const kjoretoy = data?.kjoretoydataListe?.[0] ?? data?.kjoretoydata?.[0] ?? null;
+
+    if (
+      !kjoretoy?.kjoretoyId &&
+      !kjoretoy?.godkjenning &&
+      !kjoretoy?.periodiskKjoretoyKontroll
+    ) {
+      return json({
+        error: "Fant ikke kjøretøy i Vegvesen for dette registreringsnummeret",
+        configured: true,
+        registration_number: plate,
+      }, 404);
+    }
+
     const tekn = kjoretoy?.godkjenning?.tekniskGodkjenning?.tekniskeData
       ?? kjoretoy?.tekniskeData
       ?? {};
@@ -75,9 +103,9 @@ Deno.serve(async (req) => {
       ?? kjoretoy?.godkjenning?.tekniskGodkjenning?.kjoretoyklassifisering;
 
     const payloadKg =
+      tekn?.vekter?.nyttelast ??
       dim?.nyttelast ??
       dim?.tillattTotalvekt ??
-      tekn?.vekter?.nyttelast ??
       null;
 
     const modelYear =

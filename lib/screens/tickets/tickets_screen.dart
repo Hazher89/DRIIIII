@@ -37,7 +37,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
   }
 
   Future<void> _loadProfileAndTickets() async {
-    final p = await SupabaseService.fetchCurrentUserProfile();
+    final p = await SupabaseService.fetchEffectiveUserProfile();
     if (mounted) setState(() => _profile = p);
     await _loadTickets();
   }

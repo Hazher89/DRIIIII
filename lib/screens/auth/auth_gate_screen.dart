@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/auth/employee_oauth_sign_in.dart';
 import '../../core/config/app_origin.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -194,10 +196,15 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
     if (_loading) return;
     setState(() => _loading = true);
     try {
-      await Supabase.instance.client.auth.signInWithOAuth(
-        provider,
-        redirectTo: appAuthRedirectOrigin,
-      );
+      final launched = await startEmployeeOAuthSignIn(provider);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kunne ikke åpne innlogging. Prøv igjen eller sjekk popup-blokkering.'),
+            backgroundColor: DriftProTheme.error,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -255,6 +262,12 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
                   label: 'Fortsett med Apple',
                 ),
                 const SizedBox(height: 24),
+                Text(
+                  'Du sendes videre til Google eller Apple for å velge konto.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.grey[600]),
+                ),
+                const SizedBox(height: 8),
                 Text(
                   'Sesjonen er knyttet til din bedrifts tilgangsstyring.',
                   textAlign: TextAlign.center,
@@ -344,12 +357,39 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
   final _password = TextEditingController();
   bool _obscure = true;
   bool _loading = false;
+  StreamSubscription<AuthState>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((state) {
+      if (state.session != null && mounted) {
+        _leaveLoginScreen();
+      }
+    });
+  }
 
   @override
   void dispose() {
+    _authSub?.cancel();
     _identifier.dispose();
     _password.dispose();
     super.dispose();
+  }
+
+  void _leaveLoginScreen() {
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.popUntil((route) => route.isFirst);
+    }
+  }
+
+  Future<String?> _resolveLoginEmail(String identifier) async {
+    final raw = identifier.trim();
+    if (raw.contains('@')) return raw.toLowerCase();
+    final resolved = await PartnerService.resolveLoginIdentifierToEmail(raw);
+    if (resolved != null && resolved.contains('@')) return resolved.toLowerCase();
+    return null;
   }
 
   Future<void> _signIn() async {
@@ -358,14 +398,39 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
     final pw = _password.text;
     if (identifier.isEmpty || pw.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Fyll inn brukernavn/e-post og passord')),
+        const SnackBar(content: Text('Fyll inn brukernavn og passord')),
       );
       return;
     }
     setState(() => _loading = true);
     try {
-      final email = await PartnerService.resolveLoginIdentifierToEmail(identifier) ?? identifier;
-      await Supabase.instance.client.auth.signInWithPassword(email: email, password: pw);
+      final email = await _resolveLoginEmail(identifier);
+      if (email == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fant ikke bruker «$identifier». Sjekk staving eller bruk e-posten du fikk.'),
+              backgroundColor: DriftProTheme.error,
+            ),
+          );
+        }
+        return;
+      }
+      await Supabase.instance.client.auth.signInWithPassword(
+        email: email,
+        password: pw,
+      );
+      if (!mounted) return;
+      _leaveLoginScreen();
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message.isNotEmpty ? e.message : 'Feil brukernavn eller passord'),
+            backgroundColor: DriftProTheme.error,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -455,7 +520,8 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
                   controller: _identifier,
                   keyboardType: TextInputType.text,
                   decoration: const InputDecoration(
-                    labelText: 'Brukernavn eller e-post',
+                    labelText: 'Brukernavn',
+                    hintText: 'f.eks. eierhaz8382 eller m71',
                     border: OutlineInputBorder(),
                   ),
                 ),

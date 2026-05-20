@@ -14,6 +14,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import 'partner_route_pdf_actions.dart';
 
 /// Én arbeidsflate: last opp PDF → kontroller alle sjåfører → publiser.
 class PartnerRoutePublishPanel extends StatefulWidget {
@@ -214,6 +215,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
             'company_$cid/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${vehicle.unitCode}_$safeName';
         await PartnerService.uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
         final pdfText = RoutePdfTextService.extractFullText(bytes);
+        final schedule = RoutePdfTextService.resolveSchedule(pdfText, fallbackDate: _routeDate);
         final share = await PartnerService.addRouteShare(
           PartnerRouteShare(
             id: '',
@@ -221,7 +223,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
             companyId: cid,
             title: 'Rute ${vehicle.unitCode} — ${file.name}',
             pdfStoragePath: path,
-            shareDate: _routeDate,
+            shareDate: schedule.routeDate,
             isDailyShare: true,
             createdAt: DateTime.now(),
             dispatchStatus: 'staged',
@@ -231,6 +233,11 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
         );
         if (pdfText.isNotEmpty) {
           await PartnerService.saveRoutePdfSearchText(share.id, pdfText);
+        }
+        if (schedule.routeStartAt != null) {
+          await PartnerService.updateRouteShareFields(share.id, {
+            'route_start_at': schedule.routeStartAt!.toUtc().toIso8601String(),
+          });
         }
         ok++;
       }
@@ -575,6 +582,22 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
                       },
                     ),
                     if (checked) ...[
+                      Row(
+                        children: [
+                          OutlinedButton.icon(
+                            onPressed: () => PartnerRoutePdfActions.openPdf(context, share),
+                            icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                            label: const Text('Vis PDF'),
+                          ),
+                          const SizedBox(width: 6),
+                          OutlinedButton.icon(
+                            onPressed: () => PartnerRoutePdfActions.openPdf(context, share),
+                            icon: const Icon(Icons.download_outlined, size: 16),
+                            label: const Text('Last ned'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
                       DropdownButtonFormField<String>(
                         initialValue: _shiftByShare[share.id],
                         isExpanded: true,

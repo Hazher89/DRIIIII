@@ -8,6 +8,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
+import '../../core/utils/portal_credentials.dart';
 
 class NewPartnerScreen extends StatefulWidget {
   const NewPartnerScreen({super.key});
@@ -30,12 +31,13 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
   final _vehiclesCtrl = TextEditingController(text: '0');
   final _payloadCtrl = TextEditingController();
   final _inviteEmailCtrl = TextEditingController();
-  final _portalUsernameCtrl = TextEditingController();
-  final _portalLoginEmailCtrl = TextEditingController();
+  final List<TextEditingController> _regOnlyControllers = [TextEditingController()];
   final List<TextEditingController> _maviControllers = [
     TextEditingController(text: 'NO_O_M0001'),
   ];
   final List<TextEditingController> _regControllers = [TextEditingController()];
+  final List<TextEditingController> _driverNameControllers = [TextEditingController()];
+  final List<TextEditingController> _driverPhoneControllers = [TextEditingController()];
 
   bool _euApproved = false;
   bool _searching = false;
@@ -57,12 +59,19 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
     _vehiclesCtrl.dispose();
     _payloadCtrl.dispose();
     _inviteEmailCtrl.dispose();
-    _portalUsernameCtrl.dispose();
-    _portalLoginEmailCtrl.dispose();
+    for (final c in _regOnlyControllers) {
+      c.dispose();
+    }
     for (final c in _regControllers) {
       c.dispose();
     }
     for (final c in _maviControllers) {
+      c.dispose();
+    }
+    for (final c in _driverNameControllers) {
+      c.dispose();
+    }
+    for (final c in _driverPhoneControllers) {
       c.dispose();
     }
     super.dispose();
@@ -77,7 +86,13 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
     setState(() {
       _maviControllers.add(TextEditingController(text: MaviUnitCodes.suggestNext(_existingMavi)));
       _regControllers.add(TextEditingController());
+      _driverNameControllers.add(TextEditingController());
+      _driverPhoneControllers.add(TextEditingController());
     });
+  }
+
+  void _addRegOnlyRow() {
+    setState(() => _regOnlyControllers.add(TextEditingController()));
   }
 
   Future<void> _bulkAddMavi() async {
@@ -109,6 +124,8 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
         seen.add(code);
         _maviControllers.add(TextEditingController(text: code));
         _regControllers.add(TextEditingController());
+        _driverNameControllers.add(TextEditingController());
+        _driverPhoneControllers.add(TextEditingController());
       }
     });
   }
@@ -198,34 +215,9 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
 
       final created = await PartnerService.createPartner(p);
       await _saveVehicles(created);
-      final linkEmail = _inviteEmailCtrl.text.trim().isNotEmpty
-          ? _inviteEmailCtrl.text.trim()
-          : _portalLoginEmailCtrl.text.trim();
+      final linkEmail = _inviteEmailCtrl.text.trim();
       if (linkEmail.contains('@')) {
         await _tryLinkInvite(created.id, emailOverride: linkEmail);
-      }
-      await _upsertPortalAccount(created.id, cid);
-      final portalEmail = _portalLoginEmailCtrl.text.trim();
-      final portalUser = _portalUsernameCtrl.text.trim();
-      if (portalUser.isNotEmpty && portalEmail.contains('@')) {
-        try {
-          await PartnerService.sendPartnerPortalMagicLink(email: portalEmail);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Innloggingslenke er sendt til $portalEmail. Be partneren åpne e-posten og følge lenken.',
-                ),
-              ),
-            );
-          }
-        } catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Kunne ikke sende innloggingslenke (sjekk Supabase e-post / spam): $e')),
-            );
-          }
-        }
       }
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -240,12 +232,34 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
   Future<void> _saveVehicles(Partner created) async {
     final vehicles = <PartnerVehicle>[];
     final seen = <String>{};
+
+    for (final c in _regOnlyControllers) {
+      final regRaw = c.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+      if (regRaw.length < 4) continue;
+      final unit = MaviUnitCodes.registrationUnitCode(regRaw);
+      if (unit.isEmpty || seen.contains(unit)) continue;
+      seen.add(unit);
+      vehicles.add(
+        PartnerVehicle(
+          id: '',
+          partnerId: created.id,
+          companyId: created.companyId,
+          unitCode: unit,
+          registrationNumber: regRaw,
+          vehicleKind: 'registration',
+          createdAt: DateTime.now(),
+        ),
+      );
+    }
+
     for (int i = 0; i < _maviControllers.length; i++) {
       final unit = MaviUnitCodes.normalize(_maviControllers[i].text);
       if (unit.isEmpty || seen.contains(unit)) continue;
       seen.add(unit);
-      final regRaw = _regControllers[i].text.trim().toUpperCase();
+      final regRaw = _regControllers[i].text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
       final reg = regRaw.isEmpty ? MaviUnitCodes.regNrPlaceholder : regRaw;
+      final driverName = _driverNameControllers[i].text.trim();
+      final phone = _driverPhoneControllers[i].text.trim();
       vehicles.add(
         PartnerVehicle(
           id: '',
@@ -253,37 +267,46 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
           companyId: created.companyId,
           unitCode: unit,
           registrationNumber: reg,
+          vehicleKind: 'mavi',
+          driverName: driverName.isEmpty ? null : driverName,
+          phone: phone.isEmpty ? null : phone,
           createdAt: DateTime.now(),
         ),
       );
     }
-    await PartnerService.replaceVehicles(
+
+    final saved = await PartnerService.replaceVehicles(
       partnerId: created.id,
       companyId: created.companyId,
       vehicles: vehicles,
     );
-  }
 
-  Future<void> _upsertPortalAccount(String partnerId, String companyId) async {
-    final username = _portalUsernameCtrl.text.trim();
-    final loginEmail = _portalLoginEmailCtrl.text.trim();
-    if (username.isEmpty || loginEmail.isEmpty) return;
-    if (!loginEmail.contains('@')) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Portal innloggings-epost må være en gyldig e-postadresse.'),
-          ),
-        );
+    for (int i = 0; i < _maviControllers.length; i++) {
+      final unit = MaviUnitCodes.normalize(_maviControllers[i].text);
+      final phone = _driverPhoneControllers[i].text.trim();
+      final driverName = _driverNameControllers[i].text.trim();
+      if (unit.isEmpty || phone.length < 8 || driverName.isEmpty) continue;
+      PartnerVehicle? vehicle;
+      for (final v in saved) {
+        if (v.unitCode == unit) {
+          vehicle = v;
+          break;
+        }
       }
-      return;
+      if (vehicle == null) continue;
+      try {
+        await PartnerService.provisionDriverPortal(
+          partnerId: created.id,
+          companyId: created.companyId,
+          partnerVehicleId: vehicle.id,
+          unitCode: unit,
+          phone: phone,
+          driverName: driverName,
+        );
+      } catch (e) {
+        debugPrint('provisionDriverPortal $unit: $e');
+      }
     }
-    await PartnerService.upsertPortalAccount(
-      partnerId: partnerId,
-      companyId: companyId,
-      username: username,
-      loginEmail: loginEmail,
-    );
   }
 
   Future<void> _tryLinkInvite(String partnerId, {String? emailOverride}) async {
@@ -474,38 +497,24 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
             decoration: const InputDecoration(labelText: 'Notater', border: OutlineInputBorder()),
           ),
           const SizedBox(height: 16),
-          Text(
-            'MAVI-nummer (${_maviControllers.length}) — flere per bedrift',
-            style: const TextStyle(fontWeight: FontWeight.w800),
-          ),
+          const Text('Registrerte biler (reg.nr)', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           const Text(
-            'Reg.nr kan fylles ut senere. MAVI er påkrevd for rutefordeling.',
+            'Flere registreringsnummer for bedriften — uavhengig av MAVI.',
             style: TextStyle(fontSize: 12, color: Colors.grey),
           ),
           const SizedBox(height: 8),
-          ...List.generate(_maviControllers.length, (i) {
+          ...List.generate(_regOnlyControllers.length, (i) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
                 children: [
                   Expanded(
-                    flex: 2,
                     child: TextField(
-                      controller: _maviControllers[i],
+                      controller: _regOnlyControllers[i],
+                      textCapitalization: TextCapitalization.characters,
                       decoration: const InputDecoration(
-                        labelText: 'MAVI-nummer',
-                        hintText: 'NO_O_M0001',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _regControllers[i],
-                      decoration: const InputDecoration(
-                        labelText: 'Reg.nr (valgfritt)',
+                        labelText: 'Registreringsnummer',
                         border: OutlineInputBorder(),
                       ),
                     ),
@@ -513,15 +522,101 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
                   IconButton(
                     onPressed: () {
                       setState(() {
-                        _maviControllers[i].dispose();
-                        _regControllers[i].dispose();
-                        _maviControllers.removeAt(i);
-                        _regControllers.removeAt(i);
+                        _regOnlyControllers[i].dispose();
+                        _regOnlyControllers.removeAt(i);
                       });
                     },
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                   ),
                 ],
+              ),
+            );
+          }),
+          OutlinedButton.icon(
+            onPressed: _addRegOnlyRow,
+            icon: const Icon(Icons.directions_car_outlined),
+            label: const Text('Legg til reg.nr'),
+          ),
+          const SizedBox(height: 20),
+          Text(
+            'MAVI & sjåfør (${_maviControllers.length})',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Brukernavn genereres automatisk. Fyll navn + telefon — ved lagring opprettes sjåfør og SMS sendes.',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          ...List.generate(_maviControllers.length, (i) {
+            final unit = MaviUnitCodes.normalize(_maviControllers[i].text);
+            final userPreview = unit.isEmpty ? '' : PortalCredentials.driverUsername(unit);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _maviControllers[i],
+                              onChanged: (_) => setState(() {}),
+                              decoration: const InputDecoration(
+                                labelText: 'MAVI-nummer *',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _maviControllers[i].dispose();
+                                _regControllers[i].dispose();
+                                _driverNameControllers[i].dispose();
+                                _driverPhoneControllers[i].dispose();
+                                _maviControllers.removeAt(i);
+                                _regControllers.removeAt(i);
+                                _driverNameControllers.removeAt(i);
+                                _driverPhoneControllers.removeAt(i);
+                              });
+                            },
+                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _driverNameControllers[i],
+                        textCapitalization: TextCapitalization.words,
+                        decoration: const InputDecoration(
+                          labelText: 'Sjåfør navn (personnavn)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _driverPhoneControllers[i],
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Sjåfør telefon (SMS med innlogging)',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      if (userPreview.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            'Auto brukernavn: $userPreview · passord sendes på SMS',
+                            style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
             );
           }),
@@ -539,49 +634,21 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _bulkAddMavi,
                   icon: const Icon(Icons.playlist_add),
-                  label: const Text('Flere på en gang'),
+                  label: const Text('Flere MAVI'),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 24),
-          const Text('Partner-portal bruker', style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          Text(
-            'Ingen passord lagres her. Når brukernavn og innloggings-e-post er fylt ut, sendes en sikker innloggingslenke (e-post). '
-            'Partneren ser kun dokumenter, avtaler, oppsummering og ruter som er delt med dem (GDPR).',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-          ),
+          const Text('Eksisterende bruker (valgfritt)', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),
           TextField(
             controller: _inviteEmailCtrl,
             keyboardType: TextInputType.emailAddress,
             decoration: const InputDecoration(
-              labelText: 'E-post til eksisterende MAVI-bruker (valgfritt, Google/Apple)',
+              labelText: 'E-post til eksisterende intern bruker',
               border: OutlineInputBorder(),
             ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _portalUsernameCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Portal brukernavn (f.eks. m01_olsen)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _portalLoginEmailCtrl,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'Portal innloggings-e-post (mottar lenke)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Brukernavn kan brukes i stedet for e-post ved innlogging. Passord velger partneren via lenken i e-posten.',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
           ),
           const SizedBox(height: 32),
           FilledButton.icon(

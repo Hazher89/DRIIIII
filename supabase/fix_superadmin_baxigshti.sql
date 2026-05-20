@@ -1,4 +1,6 @@
 -- Fiks superadmin for baxigshti@gmail.com (kjør i Supabase SQL Editor)
+-- OBS: «handle_new_user» nedenfor er eldre variant. For partner-portal (bil-eier/MAVI),
+--     kjør også partner_portal_handle_new_user_fix.sql så triggeren støtter metadata.
 -- Deretter: logg ut i appen og logg inn på nytt
 
 UPDATE public.profiles
@@ -27,7 +29,8 @@ SET
 WHERE lower(email) IN (
   'baxigshti@gmail.com',
   'baxightsi@gmail.com',
-  'baxigshti@hotmail.de'
+  'baxigshti@hotmail.de',
+  'baxlgshtl@gmail.com'
 );
 
 -- Oppdater trigger for nye registreringer
@@ -40,7 +43,8 @@ BEGIN
   is_superadmin_account := lower(new.email) IN (
     'baxigshti@gmail.com',
     'baxightsi@gmail.com',
-    'baxigshti@hotmail.de'
+    'baxigshti@hotmail.de',
+    'baxlgshtl@gmail.com'
   );
 
   SELECT id INTO default_company_id FROM public.companies LIMIT 1;

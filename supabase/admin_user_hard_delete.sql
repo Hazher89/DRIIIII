@@ -1,4 +1,4 @@
--- Permanent user delete for admin/superadmin.
+-- Permanent user delete for superadmin only.
 -- Sletter fra auth.users -> cascader til profiles og relaterte data.
 
 create or replace function public.admin_delete_user_hard(target_user_id uuid)
@@ -23,8 +23,8 @@ begin
   from public.profiles p
   where p.id = requester_id;
 
-  if requester_role not in ('admin', 'superadmin') then
-    raise exception 'Only admin/superadmin can delete users';
+  if requester_role is distinct from 'superadmin' then
+    raise exception 'Only superadmin can delete users';
   end if;
 
   if requester_id = target_user_id then

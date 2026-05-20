@@ -2,25 +2,70 @@
 -- DRIFTPRO – ENTERPRISE ERP & HMS PLATFORM
 -- Supabase PostgreSQL Schema
 -- ============================================================
+--
+-- ⚠️  EKSISTERENDE PROSJEKT (data allerede oppe)?
+--     IKKE kjør hele denne filen — du får feil som «type user_role already exists».
+--     Bruk i stedet:  supabase/repair_login_and_data.sql
+--
+--     schema.sql er for helt ny database / grønt felt.
 
 -- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================
--- ENUMS
+-- ENUMS (idempotent — trygg ved re-kjøring)
 -- ============================================================
 
-CREATE TYPE user_role AS ENUM ('ansatt', 'leder', 'admin', 'superadmin');
-CREATE TYPE absence_type AS ENUM ('egenmelding', 'sykt_barn', 'ferie', 'permisjon', 'sykmelding');
-CREATE TYPE absence_status AS ENUM ('ventende', 'godkjent', 'avvist');
-CREATE TYPE ticket_severity AS ENUM ('lav', 'middels', 'hoy', 'kritisk');
-CREATE TYPE ticket_status AS ENUM ('aapen', 'under_behandling', 'tiltak_utfort', 'lukket');
-CREATE TYPE risk_probability AS ENUM ('1', '2', '3', '4', '5');
-CREATE TYPE risk_consequence AS ENUM ('1', '2', '3', '4', '5');
-CREATE TYPE document_type AS ENUM ('kursbevis', 'sertifikat', 'arbeidsavtale', 'hms_dokument', 'annet');
-CREATE TYPE notification_type AS ENUM ('push', 'epost', 'begge');
-CREATE TYPE sja_status AS ENUM ('utkast', 'signert', 'godkjent', 'avvist');
+DO $$ BEGIN
+  CREATE TYPE public.user_role AS ENUM ('ansatt', 'leder', 'admin', 'superadmin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.absence_type AS ENUM ('egenmelding', 'sykt_barn', 'ferie', 'permisjon', 'sykmelding');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.absence_status AS ENUM ('ventende', 'godkjent', 'avvist');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.ticket_severity AS ENUM ('lav', 'middels', 'hoy', 'kritisk');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.ticket_status AS ENUM ('aapen', 'under_behandling', 'tiltak_utfort', 'lukket');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.risk_probability AS ENUM ('1', '2', '3', '4', '5');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.risk_consequence AS ENUM ('1', '2', '3', '4', '5');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.document_type AS ENUM ('kursbevis', 'sertifikat', 'arbeidsavtale', 'hms_dokument', 'annet');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.notification_type AS ENUM ('push', 'epost', 'begge');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.sja_status AS ENUM ('utkast', 'signert', 'godkjent', 'avvist');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ============================================================
 -- COMPANIES (Multi-tenant support)

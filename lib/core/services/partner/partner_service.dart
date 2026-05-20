@@ -5,9 +5,12 @@ import '../../config/app_origin.dart';
 import '../../config/supabase_config.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/vehicle_inspection.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../utils/portal_credentials.dart';
+import '../sms/sms_phone_utils.dart';
 import 'fleet_shift_seed.dart';
+import 'mavi_unit_codes.dart';
 
 class PartnerService {
   static SupabaseClient get _client => Supabase.instance.client;
@@ -142,10 +145,136 @@ class PartnerService {
     return data.map((e) => PartnerMeeting.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  static Future<PartnerMeeting> addMeeting(PartnerMeeting m) async {
+  static Future<PartnerMeeting> addMeeting(PartnerMeeting m, {String? companyId}) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
-    final row = await _client.from('partner_meetings').insert(m.toInsertJson()).select().single();
+    final row = await _client
+        .from('partner_meetings')
+        .insert(m.toInsertJson(companyId: companyId))
+        .select()
+        .single();
     return PartnerMeeting.fromJson(row);
+  }
+
+  static Future<void> updateMeeting(String id, PartnerMeeting m) async {
+    if (!_ok) return;
+    await _client.from('partner_meetings').update(m.toUpdateJson()).eq('id', id);
+  }
+
+  static Future<void> completeMeeting(String id) async {
+    if (!_ok) return;
+    await _client.from('partner_meetings').update({
+      'status': 'gjennomfort',
+      'completed_at': DateTime.now().toIso8601String(),
+    }).eq('id', id);
+  }
+
+  static Future<void> archiveMeeting(String id) async {
+    if (!_ok) return;
+    await _client.from('partner_meetings').update({
+      'status': 'arkivert',
+      'archived_at': DateTime.now().toIso8601String(),
+    }).eq('id', id);
+  }
+
+  static Future<int> sendMeetingSms({
+    required String partnerId,
+    required String message,
+    String? meetingId,
+  }) async {
+    final n = await notifyMeetingSms(partnerId: partnerId, message: message);
+    if (_ok && meetingId != null && n > 0) {
+      await _client.from('partner_meetings').update({
+        'sms_sent_at': DateTime.now().toIso8601String(),
+        'sms_message': message,
+      }).eq('id', meetingId);
+    }
+    return n;
+  }
+
+  static Future<List<PartnerTransportLicense>> fetchTransportLicenses(String partnerId) async {
+    if (!_ok) return const [];
+    try {
+      final data = await _client
+          .from('partner_transport_licenses')
+          .select()
+          .eq('partner_id', partnerId)
+          .order('valid_to', ascending: true) as List<dynamic>;
+      return data.map((e) => PartnerTransportLicense.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<PartnerTransportLicense> addTransportLicense(PartnerTransportLicense lic) async {
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final row = await _client
+        .from('partner_transport_licenses')
+        .insert(lic.toInsertJson())
+        .select()
+        .single();
+    final saved = PartnerTransportLicense.fromJson(row);
+    await _syncPartnerLicenseCounts(lic.partnerId);
+    return saved;
+  }
+
+  static Future<void> deleteTransportLicense(String id, String partnerId) async {
+    if (!_ok) return;
+    await _client.from('partner_transport_licenses').delete().eq('id', id);
+    await _syncPartnerLicenseCounts(partnerId);
+  }
+
+  static Future<void> _syncPartnerLicenseCounts(String partnerId) async {
+    final list = await fetchTransportLicenses(partnerId);
+    final partner = await fetchPartner(partnerId);
+    if (partner == null) return;
+    await updatePartner(
+      partnerId,
+      Partner(
+        id: partner.id,
+        companyId: partner.companyId,
+        orgNumber: partner.orgNumber,
+        name: partner.name,
+        tradeName: partner.tradeName,
+        ownerName: partner.ownerName,
+        phone: partner.phone,
+        email: partner.email,
+        address: partner.address,
+        postalCode: partner.postalCode,
+        city: partner.city,
+        country: partner.country,
+        notes: partner.notes,
+        vehicleCountRegistered: partner.vehicleCountRegistered,
+        vehicleMaxPayloadKg: partner.vehicleMaxPayloadKg,
+        euApproved: partner.euApproved,
+        hasTransportLicense: list.isNotEmpty,
+        transportLicenseCount: list.length,
+        employeeCount: partner.employeeCount,
+        auditStatus: partner.auditStatus,
+        auditPlate: partner.auditPlate,
+        brregSnapshot: partner.brregSnapshot,
+        lastMeetingAt: partner.lastMeetingAt,
+        nextMeetingAt: partner.nextMeetingAt,
+        lastAuditAt: partner.lastAuditAt,
+        nextAuditAt: partner.nextAuditAt,
+        createdAt: partner.createdAt,
+      ),
+    );
+  }
+
+  static Future<void> uploadPartnerDocumentFile({
+    required String storagePath,
+    required Uint8List bytes,
+    String? mimeType,
+  }) async {
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    await _client.storage.from('documents').uploadBinary(
+          storagePath,
+          bytes,
+          fileOptions: FileOptions(
+            upsert: true,
+            contentType: mimeType ?? 'application/octet-stream',
+          ),
+        );
   }
 
   static Future<List<PartnerRouteShare>> fetchRouteShares(
@@ -181,6 +310,204 @@ class PartnerService {
     await _client.from('partner_route_shares').update(fields).eq('id', shareId);
   }
 
+  /// Flytter en sendt rute-PDF til annen MAVI-bil (oppdaterer partner hvis nødvendig),
+  /// nullstiller aksept og oppdaterer flåtesnapshot til valgt dag/skift.
+  static Future<void> reassignRouteShareToVehicle({
+    required PartnerRouteShare share,
+    required FleetPartnerVehicleRow newTarget,
+    required DateTime routeDate,
+    required String shiftId,
+    DateTime? routeStartAt,
+  }) async {
+    if (!_ok) return;
+    final d = routeDate.toIso8601String().split('T').first;
+    final oldVid = share.partnerVehicleId;
+    final patch = <String, dynamic>{
+      'partner_id': newTarget.partner.id,
+      'partner_vehicle_id': newTarget.vehicle.id,
+      'shift_id': shiftId,
+      'share_date': d,
+      'ack_status': 'pending',
+      'ack_at': null,
+      'ack_by': null,
+      'ack_comment': null,
+    };
+    if (routeStartAt != null) {
+      patch['route_start_at'] = routeStartAt.toUtc().toIso8601String();
+    }
+    await updateRouteShareFields(share.id, patch);
+
+    if (oldVid != null && oldVid != newTarget.vehicle.id) {
+      await upsertFleetSnapshot(
+        PartnerVehicleFleetSnapshot(
+          id: '',
+          companyId: share.companyId,
+          partnerVehicleId: oldVid,
+          snapshotDate: DateTime.parse(d),
+          shiftId: shiftId,
+          status: 'ledig',
+          partnerRouteShareId: null,
+          notes: 'Rute flyttet',
+          createdAt: DateTime.now(),
+        ),
+      );
+    }
+
+    await upsertFleetSnapshot(
+      PartnerVehicleFleetSnapshot(
+        id: '',
+        companyId: share.companyId,
+        partnerVehicleId: newTarget.vehicle.id,
+        snapshotDate: DateTime.parse(d),
+        shiftId: shiftId,
+        status: 'har_rute',
+        partnerRouteShareId: share.id,
+        notes: null,
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    try {
+      await _client.rpc('notify_partner_route_assigned_sms', params: {
+        'p_route_share_id': share.id,
+      });
+      await flushSmsOutbox();
+    } catch (_) {}
+  }
+
+  /// Kalenderdag for en rute — prioriterer planlagt start, ellers share_date.
+  static DateTime routeDayForShare(PartnerRouteShare share) {
+    final base = share.routeStartAt?.toLocal() ?? share.shareDate;
+    return DateTime(base.year, base.month, base.day);
+  }
+
+  /// Fjerner rute-PDF fra bil og nullstiller flåtesnapshot.
+  static Future<void> deleteRouteShare(PartnerRouteShare share) async {
+    if (!_ok) return;
+    final d = routeDayForShare(share).toIso8601String().split('T').first;
+    final vid = share.partnerVehicleId;
+    if (vid != null && share.shiftId != null) {
+      await upsertFleetSnapshot(
+        PartnerVehicleFleetSnapshot(
+          id: '',
+          companyId: share.companyId,
+          partnerVehicleId: vid,
+          snapshotDate: DateTime.parse(d),
+          shiftId: share.shiftId!,
+          status: 'ledig',
+          partnerRouteShareId: null,
+          notes: 'Rute fjernet',
+          createdAt: DateTime.now(),
+        ),
+      );
+    }
+    await _client.from('partner_route_shares').delete().eq('id', share.id);
+  }
+
+  /// Varsler sjåfør på nytt om eksisterende sendt rute.
+  static Future<bool> notifyRouteShareSms(String shareId) async {
+    if (!_ok) return false;
+    try {
+      await _client.rpc('notify_partner_route_assigned_sms', params: {
+        'p_route_share_id': shareId,
+      });
+      await flushSmsOutbox();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<List<PartnerPortalAccount>> fetchCompanyPortalAccounts(String companyId) async {
+    if (!_ok) return const [];
+    try {
+      final data = await _client
+              .from('partner_portal_accounts')
+              .select()
+              .eq('company_id', companyId)
+              .eq('is_active', true)
+              .order('created_at', ascending: false)
+          as List<dynamic>;
+      return data.map((e) => PartnerPortalAccount.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Send fritekst-SMS til partner/sjåfør (legges i sms_outbox, sendes via Sveve-worker).
+  static Future<PartnerSmsQueueResult> queuePartnerComposeSms({
+    required String companyId,
+    required String phone,
+    required String message,
+  }) async {
+    final normalized = normalizePhoneNo(phone);
+    if (!_ok || normalized == null) {
+      return const PartnerSmsQueueResult(
+        success: false,
+        error: 'Ugyldig norsk mobilnummer (8 siffer, starter med 4 eller 9)',
+      );
+    }
+    if (message.trim().isEmpty) {
+      return const PartnerSmsQueueResult(success: false, error: 'Meldingen er tom');
+    }
+    try {
+      final result = await _client.rpc('queue_sms', params: {
+        'p_company_id': companyId,
+        'p_to_phone': normalized,
+        'p_message': message.trim(),
+        'p_category': 'partner_compose',
+        'p_reference_type': 'partners',
+        'p_reference_id': null,
+        'p_to_user_id': null,
+        'p_triggered_by_user_id': null,
+      });
+      // Eldre queue_sms returnerer void → null selv ved suksess.
+      if (result == null) {
+        return PartnerSmsQueueResult(success: true, outboxId: null);
+      }
+      final id = result.toString();
+      if (id.isEmpty || id == 'null') {
+        return const PartnerSmsQueueResult(
+          success: false,
+          error: 'Telefonnummer avvist av SMS-kø (ugyldig format)',
+        );
+      }
+      return PartnerSmsQueueResult(success: true, outboxId: id);
+    } catch (e) {
+      return PartnerSmsQueueResult(success: false, error: e.toString());
+    }
+  }
+
+  /// Trigger Sveve-worker som sender pending rader i sms_outbox.
+  static Future<Map<String, dynamic>?> flushSmsOutbox() async {
+    if (!_ok) return null;
+    try {
+      final res = await _client.functions.invoke('send-sms-outbox');
+      final data = res.data;
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      return {'processed': 0, 'sent': 0, 'failed': 0};
+    } catch (e) {
+      return {'error': e.toString(), 'processed': 0, 'sent': 0, 'failed': 0};
+    }
+  }
+
+  static String? _smsFlushErrorMessage(Map<String, dynamic> flush) {
+    final err = flush['error'] as String?;
+    if (err != null && err.trim().isNotEmpty) return err.trim();
+    final details = flush['details'];
+    if (details is List && details.isNotEmpty) {
+      final first = details.first;
+      if (first is Map) {
+        final d = first['error'] as String?;
+        if (d != null && d.trim().isNotEmpty) return d.trim();
+      }
+    }
+    final failed = (flush['failed'] as num?)?.toInt() ?? 0;
+    if (failed > 0) return 'Sveve avviste $failed SMS — sjekk avsender «Mavi» og saldo';
+    return null;
+  }
+
   static Future<List<PartnerRouteShare>> fetchStagedRouteShares(String companyId) async {
     if (!_ok) return const [];
     try {
@@ -205,10 +532,13 @@ class PartnerService {
     Map<String, DateTime?> shareIdToStartAt = const {},
   }) async {
     if (!_ok || shareIdToShiftId.isEmpty) return;
-    final d = date.toIso8601String().split('T').first;
 
     for (final entry in shareIdToShiftId.entries) {
       final startAt = shareIdToStartAt[entry.key];
+      final routeDay = startAt != null
+          ? DateTime(startAt.year, startAt.month, startAt.day)
+          : date;
+      final d = routeDay.toIso8601String().split('T').first;
       final patch = <String, dynamic>{
         'dispatch_status': 'sent',
         'shift_id': entry.value,
@@ -232,7 +562,7 @@ class PartnerService {
           id: '',
           companyId: companyId,
           partnerVehicleId: vid,
-          snapshotDate: DateTime.parse(d),
+          snapshotDate: routeDay,
           shiftId: entry.value,
           status: 'har_rute',
           partnerRouteShareId: entry.key,
@@ -243,21 +573,65 @@ class PartnerService {
         ),
       );
 
-      try {
-        await _client.rpc('notify_partner_route_assigned_sms', params: {
-          'p_route_share_id': entry.key,
-        });
-      } catch (_) {}
+      // SMS sendes av DB-trigger trg_partner_route_sms_on_sent når dispatch_status = sent.
     }
+    try {
+      await flushSmsOutbox();
+    } catch (_) {}
+  }
+
+  /// Publiser alle ruter i kladd ([dispatchStatus] = staged) til sjåfører.
+  /// Bruker [defaultShiftId], eller første ruteskift; for hver rad brukes egen `shift_id` om den allerede er satt.
+  static Future<int> dispatchAllStagedRouteShares({
+    required String companyId,
+    required DateTime routeDate,
+    String? defaultShiftId,
+    int defaultStartHour = 6,
+    int defaultStartMinute = 0,
+  }) async {
+    if (!_ok) return 0;
+    final staged = await fetchStagedRouteShares(companyId);
+    if (staged.isEmpty) return 0;
+    final shifts = await fetchFleetShifts(companyId);
+    final routeOps = shifts.where((s) => !s.isAvailability && s.shiftKind == 'route_ops').toList();
+    final selectable = routeOps.isNotEmpty ? routeOps : shifts.where((s) => !s.isAvailability).toList();
+    final fallbackShift = defaultShiftId ?? (selectable.isNotEmpty ? selectable.first.id : null);
+    if (fallbackShift == null) return 0;
+
+    final map = <String, String>{};
+    final starts = <String, DateTime?>{};
+
+    for (final s in staged) {
+      map[s.id] = s.shiftId ?? fallbackShift;
+      starts[s.id] = s.routeStartAt ??
+          DateTime(
+            routeDate.year,
+            routeDate.month,
+            routeDate.day,
+            defaultStartHour,
+            defaultStartMinute,
+          );
+    }
+
+    await dispatchRouteShares(
+      companyId: companyId,
+      shareIdToShiftId: map,
+      date: routeDate,
+      shareIdToStartAt: starts,
+    );
+    return staged.length;
   }
 
   static String suggestedPortalLoginEmail({
-    required String username,
-    required String companyId,
+    required String partnerId,
+    required bool isOwner,
+    String? partnerVehicleId,
   }) {
-    final user = username.toLowerCase().replaceAll(RegExp(r'[^a-z0-9_.-]'), '');
-    final cid = companyId.replaceAll('-', '').substring(0, 8);
-    return '$user@mavi.$cid.portal';
+    return PortalCredentials.loginEmail(
+      partnerId: partnerId,
+      isOwner: isOwner,
+      partnerVehicleId: partnerVehicleId,
+    );
   }
 
   static Future<List<PartnerPortalAccount>> fetchPortalAccounts(String partnerId) async {
@@ -280,15 +654,16 @@ class PartnerService {
     required String partnerVehicleId,
     required String unitCode,
     required String phone,
+    String? driverName,
     bool regeneratePassword = false,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
     final username = PortalCredentials.driverUsername(unitCode);
     final password = PortalCredentials.generatePassword();
     final loginEmail = PortalCredentials.loginEmail(
-      username: username,
-      companyId: companyId,
+      partnerId: partnerId,
       isOwner: false,
+      partnerVehicleId: partnerVehicleId,
     );
     final res = await _invokePortalProvision(
       partnerId: partnerId,
@@ -298,6 +673,7 @@ class PartnerService {
       loginEmail: loginEmail,
       phone: phone,
       password: password,
+      driverName: driverName,
       accountKind: 'driver',
       sendCredentialsSms: true,
       regeneratePassword: regeneratePassword,
@@ -305,18 +681,75 @@ class PartnerService {
     return res;
   }
 
+  static Future<List<PartnerDocument>> fetchOwnerPortalDocuments(String partnerId) async {
+    final all = await fetchDocuments(partnerId);
+    return all.where((d) => d.ownerVisible).toList();
+  }
+
+  static Future<List<PartnerDocument>> fetchDriverPortalDocuments(String partnerId) async {
+    final all = await fetchDocuments(partnerId);
+    return all.where((d) => d.driverVisible).toList();
+  }
+
+  static Future<List<PartnerMeeting>> fetchPortalMeetings(String partnerId) async {
+    return fetchMeetings(partnerId);
+  }
+
+  /// Genererer nytt passord og sender på SMS til eksisterende bil-eier-portal.
+  static Future<PortalProvisionResult> resendOwnerPortalPassword({
+    required String partnerId,
+    required String companyId,
+    required String phone,
+    required String partnerName,
+    String? orgNumber,
+  }) {
+    return provisionOwnerPortal(
+      partnerId: partnerId,
+      companyId: companyId,
+      phone: phone,
+      partnerName: partnerName,
+      orgNumber: orgNumber,
+      regeneratePassword: true,
+    );
+  }
+
+  /// Genererer nytt passord og sender på SMS til eksisterende sjåfør-portal.
+  static Future<PortalProvisionResult> resendDriverPortalPassword({
+    required String partnerId,
+    required String companyId,
+    required String partnerVehicleId,
+    required String unitCode,
+    required String phone,
+    String? driverName,
+  }) {
+    return provisionDriverPortal(
+      partnerId: partnerId,
+      companyId: companyId,
+      partnerVehicleId: partnerVehicleId,
+      unitCode: unitCode,
+      phone: phone,
+      driverName: driverName,
+      regeneratePassword: true,
+    );
+  }
+
   static Future<PortalProvisionResult> provisionOwnerPortal({
     required String partnerId,
     required String companyId,
     required String phone,
+    required String partnerName,
+    String? orgNumber,
     bool regeneratePassword = false,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
-    final username = PortalCredentials.ownerUsername(partnerId);
+    final username = PortalCredentials.ownerUsername(
+      partnerName: partnerName,
+      orgNumber: orgNumber,
+      partnerId: partnerId,
+    );
     final password = PortalCredentials.generatePassword();
     final loginEmail = PortalCredentials.loginEmail(
-      username: username,
-      companyId: companyId,
+      partnerId: partnerId,
       isOwner: true,
     );
     return _invokePortalProvision(
@@ -340,6 +773,7 @@ class PartnerService {
     required String loginEmail,
     required String phone,
     required String password,
+    String? driverName,
     required String accountKind,
     bool sendCredentialsSms = true,
     bool regeneratePassword = false,
@@ -352,8 +786,9 @@ class PartnerService {
         if (partnerVehicleId != null) 'partner_vehicle_id': partnerVehicleId,
         'username': username,
         'login_email': loginEmail,
-        'phone': phone.trim(),
+        'phone': normalizePhoneNo(phone.trim()) ?? phone.trim(),
         'password': password,
+        if (driverName != null && driverName.trim().isNotEmpty) 'driver_name': driverName.trim(),
         'account_kind': accountKind,
         'send_credentials_sms': sendCredentialsSms,
         'regenerate_password': regeneratePassword,
@@ -364,11 +799,29 @@ class PartnerService {
       if (data['error'] != null) {
         throw Exception(data['error'].toString());
       }
+      var smsSent = data['sms_sent'] == true;
+      final smsQueued = data['sms_queued'] == true;
+      var smsError = data['sms_error'] as String?;
+      if (!smsSent) {
+        final flush = await flushSmsOutbox();
+        if (flush != null) {
+          final sent = (flush['sent'] as num?)?.toInt() ?? 0;
+          if (sent > 0) {
+            smsSent = true;
+            smsError = null;
+          } else {
+            smsError ??= _smsFlushErrorMessage(flush);
+          }
+        }
+      }
       return PortalProvisionResult(
         username: (data['username'] as String?) ?? username,
         loginEmail: (data['login_email'] as String?) ?? loginEmail,
         password: (data['password'] as String?) ?? password,
-        smsSent: data['sms_sent'] == true,
+        smsSent: smsSent,
+        smsQueued: smsQueued,
+        smsError: smsError,
+        phone: data['phone'] as String?,
       );
     }
     return PortalProvisionResult(
@@ -376,6 +829,47 @@ class PartnerService {
       loginEmail: loginEmail,
       password: password,
     );
+  }
+
+  /// Hvilken portal (bil-eier vs sjåfør) innlogget bruker skal ha.
+  static Future<PartnerPortalSession?> resolvePortalSession() async {
+    if (!_ok) return null;
+    try {
+      final raw = await _client.rpc('resolve_partner_portal_bootstrap');
+      if (raw is Map) {
+        return PartnerPortalSession.fromJson(Map<String, dynamic>.from(raw));
+      }
+    } catch (_) {}
+
+    final uid = _client.auth.currentUser?.id;
+    final email = _client.auth.currentUser?.email?.trim().toLowerCase();
+    if (uid != null) {
+      try {
+        final row = await _client
+            .from('partner_portal_accounts')
+            .select()
+            .eq('is_active', true)
+            .eq('profile_id', uid)
+            .maybeSingle();
+        if (row != null) {
+          return PartnerPortalSession.fromAccount(row as Map<String, dynamic>);
+        }
+      } catch (_) {}
+    }
+    if (email != null && email.isNotEmpty) {
+      try {
+        final row = await _client
+            .from('partner_portal_accounts')
+            .select()
+            .eq('is_active', true)
+            .eq('login_email', email)
+            .maybeSingle();
+        if (row != null) {
+          return PartnerPortalSession.fromAccount(row as Map<String, dynamic>);
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 
   static Future<PartnerPortalAccount?> fetchOwnerPortalAccount(String partnerId) async {
@@ -460,6 +954,8 @@ class PartnerService {
     String? companyId,
     String? partnerId,
     String? status,
+    DateTime? requestDateFrom,
+    DateTime? requestDateTo,
   }) async {
     if (!_ok) return const [];
     try {
@@ -467,6 +963,12 @@ class PartnerService {
       if (companyId != null) q = q.eq('company_id', companyId);
       if (partnerId != null) q = q.eq('partner_id', partnerId);
       if (status != null) q = q.eq('status', status);
+      if (requestDateFrom != null) {
+        q = q.gte('request_date', requestDateFrom.toIso8601String().split('T').first);
+      }
+      if (requestDateTo != null) {
+        q = q.lte('request_date', requestDateTo.toIso8601String().split('T').first);
+      }
       final data = await q.order('created_at', ascending: false) as List<dynamic>;
       return data.map((e) => PartnerFriRequest.fromJson(e as Map<String, dynamic>)).toList();
     } catch (_) {
@@ -597,12 +1099,12 @@ class PartnerService {
     return data.map((e) => PartnerVehicle.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  static Future<void> replaceVehicles({
+  static Future<List<PartnerVehicle>> replaceVehicles({
     required String partnerId,
     required String companyId,
     required List<PartnerVehicle> vehicles,
   }) async {
-    if (!_ok) return;
+    if (!_ok) return const [];
     final existing = await fetchVehicles(partnerId);
     final keepUnits = vehicles.map((v) => v.unitCode.toUpperCase()).toSet();
 
@@ -612,13 +1114,14 @@ class PartnerService {
       }
     }
 
-    if (vehicles.isEmpty) return;
-
-    final payload = vehicles.map((v) => v.toUpsertJson()).toList();
-    await _client.from('partner_vehicles').upsert(
-          payload,
-          onConflict: 'partner_id,unit_code',
-        );
+    if (vehicles.isNotEmpty) {
+      final payload = vehicles.map((v) => v.toUpsertJson()).toList();
+      await _client.from('partner_vehicles').upsert(
+            payload,
+            onConflict: 'partner_id,unit_code',
+          );
+    }
+    return fetchVehicles(partnerId);
   }
 
   static Future<void> upsertPortalAccount({
@@ -871,6 +1374,18 @@ class PartnerService {
     return out;
   }
 
+  /// Ruteplanlegging bruker kun MAVI-er — ikke rene reg.nr-rader (REG-AB12345).
+  static bool isMaviFleetVehicle(PartnerVehicle vehicle) {
+    return vehicle.vehicleKind != 'registration' &&
+        !MaviUnitCodes.isRegistrationOnlyUnit(vehicle.unitCode);
+  }
+
+  static List<FleetPartnerVehicleRow> filterMaviFleetOnly(
+    Iterable<FleetPartnerVehicleRow> rows,
+  ) {
+    return rows.where((r) => isMaviFleetVehicle(r.vehicle)).toList();
+  }
+
   static Future<List<PartnerVehicleFleetSnapshot>> fetchFleetSnapshots({
     required String companyId,
     required DateTime date,
@@ -942,16 +1457,73 @@ class PartnerService {
 
   static Future<List<PartnerRouteShare>> fetchRouteSharesForCompany(
     String companyId, {
+    DateTime? shareDateFrom,
+    DateTime? shareDateTo,
     int limit = 800,
   }) async {
     if (!_ok) return const [];
-    final data = await _client
-        .from('partner_route_shares')
-        .select()
-        .eq('company_id', companyId)
-        .order('created_at', ascending: false)
-        .limit(limit) as List<dynamic>;
+    var q =
+        _client.from('partner_route_shares').select().eq('company_id', companyId);
+    if (shareDateFrom != null) {
+      q = q.gte('share_date', shareDateFrom.toIso8601String().split('T').first);
+    }
+    if (shareDateTo != null) {
+      q = q.lte('share_date', shareDateTo.toIso8601String().split('T').first);
+    }
+    final data =
+        await q.order('created_at', ascending: false).limit(limit) as List<dynamic>;
     return data.map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Ruter der [route_start_at] eller [share_date] treffer vinduet (kalenderuket).
+  static Future<List<PartnerRouteShare>> fetchRouteSharesForCalendarWindow({
+    required String companyId,
+    required DateTime fromDay,
+    required DateTime toDay,
+    int limitPerQuery = 2000,
+  }) async {
+    if (!_ok) return const [];
+    final dFrom = DateTime(fromDay.year, fromDay.month, fromDay.day);
+    final dTo = DateTime(toDay.year, toDay.month, toDay.day);
+    final sd = dFrom.toIso8601String().split('T').first;
+    final ed = dTo.toIso8601String().split('T').first;
+    final fromTs = DateTime(dFrom.year, dFrom.month, dFrom.day).toUtc().toIso8601String();
+    final toTsExclusive =
+        DateTime(dTo.year, dTo.month, dTo.day).add(const Duration(days: 1)).toUtc().toIso8601String();
+
+    final byShareDate = await _client
+            .from('partner_route_shares')
+            .select()
+            .eq('company_id', companyId)
+            .gte('share_date', sd)
+            .lte('share_date', ed)
+            .order('created_at', ascending: false)
+            .limit(limitPerQuery)
+        as List<dynamic>;
+
+    List<dynamic> byStartAt = const [];
+    try {
+      byStartAt = await _client
+              .from('partner_route_shares')
+              .select()
+              .eq('company_id', companyId)
+              .gte('route_start_at', fromTs)
+              .lt('route_start_at', toTsExclusive)
+              .order('created_at', ascending: false)
+              .limit(limitPerQuery)
+          as List<dynamic>;
+    } catch (_) {
+      byStartAt = const [];
+    }
+
+    final map = <String, PartnerRouteShare>{};
+    for (final e in [...byShareDate, ...byStartAt]) {
+      final m = Map<String, dynamic>.from(e as Map);
+      final s = PartnerRouteShare.fromJson(m);
+      map[s.id] = s;
+    }
+    return map.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
   }
 
   static Future<FleetShiftDefinition> createFleetShift({
@@ -987,6 +1559,81 @@ class PartnerService {
         .single();
     return FleetShiftDefinition.fromJson(row);
   }
+
+  // ── Bilkontroll ─────────────────────────────────────────────────────────
+
+  static Future<List<PartnerVehicleInspection>> fetchVehicleInspections(String partnerId) async {
+    if (!_ok) return const [];
+    try {
+      final data = await _client
+          .from('partner_vehicle_inspections')
+          .select()
+          .eq('partner_id', partnerId)
+          .order('inspected_at', ascending: false) as List<dynamic>;
+      return data
+          .map((e) => PartnerVehicleInspection.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<List<PartnerVehicleInspection>> fetchOpenInspectionFollowUps({
+    required String companyId,
+    String? assigneeProfileId,
+  }) async {
+    if (!_ok) return const [];
+    try {
+      var q = _client
+          .from('partner_vehicle_inspections')
+          .select()
+          .eq('company_id', companyId)
+          .eq('has_deviation', true);
+      if (assigneeProfileId != null) {
+        q = q.eq('deviation_assignee', assigneeProfileId);
+      }
+      final data = await q.order('follow_up_due_at', ascending: true) as List<dynamic>;
+      return data
+          .map((e) => PartnerVehicleInspection.fromJson(e as Map<String, dynamic>))
+          .where((i) => i.followUpOpen)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<PartnerVehicleInspection> saveVehicleInspection(
+    PartnerVehicleInspection draft,
+  ) async {
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) throw StateError('Ikke innlogget');
+    final row = await _client
+        .from('partner_vehicle_inspections')
+        .insert(draft.toInsertJson(inspectedBy: uid))
+        .select()
+        .single();
+    return PartnerVehicleInspection.fromJson(row);
+  }
+
+  static Future<void> acknowledgeInspectionFollowUp(String inspectionId) async {
+    if (!_ok) return;
+    await _client.from('partner_vehicle_inspections').update({
+      'follow_up_acknowledged_at': DateTime.now().toIso8601String(),
+    }).eq('id', inspectionId);
+  }
+}
+
+class PartnerSmsQueueResult {
+  final bool success;
+  final String? error;
+  final String? outboxId;
+
+  const PartnerSmsQueueResult({
+    required this.success,
+    this.error,
+    this.outboxId,
+  });
 }
 
 /// Én linje i flåteoversikten (partner + kjøretøy).

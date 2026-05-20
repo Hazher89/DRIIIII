@@ -114,6 +114,17 @@ class _DashboardScreenState extends State<DashboardScreen>
           _kiosk = KioskSettings.defaults;
           _companyName = null;
           _scopedAbsences = const [];
+          _notices = [
+            _DashboardNotice(
+              title: 'Ingen data fra Supabase',
+              subtitle: profile?.isRecoverySession == true
+                  ? 'Mangler profiles-rad — kjør ensure_internal_profile_missing.sql, logg ut og inn.'
+                  : 'Profilen mangler company_id — logg ut og inn på nytt.',
+              icon: Icons.cloud_off_outlined,
+              color: DriftProTheme.warning,
+              type: _NoticeType.noCompany,
+            ),
+          ];
         });
         return;
       }
@@ -1117,11 +1128,13 @@ class _DashboardScreenState extends State<DashboardScreen>
           _go(AccessKeys.avvik);
         }
         break;
+      case _NoticeType.noCompany:
+        break;
     }
   }
 }
 
-enum _NoticeType { pendingUsers, pendingAbsence, criticalTickets }
+enum _NoticeType { pendingUsers, pendingAbsence, criticalTickets, noCompany }
 
 class _DashboardNotice {
   final String title;

@@ -26,6 +26,8 @@ class UserProfile {
   final String? partnerId;
   /// Når satt, ser portalbrukeren kun ruter for dette MAVI-kjøretøyet.
   final String? partnerVehicleId;
+  /// Minimal profil uten DB-rad — kun for whitelisted eier-e-post (midlertidig nødbo).
+  final bool isRecoverySession;
 
   const UserProfile({
     required this.id,
@@ -51,17 +53,46 @@ class UserProfile {
     this.accessSettings,
     this.partnerId,
     this.partnerVehicleId,
+    this.isRecoverySession = false,
   });
 
-  factory UserProfile.fromJson(Map<String, dynamic> json) {
-    return UserProfile(
-      id: json['id'] as String,
-      email: json['email'] as String,
-      fullName: json['full_name'] as String,
-      role: UserRole.values.firstWhere(
-        (e) => e.name == json['role'],
+  factory UserProfile.fromJson(
+    Map<String, dynamic> json, {
+    String? fallbackAuthUserId,
+    String? fallbackAuthEmail,
+  }) {
+    final idRaw = json['id'];
+    final id = (idRaw is String && idRaw.isNotEmpty)
+        ? idRaw
+        : (fallbackAuthUserId ?? '');
+    if (id.isEmpty) {
+      throw const FormatException('profiles.id mangler eller er ugyldig');
+    }
+
+    final emailRaw = json['email'];
+    final emailStr = emailRaw is String ? emailRaw.trim() : '';
+    final email = emailStr.isNotEmpty
+        ? emailStr
+        : (fallbackAuthEmail?.trim() ?? '');
+
+    final nameRaw = json['full_name'];
+    var fullName = nameRaw != null ? '$nameRaw'.trim() : '';
+    if (fullName.isEmpty) fullName = 'Bruker';
+
+    final roleRaw = json['role'];
+    UserRole roleParsed = UserRole.ansatt;
+    if (roleRaw is String) {
+      roleParsed = UserRole.values.firstWhere(
+        (e) => e.name == roleRaw,
         orElse: () => UserRole.ansatt,
-      ),
+      );
+    }
+
+    return UserProfile(
+      id: id,
+      email: email,
+      fullName: fullName,
+      role: roleParsed,
       departmentId: json['department_id'] as String?,
       companyId: json['company_id'] as String?,
       avatarUrl: json['avatar_url'] as String?,
@@ -113,6 +144,7 @@ class UserProfile {
     'is_approved': isApproved,
     'partner_id': partnerId,
     'partner_vehicle_id': partnerVehicleId,
+    'recovery_session': isRecoverySession,
   };
 
   UserProfile copyWith({
@@ -125,6 +157,7 @@ class UserProfile {
     String? companyId,
     String? partnerId,
     String? partnerVehicleId,
+    bool? isRecoverySession,
   }) {
     return UserProfile(
       id: id,
@@ -150,11 +183,16 @@ class UserProfile {
       accessSettings: accessSettings,
       partnerId: partnerId ?? this.partnerId,
       partnerVehicleId: partnerVehicleId ?? this.partnerVehicleId,
+      isRecoverySession: isRecoverySession ?? this.isRecoverySession,
     );
   }
 
   bool get isPartnerPortalUser =>
       partnerId != null || role == UserRole.samarbeidspartner;
+
+  /// Bil-eier-portal (hele bedriften); sjåfør har [partnerVehicleId] satt.
+  bool get isPartnerPortalOwner =>
+      partnerId != null && partnerVehicleId == null;
   bool get isLeader => role == UserRole.leder || isAdmin;
   bool get isAdmin =>
       role == UserRole.admin || role == UserRole.superadmin;

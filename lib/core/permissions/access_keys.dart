@@ -54,6 +54,30 @@ class AccessKeys {
   // ── Samarbeidspartnere / ruter ─────────────────────────────────────────────
   static const partnersAdmin = 'partners_admin';
   static const fleetRuter = 'fleet_ruter';
+  static const partnersCreate = 'partners_create';
+  static const partnersDelete = 'partners_delete';
+  static const partnersEdit = 'partners_edit';
+
+  /// Faner i bedriftsdetalj (samarbeidspartner).
+  static const partnersTabOversikt = 'partners_tab_oversikt';
+  static const partnersTabBilkontroll = 'partners_tab_bilkontroll';
+  static const partnersTabRuter = 'partners_tab_ruter';
+  static const partnersTabDokumenter = 'partners_tab_dokumenter';
+  static const partnersTabLoyver = 'partners_tab_loyver';
+  static const partnersTabOppfolging = 'partners_tab_oppfolging';
+  static const partnersTabOppsummering = 'partners_tab_oppsummering';
+  static const partnersTabFri = 'partners_tab_fri';
+
+  static const partnerDetailTabKeys = [
+    partnersTabOversikt,
+    partnersTabBilkontroll,
+    partnersTabRuter,
+    partnersTabDokumenter,
+    partnersTabLoyver,
+    partnersTabOppfolging,
+    partnersTabOppsummering,
+    partnersTabFri,
+  ];
 
   // ── Administrasjon ─────────────────────────────────────────────────────────
   static const ansatteRediger = 'ansatte_rediger';
@@ -99,6 +123,17 @@ class AccessKeys {
     surveyResultater,
     partnersAdmin,
     fleetRuter,
+    partnersCreate,
+    partnersDelete,
+    partnersEdit,
+    partnersTabOversikt,
+    partnersTabBilkontroll,
+    partnersTabRuter,
+    partnersTabDokumenter,
+    partnersTabLoyver,
+    partnersTabOppfolging,
+    partnersTabOppsummering,
+    partnersTabFri,
     ansatteRediger,
     avdelingerRediger,
   ];
@@ -148,8 +183,19 @@ class AccessKeys {
     hmsDokumenter: 'HMS-dokumenter',
     surveyBygge: 'Bygge / redigere undersøkelser',
     surveyResultater: 'Se undersøkelsesresultater',
-    partnersAdmin: 'Administrere samarbeidspartnere',
-    fleetRuter: 'Ruter & kjøreliste',
+    partnersAdmin: 'Administrere samarbeidspartnere (full)',
+    fleetRuter: 'Ruter & planlegging (oversikt)',
+    partnersCreate: 'Opprette nye samarbeidspartnere',
+    partnersDelete: 'Slette samarbeidspartnere',
+    partnersEdit: 'Redigere partnerdata (lagre/endre)',
+    partnersTabOversikt: 'Partner – Oversikt-fane',
+    partnersTabBilkontroll: 'Partner – Bilkontroll-fane',
+    partnersTabRuter: 'Partner – Ruter-fane',
+    partnersTabDokumenter: 'Partner – Dokumenter-fane',
+    partnersTabLoyver: 'Partner – Løyver-fane',
+    partnersTabOppfolging: 'Partner – Oppfølging (møter/revisjon/SMS)',
+    partnersTabOppsummering: 'Partner – Oppsummering-fane',
+    partnersTabFri: 'Partner – Fri-fane',
     ansatteRediger: 'Redigere ansatte og tilganger',
     avdelingerRediger: 'Opprette / redigere avdelinger',
   };
