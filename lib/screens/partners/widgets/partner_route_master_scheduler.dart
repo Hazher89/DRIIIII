@@ -469,6 +469,41 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     ],
                   ),
                   const SizedBox(height: 12),
+                  if (_sapPending > 0)
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8E1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFFFC107), width: 1.5),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.mark_email_read_rounded, color: Color(0xFFF57F17)),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              '$_sapPending rute(r) mottatt fra SAP — klar til import',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: Color(0xFF5D4037),
+                              ),
+                            ),
+                          ),
+                          FilledButton(
+                            onPressed: _busy ? null : _openSapRoutes,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF1565C0),
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Åpne'),
+                          ),
+                        ],
+                      ),
+                    ),
                   Wrap(
                     spacing: 10,
                     runSpacing: 8,
@@ -533,6 +568,14 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         icon: const Icon(Icons.event_outlined, size: 18),
                         label: Text('Dag: ${DateFormat('d.M.y', 'nb').format(_focusDay)}'),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
                       FilledButton.icon(
                         onPressed: _busy || _filteredFleet.isEmpty ? null : () => _openSingleAssign(),
                         style: FilledButton.styleFrom(

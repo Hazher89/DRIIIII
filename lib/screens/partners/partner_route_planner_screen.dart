@@ -95,7 +95,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
             compact: true,
             title: 'Ruter & planlegging',
             subtitle:
-                'Kalender for alle MAVI-er • Ny rute og AUTO MASS for masse-PDF med SMS-varsling.',
+                'Kalender for alle MAVI-er • Mottatt ruter fra SAP, Ny rute og AUTO MASS.',
             leading: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
