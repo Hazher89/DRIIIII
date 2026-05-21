@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../../core/constants/infoskjerm_urls.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/tidsbanken/tidsbanken_presence_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -130,6 +132,7 @@ class _KioskSettingsScreenState extends State<KioskSettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
+                    _infoskjermLinkCard(isDark),
                     _section('Presentasjon', isDark, [
                       _switchTile(
                         title: 'Infoskjerm-modus (større tekst)',
@@ -297,7 +300,7 @@ class _KioskSettingsScreenState extends State<KioskSettingsScreen> {
                         ),
                       _switchTile(
                         title: 'Team online på dashbord',
-                        subtitle: 'Kort med antall innstemplt + lenke til /Online',
+                        subtitle: 'Kort med antall innstemplt + lenke til infoskjerm',
                         value: _draft.showLiveTeamBoard,
                         onChanged: (v) =>
                             setState(() => _draft = _draft.copyWith(showLiveTeamBoard: v)),
@@ -315,6 +318,81 @@ class _KioskSettingsScreenState extends State<KioskSettingsScreen> {
                     const SizedBox(height: 32),
                   ],
                 ),
+    );
+  }
+
+  Widget _infoskjermLinkCard(bool isDark) {
+    final links = InfoskjermUrls.linksForAdmin(refreshSeconds: 120);
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: DriftProTheme.primaryGreen.withValues(alpha: isDark ? 0.15 : 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.tv_rounded, color: DriftProTheme.primaryGreen),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Lenke til vegg-skjerm (24/7)',
+                  style: DriftProTheme.headingSm,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Åpne lenken på TV/PC i fullskjerm. Logg inn én gang med bedriftskonto — '
+            'sesjonen holdes vedlike. Data oppdateres automatisk (standard hvert 2. min, '
+            'Tidsbanken-synk).',
+            style: DriftProTheme.bodySm.copyWith(height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          ...links.map((l) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(l.label, style: DriftProTheme.labelSm),
+                        const SizedBox(height: 4),
+                        SelectableText(
+                          l.url,
+                          style: DriftProTheme.bodySm.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: DriftProTheme.primaryGreen,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Kopier',
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: l.url));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Kopiert: ${l.label}')),
+                      );
+                    },
+                    icon: const Icon(Icons.copy_rounded, size: 20),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
     );
   }
 

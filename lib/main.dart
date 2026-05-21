@@ -95,21 +95,38 @@ class DriftProApp extends StatelessWidget {
     return null;
   }
 
-  bool _isOnlineRoute() {
+  bool _isInfoskjermRoute() {
     final path = Uri.base.path.toLowerCase();
-    if (path == '/online' || path.endsWith('/online')) return true;
-    final fragment = Uri.base.fragment.toLowerCase();
-    if (fragment == '/online' || fragment == 'online' || fragment.endsWith('/online')) {
-      return true;
+    const pathHits = ['/online', '/infoskjerm', '/wallboard'];
+    for (final p in pathHits) {
+      if (path == p || path.endsWith(p)) return true;
     }
-    return Uri.base.queryParameters['view']?.toLowerCase() == 'online';
+    final fragment = Uri.base.fragment.toLowerCase();
+    for (final p in pathHits) {
+      if (fragment == p ||
+          fragment.endsWith(p) ||
+          fragment.contains('view=infoskjerm') ||
+          fragment.contains('view=online')) {
+        return true;
+      }
+    }
+    final view = Uri.base.queryParameters['view']?.toLowerCase();
+    return view == 'online' || view == 'infoskjerm' || view == 'wallboard';
+  }
+
+  Duration _infoskjermRefreshInterval() {
+    final sec = int.tryParse(Uri.base.queryParameters['refresh'] ?? '');
+    if (sec != null && sec >= 30 && sec <= 900) {
+      return Duration(seconds: sec);
+    }
+    return const Duration(minutes: 2);
   }
 
   @override
   Widget build(BuildContext context) {
     final themeNotifier = context.watch<ThemeNotifier>();
     final publicSurveyId = _extractPublicSurveyId();
-    final onlineRoute = _isOnlineRoute();
+    final infoskjermRoute = _isInfoskjermRoute();
 
     return MaterialApp(
       title: AppStrings.appName,
@@ -135,9 +152,11 @@ class DriftProApp extends StatelessWidget {
                 final session =
                     snapshot.data?.session ?? Supabase.instance.client.auth.currentSession;
 
-                if (onlineRoute) {
+                if (infoskjermRoute) {
                   if (session != null) {
-                    return const OnlinePresenceScreen();
+                    return OnlinePresenceScreen(
+                      refreshInterval: _infoskjermRefreshInterval(),
+                    );
                   }
                   return const AuthGateScreen();
                 }

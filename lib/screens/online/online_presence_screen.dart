@@ -15,8 +15,14 @@ import '../../models/user_profile.dart';
 /// Infoskjerm: én side uten scrolling — 6 paneler (på jobb, ferie, bursdag).
 class OnlinePresenceScreen extends StatefulWidget {
   final bool embedded;
+  /// Hvor ofte data hentes på nytt (Tidsbanken-synk + lister). Standard 5 min i app, 2 min på vegg-skjerm.
+  final Duration? refreshInterval;
 
-  const OnlinePresenceScreen({super.key, this.embedded = false});
+  const OnlinePresenceScreen({
+    super.key,
+    this.embedded = false,
+    this.refreshInterval,
+  });
 
   @override
   State<OnlinePresenceScreen> createState() => _OnlinePresenceScreenState();
@@ -37,10 +43,10 @@ class _BirthdayEntry {
 }
 
 class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
-  static const _refreshInterval = Duration(minutes: 5);
   static const int _maxLines = 9;
 
   Timer? _timer;
+  Timer? _clockTimer;
   bool _loading = true;
   bool _syncing = false;
   String? _error;
@@ -50,16 +56,24 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
   List<Absence> _absences = [];
   List<UserProfile> _profiles = [];
 
+  Duration get _refreshEvery =>
+      widget.refreshInterval ??
+      (widget.embedded ? const Duration(minutes: 5) : const Duration(minutes: 2));
+
   @override
   void initState() {
     super.initState();
     _load(trySync: true);
-    _timer = Timer.periodic(_refreshInterval, (_) => _load(trySync: true));
+    _timer = Timer.periodic(_refreshEvery, (_) => _load(trySync: true));
+    _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    _clockTimer?.cancel();
     super.dispose();
   }
 
@@ -316,6 +330,10 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
                   'Tidsbanken ${timeFmt.format(sync!.lastSyncAt!.toLocal())}',
                   style: const TextStyle(color: Colors.white54, fontSize: 10),
                 ),
+              Text(
+                'Oppdateres hvert ${_refreshEvery.inMinutes >= 1 ? '${_refreshEvery.inMinutes} min' : '${_refreshEvery.inSeconds} sek'}',
+                style: const TextStyle(color: Colors.white38, fontSize: 9),
+              ),
             ],
           ),
         ],
