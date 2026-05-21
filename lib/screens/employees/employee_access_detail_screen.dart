@@ -330,7 +330,15 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
                   items: widget.departments
                       .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name)))
                       .toList(),
-                  onChanged: (v) => setState(() => _departmentId = v),
+                  onChanged: (v) async {
+                    setState(() => _departmentId = v);
+                    if (v != widget.employee.departmentId) {
+                      await SupabaseService.updateProfileDepartment(
+                        widget.employee.id,
+                        v,
+                      );
+                    }
+                  },
                 ),
                 const SizedBox(height: 8),
                 SwitchListTile(
@@ -392,6 +400,14 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(e.fullName, style: DriftProTheme.headingSm),
+                if (e.employeeNumber != null && e.employeeNumber!.isNotEmpty)
+                  Text(
+                    'Ansattnr. ${e.employeeNumber} (innlogging)',
+                    style: DriftProTheme.caption.copyWith(
+                      color: DriftProTheme.primaryGreen,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 Text(e.email, style: DriftProTheme.caption),
                 if (e.phone != null && e.phone!.isNotEmpty)
                   Text('Tlf (Sveve): ${e.phone}', style: DriftProTheme.caption),

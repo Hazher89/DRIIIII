@@ -579,7 +579,60 @@ department:departments!department_id(name)
     final query = client.from('departments').select();
     if (companyId != null) query.eq('company_id', companyId);
     final data = await query.order('name', ascending: true);
-    return (data as List).map((e) => Department.fromJson(e)).toList();
+    final depts = (data as List).map((e) => Department.fromJson(e)).toList();
+    if (depts.isEmpty) return depts;
+
+    final leaderMap = await fetchDepartmentLeaderIdsByDepartment(
+      depts.map((d) => d.id).toList(),
+    );
+    return depts
+        .map(
+          (d) => Department(
+            id: d.id,
+            companyId: d.companyId,
+            name: d.name,
+            description: d.description,
+            leaderId: d.leaderId,
+            leaderIds: leaderMap[d.id] ?? d.leaderIds,
+            colorCode: d.colorCode,
+            iconName: d.iconName,
+            parentDepartmentId: d.parentDepartmentId,
+            createdAt: d.createdAt,
+          ),
+        )
+        .toList();
+  }
+
+  static Future<Map<String, List<String>>> fetchDepartmentLeaderIdsByDepartment(
+    List<String> departmentIds,
+  ) async {
+    if (!isConfigured || departmentIds.isEmpty) return {};
+    try {
+      final data = await client
+          .from('department_leaders')
+          .select('department_id, profile_id')
+          .inFilter('department_id', departmentIds);
+      final map = <String, List<String>>{};
+      for (final row in data as List) {
+        final deptId = row['department_id'] as String;
+        final profileId = row['profile_id'] as String;
+        map.putIfAbsent(deptId, () => []).add(profileId);
+      }
+      return map;
+    } catch (e) {
+      debugPrint('fetchDepartmentLeaderIdsByDepartment: $e');
+      return {};
+    }
+  }
+
+  static Future<void> setDepartmentLeaders(
+    String departmentId,
+    List<String> profileIds,
+  ) async {
+    await client.rpc('set_department_leaders', params: {
+      'p_department_id': departmentId,
+      'p_leader_ids': profileIds,
+    });
   }
 
   static Future<List<UserProfile>> fetchProfiles({String? companyId, String? departmentId}) async {
@@ -607,6 +660,14 @@ department:departments!department_id(name)
 
   static Future<void> updateProfileDepartment(String profileId, String? departmentId) async {
     await client.from('profiles').update({'department_id': departmentId}).eq('id', profileId);
+    try {
+      await client.from('employee_login_accounts').update({
+        'department_id': departmentId,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('profile_id', profileId);
+    } catch (e) {
+      debugPrint('updateProfileDepartment employee_login_accounts: $e');
+    }
   }
 
   static Future<void> updateProfileRole(String profileId, UserRole role) async {
@@ -652,10 +713,10 @@ department:departments!department_id(name)
     }).eq('id', profileId);
 
     if (setDepartmentLeader && departmentId != null) {
-      await client
-          .from('departments')
-          .update({'leader_id': profileId})
-          .eq('id', departmentId);
+      await client.rpc('add_department_leader', params: {
+        'p_department_id': departmentId,
+        'p_profile_id': profileId,
+      });
     }
   }
 

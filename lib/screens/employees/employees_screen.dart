@@ -6,6 +6,8 @@ import '../../models/department.dart';
 import '../../models/user_profile.dart';
 import 'employee_edit_screen.dart';
 import 'employee_hub_screen.dart';
+import 'widgets/employee_display.dart';
+import 'widgets/employee_move_department_sheet.dart';
 
 /// Ansatte – superadmin sendes til full tilgangsstyring.
 class EmployeesScreen extends StatefulWidget {
@@ -128,15 +130,32 @@ class _EmployeeReadOnlyListState extends State<_EmployeeReadOnlyList> {
                 final p = _profiles[i];
                 return ListTile(
                   leading: CircleAvatar(child: Text(p.initials)),
-                  title: Text(p.fullName),
+                  title: EmployeeDisplay.nameWithNumber(p, emphasizeNumber: true),
                   subtitle: Text(
                     '${p.role.name} · ${p.email}${p.phone != null ? " · ${p.phone}" : ""}',
                   ),
                   trailing: _canEdit
-                      ? IconButton(
-                          icon: const Icon(Icons.edit_outlined),
-                          tooltip: 'Rediger telefon og personinfo',
-                          onPressed: () => _openEdit(p),
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.swap_horiz),
+                              tooltip: 'Flytt avdeling',
+                              onPressed: () async {
+                                final ok = await showEmployeeMoveDepartmentSheet(
+                                  context,
+                                  employee: p,
+                                  departments: _departments,
+                                );
+                                if (ok == true) _load();
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.edit_outlined),
+                              tooltip: 'Rediger telefon og personinfo',
+                              onPressed: () => _openEdit(p),
+                            ),
+                          ],
                         )
                       : null,
                   onTap: _canEdit ? () => _openEdit(p) : null,

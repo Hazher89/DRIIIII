@@ -10,6 +10,8 @@ import '../admin/company_sms_settings_screen.dart';
 import 'employee_access_detail_screen.dart';
 import 'employee_edit_screen.dart';
 import 'widgets/employee_approval_sheet.dart';
+import 'widgets/employee_display.dart';
+import 'widgets/employee_move_department_sheet.dart';
 
 /// Ansattadministrasjon – superadmin styrer alle DriftPro-tilganger per bruker.
 class EmployeeHubScreen extends StatefulWidget {
@@ -95,7 +97,8 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
         .where((u) =>
             u.fullName.toLowerCase().contains(q) ||
             u.email.toLowerCase().contains(q) ||
-            (u.phone ?? '').contains(q))
+            (u.phone ?? '').contains(q) ||
+            (u.employeeNumber ?? '').toLowerCase().contains(q))
         .toList();
   }
 
@@ -243,7 +246,7 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                       child: TextField(
                         decoration: InputDecoration(
-                          hintText: 'Søk navn, e-post, telefon…',
+                          hintText: 'Søk navn, ansattnr., e-post, telefon…',
                           prefixIcon: const Icon(Icons.search),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -354,10 +357,7 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      user.fullName,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
-                    ),
+                    EmployeeDisplay.nameWithNumber(user),
                     Text(user.email, style: DriftProTheme.caption),
                     const SizedBox(height: 4),
                     Text(
@@ -373,6 +373,19 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                   child: const Text('Godkjenn'),
                 )
               else ...[
+                if (_canEditEmployees)
+                  IconButton(
+                    tooltip: 'Flytt til annen avdeling',
+                    icon: const Icon(Icons.swap_horiz, color: DriftProTheme.primaryGreen),
+                    onPressed: () async {
+                      final ok = await showEmployeeMoveDepartmentSheet(
+                        context,
+                        employee: user,
+                        departments: _departments,
+                      );
+                      if (ok == true) await _load();
+                    },
+                  ),
                 if (_canEditEmployees)
                   IconButton(
                     tooltip: 'Rediger telefon, adresse, dato',

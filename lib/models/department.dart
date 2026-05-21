@@ -4,6 +4,8 @@ class Department {
   final String name;
   final String? description;
   final String? leaderId;
+  /// Alle ledere for avdelingen (kan være flere).
+  final List<String> leaderIds;
   final String colorCode;
   final String iconName;
   final String? parentDepartmentId;
@@ -15,6 +17,7 @@ class Department {
     required this.name,
     this.description,
     this.leaderId,
+    this.leaderIds = const [],
     this.colorCode = '#2E7D32',
     this.iconName = 'business',
     this.parentDepartmentId,
@@ -28,6 +31,7 @@ class Department {
       name: json['name'] as String,
       description: json['description'] as String?,
       leaderId: json['leader_id'] as String?,
+      leaderIds: _parseLeaderIds(json),
       colorCode: json['color_code'] as String? ?? '#2E7D32',
       iconName: json['icon_name'] as String? ?? 'business',
       parentDepartmentId: json['parent_department_id'] as String?,
@@ -35,6 +39,16 @@ class Department {
           ? DateTime.parse(json['created_at'] as String)
           : null,
     );
+  }
+
+  static List<String> _parseLeaderIds(Map<String, dynamic> json) {
+    final raw = json['leader_ids'];
+    if (raw is List) {
+      return raw.map((e) => e.toString()).where((s) => s.isNotEmpty).toList();
+    }
+    final single = json['leader_id'] as String?;
+    if (single != null && single.isNotEmpty) return [single];
+    return const [];
   }
 
   Map<String, dynamic> toJson() => {

@@ -36,7 +36,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
   // Controllers for editing
   final _nameController = TextEditingController();
   final _descController = TextEditingController();
-  String? _selectedLeaderId;
+  final Set<String> _selectedLeaderIds = {};
 
   @override
   void initState() {
@@ -45,7 +45,12 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
     _currentDept = widget.department;
     _nameController.text = _currentDept.name;
     _descController.text = _currentDept.description ?? '';
-    _selectedLeaderId = _currentDept.leaderId;
+    _selectedLeaderIds
+      ..clear()
+      ..addAll(_currentDept.leaderIds);
+    if (_selectedLeaderIds.isEmpty && _currentDept.leaderId != null) {
+      _selectedLeaderIds.add(_currentDept.leaderId!);
+    }
     _loadData();
   }
 
@@ -161,17 +166,49 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
   }
 
   Widget _buildLeaderProfile(bool isDark) {
-    final leader = _allProfiles.firstWhere((p) => p.id == _selectedLeaderId, orElse: () => _allProfiles.first);
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: isDark ? DriftProTheme.cardDark : Colors.white, borderRadius: BorderRadius.circular(DriftProTheme.radiusLg), border: Border.all(color: DriftProTheme.primaryGreen.withOpacity(0.3))),
-      child: Row(
-        children: [
-          CircleAvatar(backgroundColor: DriftProTheme.primaryGreen.withOpacity(0.1), child: Text(leader.initials, style: const TextStyle(color: DriftProTheme.primaryGreen))),
-          const SizedBox(width: 16),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(leader.fullName, style: DriftProTheme.labelLg), Text(leader.email, style: DriftProTheme.bodySm)])),
-        ],
-      ),
+    if (_selectedLeaderIds.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDark ? DriftProTheme.cardDark : Colors.white,
+          borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
+        ),
+        child: const Text('Ingen leder valgt — legg til under Innstillinger'),
+      );
+    }
+    final leaders = _allProfiles.where((p) => _selectedLeaderIds.contains(p.id)).toList();
+    return Column(
+      children: leaders.map((leader) {
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: isDark ? DriftProTheme.cardDark : Colors.white,
+            borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
+            border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+                child: Text(leader.initials, style: const TextStyle(color: DriftProTheme.primaryGreen)),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(leader.fullName, style: DriftProTheme.labelLg),
+                    Text(leader.email, style: DriftProTheme.bodySm),
+                    if (leader.employeeNumber != null && leader.employeeNumber!.isNotEmpty)
+                      Text('Ansattnr. ${leader.employeeNumber}', style: DriftProTheme.bodySm),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 
@@ -187,7 +224,13 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
               return ListTile(
                 leading: CircleAvatar(child: Text(m.initials)),
                 title: Text(m.fullName),
-                subtitle: Text(m.role.name),
+                subtitle: Text(
+                  [
+                    if (m.employeeNumber != null && m.employeeNumber!.isNotEmpty)
+                      'Ansattnr. ${m.employeeNumber}',
+                    m.role.name,
+                  ].join(' · '),
+                ),
                 trailing: IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), onPressed: () => _removeMember(m.id)),
               );
             },
@@ -272,8 +315,8 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
            const Text('Beskrivelse'),
            TextField(controller: _descController, maxLines: 2),
            const SizedBox(height: 20),
-           const Text('Leder'),
-           _buildLeaderDropdown(isDark),
+           const Text('Avdelingsledere (kan velge flere)'),
+           _buildLeaderMultiSelect(isDark),
            const SizedBox(height: 40),
            Center(child: TextButton(onPressed: _confirmDelete, child: const Text('Slett Avdeling', style: TextStyle(color: Colors.red)))),
         ],
@@ -281,11 +324,34 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
     );
   }
 
-  Widget _buildLeaderDropdown(bool isDark) {
-    return DropdownButtonFormField<String>(
-      value: _selectedLeaderId,
-      items: _allProfiles.map((p) => DropdownMenuItem(value: p.id, child: Text(p.fullName))).toList(),
-      onChanged: (val) => setState(() => _selectedLeaderId = val),
+  Widget _buildLeaderMultiSelect(bool isDark) {
+    final candidates = _allProfiles
+        .where((p) => p.role != UserRole.samarbeidspartner && p.isApproved)
+        .toList()
+      ..sort((a, b) => a.fullName.compareTo(b.fullName));
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: candidates.map((p) {
+        final selected = _selectedLeaderIds.contains(p.id);
+        final label = p.employeeNumber != null && p.employeeNumber!.isNotEmpty
+            ? '${p.fullName} (${p.employeeNumber})'
+            : p.fullName;
+        return FilterChip(
+          label: Text(label),
+          selected: selected,
+          onSelected: (v) {
+            setState(() {
+              if (v) {
+                _selectedLeaderIds.add(p.id);
+              } else {
+                _selectedLeaderIds.remove(p.id);
+              }
+            });
+          },
+        );
+      }).toList(),
     );
   }
 
@@ -332,20 +398,34 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
 
     setState(() => _isLoading = true);
     try {
+      final primaryLeader =
+          _selectedLeaderIds.isEmpty ? null : _selectedLeaderIds.first;
+
       final updated = Department(
         id: _currentDept.id,
         companyId: _currentDept.companyId,
         name: _nameController.text,
         description: _descController.text,
-        leaderId: _selectedLeaderId,
+        leaderId: primaryLeader,
+        leaderIds: _selectedLeaderIds.toList(),
         colorCode: _currentDept.colorCode,
         iconName: _currentDept.iconName,
       );
-      
+
       if (widget.isNew) {
-        await SupabaseService.createDepartment(updated);
+        final created = await SupabaseService.createDepartment(updated);
+        if (_selectedLeaderIds.isNotEmpty) {
+          await SupabaseService.setDepartmentLeaders(
+            created.id,
+            _selectedLeaderIds.toList(),
+          );
+        }
       } else {
         await SupabaseService.updateDepartment(updated);
+        await SupabaseService.setDepartmentLeaders(
+          _currentDept.id,
+          _selectedLeaderIds.toList(),
+        );
       }
       
       if (mounted) {
@@ -364,6 +444,9 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
     showModalBottomSheet(context: context, builder: (_) => ListView(
       children: _allProfiles.where((p) => p.departmentId != _currentDept.id).map((p) => ListTile(
         title: Text(p.fullName),
+        subtitle: p.employeeNumber != null && p.employeeNumber!.isNotEmpty
+            ? Text('Ansattnr. ${p.employeeNumber}')
+            : null,
         onTap: () async {
            await SupabaseService.updateProfileDepartment(p.id, _currentDept.id);
            Navigator.pop(context);

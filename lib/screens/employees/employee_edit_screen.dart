@@ -165,7 +165,10 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
           _dateTile('Ansettelsesdato', _hireDate, (d) => _hireDate = d),
           DropdownButtonFormField<String>(
             value: _departmentId,
-            decoration: const InputDecoration(labelText: 'Avdeling'),
+            decoration: const InputDecoration(
+              labelText: 'Avdeling',
+              helperText: 'Ansatt kan flyttes til en annen avdeling her',
+            ),
             items: widget.departments
                 .map((d) => DropdownMenuItem(value: d.id, child: Text(d.name)))
                 .toList(),

@@ -82,8 +82,11 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                           itemCount: _departments.length,
                           itemBuilder: (context, index) {
                             final dept = _departments[index];
-                            final leader = _leaders[dept.leaderId];
-                            return _buildDepartmentCard(dept, leader, isDark);
+                            final leaderNames = dept.leaderIds
+                                .map((id) => _leaders[id]?.fullName)
+                                .whereType<String>()
+                                .toList();
+                            return _buildDepartmentCard(dept, leaderNames, isDark);
                           },
                         ),
                 ),
@@ -112,7 +115,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
     );
   }
 
-  Widget _buildDepartmentCard(Department dept, UserProfile? leader, bool isDark) {
+  Widget _buildDepartmentCard(Department dept, List<String> leaderNames, bool isDark) {
     final color = _parseColor(dept.colorCode);
 
     return Container(
@@ -184,8 +187,10 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                   children: [
                     _buildCompactStat(
                       context,
-                      'Leder',
-                      leader?.fullName ?? 'Ikke valgt',
+                      leaderNames.length > 1 ? 'Ledere' : 'Leder',
+                      leaderNames.isEmpty
+                          ? 'Ikke valgt'
+                          : leaderNames.join(', '),
                       AppIcons.profile,
                       isDark,
                     ),
