@@ -98,6 +98,8 @@ class _PartnerComplianceTabState extends State<PartnerComplianceTab> {
         nextMeetingAt: _p.nextMeetingAt,
         lastAuditAt: last,
         nextAuditAt: next,
+        isActive: _p.isActive,
+        routesOwnerOnly: _p.routesOwnerOnly,
         createdAt: _p.createdAt,
       ),
     );
@@ -134,6 +136,8 @@ class _PartnerComplianceTabState extends State<PartnerComplianceTab> {
         nextMeetingAt: _p.nextMeetingAt,
         lastAuditAt: _p.lastAuditAt,
         nextAuditAt: _p.nextAuditAt,
+        isActive: _p.isActive,
+        routesOwnerOnly: _p.routesOwnerOnly,
         createdAt: _p.createdAt,
       ),
     );
@@ -276,6 +280,8 @@ class _PartnerComplianceTabState extends State<PartnerComplianceTab> {
           nextMeetingAt: when,
           lastAuditAt: _p.lastAuditAt,
           nextAuditAt: meetingType == 'audit' ? when : _p.nextAuditAt,
+          isActive: _p.isActive,
+          routesOwnerOnly: _p.routesOwnerOnly,
           createdAt: _p.createdAt,
         ),
       );

@@ -9,6 +9,8 @@ import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
 import '../../core/utils/portal_credentials.dart';
+import 'widgets/partner_companies_ui.dart';
+import 'widgets/partner_ui.dart';
 
 class NewPartnerScreen extends StatefulWidget {
   const NewPartnerScreen({super.key});
@@ -18,8 +20,8 @@ class NewPartnerScreen extends StatefulWidget {
 }
 
 class _NewPartnerScreenState extends State<NewPartnerScreen> {
-  final _searchCtrl = TextEditingController();
   final _orgLookupCtrl = TextEditingController();
+  int _step = 0;
   final _nameCtrl = TextEditingController();
   final _ownerCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
@@ -40,13 +42,10 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
   final List<TextEditingController> _driverPhoneControllers = [TextEditingController()];
 
   bool _euApproved = false;
-  bool _searching = false;
   bool _saving = false;
-  List<BrregCompanyHit> _hits = [];
 
   @override
   void dispose() {
-    _searchCtrl.dispose();
     _orgLookupCtrl.dispose();
     _nameCtrl.dispose();
     _ownerCtrl.dispose();
@@ -96,27 +95,8 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
   }
 
   Future<void> _bulkAddMavi() async {
-    final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Legg til flere MAVI-nummer'),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 8,
-          decoration: const InputDecoration(
-            border: OutlineInputBorder(),
-            hintText: 'M0001\nM0002\nNO_O_M0003',
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Legg til')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final codes = MaviUnitCodes.parseBulk(ctrl.text);
+    final codes = await PartnerCompaniesUi.showMaviBulkPasteDialog(context);
+    if (codes.isEmpty) return;
     final seen = _existingMavi.toSet();
     setState(() {
       for (final code in codes) {
@@ -130,49 +110,33 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
     });
   }
 
-  Future<void> _runBrregNameSearch() async {
-    setState(() => _searching = true);
-    try {
-      final hits = await BrregService.searchByName(_searchCtrl.text);
-      setState(() => _hits = hits);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-      }
-    } finally {
-      if (mounted) setState(() => _searching = false);
-    }
+  void _applyBrreg(BrregCompanyDetails d) {
+    setState(() {
+      _orgLookupCtrl.text = d.orgNumber;
+      _nameCtrl.text = d.name;
+      _ownerCtrl.text = d.dailyLeaderName ?? _ownerCtrl.text;
+      _phoneCtrl.text = d.phone ?? _phoneCtrl.text;
+      _emailCtrl.text = d.email ?? _emailCtrl.text;
+      _addressCtrl.text = d.street ?? _addressCtrl.text;
+      _postalCtrl.text = d.postalCode ?? _postalCtrl.text;
+      _cityCtrl.text = d.city ?? _cityCtrl.text;
+      _step = 1;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Hentet ${d.name} fra Brreg')),
+    );
   }
 
-  void _applyHit(BrregCompanyHit h) {
-    _orgLookupCtrl.text = h.orgNumber;
-    _nameCtrl.text = h.name;
-    _cityCtrl.text = h.city ?? _cityCtrl.text;
-    setState(() => _hits = []);
-  }
-
-  Future<void> _runOrgLookup() async {
-    setState(() => _searching = true);
-    try {
-      final d = await BrregService.fetchByOrgNumber(_orgLookupCtrl.text);
-      if (d == null) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fant ingen enhet.')));
-        return;
-      }
-      setState(() {
-        _nameCtrl.text = d.name;
-        _orgLookupCtrl.text = d.orgNumber;
-        _ownerCtrl.text = d.dailyLeaderName ?? _ownerCtrl.text;
-        _phoneCtrl.text = d.phone ?? _phoneCtrl.text;
-        _emailCtrl.text = d.email ?? _emailCtrl.text;
-        _addressCtrl.text = d.street ?? _addressCtrl.text;
-        _postalCtrl.text = d.postalCode ?? _postalCtrl.text;
-        _cityCtrl.text = d.city ?? _cityCtrl.text;
-      });
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-    } finally {
-      if (mounted) setState(() => _searching = false);
+  bool _canNext() {
+    switch (_step) {
+      case 0:
+        return true;
+      case 1:
+        return _nameCtrl.text.trim().isNotEmpty;
+      case 2:
+        return true;
+      default:
+        return true;
     }
   }
 
@@ -351,322 +315,266 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Ny samarbeidspartner')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
+      backgroundColor: Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF0F1419)
+          : const Color(0xFFF3F4F6),
+      appBar: AppBar(
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        title: const Text('Ny bedrift'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (_step > 0) {
+              setState(() => _step--);
+            } else {
+              Navigator.pop(context);
+            }
+          },
+        ),
+      ),
+      body: Column(
         children: [
-          const Text('Brønnøysund (Brreg)', style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Søk bedriftsnavn',
-                    border: OutlineInputBorder(),
-                  ),
-                  onSubmitted: (_) => _runBrregNameSearch(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              IconButton.filled(
-                onPressed: _searching ? null : _runBrregNameSearch,
-                icon: _searching
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.search),
-              ),
-            ],
+          PartnerWizardStepper(
+            labels: const ['Brreg', 'Bedrift', 'MAVI', 'Lagre'],
+            current: _step,
           ),
-          if (_hits.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ..._hits.map(
-              (h) => ListTile(
-                dense: true,
-                title: Text(h.name),
-                subtitle: Text('${h.orgNumber} ${h.city ?? ''}'),
-                onTap: () => _applyHit(h),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              children: [
+                if (_step == 0) _stepBrreg(),
+                if (_step == 1) _stepCompany(),
+                if (_step == 2) _stepVehicles(),
+                if (_step == 3) _stepFinish(),
+              ],
+            ),
+          ),
+          _navBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _navBar() {
+    final isLast = _step == 3;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: Row(
+          children: [
+            if (_step > 0)
+              OutlinedButton(
+                onPressed: () => setState(() => _step--),
+                child: const Text('Tilbake'),
+              ),
+            const Spacer(),
+            FilledButton.icon(
+              onPressed: _saving || !_canNext()
+                  ? null
+                  : isLast
+                      ? _save
+                      : () => setState(() => _step++),
+              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+              icon: _saving && isLast
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : Icon(isLast ? Icons.check : Icons.arrow_forward),
+              label: Text(isLast ? 'Registrer bedrift' : 'Neste'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _stepBrreg() {
+    return PartnerBrregLookupPanel(onApply: _applyBrreg);
+  }
+
+  Widget _stepCompany() {
+    return PartnerSectionCard(
+      icon: Icons.storefront_outlined,
+      title: 'Bedriftsinformasjon',
+      subtitle: _orgLookupCtrl.text.isNotEmpty ? 'Org.nr ${_orgLookupCtrl.text}' : 'Fyll inn manuelt',
+      children: [
+        PartnerInlineField(label: 'Navn *', controller: _nameCtrl),
+        PartnerInlineField(label: 'Eier / kontakt', controller: _ownerCtrl),
+        PartnerInlineField(label: 'Telefon', controller: _phoneCtrl, keyboardType: TextInputType.phone),
+        PartnerInlineField(label: 'E-post', controller: _emailCtrl, keyboardType: TextInputType.emailAddress),
+        PartnerInlineField(label: 'Adresse', controller: _addressCtrl),
+        Row(
+          children: [
+            Expanded(child: PartnerInlineField(label: 'Postnr', controller: _postalCtrl)),
+            const SizedBox(width: 8),
+            Expanded(child: PartnerInlineField(label: 'Sted', controller: _cityCtrl)),
+          ],
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: PartnerInlineField(
+                label: 'Ant. kjøretøy',
+                controller: _vehiclesCtrl,
+                keyboardType: TextInputType.number,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: PartnerInlineField(
+                label: 'Nyttelast kg',
+                controller: _payloadCtrl,
+                keyboardType: TextInputType.number,
               ),
             ),
           ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _orgLookupCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Org.nr (9 siffer) — hent data',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton(
-                onPressed: _searching ? null : _runOrgLookup,
-                child: const Text('Hent'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const Text('Bedrift', style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _nameCtrl,
-            decoration: const InputDecoration(labelText: 'Navn *', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _ownerCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Daglig leder / kontaktperson (eier)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _phoneCtrl,
-            decoration: const InputDecoration(labelText: 'Telefon', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _emailCtrl,
-            decoration: const InputDecoration(labelText: 'E-post', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _addressCtrl,
-            decoration: const InputDecoration(labelText: 'Adresse', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _postalCtrl,
-                  decoration: const InputDecoration(labelText: 'Postnr', border: OutlineInputBorder()),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _cityCtrl,
-                  decoration: const InputDecoration(labelText: 'Sted', border: OutlineInputBorder()),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text('Kjøretøy & samsvar', style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _vehiclesCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Ant. registrerte vogntog/lastebiler (bedrift)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _payloadCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Nyttelast kg (typisk)',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SwitchListTile(
-            value: _euApproved,
-            onChanged: (v) => setState(() => _euApproved = v),
-            title: const Text('EU-godkjent materiell (oppgitt)'),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _notesCtrl,
-            maxLines: 3,
-            decoration: const InputDecoration(labelText: 'Notater', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 16),
-          const Text('Registrerte biler (reg.nr)', style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 4),
-          const Text(
-            'Flere registreringsnummer for bedriften — uavhengig av MAVI.',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-          const SizedBox(height: 8),
-          ...List.generate(_regOnlyControllers.length, (i) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _regOnlyControllers[i],
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: const InputDecoration(
-                        labelText: 'Registreringsnummer',
-                        border: OutlineInputBorder(),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: _euApproved,
+          onChanged: (v) => setState(() => _euApproved = v),
+          title: const Text('EU-godkjent materiell'),
+        ),
+        PartnerInlineField(label: 'Notater', controller: _notesCtrl, maxLines: 3),
+      ],
+    );
+  }
+
+  Widget _stepVehicles() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PartnerSectionCard(
+          icon: Icons.directions_car_outlined,
+          iconColor: DriftProTheme.accentBlue,
+          title: 'Reg.nr (valgfritt)',
+          subtitle: 'Kun registreringsnummer, uten MAVI',
+          children: [
+            ...List.generate(_regOnlyControllers.length, (i) {
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _regOnlyControllers[i],
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: const InputDecoration(
+                          labelText: 'Reg.nr',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _regOnlyControllers[i].dispose();
-                        _regOnlyControllers.removeAt(i);
-                      });
-                    },
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  ),
-                ],
-              ),
-            );
-          }),
-          OutlinedButton.icon(
-            onPressed: _addRegOnlyRow,
-            icon: const Icon(Icons.directions_car_outlined),
-            label: const Text('Legg til reg.nr'),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'MAVI & sjåfør (${_maviControllers.length})',
-            style: const TextStyle(fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Brukernavn genereres automatisk. Fyll navn + telefon — ved lagring opprettes sjåfør og SMS sendes.',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-          const SizedBox(height: 8),
-          ...List.generate(_maviControllers.length, (i) {
-            final unit = MaviUnitCodes.normalize(_maviControllers[i].text);
-            final userPreview = unit.isEmpty ? '' : PortalCredentials.driverUsername(unit);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _maviControllers[i],
-                              onChanged: (_) => setState(() {}),
-                              decoration: const InputDecoration(
-                                labelText: 'MAVI-nummer *',
-                                border: OutlineInputBorder(),
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () {
-                              setState(() {
-                                _maviControllers[i].dispose();
-                                _regControllers[i].dispose();
-                                _driverNameControllers[i].dispose();
-                                _driverPhoneControllers[i].dispose();
-                                _maviControllers.removeAt(i);
-                                _regControllers.removeAt(i);
-                                _driverNameControllers.removeAt(i);
-                                _driverPhoneControllers.removeAt(i);
-                              });
-                            },
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _driverNameControllers[i],
-                        textCapitalization: TextCapitalization.words,
-                        decoration: const InputDecoration(
-                          labelText: 'Sjåfør navn (personnavn)',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _driverPhoneControllers[i],
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          labelText: 'Sjåfør telefon (SMS med innlogging)',
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      if (userPreview.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            'Auto brukernavn: $userPreview · passord sendes på SMS',
-                            style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                          ),
-                        ),
-                    ],
-                  ),
+                    IconButton(
+                      onPressed: () {
+                        setState(() {
+                          _regOnlyControllers[i].dispose();
+                          _regOnlyControllers.removeAt(i);
+                        });
+                      },
+                      icon: const Icon(Icons.close, color: Colors.red, size: 20),
+                    ),
+                  ],
                 ),
-              ),
-            );
-          }),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _addMaviRow,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Legg til MAVI'),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _bulkAddMavi,
-                  icon: const Icon(Icons.playlist_add),
-                  label: const Text('Flere MAVI'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          const Text('Eksisterende bruker (valgfritt)', style: TextStyle(fontWeight: FontWeight.w800)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _inviteEmailCtrl,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: 'E-post til eksisterende intern bruker',
-              border: OutlineInputBorder(),
+              );
+            }),
+            OutlinedButton.icon(
+              onPressed: _addRegOnlyRow,
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Reg.nr'),
             ),
+          ],
+        ),
+        PartnerSectionCard(
+          icon: Icons.local_shipping_outlined,
+          title: 'MAVI & sjåfør',
+          subtitle: '${_maviControllers.length} enhet(er) · SMS ved lagring hvis navn+telefon',
+          trailing: PartnerStatusBadge(
+            label: '${_maviControllers.length}',
+            color: DriftProTheme.primaryGreen,
           ),
-          const SizedBox(height: 32),
-          FilledButton.icon(
-            onPressed: _saving ? null : _save,
-            style: FilledButton.styleFrom(
-              backgroundColor: DriftProTheme.primaryGreen,
-              padding: const EdgeInsets.symmetric(vertical: 16),
+          children: [
+            ...List.generate(_maviControllers.length, (i) {
+              final unit = MaviUnitCodes.normalize(_maviControllers[i].text);
+              final preview = unit.isEmpty ? '' : PortalCredentials.driverUsername(unit);
+              return PartnerMaviRegisterCard(
+                index: i,
+                maviController: _maviControllers[i],
+                driverNameController: _driverNameControllers[i],
+                driverPhoneController: _driverPhoneControllers[i],
+                usernamePreview: preview,
+                onRemove: () {
+                  setState(() {
+                    _maviControllers[i].dispose();
+                    _regControllers[i].dispose();
+                    _driverNameControllers[i].dispose();
+                    _driverPhoneControllers[i].dispose();
+                    _maviControllers.removeAt(i);
+                    _regControllers.removeAt(i);
+                    _driverNameControllers.removeAt(i);
+                    _driverPhoneControllers.removeAt(i);
+                  });
+                },
+              );
+            }),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _addMaviRow,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('MAVI'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _bulkAddMavi,
+                    icon: const Icon(Icons.playlist_add, size: 18),
+                    label: const Text('Lim inn flere'),
+                  ),
+                ),
+              ],
             ),
-            icon: _saving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.save_outlined),
-            label: const Text('Lagre samarbeidspartner'),
-          ),
-          const SizedBox(height: 40),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _stepFinish() {
+    final maviCount = _maviControllers.where((c) => MaviUnitCodes.normalize(c.text).isNotEmpty).length;
+    return PartnerSectionCard(
+      icon: Icons.fact_check_outlined,
+      title: 'Klar til registrering',
+      subtitle: 'Sjekk oppsummering før du lagrer',
+      children: [
+        _summaryRow('Bedrift', _nameCtrl.text.trim().isEmpty ? '—' : _nameCtrl.text.trim()),
+        _summaryRow('Org.nr', _orgLookupCtrl.text.isEmpty ? '—' : _orgLookupCtrl.text),
+        _summaryRow('Kontakt', _ownerCtrl.text.trim().isEmpty ? '—' : _ownerCtrl.text.trim()),
+        _summaryRow('MAVI-enheter', '$maviCount'),
+        _summaryRow('Reg.nr', '${_regOnlyControllers.where((c) => c.text.trim().length >= 4).length}'),
+        const SizedBox(height: 12),
+        PartnerInlineField(
+          label: 'Knytt eksisterende bruker (e-post, valgfritt)',
+          controller: _inviteEmailCtrl,
+          keyboardType: TextInputType.emailAddress,
+        ),
+      ],
+    );
+  }
+
+  Widget _summaryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          SizedBox(width: 100, child: Text(label, style: DriftProTheme.labelSm)),
+          Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w700))),
         ],
       ),
     );

@@ -44,8 +44,10 @@ String _dispatchLong(String d) {
   switch (d) {
     case 'staged':
       return 'Kladd (ikke sendt)';
+    case 'registered':
+      return 'Registrert uten varsel';
     case 'sent':
-      return 'Sendt til portal';
+      return 'Varslet (SMS + portal)';
     default:
       return d;
   }

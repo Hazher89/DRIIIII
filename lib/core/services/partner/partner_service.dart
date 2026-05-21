@@ -24,14 +24,37 @@ class PartnerService {
       !SupabaseConfig.url.startsWith('YOUR_') &&
       !SupabaseConfig.anonKey.startsWith('YOUR_');
 
-  static Future<List<Partner>> fetchPartners({required String companyId}) async {
+  static Future<List<Partner>> fetchPartners({
+    required String companyId,
+    bool activeOnly = false,
+  }) async {
     if (!_ok) return const [];
-    final data = await _client
-        .from('partners')
-        .select()
-        .eq('company_id', companyId)
-        .order('name') as List<dynamic>;
+    var query = _client.from('partners').select().eq('company_id', companyId);
+    if (activeOnly) query = query.eq('is_active', true);
+    final data = await query.order('name') as List<dynamic>;
     return data.map((e) => Partner.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  static Future<void> setPartnerActive({
+    required String partnerId,
+    required bool isActive,
+  }) async {
+    if (!_ok) return;
+    await _client.from('partners').update({
+      'is_active': isActive,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', partnerId);
+  }
+
+  static Future<void> setVehicleActive({
+    required String vehicleId,
+    required bool isActive,
+  }) async {
+    if (!_ok) return;
+    await _client.from('partner_vehicles').update({
+      'is_active': isActive,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', vehicleId);
   }
 
   static Future<Partner?> fetchPartner(String id) async {
@@ -55,6 +78,14 @@ class PartnerService {
   static Future<void> updatePartner(String id, Partner patch) async {
     if (!_ok) return;
     await _client.from('partners').update(patch.toUpdateJson()).eq('id', id);
+  }
+
+  static Future<void> updatePartnerFields(
+    String id,
+    Map<String, dynamic> fields,
+  ) async {
+    if (!_ok || fields.isEmpty) return;
+    await _client.from('partners').update(fields).eq('id', id);
   }
 
   static Future<void> deletePartner(String id) async {
@@ -263,6 +294,8 @@ class PartnerService {
         nextMeetingAt: partner.nextMeetingAt,
         lastAuditAt: partner.lastAuditAt,
         nextAuditAt: partner.nextAuditAt,
+        isActive: partner.isActive,
+        routesOwnerOnly: partner.routesOwnerOnly,
         createdAt: partner.createdAt,
       ),
     );
@@ -552,8 +585,11 @@ class PartnerService {
     required Map<String, String> shareIdToShiftId,
     required DateTime date,
     Map<String, DateTime?> shareIdToStartAt = const {},
+    bool notifyDriver = true,
   }) async {
     if (!_ok || shareIdToShiftId.isEmpty) return;
+
+    final status = notifyDriver ? 'sent' : 'registered';
 
     for (final entry in shareIdToShiftId.entries) {
       final startAt = shareIdToStartAt[entry.key];
@@ -562,7 +598,7 @@ class PartnerService {
           : date;
       final d = routeDay.toIso8601String().split('T').first;
       final patch = <String, dynamic>{
-        'dispatch_status': 'sent',
+        'dispatch_status': status,
         'shift_id': entry.value,
         'share_date': d,
       };
@@ -573,9 +609,16 @@ class PartnerService {
 
       final row = await _client
           .from('partner_route_shares')
-          .select('partner_vehicle_id')
+          .select('partner_vehicle_id, pdf_search_text')
           .eq('id', entry.key)
           .maybeSingle();
+      final pdfText = row?['pdf_search_text'] as String?;
+      if (pdfText != null && pdfText.trim().isNotEmpty) {
+        final n = RoutePdfTextService.parseCustomers(pdfText).length;
+        if (n > 0) {
+          await _client.from('partner_route_shares').update({'customer_count': n}).eq('id', entry.key);
+        }
+      }
       final vid = row?['partner_vehicle_id'] as String?;
       if (vid == null) continue;
 
@@ -595,11 +638,13 @@ class PartnerService {
         ),
       );
 
-      // SMS sendes av DB-trigger trg_partner_route_sms_on_sent når dispatch_status = sent.
+      // SMS sendes kun når dispatch_status = sent (trg_partner_route_sms_on_sent).
     }
-    try {
-      await flushSmsOutbox();
-    } catch (_) {}
+    if (notifyDriver) {
+      try {
+        await flushSmsOutbox();
+      } catch (_) {}
+    }
   }
 
   /// Publiser alle ruter i kladd ([dispatchStatus] = staged) til sjåfører.
@@ -1111,13 +1156,14 @@ class PartnerService {
     }).eq('id', profileId);
   }
 
-  static Future<List<PartnerVehicle>> fetchVehicles(String partnerId) async {
+  static Future<List<PartnerVehicle>> fetchVehicles(
+    String partnerId, {
+    bool activeOnly = false,
+  }) async {
     if (!_ok) return const [];
-    final data = await _client
-        .from('partner_vehicles')
-        .select()
-        .eq('partner_id', partnerId)
-        .order('unit_code', ascending: true) as List<dynamic>;
+    var query = _client.from('partner_vehicles').select().eq('partner_id', partnerId);
+    if (activeOnly) query = query.eq('is_active', true);
+    final data = await query.order('unit_code', ascending: true) as List<dynamic>;
     return data.map((e) => PartnerVehicle.fromJson(e as Map<String, dynamic>)).toList();
   }
 
@@ -1490,12 +1536,17 @@ class PartnerService {
     await _client.from('fleet_shift_definitions').update({'is_archived': false}).eq('id', shiftId);
   }
 
-  static Future<List<FleetPartnerVehicleRow>> fetchCompanyFleet(String companyId) async {
+  static Future<List<FleetPartnerVehicleRow>> fetchCompanyFleet(
+    String companyId, {
+    bool forPlanning = true,
+  }) async {
     if (!_ok) return const [];
-    final partners = await fetchPartners(companyId: companyId);
+    final partners = await fetchPartners(companyId: companyId, activeOnly: forPlanning);
     final out = <FleetPartnerVehicleRow>[];
     for (final p in partners) {
-      for (final v in await fetchVehicles(p.id)) {
+      if (forPlanning && !p.isActive) continue;
+      for (final v in await fetchVehicles(p.id, activeOnly: forPlanning)) {
+        if (forPlanning && !v.isActive) continue;
         out.add(FleetPartnerVehicleRow(partner: p, vehicle: v));
       }
     }

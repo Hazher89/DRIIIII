@@ -5,6 +5,8 @@ import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
+import 'widgets/partner_companies_ui.dart';
+import 'widgets/partner_ui.dart';
 
 class _BulkRow {
   _BulkRow({
@@ -21,7 +23,7 @@ class _BulkRow {
   bool selected = true;
 }
 
-/// Lim inn mange org.nr (9 siffer) eller bedriftsnavn — hent fra Brreg og registrer valgte.
+/// Masseimport av bedrifter fra Brreg — kompakt forhåndsvisning og registrering.
 class BulkPartnersScreen extends StatefulWidget {
   const BulkPartnersScreen({super.key});
 
@@ -31,6 +33,7 @@ class BulkPartnersScreen extends StatefulWidget {
 
 class _BulkPartnersScreenState extends State<BulkPartnersScreen> {
   final _pasteCtrl = TextEditingController();
+  int _phase = 0; // 0 = lim inn, 1 = forhåndsvis
   bool _fetching = false;
   bool _saving = false;
   List<_BulkRow> _rows = [];
@@ -67,33 +70,23 @@ class _BulkPartnersScreenState extends State<BulkPartnersScreen> {
       try {
         if (digits.length == 9) {
           final d = await BrregService.fetchByOrgNumber(digits);
-          if (d == null) {
-            out.add(_BulkRow(sourceLine: line, error: 'Fant ikke org.nr i Brreg'));
-          } else {
-            out.add(_BulkRow(sourceLine: line, details: d));
-          }
+          out.add(_BulkRow(
+            sourceLine: line,
+            details: d,
+            error: d == null ? 'Fant ikke i Brreg' : null,
+          ));
         } else {
           final hits = await BrregService.searchByName(line);
           if (hits.isEmpty) {
-            out.add(_BulkRow(sourceLine: line, error: 'Ingen treff på navn'));
-          } else if (hits.length == 1) {
-            final d = await BrregService.fetchByOrgNumber(hits.first.orgNumber);
-            if (d == null) {
-              out.add(_BulkRow(sourceLine: line, error: 'Kunne ikke hente detaljer'));
-            } else {
-              out.add(_BulkRow(sourceLine: line, details: d));
-            }
+            out.add(_BulkRow(sourceLine: line, error: 'Ingen treff'));
           } else {
             final d = await BrregService.fetchByOrgNumber(hits.first.orgNumber);
-            if (d == null) {
-              out.add(_BulkRow(sourceLine: line, error: 'Kunne ikke hente detaljer'));
-            } else {
-              out.add(_BulkRow(
-                sourceLine: line,
-                details: d,
-                warning: 'Flere treff — brukte: ${hits.first.name} (${hits.first.orgNumber})',
-              ));
-            }
+            out.add(_BulkRow(
+              sourceLine: line,
+              details: d,
+              error: d == null ? 'Kunne ikke hente' : null,
+              warning: hits.length > 1 ? 'Flere treff — valgte ${hits.first.name}' : null,
+            ));
           }
         }
       } catch (e) {
@@ -104,6 +97,7 @@ class _BulkPartnersScreenState extends State<BulkPartnersScreen> {
       setState(() {
         _rows = out;
         _fetching = false;
+        _phase = 1;
       });
     }
   }
@@ -112,7 +106,7 @@ class _BulkPartnersScreenState extends State<BulkPartnersScreen> {
     final picked = _rows.where((r) => r.selected && r.details != null).toList();
     if (picked.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Velg minst én bedrift med gyldig Brreg-data.')),
+        const SnackBar(content: Text('Velg minst én gyldig bedrift.')),
       );
       return;
     }
@@ -123,28 +117,33 @@ class _BulkPartnersScreenState extends State<BulkPartnersScreen> {
       var ok = 0;
       for (final row in picked) {
         final d = row.details!;
-        final p = Partner(
-          id: '',
-          companyId: cid,
-          orgNumber: d.orgNumber,
-          name: d.name,
-          ownerName: d.dailyLeaderName,
-          phone: d.phone,
-          email: d.email,
-          address: d.street,
-          postalCode: d.postalCode,
-          city: d.city,
-          country: d.country ?? 'NO',
-          vehicleCountRegistered: 0,
-          brregSnapshot: d.raw,
-          createdAt: DateTime.now(),
+        await PartnerService.createPartner(
+          Partner(
+            id: '',
+            companyId: cid,
+            orgNumber: d.orgNumber,
+            name: d.name,
+            ownerName: d.dailyLeaderName,
+            phone: d.phone,
+            email: d.email,
+            address: d.street,
+            postalCode: d.postalCode,
+            city: d.city,
+            country: d.country ?? 'NO',
+            vehicleCountRegistered: 0,
+            brregSnapshot: d.raw,
+            createdAt: DateTime.now(),
+          ),
         );
-        await PartnerService.createPartner(p);
         ok++;
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Registrert $ok samarbeidspartnere. Legg til biler og portal under hver bedrift.')),
+          SnackBar(
+            content: Text(
+              'Registrert $ok bedrifter. Åpne hver bedrift for å legge til MAVI og sjåfør.',
+            ),
+          ),
         );
         Navigator.of(context).pop(true);
       }
@@ -157,120 +156,226 @@ class _BulkPartnersScreenState extends State<BulkPartnersScreen> {
     }
   }
 
+  int get _okCount => _rows.where((r) => r.details != null).length;
+  int get _selectedCount => _rows.where((r) => r.selected && r.details != null).length;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Masseimport (Brreg)')),
+      appBar: AppBar(
+        title: const Text('Masseimport Brreg'),
+        actions: [
+          if (_phase == 1)
+            TextButton(
+              onPressed: () => setState(() => _phase = 0),
+              child: const Text('Tilbake'),
+            ),
+        ],
+      ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+          PartnerWizardStepper(
+            labels: const ['Lim inn', 'Forhåndsvis', 'Registrer'],
+            current: _phase,
+          ),
+          Expanded(child: _phase == 0 ? _pastePhase() : _previewPhase()),
+          if (_phase == 1) _bottomBar(),
+        ],
+      ),
+    );
+  }
+
+  Widget _pastePhase() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        PartnerSectionCard(
+          icon: Icons.content_paste_go_rounded,
+          iconColor: DriftProTheme.accentBlue,
+          title: 'Lim inn bedrifter',
+          subtitle: 'Org.nr (9 siffer) eller bedriftsnavn — ett per linje',
+          children: [
+            TextField(
+              controller: _pasteCtrl,
+              maxLines: 10,
+              decoration: const InputDecoration(
+                hintText: '912345678\nAcme Transport AS\n923456789',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _fetching ? null : _lookupBrreg,
+              style: FilledButton.styleFrom(
+                backgroundColor: DriftProTheme.primaryGreen,
+                minimumSize: const Size.fromHeight(48),
+              ),
+              icon: _fetching
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.cloud_download_outlined),
+              label: Text(_fetching ? 'Henter fra Brreg…' : 'Hent og forhåndsvis'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
+          ),
+          child: const Text(
+            'Tips: Etter registrering åpner du hver bedrift og legger til MAVI-nummer og sjåfør under Oversikt.',
+            style: TextStyle(fontSize: 12, height: 1.4),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _previewPhase() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            children: [
+              _statChip('$_okCount funnet', DriftProTheme.primaryGreen),
+              const SizedBox(width: 8),
+              _statChip('$_selectedCount valgt', DriftProTheme.accentBlue),
+              const Spacer(),
+              TextButton(onPressed: _selectAll, child: const Text('Alle')),
+              TextButton(onPressed: _selectNone, child: const Text('Ingen')),
+            ],
+          ),
+        ),
+        ..._rows.map(_previewTile),
+      ],
+    );
+  }
+
+  Widget _statChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+    );
+  }
+
+  Widget _previewTile(_BulkRow r) {
+    final d = r.details;
+    final ok = d != null;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: PartnerUi.surface(context),
+        borderRadius: BorderRadius.circular(10),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: ok ? () => setState(() => r.selected = !r.selected) : null,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: ok
+                    ? (r.selected ? DriftProTheme.primaryGreen : Colors.grey.shade300)
+                    : Colors.red.shade200,
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
               children: [
-                Text(
-                  'Lim inn flere org.nr (9 siffer) eller bedriftsnavn. Skill med linjeskift, komma eller semikolon.',
-                  style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                Checkbox(
+                  value: r.selected && ok,
+                  onChanged: ok ? (v) => setState(() => r.selected = v ?? false) : null,
+                  visualDensity: VisualDensity.compact,
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _pasteCtrl,
-                  maxLines: 6,
-                  decoration: const InputDecoration(
-                    labelText: 'Org.nr / navn',
-                    border: OutlineInputBorder(),
-                    alignLabelWithHint: true,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        d?.name ?? r.sourceLine,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                          color: ok ? null : Colors.red.shade800,
+                        ),
+                      ),
+                      if (d != null)
+                        Text(
+                          '${d.orgNumber} · ${d.city ?? ''} · ${d.dailyLeaderName ?? '—'}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 11, color: PartnerUi.mutedText(context)),
+                        ),
+                      if (r.error != null)
+                        Text(r.error!, style: TextStyle(fontSize: 10, color: Colors.red.shade700)),
+                      if (r.warning != null)
+                        Text(r.warning!, style: TextStyle(fontSize: 10, color: Colors.orange.shade800)),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: _fetching ? null : _lookupBrreg,
-                  style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-                  icon: _fetching
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.cloud_download_outlined),
-                  label: Text(_fetching ? 'Henter fra Brreg…' : 'Hent data fra Brreg'),
+                Icon(
+                  ok ? Icons.check_circle_outline : Icons.error_outline,
+                  size: 20,
+                  color: ok ? DriftProTheme.primaryGreen : Colors.red,
                 ),
               ],
             ),
           ),
-          if (_rows.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  TextButton(
-                    onPressed: () => setState(() {
-                      for (final r in _rows) {
-                        r.selected = true;
-                      }
-                    }),
-                    child: const Text('Velg alle'),
-                  ),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      for (final r in _rows) {
-                        r.selected = false;
-                      }
-                    }),
-                    child: const Text('Velg ingen'),
-                  ),
-                  const Spacer(),
-                  FilledButton(
-                    onPressed: _saving ? null : _registerSelected,
-                    child: _saving
-                        ? const SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Text('Registrer valgte'),
-                  ),
-                ],
-              ),
-            ),
-          Expanded(
-            child: _rows.isEmpty
-                ? const SizedBox.shrink()
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                    itemCount: _rows.length,
-                    itemBuilder: (_, i) {
-                      final r = _rows[i];
-                      final d = r.details;
-                      return Card(
-                        child: CheckboxListTile(
-                          value: r.selected,
-                          onChanged: d == null && r.error != null
-                              ? null
-                              : (v) => setState(() => r.selected = v ?? false),
-                          title: Text(
-                            d?.name ?? r.sourceLine,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              color: r.error != null ? Colors.red[800] : null,
-                            ),
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (d != null) Text('Org.nr ${d.orgNumber} · ${d.city ?? ''}'),
-                              if (r.error != null) Text(r.error!, style: const TextStyle(color: Colors.red)),
-                              if (r.warning != null)
-                                Text(r.warning!, style: TextStyle(fontSize: 12, color: Colors.orange[800])),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
+        ),
       ),
     );
+  }
+
+  Widget _bottomBar() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+        child: FilledButton.icon(
+          onPressed: _saving || _selectedCount == 0 ? null : _registerSelected,
+          style: FilledButton.styleFrom(
+            backgroundColor: DriftProTheme.primaryGreen,
+            minimumSize: const Size.fromHeight(50),
+          ),
+          icon: _saving
+              ? const SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.done_all),
+          label: Text(_saving ? 'Registrerer…' : 'Registrer $_selectedCount bedrifter'),
+        ),
+      ),
+    );
+  }
+
+  void _selectAll() {
+    setState(() {
+      for (final r in _rows) {
+        if (r.details != null) r.selected = true;
+      }
+    });
+  }
+
+  void _selectNone() {
+    setState(() {
+      for (final r in _rows) {
+        r.selected = false;
+      }
+    });
   }
 }

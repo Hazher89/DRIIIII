@@ -22,6 +22,7 @@ import 'widgets/partner_documents_tab.dart';
 import 'widgets/partner_fri_tab.dart';
 import 'widgets/partner_overview_tab.dart';
 import 'widgets/partner_transport_licenses_tab.dart';
+import 'widgets/partner_modern_ui.dart';
 import 'widgets/partner_ui.dart';
 import 'widgets/partner_vehicle_inspection_tab.dart';
 
@@ -193,40 +194,36 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PartnerHeroBanner(
-            compact: true,
+          PartnerModernDetailHeader(
             title: _p.tradeName?.isNotEmpty == true ? _p.tradeName! : _p.name,
             subtitle: [
               if (_p.orgNumber != null) 'Org.nr ${_p.orgNumber}',
               if (_p.ownerName != null && _p.ownerName!.isNotEmpty) _p.ownerName!,
               if (loc.isNotEmpty) loc,
             ].join(' · '),
-            leading: Container(
-              width: 42,
-              height: 42,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                _p.name.isNotEmpty ? _p.name.characters.first.toUpperCase() : '?',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
-              ),
-            ),
-            trailing: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '$_maviCount MAVI',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
-                ),
-                Text(
-                  '$_regCount reg.nr',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.78), fontSize: 11),
-                ),
-              ],
-            ),
+            maviCount: _maviCount,
+            regCount: _regCount,
+            isActive: _p.isActive,
+            canToggleActive: _profile?.access.canPartnersAdmin == true ||
+                _profile?.access.canPartnersCreate == true,
+            onActiveChanged: (_profile?.access.canPartnersAdmin == true ||
+                    _profile?.access.canPartnersCreate == true)
+                ? (v) async {
+                    await PartnerService.setPartnerActive(partnerId: _p.id, isActive: v);
+                    await _reload();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            v
+                                ? 'Bedriften er aktiv i ruteplanlegger'
+                                : 'Bedriften er deaktivert',
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                : null,
           ),
           if (_tabs != null)
             PartnerDetailTabBar(controller: _tabs!, tabs: _tabBarEntries),

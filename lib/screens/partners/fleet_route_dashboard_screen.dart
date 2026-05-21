@@ -8,6 +8,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/fleet_shift.dart';
 import '../../models/partner/partner_links.dart';
+import 'fleet_route_driver_stats_screen.dart';
 import 'fleet_shift_admin_screen.dart';
 import 'widgets/fleet_dashboard_ui.dart';
 
@@ -968,8 +969,35 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
 
   Widget _statsTab() {
     final a = _analytics;
+    final driverBundle = FleetAnalyticsService.buildDriverStats(
+      period: FleetCalendarPeriod.month,
+      shares: _recentShares,
+      snapshots: _rangeSnaps,
+      fleet: _fleet,
+    );
     return ListView(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Card(
+            color: DriftProTheme.primaryGreen.withValues(alpha: 0.06),
+            child: ListTile(
+              leading: Icon(Icons.insights, color: DriftProTheme.primaryGreen),
+              title: const Text('Sjåfør-statistikk', style: TextStyle(fontWeight: FontWeight.w800)),
+              subtitle: Text(
+                driverBundle.mostRoutes != null
+                    ? 'Mest ruter: ${driverBundle.mostRoutes!.displayMavi} (${driverBundle.mostRoutes!.routeCount}) · ${driverBundle.totalCustomers} kunder denne måneden'
+                    : 'Ruter, kunder og fri per dag, uke, måned og år',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
+                );
+              },
+            ),
+          ),
+        ),
         _periodChips(),
         _advancedKpiRow(),
         _pieChartCard(),

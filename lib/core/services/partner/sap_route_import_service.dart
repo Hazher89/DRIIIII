@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import 'mavi_unit_codes.dart';
@@ -13,6 +15,8 @@ class SapRouteImportService {
     required DateTime routeDate,
     required List<FleetPartnerVehicleRow> fleet,
     List<String>? inboxIds,
+    /// Når false: feilede PDF-er returneres til UI for manuell tildeling (ikke avvist i DB).
+    bool rejectOnFailure = true,
   }) async {
     final pending = await PartnerService.fetchSapRouteInboxPending(companyId);
     final targets = inboxIds == null
@@ -31,6 +35,7 @@ class SapRouteImportService {
 
     final day = DateTime(routeDate.year, routeDate.month, routeDate.day);
     final lines = <SapRouteImportLine>[];
+    final skippedItems = <SapRouteImportSkippedItem>[];
     var imported = 0;
     var skipped = 0;
 
@@ -38,9 +43,12 @@ class SapRouteImportService {
       try {
         final bytes = await PartnerService.downloadRoutePdfBytes(item.pdfStoragePath);
         if (bytes == null || bytes.isEmpty) {
-          await PartnerService.markSapRouteInboxRejected(
-            id: item.id,
+          await _failItem(
+            item: item,
+            rejectOnFailure: rejectOnFailure,
             reason: 'Kunne ikke lese PDF',
+            bytes: null,
+            skippedItems: skippedItems,
           );
           skipped++;
           lines.add(SapRouteImportLine(
@@ -54,9 +62,13 @@ class SapRouteImportService {
         final meta = RoutePdfTextService.extractTripOverviewMeta(bytes);
         final code = meta.maviCode ?? RoutePdfTextService.extractResourceIdFromBytes(bytes);
         if (code == null) {
-          await PartnerService.markSapRouteInboxRejected(
-            id: item.id,
-            reason: 'Fant ikke MAVI i PDF',
+          await _failItem(
+            item: item,
+            rejectOnFailure: rejectOnFailure,
+            reason: 'Fant ikke MAVI-nummer i PDF',
+            bytes: bytes,
+            detectedCode: null,
+            skippedItems: skippedItems,
           );
           skipped++;
           lines.add(SapRouteImportLine(
@@ -69,9 +81,13 @@ class SapRouteImportService {
 
         final vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, code);
         if (vehicle == null) {
-          await PartnerService.markSapRouteInboxRejected(
-            id: item.id,
-            reason: 'Ingen bil for $code',
+          await _failItem(
+            item: item,
+            rejectOnFailure: rejectOnFailure,
+            reason: 'Ingen bil matcher $code',
+            bytes: bytes,
+            detectedCode: code,
+            skippedItems: skippedItems,
           );
           skipped++;
           lines.add(SapRouteImportLine(
@@ -85,9 +101,13 @@ class SapRouteImportService {
 
         final partner = partnerById[vehicle.partnerId];
         if (partner == null) {
-          await PartnerService.markSapRouteInboxRejected(
-            id: item.id,
+          await _failItem(
+            item: item,
+            rejectOnFailure: rejectOnFailure,
             reason: 'Partner mangler',
+            bytes: bytes,
+            detectedCode: code,
+            skippedItems: skippedItems,
           );
           skipped++;
           lines.add(SapRouteImportLine(
@@ -121,9 +141,12 @@ class SapRouteImportService {
           maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
         ));
       } catch (e) {
-        await PartnerService.markSapRouteInboxRejected(
-          id: item.id,
+        await _failItem(
+          item: item,
+          rejectOnFailure: rejectOnFailure,
           reason: e.toString(),
+          bytes: null,
+          skippedItems: skippedItems,
         );
         skipped++;
         lines.add(SapRouteImportLine(
@@ -138,7 +161,31 @@ class SapRouteImportService {
       imported: imported,
       skipped: skipped,
       lines: lines,
+      skippedItems: skippedItems,
     );
+  }
+
+  static Future<void> _failItem({
+    required SapRouteInboxItem item,
+    required bool rejectOnFailure,
+    required String reason,
+    required List<SapRouteImportSkippedItem> skippedItems,
+    Uint8List? bytes,
+    String? detectedCode,
+  }) async {
+    if (rejectOnFailure) {
+      await PartnerService.markSapRouteInboxRejected(id: item.id, reason: reason);
+      return;
+    }
+    if (bytes != null && bytes.isNotEmpty) {
+      skippedItems.add(SapRouteImportSkippedItem(
+        inboxId: item.id,
+        fileName: item.fileName,
+        bytes: bytes,
+        reason: reason,
+        detectedCode: detectedCode,
+      ));
+    }
   }
 
   static Future<Map<String, PartnerVehicle>> _loadVehicleLookup(

@@ -25,6 +25,9 @@ class Partner {
   final DateTime? nextMeetingAt;
   final DateTime? lastAuditAt;
   final DateTime? nextAuditAt;
+  final bool isActive;
+  /// Kun bil-eier får ruter, SMS og aksept for alle MAVI under bedriften.
+  final bool routesOwnerOnly;
   final DateTime createdAt;
 
   Partner({
@@ -54,6 +57,8 @@ class Partner {
     this.nextMeetingAt,
     this.lastAuditAt,
     this.nextAuditAt,
+    this.isActive = true,
+    this.routesOwnerOnly = false,
     required this.createdAt,
   });
 
@@ -93,6 +98,8 @@ class Partner {
       nextAuditAt: json['next_audit_at'] != null
           ? DateTime.parse(json['next_audit_at'] as String)
           : null,
+      isActive: json['is_active'] as bool? ?? true,
+      routesOwnerOnly: json['routes_owner_only'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -154,6 +161,8 @@ class Partner {
       'next_meeting_at': nextMeetingAt?.toIso8601String(),
       'last_audit_at': lastAuditAt?.toIso8601String().split('T').first,
       'next_audit_at': nextAuditAt?.toIso8601String().split('T').first,
+      'is_active': isActive,
+      'routes_owner_only': routesOwnerOnly,
       'updated_at': DateTime.now().toIso8601String(),
     };
   }

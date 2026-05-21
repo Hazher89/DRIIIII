@@ -4,8 +4,6 @@ import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/partner_access.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
-import '../../core/services/partner/mavi_unit_codes.dart';
-import '../../core/services/partner/partner_search.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -14,9 +12,10 @@ import '../../models/partner/partner_links.dart';
 import '../../models/user_profile.dart';
 import 'bulk_partners_screen.dart';
 import 'new_partner_screen.dart';
-import 'partner_detail_screen.dart';
 import 'partner_route_planner_screen.dart';
-import 'partner_sms_compose_screen.dart';
+import 'widgets/partner_companies_board.dart';
+import 'partner_sms_hub_screen.dart';
+import 'widgets/partner_companies_ui.dart';
 import 'widgets/partner_ui.dart';
 
 /// Oversikt over samarbeidspartnere (interne brukere).
@@ -34,8 +33,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       GlobalKey<PartnerRoutePlannerScreenState>();
   List<Partner> _partners = [];
   Map<String, List<PartnerVehicle>> _vehiclesByPartner = {};
-  final TextEditingController _searchCtrl = TextEditingController();
-  String _searchQuery = '';
   bool _loading = true;
   String? _error;
   UserProfile? _profile;
@@ -43,6 +40,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   bool _showRoutesTab = true;
   bool _showSmsTab = true;
   int _savedTabIndex = 0;
+  int _currentTabIndex = 0;
 
   @override
   void initState() {
@@ -54,7 +52,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   void dispose() {
     _tabs?.removeListener(_onTabChanged);
     _tabs?.dispose();
-    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -62,6 +59,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     final tabs = _tabs;
     if (tabs == null || tabs.indexIsChanging) return;
     _savedTabIndex = tabs.index;
+    if (mounted) setState(() => _currentTabIndex = tabs.index);
   }
 
   bool _canCompaniesList(UserAccess? access) {
@@ -103,30 +101,8 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       initialIndex: safeIndex,
     )..addListener(_onTabChanged);
     _savedTabIndex = safeIndex;
+    _currentTabIndex = safeIndex;
   }
-
-  List<PartnerSearchHit> get _searchHits => PartnerSearch.filterAll(
-        partners: _partners,
-        vehiclesByPartnerId: _vehiclesByPartner,
-        query: _searchQuery,
-      );
-
-  int get _maviVehicleCount {
-    var n = 0;
-    for (final list in _vehiclesByPartner.values) {
-      n += list
-          .where((v) =>
-              v.vehicleKind != 'registration' && !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
-          .length;
-    }
-    return n;
-  }
-
-  int get _upcomingMeetings =>
-      _partners.where((p) => p.nextMeetingAt != null).length;
-
-  int get _withTransportLicense =>
-      _partners.where((p) => p.hasTransportLicense).length;
 
   int _tabIndexCompanies() => _showCompaniesTab ? 0 : -1;
 
@@ -240,67 +216,23 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       );
       return;
     }
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      backgroundColor: PartnerUi.surface(context),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(DriftProTheme.radiusLg)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.person_add_outlined, color: DriftProTheme.primaryGreen),
-                ),
-                title: const Text('Registrer én partner'),
-                subtitle: const Text('Brreg, MAVI, kjøretøy og sjåfør-portaler'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openNew();
-                },
-              ),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: DriftProTheme.accentBlue.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.playlist_add_outlined, color: DriftProTheme.accentBlue),
-                ),
-                title: const Text('Masseimport fra Brreg'),
-                subtitle: const Text('Lim inn mange org.nr eller navn'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _openBulkImport();
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
+    await PartnerCompaniesUi.showRegisterHub(
+      context,
+      onSingle: _openNew,
+      onBulkBrreg: _openBulkImport,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tabIndex = _tabs?.index ?? 0;
-    final onCompaniesTab = tabIndex == _tabIndexCompanies();
-    final onRoutesTab = tabIndex == _tabIndexRoutes();
-    final onSmsTab = tabIndex == _tabIndexSms();
+    final tabIndex = _currentTabIndex;
+    final onCompaniesTab = _showCompaniesTab && tabIndex == _tabIndexCompanies();
+    final onRoutesTab = _showRoutesTab && tabIndex == _tabIndexRoutes();
+    final onSmsTab = _showSmsTab && tabIndex == _tabIndexSms();
     final canRegister = _profile?.access.canPartnersCreate == true ||
         _profile?.access.canPartnersAdmin == true;
+    final showPartnerRegister = onCompaniesTab && canRegister;
 
     if (_profile != null && !PartnerAccess.canOpenPartnersModule(_profile!.access)) {
       return Scaffold(
@@ -356,7 +288,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
               icon: const Icon(Icons.refresh_rounded),
               onPressed: () => _routesKey.currentState?.reload(),
             ),
-          if (onCompaniesTab && !onSmsTab && canRegister)
+          if (showPartnerRegister)
             IconButton(
               tooltip: 'Ny / masseimport',
               icon: const Icon(Icons.add_circle_outline),
@@ -364,15 +296,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
             ),
         ],
       ),
-      floatingActionButton: onCompaniesTab && !onSmsTab && canRegister
-          ? FloatingActionButton.extended(
-              onPressed: _openRegisterMenu,
-              icon: const Icon(Icons.add),
-              label: const Text('Registrer'),
-              backgroundColor: DriftProTheme.primaryGreen,
-              elevation: 4,
-            )
-          : null,
       body: _tabs == null
           ? const Center(
               child: Padding(
@@ -404,7 +327,10 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                     ),
                   ),
                 if (_showSmsTab)
-                  PartnerSmsComposeScreen(embedded: true),
+                  PartnerSmsHubScreen(
+                    embedded: true,
+                    partners: _partners,
+                  ),
               ],
             ),
     );
@@ -412,12 +338,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
 
   Widget _buildPartnersList() {
     if (_loading) {
-      return ListView(
-        children: const [
-          SizedBox(height: 120),
-          Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen)),
-        ],
-      );
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
     }
     if (_error != null) {
       return ListView(
@@ -436,353 +357,12 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       );
     }
 
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        SliverToBoxAdapter(
-          child: PartnerHeroBanner(
-            title: 'Bedriftsoversikt',
-            subtitle: '${_partners.length} registrerte samarbeidspartnere · ${_maviVehicleCount} MAVI-enheter',
-            leading: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.domain_rounded, color: Colors.white, size: 26),
-            ),
-          ),
-        ),
-        if (_partners.isNotEmpty)
-          SliverToBoxAdapter(
-            child: PartnerKpiStrip(
-              items: [
-                PartnerKpiItem(
-                  label: 'Bedrifter',
-                  value: '${_partners.length}',
-                  color: DriftProTheme.primaryGreen,
-                  icon: Icons.apartment_outlined,
-                ),
-                PartnerKpiItem(
-                  label: 'MAVI-enheter',
-                  value: '$_maviVehicleCount',
-                  color: DriftProTheme.accentBlue,
-                  icon: Icons.local_shipping_outlined,
-                ),
-                PartnerKpiItem(
-                  label: 'Transport-løyve',
-                  value: '$_withTransportLicense',
-                  color: DriftProTheme.warning,
-                  icon: Icons.verified_outlined,
-                ),
-                PartnerKpiItem(
-                  label: 'Planlagt møte',
-                  value: '$_upcomingMeetings',
-                  color: DriftProTheme.info,
-                  icon: Icons.event_outlined,
-                ),
-              ],
-            ),
-          ),
-        SliverToBoxAdapter(
-          child: PartnerSearchPanel(
-            controller: _searchCtrl,
-            hint: 'Søk reg.nr, MAVI, telefon, navn, org.nr…',
-            onChanged: (v) => setState(() => _searchQuery = v),
-            onClear: _searchQuery.isEmpty
-                ? null
-                : () {
-                    _searchCtrl.clear();
-                    setState(() => _searchQuery = '');
-                  },
-            hintChips: [
-              ('Reg.nr', () => _applySearchHint('AB12345')),
-              ('MAVI', () => _applySearchHint('M0001')),
-              ('Telefon', () => _applySearchHint('Telefon')),
-              ('Kontakt', () => _applySearchHint('Kontaktperson')),
-            ],
-            trailingChip: _searchQuery.isNotEmpty
-                ? Chip(
-                    label: Text('${_searchHits.length} treff', style: const TextStyle(fontSize: 11)),
-                    backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
-                    visualDensity: VisualDensity.compact,
-                  )
-                : null,
-          ),
-        ),
-        if (_partners.isEmpty)
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: PartnerEmptyState(
-              icon: Icons.handshake_outlined,
-              title: 'Ingen samarbeidspartnere ennå',
-              subtitle: 'Registrer første bedrift med Brreg-oppslag, MAVI og sjåfør-portaler.',
-              action: FilledButton.icon(
-                onPressed: _openRegisterMenu,
-                icon: const Icon(Icons.add),
-                label: const Text('Registrer bedrift'),
-                style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-              ),
-            ),
-          )
-        else if (_searchQuery.isNotEmpty && _searchHits.isEmpty)
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: PartnerEmptyState(
-              icon: Icons.search_off_rounded,
-              title: 'Ingen treff',
-              subtitle: 'Prøv reg.nr, MAVI (NO_O_M0001), telefon eller bedriftsnavn.',
-            ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final hit = _searchHits[index];
-                  return _PartnerListCard(
-                    partner: hit.partner,
-                    vehicles: hit.vehicles,
-                    matchReasons: hit.matchReasons,
-                    onTap: () async {
-                      if (!PartnerAccess.canOpenPartnerDetail(_profile?.access)) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Du har ikke tilgang til bedriftsdetaljer.'),
-                          ),
-                        );
-                        return;
-                      }
-                      final deleted = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(
-                          builder: (_) => PartnerDetailScreen(partner: hit.partner),
-                        ),
-                      );
-                      if (deleted == true) {
-                        await _load();
-                        _routesKey.currentState?.reload();
-                      }
-                    },
-                  );
-                },
-                childCount: _searchHits.length,
-              ),
-            ),
-          ),
-      ],
+    return PartnerCompaniesBoard(
+      partners: _partners,
+      vehiclesByPartner: _vehiclesByPartner,
+      profile: _profile,
+      onRefresh: _load,
+      onRegister: _openRegisterMenu,
     );
   }
-
-  void _applySearchHint(String value) {
-    _searchCtrl.text = value;
-    setState(() => _searchQuery = value);
-  }
-}
-
-class _PartnerListCard extends StatelessWidget {
-  const _PartnerListCard({
-    required this.partner,
-    required this.vehicles,
-    this.matchReasons = const [],
-    required this.onTap,
-  });
-
-  final Partner partner;
-  final List<PartnerVehicle> vehicles;
-  final List<String> matchReasons;
-  final VoidCallback onTap;
-
-  List<PartnerVehicle> get _maviVehicles => vehicles
-      .where((v) =>
-          v.vehicleKind != 'registration' && !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
-      .toList();
-
-  String get _maviLine {
-    final mavi = _maviVehicles.map((v) => MaviUnitCodes.normalize(v.unitCode)).toList();
-    if (mavi.isEmpty) return 'Ingen MAVI registrert';
-    if (mavi.length <= 3) return mavi.join(' · ');
-    return '${mavi.take(3).join(' · ')} +${mavi.length - 3}';
-  }
-
-  Color _auditColor(String status) {
-    switch (status) {
-      case 'ok':
-        return DriftProTheme.success;
-      case 'avvik':
-      case 'utlopt':
-        return DriftProTheme.error;
-      case 'planlagt':
-        return DriftProTheme.warning;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final maviCount = _maviVehicles.length;
-    final regCount = vehicles.length - maviCount;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: PartnerUi.surface(context),
-        borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.14)),
-        boxShadow: DriftProTheme.cardShadow,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 46,
-                      height: 46,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        gradient: DriftProTheme.primaryGradient,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Text(
-                        partner.name.isNotEmpty ? partner.name.characters.first.toUpperCase() : '?',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(partner.name, style: DriftProTheme.headingSm),
-                          if (partner.tradeName != null && partner.tradeName!.isNotEmpty)
-                            Text(
-                              partner.tradeName!,
-                              style: DriftProTheme.caption,
-                            ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _maviLine,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 12,
-                              color: maviCount > 0
-                                  ? DriftProTheme.primaryGreen
-                                  : PartnerUi.mutedText(context),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(Icons.arrow_forward_ios_rounded, size: 16, color: PartnerUi.mutedText(context)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    PartnerStatusBadge(
-                      label: '$maviCount MAVI',
-                      color: DriftProTheme.primaryGreen,
-                      icon: Icons.local_shipping_outlined,
-                    ),
-                    if (regCount > 0)
-                      PartnerStatusBadge(
-                        label: '$regCount reg.nr',
-                        color: DriftProTheme.accentBlue,
-                        icon: Icons.directions_car_outlined,
-                      ),
-                    if (partner.hasTransportLicense)
-                      PartnerStatusBadge(
-                        label: 'Løyve ${partner.transportLicenseCount}',
-                        color: DriftProTheme.warning,
-                        icon: Icons.verified_outlined,
-                      ),
-                    PartnerStatusBadge(
-                      label: partner.auditStatusLabel,
-                      color: _auditColor(partner.auditStatus),
-                      icon: Icons.fact_check_outlined,
-                    ),
-                    if (partner.nextMeetingAt != null)
-                      PartnerStatusBadge(
-                        label: 'Møte ${_fmt(partner.nextMeetingAt!)}',
-                        color: DriftProTheme.info,
-                        icon: Icons.event_outlined,
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 14,
-                  runSpacing: 8,
-                  children: [
-                    PartnerMetaRow(icon: Icons.badge_outlined, text: partner.orgNumber ?? '—'),
-                    PartnerMetaRow(icon: Icons.person_outline, text: partner.ownerName ?? '—'),
-                    PartnerMetaRow(icon: Icons.phone_outlined, text: partner.phone ?? '—'),
-                  ],
-                ),
-                if (partner.notes != null && partner.notes!.trim().isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: Colors.amber.withValues(alpha: 0.2)),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.sticky_note_2_outlined, size: 16, color: Colors.amber[800]),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            partner.notes!.trim(),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: DriftProTheme.bodySm.copyWith(fontStyle: FontStyle.italic),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                if (matchReasons.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: matchReasons.take(4).map((r) {
-                      return Chip(
-                        label: Text(r, style: const TextStyle(fontSize: 10)),
-                        visualDensity: VisualDensity.compact,
-                        backgroundColor: Colors.amber.withValues(alpha: 0.18),
-                      );
-                    }).toList(),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  static String _fmt(DateTime d) => '${d.day}.${d.month}.${d.year}';
 }

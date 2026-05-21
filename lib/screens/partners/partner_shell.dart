@@ -395,11 +395,13 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
   Future<void> _load() async {
     setState(() => _loading = true);
     final vid = widget.isOwner ? null : widget.profile.partnerVehicleId;
-    final all = await PartnerService.fetchRouteShares(
-      widget.partner.id,
-      partnerVehicleId: vid,
-      sentOnly: true,
-    );
+    final all = (!widget.isOwner && widget.partner.routesOwnerOnly)
+        ? <PartnerRouteShare>[]
+        : await PartnerService.fetchRouteShares(
+            widget.partner.id,
+            partnerVehicleId: vid,
+            sentOnly: true,
+          );
     final cid = widget.partner.companyId;
     final shifts = await PartnerService.fetchFleetShifts(cid);
     final shiftMap = {for (final s in shifts) s.id: s};

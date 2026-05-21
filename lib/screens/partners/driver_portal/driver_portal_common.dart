@@ -49,11 +49,13 @@ class DriverPortalData {
         }
       }
     }
-    final routes = await PartnerService.fetchRouteShares(
-      partner.id,
-      partnerVehicleId: partnerVehicleId,
-      sentOnly: true,
-    );
+    final routes = partner.routesOwnerOnly
+        ? const <PartnerRouteShare>[]
+        : await PartnerService.fetchRouteShares(
+            partner.id,
+            partnerVehicleId: partnerVehicleId,
+            sentOnly: true,
+          );
     final docs = await PartnerService.fetchDriverPortalDocuments(partner.id);
     final shiftList = await PartnerService.fetchFleetShifts(partner.companyId);
     return DriverPortalData(

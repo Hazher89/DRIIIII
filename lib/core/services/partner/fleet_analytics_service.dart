@@ -1,7 +1,254 @@
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import 'mavi_unit_codes.dart';
+import 'partner_service.dart';
+import 'route_pdf_text_service.dart';
 
 enum FleetStatsPeriod { days7, days30, days90, year, all }
+
+/// Kalenderperioder for sjåfør-/rute-statistikk (dag, uke, måned, år).
+enum FleetCalendarPeriod { day, week, month, year }
+
+extension FleetCalendarPeriodX on FleetCalendarPeriod {
+  String get label {
+    switch (this) {
+      case FleetCalendarPeriod.day:
+        return 'Dag';
+      case FleetCalendarPeriod.week:
+        return 'Uke';
+      case FleetCalendarPeriod.month:
+        return 'Måned';
+      case FleetCalendarPeriod.year:
+        return 'År';
+    }
+  }
+
+  DateTime rangeStart(DateTime now) {
+    final today = DateTime(now.year, now.month, now.day);
+    switch (this) {
+      case FleetCalendarPeriod.day:
+        return today;
+      case FleetCalendarPeriod.week:
+        return today.subtract(Duration(days: today.weekday - 1));
+      case FleetCalendarPeriod.month:
+        return DateTime(now.year, now.month, 1);
+      case FleetCalendarPeriod.year:
+        return DateTime(now.year, 1, 1);
+    }
+  }
+
+  String periodDescription(DateTime now) {
+    final start = rangeStart(now);
+    switch (this) {
+      case FleetCalendarPeriod.day:
+        return _nbDate(start);
+      case FleetCalendarPeriod.week:
+        return '${_nbDate(start)} – ${_nbDate(now)}';
+      case FleetCalendarPeriod.month:
+        return '${start.month}. ${_monthName(start.month)} ${start.year}';
+      case FleetCalendarPeriod.year:
+        return '${start.year}';
+    }
+  }
+
+  static String _nbDate(DateTime d) => '${d.day}. ${d.month}. ${d.year}';
+
+  static String _monthName(int m) {
+    const names = [
+      '', 'januar', 'februar', 'mars', 'april', 'mai', 'juni',
+      'juli', 'august', 'september', 'oktober', 'november', 'desember',
+    ];
+    return names[m];
+  }
+}
+
+class FleetDriverStat {
+  final String vehicleId;
+  final String? driverName;
+  final String maviLabel;
+  final String partnerName;
+  final int routeCount;
+  final int customerCount;
+  final int friDays;
+  final double routeVsAvg;
+  final double customerVsAvg;
+
+  const FleetDriverStat({
+    required this.vehicleId,
+    this.driverName,
+    required this.maviLabel,
+    required this.partnerName,
+    required this.routeCount,
+    required this.customerCount,
+    required this.friDays,
+    this.routeVsAvg = 0,
+    this.customerVsAvg = 0,
+  });
+
+  /// Primær identitet i statistikk — alltid MAVI-nummer.
+  String get displayMavi {
+    final n = MaviUnitCodes.normalize(maviLabel);
+    return n.isNotEmpty ? n : maviLabel;
+  }
+
+  String? get displayDriver {
+    final d = driverName?.trim();
+    if (d == null || d.isEmpty) return null;
+    return d;
+  }
+
+  double get customersPerRoute => routeCount > 0 ? customerCount / routeCount : 0;
+
+  String get description =>
+      '$routeCount ${routeCount == 1 ? 'rute' : 'ruter'} · $customerCount ${customerCount == 1 ? 'kunde' : 'kunder'}'
+      '${friDays > 0 ? ' · $friDays fri' : ''}';
+}
+
+enum FleetDriverSortKey {
+  routesDesc,
+  routesAsc,
+  customersDesc,
+  customersAsc,
+  friDesc,
+  maviAsc,
+  fairnessDesc,
+  fairnessAsc,
+}
+
+extension FleetDriverSortKeyX on FleetDriverSortKey {
+  String get label {
+    switch (this) {
+      case FleetDriverSortKey.routesDesc:
+        return 'Flest ruter';
+      case FleetDriverSortKey.routesAsc:
+        return 'Færrest ruter';
+      case FleetDriverSortKey.customersDesc:
+        return 'Flest kunder';
+      case FleetDriverSortKey.customersAsc:
+        return 'Færrest kunder';
+      case FleetDriverSortKey.friDesc:
+        return 'Mest fri';
+      case FleetDriverSortKey.maviAsc:
+        return 'MAVI A–Å';
+      case FleetDriverSortKey.fairnessDesc:
+        return 'Over snitt (ruter)';
+      case FleetDriverSortKey.fairnessAsc:
+        return 'Under snitt (ruter)';
+    }
+  }
+}
+
+enum FleetDriverFilterKey { all, withRoutes, withCustomers, friOnly, onlyActiveMavi }
+
+extension FleetDriverFilterKeyX on FleetDriverFilterKey {
+  String get label {
+    switch (this) {
+      case FleetDriverFilterKey.all:
+        return 'Alle MAVI';
+      case FleetDriverFilterKey.withRoutes:
+        return 'Har fått rute';
+      case FleetDriverFilterKey.withCustomers:
+        return 'Har kunder';
+      case FleetDriverFilterKey.friOnly:
+        return 'Kun fri';
+      case FleetDriverFilterKey.onlyActiveMavi:
+        return 'Aktive i flåte';
+    }
+  }
+}
+
+class FleetDriverStatsBundle {
+  final FleetCalendarPeriod period;
+  final List<FleetDriverStat> drivers;
+  final int totalRoutes;
+  final int totalCustomers;
+  final int activeMaviCount;
+  final double avgRoutesPerMavi;
+  final double avgCustomersPerMavi;
+  final FleetDriverStat? mostRoutes;
+  final FleetDriverStat? leastRoutes;
+  final FleetDriverStat? mostCustomers;
+  final FleetDriverStat? leastCustomers;
+  final FleetDriverStat? mostFri;
+
+  const FleetDriverStatsBundle({
+    required this.period,
+    required this.drivers,
+    required this.totalRoutes,
+    required this.totalCustomers,
+    required this.activeMaviCount,
+    required this.avgRoutesPerMavi,
+    required this.avgCustomersPerMavi,
+    this.mostRoutes,
+    this.leastRoutes,
+    this.mostCustomers,
+    this.leastCustomers,
+    this.mostFri,
+  });
+
+  List<FleetDriverStat> filtered({
+    FleetDriverFilterKey filter = FleetDriverFilterKey.all,
+    String? partnerName,
+    String maviQuery = '',
+    Set<String>? activeVehicleIds,
+  }) {
+    final q = maviQuery.trim().toLowerCase();
+    return drivers.where((d) {
+      if (partnerName != null && partnerName.isNotEmpty && d.partnerName != partnerName) {
+        return false;
+      }
+      if (q.isNotEmpty &&
+          !d.displayMavi.toLowerCase().contains(q) &&
+          !(d.displayDriver?.toLowerCase().contains(q) ?? false) &&
+          !d.partnerName.toLowerCase().contains(q)) {
+        return false;
+      }
+      switch (filter) {
+        case FleetDriverFilterKey.withRoutes:
+          return d.routeCount > 0;
+        case FleetDriverFilterKey.withCustomers:
+          return d.customerCount > 0;
+        case FleetDriverFilterKey.friOnly:
+          return d.friDays > 0 && d.routeCount == 0;
+        case FleetDriverFilterKey.onlyActiveMavi:
+          return activeVehicleIds == null || activeVehicleIds.contains(d.vehicleId);
+        case FleetDriverFilterKey.all:
+          return d.routeCount > 0 || d.customerCount > 0 || d.friDays > 0;
+      }
+    }).toList();
+  }
+
+  static List<FleetDriverStat> sorted(List<FleetDriverStat> list, FleetDriverSortKey key) {
+    final copy = [...list];
+    switch (key) {
+      case FleetDriverSortKey.routesDesc:
+        copy.sort((a, b) => b.routeCount.compareTo(a.routeCount));
+        break;
+      case FleetDriverSortKey.routesAsc:
+        copy.sort((a, b) => a.routeCount.compareTo(b.routeCount));
+        break;
+      case FleetDriverSortKey.customersDesc:
+        copy.sort((a, b) => b.customerCount.compareTo(a.customerCount));
+        break;
+      case FleetDriverSortKey.customersAsc:
+        copy.sort((a, b) => a.customerCount.compareTo(b.customerCount));
+        break;
+      case FleetDriverSortKey.friDesc:
+        copy.sort((a, b) => b.friDays.compareTo(a.friDays));
+        break;
+      case FleetDriverSortKey.maviAsc:
+        copy.sort((a, b) => a.displayMavi.compareTo(b.displayMavi));
+        break;
+      case FleetDriverSortKey.fairnessDesc:
+        copy.sort((a, b) => b.routeVsAvg.compareTo(a.routeVsAvg));
+        break;
+      case FleetDriverSortKey.fairnessAsc:
+        copy.sort((a, b) => a.routeVsAvg.compareTo(b.routeVsAvg));
+        break;
+    }
+    return copy;
+  }
+}
 
 extension FleetStatsPeriodX on FleetStatsPeriod {
   String get label {
@@ -363,6 +610,147 @@ class FleetAnalyticsService {
         vehiclesPerPartner: vpp,
         cutoff: cutoff,
       ),
+    );
+  }
+
+  static int _customersOnShare(PartnerRouteShare s) {
+    if (s.customerCount != null && s.customerCount! > 0) return s.customerCount!;
+    final text = s.pdfSearchText;
+    if (text == null || text.trim().isEmpty) return 0;
+    return RoutePdfTextService.parseCustomers(text).length;
+  }
+
+  static bool _shareInRange(PartnerRouteShare s, DateTime start, DateTime end) {
+    if (s.isStaged) return false;
+    final d = DateTime(s.shareDate.year, s.shareDate.month, s.shareDate.day);
+    return !d.isBefore(start) && !d.isAfter(end);
+  }
+
+  static bool _snapInRange(PartnerVehicleFleetSnapshot snap, DateTime start, DateTime end) {
+    final d = DateTime(snap.snapshotDate.year, snap.snapshotDate.month, snap.snapshotDate.day);
+    return !d.isBefore(start) && !d.isAfter(end);
+  }
+
+  static FleetDriverStatsBundle buildDriverStats({
+    required FleetCalendarPeriod period,
+    required List<PartnerRouteShare> shares,
+    required List<PartnerVehicleFleetSnapshot> snapshots,
+    required List<FleetPartnerVehicleRow> fleet,
+    DateTime? referenceNow,
+  }) {
+    final now = referenceNow ?? DateTime.now();
+    final start = period.rangeStart(now);
+    final end = DateTime(now.year, now.month, now.day);
+
+    final vehicleMeta = <String, ({String? driver, String mavi, String partner})>{};
+    for (final row in fleet) {
+      final v = row.vehicle;
+      final driver = v.driverName?.trim();
+      vehicleMeta[v.id] = (
+        driver: driver != null && driver.isNotEmpty ? driver : null,
+        mavi: MaviUnitCodes.normalize(v.unitCode),
+        partner: row.partner.name,
+      );
+    }
+
+    final routesByV = <String, int>{};
+    final customersByV = <String, int>{};
+    final friByV = <String, int>{};
+
+    for (final s in shares) {
+      if (!_shareInRange(s, start, end)) continue;
+      final vid = s.partnerVehicleId;
+      if (vid == null) continue;
+      routesByV[vid] = (routesByV[vid] ?? 0) + 1;
+      customersByV[vid] = (customersByV[vid] ?? 0) + _customersOnShare(s);
+    }
+
+    for (final snap in snapshots) {
+      if (!_snapInRange(snap, start, end)) continue;
+      if (snap.status != 'fri') continue;
+      friByV[snap.partnerVehicleId] = (friByV[snap.partnerVehicleId] ?? 0) + 1;
+    }
+
+    final ids = <String>{
+      ...routesByV.keys,
+      ...friByV.keys,
+      ...vehicleMeta.keys,
+    };
+
+    var drivers = ids.map((vid) {
+      final meta = vehicleMeta[vid];
+      final mavi = meta?.mavi ?? 'MAVI-${vid.substring(0, 6)}';
+      return FleetDriverStat(
+        vehicleId: vid,
+        driverName: meta?.driver,
+        maviLabel: mavi,
+        partnerName: meta?.partner ?? 'Ukjent partner',
+        routeCount: routesByV[vid] ?? 0,
+        customerCount: customersByV[vid] ?? 0,
+        friDays: friByV[vid] ?? 0,
+      );
+    }).where((d) => d.routeCount > 0 || d.customerCount > 0 || d.friDays > 0).toList();
+
+    final totalRoutes = routesByV.values.fold<int>(0, (a, b) => a + b);
+    final totalCustomers = customersByV.values.fold<int>(0, (a, b) => a + b);
+    final withRoutes = drivers.where((d) => d.routeCount > 0).toList();
+    final avgRoutes = withRoutes.isEmpty ? 0.0 : totalRoutes / withRoutes.length;
+    final avgCustomers = withRoutes.isEmpty ? 0.0 : totalCustomers / withRoutes.length;
+
+    drivers = drivers
+        .map(
+          (d) => FleetDriverStat(
+            vehicleId: d.vehicleId,
+            driverName: d.driverName,
+            maviLabel: d.maviLabel,
+            partnerName: d.partnerName,
+            routeCount: d.routeCount,
+            customerCount: d.customerCount,
+            friDays: d.friDays,
+            routeVsAvg: d.routeCount - avgRoutes,
+            customerVsAvg: d.customerCount - avgCustomers,
+          ),
+        )
+        .toList()
+      ..sort((a, b) {
+        final c = b.routeCount.compareTo(a.routeCount);
+        if (c != 0) return c;
+        return b.customerCount.compareTo(a.customerCount);
+      });
+
+    FleetDriverStat? mostRoutes;
+    FleetDriverStat? leastRoutes;
+    FleetDriverStat? mostCustomers;
+    FleetDriverStat? leastCustomers;
+    FleetDriverStat? mostFri;
+
+    if (withRoutes.isNotEmpty) {
+      mostRoutes = withRoutes.reduce((a, b) => a.routeCount >= b.routeCount ? a : b);
+      leastRoutes = withRoutes.reduce((a, b) => a.routeCount <= b.routeCount ? a : b);
+      final withCust = drivers.where((d) => d.customerCount > 0).toList();
+      if (withCust.isNotEmpty) {
+        mostCustomers = withCust.reduce((a, b) => a.customerCount >= b.customerCount ? a : b);
+        leastCustomers = withCust.reduce((a, b) => a.customerCount <= b.customerCount ? a : b);
+      }
+    }
+    final friList = drivers.where((d) => d.friDays > 0).toList();
+    if (friList.isNotEmpty) {
+      mostFri = friList.reduce((a, b) => a.friDays >= b.friDays ? a : b);
+    }
+
+    return FleetDriverStatsBundle(
+      period: period,
+      drivers: drivers,
+      totalRoutes: totalRoutes,
+      totalCustomers: totalCustomers,
+      activeMaviCount: fleet.length,
+      avgRoutesPerMavi: avgRoutes,
+      avgCustomersPerMavi: avgCustomers,
+      mostRoutes: mostRoutes,
+      leastRoutes: leastRoutes,
+      mostCustomers: mostCustomers,
+      leastCustomers: leastCustomers,
+      mostFri: mostFri,
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/sms/sms_phone_utils.dart';
 import '../../../core/utils/portal_credentials.dart';
+import '../../../core/constants/mavi_fleet_roles.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -13,6 +14,8 @@ import '../../../core/services/vegvesen/vehicle_registry_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import 'partner_companies_ui.dart';
+import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 
 /// Oversikt: bedriftsinfo, transportløyve, ansatte, kjøretøy med EU per bil.
@@ -49,6 +52,8 @@ class _VehicleRowState {
   Map<String, dynamic>? vegvesenSnapshot;
   String? id;
   bool hasPortalAccount;
+  Set<String> fleetRoles;
+  bool isActive;
 
   _VehicleRowState({
     this.isRegOnly = false,
@@ -67,7 +72,10 @@ class _VehicleRowState {
     this.vegvesenSnapshot,
     this.id,
     this.hasPortalAccount = false,
-  })  : mavi = TextEditingController(text: isRegOnly ? '' : unitCode),
+    Set<String>? fleetRoles,
+    this.isActive = true,
+  })  : fleetRoles = fleetRoles ?? {},
+        mavi = TextEditingController(text: isRegOnly ? '' : unitCode),
         driverName = TextEditingController(text: driverNameText ?? ''),
         portalPhone = TextEditingController(text: phone ?? '');
 
@@ -96,6 +104,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   final List<_VehicleRowState> _rows = [];
   bool _saving = false;
   bool _portalSaving = false;
+  bool _routesOwnerOnly = false;
+  bool _routesOwnerOnlySaving = false;
   bool _isSuperAdmin = false;
   Timer? _vegvesenDebounce;
   final Set<_VehicleRowState> _vegvesenLoading = {};
@@ -120,6 +130,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _notes = TextEditingController(text: p.notes ?? '');
     _hasTransportLicense = p.hasTransportLicense;
     _auditStatus = p.auditStatus;
+    _routesOwnerOnly = p.routesOwnerOnly;
     _ownerPortalPhone.text = widget.partner.phone ?? '';
     _resetVehicles(widget.vehicles);
     _loadPortals();
@@ -238,6 +249,40 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   }
 
   @override
+  Future<void> _setRoutesOwnerOnly(bool value) async {
+    setState(() {
+      _routesOwnerOnly = value;
+      _routesOwnerOnlySaving = true;
+    });
+    try {
+      await PartnerService.updatePartnerFields(widget.partner.id, {
+        'routes_owner_only': value,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value
+                  ? 'Kun bil-eier mottar ruter og varsler — sjåfør-portalen viser ikke ruter'
+                  : 'Normal modus — sjåfør og bil-eier får hver sin rute som før',
+            ),
+          ),
+        );
+        widget.onSaved();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _routesOwnerOnly = !value);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke lagre: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _routesOwnerOnlySaving = false);
+    }
+  }
+
+  @override
   void didUpdateWidget(covariant PartnerOverviewTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.partner.id != widget.partner.id) return;
@@ -247,6 +292,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _employees.text = p.employeeCount?.toString() ?? '';
     _hasTransportLicense = p.hasTransportLicense;
     _auditStatus = p.auditStatus;
+    _routesOwnerOnly = p.routesOwnerOnly;
     if (oldWidget.vehicles.length != widget.vehicles.length) {
       _resetVehicles(widget.vehicles);
       _loadPortals();
@@ -328,6 +374,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         phone: v.phone ?? acc?.phone,
         portalUsername: acc?.username,
         hasPortalAccount: acc != null,
+        fleetRoles: MaviFleetRoles.normalize(v.fleetRoles).toSet(),
+        isActive: v.isActive,
         reg: TextEditingController(text: regLink),
         payload: TextEditingController(),
         year: TextEditingController(),
@@ -590,44 +638,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   }
 
   Future<void> _bulkAddMavi() async {
-    final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Legg til flere MAVI-nummer'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Én per linje (eller kommaseparert). Eksempel:\n'
-                'M0001\nM0002\nNO_O_M0044',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: ctrl,
-                maxLines: 8,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'M0001\nM0002\nM0003',
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim().isNotEmpty),
-            child: const Text('Legg til'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final codes = MaviUnitCodes.parseBulk(ctrl.text);
+    final codes = await PartnerCompaniesUi.showMaviBulkPasteDialog(context);
     if (codes.isEmpty) return;
     setState(() {
       final existing = _existingMaviCodes.toSet();
@@ -807,6 +818,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         nextMeetingAt: p.nextMeetingAt,
         lastAuditAt: p.lastAuditAt,
         nextAuditAt: p.nextAuditAt,
+        isActive: p.isActive,
+        routesOwnerOnly: _routesOwnerOnly,
         createdAt: p.createdAt,
       );
       await PartnerService.updatePartner(p.id, updated);
@@ -858,6 +871,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
             driverName: driverName.isEmpty ? null : driverName,
             phone: row.portalPhone.text.trim().isEmpty ? null : row.portalPhone.text.trim(),
             imageUrls: row.imagePaths,
+            isActive: row.isActive,
+            fleetRoles: MaviFleetRoles.normalize(row.fleetRoles),
             createdAt: DateTime.now(),
           ),
         );
@@ -903,11 +918,37 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
           children: [
-            PartnerSectionCard(
-              icon: Icons.sticky_note_2_outlined,
-              iconColor: Colors.amber.shade800,
-              title: 'Kommentar om bedriften',
-              subtitle: 'Synlig internt på alle bedrifter i listen.',
+            if (maviRows.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: PartnerModernUi.surface(context),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: PartnerModernUi.border(context)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${maviRows.length} MAVI · ${regRows.length} reg.nr',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                      ),
+                      const SizedBox(height: 6),
+                      PartnerMaviChipRow(
+                        codes: maviRows
+                            .map((r) => MaviUnitCodes.normalize(r.mavi.text))
+                            .where((c) => c.isNotEmpty)
+                            .toList(),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            PartnerModernSection(
+              title: 'Kommentar',
+              subtitle: 'Intern notat',
               children: [
                 TextField(
                   controller: _notes,
@@ -919,10 +960,10 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
-            PartnerSectionCard(
-              icon: Icons.contact_page_outlined,
+            PartnerModernSection(
               title: 'Kontakt & bedrift',
               subtitle: 'Org.nr ${p.orgNumber ?? "—"}',
+              initiallyExpanded: true,
               children: [
                 _field('Eier / kontakt', _owner),
                 _field('Telefon (SMS-varsler)', _phone),
@@ -944,9 +985,35 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
-            PartnerSectionCard(
-              icon: Icons.admin_panel_settings_outlined,
-              iconColor: DriftProTheme.accentBlue,
+            PartnerModernSection(
+              title: 'Ruter og varsler',
+              subtitle: 'Styr hvem som mottar ruter fra MAVI',
+              initiallyExpanded: true,
+              children: [
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text(
+                    'Kun bil-eier mottar ruter',
+                    style: TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                    _routesOwnerOnly
+                        ? 'På: SMS og ruter går kun til bil-eier. Han ser alle ruter og notater for alle MAVI '
+                            'og må godkjenne hver rute selv. Sjåfør får ikke ruter i portal.'
+                        : 'Av: Sjåfør får rute på sin bil som vanlig, i tillegg til bil-eier.',
+                    style: const TextStyle(fontSize: 12, height: 1.35),
+                  ),
+                  value: _routesOwnerOnly,
+                  onChanged: _routesOwnerOnlySaving ? null : _setRoutesOwnerOnly,
+                ),
+                if (_routesOwnerOnlySaving)
+                  const Padding(
+                    padding: EdgeInsets.only(top: 4),
+                    child: LinearProgressIndicator(minHeight: 2),
+                  ),
+              ],
+            ),
+            PartnerModernSection(
               title: 'Bil-eier portal',
               subtitle:
                   'Auto-generert brukernavn og passord registreres i Supabase og sendes på SMS. '
@@ -1020,17 +1087,12 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
-            PartnerSectionCard(
-              icon: Icons.directions_car_outlined,
-              iconColor: DriftProTheme.accentBlue,
+            PartnerModernSection(
               title: 'Registrerte biler (reg.nr)',
               subtitle:
                   'Reg.nr, årsmodell, nyttelast og EU-kontroll. '
                   'EU-dato hentes automatisk fra Vegvesen når du skriver reg.nr.',
-              trailing: PartnerStatusBadge(
-                label: '${regRows.length} bil${regRows.length == 1 ? '' : 'er'}',
-                color: DriftProTheme.accentBlue,
-              ),
+              trailing: Text('${regRows.length}', style: TextStyle(fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context))),
               children: [
                 if (regRows.isEmpty)
                   PartnerEmptyState(
@@ -1047,15 +1109,11 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
-            PartnerSectionCard(
-              icon: Icons.local_shipping_outlined,
-              title: 'MAVI-nummer & sjåfør',
-              subtitle:
-                  'Brukernavn genereres automatisk per MAVI. Passord sendes på SMS ved «Opprett sjåfør».',
-              trailing: PartnerStatusBadge(
-                label: '${maviRows.length} MAVI',
-                color: DriftProTheme.primaryGreen,
-              ),
+            PartnerModernSection(
+              title: 'MAVI & sjåfør',
+              subtitle: 'Auto brukernavn · SMS ved opprettelse',
+              initiallyExpanded: true,
+              trailing: Text('${maviRows.length}', style: TextStyle(fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context))),
               children: [
                 if (maviRows.isEmpty)
                   PartnerEmptyState(
@@ -1079,7 +1137,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                       child: OutlinedButton.icon(
                         onPressed: _bulkAddMavi,
                         icon: const Icon(Icons.playlist_add),
-                        label: const Text('Flere MAVI'),
+                        label: const Text('Lim inn flere'),
                       ),
                     ),
                   ],
@@ -1278,6 +1336,42 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                   },
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                const Text('Biltype (kan velge flere):', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                ...MaviFleetRoles.all.map((role) {
+                  final selected = row.fleetRoles.contains(role);
+                  return FilterChip(
+                    label: Text(MaviFleetRoles.label(role), style: const TextStyle(fontSize: 11)),
+                    selected: selected,
+                    onSelected: row.isActive
+                        ? (v) => setState(() {
+                              if (v) {
+                                row.fleetRoles.add(role);
+                              } else {
+                                row.fleetRoles.remove(role);
+                              }
+                            })
+                        : null,
+                  );
+                }),
+              ],
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Aktiv i ruteplanlegger', style: TextStyle(fontSize: 12)),
+              subtitle: Text(
+                row.isActive
+                    ? 'Vises i kalender og kan få ruter'
+                    : 'Deaktivert — skjules fra ruter og planlegging',
+                style: const TextStyle(fontSize: 11),
+              ),
+              value: row.isActive,
+              onChanged: (v) => setState(() => row.isActive = v),
             ),
             const SizedBox(height: 8),
             if (_registeredPlates.isNotEmpty && row.reg.text.trim().isNotEmpty)

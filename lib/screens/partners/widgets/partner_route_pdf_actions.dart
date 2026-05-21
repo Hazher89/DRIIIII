@@ -9,6 +9,7 @@ import 'partner_route_pdf_bytes_url_stub.dart'
 
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/utils/open_external_url.dart';
+import '../../../core/constants/route_dispatch_status.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../widgets/platform_pdf_view.dart';
 
@@ -124,8 +125,9 @@ class PartnerRoutePdfActions {
   }
 
   static Color ackDotColor(PartnerRouteShare share) {
-    if (share.isStaged) return Colors.orange;
-    if (share.ackStatus == 'accepted') return Colors.green;
+    if (share.isStaged) return RouteDispatchStatus.cellColor(RouteDispatchStatus.staged);
+    if (share.isRegistered) return RouteDispatchStatus.cellColor(RouteDispatchStatus.registered);
+    if (share.ackStatus == 'accepted') return RouteDispatchStatus.cellColor(RouteDispatchStatus.sent);
     return Colors.red;
   }
 

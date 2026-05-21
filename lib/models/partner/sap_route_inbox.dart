@@ -56,14 +56,33 @@ class SapRouteImportLine {
   });
 }
 
+/// PDF som ikke kunne auto-fordes — vises i «Hoppet over» (samme som AUTO MASS).
+class SapRouteImportSkippedItem {
+  final String inboxId;
+  final String fileName;
+  final List<int> bytes;
+  final String reason;
+  final String? detectedCode;
+
+  const SapRouteImportSkippedItem({
+    required this.inboxId,
+    required this.fileName,
+    required this.bytes,
+    required this.reason,
+    this.detectedCode,
+  });
+}
+
 class SapRouteImportResult {
   final int imported;
   final int skipped;
   final List<SapRouteImportLine> lines;
+  final List<SapRouteImportSkippedItem> skippedItems;
 
   const SapRouteImportResult({
     required this.imported,
     required this.skipped,
     required this.lines,
+    this.skippedItems = const [],
   });
 }

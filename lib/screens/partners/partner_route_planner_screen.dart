@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../core/services/partner/partner_service.dart';
+import '../../models/partner/partner_links.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
-import 'fleet_route_dashboard_screen.dart';
+import 'fleet_route_driver_stats_screen.dart';
 import 'fleet_shift_admin_screen.dart';
+import 'widgets/partner_available_vehicles_bar.dart';
 import 'widgets/partner_route_master_scheduler.dart';
 import 'widgets/partner_route_pdf_search_panel.dart';
 import 'widgets/partner_ui.dart';
@@ -27,6 +29,7 @@ class PartnerRoutePlannerScreen extends StatefulWidget {
 class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
   final TextEditingController _pdfSearchCtrl = TextEditingController();
   List<FleetPartnerVehicleRow> _fleet = [];
+  List<PartnerRouteShare> _sharesToday = [];
   bool _loading = true;
 
   @override
@@ -46,10 +49,18 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) return;
-      final fleet = await PartnerService.fetchCompanyFleet(cid);
+      final fleet = await PartnerService.fetchCompanyFleet(cid, forPlanning: true);
+      final today = DateTime.now();
+      final day = DateTime(today.year, today.month, today.day);
+      final shares = await PartnerService.fetchRouteSharesForCalendarWindow(
+        companyId: cid,
+        fromDay: day,
+        toDay: day,
+      );
       if (mounted) {
         setState(() {
           _fleet = PartnerService.filterMaviFleetOnly(fleet);
+          _sharesToday = shares;
           _loading = false;
         });
       }
@@ -61,20 +72,9 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
     }
   }
 
-  int get _maviCount => _fleet.length;
-
-  int get _partnerCount => _fleet.map((r) => r.partner.id).toSet().length;
-
   Future<void> _openShiftAdmin() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(builder: (_) => const FleetShiftAdminScreen()),
-    );
-    reload();
-  }
-
-  Future<void> _openStats() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(builder: (_) => const FleetRouteDashboardScreen()),
     );
     reload();
   }
@@ -85,17 +85,20 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    final today = DateTime.now();
+    final day = DateTime(today.year, today.month, today.day);
+
     final body = RefreshIndicator(
       onRefresh: reload,
       color: DriftProTheme.primaryGreen,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 100),
+        padding: const EdgeInsets.fromLTRB(0, 0, 0, 24),
         children: [
           PartnerHeroBanner(
             compact: true,
             title: 'Ruter & planlegging',
             subtitle:
-                'Kalender for alle MAVI-er • Mottatt ruter fra SAP, Ny rute og AUTO MASS.',
+                'Oppdatert visning · ledige biler med type · Registrer bedrifter kun under fanen Bedrifter.',
             leading: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -104,53 +107,40 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
               ),
               child: const Icon(Icons.alt_route_rounded, color: Colors.white, size: 26),
             ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: PartnerAvailableVehiclesPanel(
+              fleet: _fleet,
+              sharesToday: _sharesToday,
+              day: day,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Row(
               children: [
-                IconButton(
-                  tooltip: 'Administrer skift',
-                  onPressed: _openShiftAdmin,
-                  icon: const Icon(Icons.tune_rounded, color: Colors.white),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).push<void>(
+                        MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
+                      );
+                    },
+                    icon: const Icon(Icons.insights_outlined, size: 18),
+                    label: const Text('MAVI-statistikk'),
+                  ),
                 ),
-                IconButton(
-                  tooltip: 'Flåte & statistikk',
-                  onPressed: _openStats,
-                  icon: const Icon(Icons.insights_outlined, color: Colors.white),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: _openShiftAdmin,
+                  icon: const Icon(Icons.schedule_outlined, size: 18),
+                  label: const Text('Skiftplan'),
                 ),
               ],
             ),
           ),
-          PartnerKpiStrip(
-            items: [
-              PartnerKpiItem(
-                label: 'MAVI-biler',
-                value: '$_maviCount',
-                color: DriftProTheme.primaryGreen,
-                icon: Icons.local_shipping_outlined,
-              ),
-              PartnerKpiItem(
-                label: 'Partnere',
-                value: '$_partnerCount',
-                color: DriftProTheme.accentBlue,
-                icon: Icons.apartment_outlined,
-              ),
-              PartnerKpiItem(
-                label: 'Skift',
-                value: 'Admin',
-                color: const Color(0xFF7B1FA2),
-                icon: Icons.schedule_outlined,
-                onTap: _openShiftAdmin,
-              ),
-              PartnerKpiItem(
-                label: 'Statistikk',
-                value: 'Live',
-                color: const Color(0xFFEF6C00),
-                icon: Icons.analytics_outlined,
-                onTap: _openStats,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: PartnerRouteMasterScheduler(
@@ -205,32 +195,15 @@ class _ToolSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      decoration: BoxDecoration(
-        color: PartnerUi.surface(context),
-        borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-        border: Border.all(color: Colors.grey.withValues(alpha: isDark ? 0.25 : 0.12)),
-        boxShadow: isDark ? null : DriftProTheme.cardShadow,
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          initiallyExpanded: initiallyExpanded,
-          tilePadding: const EdgeInsets.fromLTRB(16, 8, 12, 0),
-          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-          leading: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: iconColor, size: 22),
-          ),
-          title: Text(title, style: DriftProTheme.headingSm.copyWith(fontSize: 15)),
-          subtitle: Text(subtitle, style: DriftProTheme.caption),
-          children: [child],
-        ),
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: ExpansionTile(
+        initiallyExpanded: initiallyExpanded,
+        leading: Icon(icon, color: iconColor),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
+        children: [Padding(padding: const EdgeInsets.fromLTRB(12, 0, 12, 12), child: child)],
       ),
     );
   }

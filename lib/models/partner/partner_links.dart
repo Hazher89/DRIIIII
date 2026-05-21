@@ -324,6 +324,7 @@ class PartnerRouteShare {
   /// staged = fordelt internt; sent = sendt til sjåfør/partner
   final String dispatchStatus;
   final String? pdfSearchText;
+  final int? customerCount;
   final DateTime createdAt;
 
   PartnerRouteShare({
@@ -344,6 +345,7 @@ class PartnerRouteShare {
     this.routeStartAt,
     this.dispatchStatus = 'sent',
     this.pdfSearchText,
+    this.customerCount,
     required this.createdAt,
   });
 
@@ -368,11 +370,16 @@ class PartnerRouteShare {
           : null,
       dispatchStatus: (json['dispatch_status'] as String?) ?? 'sent',
       pdfSearchText: json['pdf_search_text'] as String?,
+      customerCount: json['customer_count'] as int?,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
 
   bool get isStaged => dispatchStatus == 'staged';
+
+  bool get isRegistered => dispatchStatus == 'registered';
+
+  bool get isSentWithNotify => dispatchStatus == 'sent';
 
   Map<String, dynamic> toInsertJson() {
     return {
@@ -413,6 +420,9 @@ class PartnerVehicle {
   final bool? euApproved;
   final List<String> imageUrls;
   final Map<String, dynamic>? vegvesenSnapshot;
+  final bool isActive;
+  /// [tjenestebil], [enmannsbil], [2mannsbil], [intern] — kan være flere.
+  final List<String> fleetRoles;
   final DateTime createdAt;
 
   PartnerVehicle({
@@ -432,6 +442,8 @@ class PartnerVehicle {
     this.euApproved,
     this.imageUrls = const [],
     this.vegvesenSnapshot,
+    this.isActive = true,
+    this.fleetRoles = const [],
     required this.createdAt,
   });
 
@@ -461,8 +473,31 @@ class PartnerVehicle {
               .toList() ??
           const [],
       vegvesenSnapshot: json['vegvesen_snapshot'] as Map<String, dynamic>?,
+      isActive: json['is_active'] as bool? ?? true,
+      fleetRoles: (json['fleet_roles'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
+          const [],
       createdAt: DateTime.parse(json['created_at'] as String),
     );
+  }
+
+  String get fleetRolesLabel {
+    if (fleetRoles.isEmpty) return 'Uten type';
+    return fleetRoles.map((r) {
+      switch (r) {
+        case 'tjenestebil':
+          return 'Tjenestebil';
+        case 'enmannsbil':
+          return 'Enmannsbil';
+        case '2mannsbil':
+          return '2-mannsbil';
+        case 'intern':
+          return 'Intern';
+        default:
+          return r;
+      }
+    }).join(' · ');
   }
 
   Map<String, dynamic> toUpsertJson() {
@@ -483,6 +518,8 @@ class PartnerVehicle {
       'eu_approved': euApproved,
       'image_urls': imageUrls,
       'vegvesen_snapshot': vegvesenSnapshot,
+      'is_active': isActive,
+      'fleet_roles': fleetRoles,
       'updated_at': DateTime.now().toIso8601String(),
     };
   }

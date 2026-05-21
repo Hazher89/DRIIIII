@@ -127,7 +127,10 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                         child: Padding(
                           padding: const EdgeInsets.all(20),
                           child: Text(
-                            'Ingen ruter i dag. Du får SMS når MAVI tildeler en ny rute.',
+                            _data!.partner.routesOwnerOnly
+                                ? 'Ruter for denne bedriften håndteres av bil-eier. '
+                                    'Kontakt bil-eier hvis du lurer på ruter.'
+                                : 'Ingen ruter i dag. Du får SMS når MAVI tildeler en ny rute.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: PartnerUi.mutedText(context)),
                           ),
