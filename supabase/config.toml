@@ -1,3 +1,7 @@
 # OAuth-callback fra Dropbox har ikke Supabase JWT — må være åpen.
 [functions.dropbox-storage]
 verify_jwt = false
+
+# Resend webhook for SAP rute-PDF (ingen JWT).
+[functions.resend-sap-routes-inbound]
+verify_jwt = false

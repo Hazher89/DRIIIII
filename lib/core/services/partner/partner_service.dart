@@ -9,6 +9,7 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/vehicle_inspection.dart';
 import '../../../models/partner/fleet_shift.dart';
+import '../../../models/partner/sap_route_inbox.dart';
 import '../../utils/portal_credentials.dart';
 import '../sms/sms_phone_utils.dart';
 import 'fleet_shift_seed.dart';
@@ -1748,6 +1749,141 @@ class PartnerService {
     await _client.from('partner_vehicle_inspections').update({
       'follow_up_acknowledged_at': DateTime.now().toIso8601String(),
     }).eq('id', inspectionId);
+  }
+
+  // --- SAP rute-innboks (Resend Inbound) ---
+
+  static Future<int> countSapRouteInboxPending(String companyId) async {
+    if (!_ok) return 0;
+    try {
+      final data = await _client
+          .from('sap_route_inbox')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('status', 'pending');
+      return (data as List).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static Future<List<SapRouteInboxItem>> fetchSapRouteInboxPending(
+    String companyId,
+  ) async {
+    if (!_ok) return const [];
+    try {
+      final data = await _client
+          .from('sap_route_inbox')
+          .select()
+          .eq('company_id', companyId)
+          .eq('status', 'pending')
+          .order('received_at', ascending: false) as List<dynamic>;
+      return data
+          .map((e) => SapRouteInboxItem.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> dismissSapRouteInbox(String inboxId) async {
+    if (!_ok) return;
+    await _client.from('sap_route_inbox').update({
+      'status': 'rejected',
+      'reject_reason': 'Avvist manuelt',
+      'processed_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', inboxId);
+  }
+
+  static Future<void> markSapRouteInboxRejected({
+    required String id,
+    required String reason,
+  }) async {
+    if (!_ok) return;
+    await _client.from('sap_route_inbox').update({
+      'status': 'rejected',
+      'reject_reason': reason,
+      'processed_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', id);
+  }
+
+  static Future<void> markSapRouteInboxImported({
+    required String inboxId,
+    required String routeShareId,
+    String? detectedMaviCode,
+  }) async {
+    if (!_ok) return;
+    final uid = _client.auth.currentUser?.id;
+    await _client.from('sap_route_inbox').update({
+      'status': 'imported',
+      'imported_route_share_id': routeShareId,
+      if (detectedMaviCode != null) 'detected_mavi_code': detectedMaviCode,
+      'processed_at': DateTime.now().toUtc().toIso8601String(),
+      if (uid != null) 'processed_by': uid,
+    }).eq('id', inboxId);
+  }
+
+  static Future<Uint8List?> downloadRoutePdfBytes(String storagePath) async {
+    if (!_ok) return null;
+    try {
+      final url = await getRoutePdfSignedUrl(storagePath);
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+        return res.bodyBytes;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Oppretter staged rute fra PDF (AUTO MASS / SAP).
+  static Future<String> createStagedRouteShareFromPdf({
+    required String companyId,
+    required Partner partner,
+    required PartnerVehicle vehicle,
+    required String fileName,
+    required Uint8List bytes,
+    required DateTime routeDate,
+    String? notes,
+  }) async {
+    final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final path =
+        'company_$companyId/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${vehicle.unitCode}_$safeName';
+    final storedPath =
+        await uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
+    final pdfText = RoutePdfTextService.extractFullText(bytes);
+    final meta = RoutePdfTextService.extractTripOverviewMetaFromText(pdfText);
+    final schedule = RoutePdfTextService.resolveSchedule(pdfText, fallbackDate: routeDate);
+    final composedNotes = RoutePdfTextService.composeRouteNotes(
+      stowingLane: meta.stowingLane,
+      userNote: notes,
+    );
+    final share = await addRouteShare(
+      PartnerRouteShare(
+        id: '',
+        partnerId: partner.id,
+        companyId: companyId,
+        title: 'Rute ${MaviUnitCodes.normalize(vehicle.unitCode)} — $fileName',
+        pdfStoragePath: storedPath,
+        shareDate: schedule.routeDate,
+        isDailyShare: true,
+        createdAt: DateTime.now(),
+        dispatchStatus: 'staged',
+        pdfSearchText: pdfText.isEmpty ? null : pdfText,
+        partnerVehicleId: vehicle.id,
+        notes: composedNotes.isEmpty ? null : composedNotes,
+      ),
+    );
+    if (pdfText.isNotEmpty) {
+      await saveRoutePdfSearchText(share.id, pdfText);
+    }
+    final patch = <String, dynamic>{};
+    if (schedule.routeStartAt != null) {
+      patch['route_start_at'] = schedule.routeStartAt!.toUtc().toIso8601String();
+    }
+    if (patch.isNotEmpty) {
+      await updateRouteShareFields(share.id, patch);
+    }
+    return share.id;
   }
 }
 

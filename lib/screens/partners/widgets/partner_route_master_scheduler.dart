@@ -17,6 +17,7 @@ import '../../../models/partner/partner_links.dart';
 import 'partner_route_pdf_actions.dart';
 import 'partner_route_single_assign_sheet.dart';
 import 'partner_route_auto_mass_sheet.dart';
+import 'partner_sap_routes_sheet.dart';
 
 DateTime _monday(DateTime d) {
   final n = DateTime(d.year, d.month, d.day);
@@ -58,6 +59,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   List<FleetShiftDefinition> _shifts = [];
   List<PartnerRouteShare> _shares = [];
+  int _sapPending = 0;
 
   DateTime get _weekEnd => _weekStart.add(const Duration(days: 6));
   List<DateTime> get _days =>
@@ -144,9 +146,11 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         fromDay: _weekStart,
         toDay: _weekEnd,
       );
+      final sapPending = await PartnerService.countSapRouteInboxPending(cid);
       if (mounted) setState(() {
         _shifts = shifts;
         _shares = shares;
+        _sapPending = sapPending;
         _busy = false;
       });
     } catch (_) {
@@ -213,6 +217,22 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     if (routes.any((s) => !s.isStaged && s.ackStatus != 'accepted')) return Colors.red;
     if (routes.every((s) => s.isStaged)) return Colors.orange;
     return Colors.green;
+  }
+
+  Future<void> _openSapRoutes() async {
+    final today = DateTime.now();
+    final routeDay = (_weekEnd.isBefore(_dayOnly(today)) || _weekStart.isAfter(_dayOnly(today)))
+        ? _focusDay
+        : _focusDay;
+    final ok = await PartnerSapRoutesSheet.show(
+      context,
+      fleet: widget.fleet,
+      routeDate: routeDay,
+    );
+    if (ok == true && mounted) {
+      widget.onChanged?.call();
+      await _reload();
+    }
   }
 
   Future<void> _openAutoMass() async {
@@ -446,6 +466,17 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         ),
                         icon: const Icon(Icons.add_circle_outline),
                         label: const Text('Ny rute'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _busy || _maviFleet.isEmpty ? null : _openSapRoutes,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF1565C0),
+                          foregroundColor: Colors.white,
+                        ),
+                        icon: const Icon(Icons.mark_email_read_outlined),
+                        label: Text(
+                          _sapPending > 0 ? 'SAP ($_sapPending)' : 'SAP',
+                        ),
                       ),
                       FilledButton.icon(
                         onPressed: _busy || _maviFleet.isEmpty ? null : _openAutoMass,
