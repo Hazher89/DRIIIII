@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 import 'package:uuid/uuid.dart';
 
+import '../../core/services/storage/company_file_storage.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/whistleblowing_report.dart';
@@ -46,8 +47,14 @@ class _WhistleblowingScreenState extends State<WhistleblowingScreen> {
         final bytes = await image.readAsBytes();
         final fileName = '${const Uuid().v4()}.jpg';
         final path = 'whistleblowing/$companyId/$fileName';
-        final url = await SupabaseService.uploadFile('tickets', path, bytes);
-        imageUrls.add(url);
+        final stored = await CompanyFileStorage.upload(
+          supabaseBucket: 'tickets',
+          storagePath: path,
+          bytes: bytes,
+          category: 'tickets',
+          fileName: fileName,
+        );
+        imageUrls.add(CompanyFileStorage.toStorageReference(stored));
       }
 
       final report = WhistleblowingReport(

@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../../../models/hms/equipment.dart';
 import '../../../models/user_profile.dart';
+import '../storage/company_file_storage.dart';
 import '../supabase_service.dart';
 
 class EquipmentService {
@@ -64,7 +65,14 @@ class EquipmentService {
   }) async {
     final path =
         '$companyId/$subfolder/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-    return SupabaseService.uploadFile('documents', path, bytes);
+    final stored = await CompanyFileStorage.upload(
+      supabaseBucket: 'documents',
+      storagePath: path,
+      bytes: bytes,
+      category: 'hms',
+      fileName: fileName,
+    );
+    return CompanyFileStorage.toStorageReference(stored);
   }
 
   static Future<List<EquipmentMaintenanceLog>> fetchMaintenanceLogs(

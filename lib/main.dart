@@ -11,6 +11,7 @@ import 'core/theme/theme_notifier.dart';
 import 'screens/shell/main_shell.dart';
 import 'screens/auth/auth_gate_screen.dart';
 import 'screens/surveys/survey_player_screen.dart';
+import 'screens/online/online_presence_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -94,10 +95,21 @@ class DriftProApp extends StatelessWidget {
     return null;
   }
 
+  bool _isOnlineRoute() {
+    final path = Uri.base.path.toLowerCase();
+    if (path == '/online' || path.endsWith('/online')) return true;
+    final fragment = Uri.base.fragment.toLowerCase();
+    if (fragment == '/online' || fragment == 'online' || fragment.endsWith('/online')) {
+      return true;
+    }
+    return Uri.base.queryParameters['view']?.toLowerCase() == 'online';
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeNotifier = context.watch<ThemeNotifier>();
     final publicSurveyId = _extractPublicSurveyId();
+    final onlineRoute = _isOnlineRoute();
 
     return MaterialApp(
       title: AppStrings.appName,
@@ -123,6 +135,12 @@ class DriftProApp extends StatelessWidget {
                 final session =
                     snapshot.data?.session ?? Supabase.instance.client.auth.currentSession;
 
+                if (onlineRoute) {
+                  if (session != null) {
+                    return const OnlinePresenceScreen();
+                  }
+                  return const AuthGateScreen();
+                }
                 if (session != null) {
                   return const MainShell();
                 }

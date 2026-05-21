@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
+import '../utils/norwegian_national_id.dart';
 import '../../models/ticket.dart';
 import '../../models/absence.dart';
 import '../constants/leave_rules.dart';
@@ -635,6 +636,39 @@ department:departments!department_id(name)
     });
   }
 
+  /// Avdelinger denne profilen er registrert som leder for.
+  static Future<Set<String>> fetchDepartmentIdsLedByProfile(String profileId) async {
+    if (!isConfigured) return {};
+    try {
+      final data = await client
+          .from('department_leaders')
+          .select('department_id')
+          .eq('profile_id', profileId);
+      return (data as List)
+          .map((r) => r['department_id'] as String)
+          .toSet();
+    } catch (e) {
+      debugPrint('fetchDepartmentIdsLedByProfile: $e');
+      return {};
+    }
+  }
+
+  /// Legg til / fjern én leder på én avdeling (beholder andre ledere).
+  static Future<void> setProfileLeadsDepartment({
+    required String departmentId,
+    required String profileId,
+    required bool isLeader,
+  }) async {
+    final map = await fetchDepartmentLeaderIdsByDepartment([departmentId]);
+    final current = List<String>.from(map[departmentId] ?? []);
+    if (isLeader) {
+      if (!current.contains(profileId)) current.add(profileId);
+    } else {
+      current.remove(profileId);
+    }
+    await setDepartmentLeaders(departmentId, current);
+  }
+
   static Future<List<UserProfile>> fetchProfiles({String? companyId, String? departmentId}) async {
     if (!isConfigured) return const [];
     var query = client.from('profiles').select();
@@ -642,6 +676,62 @@ department:departments!department_id(name)
     if (departmentId != null) query = query.eq('department_id', departmentId);
     final data = await query.order('full_name', ascending: true);
     return (data as List).map((e) => UserProfile.fromJson(e)).toList();
+  }
+
+  /// Ledere som kan behandle avvik: avdelingsledere + admin/superadmin i bedriften.
+  static Future<List<UserProfile>> fetchTicketHandlersForDepartment({
+    required String companyId,
+    String? departmentId,
+  }) async {
+    if (!isConfigured) return const [];
+    final leaderIds = <String>{};
+    if (departmentId != null && departmentId.isNotEmpty) {
+      final map = await fetchDepartmentLeaderIdsByDepartment([departmentId]);
+      leaderIds.addAll(map[departmentId] ?? []);
+      try {
+        final deptRow = await client
+            .from('departments')
+            .select('leader_id')
+            .eq('id', departmentId)
+            .maybeSingle();
+        final primary = deptRow?['leader_id'] as String?;
+        if (primary != null && primary.isNotEmpty) leaderIds.add(primary);
+      } catch (_) {}
+    }
+
+    final companyProfiles = await fetchProfiles(companyId: companyId);
+    final handlers = <String, UserProfile>{};
+
+    bool canHandle(UserProfile p) {
+      if (!p.isActive || !p.isApproved || p.isPartnerPortalUser) return false;
+      if (p.isAdmin) return true;
+      if (p.role == UserRole.leder) {
+        if (departmentId == null || departmentId.isEmpty) return true;
+        return leaderIds.contains(p.id) || p.departmentId == departmentId;
+      }
+      return leaderIds.contains(p.id);
+    }
+
+    for (final p in companyProfiles) {
+      if (canHandle(p)) handlers[p.id] = p;
+    }
+
+    final list = handlers.values.toList()
+      ..sort((a, b) {
+        final ar = a.role == UserRole.superadmin
+            ? 0
+            : a.role == UserRole.admin
+                ? 1
+                : 2;
+        final br = b.role == UserRole.superadmin
+            ? 0
+            : b.role == UserRole.admin
+                ? 1
+                : 2;
+        final c = ar.compareTo(br);
+        return c != 0 ? c : a.fullName.compareTo(b.fullName);
+      });
+    return list;
   }
 
   static Future<Department> createDepartment(Department dept) async {
@@ -971,12 +1061,14 @@ department:departments!department_id(name)
     String? departmentId,
     UserRole? role,
     DateTime? birthDate,
+    String? nationalIdNumber,
     DateTime? hireDate,
     String? emergencyContactName,
     String? emergencyContactPhone,
     bool? isSafetyRepresentative,
     bool? isActive,
     bool? smsOptIn,
+    bool clearBirthDate = false,
   }) async {
     final patch = <String, dynamic>{};
     if (fullName != null) patch['full_name'] = fullName;
@@ -989,8 +1081,13 @@ department:departments!department_id(name)
     }
     if (departmentId != null) patch['department_id'] = departmentId;
     if (role != null) patch['role'] = role.name;
-    if (birthDate != null) {
+    if (clearBirthDate) {
+      patch['birth_date'] = null;
+    } else if (birthDate != null) {
       patch['birth_date'] = birthDate.toIso8601String().split('T').first;
+    }
+    if (nationalIdNumber != null) {
+      patch['national_id_number'] = NorwegianNationalId.normalize(nationalIdNumber);
     }
     if (hireDate != null) {
       patch['hire_date'] = hireDate.toIso8601String().split('T').first;

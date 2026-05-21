@@ -58,6 +58,16 @@ class _RuleTile extends StatelessWidget {
         return Icons.child_care_rounded;
       case 'sun':
         return Icons.wb_sunny_rounded;
+      case 'medical':
+        return Icons.medical_services_outlined;
+      case 'timer':
+        return Icons.timer_outlined;
+      case 'shield':
+        return Icons.health_and_safety_outlined;
+      case 'lock':
+        return Icons.lock_outline_rounded;
+      case 'tips':
+        return Icons.lightbulb_outline_rounded;
       default:
         return Icons.person_outline_rounded;
     }

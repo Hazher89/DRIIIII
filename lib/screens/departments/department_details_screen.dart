@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_icons.dart';
-import '../../core/constants/app_strings.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
 import '../../models/user_profile.dart';
 import '../../models/ticket.dart';
 import '../../models/absence.dart';
+import '../employees/widgets/employee_display.dart';
+import '../employees/widgets/employee_move_department_sheet.dart';
 
 class DepartmentDetailsScreen extends StatefulWidget {
   final Department department;
@@ -41,7 +42,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _currentDept = widget.department;
     _nameController.text = _currentDept.name;
     _descController.text = _currentDept.description ?? '';
@@ -59,7 +60,19 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
     try {
       final companyId = _currentDept.companyId;
       _allProfiles = await SupabaseService.fetchProfiles(companyId: companyId);
-      
+
+      final depts = await SupabaseService.fetchDepartments(companyId: companyId);
+      final refreshed = depts.where((d) => d.id == _currentDept.id).firstOrNull;
+      if (refreshed != null) {
+        _currentDept = refreshed;
+        _selectedLeaderIds
+          ..clear()
+          ..addAll(_currentDept.leaderIds);
+        if (_selectedLeaderIds.isEmpty && _currentDept.leaderId != null) {
+          _selectedLeaderIds.add(_currentDept.leaderId!);
+        }
+      }
+
       if (!widget.isNew) {
         _members = await SupabaseService.fetchProfiles(
           companyId: companyId,
@@ -105,7 +118,8 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
           isScrollable: true,
           tabs: const [
             Tab(text: 'Oversikt'),
-            Tab(text: 'Medlemmer'),
+            Tab(text: 'Ansatte'),
+            Tab(text: 'Ledere'),
             Tab(text: 'Kvoter'),
             Tab(text: 'Aktivitet'),
             Tab(text: 'Innstillinger'),
@@ -119,6 +133,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
               children: [
                 _buildOverviewTab(isDark),
                 _buildMembersTab(isDark),
+                _buildLeadersTab(isDark),
                 _buildQuotasTab(isDark),
                 _buildActivityTab(isDark),
                 _buildSettingsTab(isDark),
@@ -142,8 +157,43 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
         const SizedBox(height: 12),
         _buildStatCard('Fravær i dag', _absences.where((a) => a.isActive).length.toString(), AppIcons.absence, Colors.teal, isDark),
         const SizedBox(height: 24),
-        Text('Avdelingsleder', style: DriftProTheme.headingMd),
-        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(child: Text('Ansatte i avdelingen', style: DriftProTheme.headingMd)),
+            TextButton(
+              onPressed: () => _tabController.animateTo(1),
+              child: const Text('Se alle'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (_members.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark ? DriftProTheme.cardDark : Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Text('Ingen ansatte i denne avdelingen ennå. Legg til under fanen Ansatte.'),
+          )
+        else
+          ..._members.take(8).map((m) => _memberCard(m, isDark, compact: true)),
+        if (_members.length > 8)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('+ ${_members.length - 8} flere under Ansatte', style: DriftProTheme.caption),
+          ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            Expanded(child: Text('Avdelingsledere', style: DriftProTheme.headingMd)),
+            TextButton(
+              onPressed: () => _tabController.animateTo(2),
+              child: const Text('Endre'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
         _buildLeaderProfile(isDark),
       ],
     );
@@ -212,32 +262,187 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
     );
   }
 
+  Widget _memberCard(UserProfile m, bool isDark, {bool compact = false}) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: isDark ? DriftProTheme.cardDark : Colors.white,
+      child: ListTile(
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: compact ? 4 : 8,
+        ),
+        leading: CircleAvatar(
+          backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.15),
+          child: Text(m.initials, style: const TextStyle(color: DriftProTheme.primaryGreen)),
+        ),
+        title: EmployeeDisplay.nameWithNumber(m),
+        subtitle: Text(
+          [
+            m.role.name,
+            if (m.phone != null && m.phone!.isNotEmpty) m.phone!,
+            if (!compact) m.email,
+          ].join(' · '),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: compact
+            ? null
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Flytt til annen avdeling',
+                    icon: const Icon(Icons.swap_horiz, color: DriftProTheme.primaryGreen),
+                    onPressed: () async {
+                      final depts = await SupabaseService.fetchDepartments(
+                        companyId: _currentDept.companyId,
+                      );
+                      if (!mounted) return;
+                      final ok = await showEmployeeMoveDepartmentSheet(
+                        context,
+                        employee: m,
+                        departments: depts,
+                      );
+                      if (ok == true) _loadData();
+                    },
+                  ),
+                  IconButton(
+                    tooltip: 'Fjern fra avdeling',
+                    icon: const Icon(Icons.person_remove_outlined, color: Colors.red),
+                    onPressed: () => _removeMember(m.id),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
   Widget _buildMembersTab(bool isDark) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(padding: const EdgeInsets.all(16), child: Row(children: [Text('${_members.length} Medlemmer', style: DriftProTheme.labelLg), const Spacer(), ElevatedButton(onPressed: _showAddMemberPicker, child: const Text('Legg til'))])),
-        Expanded(
-          child: ListView.builder(
-            itemCount: _members.length,
-            itemBuilder: (context, index) {
-              final m = _members[index];
-              return ListTile(
-                leading: CircleAvatar(child: Text(m.initials)),
-                title: Text(m.fullName),
-                subtitle: Text(
-                  [
-                    if (m.employeeNumber != null && m.employeeNumber!.isNotEmpty)
-                      'Ansattnr. ${m.employeeNumber}',
-                    m.role.name,
-                  ].join(' · '),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${_members.length} ansatte',
+                  style: DriftProTheme.headingSm,
                 ),
-                trailing: IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.red), onPressed: () => _removeMember(m.id)),
-              );
-            },
+              ),
+              FilledButton.icon(
+                onPressed: _showAddMemberPicker,
+                icon: const Icon(Icons.person_add_alt_1, size: 18),
+                label: const Text('Legg til ansatt'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: DriftProTheme.primaryGreen,
+                ),
+              ),
+            ],
           ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Alle som tilhører ${_currentDept.name}. Ansattnummer brukes ved innlogging.',
+            style: DriftProTheme.caption,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: _members.isEmpty
+              ? Center(
+                  child: Text(
+                    'Ingen ansatte her ennå.\nTrykk «Legg til ansatt».',
+                    textAlign: TextAlign.center,
+                    style: DriftProTheme.bodyMd.copyWith(color: Colors.grey),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _members.length,
+                  itemBuilder: (_, i) => _memberCard(_members[i], isDark),
+                ),
         ),
       ],
     );
+  }
+
+  Widget _buildLeadersTab(bool isDark) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.35)),
+            ),
+            child: const Text(
+              'Velg én eller flere ansatte som skal være leder for denne avdelingen. '
+              'En leder kan også være leder for andre avdelinger (sett under Ansatte → trykk på personen → «Avdelingsleder for»).',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('Velg ledere', style: DriftProTheme.headingMd),
+          const SizedBox(height: 12),
+          _buildLeaderMultiSelect(isDark),
+          const SizedBox(height: 20),
+          if (_selectedLeaderIds.isNotEmpty) ...[
+            Text('Valgte ledere', style: DriftProTheme.labelLg),
+            const SizedBox(height: 8),
+            _buildLeaderProfile(isDark),
+          ],
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _saveLeadersOnly,
+              style: FilledButton.styleFrom(
+                backgroundColor: DriftProTheme.primaryGreen,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: const Text('Lagre avdelingsledere', style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveLeadersOnly() async {
+    if (widget.isNew) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lagre avdelingen først (øverst til høyre)')),
+      );
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      await SupabaseService.setDepartmentLeaders(
+        _currentDept.id,
+        _selectedLeaderIds.toList(),
+      );
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Avdelingsledere lagret')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Feil: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Widget _buildQuotasTab(bool isDark) {
@@ -314,10 +519,16 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
            const SizedBox(height: 20),
            const Text('Beskrivelse'),
            TextField(controller: _descController, maxLines: 2),
-           const SizedBox(height: 20),
-           const Text('Avdelingsledere (kan velge flere)'),
-           _buildLeaderMultiSelect(isDark),
-           const SizedBox(height: 40),
+           const SizedBox(height: 12),
+           ListTile(
+             contentPadding: EdgeInsets.zero,
+             leading: const Icon(Icons.groups_2_outlined, color: DriftProTheme.primaryGreen),
+             title: const Text('Avdelingsledere'),
+             subtitle: const Text('Administreres under fanen «Ledere»'),
+             trailing: const Icon(Icons.chevron_right),
+             onTap: () => _tabController.animateTo(2),
+           ),
+           const SizedBox(height: 24),
            Center(child: TextButton(onPressed: _confirmDelete, child: const Text('Slett Avdeling', style: TextStyle(color: Colors.red)))),
         ],
       ),

@@ -6,6 +6,8 @@ class DmsFile {
   final String? folderId;
   final String name;
   final String storagePath;
+  final String storageProvider;
+  final String? externalUrl;
   final int? fileSize;
   final String? extension;
   final String? createdBy;
@@ -19,6 +21,8 @@ class DmsFile {
     this.folderId,
     required this.name,
     required this.storagePath,
+    this.storageProvider = 'supabase',
+    this.externalUrl,
     this.fileSize,
     this.extension,
     this.createdBy,
@@ -34,7 +38,9 @@ class DmsFile {
       folderId: json['folder_id'] as String?,
       name: json['name'] as String,
       storagePath: json['storage_path'] as String,
-      fileSize: json['file_size'] as int?,
+      storageProvider: json['storage_provider'] as String? ?? 'supabase',
+      externalUrl: json['external_url'] as String?,
+      fileSize: json['file_size'] as int? ?? json['file_size_bytes'] as int?,
       extension: json['extension'] as String?,
       createdBy: json['created_by'] as String?,
       isStarred: json['is_starred'] as bool? ?? false,

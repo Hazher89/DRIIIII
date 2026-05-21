@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import '../../core/constants/app_icons.dart';
+import '../../core/constants/company_display.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/permission_gate.dart';
@@ -22,6 +23,9 @@ import '../../models/risk_assessment.dart';
 import '../../models/attendance/employee_attendance.dart';
 import '../../models/kiosk_settings.dart';
 import '../../core/services/attendance/attendance_service.dart';
+import '../../core/services/tidsbanken/tidsbanken_presence_service.dart';
+import '../../models/tidsbanken_presence.dart';
+import '../online/online_presence_screen.dart';
 import '../admin/kiosk_settings_screen.dart';
 import '../../widgets/cards/stat_card.dart';
 import '../../widgets/cards/quick_action_button.dart';
@@ -53,8 +57,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   KioskSettings _kiosk = KioskSettings.defaults;
   String? _companyName;
   List<Absence> _scopedAbsences = const [];
+  TidsbankenSyncState? _tidsbankenSync;
   bool _nbDatesReady = false;
   Timer? _clockTimer;
+  Timer? _presenceTimer;
 
   @override
   void initState() {
@@ -72,6 +78,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
+    _presenceTimer = Timer.periodic(const Duration(minutes: 5), (_) {
+      _refreshTidsbankenPresence();
+    });
     _loadAllData();
   }
 
@@ -83,6 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void dispose() {
     _clockTimer?.cancel();
+    _presenceTimer?.cancel();
     _fadeController.dispose();
     super.dispose();
   }
@@ -95,6 +105,24 @@ class _DashboardScreenState extends State<DashboardScreen>
   UserAccess? get _access => _profile?.access;
 
   void _go(String accessKey) => widget.onNavigateByAccess?.call(accessKey);
+
+  Future<void> _refreshTidsbankenPresence() async {
+    if (!_kiosk.showLiveTeamBoard || !_kiosk.showTidsbankenPresence) return;
+    try {
+      final companyId = await SupabaseService.getCurrentCompanyId();
+      if (companyId == null) return;
+      if (!await TidsbankenPresenceService.isEnabledForCompany(companyId)) return;
+      await TidsbankenPresenceService.syncNow();
+      final sync = await TidsbankenPresenceService.fetchSyncState(companyId);
+      if (mounted) setState(() => _tidsbankenSync = sync);
+    } catch (_) {}
+  }
+
+  void _openOnlineBoard() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const OnlinePresenceScreen()),
+    );
+  }
 
   Future<void> _loadAllData() async {
     setState(() => _isLoading = true);
@@ -155,6 +183,14 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       final onDuty = await AttendanceService.getOnDutyEmployees(companyId);
       final myAttendance = await AttendanceService.getMyAttendance();
+      TidsbankenSyncState? tidsSync;
+      if (meta.kiosk.showTidsbankenPresence) {
+        tidsSync = await TidsbankenPresenceService.fetchSyncState(companyId);
+        if (await TidsbankenPresenceService.isEnabledForCompany(companyId)) {
+          await TidsbankenPresenceService.syncNow();
+          tidsSync = await TidsbankenPresenceService.fetchSyncState(companyId);
+        }
+      }
 
       final now = DateTime.now();
       final today = DateTime(now.year, now.month, now.day);
@@ -205,10 +241,11 @@ class _DashboardScreenState extends State<DashboardScreen>
       setState(() {
         _profile = profile;
         _kiosk = meta.kiosk;
-        _companyName = meta.companyName;
+        _companyName = CompanyDisplay.resolve(meta.companyName);
         _scopedAbsences = scopedAbsences;
         _onDutyEmployees = onDuty;
         _myAttendance = myAttendance;
+        _tidsbankenSync = tidsSync;
         _recentActivity = [
           if (canAvvik) ...scopedTickets,
           if (canFravaer) ...scopedAbsences,
@@ -247,7 +284,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (profile.isAdmin) return tickets;
     if (profile.isLeader) {
       return tickets
-          .where((t) => t.departmentId == profile.departmentId || t.reportedBy == profile.id)
+          .where((t) =>
+              t.assignedTo == profile.id ||
+              t.departmentId == profile.departmentId ||
+              t.reportedBy == profile.id)
           .toList();
     }
     return tickets.where((t) => t.reportedBy == profile.id).toList();
@@ -325,9 +365,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (_kiosk.showPersonalGreeting && first.isNotEmpty) {
       return '${_getGreeting()}, $first 👋';
     }
-    final cn = _companyName?.trim();
-    if (cn != null && cn.isNotEmpty) return cn;
-    return 'DriftPro';
+    return CompanyDisplay.resolve(_companyName);
   }
 
   List<Widget> _buildMiniStatChildren() {
@@ -359,6 +397,69 @@ class _DashboardScreenState extends State<DashboardScreen>
       _kiosk.showAttendanceSummary && (_access?.canFravaer ?? false),
     );
     return parts;
+  }
+
+  Widget _buildLiveTeamBoardCard(bool isDark) {
+    final sync = _tidsbankenSync;
+    final title = CompanyDisplay.resolve(_companyName);
+    final onJob = sync != null && sync.totalCount > 0
+        ? '${sync.clockedInCount} av ${sync.totalCount} innstemplt'
+        : '${_onDutyEmployees.length} på jobb';
+    final syncLabel = sync?.lastSyncAt != null
+        ? 'Oppdatert ${DateFormat('HH:mm', 'nb').format(sync!.lastSyncAt!.toLocal())}'
+        : 'Trykk for oversikt';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Material(
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: _openOnlineBoard,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.apartment_rounded, color: DriftProTheme.primaryGreen, size: 32),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: DriftProTheme.headingSm),
+                      const SizedBox(height: 4),
+                      Text(onJob, style: DriftProTheme.bodyMd),
+                      Text(
+                        syncLabel,
+                        style: DriftProTheme.bodySm.copyWith(
+                          color: isDark ? Colors.grey[500] : Colors.grey[600],
+                        ),
+                      ),
+                      Text(
+                        'Ferie · bursdag · hvem er inne · oppdateres hvert 5. min',
+                        style: DriftProTheme.bodySm.copyWith(
+                          color: DriftProTheme.primaryGreen,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildAbsenceAggregateSection(bool isDark) {
@@ -550,7 +651,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<Widget> _buildActivityAttendanceSlivers(bool isDark) {
     final showActivity =
         _kiosk.showActivityFeed && _recentActivity.isNotEmpty;
-    final showAttendanceList = _kiosk.showAttendanceSummary &&
+    // Full oversikt ligger på infoskjerm-kortet — unngå lang «På jobb»-liste her.
+    final showAttendanceList = !_kiosk.showLiveTeamBoard &&
+        _kiosk.showAttendanceSummary &&
         !_anonymizeSharedScreen &&
         (_access?.canFravaer == true || _access?.canEmployeesList == true);
 
@@ -703,14 +806,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Center(
-                          child: Text('D',
+                          child: Text('M',
                               style: TextStyle(
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold)),
                         ),
                       ),
                       const SizedBox(width: 8),
-                      const Text('DriftPro'),
+                      Text(CompanyDisplay.defaultName),
                     ],
                   ),
                   actions: [
@@ -848,6 +951,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                   ),
                 ),
+
+                if (_kiosk.showLiveTeamBoard) ...[
+                  SliverToBoxAdapter(child: _buildLiveTeamBoardCard(isDark)),
+                ],
 
                 if (_kiosk.showAbsenceAggregate) ...[
                   SliverToBoxAdapter(child: _buildAbsenceAggregateSection(isDark)),

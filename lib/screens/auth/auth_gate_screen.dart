@@ -316,8 +316,8 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Logg inn med ansattnummer. Standardpassord ved oppstart: ${EmployeeAuthService.defaultPasswordHint} '
-                  '(endre under Profil etter innlogging).',
+                  'Logg inn med ansattnummer. Standardpassord: ${EmployeeAuthService.defaultPasswordHint} '
+                  '(fire nuller — lagres som 000000 i systemet). Endre under Profil etter innlogging.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,

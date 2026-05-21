@@ -11,6 +11,7 @@ import 'employee_access_detail_screen.dart';
 import 'employee_edit_screen.dart';
 import 'widgets/employee_approval_sheet.dart';
 import 'widgets/employee_display.dart';
+import 'widgets/employee_birthdays_tab.dart';
 import 'widgets/employee_move_department_sheet.dart';
 
 /// Ansattadministrasjon – superadmin styrer alle DriftPro-tilganger per bruker.
@@ -34,7 +35,7 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
     _load();
   }
 
@@ -217,6 +218,10 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                 ],
               ),
             ),
+            const Tab(
+              icon: Icon(Icons.cake_outlined, size: 20),
+              text: 'Bursdager',
+            ),
           ],
         ),
         actions: [
@@ -242,19 +247,25 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _infoBanner(isDark),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                      child: TextField(
-                        decoration: InputDecoration(
-                          hintText: 'Søk navn, ansattnr., e-post, telefon…',
-                          prefixIcon: const Icon(Icons.search),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                    AnimatedBuilder(
+                      animation: _tabs,
+                      builder: (context, _) {
+                        if (_tabs.index == 2) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                          child: TextField(
+                            decoration: InputDecoration(
+                              hintText: 'Søk navn, ansattnr., e-post, telefon…',
+                              prefixIcon: const Icon(Icons.search),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              isDense: true,
+                            ),
+                            onChanged: (v) => setState(() => _search = v),
                           ),
-                          isDense: true,
-                        ),
-                        onChanged: (v) => setState(() => _search = v),
-                      ),
+                        );
+                      },
                     ),
                     Expanded(
                       child: TabBarView(
@@ -262,6 +273,12 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                         children: [
                           _employeeList(_visible, isDark),
                           _employeeList(_pending, isDark, pending: true),
+                          EmployeeBirthdaysTab(
+                            employees: _all,
+                            departments: _departments,
+                            canEdit: _canEditEmployees,
+                            onChanged: _load,
+                          ),
                         ],
                       ),
                     ),
@@ -294,7 +311,7 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                 ),
                 Text(
                   _isSuperAdmin
-                      ? 'Trykk på ansatt for tilganger. Bruk ✏️ for telefon, adresse og datoer.'
+                      ? 'Trykk på ansatt for tilganger og avdelingsleder-roller. ✏️ = rediger, ↔ = flytt avdeling. Innlogging: ansattnr. + passord 0000.'
                       : _canEditEmployees
                           ? 'Trykk for tilganger – eller ✏️ for å redigere telefon og personinfo.'
                           : 'Kun lesetilgang.',

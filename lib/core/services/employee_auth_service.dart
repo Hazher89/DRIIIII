@@ -13,8 +13,15 @@ class EmployeeAuthService {
       !SupabaseConfig.url.startsWith('YOUR_') &&
       !SupabaseConfig.anonKey.startsWith('YOUR_');
 
-  /// Standardpassord ved første oppsett (Supabase krever min. 6 tegn).
-  static const String defaultPasswordHint = '000000';
+  /// Standardpassord ved første oppsett (lagret som 000000 i Supabase).
+  static const String defaultPasswordHint = '0000';
+
+  /// Supabase Auth krever min. 6 tegn — «0000» mappes til «000000».
+  static String normalizePasswordForAuth(String password) {
+    final p = password.trim();
+    if (p == '0000') return '000000';
+    return p;
+  }
 
   static Future<String?> resolveLoginEmail(String employeeNumber) async {
     if (!_ok) return null;
@@ -40,7 +47,10 @@ class EmployeeAuthService {
     if (email == null) {
       throw const AuthException('Fant ikke ansattnummer. Sjekk nummeret eller kontakt MAVI.');
     }
-    await _client.auth.signInWithPassword(email: email, password: password);
+    await _client.auth.signInWithPassword(
+      email: email,
+      password: normalizePasswordForAuth(password),
+    );
   }
 
   static Future<Map<String, dynamic>> changePasswordAndNotifySms({

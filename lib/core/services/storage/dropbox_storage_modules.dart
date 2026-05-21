@@ -1,0 +1,47 @@
+/// Moduler som kan bruke Dropbox for store filer.
+enum DropboxStorageModule {
+  routes('routes', 'Rute-PDF (partnere)'),
+  tickets('tickets', 'Avvik — bilder og vedlegg'),
+  dms('dms', 'Dokumenter (DMS)'),
+  partners('partners', 'Partner — bilder og filer'),
+  employees('employees', 'Ansattfiler / personalmappe'),
+  hms('hms', 'HMS — utstyr og kompetanse');
+
+  const DropboxStorageModule(this.key, this.label);
+  final String key;
+  final String label;
+
+  static DropboxStorageModule? fromCategory(String category) {
+    switch (category) {
+      case 'routes':
+        return routes;
+      case 'tickets':
+        return tickets;
+      case 'dms':
+        return dms;
+      case 'partners':
+        return partners;
+      case 'employees':
+        return employees;
+      case 'hms':
+        return hms;
+      default:
+        return null;
+    }
+  }
+
+  static Map<String, bool> defaultsEnabled() => {
+        for (final m in DropboxStorageModule.values) m.key: true,
+      };
+
+  static Map<String, bool> fromStatusJson(Map<String, dynamic>? status) {
+    final raw = status?['storage_modules'];
+    final base = defaultsEnabled();
+    if (raw is! Map) return base;
+    for (final m in DropboxStorageModule.values) {
+      final v = raw[m.key];
+      if (v is bool) base[m.key] = v;
+    }
+    return base;
+  }
+}

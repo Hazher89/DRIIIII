@@ -6,6 +6,8 @@ import '../../../core/services/hms/employee_document_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/hms_document.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/resolved_storage_image.dart';
+import '../../../core/services/storage/company_file_storage.dart';
 
 /// Filer for én ansatt — opplasting, synlighet for ansatt, oversikt.
 class EmployeeFilesPanel extends StatefulWidget {
@@ -292,7 +294,11 @@ class _EmployeeFilesPanelState extends State<EmployeeFilesPanel> {
         leading: isImage
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.network(d.fileUrl, width: 48, height: 48, fit: BoxFit.cover),
+                child: ResolvedStorageImage(
+                  storageRef: d.fileUrl,
+                  width: 48,
+                  height: 48,
+                ),
               )
             : Icon(
                 d.fileName?.endsWith('.pdf') == true ? Icons.picture_as_pdf : Icons.insert_drive_file,
@@ -314,7 +320,10 @@ class _EmployeeFilesPanelState extends State<EmployeeFilesPanel> {
               ),
             IconButton(
               icon: const Icon(Icons.open_in_new, size: 20),
-              onPressed: () => launchUrl(Uri.parse(d.fileUrl)),
+              onPressed: () async {
+                final url = await CompanyFileStorage.resolveDisplayUrl(d.fileUrl);
+                await launchUrl(Uri.parse(url));
+              },
             ),
             if (widget.canManageVisibility)
               PopupMenuButton<String>(

@@ -15,6 +15,8 @@ class KioskSettings {
   final bool showActivityFeed;
   final bool showMiniStatsRow;
   final bool revealNamesOnInfoscreen;
+  final bool showLiveTeamBoard;
+  final bool showTidsbankenPresence;
 
   const KioskSettings({
     this.infoscreenLayoutEnabled = false,
@@ -31,6 +33,8 @@ class KioskSettings {
     this.showActivityFeed = true,
     this.showMiniStatsRow = true,
     this.revealNamesOnInfoscreen = false,
+    this.showLiveTeamBoard = true,
+    this.showTidsbankenPresence = true,
   });
 
   static const KioskSettings defaults = KioskSettings();
@@ -54,6 +58,8 @@ class KioskSettings {
       showActivityFeed: b('show_activity_feed', defaults.showActivityFeed),
       showMiniStatsRow: b('show_mini_stats_row', defaults.showMiniStatsRow),
       revealNamesOnInfoscreen: b('reveal_names_on_infoscreen', defaults.revealNamesOnInfoscreen),
+      showLiveTeamBoard: b('show_live_team_board', defaults.showLiveTeamBoard),
+      showTidsbankenPresence: b('show_tidsbanken_presence', defaults.showTidsbankenPresence),
     );
   }
 
@@ -72,6 +78,8 @@ class KioskSettings {
         'show_activity_feed': showActivityFeed,
         'show_mini_stats_row': showMiniStatsRow,
         'reveal_names_on_infoscreen': revealNamesOnInfoscreen,
+        'show_live_team_board': showLiveTeamBoard,
+        'show_tidsbanken_presence': showTidsbankenPresence,
       };
 
   KioskSettings copyWith({
@@ -89,6 +97,8 @@ class KioskSettings {
     bool? showActivityFeed,
     bool? showMiniStatsRow,
     bool? revealNamesOnInfoscreen,
+    bool? showLiveTeamBoard,
+    bool? showTidsbankenPresence,
   }) {
     return KioskSettings(
       infoscreenLayoutEnabled: infoscreenLayoutEnabled ?? this.infoscreenLayoutEnabled,
@@ -105,6 +115,8 @@ class KioskSettings {
       showActivityFeed: showActivityFeed ?? this.showActivityFeed,
       showMiniStatsRow: showMiniStatsRow ?? this.showMiniStatsRow,
       revealNamesOnInfoscreen: revealNamesOnInfoscreen ?? this.revealNamesOnInfoscreen,
+      showLiveTeamBoard: showLiveTeamBoard ?? this.showLiveTeamBoard,
+      showTidsbankenPresence: showTidsbankenPresence ?? this.showTidsbankenPresence,
     );
   }
 }

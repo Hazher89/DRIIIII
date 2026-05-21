@@ -6,9 +6,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/constants/app_strings.dart';
+import '../../core/services/storage/company_file_storage.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
+import '../../models/user_profile.dart';
 
 /// Enkel, rask innrapportering for ansatte (tekst + bilder + alvor).
 class NewTicketScreen extends StatefulWidget {
@@ -26,8 +28,11 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   TicketSeverity _severity = TicketSeverity.middels;
   bool _isAnonymous = false;
   bool _isSubmitting = false;
+  bool _loadingHandlers = true;
   String? _error;
   String? _category;
+  String? _selectedHandlerId;
+  List<UserProfile> _handlers = [];
 
   static const _categories = [
     'Helse og sikkerhet',
@@ -41,10 +46,58 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   final ImagePicker _picker = ImagePicker();
 
   @override
+  void initState() {
+    super.initState();
+    _loadHandlers();
+  }
+
+  @override
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadHandlers() async {
+    setState(() => _loadingHandlers = true);
+    try {
+      final companyId = await SupabaseService.getCurrentCompanyId();
+      final profile = await SupabaseService.fetchCurrentUserProfile();
+      if (companyId == null) {
+        setState(() {
+          _handlers = [];
+          _loadingHandlers = false;
+        });
+        return;
+      }
+      final handlers = await SupabaseService.fetchTicketHandlersForDepartment(
+        companyId: companyId,
+        departmentId: profile?.departmentId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _handlers = handlers;
+        _selectedHandlerId = handlers.length == 1 ? handlers.first.id : null;
+        _loadingHandlers = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _handlers = [];
+        _loadingHandlers = false;
+        _error = 'Kunne ikke hente ledere: $e';
+      });
+    }
+  }
+
+  String _handlerLabel(UserProfile p) {
+    final role = switch (p.role) {
+      UserRole.superadmin => 'Superadmin',
+      UserRole.admin => 'Admin',
+      UserRole.leder => 'Avdelingsleder',
+      _ => p.role.name,
+    };
+    return '${p.fullName} · $role';
   }
 
   Future<void> _pickGallery() async {
@@ -67,6 +120,11 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_selectedHandlerId == null || _selectedHandlerId!.isEmpty) {
+      setState(() => _error = 'Velg leder som skal behandle avviket.');
+      return;
+    }
 
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) {
@@ -94,12 +152,14 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         try {
           final fileName = '${const Uuid().v4()}.jpg';
           final path = '$companyId/${const Uuid().v4()}_$fileName';
-          final url = await SupabaseService.uploadFile(
-            'tickets',
-            path,
-            _images[i].bytes,
+          final stored = await CompanyFileStorage.upload(
+            supabaseBucket: 'tickets',
+            storagePath: path,
+            bytes: _images[i].bytes,
+            category: 'tickets',
+            fileName: fileName,
           );
-          imageUrls.add(url);
+          imageUrls.add(CompanyFileStorage.toStorageReference(stored));
         } catch (_) {
           failedUploads++;
         }
@@ -110,6 +170,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         companyId: companyId,
         departmentId: profile?.departmentId,
         reportedBy: user.id,
+        assignedTo: _selectedHandlerId,
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         category: _category,
@@ -170,7 +231,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Kort beskrivelse og gjerne bilde. En leder følger opp i kontrollsenteret.',
+                      'Velg leder som skal behandle avviket. Superadmin og avdelingsleder kan følge opp i kontrollsenteret.',
                       style: TextStyle(fontSize: 13),
                     ),
                   ),
@@ -178,6 +239,39 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
               ),
             ),
             const SizedBox(height: 20),
+            if (_loadingHandlers)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (_handlers.isEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Text(
+                  'Ingen leder funnet — kontakt HR eller admin.',
+                  style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
+                ),
+              )
+            else
+              DropdownButtonFormField<String>(
+                value: _selectedHandlerId,
+                decoration: const InputDecoration(
+                  labelText: 'Leder som behandler avviket *',
+                  border: OutlineInputBorder(),
+                ),
+                items: _handlers
+                    .map(
+                      (p) => DropdownMenuItem(
+                        value: p.id,
+                        child: Text(_handlerLabel(p)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) => setState(() => _selectedHandlerId = v),
+                validator: (v) =>
+                    v == null || v.isEmpty ? 'Velg leder' : null,
+              ),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _titleController,
               decoration: const InputDecoration(
@@ -255,7 +349,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _pickCamera,
-                    icon: const Icon(Icons.photo_camera_outlined),
+                    icon: const Icon(Icons.camera_alt_outlined),
                     label: const Text('Kamera'),
                   ),
                 ),
@@ -264,75 +358,64 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
             if (_images.isNotEmpty) ...[
               const SizedBox(height: 12),
               SizedBox(
-                height: 96,
-                child: ListView.builder(
+                height: 88,
+                child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: _images.length,
-                  itemBuilder: (ctx, i) {
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Stack(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(10),
-                            child: Image.memory(
-                              _images[i].bytes,
-                              width: 96,
-                              height: 96,
-                              fit: BoxFit.cover,
-                            ),
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) {
+                    return Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            _images[i].bytes,
+                            width: 88,
+                            height: 88,
+                            fit: BoxFit.cover,
                           ),
-                          Positioned(
-                            top: 2,
-                            right: 2,
-                            child: GestureDetector(
-                              onTap: () =>
-                                  setState(() => _images.removeAt(i)),
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  color: Colors.black54,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.close,
-                                  size: 14,
-                                  color: Colors.white,
-                                ),
-                              ),
+                        ),
+                        Positioned(
+                          top: 2,
+                          right: 2,
+                          child: IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black54,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(4),
                             ),
+                            iconSize: 18,
+                            onPressed: () =>
+                                setState(() => _images.removeAt(i)),
+                            icon: const Icon(Icons.close),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     );
                   },
                 ),
               ),
             ],
             if (_error != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Text(
                 _error!,
                 style: const TextStyle(color: DriftProTheme.error, fontSize: 13),
               ),
             ],
-            const SizedBox(height: 28),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: FilledButton(
-                onPressed: _isSubmitting ? null : _submit,
-                child: _isSubmitting
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('Send inn avvik'),
-              ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: _isSubmitting || _handlers.isEmpty ? null : _submit,
+              child: _isSubmitting
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Send avvik'),
             ),
           ],
         ),

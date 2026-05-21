@@ -13,6 +13,7 @@ import '../../utils/portal_credentials.dart';
 import '../sms/sms_phone_utils.dart';
 import 'fleet_shift_seed.dart';
 import 'mavi_unit_codes.dart';
+import '../storage/company_file_storage.dart';
 import 'route_pdf_text_service.dart';
 
 class PartnerService {
@@ -86,12 +87,14 @@ class PartnerService {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
     final path =
         '$companyId/partners/$partnerId/vehicles/${unitCode}_${DateTime.now().millisecondsSinceEpoch}_$fileName';
-    await _client.storage.from('documents').uploadBinary(
-          path,
-          bytes,
-          fileOptions: const FileOptions(upsert: true),
-        );
-    return path;
+    final stored = await CompanyFileStorage.upload(
+      supabaseBucket: 'documents',
+      storagePath: path,
+      bytes: bytes,
+      category: 'partners',
+      fileName: fileName,
+    );
+    return stored.path;
   }
 
   static Future<List<PartnerDocument>> fetchDocuments(
@@ -264,20 +267,20 @@ class PartnerService {
     );
   }
 
-  static Future<void> uploadPartnerDocumentFile({
+  static Future<String> uploadPartnerDocumentFile({
     required String storagePath,
     required Uint8List bytes,
     String? mimeType,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
-    await _client.storage.from('documents').uploadBinary(
-          storagePath,
-          bytes,
-          fileOptions: FileOptions(
-            upsert: true,
-            contentType: mimeType ?? 'application/octet-stream',
-          ),
-        );
+    final stored = await CompanyFileStorage.upload(
+      supabaseBucket: 'documents',
+      storagePath: storagePath,
+      bytes: bytes,
+      category: 'partners',
+      fileName: storagePath.split('/').last,
+    );
+    return stored.path;
   }
 
   static Future<List<PartnerRouteShare>> fetchRouteShares(
@@ -311,6 +314,21 @@ class PartnerService {
   ) async {
     if (!_ok) return;
     await _client.from('partner_route_shares').update(fields).eq('id', shareId);
+  }
+
+  /// Flytter kladd (staged) til annen MAVI/partner uten SMS.
+  static Future<void> reassignStagedRouteShare({
+    required PartnerRouteShare share,
+    required String partnerId,
+    required String partnerVehicleId,
+    String? title,
+  }) async {
+    if (!_ok) return;
+    await updateRouteShareFields(share.id, {
+      'partner_id': partnerId,
+      'partner_vehicle_id': partnerVehicleId,
+      if (title != null) 'title': title,
+    });
   }
 
   /// Flytter en sendt rute-PDF til annen MAVI-bil (oppdaterer partner hvis nødvendig),
@@ -1271,25 +1289,30 @@ class PartnerService {
     }
   }
 
-  static Future<void> uploadPartnerRoutePdf({
+  /// Laster opp rute-PDF. Returnerer faktisk lagringssti (Supabase eller Dropbox).
+  static Future<String> uploadPartnerRoutePdf({
     required String storagePath,
     required Uint8List bytes,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
-    await _client.storage.from('documents').uploadBinary(
-          storagePath,
-          bytes,
-          fileOptions: const FileOptions(
-            upsert: true,
-            contentType: 'application/pdf',
-          ),
-        );
+    final result = await CompanyFileStorage.upload(
+      supabaseBucket: 'documents',
+      storagePath: storagePath,
+      bytes: bytes,
+      category: 'routes',
+      fileName: storagePath.split('/').last,
+    );
+    return result.path;
   }
 
   static Future<String> getRoutePdfSignedUrl(String storagePath) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
-    final path = storagePath.trim().replaceFirst(RegExp(r'^/'), '');
-    if (path.isEmpty) throw ArgumentError('PDF-sti mangler');
+    final raw = storagePath.trim();
+    if (raw.isEmpty) throw ArgumentError('PDF-sti mangler');
+    if (CompanyFileStorage.isDropboxPath(raw)) {
+      return CompanyFileStorage.getDropboxTemporaryLink(raw);
+    }
+    final path = raw.replaceFirst(RegExp(r'^/'), '');
     return _client.storage.from('documents').createSignedUrl(path, 3600);
   }
 
@@ -1346,23 +1369,25 @@ class PartnerService {
     return merged;
   }
 
-  static Future<void> uploadPartnerDocumentPdf({
+  static Future<String> uploadPartnerDocumentPdf({
     required String storagePath,
     required Uint8List bytes,
   }) async {
-    if (!_ok) throw StateError('Supabase ikke konfigurert');
-    await _client.storage.from('documents').uploadBinary(
-          storagePath,
-          bytes,
-          fileOptions: const FileOptions(
-            upsert: true,
-            contentType: 'application/pdf',
-          ),
-        );
+    return uploadPartnerRoutePdf(storagePath: storagePath, bytes: bytes);
   }
 
   static Future<String> getDocumentPdfSignedUrl(String storagePath) async {
     return getRoutePdfSignedUrl(storagePath);
+  }
+
+  /// Visnings-URL for lagret filsti (Supabase eller Dropbox).
+  static Future<String> resolveStorageUrl(String storagePathOrUrl) async {
+    if (CompanyFileStorage.isDropboxReference(storagePathOrUrl)) {
+      return CompanyFileStorage.resolveDisplayUrl(storagePathOrUrl);
+    }
+    final raw = storagePathOrUrl.trim().replaceFirst(RegExp(r'^/'), '');
+    if (raw.isEmpty) throw ArgumentError('Sti mangler');
+    return _client.storage.from('documents').createSignedUrl(raw, 3600);
   }
 
   // ── Flåte / skift / sporingsdashboard ─────────────────────────────────

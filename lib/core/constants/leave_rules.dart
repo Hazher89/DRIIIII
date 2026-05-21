@@ -41,6 +41,83 @@ class LeaveRules {
       'år etter avtale (ofte inntil 14 dager). '
       'Kilde: ferieloven (Lovdata).';
 
+  static const String lovdataSykmeldingTitle = 'Sykmelding';
+  static const String lovdataSykmeldingBody =
+      'Arbeidsgiver kan kreve sykmelding fra lege når fravær overstiger det som er '
+      'lovlig med egenmelding, eller ved gjentatt korttidsfravær. Sykepenger fra '
+      'NAV krever som hovedregel sykmelding. '
+      'Kilde: folketrygdloven kap. 8 (Lovdata).';
+
+  static const String lovdataPermisjonTitle = 'Permisjon uten lønn';
+  static const String lovdataPermisjonBody =
+      'Permisjon uten lønn avtales med arbeidsgiver og skal dokumenteres. Det er ikke '
+      'samme rettigheter som ferie eller egenmelding — vurder konsekvens for pensjon '
+      'og ferieavregning. '
+      'Kilde: arbeidsmiljøloven kap. 12 (Lovdata).';
+
+  static const String lovdataArbeidsmiljoTitle = 'Arbeidsmiljø og fravær';
+  static const String lovdataArbeidsmiljoBody =
+      'Arbeidsgiver skal følge opp sykefravær og tilrettelegge (aml. § 4-3, § 4-6). '
+      'Dialogmøter ved langvarig fravær. HMS-avvik og fravær bør sees i sammenheng. '
+      'Kilde: arbeidsmiljøloven (Lovdata).';
+
+  static const String lovdataPersonvernTitle = 'Personvern i fravær';
+  static const String lovdataPersonvernBody =
+      'Opplysninger om helse og fravær er sensitive personopplysninger (GDPR art. 9). '
+      'Del kun det som er nødvendig for godkjenning og planlegging. '
+      'Kilde: personopplysningsloven / GDPR.';
+
+  static const String lovdataTipsTitle = 'Gode rutiner for ledere';
+  static const String lovdataTipsBody =
+      '• Godkjenn ferie i god tid og sjekk overlapping i avdelingen.\n'
+      '• Følg opp ansatte uten egenmelding igjen før ny sykemelding.\n'
+      '• Dokumenter avtaler skriftlig (ferie, permisjon, overføring).\n'
+      '• Ved tvil: sjekk tariffavtale og bedriftens HR-retningslinjer.';
+
+  /// Alle Lovdata-relaterte kort for leder-oversikt.
+  static List<LeaveRuleCard> managerOverviewCards() => const [
+        LeaveRuleCard(
+          title: lovdataEgenmeldingTitle,
+          body: lovdataEgenmeldingBody,
+          iconName: 'person',
+        ),
+        LeaveRuleCard(
+          title: lovdataSyktBarnTitle,
+          body: lovdataSyktBarnBody,
+          iconName: 'child',
+        ),
+        LeaveRuleCard(
+          title: lovdataFerieTitle,
+          body: lovdataFerieBody,
+          iconName: 'sun',
+        ),
+        LeaveRuleCard(
+          title: lovdataSykmeldingTitle,
+          body: lovdataSykmeldingBody,
+          iconName: 'medical',
+        ),
+        LeaveRuleCard(
+          title: lovdataPermisjonTitle,
+          body: lovdataPermisjonBody,
+          iconName: 'timer',
+        ),
+        LeaveRuleCard(
+          title: lovdataArbeidsmiljoTitle,
+          body: lovdataArbeidsmiljoBody,
+          iconName: 'shield',
+        ),
+        LeaveRuleCard(
+          title: lovdataPersonvernTitle,
+          body: lovdataPersonvernBody,
+          iconName: 'lock',
+        ),
+        LeaveRuleCard(
+          title: lovdataTipsTitle,
+          body: lovdataTipsBody,
+          iconName: 'tips',
+        ),
+      ];
+
   static List<LeaveRuleCard> cardsForType(AbsenceType? type) {
     if (type == null) {
       return const [
@@ -84,6 +161,22 @@ class LeaveRules {
             title: lovdataFerieTitle,
             body: lovdataFerieBody,
             iconName: 'sun',
+          ),
+        ];
+      case AbsenceType.sykmelding:
+        return const [
+          LeaveRuleCard(
+            title: lovdataSykmeldingTitle,
+            body: lovdataSykmeldingBody,
+            iconName: 'medical',
+          ),
+        ];
+      case AbsenceType.permisjon:
+        return const [
+          LeaveRuleCard(
+            title: lovdataPermisjonTitle,
+            body: lovdataPermisjonBody,
+            iconName: 'timer',
           ),
         ];
       default:

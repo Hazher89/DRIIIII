@@ -4,8 +4,6 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart';
-
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -25,96 +23,12 @@ class PartnerMassRoutePanel extends StatefulWidget {
 class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
   bool _busy = false;
 
-  String _normalizeUnitCode(String raw) {
-    final s = raw.trim().toUpperCase();
-    if (s.isEmpty) return '';
-    final noOm = RegExp(
-      r'NO\s*[_-]?\s*O\s*[_-]?\s*M(\d{1,5})\b',
-      caseSensitive: false,
-    ).firstMatch(s);
-    if (noOm != null) {
-      final n = int.tryParse(noOm.group(1)!);
-      if (n != null) return 'M$n';
-    }
-    final mDigits = RegExp(r'\bM(\d{1,5})\b', caseSensitive: false).firstMatch(s);
-    if (mDigits != null) {
-      final n = int.tryParse(mDigits.group(1)!);
-      if (n != null) return 'M$n';
-    }
-    return s.replaceAll(RegExp(r'[^A-Z0-9]'), '');
-  }
-
   Map<String, PartnerVehicle> _vehicleLookupMap(List<PartnerVehicle> rows) {
-    final map = <String, PartnerVehicle>{};
-    void putKey(String? key, PartnerVehicle v) {
-      if (key == null || key.isEmpty) return;
-      final k = _normalizeUnitCode(key);
-      if (k.isNotEmpty) map.putIfAbsent(k, () => v);
-      final compact = key.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
-      if (compact.isNotEmpty) map.putIfAbsent(compact, () => v);
-    }
-    for (final v in rows) {
-      putKey(v.unitCode, v);
-      putKey(v.registrationNumber, v);
-    }
-    return map;
-  }
-
-  String? _parseResourceIdFromPdfText(String raw) {
-    if (raw.isEmpty) return null;
-    var t = raw.replaceAll('\uFF3F', '_').replaceAll('\u2013', '-');
-    final patterns = <RegExp>[
-      RegExp(r'NO\s*[_-]?\s*O\s*[_-]?\s*M(\d{1,5})', caseSensitive: false),
-      RegExp(r'NO_O_(M\d{1,5})\b', caseSensitive: false),
-      RegExp(r'\bM(\d{1,5})\b', caseSensitive: false),
-    ];
-    for (final re in patterns) {
-      final m = re.firstMatch(t);
-      if (m == null) continue;
-      final g = m.groupCount >= 1 ? m.group(1) : null;
-      if (g == null || g.isEmpty) continue;
-      final up = g.toUpperCase();
-      return up.startsWith('M') ? up : 'M$up';
-    }
-    return null;
-  }
-
-  String? _extractVehicleCodeFromPdf(Uint8List bytes) {
-    try {
-      final doc = PdfDocument(inputBytes: bytes);
-      final extractor = PdfTextExtractor(doc);
-      final lastPage = doc.pages.count - 1;
-      final earlyEnd = lastPage > 2 ? 1 : lastPage;
-      final layoutEarly = extractor.extractText(
-        startPageIndex: 0,
-        endPageIndex: earlyEnd,
-        layoutText: true,
-      );
-      final linearEarly = extractor.extractText(
-        startPageIndex: 0,
-        endPageIndex: earlyEnd,
-        layoutText: false,
-      );
-      var found = _parseResourceIdFromPdfText('$layoutEarly\n$linearEarly');
-      if (found == null && lastPage > earlyEnd) {
-        final rest = extractor.extractText(
-          startPageIndex: earlyEnd + 1,
-          endPageIndex: lastPage,
-          layoutText: false,
-        );
-        found = _parseResourceIdFromPdfText(rest);
-      }
-      found ??= _parseResourceIdFromPdfText(extractor.extractText());
-      doc.dispose();
-      return found;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  String? _extractVehicleCodeFromFilename(String fileName) {
-    final base = fileName.split(RegExp(r'[\\/]')).last;
-    return _parseResourceIdFromPdfText(base.replaceAll('_', ' '));
+    return RoutePdfTextService.buildVehicleLookupMap(
+      vehicles: rows,
+      unitCodeOf: (v) => v.unitCode,
+      registrationOf: (v) => v.registrationNumber,
+    );
   }
 
   Future<Uint8List?> _platformFileBytes(PlatformFile file) async {
@@ -158,15 +72,12 @@ class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
           skipped++;
           continue;
         }
-        var foundCode = _extractVehicleCodeFromPdf(bytes);
-        foundCode ??= _extractVehicleCodeFromFilename(file.name);
+        final foundCode = RoutePdfTextService.extractResourceIdFromBytes(bytes);
         if (foundCode == null) {
           skipped++;
           continue;
         }
-        final normalized = _normalizeUnitCode(foundCode);
-        final compact = foundCode.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
-        final vehicle = vehicleMap[normalized] ?? vehicleMap[compact];
+        final vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, foundCode);
         if (vehicle == null) {
           skipped++;
           continue;
@@ -179,7 +90,7 @@ class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
         final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
         final storagePath =
             'company_$cid/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${vehicle.unitCode}_$safeName';
-        await PartnerService.uploadPartnerRoutePdf(
+        final storedPath = await PartnerService.uploadPartnerRoutePdf(
           storagePath: storagePath,
           bytes: bytes,
         );
@@ -191,7 +102,7 @@ class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
             partnerId: partner.id,
             companyId: cid,
             title: 'Rute ${vehicle.unitCode} — ${file.name}',
-            pdfStoragePath: storagePath,
+            pdfStoragePath: storedPath,
             shareDate: schedule.routeDate,
             isDailyShare: true,
             createdAt: DateTime.now(),

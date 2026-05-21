@@ -73,7 +73,10 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
 
       _officeType = OfficeFileTypeHelper.fromExtension(_resolvedExt);
 
-      final url = await DmsService.getDownloadUrl(widget.file.storagePath);
+      final url = await DmsService.getDownloadUrl(
+        widget.file.storagePath,
+        storageProvider: widget.file.storageProvider,
+      );
       var response = await http.get(
         Uri.parse(url),
         headers: const {'Range': 'bytes=0-8191'},

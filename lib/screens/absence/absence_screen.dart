@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
+import '../../core/utils/nb_date_format.dart';
 
 import '../../core/constants/leave_rules.dart';
 import '../../core/services/absence/absence_service.dart';
 import '../../core/services/absence/department_leave_conflict_service.dart';
+import '../../core/services/absence/leave_team_insights_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/absence.dart';
@@ -19,6 +24,7 @@ import 'widgets/leave_quick_actions.dart';
 import 'widgets/leave_rules_panel.dart';
 import 'widgets/leave_saldo_panel.dart';
 import 'widgets/leave_team_table.dart';
+import 'widgets/leave_team_insights_panel.dart';
 import 'widgets/team_leave_calendar.dart';
 
 class AbsenceScreen extends StatefulWidget {
@@ -163,16 +169,16 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         _departmentNames = {for (final d in depts) d.id: d.name};
       });
 
-      // Bygg faner før saldo/lagliste så siden ikke henger i evig spinner
-      // om kvoteprofiler eller teamhenting tar tid eller stopper opp.
       if (mounted) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         setState(() {
-          final isDark = Theme.of(context).brightness == Brightness.dark;
           _rebuildTabs(
             isDark,
             profile.access.canApproveLeave,
             profile.access.canVacationAdmin,
           );
+          // Viktig: ikke la saldo/team blokkere hele siden (fanene viste bare spinner).
+          _isLoading = false;
         });
       }
 
@@ -203,6 +209,11 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         userId: profile.id,
         companyId: profile.companyId!,
         year: _selectedYear,
+      ).timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw TimeoutException(
+          'Tidsavbrudd ved henting av feriekvote',
+        ),
       );
       if (mounted) setState(() => _quota = quota);
     } catch (e) {
@@ -219,7 +230,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
   Future<void> _loadTeamOverview(UserProfile profile) async {
     if (!profile.access.canApproveLeave || profile.companyId == null) return;
-    final allProfiles = await SupabaseService.fetchProfiles(companyId: profile.companyId);
+    final allProfiles = profile.isSuperAdmin || profile.access.dataScopeCompany
+        ? await SupabaseService.fetchProfiles()
+        : await SupabaseService.fetchProfiles(companyId: profile.companyId);
     final scopedProfiles = profile.access.dataScopeCompany
         ? allProfiles.where((p) => !p.isPartnerPortalUser).toList()
         : allProfiles
@@ -230,10 +243,13 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       companyId: profile.companyId!,
       year: _selectedYear,
     );
+    final teamIds = scopedProfiles.map((p) => p.id).toSet();
+    final scopedQuotas = quotas.where((q) => teamIds.contains(q.userId)).toList();
+
     if (!mounted) return;
     setState(() {
       _teamProfiles = scopedProfiles;
-      _teamQuotas = quotas;
+      _teamQuotas = scopedQuotas;
     });
   }
 
@@ -367,8 +383,6 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   }
 
   Widget _buildDashboardTab(bool isDark, bool isManager) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-
     if (_loadError != null) {
       return Center(
         child: Padding(
@@ -551,8 +565,6 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   }
 
   Widget _buildAllRequestsTab(bool isDark) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-
     final list = _myAbsences;
     if (list.isEmpty) {
       return Center(
@@ -618,43 +630,101 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   }
 
   Widget _buildCalendarTab(bool isDark, bool isManager) {
-  final approved = _scopedAbsences
+    final approved = _scopedAbsences
         .where((a) => a.status == AbsenceStatus.godkjent)
         .toList();
 
-    return Column(
-      children: [
-        if (isManager)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: DropdownButtonFormField<String?>(
-              value: _calendarUserFilter,
-              decoration: const InputDecoration(
-                labelText: 'Vis ansatt',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('Hele teamet')),
-                ..._teamProfiles.map(
-                  (p) => DropdownMenuItem(value: p.id, child: Text(p.fullName)),
+    final profile = _profile;
+    TeamLeaveInsightsSnapshot? insights;
+    if (isManager && profile != null && _teamProfiles.isNotEmpty) {
+      final deptName = profile.departmentId != null
+          ? _departmentNames[profile.departmentId!]
+          : null;
+      final scopeLabel = profile.access.dataScopeCompany
+          ? 'Hele bedriften'
+          : deptName != null
+              ? 'Avdeling: $deptName'
+              : 'Ditt team';
+      insights = LeaveTeamInsightsService.build(
+        profiles: _teamProfiles,
+        quotas: _teamQuotas,
+        absences: _scopedAbsences,
+        company: _companySettings,
+        year: _selectedYear,
+        scopeLabel: scopeLabel,
+        companyWide: profile.access.dataScopeCompany,
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadAllData,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (insights != null) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: LeaveTeamInsightsPanel(
+                  snapshot: insights,
+                  companySettings: _companySettings,
+                  colorForType: _colorForType,
                 ),
-              ],
-              onChanged: (v) => setState(() => _calendarUserFilter = v),
+              ),
+              const SizedBox(height: 8),
+            ],
+            if (isManager)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: DropdownButtonFormField<String?>(
+                  value: _calendarUserFilter,
+                  decoration: const InputDecoration(
+                    labelText: 'Vis ansatt i kalender',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('Hele teamet')),
+                    ..._teamProfiles.map(
+                      (p) => DropdownMenuItem(value: p.id, child: Text(p.fullName)),
+                    ),
+                  ],
+                  onChanged: (v) => setState(() => _calendarUserFilter = v),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+              child: Text('Kalender', style: DriftProTheme.headingSm),
             ),
-          ),
-        Expanded(
-          child: TeamLeaveCalendar(
-            month: _calendarMonth,
-            absences: approved,
-            employees: _teamProfiles,
-            filterUserId: _calendarUserFilter,
-            colorForType: _colorForType,
-            onMonthChanged: (m) => setState(() => _calendarMonth = m),
-            onDayTap: isManager ? _onCalendarDayTap : null,
-          ),
+            SizedBox(
+              height: 420,
+              child: TeamLeaveCalendar(
+                month: _calendarMonth,
+                absences: approved,
+                employees: _teamProfiles,
+                filterUserId: _calendarUserFilter,
+                colorForType: _colorForType,
+                onMonthChanged: (m) {
+                  setState(() => _calendarMonth = m);
+                  if (m.year != _selectedYear && _profile != null) {
+                    _selectedYear = m.year;
+                    _loadTeamOverview(_profile!);
+                    _loadSaldo(_profile!);
+                  }
+                },
+                onDayTap: isManager ? _onCalendarDayTap : null,
+              ),
+            ),
+            if (!isManager)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: LeaveRulesPanel(highlightType: null, compact: true),
+              ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -673,7 +743,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
-                  DateFormat('EEEE d. MMMM', 'nb_NO').format(date),
+                  NbDateFormat.format(date, 'EEEE d. MMMM yyyy'),
                   style: DriftProTheme.headingSm,
                 ),
                 const SizedBox(height: 12),

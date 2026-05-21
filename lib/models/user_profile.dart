@@ -14,6 +14,8 @@ class UserProfile {
   final String? jobTitle;
   final DateTime? hireDate;
   final DateTime? birthDate;
+  /// Norsk fødselsnummer (11 siffer).
+  final String? nationalIdNumber;
   final String? emergencyContactName;
   final String? emergencyContactPhone;
   final bool isSafetyRepresentative;
@@ -43,6 +45,7 @@ class UserProfile {
     this.jobTitle,
     this.hireDate,
     this.birthDate,
+    this.nationalIdNumber,
     this.emergencyContactName,
     this.emergencyContactPhone,
     this.isSafetyRepresentative = false,
@@ -106,6 +109,7 @@ class UserProfile {
       birthDate: json['birth_date'] != null
           ? DateTime.parse(json['birth_date'] as String)
           : null,
+      nationalIdNumber: json['national_id_number'] as String?,
       emergencyContactName: json['emergency_contact_name'] as String?,
       emergencyContactPhone: json['emergency_contact_phone'] as String?,
       isSafetyRepresentative:
@@ -173,6 +177,7 @@ class UserProfile {
       jobTitle: jobTitle,
       hireDate: hireDate,
       birthDate: birthDate,
+      nationalIdNumber: nationalIdNumber,
       emergencyContactName: emergencyContactName,
       emergencyContactPhone: emergencyContactPhone,
       isSafetyRepresentative: isSafetyRepresentative,

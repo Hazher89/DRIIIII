@@ -75,7 +75,10 @@ class _TicketsScreenState extends State<TicketsScreen> {
     if (profile.isAdmin) return tickets;
     if (profile.isLeader) {
       return tickets
-          .where((t) => t.departmentId == profile.departmentId || t.reportedBy == profile.id)
+          .where((t) =>
+              t.assignedTo == profile.id ||
+              t.departmentId == profile.departmentId ||
+              t.reportedBy == profile.id)
           .toList();
     }
     return tickets.where((t) => t.reportedBy == profile.id).toList();

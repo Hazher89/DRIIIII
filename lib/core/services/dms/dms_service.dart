@@ -4,6 +4,7 @@ import '../../../models/dms/dms_folder.dart';
 import '../../../models/dms/dms_file.dart';
 import '../../../models/dms/dms_permission.dart';
 import '../../utils/file_type_resolver.dart';
+import '../storage/company_file_storage.dart';
 
 class DmsService {
   static SupabaseClient get client => Supabase.instance.client;
@@ -157,6 +158,8 @@ class DmsService {
     required int fileSize,
     String? folderId,
     required String companyId,
+    String storageProvider = 'supabase',
+    String? externalUrl,
   }) async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('Ingen innlogget bruker funnet.');
@@ -172,6 +175,9 @@ class DmsService {
       'file_size': fileSize,
       'extension': extension,
       'created_by': user.id,
+      'storage_provider': storageProvider,
+      if (externalUrl != null) 'external_url': externalUrl,
+      'file_size_bytes': fileSize,
     }).select().single();
 
     return DmsFile.fromJson(data);
@@ -183,18 +189,25 @@ class DmsService {
     String? folderId,
     required String companyId,
   }) async {
-    final storagePath = 'company_$companyId/${folderId ?? "root"}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+    final storagePath =
+        'company_$companyId/${folderId ?? "root"}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
-    // 1. Upload to Storage
-    await client.storage.from('documents').uploadBinary(storagePath, bytes);
-
-    // 2. Create DB Record
-    return await createFile(
-      name: fileName,
+    final stored = await CompanyFileStorage.upload(
+      supabaseBucket: 'documents',
       storagePath: storagePath,
+      bytes: bytes,
+      category: 'dms',
+      fileName: fileName,
+    );
+
+    return createFile(
+      name: fileName,
+      storagePath: stored.path,
       fileSize: bytes.length,
       folderId: folderId,
       companyId: companyId,
+      storageProvider: stored.provider,
+      externalUrl: stored.publicOrSignedUrl,
     );
   }
 
@@ -264,8 +277,15 @@ class DmsService {
     await client.from('dms_files').update({'is_starred': !isStarred}).eq('id', fileId);
   }
 
-  static Future<String> getDownloadUrl(String storagePath) async {
-    return client.storage.from('documents').createSignedUrl(storagePath, 3600);
+  static Future<String> getDownloadUrl(
+    String storagePath, {
+    String? storageProvider,
+  }) async {
+    if (storageProvider == 'dropbox' || CompanyFileStorage.isDropboxPath(storagePath)) {
+      return CompanyFileStorage.getDropboxTemporaryLink(storagePath);
+    }
+    final path = storagePath.replaceFirst(RegExp(r'^/'), '');
+    return client.storage.from('documents').createSignedUrl(path, 3600);
   }
 
   // ── Permissions ──────────────────────────────────────────────────────────

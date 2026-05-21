@@ -1,5 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+
+import 'partner_route_pdf_bytes_url_stub.dart'
+    if (dart.library.io) 'partner_route_pdf_bytes_url_io.dart'
+    if (dart.library.html) 'partner_route_pdf_bytes_url_web.dart' as pdf_bytes_url;
 
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/utils/open_external_url.dart';
@@ -52,6 +58,30 @@ class PartnerRoutePdfActions {
       messenger?.hideCurrentSnackBar();
       if (context.mounted) {
         _snack(context, 'Kunne ikke åpne PDF: $e', isError: true);
+      }
+    }
+  }
+
+  static Future<void> openPdfBytes(
+    BuildContext context, {
+    required Uint8List bytes,
+    required String title,
+  }) async {
+    if (bytes.isEmpty) {
+      _snack(context, 'PDF er tom.', isError: true);
+      return;
+    }
+    try {
+      final url = await pdf_bytes_url.pdfBytesToViewUrl(bytes);
+      if (!context.mounted) return;
+      if (url == null || url.isEmpty) {
+        _snack(context, 'Forhåndsvisning støttes ikke på denne plattformen.', isError: true);
+        return;
+      }
+      await _showPdfViewer(context, url, title);
+    } catch (e) {
+      if (context.mounted) {
+        _snack(context, 'Kunne ikke vise PDF: $e', isError: true);
       }
     }
   }

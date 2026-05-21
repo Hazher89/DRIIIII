@@ -123,7 +123,8 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
       final path = 'company_$cid/partner_routes/'
           '${DateTime.now().millisecondsSinceEpoch}_${row.vehicle.unitCode}_$safeName';
 
-      await PartnerService.uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
+      final storedPath =
+          await PartnerService.uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
 
       String? pdfExtract;
       try {
@@ -146,7 +147,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
           partnerId: row.partner.id,
           companyId: cid,
           title: 'Rute ${row.vehicle.unitCode} — ${file.name}',
-          pdfStoragePath: path,
+          pdfStoragePath: storedPath,
           shareDate: routeDay,
           isDailyShare: true,
           dispatchStatus: 'staged',

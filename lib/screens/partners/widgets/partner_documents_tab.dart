@@ -146,7 +146,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
         'company_${widget.partner.companyId}/partner_docs/${widget.partner.id}/${DateTime.now().millisecondsSinceEpoch}_$safeName';
 
     try {
-      await PartnerService.uploadPartnerDocumentFile(
+      final storedPath = await PartnerService.uploadPartnerDocumentFile(
         storagePath: storagePath,
         bytes: bytes,
         mimeType: file.extension != null ? _mimeForExt(file.extension!) : null,
@@ -158,7 +158,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
           companyId: widget.partner.companyId,
           title: titleCtrl.text.trim(),
           description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-          storagePath: storagePath,
+          storagePath: storedPath,
           fileName: file.name,
           mimeType: file.extension,
           documentType: docType,

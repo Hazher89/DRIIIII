@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/services/supabase_service.dart';
+import '../../core/services/tidsbanken/tidsbanken_presence_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/kiosk_settings.dart';
 
@@ -18,6 +19,8 @@ class _KioskSettingsScreenState extends State<KioskSettingsScreen> {
   final _bodyCtrl = TextEditingController();
   bool _loading = true;
   bool _saving = false;
+  bool _tidsbankenEnabled = false;
+  bool _syncingTidsbanken = false;
   String? _error;
 
   @override
@@ -48,10 +51,12 @@ class _KioskSettingsScreenState extends State<KioskSettingsScreen> {
         return;
       }
       final meta = await SupabaseService.fetchCompanyDashboardMeta(companyId);
+      final tbOn = await TidsbankenPresenceService.isEnabledForCompany(companyId);
       _titleCtrl.text = meta.kiosk.customMessageTitle;
       _bodyCtrl.text = meta.kiosk.customMessageBody;
       setState(() {
         _draft = meta.kiosk;
+        _tidsbankenEnabled = tbOn;
         _loading = false;
       });
     } catch (e) {
@@ -240,6 +245,70 @@ class _KioskSettingsScreenState extends State<KioskSettingsScreen> {
                         value: _draft.showActivityFeed,
                         onChanged: (v) =>
                             setState(() => _draft = _draft.copyWith(showActivityFeed: v)),
+                        isDark: isDark,
+                      ),
+                    ]),
+                    _section('Tidsbanken (live på jobb)', isDark, [
+                      _switchTile(
+                        title: 'Koble Tidsbanken (web)',
+                        subtitle:
+                            'Firma-ID, passord, ansattnr og PIN legges i Supabase Secrets — aldri i app-kode',
+                        value: _tidsbankenEnabled,
+                        onChanged: (v) async {
+                          setState(() => _tidsbankenEnabled = v);
+                          try {
+                            await TidsbankenPresenceService.setEnabled(v);
+                            if (v && mounted) {
+                              setState(() => _syncingTidsbanken = true);
+                              final r = await TidsbankenPresenceService.syncNow();
+                              if (mounted) {
+                                final n = r.clockedIn ?? 0;
+                                final t = r.total;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      r.ok
+                                          ? (n > 0
+                                              ? 'Tidsbanken OK: $n innstemplt${t != null ? ' av $t' : ''}'
+                                              : 'Tidsbanken synkronisert, men 0 innstemplt — sjekk Secrets og innlogging')
+                                          : 'Synk feilet: ${r.error}',
+                                    ),
+                                    duration: Duration(seconds: n > 0 ? 4 : 8),
+                                  ),
+                                );
+                              }
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Kunne ikke lagre: $e')),
+                              );
+                            }
+                          } finally {
+                            if (mounted) setState(() => _syncingTidsbanken = false);
+                          }
+                        },
+                        isDark: isDark,
+                      ),
+                      if (_syncingTidsbanken)
+                        const Padding(
+                          padding: EdgeInsets.all(8),
+                          child: LinearProgressIndicator(),
+                        ),
+                      _switchTile(
+                        title: 'Team online på dashbord',
+                        subtitle: 'Kort med antall innstemplt + lenke til /Online',
+                        value: _draft.showLiveTeamBoard,
+                        onChanged: (v) =>
+                            setState(() => _draft = _draft.copyWith(showLiveTeamBoard: v)),
+                        isDark: isDark,
+                      ),
+                      _switchTile(
+                        title: 'Hent status fra Tidsbanken',
+                        subtitle: 'Slå av for kun DriftPro-fravær på infoskjerm',
+                        value: _draft.showTidsbankenPresence,
+                        onChanged: (v) => setState(
+                            () => _draft = _draft.copyWith(showTidsbankenPresence: v)),
                         isDark: isDark,
                       ),
                     ]),

@@ -16,7 +16,7 @@ import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_route_pdf_actions.dart';
 import 'partner_route_single_assign_sheet.dart';
-import 'partner_route_staged_publish_sheet.dart';
+import 'partner_route_auto_mass_sheet.dart';
 
 DateTime _monday(DateTime d) {
   final n = DateTime(d.year, d.month, d.day);
@@ -215,25 +215,17 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     return Colors.green;
   }
 
-  Future<void> _openStagedPublishReview() async {
-    final cid = await SupabaseService.getCurrentCompanyId();
-    if (!mounted || cid == null) return;
+  Future<void> _openAutoMass() async {
     final today = DateTime.now();
     final routeDay = (_weekEnd.isBefore(_dayOnly(today)) || _weekStart.isAfter(_dayOnly(today)))
-        ? _weekStart
-        : today;
-    final published = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => PartnerRouteStagedPublishSheet(
-        companyId: cid,
-        fleet: widget.fleet,
-        shifts: _shifts,
-        routeDate: routeDay,
-      ),
+        ? _focusDay
+        : _focusDay;
+    final ok = await PartnerRouteAutoMassSheet.show(
+      context,
+      fleet: widget.fleet,
+      routeDate: routeDay,
     );
-    if (published == true && mounted) {
+    if (ok == true && mounted) {
       widget.onChanged?.call();
       await _reload();
     }
@@ -456,13 +448,15 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         label: const Text('Ny rute'),
                       ),
                       FilledButton.icon(
-                        onPressed: (_busy || _pendingStaged == 0) ? null : _openStagedPublishReview,
+                        onPressed: _busy || _maviFleet.isEmpty ? null : _openAutoMass,
                         style: FilledButton.styleFrom(
-                          backgroundColor: DriftProTheme.primaryGreen,
+                          backgroundColor: const Color(0xFF6A1B9A),
                           foregroundColor: Colors.white,
                         ),
-                        icon: const Icon(Icons.rocket_launch),
-                        label: Text('Publiser kladd ($_pendingStaged)'),
+                        icon: const Icon(Icons.auto_awesome),
+                        label: Text(
+                          _pendingStaged > 0 ? 'AUTO MASS ($_pendingStaged)' : 'AUTO MASS',
+                        ),
                       ),
                       OutlinedButton.icon(
                         onPressed: _busy ? null : _reload,
@@ -1192,7 +1186,8 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
       final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
       final path = 'company_$cid/partner_routes/'
           '${DateTime.now().millisecondsSinceEpoch}_${row.vehicle.unitCode}_$safeName';
-      await PartnerService.uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
+      final storedPath =
+          await PartnerService.uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
       String? pdfExtract;
       try {
         pdfExtract = RoutePdfTextService.extractFullText(bytes);
@@ -1212,7 +1207,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
           partnerId: row.partner.id,
           companyId: cid,
           title: 'Rute ${row.vehicle.unitCode} — ${file.name}',
-          pdfStoragePath: path,
+          pdfStoragePath: storedPath,
           shareDate: routeDay,
           isDailyShare: true,
           dispatchStatus: 'staged',

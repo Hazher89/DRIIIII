@@ -364,7 +364,10 @@ class _DmsScreenState extends State<DmsScreen> {
 
   Future<void> _downloadFile(DmsFile file) async {
     try {
-      final url = await DmsService.getDownloadUrl(file.storagePath);
+      final url = await DmsService.getDownloadUrl(
+        file.storagePath,
+        storageProvider: file.storageProvider,
+      );
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (e) {
       if (mounted) {

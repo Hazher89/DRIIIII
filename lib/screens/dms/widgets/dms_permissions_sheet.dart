@@ -144,8 +144,10 @@ class _DmsPermissionsSheetState extends State<DmsPermissionsSheet>
               child: TextButton.icon(
                 onPressed: () async {
                   try {
-                    final url =
-                        await DmsService.getDownloadUrl(widget.file!.storagePath);
+                    final url = await DmsService.getDownloadUrl(
+                      widget.file!.storagePath,
+                      storageProvider: widget.file!.storageProvider,
+                    );
                     await Clipboard.setData(ClipboardData(text: url));
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(

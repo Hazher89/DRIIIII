@@ -6,6 +6,7 @@ import '../../core/services/ticket_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
 import '../../models/user_profile.dart';
+import '../../widgets/resolved_storage_image.dart';
 
 class TicketDetailScreen extends StatefulWidget {
   final Ticket ticket;
@@ -474,12 +475,15 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               return Container(
                 width: 120,
                 margin: const EdgeInsets.only(right: 12),
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
-                  image: DecorationImage(
-                    image: NetworkImage(_ticket.imageUrls[index]),
-                    fit: BoxFit.cover,
-                  ),
+                  color: Colors.grey.shade200,
+                ),
+                child: ResolvedStorageImage(
+                  storageRef: _ticket.imageUrls[index],
+                  width: 120,
+                  height: 120,
                 ),
               );
             },

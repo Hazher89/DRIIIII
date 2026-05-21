@@ -7,8 +7,6 @@ import 'fleet_route_dashboard_screen.dart';
 import 'fleet_shift_admin_screen.dart';
 import 'widgets/partner_route_master_scheduler.dart';
 import 'widgets/partner_route_pdf_search_panel.dart';
-import 'widgets/partner_route_publish_panel.dart';
-import 'widgets/partner_route_week_command_panel.dart';
 import 'widgets/partner_ui.dart';
 
 /// Ruteplanlegging: én arbeidsflate for fordeling + publisering.
@@ -97,7 +95,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
             compact: true,
             title: 'Ruter & planlegging',
             subtitle:
-                'Kalender for alle MAVI-er • knapper og filtre under rutenettet • PDF, skift og utsendelse.',
+                'Kalender for alle MAVI-er • Ny rute og AUTO MASS for masse-PDF med SMS-varsling.',
             leading: Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
@@ -161,35 +159,6 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _ToolSection(
-              icon: Icons.dashboard_customize_outlined,
-              iconColor: DriftProTheme.accentBlue,
-              title: 'Kommandosentral',
-              subtitle: 'Ukehjul, dra-og-slipp ruter og full dag-liste',
-              initiallyExpanded: false,
-              child: PartnerRouteWeekCommandPanel(
-                fleet: _fleet,
-                onChanged: () => reload(notifyParent: true),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _ToolSection(
-              icon: Icons.upload_file_outlined,
-              iconColor: DriftProTheme.primaryGreen,
-              title: 'Masse-PDF & publiseringskø',
-              subtitle: 'Last mange PDF-er og kontroller før sending til sjåfør',
-              child: PartnerRoutePublishPanel(
-                fleet: _fleet,
-                onChanged: () => reload(notifyParent: true),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: _ToolSection(

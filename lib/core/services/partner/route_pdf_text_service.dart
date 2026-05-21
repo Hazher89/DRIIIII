@@ -37,6 +37,14 @@ class RoutePdfSchedule {
   });
 }
 
+/// MAVI + Stowing Lane fra Trip Overview (første side).
+class RoutePdfTripOverviewMeta {
+  final String? maviCode;
+  final String? stowingLane;
+
+  const RoutePdfTripOverviewMeta({this.maviCode, this.stowingLane});
+}
+
 /// Ekstraherer og scorer PDF-tekst for smart rutesøk (klient-side).
 class RoutePdfTextService {
   RoutePdfTextService._();
@@ -310,4 +318,303 @@ class RoutePdfTextService {
     if (end < text.length) s = '$s…';
     return s;
   }
+
+  /// Normaliserer MAVI-kode fra PDF-tekst for oppslag mot flåteliste.
+  static String normalizeUnitCodeForMatch(String raw) {
+    final s = raw.trim().toUpperCase();
+    if (s.isEmpty) return '';
+    final noOm = RegExp(r'NO\s*[_-]?\s*O\s*[_-]?\s*M(\d{1,5})\b', caseSensitive: false).firstMatch(s);
+    if (noOm != null) {
+      final n = int.tryParse(noOm.group(1)!);
+      if (n != null) return 'M$n';
+    }
+    final mDigits = RegExp(r'\bM(\d{1,5})\b', caseSensitive: false).firstMatch(s);
+    if (mDigits != null) {
+      final n = int.tryParse(mDigits.group(1)!);
+      if (n != null) return 'M$n';
+    }
+    return s.replaceAll(RegExp(r'[^A-Z0-9]'), '');
+  }
+
+  /// Enkelt treff i rå PDF-tekst (brukes internt og for søk).
+  static String? parseResourceId(String raw) {
+    final ranked = _rankResourceIdCandidates(raw);
+    if (ranked.isEmpty) return null;
+    return ranked.first.code;
+  }
+
+  /// Stowing Lane fra PDF (f.eks. 17, 17B, 1A — samme sjåfør kan ha flere).
+  static String? parseStowingLane(String raw) {
+    if (raw.trim().isEmpty) return null;
+    final text = raw.replaceAll('\uFF3F', '_');
+    final m = RegExp(
+      r'Stowing\s+Lane\s+(\d{1,3}\s*[A-Za-z]?)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (m == null) return null;
+    return m.group(1)!.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+  }
+
+  static String? parseStowingLaneFromNotes(String? notes) {
+    if (notes == null || notes.trim().isEmpty) return null;
+    final m = RegExp(
+      r'Stowing\s+Lane:\s*(\d{1,3}\s*[A-Za-z]?)',
+      caseSensitive: false,
+    ).firstMatch(notes);
+    if (m == null) return null;
+    return m.group(1)!.replaceAll(RegExp(r'\s+'), '').toUpperCase();
+  }
+
+  static String? normalizeStowingLane(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final fromText = parseStowingLane(raw);
+    if (fromText != null) return fromText;
+    final t = raw.trim().toUpperCase().replaceAll(RegExp(r'\s+'), '');
+    if (RegExp(r'^\d{1,3}[A-Z]?$').hasMatch(t)) return t;
+    return null;
+  }
+
+  static String composeRouteNotes({String? stowingLane, String? userNote}) {
+    final parts = <String>[];
+    final lane = normalizeStowingLane(stowingLane);
+    if (lane != null && lane.isNotEmpty) {
+      parts.add('Stowing Lane: $lane');
+    }
+    final extra = userNote?.trim() ?? '';
+    if (extra.isNotEmpty) {
+      final lower = extra.toLowerCase();
+      if (!lower.startsWith('stowing lane:')) {
+        parts.add(extra);
+      }
+    }
+    return parts.join('\n');
+  }
+
+  static RoutePdfTripOverviewMeta extractTripOverviewMeta(Uint8List bytes) {
+    final text = extractFullText(bytes);
+    return RoutePdfTripOverviewMeta(
+      maviCode: parseResourceId(text),
+      stowingLane: parseStowingLane(text),
+    );
+  }
+
+  static RoutePdfTripOverviewMeta extractTripOverviewMetaFromText(String text) {
+    return RoutePdfTripOverviewMeta(
+      maviCode: parseResourceId(text),
+      stowingLane: parseStowingLane(text),
+    );
+  }
+
+  /// Henter MAVI Resource ID kun fra PDF-innhold (aldri filnavn).
+  static String? extractResourceIdFromBytes(Uint8List bytes) {
+    final ranked = extractResourceIdCandidatesFromBytes(bytes);
+    if (ranked.isEmpty) return null;
+    final best = ranked.first;
+    if (best.score < _minAcceptScore) return null;
+    return best.code;
+  }
+
+  /// Alle kandidater sortert etter sannsynlighet (høyest score først).
+  static List<MaviResourceIdCandidate> extractResourceIdCandidatesFromBytes(
+    Uint8List bytes,
+  ) {
+    final merged = <String, MaviResourceIdCandidate>{};
+    void absorb(String text, int pageIndex) {
+      for (final c in _rankResourceIdCandidates(text, pageIndex: pageIndex)) {
+        final prev = merged[c.code];
+        if (prev == null || c.score > prev.score) {
+          merged[c.code] = c;
+        }
+      }
+    }
+
+    try {
+      final doc = PdfDocument(inputBytes: bytes);
+      final extractor = PdfTextExtractor(doc);
+      final pageCount = doc.pages.count;
+      final scanPages = pageCount.clamp(0, 6);
+
+      for (var p = 0; p < scanPages; p++) {
+        final layout = extractor.extractText(
+          startPageIndex: p,
+          endPageIndex: p,
+          layoutText: true,
+        );
+        final linear = extractor.extractText(
+          startPageIndex: p,
+          endPageIndex: p,
+          layoutText: false,
+        );
+        absorb('$layout\n$linear', p);
+      }
+
+      absorb(extractor.extractText(layoutText: true), 0);
+      absorb(extractor.extractText(layoutText: false), 0);
+      doc.dispose();
+    } catch (_) {
+      absorb(extractFullText(bytes), 0);
+    }
+
+    final out = merged.values.toList()..sort((a, b) => b.score.compareTo(a.score));
+    return out;
+  }
+
+  /// Filnavn brukes ikke — kan være feil. Beholdt for API-kompatibilitet.
+  static String? extractResourceIdFromFileName(String fileName) => null;
+
+  static const int _minAcceptScore = 28;
+
+  static List<MaviResourceIdCandidate> _rankResourceIdCandidates(
+    String raw, {
+    int pageIndex = 0,
+  }) {
+    if (raw.trim().isEmpty) return const [];
+    final text = raw.replaceAll('\uFF3F', '_').replaceAll('\u2013', '-');
+    final byCode = <String, MaviResourceIdCandidate>{};
+
+    void consider(RegExpMatch m, {required bool fullNoOm}) {
+      final digits = m.group(1);
+      if (digits == null || digits.isEmpty) return;
+      final code = _codeFromDigits(digits);
+      if (code == null || !_isPlausibleMaviNumber(code)) return;
+
+      final start = m.start.clamp(0, text.length);
+      final end = m.end.clamp(0, text.length);
+      final ctxStart = (start - 100).clamp(0, text.length);
+      final ctxEnd = (end + 100).clamp(0, text.length);
+      final context = text.substring(ctxStart, ctxEnd);
+
+      var score = fullNoOm ? 52 : 18;
+      if (pageIndex == 0) score += 22;
+      if (pageIndex == 1) score += 10;
+      if (pageIndex >= 4) score -= 12;
+
+      final ctxLower = context.toLowerCase();
+      if (RegExp(r'resource\s*(?:id|no|number|#)?', caseSensitive: false).hasMatch(ctxLower)) {
+        score += 45;
+      }
+      if (ctxLower.contains('trip overview') || ctxLower.contains('tripoverview')) {
+        score += 38;
+      }
+      if (RegExp(r'\bvehicle\b', caseSensitive: false).hasMatch(ctxLower)) score += 22;
+      if (ctxLower.contains('unit') && ctxLower.contains('code')) score += 24;
+      if (ctxLower.contains('mavi')) score += 20;
+      if (ctxLower.contains('registration') || ctxLower.contains('registrer')) score += 12;
+      if (ctxLower.contains('driver') || ctxLower.contains('sjåfør')) score += 10;
+
+      if (RegExp(r'stop\s*#', caseSensitive: false).hasMatch(ctxLower)) score -= 35;
+      if (ctxLower.contains('customer') && !ctxLower.contains('resource')) score -= 18;
+      if (ctxLower.contains('+47') || RegExp(r'\b\d{8}\b').hasMatch(ctxLower)) score -= 42;
+      if (ctxLower.contains('freight') || ctxLower.contains('delivery')) score -= 8;
+
+      final lineStart = text.lastIndexOf('\n', start - 1) + 1;
+      final lineEnd = text.indexOf('\n', end);
+      final line = text.substring(
+        lineStart,
+        lineEnd < 0 ? text.length : lineEnd,
+      );
+      if (RegExp(r'resource\s*id\s*[:=]?\s*', caseSensitive: false).hasMatch(line)) {
+        score += 30;
+      }
+
+      final snippet = context.length > 80 ? '…${context.substring(context.length - 77)}' : context;
+      final prev = byCode[code];
+      if (prev == null || score > prev.score) {
+        byCode[code] = MaviResourceIdCandidate(
+          code: code,
+          score: score,
+          pageIndex: pageIndex,
+          contextSnippet: snippet.trim(),
+          fullFormat: fullNoOm,
+        );
+      }
+    }
+
+    final fullPatterns = <RegExp>[
+      RegExp(r'NO\s*[_\s.-]*O\s*[_\s.-]*M\s*0*(\d{1,5})\b', caseSensitive: false),
+      RegExp(r'NO_O_(M\d{1,5})\b', caseSensitive: false),
+    ];
+    for (final re in fullPatterns) {
+      for (final m in re.allMatches(text)) {
+        consider(m, fullNoOm: true);
+      }
+    }
+
+    final labeled = RegExp(
+      r'(?:resource\s*(?:id|no|number|#)?|vehicle\s*(?:id|no|#)?|unit\s*code)\s*[:=\s#-]*\s*(?:NO\s*[_\s.-]*O\s*[_\s.-]*M\s*0*)?M?\s*0*(\d{1,5})\b',
+      caseSensitive: false,
+    );
+    for (final m in labeled.allMatches(text)) {
+      consider(m, fullNoOm: false);
+    }
+
+    final bareM = RegExp(r'(?<![A-Z0-9])M\s*0*(\d{1,5})\b', caseSensitive: false);
+    for (final m in bareM.allMatches(text)) {
+      consider(m, fullNoOm: false);
+    }
+
+    final out = byCode.values.toList()..sort((a, b) => b.score.compareTo(a.score));
+    return out;
+  }
+
+  static String? _codeFromDigits(String digits) {
+    final n = int.tryParse(digits.replaceAll(RegExp(r'\D'), ''));
+    if (n == null || n < 1 || n > 99999) return null;
+    return 'M$n';
+  }
+
+  static bool _isPlausibleMaviNumber(String code) {
+    final n = int.tryParse(code.replaceFirst(RegExp(r'^M', caseSensitive: false), ''));
+    if (n == null) return false;
+    return n >= 1 && n <= 9999;
+  }
+
+  /// Flere nøkler per bil (M42, NO_O_M0042, …) for robust matching.
+  static Map<String, T> buildVehicleLookupMap<T>({
+    required Iterable<T> vehicles,
+    required String Function(T) unitCodeOf,
+    String? Function(T)? registrationOf,
+  }) {
+    final map = <String, T>{};
+    void put(String? key, T v) {
+      if (key == null || key.isEmpty) return;
+      final norm = normalizeUnitCodeForMatch(key);
+      if (norm.isNotEmpty) map.putIfAbsent(norm, () => v);
+      final compact = key.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+      if (compact.isNotEmpty) map.putIfAbsent(compact, () => v);
+    }
+    for (final v in vehicles) {
+      put(unitCodeOf(v), v);
+      final reg = registrationOf?.call(v);
+      if (reg != null && reg.trim().isNotEmpty) put(reg, v);
+    }
+    return map;
+  }
+
+  static T? findVehicleInLookup<T>(
+    Map<String, T> map,
+    String? code,
+  ) {
+    if (code == null || code.isEmpty) return null;
+    final norm = normalizeUnitCodeForMatch(code);
+    final compact = code.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+    return map[norm] ?? map[compact];
+  }
+}
+
+/// Ett funnet MAVI-nummer i PDF med konfidens-score.
+class MaviResourceIdCandidate {
+  final String code;
+  final int score;
+  final int pageIndex;
+  final String contextSnippet;
+  final bool fullFormat;
+
+  const MaviResourceIdCandidate({
+    required this.code,
+    required this.score,
+    required this.pageIndex,
+    required this.contextSnippet,
+    required this.fullFormat,
+  });
 }

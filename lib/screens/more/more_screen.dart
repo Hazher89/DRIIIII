@@ -19,6 +19,7 @@ import '../employees/employee_personal_folder_screen.dart';
 import '../profile/profile_screen.dart';
 import '../admin/access_control_screen.dart';
 import '../admin/kiosk_settings_screen.dart';
+import '../admin/dropbox_storage_settings_screen.dart';
 import '../surveys/survey_list_screen.dart';
 import '../partners/partners_dashboard_screen.dart';
 import 'whistleblowing_screen.dart';
@@ -213,6 +214,13 @@ class _MoreScreenState extends State<MoreScreen> {
               'Appinnstillinger',
               isDark,
             ),
+          if (_profile?.isAdmin == true || _profile?.isSuperAdmin == true)
+            _buildMenuItem(
+              context,
+              Icons.cloud_outlined,
+              'Dropbox-lagring',
+              isDark,
+            ),
 
           const SizedBox(height: 20),
           _buildSectionLabel('Info', isDark),
@@ -402,6 +410,14 @@ class _MoreScreenState extends State<MoreScreen> {
                 profile: _profile,
                 accessKey: AccessKeys.kiosk,
                 child: const KioskSettingsScreen(),
+              ),
+            );
+            return;
+          }
+          if (title == 'Dropbox-lagring') {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const DropboxStorageSettingsScreen(),
               ),
             );
             return;

@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:uuid/uuid.dart';
 
 import '../../../models/hms_document.dart';
+import '../storage/company_file_storage.dart';
 import '../supabase_service.dart';
 
 class EmployeeDocumentService {
@@ -30,7 +31,14 @@ class EmployeeDocumentService {
   }) async {
     final path =
         '$companyId/employee_files/$userId/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-    return SupabaseService.uploadFile('documents', path, bytes);
+    final stored = await CompanyFileStorage.upload(
+      supabaseBucket: 'documents',
+      storagePath: path,
+      bytes: bytes,
+      category: 'employees',
+      fileName: fileName,
+    );
+    return CompanyFileStorage.toStorageReference(stored);
   }
 
   /// Superadmin/leder laster opp for ansatt.

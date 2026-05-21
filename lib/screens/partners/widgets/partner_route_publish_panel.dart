@@ -5,8 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart';
-
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
@@ -127,63 +125,17 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
 
   // ── PDF import (samme logikk som mass panel) ─────────────────────────────
 
-  String _normalizeUnitCode(String raw) {
-    final s = raw.trim().toUpperCase();
-    if (s.isEmpty) return '';
-    final noOm = RegExp(r'NO\s*[_-]?\s*O\s*[_-]?\s*M(\d{1,5})\b', caseSensitive: false).firstMatch(s);
-    if (noOm != null) {
-      final n = int.tryParse(noOm.group(1)!);
-      if (n != null) return 'M$n';
-    }
-    final mDigits = RegExp(r'\bM(\d{1,5})\b', caseSensitive: false).firstMatch(s);
-    if (mDigits != null) {
-      final n = int.tryParse(mDigits.group(1)!);
-      if (n != null) return 'M$n';
-    }
-    return s.replaceAll(RegExp(r'[^A-Z0-9]'), '');
-  }
-
-  String? _parseResourceId(String raw) {
-    if (raw.isEmpty) return null;
-    final t = raw.replaceAll('\uFF3F', '_');
-    for (final re in [
-      RegExp(r'NO\s*[_-]?\s*O\s*[_-]?\s*M(\d{1,5})', caseSensitive: false),
-      RegExp(r'\bM(\d{1,5})\b', caseSensitive: false),
-    ]) {
-      final m = re.firstMatch(t);
-      if (m == null) continue;
-      final g = m.group(1);
-      if (g == null) continue;
-      final up = g.toUpperCase();
-      return up.startsWith('M') ? up : 'M$up';
-    }
-    return null;
-  }
-
-  String? _extractFromPdf(Uint8List bytes) {
-    try {
-      final doc = PdfDocument(inputBytes: bytes);
-      final ex = PdfTextExtractor(doc);
-      final text = ex.extractText();
-      doc.dispose();
-      return _parseResourceId(text);
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _importPdfs(List<PlatformFile> files) async {
     if (_busyUpload || files.isEmpty) return;
     setState(() => _busyUpload = true);
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) throw Exception('Fant ikke bedrift.');
-      final vehicleMap = <String, PartnerVehicle>{};
-      for (final row in widget.fleet) {
-        final v = row.vehicle;
-        final k = _normalizeUnitCode(v.unitCode);
-        vehicleMap[k] = v;
-      }
+      final vehicleMap = RoutePdfTextService.buildVehicleLookupMap(
+        vehicles: widget.fleet.map((r) => r.vehicle),
+        unitCodeOf: (v) => v.unitCode,
+        registrationOf: (v) => v.registrationNumber,
+      );
       final partnerById = {for (final r in widget.fleet) r.partner.id: r.partner};
       int ok = 0, skip = 0;
       for (final file in files) {
@@ -195,12 +147,12 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
           skip++;
           continue;
         }
-        var code = _extractFromPdf(bytes) ?? _parseResourceId(file.name);
+        final code = RoutePdfTextService.extractResourceIdFromBytes(bytes);
         if (code == null) {
           skip++;
           continue;
         }
-        final vehicle = vehicleMap[_normalizeUnitCode(code)];
+        final vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, code);
         if (vehicle == null) {
           skip++;
           continue;
@@ -213,7 +165,8 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
         final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
         final path =
             'company_$cid/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${vehicle.unitCode}_$safeName';
-        await PartnerService.uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
+        final storedPath =
+            await PartnerService.uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
         final pdfText = RoutePdfTextService.extractFullText(bytes);
         final schedule = RoutePdfTextService.resolveSchedule(pdfText, fallbackDate: _routeDate);
         final share = await PartnerService.addRouteShare(
@@ -222,7 +175,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
             partnerId: partner.id,
             companyId: cid,
             title: 'Rute ${vehicle.unitCode} — ${file.name}',
-            pdfStoragePath: path,
+            pdfStoragePath: storedPath,
             shareDate: schedule.routeDate,
             isDailyShare: true,
             createdAt: DateTime.now(),

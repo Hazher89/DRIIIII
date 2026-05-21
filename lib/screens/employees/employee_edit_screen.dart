@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/services/supabase_service.dart';
+import '../../core/utils/norwegian_national_id.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
 import '../../models/user_profile.dart';
@@ -30,6 +31,7 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
   late final TextEditingController _address;
   late final TextEditingController _jobTitle;
   late final TextEditingController _employeeNumber;
+  late final TextEditingController _nationalId;
   late final TextEditingController _emergencyName;
   late final TextEditingController _emergencyPhone;
   late UserRole _role;
@@ -51,6 +53,9 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     _address = TextEditingController(text: e.address ?? '');
     _jobTitle = TextEditingController(text: e.jobTitle ?? '');
     _employeeNumber = TextEditingController(text: e.employeeNumber ?? '');
+    _nationalId = TextEditingController(
+      text: NorwegianNationalId.formatDisplay(e.nationalIdNumber),
+    );
     _emergencyName = TextEditingController(text: e.emergencyContactName ?? '');
     _emergencyPhone = TextEditingController(text: e.emergencyContactPhone ?? '');
     _role = e.role;
@@ -83,6 +88,7 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     _address.dispose();
     _jobTitle.dispose();
     _employeeNumber.dispose();
+    _nationalId.dispose();
     _emergencyName.dispose();
     _emergencyPhone.dispose();
     super.dispose();
@@ -92,6 +98,15 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     if (_name.text.trim().isEmpty) return;
     setState(() => _saving = true);
     try {
+      final normalizedFnr = NorwegianNationalId.normalize(_nationalId.text);
+      if (_nationalId.text.trim().isNotEmpty && normalizedFnr == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fødselsnummer må være 11 siffer')),
+        );
+        setState(() => _saving = false);
+        return;
+      }
+      final fnrBirth = NorwegianNationalId.birthDateFrom(normalizedFnr);
       await SupabaseService.updateEmployeeProfile(
         widget.employee.id,
         fullName: _name.text.trim(),
@@ -99,11 +114,12 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
         address: _address.text.trim(),
         jobTitle: _jobTitle.text.trim(),
         employeeNumber: _employeeNumber.text.trim(),
+        nationalIdNumber: _nationalId.text.trim(),
         emergencyContactName: _emergencyName.text.trim(),
         emergencyContactPhone: _emergencyPhone.text.trim(),
         departmentId: _departmentId,
         role: widget.canEditRole ? _role : null,
-        birthDate: _birthDate,
+        birthDate: fnrBirth ?? _birthDate,
         hireDate: _hireDate,
         isSafetyRepresentative: _safetyRep,
         isActive: _active,
@@ -158,6 +174,12 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
               keyboard: TextInputType.phone,
               hint: '8 siffer – kobles til Mavi SMS'),
           _field(_address, 'Adresse', maxLines: 2),
+          _field(
+            _nationalId,
+            'Fødselsnummer',
+            keyboard: TextInputType.number,
+            hint: '11 siffer — bursdag settes automatisk',
+          ),
           _dateTile('Fødselsdato', _birthDate, (d) => _birthDate = d),
           _section('Arbeid'),
           _field(_jobTitle, 'Stilling / yrkestittel'),
