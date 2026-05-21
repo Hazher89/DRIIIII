@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/auth/employee_oauth_sign_in.dart';
+import '../../core/services/employee_auth_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -64,7 +65,7 @@ class AuthGateScreen extends StatelessWidget {
                     _GateCard(
                       icon: Icons.groups_rounded,
                       title: 'MAVI ansatte',
-                      subtitle: 'Google eller Apple — interne verktøy og HMS.',
+                      subtitle: 'Ansattnummer + passord, eller Google / Apple.',
                       color: DriftProTheme.primaryGreen,
                       onTap: () {
                         Navigator.of(context).push(
@@ -189,7 +190,78 @@ class EmployeeLoginScreen extends StatefulWidget {
 }
 
 class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
+  final _employeeNumber = TextEditingController();
+  final _password = TextEditingController();
+  bool _obscure = true;
   bool _loading = false;
+  StreamSubscription<AuthState>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((state) {
+      if (state.session != null && mounted) {
+        _leaveLoginScreen();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    _employeeNumber.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  void _leaveLoginScreen() {
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.popUntil((route) => route.isFirst);
+    }
+  }
+
+  Future<void> _signInWithEmployeeNumber() async {
+    if (_loading) return;
+    final no = _employeeNumber.text.trim();
+    final pw = _password.text;
+    if (no.isEmpty || pw.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fyll inn ansattnummer og passord')),
+      );
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await EmployeeAuthService.signInWithEmployeeNumber(
+        employeeNumber: no,
+        password: pw,
+      );
+      await SupabaseService.ensureSessionLinkedToCompany();
+      if (mounted) _leaveLoginScreen();
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.message.isNotEmpty
+                  ? e.message
+                  : 'Feil ansattnummer eller passord. Standard ved første gangs innlogging er ${EmployeeAuthService.defaultPasswordHint}.',
+            ),
+            backgroundColor: DriftProTheme.error,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: DriftProTheme.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   Future<void> _oauth(OAuthProvider provider) async {
     if (_loading) return;
@@ -237,12 +309,80 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Velg innlogging',
+                  'MAVI ansatte',
                   style: DriftProTheme.headingMd.copyWith(
                     color: isDark ? Colors.white : Colors.grey[900],
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 8),
+                Text(
+                  'Logg inn med ansattnummer. Standardpassord ved oppstart: ${EmployeeAuthService.defaultPasswordHint} '
+                  '(endre under Profil etter innlogging).',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.white60 : Colors.grey[700],
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _employeeNumber,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Ansattnummer',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.badge_outlined),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _password,
+                  obscureText: _obscure,
+                  decoration: InputDecoration(
+                    labelText: 'Passord',
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                    ),
+                  ),
+                  onSubmitted: (_) => _signInWithEmployeeNumber(),
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _loading ? null : _signInWithEmployeeNumber,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DriftProTheme.primaryGreen,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: _loading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text('Logg inn', style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: isDark ? Colors.white24 : Colors.grey[400])),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'eller',
+                        style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600]),
+                      ),
+                    ),
+                    Expanded(child: Divider(color: isDark ? Colors.white24 : Colors.grey[400])),
+                  ],
+                ),
+                const SizedBox(height: 24),
                 _AuthButton(
                   loading: _loading,
                   onTap: () => _oauth(OAuthProvider.google),

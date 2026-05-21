@@ -5,6 +5,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_icons.dart';
 import '../../models/user_profile.dart';
+import 'employee_change_password_sheet.dart';
 import 'profile_sms_tab.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -164,12 +165,13 @@ class _ProfileScreenState extends State<ProfileScreen>
           ]),
           const SizedBox(height: 24),
           _buildInfoSection(isDark, [
-            _buildActionTile(
-              Icons.lock_outline_rounded,
-              'Endre passord',
-              () {},
-              isDark,
-            ),
+            if (_profile!.partnerId == null)
+              _buildActionTile(
+                Icons.lock_outline_rounded,
+                'Bytt passord (SMS bekreftelse)',
+                () => showEmployeeChangePasswordSheet(context),
+                isDark,
+              ),
             _buildActionTile(
               Icons.notifications_none_rounded,
               'Varslinginnstillinger',
