@@ -41,7 +41,7 @@ function htmlPage(title: string, body: string, status = 200) {
 }
 
 function redirectToApp(query = "dropbox=connected") {
-  const base = Deno.env.get("DRIFTPRO_APP_URL")?.trim() || "https://drifpro.no";
+  const base = Deno.env.get("DRIFTPRO_APP_URL")?.trim() || "https://driftpro.no";
   const url = `${base.replace(/\/+$/, "")}/?${query}`;
   return Response.redirect(url, 302);
 }
@@ -202,7 +202,7 @@ async function handleOAuthCallback(
   if (oauthErr) {
     return htmlPage(
       "Dropbox avbrutt",
-      `<p>${oauthErr}</p><p><a href="https://drifpro.no">Tilbake til DriftPro</a></p>`,
+      `<p>${oauthErr}</p><p><a href="https://driftpro.no">Tilbake til DriftPro</a></p>`,
       400,
     );
   }

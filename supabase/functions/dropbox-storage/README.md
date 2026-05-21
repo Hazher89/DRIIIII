@@ -13,7 +13,7 @@ Filer over **1 MB** lagres i Dropbox-mappen `/DriftPro` når bedriften har koble
    - `DROPBOX_APP_KEY`
    - `DROPBOX_APP_SECRET`
    - `DROPBOX_REDIRECT_URI` = samme URL som over
-   - `DRIFTPRO_APP_URL` = `https://drifpro.no` (valgfritt, for «tilbake til app»-side)
+   - `DRIFTPRO_APP_URL` = `https://driftpro.no` (valgfritt, for «tilbake til app»-side)
 4. Kjør migrasjon `20260522120000_dropbox_storage.sql`
 5. Deploy:
    ```bash

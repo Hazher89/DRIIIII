@@ -1,15 +1,14 @@
+import '../config/app_origin.dart';
+
 /// Offentlige URL-er for vegg-skjerm / infoskjerm (krever innlogging én gang).
 class InfoskjermUrls {
   InfoskjermUrls._();
-
-  /// Produksjon; erstattes av [origin] når appen kjører på web.
-  static const String productionOrigin = 'https://drifpro.no';
 
   static String get origin {
     final o = Uri.base.origin;
     if (o.isNotEmpty && o != 'null' && !o.contains('localhost')) return o;
     if (o.contains('127.0.0.1') || o.contains('localhost')) return o;
-    return productionOrigin;
+    return kProductionOrigin;
   }
 
   /// Anbefalt lenke for TV/nettleser (2 min oppdatering).

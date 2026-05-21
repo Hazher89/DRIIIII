@@ -27,4 +27,4 @@ Kall edge function `tidsbanken-sync` med service role eller la appen trigge ved 
 ## App
 
 - Aktiver under **Infoskjerm → Koble Tidsbanken (web)**
-- Infoskjerm: `https://drifpro.no/Online` (innlogget)
+- Infoskjerm: `https://driftpro.no/?view=infoskjerm&refresh=120` (innlogget)
