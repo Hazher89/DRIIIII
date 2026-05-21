@@ -97,7 +97,7 @@ class DriftProApp extends StatelessWidget {
 
   bool _isInfoskjermRoute() {
     final path = Uri.base.path.toLowerCase();
-    const pathHits = ['/online', '/infoskjerm', '/wallboard'];
+    const pathHits = ['/live', '/online', '/infoskjerm', '/wallboard'];
     for (final p in pathHits) {
       if (path == p || path.endsWith(p)) return true;
     }

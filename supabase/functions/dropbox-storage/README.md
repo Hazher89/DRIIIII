@@ -25,7 +25,7 @@ Filer over **1 MB** lagres i Dropbox-mappen `/DriftPro` når bedriften har koble
 
 **Mer → Dropbox-lagring** → «Koble Dropbox». Du logger inn på Dropboxes side (ikke passord i DriftPro).
 
-Etter godkjenning sender Dropbox til Supabase callback, som lagrer token og **videresender til** `https://drifpro.no/?dropbox=connected`. Du trenger ikke endre Redirect URI til drifpro.no.
+Etter godkjenning sender Dropbox til Supabase callback, som lagrer token og **videresender til** `https://driftpro.no/?dropbox=connected`. Du trenger ikke endre Redirect URI til driftpro.no.
 
 **App folder:** sett valgfritt secret `DROPBOX_ROOT_FOLDER` = `/` (standard).
 

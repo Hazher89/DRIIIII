@@ -6,16 +6,21 @@ import 'package:intl/intl.dart';
 import '../../core/constants/company_display.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/tidsbanken/tidsbanken_presence_service.dart';
+import '../../core/services/wallboard/entur_departures_service.dart';
+import '../../core/services/wallboard/nrk_news_feed_service.dart';
+import '../../core/services/wallboard/open_meteo_weather_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/wallboard_palette.dart';
 import '../../core/utils/norwegian_national_id.dart';
 import '../../models/absence.dart';
 import '../../models/tidsbanken_presence.dart';
 import '../../models/user_profile.dart';
+import 'widgets/wallboard_extras_bar.dart';
+import 'widgets/wallboard_news_ticker.dart';
 
-/// Infoskjerm: én side uten scrolling — 6 paneler (på jobb, ferie, bursdag).
+/// Infoskjerm /live: vær, kollektiv, NRK-ticker + teamoversikt (uten «ikke innstemplt»).
 class OnlinePresenceScreen extends StatefulWidget {
   final bool embedded;
-  /// Hvor ofte data hentes på nytt (Tidsbanken-synk + lister). Standard 5 min i app, 2 min på vegg-skjerm.
   final Duration? refreshInterval;
 
   const OnlinePresenceScreen({
@@ -32,21 +37,22 @@ class _BirthdayEntry {
   final UserProfile profile;
   final DateTime birthday;
   final int daysUntil;
-  final int ageNext;
 
   _BirthdayEntry({
     required this.profile,
     required this.birthday,
     required this.daysUntil,
-    required this.ageNext,
   });
 }
 
 class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
-  static const int _maxLines = 9;
+  static const int _maxLines = 10;
+  static const Color _bg = WallboardPalette.background;
+  static const Color _card = WallboardPalette.card;
 
   Timer? _timer;
   Timer? _clockTimer;
+  Timer? _feedsTimer;
   bool _loading = true;
   bool _syncing = false;
   String? _error;
@@ -56,15 +62,23 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
   List<Absence> _absences = [];
   List<UserProfile> _profiles = [];
 
+  WallboardWeather? _weather;
+  List<NrkHeadline> _news = [];
+  List<StopDepartures> _transitStops = [];
+
   Duration get _refreshEvery =>
       widget.refreshInterval ??
       (widget.embedded ? const Duration(minutes: 5) : const Duration(minutes: 2));
+
+  bool get _isWallboard => !widget.embedded;
 
   @override
   void initState() {
     super.initState();
     _load(trySync: true);
+    _loadFeeds();
     _timer = Timer.periodic(_refreshEvery, (_) => _load(trySync: true));
+    _feedsTimer = Timer.periodic(const Duration(minutes: 10), (_) => _loadFeeds());
     _clockTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) setState(() {});
     });
@@ -74,7 +88,26 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
   void dispose() {
     _timer?.cancel();
     _clockTimer?.cancel();
+    _feedsTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadFeeds() async {
+    try {
+      final results = await Future.wait([
+        OpenMeteoWeatherService.fetch(),
+        NrkNewsFeedService.fetch(),
+        EnturDeparturesService.fetchNearby(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _weather = results[0] as WallboardWeather?;
+        _news = results[1] as List<NrkHeadline>;
+        _transitStops = results[2] as List<StopDepartures>;
+      });
+    } catch (_) {
+      // Feeds er nice-to-have — ikke blokker vegg-skjerm.
+    }
   }
 
   DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -138,12 +171,12 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
     }
   }
 
+  Future<void> _refreshAll() async {
+    await Future.wait([_load(trySync: true), _loadFeeds()]);
+  }
+
   List<TidsbankenPresence> get _clockedIn =>
       _presence.where((p) => p.isClockedIn).toList()
-        ..sort((a, b) => a.fullName.compareTo(b.fullName));
-
-  List<TidsbankenPresence> get _notIn =>
-      _presence.where((p) => !p.isClockedIn).toList()
         ..sort((a, b) => a.fullName.compareTo(b.fullName));
 
   List<Absence> get _vacationNow => _absences
@@ -176,7 +209,6 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
         profile: p,
         birthday: bday,
         daysUntil: 0,
-        ageNext: NorwegianNationalId.ageOnNextBirthday(bday),
       ));
     }
     out.sort((a, b) => a.profile.fullName.compareTo(b.profile.fullName));
@@ -194,7 +226,6 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
         profile: p,
         birthday: bday,
         daysUntil: days,
-        ageNext: NorwegianNationalId.ageOnNextBirthday(bday),
       ));
     }
     out.sort((a, b) => a.daysUntil.compareTo(b.daysUntil));
@@ -203,41 +234,37 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bg = isDark ? const Color(0xFF0F1419) : const Color(0xFFF4F6F8);
-
     final body = ColoredBox(
-      color: bg,
+      color: _isWallboard ? _bg : (Theme.of(context).brightness == Brightness.dark
+          ? const Color(0xFF0F1419)
+          : const Color(0xFFF4F6F8)),
       child: SafeArea(
+        bottom: false,
         child: _loading
-            ? const Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen))
-            : LayoutBuilder(
-                builder: (context, constraints) {
-                  return Column(
-                    children: [
-                      _topBar(isDark),
-                      if (_error != null)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                          child: _errorStrip(_error!),
-                        ),
-                      Expanded(child: _gridBoard(isDark, constraints)),
-                    ],
-                  );
-                },
+            ? const Center(
+                child: CircularProgressIndicator(color: DriftProTheme.primaryGreen),
+              )
+            : Column(
+                children: [
+                  _header(),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                      child: _errorStrip(_error!),
+                    ),
+                  if (_isWallboard) WallboardExtrasBar(weather: _weather, stops: _transitStops),
+                  Expanded(child: _mainBoard()),
+                  if (_isWallboard) WallboardNewsTicker(headlines: _news),
+                ],
               ),
       ),
     );
 
     if (widget.embedded) return body;
-
-    return Scaffold(
-      backgroundColor: bg,
-      body: body,
-    );
+    return Scaffold(backgroundColor: _bg, body: body);
   }
 
-  Widget _topBar(bool isDark) {
+  Widget _header() {
     final sync = _sync;
     final timeFmt = DateFormat('HH:mm', 'nb');
     final dateFmt = DateFormat('EEEE d. MMMM', 'nb');
@@ -248,22 +275,33 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
 
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       decoration: BoxDecoration(
-        gradient: DriftProTheme.primaryGradient,
-        borderRadius: BorderRadius.circular(14),
+        gradient: const LinearGradient(
+          colors: [WallboardPalette.headerStart, WallboardPalette.headerEnd],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: DriftProTheme.primaryGreen.withValues(alpha: 0.25),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+            color: WallboardPalette.headerShadow.withValues(alpha: 0.22),
+            blurRadius: 18,
+            offset: const Offset(0, 5),
           ),
         ],
       ),
       child: Row(
         children: [
-          const Icon(Icons.apartment_rounded, color: Colors.white, size: 32),
-          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.dashboard_customize_rounded, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,14 +310,20 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
                   _companyTitle,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 20,
+                    fontSize: 22,
                     fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
                   ),
                 ),
                 Text(
                   onJob,
                   style: const TextStyle(color: Colors.white70, fontSize: 13),
                 ),
+                if (_isWallboard)
+                  const Text(
+                    'Live oversikt',
+                    style: TextStyle(color: Colors.white38, fontSize: 10),
+                  ),
               ],
             ),
           ),
@@ -295,16 +339,13 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
                       child: SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white70,
-                        ),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70),
                       ),
                     )
                   else
                     IconButton(
                       tooltip: 'Oppdater',
-                      onPressed: () => _load(trySync: true),
+                      onPressed: _refreshAll,
                       icon: const Icon(Icons.refresh_rounded, color: Colors.white),
                       visualDensity: VisualDensity.compact,
                       padding: EdgeInsets.zero,
@@ -314,9 +355,9 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
                     timeFmt.format(now),
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w300,
+                      letterSpacing: 1.2,
                     ),
                   ),
                 ],
@@ -328,12 +369,8 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
               if (sync?.lastSyncAt != null)
                 Text(
                   'Tidsbanken ${timeFmt.format(sync!.lastSyncAt!.toLocal())}',
-                  style: const TextStyle(color: Colors.white54, fontSize: 10),
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.45), fontSize: 9),
                 ),
-              Text(
-                'Oppdateres hvert ${_refreshEvery.inMinutes >= 1 ? '${_refreshEvery.inMinutes} min' : '${_refreshEvery.inSeconds} sek'}',
-                style: const TextStyle(color: Colors.white38, fontSize: 9),
-              ),
             ],
           ),
         ],
@@ -346,25 +383,20 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.orange.shade50,
+        color: Colors.orange.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.orange.shade300),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.5)),
       ),
-      child: Text(text, style: TextStyle(fontSize: 12, color: Colors.orange.shade900)),
+      child: Text(text, style: const TextStyle(fontSize: 12, color: Colors.orange)),
     );
   }
 
-  Widget _gridBoard(bool isDark, BoxConstraints constraints) {
-    final pad = 12.0;
-    final gap = 10.0;
-    final cols = constraints.maxWidth >= 900 ? 3 : 2;
-    final rows = cols == 3 ? 2 : 3;
-
+  Widget _mainBoard() {
     final tiles = <_PanelData>[
       _PanelData(
         title: 'På jobb nå',
-        icon: Icons.login_rounded,
-        accent: const Color(0xFF2E7D32),
+        icon: Icons.groups_rounded,
+        accent: WallboardPalette.onJob,
         count: _clockedIn.length,
         lines: _clockedIn
             .map((p) => _LineItem(
@@ -372,22 +404,13 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
                   subtitle: p.sinceTime != null ? 'Siden ${p.sinceTime}' : 'Innstemplt',
                 ))
             .toList(),
-        empty: 'Ingen innstemplt',
-      ),
-      _PanelData(
-        title: 'Ikke innstemplt',
-        icon: Icons.logout_rounded,
-        accent: Colors.grey.shade600,
-        count: _notIn.length,
-        lines: _notIn
-            .map((p) => _LineItem(title: p.fullName, subtitle: 'Ikke inne'))
-            .toList(),
-        empty: 'Alle er innstemplt',
+        empty: 'Ingen innstemplt akkurat nå',
+        large: true,
       ),
       _PanelData(
         title: 'Ferie nå',
         icon: Icons.beach_access_rounded,
-        accent: DriftProTheme.absenceVacation,
+        accent: WallboardPalette.vacationNow,
         count: _vacationNow.length,
         lines: _vacationLines(_vacationNow, soon: false),
         empty: 'Ingen på ferie i dag',
@@ -395,7 +418,7 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
       _PanelData(
         title: 'Ferie snart',
         icon: Icons.flight_takeoff_rounded,
-        accent: const Color(0xFF1565C0),
+        accent: WallboardPalette.vacationSoon,
         count: _vacationSoon.length,
         lines: _vacationLines(_vacationSoon, soon: true),
         empty: 'Ingen planlagt ferie (90 d)',
@@ -403,15 +426,15 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
       _PanelData(
         title: 'Bursdag i dag',
         icon: Icons.cake_rounded,
-        accent: const Color(0xFFC2185B),
+        accent: WallboardPalette.birthdayToday,
         count: _birthdaysToday.length,
         lines: _birthdayLines(_birthdaysToday, today: true),
         empty: 'Ingen bursdag i dag',
       ),
       _PanelData(
         title: 'Bursdag snart',
-        icon: Icons.cake_outlined,
-        accent: const Color(0xFFAD1457),
+        icon: Icons.celebration_rounded,
+        accent: WallboardPalette.birthdaySoon,
         count: _birthdaysSoon.length,
         lines: _birthdayLines(_birthdaysSoon, today: false),
         empty: 'Ingen innen 30 dager',
@@ -419,28 +442,63 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
     ];
 
     return Padding(
-      padding: EdgeInsets.all(pad),
-      child: GridView.builder(
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: cols,
-          crossAxisSpacing: gap,
-          mainAxisSpacing: gap,
-          childAspectRatio: _aspectRatio(constraints, cols, rows, pad, gap),
-        ),
-        itemCount: tiles.length,
-        itemBuilder: (_, i) => _panelCard(isDark, tiles[i]),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final wide = c.maxWidth >= 900;
+          if (!wide) {
+            return GridView.builder(
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+                childAspectRatio: 1.05,
+              ),
+              itemCount: tiles.length,
+              itemBuilder: (_, i) => _panelCard(tiles[i]),
+            );
+          }
+
+          final hero = tiles.first;
+          final rest = tiles.sublist(1);
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(flex: 5, child: _panelCard(hero)),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 4,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Expanded(child: _panelCard(rest[0])),
+                          const SizedBox(width: 10),
+                          Expanded(child: _panelCard(rest[1])),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Expanded(child: _panelCard(rest[2])),
+                          const SizedBox(width: 10),
+                          Expanded(child: _panelCard(rest[3])),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
-  }
-
-  double _aspectRatio(BoxConstraints c, int cols, int rows, double pad, double gap) {
-    final w = c.maxWidth - pad * 2 - gap * (cols - 1);
-    final h = c.maxHeight - 88 - pad * 2 - gap * (rows - 1);
-    final cellW = w / cols;
-    final cellH = h / rows;
-    if (cellH <= 0) return 1.1;
-    return cellW / cellH;
   }
 
   List<_LineItem> _vacationLines(List<Absence> items, {required bool soon}) {
@@ -464,32 +522,29 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
   List<_LineItem> _birthdayLines(List<_BirthdayEntry> entries, {required bool today}) {
     return entries.map((e) {
       final label = today
-          ? 'Fyller ${e.ageNext} år 🎂'
+          ? 'Bursdag i dag 🎂'
           : e.daysUntil == 1
-              ? 'I morgen · ${e.ageNext} år'
-              : 'Om ${e.daysUntil} d · ${e.ageNext} år';
+              ? 'Bursdag i morgen'
+              : 'Bursdag om ${e.daysUntil} dager';
       return _LineItem(title: e.profile.fullName, subtitle: label);
     }).toList();
   }
 
-  Widget _panelCard(bool isDark, _PanelData data) {
+  Widget _panelCard(_PanelData data) {
     final lines = data.lines;
-    final show = lines.take(_maxLines).toList();
+    final show = lines.take(data.large ? _maxLines + 4 : _maxLines).toList();
     final extra = lines.length - show.length;
 
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: data.accent.withValues(alpha: isDark ? 0.35 : 0.25),
-          width: 1.5,
-        ),
+        color: _card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: data.accent.withValues(alpha: 0.22)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.06),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -497,37 +552,42 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             decoration: BoxDecoration(
-              color: data.accent.withValues(alpha: isDark ? 0.2 : 0.1),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+              gradient: LinearGradient(
+                colors: [
+                  data.accent.withValues(alpha: 0.16),
+                  data.accent.withValues(alpha: 0.05),
+                ],
+              ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(13)),
             ),
             child: Row(
               children: [
-                Icon(data.icon, color: data.accent, size: 20),
-                const SizedBox(width: 8),
+                Icon(data.icon, color: data.accent, size: 22),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
                     data.title,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontWeight: FontWeight.w800,
-                      fontSize: 13,
-                      color: isDark ? Colors.white : Colors.grey[900],
+                      fontSize: 14,
+                      color: WallboardPalette.textPrimary,
                     ),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                   decoration: BoxDecoration(
-                    color: data.accent,
-                    borderRadius: BorderRadius.circular(12),
+                    color: data.accent.withValues(alpha: 0.75),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '${data.count}',
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: WallboardPalette.textPrimary,
                       fontWeight: FontWeight.w800,
-                      fontSize: 12,
+                      fontSize: 13,
                     ),
                   ),
                 ),
@@ -537,22 +597,22 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
           Expanded(
             child: show.isEmpty
                 ? Center(
-                    child: Text(
-                      data.empty,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isDark ? Colors.white38 : Colors.grey[500],
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(
+                        data.empty,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 12, color: WallboardPalette.textMuted),
                       ),
                     ),
                   )
                 : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: show.length + (extra > 0 ? 1 : 0),
-                    separatorBuilder: (context, index) => Divider(
+                    separatorBuilder: (_, _) => Divider(
                       height: 1,
-                      color: isDark ? Colors.white10 : Colors.grey.shade200,
+                      color: WallboardPalette.divider,
                     ),
                     itemBuilder: (_, i) {
                       if (extra > 0 && i == show.length) {
@@ -570,30 +630,45 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
                       }
                       final line = show[i];
                       return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Row(
                           children: [
-                            Text(
-                              line.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 12,
-                                color: isDark ? Colors.white : Colors.grey[900],
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                color: data.accent,
+                                shape: BoxShape.circle,
                               ),
                             ),
-                            if (line.subtitle != null)
-                              Text(
-                                line.subtitle!,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: isDark ? Colors.white54 : Colors.grey[600],
-                                ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    line.title,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: data.large ? 14 : 12,
+                                      color: WallboardPalette.textPrimary,
+                                    ),
+                                  ),
+                                  if (line.subtitle != null)
+                                    Text(
+                                      line.subtitle!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: WallboardPalette.textSecondary,
+                                      ),
+                                    ),
+                                ],
                               ),
+                            ),
                           ],
                         ),
                       );
@@ -613,6 +688,7 @@ class _PanelData {
   final int count;
   final List<_LineItem> lines;
   final String empty;
+  final bool large;
 
   _PanelData({
     required this.title,
@@ -621,6 +697,7 @@ class _PanelData {
     required this.count,
     required this.lines,
     required this.empty,
+    this.large = false,
   });
 }
 
