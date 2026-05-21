@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -60,6 +61,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   List<FleetShiftDefinition> _shifts = [];
   List<PartnerRouteShare> _shares = [];
   int _sapPending = 0;
+  Timer? _sapPollTimer;
 
   DateTime get _weekEnd => _weekStart.add(const Duration(days: 6));
   List<DateTime> get _days =>
@@ -78,10 +80,14 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     _headerH.addListener(_mirrorHeaderHoriz);
     _bodyH.addListener(_mirrorBodyHoriz);
     _reload();
+    _sapPollTimer = Timer.periodic(const Duration(seconds: 90), (_) {
+      _refreshSapPendingCount();
+    });
   }
 
   @override
   void dispose() {
+    _sapPollTimer?.cancel();
     _searchCtrl.dispose();
     _leftVert.removeListener(_mirrorLeftVert);
     _rightVert.removeListener(_mirrorRightVert);
@@ -158,6 +164,18 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     }
   }
 
+  Future<void> _refreshSapPendingCount() async {
+    if (!mounted) return;
+    try {
+      final cid = await SupabaseService.getCurrentCompanyId();
+      if (cid == null) return;
+      final n = await PartnerService.countSapRouteInboxPending(cid);
+      if (mounted && n != _sapPending) {
+        setState(() => _sapPending = n);
+      }
+    } catch (_) {}
+  }
+
   List<FleetPartnerVehicleRow> get _maviFleet => PartnerService.filterMaviFleetOnly(widget.fleet);
 
   List<FleetPartnerVehicleRow> get _filteredFleet {
@@ -229,10 +247,67 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       fleet: widget.fleet,
       routeDate: routeDay,
     );
-    if (ok == true && mounted) {
-      widget.onChanged?.call();
-      await _reload();
+    if (mounted) {
+      await _refreshSapPendingCount();
+      if (ok == true) {
+        widget.onChanged?.call();
+        await _reload();
+      }
     }
+  }
+
+  Widget _sapInboxButton() {
+    final active = _sapPending > 0;
+    return Badge(
+      isLabelVisible: active,
+      label: Text(
+        '$_sapPending',
+        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+      ),
+      backgroundColor: const Color(0xFFFFC107),
+      textColor: Colors.black87,
+      largeSize: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      offset: const Offset(10, -6),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOut,
+        decoration: active
+            ? BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFFFC107).withValues(alpha: 0.75),
+                    blurRadius: 16,
+                    spreadRadius: 2,
+                  ),
+                  BoxShadow(
+                    color: const Color(0xFF1565C0).withValues(alpha: 0.45),
+                    blurRadius: 8,
+                  ),
+                ],
+              )
+            : null,
+        child: FilledButton.icon(
+          onPressed: _busy || _maviFleet.isEmpty ? null : _openSapRoutes,
+          style: FilledButton.styleFrom(
+            backgroundColor: active ? const Color(0xFF0D47A1) : const Color(0xFF1565C0),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          ),
+          icon: Icon(
+            active ? Icons.notifications_active_rounded : Icons.mark_email_read_outlined,
+            size: 20,
+          ),
+          label: Text(
+            active ? 'Mottatt fra SAP' : 'Mottatt ruter fra SAP',
+            style: TextStyle(
+              fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openAutoMass() async {
@@ -467,17 +542,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         icon: const Icon(Icons.add_circle_outline),
                         label: const Text('Ny rute'),
                       ),
-                      FilledButton.icon(
-                        onPressed: _busy || _maviFleet.isEmpty ? null : _openSapRoutes,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF1565C0),
-                          foregroundColor: Colors.white,
-                        ),
-                        icon: const Icon(Icons.mark_email_read_outlined),
-                        label: Text(
-                          _sapPending > 0 ? 'SAP ($_sapPending)' : 'SAP',
-                        ),
-                      ),
+                      _sapInboxButton(),
                       FilledButton.icon(
                         onPressed: _busy || _maviFleet.isEmpty ? null : _openAutoMass,
                         style: FilledButton.styleFrom(
