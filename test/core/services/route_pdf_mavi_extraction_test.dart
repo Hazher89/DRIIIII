@@ -23,5 +23,27 @@ Start date 24.04.26
         isNull,
       );
     });
+
+    test('NO_O_M0045Resource ID (glued) — ikke M27 fra Lillestrøm-dato', () {
+      const text = '''
+Trip Overview
+NO_O_M0045Resource ID
+Obaidah 045 045 obaidahDriver Name
+Seq Freight Unit
+1 customer Lillestrøm 27.04.2026 17:00:00
+''';
+      expect(RoutePdfTextService.parseResourceId(text), 'M45');
+    });
+
+    test('NO_O_M0021Resource ID — ikke M14 fra dato', () {
+      const text = '''
+Trip Overview
+NO_O_M0021Resource ID
+Mohamed 021 021 mohamedDriver Name
+Seq Freight Unit
+Christine Kværnæs Lillestrøm 14.04.2026 17:00:00
+''';
+      expect(RoutePdfTextService.parseResourceId(text), 'M21');
+    });
   });
 }

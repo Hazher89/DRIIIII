@@ -336,8 +336,49 @@ class RoutePdfTextService {
     return s.replaceAll(RegExp(r'[^A-Z0-9]'), '');
   }
 
+  /// Leser Resource ID fra Trip Overview-header (side 1) — mest pålitelig.
+  static String? parseResourceIdTripOverviewHeader(String raw) {
+    if (raw.trim().isEmpty) return null;
+    final text = raw.replaceAll('\uFF3F', '_');
+    final lower = text.toLowerCase();
+    final end = lower.indexOf('seq freight unit');
+    final header = end > 0
+        ? text.substring(0, end)
+        : (text.length > 4500 ? text.substring(0, 4500) : text);
+
+    // Elkjøp: «NO_O_M0045Resource ID» (uten mellomrom før Resource).
+    final glued = RegExp(
+      r'NO\s*[_\s.-]*O\s*[_\s.-]*M\s*0*(\d{1,5})(?=\s*(?:Resource|Ressource)\s*(?:\s*ID)?|Driver|\r|\n|[^0-9A-Za-z]|$)',
+      caseSensitive: false,
+    ).firstMatch(header);
+    if (glued != null) {
+      return _codeFromDigits(glued.group(1)!);
+    }
+
+    // «Obaidah 045 045 obaidahDriver Name» / «Mohamed 021 021 …»
+    final driverDup = RegExp(
+      r'(\d{2,4})\s+\1\s+\S+\s*Driver\s*Name',
+      caseSensitive: false,
+    ).firstMatch(header);
+    if (driverDup != null) {
+      return _codeFromDigits(driverDup.group(1)!);
+    }
+
+    final artis = RegExp(
+      r'mavi\s+artis\s+(\d{2,4})',
+      caseSensitive: false,
+    ).firstMatch(header);
+    if (artis != null) {
+      return _codeFromDigits(artis.group(1)!);
+    }
+
+    return null;
+  }
+
   /// Enkelt treff i rå PDF-tekst (brukes internt og for søk).
   static String? parseResourceId(String raw) {
+    final header = parseResourceIdTripOverviewHeader(raw);
+    if (header != null) return header;
     final ranked = _rankResourceIdCandidates(raw);
     if (ranked.isEmpty) return null;
     return ranked.first.code;
@@ -393,7 +434,7 @@ class RoutePdfTextService {
   static RoutePdfTripOverviewMeta extractTripOverviewMeta(Uint8List bytes) {
     final text = extractFullText(bytes);
     return RoutePdfTripOverviewMeta(
-      maviCode: parseResourceId(text),
+      maviCode: parseResourceIdTripOverviewHeader(text) ?? parseResourceId(text),
       stowingLane: parseStowingLane(text),
     );
   }
@@ -407,6 +448,24 @@ class RoutePdfTextService {
 
   /// Henter MAVI Resource ID kun fra PDF-innhold (aldri filnavn).
   static String? extractResourceIdFromBytes(Uint8List bytes) {
+    try {
+      final doc = PdfDocument(inputBytes: bytes);
+      final extractor = PdfTextExtractor(doc);
+      final layout = extractor.extractText(
+        startPageIndex: 0,
+        endPageIndex: 0,
+        layoutText: true,
+      );
+      final linear = extractor.extractText(
+        startPageIndex: 0,
+        endPageIndex: 0,
+        layoutText: false,
+      );
+      doc.dispose();
+      final headerCode = parseResourceIdTripOverviewHeader('$layout\n$linear');
+      if (headerCode != null) return headerCode;
+    } catch (_) {}
+
     final ranked = extractResourceIdCandidatesFromBytes(bytes);
     if (ranked.isEmpty) return null;
     final best = ranked.first;
@@ -472,6 +531,19 @@ class RoutePdfTextService {
     final text = raw.replaceAll('\uFF3F', '_').replaceAll('\u2013', '-');
     final byCode = <String, MaviResourceIdCandidate>{};
 
+    if (pageIndex == 0) {
+      final headerCode = parseResourceIdTripOverviewHeader(text);
+      if (headerCode != null) {
+        byCode[headerCode] = MaviResourceIdCandidate(
+          code: headerCode,
+          score: 200,
+          pageIndex: 0,
+          contextSnippet: 'Trip Overview header',
+          fullFormat: true,
+        );
+      }
+    }
+
     void consider(RegExpMatch m, {required bool fullNoOm}) {
       final digits = m.group(1);
       if (digits == null || digits.isEmpty) return;
@@ -507,6 +579,11 @@ class RoutePdfTextService {
       if (ctxLower.contains('+47') || RegExp(r'\b\d{8}\b').hasMatch(ctxLower)) score -= 42;
       if (ctxLower.contains('freight') || ctxLower.contains('delivery')) score -= 8;
 
+      // Unngå «Lillestrøm 27.04.2026» → feiltolket som M27.
+      final after = text.substring(end, (end + 24).clamp(0, text.length));
+      if (RegExp(r'^\s*\.\d{1,2}\.\d{2,4}').hasMatch(after)) score -= 80;
+      if (RegExp(r'\d{1,2}\.\d{2,4}\.\d{2,4}').hasMatch(context)) score -= 50;
+
       final lineStart = text.lastIndexOf('\n', start - 1) + 1;
       final lineEnd = text.indexOf('\n', end);
       final line = text.substring(
@@ -531,8 +608,14 @@ class RoutePdfTextService {
     }
 
     final fullPatterns = <RegExp>[
-      RegExp(r'NO\s*[_\s.-]*O\s*[_\s.-]*M\s*0*(\d{1,5})\b', caseSensitive: false),
-      RegExp(r'NO_O_(M\d{1,5})\b', caseSensitive: false),
+      RegExp(
+        r'NO\s*[_\s.-]*O\s*[_\s.-]*M\s*0*(\d{1,5})(?=\s*(?:Resource|Ressource)\s*(?:\s*ID)?|Driver|\r|\n|[^0-9A-Za-z]|$)',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'NO_O_(M\d{1,5})(?=\s*(?:Resource|Ressource)|Driver|[^0-9A-Za-z]|$)',
+        caseSensitive: false,
+      ),
     ];
     for (final re in fullPatterns) {
       for (final m in re.allMatches(text)) {
@@ -548,7 +631,8 @@ class RoutePdfTextService {
       consider(m, fullNoOm: false);
     }
 
-    final bareM = RegExp(r'(?<![A-Z0-9])M\s*0*(\d{1,5})\b', caseSensitive: false);
+    // Kun stor M — unngår «strøm 27» fra datoer og stedsnavn.
+    final bareM = RegExp(r'(?<![A-Z])M(0*)(\d{1,5})(?![0-9])');
     for (final m in bareM.allMatches(text)) {
       consider(m, fullNoOm: false);
     }
