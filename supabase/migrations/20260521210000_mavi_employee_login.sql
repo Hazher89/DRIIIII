@@ -305,7 +305,13 @@ DECLARE
   dept_drift UUID;
   dept_rute UUID;
 BEGIN
-  SELECT id INTO cid FROM public.companies ORDER BY created_at LIMIT 1;
+  -- Samme selskap som superadmin / bootstrap (ikke eldste company-rad).
+  SELECT id INTO cid FROM public.companies
+  WHERE id = '00000000-0000-0000-0000-000000000000'
+  LIMIT 1;
+  IF cid IS NULL THEN
+    SELECT id INTO cid FROM public.companies ORDER BY created_at DESC LIMIT 1;
+  END IF;
   IF cid IS NULL THEN
     RAISE NOTICE 'Ingen company — hopper over ansatt-import';
     RETURN;

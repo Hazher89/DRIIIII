@@ -50,8 +50,13 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
     try {
       final me = await SupabaseService.fetchCurrentUserProfile();
       final companyId = await SupabaseService.getCurrentCompanyId();
-      if (companyId == null) throw StateError('Ingen bedrift');
-      final users = await SupabaseService.fetchProfiles(companyId: companyId);
+      if (companyId == null && me?.isSuperAdmin != true) {
+        throw StateError('Ingen bedrift');
+      }
+      // Superadmin skal se alle interne ansatte (uavhengig av company_id-filter).
+      final users = me?.isSuperAdmin == true
+          ? await SupabaseService.fetchProfiles()
+          : await SupabaseService.fetchProfiles(companyId: companyId);
       final depts = await SupabaseService.fetchDepartments(companyId: companyId);
       if (!mounted) return;
       setState(() {
