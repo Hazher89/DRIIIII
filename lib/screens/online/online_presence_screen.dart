@@ -602,7 +602,7 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -614,29 +614,29 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.groups_rounded, color: WallboardPalette.onJob, size: 26),
-                const SizedBox(width: 12),
+                const Icon(Icons.groups_rounded, color: WallboardPalette.onJob, size: 20),
+                const SizedBox(width: 8),
                 const Expanded(
                   child: Text(
-                    'På jobb nå — alle synlige',
+                    'På jobb nå',
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
-                      fontSize: 16,
+                      fontSize: 13,
                       color: WallboardPalette.textPrimary,
                     ),
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                   decoration: BoxDecoration(
                     color: WallboardPalette.onJob.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
                     '$count',
                     style: const TextStyle(
                       fontWeight: FontWeight.w900,
-                      fontSize: 18,
+                      fontSize: 14,
                       color: WallboardPalette.textPrimary,
                     ),
                   ),
@@ -649,7 +649,7 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
               names: names,
               subtitles: subtitles,
               accent: WallboardPalette.onJob,
-              dense: names.length > 28,
+              dense: names.length > 12,
             ),
           ),
         ],
