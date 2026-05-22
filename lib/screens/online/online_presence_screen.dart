@@ -15,6 +15,7 @@ import '../../core/utils/norwegian_national_id.dart';
 import '../../models/absence.dart';
 import '../../models/tidsbanken_presence.dart';
 import '../../models/user_profile.dart';
+import 'widgets/wallboard_adaptive_people_grid.dart';
 import 'widgets/wallboard_extras_bar.dart';
 import 'widgets/wallboard_news_ticker.dart';
 
@@ -46,7 +47,6 @@ class _BirthdayEntry {
 }
 
 class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
-  static const int _maxLines = 10;
   static const Color _bg = WallboardPalette.background;
   static const Color _card = WallboardPalette.card;
 
@@ -392,6 +392,10 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
   }
 
   Widget _mainBoard() {
+    if (_isWallboard) {
+      return _wallboardMainLayout();
+    }
+
     final tiles = <_PanelData>[
       _PanelData(
         title: 'På jobb nå',
@@ -501,6 +505,230 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
     );
   }
 
+  /// Fullskjerm vegg: alle på jobb i stort rutenett, øvrig info som kompakte striper.
+  Widget _wallboardMainLayout() {
+    final onJobNames = _clockedIn.map((p) => p.fullName).toList();
+    final onJobSubs = _clockedIn
+        .map((p) => p.sinceTime != null ? 'Siden ${p.sinceTime}' : 'Innstemplt')
+        .toList();
+
+    final strips = <_PanelData>[
+      _PanelData(
+        title: 'Ferie nå',
+        icon: Icons.beach_access_rounded,
+        accent: WallboardPalette.vacationNow,
+        count: _vacationNow.length,
+        lines: _vacationLines(_vacationNow, soon: false),
+        empty: 'Ingen på ferie',
+      ),
+      _PanelData(
+        title: 'Ferie snart',
+        icon: Icons.flight_takeoff_rounded,
+        accent: WallboardPalette.vacationSoon,
+        count: _vacationSoon.length,
+        lines: _vacationLines(_vacationSoon, soon: true),
+        empty: 'Ingen planlagt',
+      ),
+      _PanelData(
+        title: 'Bursdag i dag',
+        icon: Icons.cake_rounded,
+        accent: WallboardPalette.birthdayToday,
+        count: _birthdaysToday.length,
+        lines: _birthdayLines(_birthdaysToday, today: true),
+        empty: 'Ingen i dag',
+      ),
+      _PanelData(
+        title: 'Bursdag snart',
+        icon: Icons.celebration_rounded,
+        accent: WallboardPalette.birthdaySoon,
+        count: _birthdaysSoon.length,
+        lines: _birthdayLines(_birthdaysSoon, today: false),
+        empty: 'Ingen snart',
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final stripH = (c.maxHeight * 0.16).clamp(72.0, 110.0);
+          return Column(
+            children: [
+              Expanded(
+                child: _onJobHeroPanel(
+                  names: onJobNames,
+                  subtitles: onJobSubs,
+                  count: _clockedIn.length,
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: stripH,
+                child: Row(
+                  children: [
+                    for (var i = 0; i < strips.length; i++) ...[
+                      if (i > 0) const SizedBox(width: 8),
+                      Expanded(child: _compactStripCard(strips[i])),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _onJobHeroPanel({
+    required List<String> names,
+    required List<String?> subtitles,
+    required int count,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: WallboardPalette.onJob.withValues(alpha: 0.28)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  WallboardPalette.onJob.withValues(alpha: 0.2),
+                  WallboardPalette.onJob.withValues(alpha: 0.06),
+                ],
+              ),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(13)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.groups_rounded, color: WallboardPalette.onJob, size: 26),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'På jobb nå — alle synlige',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                      color: WallboardPalette.textPrimary,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: WallboardPalette.onJob.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 18,
+                      color: WallboardPalette.textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: WallboardAdaptivePeopleGrid(
+              names: names,
+              subtitles: subtitles,
+              accent: WallboardPalette.onJob,
+              dense: names.length > 28,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _compactStripCard(_PanelData data) {
+    final preview = data.lines.take(2).toList();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: _card,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: data.accent.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(data.icon, size: 16, color: data.accent),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  data.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    color: WallboardPalette.textPrimary,
+                  ),
+                ),
+              ),
+              Text(
+                '${data.count}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                  color: data.accent,
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+          if (preview.isEmpty)
+            Text(
+              data.empty,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 9, color: WallboardPalette.textMuted),
+            )
+          else
+            ...preview.map(
+              (line) => Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  line.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                    color: WallboardPalette.textSecondary,
+                  ),
+                ),
+              ),
+            ),
+          if (data.lines.length > preview.length)
+            Text(
+              '+ ${data.lines.length - preview.length} til',
+              style: TextStyle(fontSize: 8, fontWeight: FontWeight.w700, color: data.accent),
+            ),
+        ],
+      ),
+    );
+  }
+
   List<_LineItem> _vacationLines(List<Absence> items, {required bool soon}) {
     final fmt = DateFormat('d. MMM', 'nb');
     final today = _dayOnly(DateTime.now());
@@ -530,10 +758,27 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
     }).toList();
   }
 
+  Widget _smallPanelBody(_PanelData data) {
+    final lines = data.lines;
+    if (lines.isEmpty) {
+      return Center(
+        child: Text(
+          data.empty,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 11, color: WallboardPalette.textMuted),
+        ),
+      );
+    }
+    return WallboardAdaptivePeopleGrid(
+      names: lines.map((l) => l.title).toList(),
+      subtitles: lines.map((l) => l.subtitle).toList(),
+      accent: data.accent,
+      dense: true,
+    );
+  }
+
   Widget _panelCard(_PanelData data) {
     final lines = data.lines;
-    final show = lines.take(data.large ? _maxLines + 4 : _maxLines).toList();
-    final extra = lines.length - show.length;
 
     return Container(
       decoration: BoxDecoration(
@@ -595,85 +840,14 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
             ),
           ),
           Expanded(
-            child: show.isEmpty
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        data.empty,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 12, color: WallboardPalette.textMuted),
-                      ),
-                    ),
+            child: data.large
+                ? WallboardAdaptivePeopleGrid(
+                    names: lines.map((l) => l.title).toList(),
+                    subtitles: lines.map((l) => l.subtitle).toList(),
+                    accent: data.accent,
+                    dense: lines.length > 16,
                   )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: show.length + (extra > 0 ? 1 : 0),
-                    separatorBuilder: (_, _) => Divider(
-                      height: 1,
-                      color: WallboardPalette.divider,
-                    ),
-                    itemBuilder: (_, i) {
-                      if (extra > 0 && i == show.length) {
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6),
-                          child: Text(
-                            '+ $extra til',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: data.accent,
-                            ),
-                          ),
-                        );
-                      }
-                      final line = show[i];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 5),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: data.accent,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    line.title,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: data.large ? 14 : 12,
-                                      color: WallboardPalette.textPrimary,
-                                    ),
-                                  ),
-                                  if (line.subtitle != null)
-                                    Text(
-                                      line.subtitle!,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: WallboardPalette.textSecondary,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                : _smallPanelBody(data),
           ),
         ],
       ),
