@@ -12,10 +12,14 @@ import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import '../../utils/portal_credentials.dart';
 import '../sms/sms_phone_utils.dart';
+import 'fleet_shift_filters.dart';
 import 'fleet_shift_seed.dart';
 import 'mavi_unit_codes.dart';
 import '../storage/company_file_storage.dart';
+import 'postal_code_registry.dart';
 import 'route_pdf_text_service.dart';
+import 'route_pdf_auto_assign.dart';
+import 'route_shift_resolver.dart';
 
 class PartnerService {
   static SupabaseClient get _client => Supabase.instance.client;
@@ -563,7 +567,12 @@ class PartnerService {
     return null;
   }
 
-  static Future<List<PartnerRouteShare>> fetchStagedRouteShares(String companyId) async {
+  static DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  static Future<List<PartnerRouteShare>> fetchStagedRouteShares(
+    String companyId, {
+    DateTime? routeDay,
+  }) async {
     if (!_ok) return const [];
     try {
       final data = await _client
@@ -572,11 +581,36 @@ class PartnerService {
           .eq('company_id', companyId)
           .eq('dispatch_status', 'staged')
           .order('created_at', ascending: false) as List<dynamic>;
-      return data.map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>)).toList();
+      var list = data.map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>)).toList();
+      if (routeDay != null) {
+        final dn = _dayOnly(routeDay);
+        list = list.where((s) {
+          final sd = _dayOnly(s.shareDate);
+          final rs = s.routeStartAt != null ? _dayOnly(s.routeStartAt!.toLocal()) : null;
+          return sd == dn || rs == dn;
+        }).toList();
+      }
+      return list;
     } catch (_) {
       final all = await fetchRouteSharesForCompany(companyId, limit: 500);
-      return all.where((s) => s.shiftId == null && s.ackStatus == 'pending').toList();
+      var list = all.where((s) => s.shiftId == null && s.ackStatus == 'pending').toList();
+      if (routeDay != null) {
+        final dn = _dayOnly(routeDay);
+        list = list.where((s) {
+          final sd = _dayOnly(s.shareDate);
+          return sd == dn;
+        }).toList();
+      }
+      return list;
     }
+  }
+
+  static Future<int> countStagedRouteShares(
+    String companyId, {
+    DateTime? routeDay,
+  }) async {
+    final list = await fetchStagedRouteShares(companyId, routeDay: routeDay);
+    return list.length;
   }
 
   /// Send staged ruter — hver rute kan ha eget skift og starttid.
@@ -1172,7 +1206,9 @@ class PartnerService {
     required String companyId,
     required List<PartnerVehicle> vehicles,
   }) async {
-    if (!_ok) return const [];
+    if (!_ok) {
+      throw StateError('Supabase er ikke konfigurert');
+    }
     final existing = await fetchVehicles(partnerId);
     final keepUnits = vehicles.map((v) => v.unitCode.toUpperCase()).toSet();
 
@@ -1182,12 +1218,13 @@ class PartnerService {
       }
     }
 
-    if (vehicles.isNotEmpty) {
-      final payload = vehicles.map((v) => v.toUpsertJson()).toList();
-      await _client.from('partner_vehicles').upsert(
-            payload,
-            onConflict: 'partner_id,unit_code',
-          );
+    for (final v in vehicles) {
+      final json = v.toUpsertJson()..remove('id');
+      if (v.id.isNotEmpty) {
+        await _client.from('partner_vehicles').update(json).eq('id', v.id);
+      } else {
+        await _client.from('partner_vehicles').insert(json);
+      }
     }
     return fetchVehicles(partnerId);
   }
@@ -1446,13 +1483,23 @@ class PartnerService {
   /// Erstatter aktive skift med standardlisten (gamle skift arkiveres, PDF-er beholder shift_id).
   static Future<void> ensureCanonicalFleetShifts(String companyId) async {
     if (!_ok) return;
+    await _archiveGeiloFleetShifts(companyId);
     final active = await fetchFleetShifts(companyId);
-    final names = active.map((s) => s.name).toSet();
-    final canonical = FleetShiftSeed.canonicalNames.toSet();
-    if (names.length == canonical.length && canonical.every(names.contains)) {
+    if (active.isNotEmpty &&
+        FleetShiftSeed.matchesCatalog(active.map((s) => s.name).toList())) {
       return;
     }
     await replaceAllFleetShiftsWithCanonical(companyId);
+    await _archiveGeiloFleetShifts(companyId);
+  }
+
+  static Future<void> _archiveGeiloFleetShifts(String companyId) async {
+    final active = await fetchFleetShifts(companyId);
+    for (final s in active) {
+      if (FleetShiftFilters.isGeilo(s)) {
+        await archiveFleetShift(s.id);
+      }
+    }
   }
 
   /// Tving inn standard skiftliste (arkiverer alle aktive først).
@@ -1804,6 +1851,9 @@ class PartnerService {
 
   // --- SAP rute-innboks (Resend Inbound) ---
 
+  /// Prefiks på [reject_reason] for PDF som ligger i «Manuell»-fanen (ikke «nye»).
+  static const String sapInboxManualReasonPrefix = 'MANUAL:';
+
   static Future<int> countSapRouteInboxPending(String companyId) async {
     if (!_ok) return 0;
     try {
@@ -1816,6 +1866,73 @@ class PartnerService {
     } catch (_) {
       return 0;
     }
+  }
+
+  /// Flytter feilet auto-import ut av «nye PDF»-telleren.
+  static Future<void> markSapRouteInboxManual({
+    required String id,
+    required String reason,
+  }) async {
+    if (!_ok) return;
+    await _client.from('sap_route_inbox').update({
+      'status': 'rejected',
+      'reject_reason': '$sapInboxManualReasonPrefix$reason',
+      'processed_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', id);
+  }
+
+  static Future<List<SapRouteInboxItem>> fetchSapRouteInboxManual(
+    String companyId,
+  ) async {
+    if (!_ok) return const [];
+    try {
+      final data = await _client
+          .from('sap_route_inbox')
+          .select()
+          .eq('company_id', companyId)
+          .eq('status', 'rejected')
+          .like('reject_reason', '$sapInboxManualReasonPrefix%')
+          .order('received_at', ascending: false) as List<dynamic>;
+      return data
+          .map((e) => SapRouteInboxItem.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Pending som allerede finnes som kladd — marker importert (unngår «26 nye» + duplikat).
+  static Future<int> reconcileSapInboxWithStagedQueue(String companyId) async {
+    if (!_ok) return 0;
+    final pending = await fetchSapRouteInboxPending(companyId);
+    if (pending.isEmpty) return 0;
+    final staged = await fetchStagedRouteShares(companyId);
+    if (staged.isEmpty) return 0;
+
+    final stagedPaths = staged.map((s) => s.pdfStoragePath).toSet();
+    var reconciled = 0;
+    for (final item in pending) {
+      PartnerRouteShare? match;
+      for (final s in staged) {
+        if (s.pdfStoragePath == item.pdfStoragePath) {
+          match = s;
+          break;
+        }
+        final title = s.title ?? '';
+        if (title.contains(item.fileName)) {
+          match = s;
+          break;
+        }
+      }
+      if (match == null) continue;
+      await markSapRouteInboxImported(
+        inboxId: item.id,
+        routeShareId: match.id,
+        detectedMaviCode: item.detectedMaviCode,
+      );
+      reconciled++;
+    }
+    return reconciled;
   }
 
   static Future<List<SapRouteInboxItem>> fetchSapRouteInboxPending(
@@ -1895,18 +2012,31 @@ class PartnerService {
     required Uint8List bytes,
     required DateTime routeDate,
     String? notes,
+    RoutePdfParseBundle? parsed,
   }) async {
     final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
     final path =
         'company_$companyId/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${vehicle.unitCode}_$safeName';
     final storedPath =
         await uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
-    final pdfText = RoutePdfTextService.extractFullText(bytes);
-    final meta = RoutePdfTextService.extractTripOverviewMetaFromText(pdfText);
-    final schedule = RoutePdfTextService.resolveSchedule(pdfText, fallbackDate: routeDate);
+    await PostalCodeRegistry.ensureLoaded();
+    await ensureCanonicalFleetShifts(companyId);
+    final shifts = await fetchFleetShifts(companyId);
+    final bundle = parsed ?? RoutePdfTextService.parseBundle(bytes, fallbackDate: routeDate);
+    final routeShifts = FleetShiftFilters.forRouteAssignment(shifts);
+    final auto = await RoutePdfAutoAssign.analyze(
+      bytes: bytes,
+      fallbackDate: routeDate,
+      shifts: routeShifts,
+      vehicle: vehicle,
+      bundle: bundle,
+    );
+    final pdfText = bundle.searchText;
+    final meta = bundle.meta;
+    final schedule = bundle.schedule;
     final composedNotes = RoutePdfTextService.composeRouteNotes(
       stowingLane: meta.stowingLane,
-      userNote: notes,
+      userNote: RoutePdfAutoAssign.composeAutoNotes(auto, existing: notes),
     );
     final share = await addRouteShare(
       PartnerRouteShare(
@@ -1930,6 +2060,9 @@ class PartnerService {
     final patch = <String, dynamic>{};
     if (schedule.routeStartAt != null) {
       patch['route_start_at'] = schedule.routeStartAt!.toUtc().toIso8601String();
+    }
+    if (auto.shift != null) {
+      patch['shift_id'] = auto.shift!.id;
     }
     if (patch.isNotEmpty) {
       await updateRouteShareFields(share.id, patch);

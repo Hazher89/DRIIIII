@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import '../utils/norwegian_national_id.dart';
 import '../../models/ticket.dart';
+import '../../models/ticket_assignee_options.dart';
 import '../../models/absence.dart';
 import '../constants/leave_rules.dart';
 import '../../models/department.dart';
@@ -175,6 +176,7 @@ class SupabaseService {
 *,
 reporter:profiles!reported_by(full_name, avatar_url),
 assignee:profiles!assigned_to(full_name),
+resolver:profiles!resolved_by(full_name),
 department:departments!department_id(name)
 ''';
 
@@ -254,6 +256,8 @@ department:departments!department_id(name)
     required String comment,
     TicketStatus? newStatus,
     List<String> imageUrls = const [],
+    String? resolutionComment,
+    String? rootCause,
   }) async {
     final userId = client.auth.currentUser?.id;
     if (userId == null) return;
@@ -280,9 +284,16 @@ department:departments!department_id(name)
         'status': newStatus.dbValue,
         'updated_at': DateTime.now().toIso8601String(),
       };
-      if (newStatus == TicketStatus.lukket) {
+      if (newStatus == TicketStatus.lukket ||
+          newStatus == TicketStatus.tiltakUtfort) {
         upd['resolved_at'] = DateTime.now().toIso8601String();
         upd['resolved_by'] = userId;
+      }
+      if (resolutionComment != null && resolutionComment.trim().isNotEmpty) {
+        upd['resolution_comment'] = resolutionComment.trim();
+      }
+      if (rootCause != null && rootCause.trim().isNotEmpty) {
+        upd['root_cause'] = rootCause.trim();
       }
       await client.from('tickets').update(upd).eq('id', ticketId);
     }
@@ -678,60 +689,73 @@ department:departments!department_id(name)
     return (data as List).map((e) => UserProfile.fromJson(e)).toList();
   }
 
-  /// Ledere som kan behandle avvik: avdelingsledere + admin/superadmin i bedriften.
-  static Future<List<UserProfile>> fetchTicketHandlersForDepartment({
+  /// Nærmeste leder (avdeling) + superadmin — hvem avsender kan velge.
+  static Future<TicketAssigneeOptions> fetchTicketAssigneeOptions({
     required String companyId,
     String? departmentId,
   }) async {
-    if (!isConfigured) return const [];
-    final leaderIds = <String>{};
+    if (!isConfigured) {
+      return const TicketAssigneeOptions();
+    }
+
+    final leaderIds = <String>[];
+    void addLeaderId(String? id) {
+      if (id == null || id.isEmpty) return;
+      if (!leaderIds.contains(id)) leaderIds.add(id);
+    }
+
     if (departmentId != null && departmentId.isNotEmpty) {
-      final map = await fetchDepartmentLeaderIdsByDepartment([departmentId]);
-      leaderIds.addAll(map[departmentId] ?? []);
       try {
         final deptRow = await client
             .from('departments')
             .select('leader_id')
             .eq('id', departmentId)
             .maybeSingle();
-        final primary = deptRow?['leader_id'] as String?;
-        if (primary != null && primary.isNotEmpty) leaderIds.add(primary);
+        addLeaderId(deptRow?['leader_id'] as String?);
       } catch (_) {}
+      final map = await fetchDepartmentLeaderIdsByDepartment([departmentId]);
+      for (final id in map[departmentId] ?? []) {
+        addLeaderId(id);
+      }
     }
 
     final companyProfiles = await fetchProfiles(companyId: companyId);
-    final handlers = <String, UserProfile>{};
+    bool eligible(UserProfile p) =>
+        p.isActive && p.isApproved && !p.isPartnerPortalUser;
 
-    bool canHandle(UserProfile p) {
-      if (!p.isActive || !p.isApproved || p.isPartnerPortalUser) return false;
-      if (p.isAdmin) return true;
-      if (p.role == UserRole.leder) {
-        if (departmentId == null || departmentId.isEmpty) return true;
-        return leaderIds.contains(p.id) || p.departmentId == departmentId;
+    final nearest = <UserProfile>[];
+    for (final id in leaderIds) {
+      final p = companyProfiles.where((x) => x.id == id).firstOrNull;
+      if (p != null && eligible(p)) {
+        nearest.add(p);
       }
-      return leaderIds.contains(p.id);
     }
-
-    for (final p in companyProfiles) {
-      if (canHandle(p)) handlers[p.id] = p;
+    if (nearest.isEmpty && departmentId != null) {
+      for (final p in companyProfiles) {
+        if (eligible(p) &&
+            p.role == UserRole.leder &&
+            p.departmentId == departmentId) {
+          if (!nearest.any((x) => x.id == p.id)) nearest.add(p);
+        }
+      }
     }
+    nearest.sort((a, b) => a.fullName.compareTo(b.fullName));
 
-    final list = handlers.values.toList()
-      ..sort((a, b) {
-        final ar = a.role == UserRole.superadmin
-            ? 0
-            : a.role == UserRole.admin
-                ? 1
-                : 2;
-        final br = b.role == UserRole.superadmin
-            ? 0
-            : b.role == UserRole.admin
-                ? 1
-                : 2;
-        final c = ar.compareTo(br);
-        return c != 0 ? c : a.fullName.compareTo(b.fullName);
-      });
-    return list;
+    final nearestIds = nearest.map((p) => p.id).toSet();
+    final superadmins = companyProfiles
+        .where(
+          (p) =>
+              eligible(p) &&
+              p.role == UserRole.superadmin &&
+              !nearestIds.contains(p.id),
+        )
+        .toList()
+      ..sort((a, b) => a.fullName.compareTo(b.fullName));
+
+    return TicketAssigneeOptions(
+      nearestLeaders: nearest,
+      superadmins: superadmins,
+    );
   }
 
   static Future<Department> createDepartment(Department dept) async {

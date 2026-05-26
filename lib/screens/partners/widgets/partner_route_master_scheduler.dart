@@ -63,7 +63,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   List<FleetShiftDefinition> _shifts = [];
   List<PartnerRouteShare> _shares = [];
-  int _sapPending = 0;
+  int _sapInboxPending = 0;
+  int _stagedQueueCount = 0;
   Timer? _sapPollTimer;
   RealtimeChannel? _sapLiveChannel;
 
@@ -177,11 +178,14 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         fromDay: _weekStart,
         toDay: _weekEnd,
       );
-      final sapPending = await PartnerService.countSapRouteInboxPending(cid);
+      final sapInbox = await PartnerService.countSapRouteInboxPending(cid);
+      await PartnerService.reconcileSapInboxWithStagedQueue(cid);
+      final stagedQueue = await PartnerService.countStagedRouteShares(cid);
       if (mounted) setState(() {
         _shifts = shifts;
         _shares = shares;
-        _sapPending = sapPending;
+        _sapInboxPending = sapInbox;
+        _stagedQueueCount = stagedQueue;
         _busy = false;
       });
     } catch (_) {
@@ -194,9 +198,14 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) return;
-      final n = await PartnerService.countSapRouteInboxPending(cid);
-      if (mounted && n != _sapPending) {
-        setState(() => _sapPending = n);
+      await PartnerService.reconcileSapInboxWithStagedQueue(cid);
+      final inbox = await PartnerService.countSapRouteInboxPending(cid);
+      final staged = await PartnerService.countStagedRouteShares(cid);
+      if (mounted && (inbox != _sapInboxPending || staged != _stagedQueueCount)) {
+        setState(() {
+          _sapInboxPending = inbox;
+          _stagedQueueCount = staged;
+        });
       }
     } catch (_) {}
   }
@@ -276,6 +285,18 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     );
   }
 
+  String _sapStatusBannerText() {
+    final day = DateFormat('d. MMM', 'nb').format(_focusDay);
+    if (_stagedQueueCount > 0 && _sapInboxPending > 0) {
+      return '$_stagedQueueCount ruter i publiseringskø ($day) · '
+          '$_sapInboxPending nye PDF i SAP-innboks';
+    }
+    if (_stagedQueueCount > 0) {
+      return '$_stagedQueueCount ruter i publiseringskø ($day) — klar til publisering';
+    }
+    return '$_sapInboxPending nye PDF fra SAP — trykk Åpne for å importere';
+  }
+
   Future<void> _openSapRoutes() async {
     final today = DateTime.now();
     final routeDay = (_weekEnd.isBefore(_dayOnly(today)) || _weekStart.isAfter(_dayOnly(today)))
@@ -296,11 +317,13 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   }
 
   Widget _sapInboxButton() {
-    final active = _sapPending > 0;
+    final hasQueue = _stagedQueueCount > 0;
+    final hasInbox = _sapInboxPending > 0;
+    final active = hasQueue || hasInbox;
     return Badge(
-      isLabelVisible: active,
+      isLabelVisible: hasInbox,
       label: Text(
-        '$_sapPending',
+        '$_sapInboxPending',
         style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
       ),
       backgroundColor: const Color(0xFFFFC107),
@@ -339,7 +362,11 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             size: 20,
           ),
           label: Text(
-            active ? 'Ruter fra SAP ($_sapPending)' : 'Ruter fra SAP',
+            hasQueue
+                ? 'Ruter fra SAP ($_stagedQueueCount)'
+                : hasInbox
+                    ? 'Ruter fra SAP ($_sapInboxPending nye)'
+                    : 'Ruter fra SAP',
             style: TextStyle(
               fontWeight: active ? FontWeight.w800 : FontWeight.w600,
             ),
@@ -379,22 +406,17 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       );
       return;
     }
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      useSafeArea: true,
-      builder: (_) => PartnerRouteSingleAssignSheet(
-        companyId: cid,
-        fleet: _filteredFleet,
-        shifts: _shifts,
-        initialDay: _focusDay,
-        initialRow: row,
-        onDone: () {
-          widget.onChanged?.call();
-          _reload();
-        },
-      ),
+    await PartnerRouteSingleAssignSheet.show(
+      context,
+      companyId: cid,
+      fleet: _filteredFleet,
+      shifts: _shifts,
+      initialDay: _focusDay,
+      initialRow: row,
+      onDone: () {
+        widget.onChanged?.call();
+        _reload();
+      },
     );
   }
 
@@ -506,7 +528,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     ],
                   ),
                   const SizedBox(height: 12),
-                  if (_sapPending > 0)
+                  if (_sapStatusBannerText().isNotEmpty)
                     Container(
                       width: double.infinity,
                       margin: const EdgeInsets.only(bottom: 10),
@@ -522,7 +544,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              '$_sapPending rute(r) fra SAP — klar til import',
+                              _sapStatusBannerText(),
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 13,
@@ -597,6 +619,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                                 if (d != null) {
                                   setState(() {
                                     _focusDay = _dayOnly(d);
+                                    _refreshSapPendingCount();
                                     _jumpWeek(d);
                                   });
                                   await _reload();
@@ -878,6 +901,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                                     return InkWell(
                                       onTap: () {
                                         setState(() => _focusDay = _dayOnly(day));
+                                        _refreshSapPendingCount();
                                         if (list.isEmpty) {
                                           _openRouteEditor(row, day);
                                         } else {

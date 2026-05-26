@@ -10,7 +10,6 @@ import '../../widgets/resolved_storage_image.dart';
 
 class TicketDetailScreen extends StatefulWidget {
   final Ticket ticket;
-  /// Settes når leder/admin åpner fra kontrollsenter (valgfritt — lastes ellers).
   final UserProfile? coordinatorProfile;
 
   const TicketDetailScreen({
@@ -27,7 +26,6 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   late Ticket _ticket;
   UserProfile? _me;
   List<TicketComment> _comments = [];
-  List<UserProfile> _profiles = const [];
   bool _loading = true;
   final _commentController = TextEditingController();
   final _rootCauseController = TextEditingController();
@@ -35,20 +33,32 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   final _internalController = TextEditingController();
   bool _savingMeta = false;
   bool _savingComment = false;
-  String? _assigneeId;
-  DateTime? _dueDate;
+
+  static final _stampFmt = DateFormat('dd.MM.yyyy HH:mm');
 
   bool get _coord {
     final p = widget.coordinatorProfile ?? _me;
     return p?.canCoordinateTickets ?? false;
   }
 
+  bool get _isReporter =>
+      _me != null && _me!.id == _ticket.reportedBy;
+
+  bool get _isAssignee =>
+      _me != null &&
+      _ticket.assignedTo != null &&
+      _me!.id == _ticket.assignedTo;
+
+  bool get _canProcess => _coord || _isAssignee;
+
+  bool get _isClosed =>
+      _ticket.status == TicketStatus.lukket ||
+      _ticket.status == TicketStatus.tiltakUtfort;
+
   @override
   void initState() {
     super.initState();
     _ticket = widget.ticket;
-    _assigneeId = _ticket.assignedTo;
-    _dueDate = _ticket.dueDate;
     _rootCauseController.text = _ticket.rootCause ?? '';
     _resolutionController.text = _ticket.resolutionComment ?? '';
     _internalController.text = _ticket.internalNotes ?? '';
@@ -66,8 +76,6 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           await SupabaseService.fetchCurrentUserProfile();
       if (fresh != null) {
         _ticket = fresh;
-        _assigneeId = fresh.assignedTo;
-        _dueDate = fresh.dueDate;
         _rootCauseController.text = fresh.rootCause ?? '';
         _resolutionController.text = fresh.resolutionComment ?? '';
         _internalController.text = fresh.internalNotes ?? '';
@@ -84,7 +92,6 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     try {
       await _refreshTicket();
       await _loadComments();
-      if (mounted && _coord) await _loadProfiles();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -99,29 +106,40 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     }
   }
 
-  Future<void> _loadProfiles() async {
-    if (!_coord) return;
-    try {
-      final cid = await SupabaseService.getCurrentCompanyId();
-      if (cid == null) return;
-      final list = await SupabaseService.fetchProfiles(companyId: cid);
-      if (mounted) setState(() => _profiles = list);
-    } catch (e) {
-      debugPrint('profiles: $e');
-    }
+  String _stampLine(String action) {
+    final name = _me?.fullName ?? 'Bruker';
+    return '$action · $name · ${_stampFmt.format(DateTime.now())}';
   }
 
   Future<void> _stamp(TicketStatus next) async {
-    if (!_coord) return;
+    if (!_canProcess) return;
+
+    if ((next == TicketStatus.lukket || next == TicketStatus.tiltakUtfort) &&
+        _resolutionController.text.trim().isEmpty) {
+      final ok = await _promptResolution(required: true);
+      if (!ok) return;
+    }
+
     setState(() => _savingComment = true);
     try {
       await SupabaseService.addTicketComment(
         ticketId: _ticket.id,
-        comment: 'Status satt til «${next.label}».',
+        comment: _stampLine('Status satt til «${next.label}»'),
         newStatus: next,
+        resolutionComment: _resolutionController.text.trim(),
+        rootCause: _rootCauseController.text.trim(),
       );
       await _refreshTicket();
       await _loadComments();
+      if (mounted && _isClosed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Saken er behandlet. Avsender får SMS med oppsummering.',
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -133,27 +151,69 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     }
   }
 
+  Future<bool> _promptResolution({required bool required}) async {
+    final ctrl = TextEditingController(text: _resolutionController.text);
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Avsluttende vurdering'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 5,
+          decoration: InputDecoration(
+            hintText: required
+                ? 'Beskriv hvordan saken er behandlet (påkrevd)'
+                : 'Valgfritt notat til avsender',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Avbryt'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (required && ctrl.text.trim().isEmpty) return;
+              Navigator.pop(ctx, true);
+            },
+            child: const Text('Lagre'),
+          ),
+        ],
+      ),
+    );
+    if (result == true) {
+      _resolutionController.text = ctrl.text.trim();
+      return true;
+    }
+    return false;
+  }
+
   Future<void> _saveCoordinatorFields() async {
-    if (!_coord) return;
+    if (!_canProcess) return;
     setState(() => _savingMeta = true);
     try {
       await SupabaseService.updateTicket(_ticket.id, {
-        'assigned_to': _assigneeId,
-        'due_date': _dueDate?.toIso8601String().split('T').first,
         'root_cause': _rootCauseController.text.trim().isEmpty
             ? null
             : _rootCauseController.text.trim(),
         'resolution_comment': _resolutionController.text.trim().isEmpty
             ? null
             : _resolutionController.text.trim(),
-        'internal_notes': _internalController.text.trim().isEmpty
-            ? null
-            : _internalController.text.trim(),
+        if (_coord)
+          'internal_notes': _internalController.text.trim().isEmpty
+              ? null
+              : _internalController.text.trim(),
       });
+      await SupabaseService.addTicketComment(
+        ticketId: _ticket.id,
+        comment: _stampLine('Saksfelt oppdatert'),
+      );
       await _refreshTicket();
+      await _loadComments();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lagret')),
+          const SnackBar(content: Text('Lagret med tidsstempel')),
         );
       }
     } catch (e) {
@@ -187,16 +247,6 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     } finally {
       if (mounted) setState(() => _savingComment = false);
     }
-  }
-
-  Future<void> _pickDue() async {
-    final d = await showDatePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      initialDate: _dueDate ?? DateTime.now(),
-    );
-    if (d != null) setState(() => _dueDate = d);
   }
 
   @override
@@ -239,11 +289,19 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     padding: const EdgeInsets.all(16),
                     children: [
                       _buildHero(isDark),
-                      if (_coord) ...[
+                      if (_isClosed) ...[
+                        const SizedBox(height: 16),
+                        _buildOutcomeCard(isDark),
+                      ],
+                      if (_canProcess && !_isClosed) ...[
                         const SizedBox(height: 16),
                         _buildStampBar(isDark),
                         const SizedBox(height: 16),
-                        _buildCoordinatorCard(isDark),
+                        _buildProcessingCard(isDark),
+                      ],
+                      if (_canProcess && _isClosed) ...[
+                        const SizedBox(height: 16),
+                        _buildProcessingCard(isDark, readOnly: true),
                       ],
                       const SizedBox(height: 20),
                       _buildDescription(isDark),
@@ -252,11 +310,26 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                         _buildImages(isDark),
                       ],
                       const Divider(height: 40),
-                      Text(
-                        'Historikk',
-                        style: DriftProTheme.headingMd,
+                      Row(
+                        children: [
+                          Text('Historikk', style: DriftProTheme.headingMd),
+                          const Spacer(),
+                          Text(
+                            '${_comments.length} hendelse(r)',
+                            style: DriftProTheme.bodySm.copyWith(
+                              color: Colors.grey,
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 12),
+                      if (_comments.isEmpty)
+                        Text(
+                          'Ingen hendelser ennå.',
+                          style: DriftProTheme.bodySm.copyWith(
+                            color: Colors.grey,
+                          ),
+                        ),
                       ..._comments.map((c) => _buildCommentTile(c, isDark)),
                     ],
                   ),
@@ -297,25 +370,105 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 : 'Rapportert av: ${_ticket.reporterName ?? "Ukjent"}',
             style: DriftProTheme.bodySm.copyWith(color: Colors.grey),
           ),
-          if (_ticket.assigneeName != null) ...[
+          if (_ticket.createdAt != null) ...[
             const SizedBox(height: 4),
             Text(
-              'Ansvarlig: ${_ticket.assigneeName}',
+              'Mottatt: ${_stampFmt.format(_ticket.createdAt!.toLocal())}',
               style: DriftProTheme.bodySm.copyWith(color: Colors.grey),
             ),
           ],
-          if (_ticket.dueDate != null) ...[
+          if (_ticket.assigneeName != null) ...[
             const SizedBox(height: 4),
             Text(
-              'Frist: ${DateFormat("dd.MM.yyyy").format(_ticket.dueDate!)}',
+              'Saksbehandler: ${_ticket.assigneeName}',
               style: DriftProTheme.bodySm.copyWith(
-                color: _ticket.isOpen &&
-                        _ticket.dueDate!.isBefore(DateTime.now())
-                    ? Colors.redAccent
-                    : Colors.grey,
+                color: DriftProTheme.primaryGreen,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],
+          if (_isReporter && !_isClosed)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.sms_outlined,
+                      size: 16, color: Colors.grey.shade600),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Du får SMS når saken er behandlet.',
+                      style: DriftProTheme.bodySm.copyWith(
+                        color: Colors.grey.shade600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOutcomeCard(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: DriftProTheme.primaryGreen.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.verified_outlined,
+                  color: DriftProTheme.primaryGreen),
+              const SizedBox(width: 8),
+              Text('Behandlet sak', style: DriftProTheme.headingSm),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _outcomeRow('Status', _ticket.status.label),
+          if (_ticket.resolvedByName != null)
+            _outcomeRow('Behandlet av', _ticket.resolvedByName!),
+          if (_ticket.resolvedAt != null)
+            _outcomeRow(
+              'Tidsstempel',
+              _stampFmt.format(_ticket.resolvedAt!.toLocal()),
+            ),
+          if (_ticket.rootCause != null && _ticket.rootCause!.isNotEmpty)
+            _outcomeRow('Årsak / analyse', _ticket.rootCause!),
+          if (_ticket.resolutionComment != null &&
+              _ticket.resolutionComment!.isNotEmpty)
+            _outcomeRow('Lederens vurdering', _ticket.resolutionComment!),
+        ],
+      ),
+    );
+  }
+
+  Widget _outcomeRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(value, style: DriftProTheme.bodyMd),
         ],
       ),
     );
@@ -325,7 +478,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Hurtigstempler', style: DriftProTheme.labelLg),
+        Text('Stempler (navn + dato/tid)', style: DriftProTheme.labelLg),
         const SizedBox(height: 10),
         Wrap(
           spacing: 8,
@@ -347,7 +500,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     );
   }
 
-  Widget _buildCoordinatorCard(bool isDark) {
+  Widget _buildProcessingCard(bool isDark, {bool readOnly = false}) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -360,53 +513,15 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Saksbehandling', style: DriftProTheme.headingSm),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String?>(
-            value: _assigneeId,
-            decoration: const InputDecoration(
-              labelText: 'Tildel ansvarlig',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('Ikke tildelt'),
-              ),
-              ..._profiles.map(
-                (p) => DropdownMenuItem<String?>(
-                  value: p.id,
-                  child: Text(p.fullName),
-                ),
-              ),
-            ],
-            onChanged: (v) => setState(() => _assigneeId = v),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _pickDue,
-                  icon: const Icon(Icons.event, size: 18),
-                  label: Text(
-                    _dueDate == null
-                        ? 'Sett frist'
-                        : DateFormat('dd.MM.yyyy').format(_dueDate!),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: () => setState(() => _dueDate = null),
-                child: const Text('Fjern frist'),
-              ),
-            ],
+          Text(
+            readOnly ? 'Behandlingsdokumentasjon' : 'Behandle avvik',
+            style: DriftProTheme.headingSm,
           ),
           const SizedBox(height: 12),
           TextField(
             controller: _rootCauseController,
-            maxLines: 2,
+            readOnly: readOnly,
+            maxLines: 3,
             decoration: const InputDecoration(
               labelText: 'Årsak / analyse',
               border: OutlineInputBorder(),
@@ -415,35 +530,42 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           const SizedBox(height: 12),
           TextField(
             controller: _resolutionController,
-            maxLines: 2,
+            readOnly: readOnly,
+            maxLines: 4,
             decoration: const InputDecoration(
-              labelText: 'Avsluttende vurdering / oppfølging',
+              labelText: 'Vurdering til avsender *',
+              helperText: 'Vises for den som meldte inn + sendes i SMS ved lukking',
               border: OutlineInputBorder(),
             ),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _internalController,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              labelText: 'Internt notat (kun koordinatorer)',
-              border: OutlineInputBorder(),
+          if (_coord) ...[
+            const SizedBox(height: 12),
+            TextField(
+              controller: _internalController,
+              readOnly: readOnly,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Internt notat (kun koordinatorer)',
+                border: OutlineInputBorder(),
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton(
-              onPressed: _savingMeta ? null : _saveCoordinatorFields,
-              child: _savingMeta
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Lagre saksfelt'),
+          ],
+          if (!readOnly) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _savingMeta ? null : _saveCoordinatorFields,
+                child: _savingMeta
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Lagre med tidsstempel'),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -513,6 +635,10 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 
   Widget _buildCommentTile(TicketComment comment, bool isDark) {
+    final ts = comment.createdAt != null
+        ? _stampFmt.format(comment.createdAt!.toLocal())
+        : '';
+
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       child: Row(
@@ -533,18 +659,22 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      comment.userName ?? 'Ukjent',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 13,
+                    Expanded(
+                      child: Text(
+                        comment.userName ?? 'Ukjent',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    if (comment.createdAt != null)
+                    if (ts.isNotEmpty)
                       Text(
-                        DateFormat('dd.MM HH:mm').format(comment.createdAt!),
-                        style: const TextStyle(color: Colors.grey, fontSize: 11),
+                        ts,
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 11,
+                        ),
                       ),
                   ],
                 ),
@@ -552,12 +682,22 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     comment.oldStatus != null &&
                     comment.newStatus != null) ...[
                   const SizedBox(height: 4),
-                  Text(
-                    '${comment.oldStatus!.label} → ${comment.newStatus!.label}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: DriftProTheme.primaryGreen,
-                      fontWeight: FontWeight.w600,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '${comment.oldStatus!.label} → ${comment.newStatus!.label}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: DriftProTheme.primaryGreen,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
@@ -597,7 +737,9 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               child: TextField(
                 controller: _commentController,
                 decoration: InputDecoration(
-                  hintText: 'Kommentar til saken…',
+                  hintText: _canProcess
+                      ? 'Kommentar til saken…'
+                      : 'Skriv til saksbehandler…',
                   filled: true,
                   fillColor: isDark ? DriftProTheme.cardDark : Colors.grey[100],
                   border: OutlineInputBorder(

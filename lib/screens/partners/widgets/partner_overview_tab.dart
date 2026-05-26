@@ -293,10 +293,17 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _hasTransportLicense = p.hasTransportLicense;
     _auditStatus = p.auditStatus;
     _routesOwnerOnly = p.routesOwnerOnly;
-    if (oldWidget.vehicles.length != widget.vehicles.length) {
+    if (_vehiclesDiffer(oldWidget.vehicles, widget.vehicles)) {
       _resetVehicles(widget.vehicles);
       _loadPortals();
     }
+  }
+
+  bool _vehiclesDiffer(List<PartnerVehicle> a, List<PartnerVehicle> b) {
+    if (a.length != b.length) return true;
+    final aKeys = a.map((v) => '${v.id}|${v.unitCode}').toSet();
+    final bKeys = b.map((v) => '${v.id}|${v.unitCode}').toSet();
+    return aKeys.length != bKeys.length || !aKeys.containsAll(bKeys);
   }
 
   void _resetVehicles(List<PartnerVehicle> vehicles) {
@@ -853,7 +860,23 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         );
       }
 
-      for (final row in _rows.where((r) => !r.isRegOnly)) {
+      final pendingMavi = _rows.where((r) => !r.isRegOnly).toList();
+      final emptyMavi = pendingMavi
+          .where((r) => MaviUnitCodes.normalize(r.mavi.text).isEmpty)
+          .toList();
+      if (emptyMavi.isNotEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Fyll inn MAVI-nummer på alle nye biler før lagring.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+        return;
+      }
+
+      for (final row in pendingMavi) {
         final unit = MaviUnitCodes.normalize(row.mavi.text);
         if (unit.isEmpty || seenUnits.contains(unit)) continue;
         seenUnits.add(unit);
@@ -882,25 +905,42 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         companyId: p.companyId,
         vehicles: vehicles,
       );
-      // Synk ids tilbake til rader
-      for (final row in _rows) {
-        if (row.isRegOnly) {
-          final regRaw = row.reg.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
-          final unit = MaviUnitCodes.registrationUnitCode(regRaw);
-          final match = saved.where((v) => v.unitCode == unit).toList();
-          if (match.isNotEmpty) row.id = match.first.id;
-        } else {
-          final unit = MaviUnitCodes.normalize(row.mavi.text);
-          final match = saved.where((v) => v.unitCode == unit).toList();
-          if (match.isNotEmpty) row.id = match.first.id;
-        }
+
+      final savedMavi = saved
+          .where((v) =>
+              v.vehicleKind != 'registration' &&
+              !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
+          .length;
+      final expectedMavi = vehicles.where((v) => v.vehicleKind == 'mavi').length;
+      if (savedMavi < expectedMavi) {
+        throw StateError(
+          'Kunne ikke lagre alle MAVI-biler ($savedMavi av $expectedMavi). '
+          'Sjekk at nummeret er gyldig (f.eks. M75 eller NO_O_M0075).',
+        );
       }
-      await _loadPortals();
+
       if (mounted) {
+        _resetVehicles(saved);
+        await _loadPortals();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lagret')),
+          SnackBar(
+            content: Text(
+              expectedMavi > 0
+                  ? 'Lagret — $savedMavi MAVI-bil(er) på bedriften'
+                  : 'Lagret',
+            ),
+          ),
         );
         await widget.onSaved();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Kunne ikke lagre: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _saving = false);

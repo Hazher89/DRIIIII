@@ -177,6 +177,7 @@ class SapRouteImportService {
       await PartnerService.markSapRouteInboxRejected(id: item.id, reason: reason);
       return;
     }
+    await PartnerService.markSapRouteInboxManual(id: item.id, reason: reason);
     if (bytes != null && bytes.isNotEmpty) {
       skippedItems.add(SapRouteImportSkippedItem(
         inboxId: item.id,

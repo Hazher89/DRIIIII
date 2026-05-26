@@ -95,6 +95,7 @@ class Ticket {
   final String? reporterName;
   final String? reporterAvatarUrl;
   final String? assigneeName;
+  final String? resolvedByName;
   final String? departmentName;
 
   const Ticket({
@@ -128,6 +129,7 @@ class Ticket {
     this.reporterName,
     this.reporterAvatarUrl,
     this.assigneeName,
+    this.resolvedByName,
     this.departmentName,
   });
 
@@ -182,6 +184,9 @@ class Ticket {
           : null,
       assigneeName: json['assignee'] != null
           ? json['assignee']['full_name'] as String?
+          : null,
+      resolvedByName: json['resolver'] != null
+          ? json['resolver']['full_name'] as String?
           : null,
       departmentName: json['department'] != null
           ? json['department']['name'] as String?
@@ -243,6 +248,7 @@ class Ticket {
     String? reporterName,
     String? reporterAvatarUrl,
     String? assigneeName,
+    String? resolvedByName,
     String? departmentName,
   }) {
     return Ticket(
@@ -276,6 +282,7 @@ class Ticket {
       reporterName: reporterName ?? this.reporterName,
       reporterAvatarUrl: reporterAvatarUrl ?? this.reporterAvatarUrl,
       assigneeName: assigneeName ?? this.assigneeName,
+      resolvedByName: resolvedByName ?? this.resolvedByName,
       departmentName: departmentName ?? this.departmentName,
     );
   }

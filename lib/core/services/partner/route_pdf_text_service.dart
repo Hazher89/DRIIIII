@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../sms/sms_phone_utils.dart';
+import 'postal_code_registry.dart';
 
 /// Kunde fra MAVI-rute-PDF (Trip Overview / stopp).
 class RoutePdfCustomer {
@@ -12,6 +13,8 @@ class RoutePdfCustomer {
   final String phoneNormalizedKey;
   final String? freightUnit;
   final String? addressHint;
+  /// Postnummer fra leveringsadresse i PDF (4 siffer).
+  final String? postalCode;
   /// Leveringsvindu fra PDF, f.eks. «08:00–13:00».
   final String? deliveryWindow;
 
@@ -22,6 +25,7 @@ class RoutePdfCustomer {
     required this.phoneNormalizedKey,
     this.freightUnit,
     this.addressHint,
+    this.postalCode,
     this.deliveryWindow,
   });
 }
@@ -35,6 +39,23 @@ class RoutePdfSchedule {
     required this.routeDate,
     this.routeStartAt,
   });
+}
+
+/// Resultat av én PDF-lesing (header + valgfri fulltekst).
+class RoutePdfParseBundle {
+  final String headerText;
+  final String fullText;
+  final RoutePdfSchedule schedule;
+  final RoutePdfTripOverviewMeta meta;
+
+  const RoutePdfParseBundle({
+    required this.headerText,
+    required this.fullText,
+    required this.schedule,
+    required this.meta,
+  });
+
+  String get searchText => fullText.isNotEmpty ? fullText : headerText;
 }
 
 /// MAVI + Stowing Lane fra Trip Overview (første side).
@@ -61,15 +82,118 @@ class RoutePdfTextService {
     }
   }
 
-  /// Leser `Start date 24.04.26` og starttid fra stopp (`24.04.2026 17:00:00`).
+  /// Kun side 1 (Trip Overview / strekkode) — rask for masseimport.
+  static String extractHeaderText(Uint8List bytes) {
+    try {
+      final doc = PdfDocument(inputBytes: bytes);
+      final extractor = PdfTextExtractor(doc);
+      final layout = extractor.extractText(
+        startPageIndex: 0,
+        endPageIndex: 0,
+        layoutText: true,
+      );
+      final linear = extractor.extractText(
+        startPageIndex: 0,
+        endPageIndex: 0,
+        layoutText: false,
+      );
+      doc.dispose();
+      return _normalize('$layout\n$linear');
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// Én gjennomgang: header for dato/MAVI, fulltekst for postkoder og søk.
+  static RoutePdfParseBundle parseBundle(
+    Uint8List bytes, {
+    required DateTime fallbackDate,
+    bool includeFullText = true,
+  }) {
+    final headerText = extractHeaderText(bytes);
+    final fullText = includeFullText ? extractFullText(bytes) : '';
+    final primary = fullText.isNotEmpty ? fullText : headerText;
+    final schedule = resolveSchedule(
+      primary,
+      fallbackDate: fallbackDate,
+      headerHint: headerText,
+    );
+    final meta = RoutePdfTripOverviewMeta(
+      maviCode: parseResourceIdTripOverviewHeader(headerText) ??
+          parseResourceIdTripOverviewHeader(primary) ??
+          parseResourceId(primary),
+      stowingLane: parseStowingLane(headerText) ?? parseStowingLane(primary),
+    );
+    return RoutePdfParseBundle(
+      headerText: headerText,
+      fullText: fullText,
+      schedule: schedule,
+      meta: meta,
+    );
+  }
+
+  /// Leser `Start date` (samme linje eller linjen under) + starttid fra stopp.
   static RoutePdfSchedule resolveSchedule(
     String text, {
     required DateTime fallbackDate,
+    String? headerHint,
   }) {
-    final routeDate = parseRouteDate(text) ??
+    final routeDate = (headerHint != null ? parseRouteDate(headerHint) : null) ??
+        parseRouteDate(text) ??
         DateTime(fallbackDate.year, fallbackDate.month, fallbackDate.day);
-    final routeStartAt = parseRouteStartAt(text, routeDate: routeDate);
+    final routeStartAt = parseRouteStartAt(text, routeDate: routeDate) ??
+        parseEarliestStopStartTime(text, routeDate: routeDate);
     return RoutePdfSchedule(routeDate: routeDate, routeStartAt: routeStartAt);
+  }
+
+  /// Første leveringsvindu (f.eks. 08:00) fra stopp-listen — ikke avsender-adresse.
+  static DateTime? parseEarliestStopStartTime(String raw, {required DateTime routeDate}) {
+    if (raw.trim().isEmpty) return null;
+    final customers = parseCustomers(raw);
+    int? bestMinutes;
+
+    void consider(String? hhmm) {
+      if (hhmm == null) return;
+      final parts = hhmm.split(':');
+      if (parts.length < 2) return;
+      final h = int.tryParse(parts[0]);
+      final m = int.tryParse(parts[1]);
+      if (h == null || m == null) return;
+      final mins = h * 60 + m;
+      if (bestMinutes == null || mins < bestMinutes!) {
+        bestMinutes = mins;
+      }
+    }
+
+    for (final c in customers) {
+      final w = c.deliveryWindow;
+      if (w == null || w.isEmpty) continue;
+      final startPart = w.split(RegExp(r'[–\-]')).first.trim();
+      consider(_shortTime(startPart));
+    }
+
+    if (bestMinutes == null) {
+      final times = RegExp(r'\b(\d{1,2}):(\d{2})\b').allMatches(raw);
+      for (final m in times) {
+        final h = int.tryParse(m.group(1)!);
+        final min = int.tryParse(m.group(2)!);
+        if (h == null || min == null) continue;
+        if (h < 5 || h > 23) continue;
+        final mins = h * 60 + min;
+        if (bestMinutes == null || mins < bestMinutes!) {
+          bestMinutes = mins;
+        }
+      }
+    }
+
+    if (bestMinutes == null) return null;
+    return DateTime(
+      routeDate.year,
+      routeDate.month,
+      routeDate.day,
+      bestMinutes! ~/ 60,
+      bestMinutes! % 60,
+    );
   }
 
   static RoutePdfSchedule resolveScheduleFromBytes(
@@ -84,7 +208,7 @@ class RoutePdfTextService {
     final text = raw.replaceAll('\uFF3F', '_');
 
     final startDate = RegExp(
-      r'Start\s+date\s+(\d{1,2})\.(\d{1,2})\.(\d{2,4})',
+      r'Start\s+date\s*(?:[\r\n\s]+)?(\d{1,2})\.(\d{1,2})\.(\d{2,4})',
       caseSensitive: false,
     ).firstMatch(text);
     if (startDate != null) {
@@ -99,6 +223,68 @@ class RoutePdfTextService {
     }
 
     return null;
+  }
+
+  /// Sjåførnavn fra Trip Overview (ofte linjen rett over «Driver Name»).
+  static String? parseDriverName(String raw) {
+    if (raw.trim().isEmpty) return null;
+    final text = raw.replaceAll('\uFF3F', '_');
+
+    final aboveLabel = RegExp(
+      r'Resource\s*ID\s*(?:\r?\n\s*)?([A-Za-zÆØÅæøå][^\n]+?)\s*\r?\n\s*Driver\s*Name',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (aboveLabel != null) {
+      return _cleanDriverName(aboveLabel.group(1)!.trim());
+    }
+
+    final belowLabel = RegExp(
+      r'Driver\s*Name\s*(?:\r?\n\s*)?([A-Za-zÆØÅæøå][^\n]+)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (belowLabel != null) {
+      final line = belowLabel.group(1)!.trim();
+      if (!RegExp(r'^\d').hasMatch(line) && !line.contains('KG')) {
+        return _cleanDriverName(line);
+      }
+    }
+
+    final dup = RegExp(
+      r'(\d{2,4})\s+\1\s+([A-Za-zÆØÅæøå][\wæøåÆØÅ-]*)\s*Driver\s*Name',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (dup != null) {
+      return _cleanDriverName(dup.group(2)!);
+    }
+
+    return null;
+  }
+
+  static String? parseDriverNameFromBytes(Uint8List bytes) {
+    return parseDriverName(extractFullText(bytes));
+  }
+
+  static String _cleanDriverName(String raw) {
+    var s = raw.trim();
+    final dup = RegExp(
+      r'^([A-Za-zÆØÅæøå][\wæøåÆØÅ-]*)\s+(\d{2,4})\s+\2\s+(.+)$',
+    ).firstMatch(s);
+    if (dup != null) {
+      final first = dup.group(1)!.trim();
+      final last = dup.group(3)!.trim();
+      if (last.toLowerCase() == first.toLowerCase()) return _titleName(first);
+      return _titleName('$first $last');
+    }
+    s = s.replaceAll(RegExp(r'\s+\d{2,4}(\s+\d{2,4})*\s*'), ' ').trim();
+    return _titleName(s);
+  }
+
+  static String _titleName(String s) {
+    if (s.isEmpty) return s;
+    return s
+        .split(RegExp(r'\s+'))
+        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
+        .join(' ');
   }
 
   static DateTime? parseRouteStartAt(String raw, {DateTime? routeDate}) {
@@ -148,10 +334,89 @@ class RoutePdfTextService {
     return parseCustomers(extractFullText(bytes));
   }
 
+  /// Alle kjente postnummer i PDF-tekst (må ha lastet [PostalCodeRegistry]).
+  static List<String> extractPostalCodes(String raw) {
+    return PostalCodeRegistry.extractKnownFromText(raw);
+  }
+
+  static String? _postalFromAddressSnippet(String snippet) {
+    final m = RegExp(
+      r'(?:,\s*|\s)(\d{4})\s+[A-Za-zÆØÅæøå][A-Za-zÆØÅæøå\s.-]{0,40}',
+    ).firstMatch(snippet);
+    if (m != null) return m.group(1);
+    final bare = RegExp(r'\b(\d{4})\b').firstMatch(snippet);
+    if (bare != null && PostalCodeRegistry.isKnown(bare.group(1)!)) {
+      return bare.group(1);
+    }
+    return null;
+  }
+
+  static String? _normalizeTripOverviewPhone(String raw) {
+    final digits = raw.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 8) return null;
+    final last8 = digits.length > 8 ? digits.substring(digits.length - 8) : digits;
+    return normalizePhoneNo(last8);
+  }
+
   static List<RoutePdfCustomer> _parseCustomersFromTripOverview(String raw) {
     final flat = raw.replaceAll('\uFF3F', '_').replaceAll(RegExp(r'[\r\n]+'), ' ');
+    // Komma før +47 er vanlig; freight kan være «4106096701, 4106078107, 4106078108».
+    final patterns = [
+      RegExp(
+        r'(\d+)\s+(\d{8,12}(?:\s*,\s*\d{8,12})*)\s+(.+?),?\s*\+47\s*\(?(\d{8})\)?',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'(\d+)\s+(\d{8,12}(?:\s*,\s*\d{8,12})*)\s+(.+?)\s+(\d{4})\s+([A-Za-zÆØÅæøå][A-Za-zÆØÅæøå\s.-]{1,30})\s*\+47\s*((?:\d\s*){8})(?=\s)',
+        caseSensitive: false,
+      ),
+    ];
+    final out = <RoutePdfCustomer>[];
+    final seenSeq = <int>{};
+    final matches = <RegExpMatch>[];
+    for (final re in patterns) {
+      for (final m in re.allMatches(flat)) {
+        final seq = int.tryParse(m.group(1)!);
+        if (seq == null || seenSeq.contains(seq)) continue;
+        matches.add(m);
+        seenSeq.add(seq);
+      }
+    }
+    matches.sort((a, b) => a.start.compareTo(b.start));
+    seenSeq.clear();
+    for (var i = 0; i < matches.length; i++) {
+      final m = matches[i];
+      final seq = int.tryParse(m.group(1)!);
+      if (seq == null || !seenSeq.add(seq)) continue;
+      final phoneRaw = m.groupCount >= 6 ? m.group(6)! : m.group(4)!;
+      final norm = normalizePhoneNo(phoneRaw) ?? _normalizeTripOverviewPhone(phoneRaw);
+      if (norm == null) continue;
+      final rest = m.group(3)!.trim();
+      final tailEnd = i + 1 < matches.length ? matches[i + 1].start : flat.length;
+      final tail = flat.substring(m.end, tailEnd);
+      final postal = m.groupCount >= 6 ? m.group(4) : _postalFromAddressSnippet('$rest $tail');
+      out.add(
+        RoutePdfCustomer(
+          sequence: seq,
+          name: _customerNameFromRest(rest),
+          phoneDisplay: displayPhoneNo(norm),
+          phoneNormalizedKey: norm,
+          freightUnit: m.group(2),
+          addressHint: rest.contains(',') ? rest : null,
+          postalCode: postal,
+          deliveryWindow: _extractDeliveryWindowFromSnippet(tail),
+        ),
+      );
+    }
+    out.sort((a, b) => a.sequence.compareTo(b.sequence));
+    return out;
+  }
+
+  /// Trip Overview uten freight-unit (kun stoppnr + adresse + +47).
+  static List<RoutePdfCustomer> _parseCustomersFromTripOverviewLoose(String raw) {
+    final flat = raw.replaceAll('\uFF3F', '_').replaceAll(RegExp(r'[\r\n]+'), ' ');
     final re = RegExp(
-      r'(\d+)\s+(\d{8,12})\s+(.+?),\s*\+47\s*\(?(\d{8})\)?',
+      r'(\d+)\s+(.+?)\s+(\d{4})\s+([A-Za-zÆØÅæøå][A-Za-zÆØÅæøå\s.-]{1,40}?)\s*\+47\s*[\s(]*((?:\d[\s()]*){8,})',
       caseSensitive: false,
     );
     final out = <RoutePdfCustomer>[];
@@ -161,20 +426,20 @@ class RoutePdfTextService {
       final m = matches[i];
       final seq = int.tryParse(m.group(1)!);
       if (seq == null || !seenSeq.add(seq)) continue;
-      final phoneRaw = m.group(4)!;
-      final norm = normalizePhoneNo(phoneRaw);
+      final norm = _normalizeTripOverviewPhone(m.group(5)!);
       if (norm == null) continue;
-      final rest = m.group(3)!.trim();
+      final rest = m.group(2)!.trim();
       final tailEnd = i + 1 < matches.length ? matches[i + 1].start : flat.length;
       final tail = flat.substring(m.end, tailEnd);
+      final addr = '${m.group(3)} ${m.group(4)}';
       out.add(
         RoutePdfCustomer(
           sequence: seq,
           name: _customerNameFromRest(rest),
           phoneDisplay: displayPhoneNo(norm),
           phoneNormalizedKey: norm,
-          freightUnit: m.group(2),
-          addressHint: rest.contains(',') ? rest : null,
+          addressHint: rest.contains(',') ? rest : addr,
+          postalCode: m.group(3),
           deliveryWindow: _extractDeliveryWindowFromSnippet(tail),
         ),
       );
@@ -212,6 +477,7 @@ class RoutePdfTextService {
           phoneDisplay: displayPhoneNo(norm),
           phoneNormalizedKey: norm,
           addressHint: rest.contains(',') ? rest : null,
+          postalCode: _postalFromAddressSnippet(block),
           deliveryWindow: startT != null && endT != null ? '$startT–$endT' : null,
         ),
       );
@@ -432,11 +698,7 @@ class RoutePdfTextService {
   }
 
   static RoutePdfTripOverviewMeta extractTripOverviewMeta(Uint8List bytes) {
-    final text = extractFullText(bytes);
-    return RoutePdfTripOverviewMeta(
-      maviCode: parseResourceIdTripOverviewHeader(text) ?? parseResourceId(text),
-      stowingLane: parseStowingLane(text),
-    );
+    return parseBundle(bytes, fallbackDate: DateTime.now(), includeFullText: false).meta;
   }
 
   static RoutePdfTripOverviewMeta extractTripOverviewMetaFromText(String text) {

@@ -3,6 +3,9 @@ import 'package:intl/intl.dart';
 
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/partner/postal_code_registry.dart';
+import '../../../core/services/partner/fleet_shift_filters.dart';
+import '../../../core/services/partner/route_shift_resolver.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
@@ -47,6 +50,21 @@ class _PartnerRouteDispatchPanelState extends State<PartnerRouteDispatchPanel> {
       await PartnerService.ensureCanonicalFleetShifts(cid); // Oppdaterer til standard skift ved behov
       final shifts = await PartnerService.fetchFleetShifts(cid);
       final staged = await PartnerService.fetchStagedRouteShares(cid);
+      await PostalCodeRegistry.ensureLoaded();
+      final shiftById = <String, String>{};
+      for (final s in staged) {
+        final pdfText = await RouteShiftResolver.loadPdfTextForShare(s);
+        final sid = await RouteShiftResolver.resolveShiftIdForStagedShare(
+          share: s,
+          allShifts: shifts,
+          pdfText: pdfText,
+        );
+        if (sid != null && sid.isNotEmpty) {
+          shiftById[s.id] = sid;
+        } else {
+          shiftById[s.id] = '';
+        }
+      }
       if (mounted) {
         setState(() {
           _shifts = shifts;
@@ -54,9 +72,19 @@ class _PartnerRouteDispatchPanelState extends State<PartnerRouteDispatchPanel> {
           _selected
             ..clear()
             ..addAll(staged.map((s) => s.id));
+          _shiftByShare
+            ..clear()
+            ..addAll(shiftById);
           for (final s in staged) {
-            _shiftByShare.putIfAbsent(s.id, () => _guessShift(s, shifts));
-            _startByShare.putIfAbsent(s.id, () => const TimeOfDay(hour: 6, minute: 0));
+            _startByShare.putIfAbsent(s.id, () {
+              if (s.routeStartAt != null) {
+                return TimeOfDay(
+                  hour: s.routeStartAt!.hour,
+                  minute: s.routeStartAt!.minute,
+                );
+              }
+              return const TimeOfDay(hour: 6, minute: 0);
+            });
           }
           _loading = false;
         });
@@ -64,16 +92,6 @@ class _PartnerRouteDispatchPanelState extends State<PartnerRouteDispatchPanel> {
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  String _guessShift(PartnerRouteShare share, List<FleetShiftDefinition> shifts) {
-    if (shifts.isEmpty) return '';
-    final title = (share.title ?? '').toLowerCase();
-  for (final s in shifts) {
-      if (title.contains(s.name.toLowerCase())) return s.id;
-    }
-    final routeOps = shifts.where((s) => s.shiftKind == 'route_ops').toList();
-    return routeOps.isNotEmpty ? routeOps.first.id : shifts.first.id;
   }
 
   String _vehicleLabel(PartnerRouteShare share) {

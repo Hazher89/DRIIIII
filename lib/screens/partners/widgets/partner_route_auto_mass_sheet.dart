@@ -7,9 +7,12 @@ import 'package:intl/intl.dart';
 
 import '../../../core/constants/route_dispatch_status.dart';
 import '../../../core/constants/sap_routes_config.dart';
+import '../../../core/services/partner/fleet_shift_filters.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/partner/postal_code_registry.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
+import '../../../core/services/partner/route_shift_resolver.dart';
 import '../../../core/services/partner/sap_route_import_service.dart';
 import '../../../core/services/partner/sap_route_inbox_live.dart';
 import '../../../core/services/supabase_service.dart';
@@ -20,6 +23,7 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import 'partner_route_pdf_actions.dart';
+import 'partner_route_workflow_ui.dart';
 
 class _PdfAssignmentRow {
   final String fileName;
@@ -27,6 +31,7 @@ class _PdfAssignmentRow {
   final String? maviCode;
   final String? stowingLane;
   final String? driverLabel;
+  final String? routeDateLabel;
   final String? reason;
 
   const _PdfAssignmentRow({
@@ -35,6 +40,7 @@ class _PdfAssignmentRow {
     this.maviCode,
     this.stowingLane,
     this.driverLabel,
+    this.routeDateLabel,
     this.reason,
   });
 }
@@ -63,7 +69,9 @@ class _SkippedPdf {
 
 enum PartnerRouteMassSource { manual, sap }
 
-enum _MassTab { drivers, overview, skipped }
+enum _MassTab { allRoutes, drivers, missingShift, importLog, skipped }
+
+enum _RouteQueueFilter { all, missingShift, ready, selected }
 
 /// Felles popup: AUTO MASS (manuell PDF) og Ruter fra SAP (auto-import + samme UI).
 class PartnerRouteMassDispatchSheet extends StatefulWidget {
@@ -84,23 +92,13 @@ class PartnerRouteMassDispatchSheet extends StatefulWidget {
     DateTime? routeDate,
     PartnerRouteMassSource source = PartnerRouteMassSource.manual,
   }) {
-    return showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      builder: (ctx) {
-        final h = MediaQuery.sizeOf(ctx).height * 0.94;
-        return SizedBox(
-          height: h,
-          child: PartnerRouteMassDispatchSheet(
-            fleet: fleet,
-            initialRouteDate: routeDate ?? DateTime.now(),
-            source: source,
-          ),
-        );
-      },
+    return showPartnerRouteWorkflowDialog<bool>(
+      context,
+      child: PartnerRouteMassDispatchSheet(
+        fleet: fleet,
+        initialRouteDate: routeDate ?? DateTime.now(),
+        source: source,
+      ),
     );
   }
 
@@ -125,18 +123,53 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   List<_PdfAssignmentRow> _importLog = [];
   final Map<String, String> _stowingByShare = {};
   late DateTime _routeDate;
-  _MassTab _sheetTab = _MassTab.drivers;
+  _MassTab _sheetTab = _MassTab.allRoutes;
+  _RouteQueueFilter _queueFilter = _RouteQueueFilter.all;
   bool _sapSyncing = false;
   int _sapPendingInbox = 0;
   RealtimeChannel? _sapLiveChannel;
   bool _showAllDrivers = false;
-  bool _guideExpanded = true;
+  bool _guideExpanded = false;
+  bool _fillingShifts = false;
+  bool _initialTabSet = false;
 
   bool get _isSap => widget.source == PartnerRouteMassSource.sap;
 
   _MassUi get _ui => _MassUi.of(widget.source);
 
+  List<FleetShiftDefinition> get _routeShifts =>
+      FleetShiftFilters.forRouteAssignment(_shifts);
+
   int get _driversWithRoutesCount => _routesByVehicle.length;
+
+  List<PartnerRouteShare> get _routesMissingShift =>
+      _staged.where((s) => _effectiveShiftId(s.id) == null).toList();
+
+  int get _missingShiftCount => _routesMissingShift.length;
+
+  int get _readyShiftCount => _staged.length - _missingShiftCount;
+
+  List<PartnerRouteShare> get _filteredQueueRoutes {
+    final list = switch (_queueFilter) {
+      _RouteQueueFilter.all => List<PartnerRouteShare>.from(_staged),
+      _RouteQueueFilter.missingShift => _routesMissingShift,
+      _RouteQueueFilter.ready =>
+        _staged.where((s) => _effectiveShiftId(s.id) != null).toList(),
+      _RouteQueueFilter.selected =>
+        _staged.where((s) => _selected.contains(s.id)).toList(),
+    };
+    list.sort((a, b) {
+      final am = _effectiveShiftId(a.id) == null;
+      final bm = _effectiveShiftId(b.id) == null;
+      if (am != bm) return am ? -1 : 1;
+      final rowA = _rowForShare(a);
+      final rowB = _rowForShare(b);
+      final maviA = rowA != null ? MaviUnitCodes.normalize(rowA.vehicle.unitCode) : '';
+      final maviB = rowB != null ? MaviUnitCodes.normalize(rowB.vehicle.unitCode) : '';
+      return maviA.compareTo(maviB);
+    });
+    return list;
+  }
 
   @override
   void dispose() {
@@ -161,7 +194,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     _reload().then((_) {
       if (_isSap) {
         _bindSapLive();
-        _syncSapInbox();
+        _refreshSapInboxCounts();
       }
     });
   }
@@ -172,8 +205,41 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     SapRouteInboxLive.unsubscribe(_sapLiveChannel);
     _sapLiveChannel = SapRouteInboxLive.subscribe(
       companyId: cid,
-      onChanged: () => _syncSapInbox(),
+      onChanged: () => _refreshSapInboxCounts(),
     );
+  }
+
+  Future<void> _refreshSapInboxCounts() async {
+    if (!_isSap) return;
+    try {
+      final cid = await SupabaseService.getCurrentCompanyId();
+      if (cid == null || !mounted) return;
+      await PartnerService.reconcileSapInboxWithStagedQueue(cid);
+      final n = await PartnerService.countSapRouteInboxPending(cid);
+      if (mounted) setState(() => _sapPendingInbox = n);
+    } catch (_) {}
+  }
+
+  Future<List<_SkippedPdf>> _collectSapManualSkipped(String companyId) async {
+    final manual = await PartnerService.fetchSapRouteInboxManual(companyId);
+    if (manual.isEmpty) return const [];
+    final added = <_SkippedPdf>[];
+    for (final item in manual) {
+      if (_skipped.any((x) => x.sapInboxId == item.id)) continue;
+      final bytes = await PartnerService.downloadRoutePdfBytes(item.pdfStoragePath);
+      if (bytes == null || bytes.isEmpty) continue;
+      final reason = (item.rejectReason ?? '')
+          .replaceFirst(PartnerService.sapInboxManualReasonPrefix, '')
+          .trim();
+      added.add(_SkippedPdf(
+        fileName: item.fileName,
+        bytes: bytes,
+        reason: reason.isEmpty ? 'Krever manuell tildeling' : reason,
+        detectedCode: item.detectedMaviCode,
+        sapInboxId: item.id,
+      ));
+    }
+    return added;
   }
 
   Future<void> _syncSapInbox() async {
@@ -182,10 +248,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) return;
+      await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final pending = await PartnerService.fetchSapRouteInboxPending(cid);
       if (!mounted) return;
       setState(() => _sapPendingInbox = pending.length);
-      if (pending.isEmpty) return;
+      if (pending.isEmpty) {
+        await _reload();
+        return;
+      }
 
       final result = await SapRouteImportService.importPendingToStaged(
         companyId: cid,
@@ -230,10 +300,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         }
       }
       await _reload();
-      if (mounted) {
-        final n = await PartnerService.countSapRouteInboxPending(cid);
-        setState(() => _sapPendingInbox = n);
-      }
+      await _refreshSapInboxCounts();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -268,7 +335,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (cid == null) return;
       await PartnerService.ensureCanonicalFleetShifts(cid);
       final shifts = await PartnerService.fetchFleetShifts(cid);
+      if (_isSap) {
+        await PartnerService.reconcileSapInboxWithStagedQueue(cid);
+      }
       final staged = await PartnerService.fetchStagedRouteShares(cid);
+      final manualSkipped = _isSap ? await _collectSapManualSkipped(cid) : const <_SkippedPdf>[];
       final portals = <String, PartnerPortalAccount>{};
       final partnerIds = _maviFleet.map((r) => r.partner.id).toSet();
       for (final pid in partnerIds) {
@@ -276,17 +347,42 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           if (a.partnerVehicleId != null) portals[a.partnerVehicleId!] = a;
         }
       }
+      await PostalCodeRegistry.ensureLoaded();
+      final shiftById = <String, String>{};
+      for (final s in staged) {
+        final pdfText = await RouteShiftResolver.loadPdfTextForShare(s);
+        final sid = await RouteShiftResolver.resolveShiftIdForStagedShare(
+          share: s,
+          allShifts: shifts,
+          pdfText: pdfText,
+        );
+        if (sid != null && sid.isNotEmpty) {
+          shiftById[s.id] = sid;
+          if (s.shiftId != sid) {
+            await PartnerService.updateRouteShareFields(s.id, {'shift_id': sid});
+          }
+        } else {
+          shiftById[s.id] = '';
+        }
+      }
       if (!mounted) return;
       setState(() {
         _shifts = shifts;
         _staged = staged;
+        for (final s in manualSkipped) {
+          if (!_skipped.any((x) => x.sapInboxId == s.sapInboxId)) {
+            _skipped.add(s);
+          }
+        }
         _portalByVehicle = portals;
         _selected
           ..clear()
           ..addAll(staged.map((s) => s.id));
         _stowingByShare.clear();
+        _shiftByShare
+          ..clear()
+          ..addAll(shiftById);
         for (final s in staged) {
-          _shiftByShare.putIfAbsent(s.id, () => _guessShift(s, shifts));
           _startByShare.putIfAbsent(s.id, () {
             if (s.routeStartAt != null) {
               return TimeOfDay(hour: s.routeStartAt!.hour, minute: s.routeStartAt!.minute);
@@ -298,21 +394,16 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               RoutePdfTextService.parseStowingLane(s.pdfSearchText ?? '');
           if (lane != null) _stowingByShare[s.id] = lane;
         }
+        if (!_initialTabSet && _routesMissingShift.isNotEmpty) {
+          _sheetTab = _MassTab.missingShift;
+          _queueFilter = _RouteQueueFilter.missingShift;
+        }
+        _initialTabSet = true;
         _loading = false;
       });
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
-  }
-
-  String _guessShift(PartnerRouteShare share, List<FleetShiftDefinition> shifts) {
-    if (shifts.isEmpty) return '';
-    final title = (share.title ?? '').toLowerCase();
-    for (final s in shifts) {
-      if (title.contains(s.name.toLowerCase())) return s.id;
-    }
-    final routeOps = shifts.where((s) => s.shiftKind == 'route_ops').toList();
-    return routeOps.isNotEmpty ? routeOps.first.id : shifts.first.id;
   }
 
   FleetPartnerVehicleRow? _rowForShare(PartnerRouteShare share) {
@@ -421,63 +512,102 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
-  Future<String> _createStagedShare({
+  Future<({_PdfAssignmentRow row, String? shareId, String? stowing, TimeOfDay? start})> _importOnePdf({
     required String companyId,
-    required Partner partner,
-    required PartnerVehicle vehicle,
-    required String fileName,
-    required Uint8List bytes,
-    String? notes,
+    required PlatformFile file,
+    required Map<String, PartnerVehicle> vehicleMap,
+    required Map<String, Partner> partnerById,
   }) async {
-    final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-    final path =
-        'company_$companyId/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${vehicle.unitCode}_$safeName';
-    final storedPath =
-        await PartnerService.uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
-    final pdfText = RoutePdfTextService.extractFullText(bytes);
-    final meta = RoutePdfTextService.extractTripOverviewMetaFromText(pdfText);
-    final schedule = RoutePdfTextService.resolveSchedule(pdfText, fallbackDate: _routeDate);
-    final composedNotes = RoutePdfTextService.composeRouteNotes(
-      stowingLane: meta.stowingLane,
-      userNote: notes,
-    );
-    final share = await PartnerService.addRouteShare(
-      PartnerRouteShare(
-        id: '',
-        partnerId: partner.id,
-        companyId: companyId,
-        title: 'Rute ${MaviUnitCodes.normalize(vehicle.unitCode)} — $fileName',
-        pdfStoragePath: storedPath,
-        shareDate: schedule.routeDate,
-        isDailyShare: true,
-        createdAt: DateTime.now(),
-        dispatchStatus: 'staged',
-        pdfSearchText: pdfText.isEmpty ? null : pdfText,
-        partnerVehicleId: vehicle.id,
-        notes: composedNotes.isEmpty ? null : composedNotes,
-      ),
-    );
-    if (meta.stowingLane != null) {
-      _stowingByShare[share.id] = meta.stowingLane!;
-    }
-    if (pdfText.isNotEmpty) {
-      await PartnerService.saveRoutePdfSearchText(share.id, pdfText);
-    }
-    final patch = <String, dynamic>{};
-    if (schedule.routeStartAt != null) {
-      patch['route_start_at'] = schedule.routeStartAt!.toUtc().toIso8601String();
-    }
-    if (notes != null && notes.trim().isNotEmpty) patch['notes'] = notes.trim();
-    if (patch.isNotEmpty) {
-      await PartnerService.updateRouteShareFields(share.id, patch);
-    }
-    if (schedule.routeStartAt != null) {
-      _startByShare[share.id] = TimeOfDay(
-        hour: schedule.routeStartAt!.hour,
-        minute: schedule.routeStartAt!.minute,
+    final bytes = await _readPlatformFile(file);
+    if (bytes == null || bytes.isEmpty) {
+      return (
+        row: _PdfAssignmentRow(
+          fileName: file.name,
+          status: 'skipped',
+          reason: 'Kunne ikke lese fil',
+        ),
+        shareId: null,
+        stowing: null,
+        start: null,
       );
     }
-    return share.id;
+
+    final bundle = RoutePdfTextService.parseBundle(bytes, fallbackDate: _routeDate);
+    final code = bundle.meta.maviCode;
+    if (code == null) {
+      return (
+        row: _PdfAssignmentRow(
+          fileName: file.name,
+          status: 'skipped',
+          reason: 'Fant ikke MAVI-nummer inne i PDF (Start date / Trip Overview)',
+        ),
+        shareId: null,
+        stowing: null,
+        start: null,
+      );
+    }
+
+    final vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, code);
+    if (vehicle == null) {
+      return (
+        row: _PdfAssignmentRow(
+          fileName: file.name,
+          status: 'skipped',
+          maviCode: code,
+          reason: 'Ingen bil matcher $code i flåten',
+        ),
+        shareId: null,
+        stowing: null,
+        start: null,
+      );
+    }
+
+    final partner = partnerById[vehicle.partnerId];
+    if (partner == null) {
+      return (
+        row: _PdfAssignmentRow(
+          fileName: file.name,
+          status: 'skipped',
+          maviCode: code,
+          reason: 'Partner mangler',
+        ),
+        shareId: null,
+        stowing: null,
+        start: null,
+      );
+    }
+
+    final routeDay = bundle.schedule.routeDate;
+    final shareId = await PartnerService.createStagedRouteShareFromPdf(
+      companyId: companyId,
+      partner: partner,
+      vehicle: vehicle,
+      fileName: file.name,
+      bytes: bytes,
+      routeDate: routeDay,
+      parsed: bundle,
+    );
+
+    final start = bundle.schedule.routeStartAt != null
+        ? TimeOfDay(
+            hour: bundle.schedule.routeStartAt!.hour,
+            minute: bundle.schedule.routeStartAt!.minute,
+          )
+        : null;
+
+    return (
+      row: _PdfAssignmentRow(
+        fileName: file.name,
+        status: 'ok',
+        maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+        stowingLane: bundle.meta.stowingLane,
+        driverLabel: partner.name,
+        routeDateLabel: DateFormat('d.M.y').format(routeDay),
+      ),
+      shareId: shareId,
+      stowing: bundle.meta.stowingLane,
+      start: start,
+    );
   }
 
   Future<void> _importPdfs(List<PlatformFile> files) async {
@@ -494,89 +624,58 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         partnerById.putIfAbsent(p.id, () => p);
       }
 
-      int ok = 0;
+      const parallel = 10;
       final newSkipped = <_SkippedPdf>[];
       final log = <_PdfAssignmentRow>[];
 
-      for (final file in files) {
-        final bytes = await _readPlatformFile(file);
-        if (bytes == null || bytes.isEmpty) {
-          log.add(_PdfAssignmentRow(
-            fileName: file.name,
-            status: 'skipped',
-            reason: 'Kunne ikke lese fil',
-          ));
-          newSkipped.add(_SkippedPdf(
-            fileName: file.name,
-            bytes: Uint8List(0),
-            reason: 'Kunne ikke lese fil',
-          ));
-          continue;
-        }
-        final meta = RoutePdfTextService.extractTripOverviewMeta(bytes);
-        final code = meta.maviCode ?? RoutePdfTextService.extractResourceIdFromBytes(bytes);
-        if (code == null) {
-          log.add(_PdfAssignmentRow(
-            fileName: file.name,
-            status: 'skipped',
-            reason: 'Fant ikke MAVI-nummer inne i PDF (sjekk Trip Overview / Resource ID)',
-          ));
-          newSkipped.add(_SkippedPdf(
-            fileName: file.name,
-            bytes: bytes,
-            reason: 'Fant ikke MAVI-nummer inne i PDF (sjekk Trip Overview / Resource ID)',
-          ));
-          continue;
-        }
-        final vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, code);
-        if (vehicle == null) {
-          log.add(_PdfAssignmentRow(
-            fileName: file.name,
-            status: 'skipped',
-            maviCode: code,
-            reason: 'Ingen bil matcher $code i flåten',
-          ));
-          newSkipped.add(_SkippedPdf(
-            fileName: file.name,
-            bytes: bytes,
-            reason: 'Ingen bil matcher $code',
-            detectedCode: code,
-          ));
-          continue;
-        }
-        final partner = partnerById[vehicle.partnerId];
-        if (partner == null) {
-          log.add(_PdfAssignmentRow(
-            fileName: file.name,
-            status: 'skipped',
-            maviCode: code,
-            reason: 'Partner mangler',
-          ));
-          newSkipped.add(_SkippedPdf(
-            fileName: file.name,
-            bytes: bytes,
-            reason: 'Partner mangler for $code',
-            detectedCode: code,
-          ));
-          continue;
-        }
-        final mavi = MaviUnitCodes.normalize(vehicle.unitCode);
-        await _createStagedShare(
-          companyId: cid,
-          partner: partner,
-          vehicle: vehicle,
-          fileName: file.name,
-          bytes: bytes,
+      for (var i = 0; i < files.length; i += parallel) {
+        final chunk = files.skip(i).take(parallel).toList();
+        final chunkResults = await Future.wait(
+          chunk.map(
+            (file) => _importOnePdf(
+              companyId: cid,
+              file: file,
+              vehicleMap: vehicleMap,
+              partnerById: partnerById,
+            ),
+          ),
         );
-        log.add(_PdfAssignmentRow(
-          fileName: file.name,
-          status: 'ok',
-          maviCode: mavi,
-          stowingLane: meta.stowingLane,
-          driverLabel: partner.name,
-        ));
-        ok++;
+        for (var j = 0; j < chunk.length; j++) {
+          final result = chunkResults[j];
+          final file = chunk[j];
+          log.add(result.row);
+          if (result.shareId != null) {
+            if (result.stowing != null) {
+              _stowingByShare[result.shareId!] = result.stowing!;
+            }
+            if (result.start != null) {
+              _startByShare[result.shareId!] = result.start!;
+            }
+          }
+          if (result.row.status != 'ok') {
+            final bytes = await _readPlatformFile(file);
+            if (bytes != null && bytes.isNotEmpty) {
+              newSkipped.add(_SkippedPdf(
+                fileName: file.name,
+                bytes: bytes,
+                reason: result.row.reason ?? 'Ukjent feil',
+                detectedCode: result.row.maviCode,
+              ));
+            }
+          }
+        }
+        if (mounted) {
+          final okSoFar = log.where((r) => r.status == 'ok').length;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Importerer … $okSoFar / ${files.length} PDF'),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
       }
+
+      final ok = log.where((r) => r.status == 'ok').length;
 
       if (mounted) {
         setState(() {
@@ -625,13 +724,16 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) return;
       final row = _maviFleet.firstWhere((r) => r.vehicle.id == item.selectedVehicleId);
-      final shareId = await _createStagedShare(
+      final bundle = RoutePdfTextService.parseBundle(item.bytes, fallbackDate: _routeDate);
+      final shareId = await PartnerService.createStagedRouteShareFromPdf(
         companyId: cid,
         partner: row.partner,
         vehicle: row.vehicle,
         fileName: item.fileName,
         bytes: item.bytes,
+        routeDate: bundle.schedule.routeDate,
         notes: item.noteCtrl.text,
+        parsed: bundle,
       );
       if (item.sapInboxId != null) {
         await PartnerService.markSapRouteInboxImported(
@@ -792,6 +894,70 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
   }
 
+  String? _effectiveShiftId(String shareId) {
+    final fromMap = _shiftByShare[shareId];
+    if (fromMap != null && fromMap.isNotEmpty) return fromMap;
+    PartnerRouteShare? share;
+    for (final s in _staged) {
+      if (s.id == shareId) {
+        share = s;
+        break;
+      }
+    }
+    final sid = share?.shiftId;
+    if (sid != null && sid.isNotEmpty && _routeShifts.any((s) => s.id == sid)) {
+      return sid;
+    }
+    return null;
+  }
+
+  String? _shiftLabel(String? shiftId) {
+    if (shiftId == null) return null;
+    for (final s in _routeShifts) {
+      if (s.id == shiftId) return s.name;
+    }
+    return null;
+  }
+
+  Future<void> _resolveAndStoreShift(PartnerRouteShare share, {bool force = false}) async {
+    if (!force && _effectiveShiftId(share.id) != null) return;
+    final pdfText = await RouteShiftResolver.loadPdfTextForShare(share);
+    final resolved = await RouteShiftResolver.resolveShiftIdForStagedShare(
+      share: share,
+      allShifts: _shifts,
+      pdfText: pdfText,
+    );
+    if (resolved != null && resolved.isNotEmpty) {
+      _shiftByShare[share.id] = resolved;
+      await PartnerService.updateRouteShareFields(share.id, {'shift_id': resolved});
+    }
+  }
+
+  Future<void> _fillMissingShiftsForSelected() async {
+    for (final id in _selected) {
+      PartnerRouteShare? share;
+      for (final s in _staged) {
+        if (s.id == id) {
+          share = s;
+          break;
+        }
+      }
+      if (share != null) await _resolveAndStoreShift(share);
+    }
+  }
+
+  Future<void> _fillAllShiftsForStaged() async {
+    if (_fillingShifts || _staged.isEmpty) return;
+    setState(() => _fillingShifts = true);
+    try {
+      for (final s in _routesMissingShift) {
+        await _resolveAndStoreShift(s, force: true);
+      }
+    } finally {
+      if (mounted) setState(() => _fillingShifts = false);
+    }
+  }
+
   Future<void> _pickPdfs() async {
     final picked = await FilePicker.platform.pickFiles(
       allowMultiple: true,
@@ -813,7 +979,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           backgroundColor: Colors.orange,
         ),
       );
-      setState(() => _sheetTab = _MassTab.skipped);
+      _setTabIndex(4);
       return;
     }
     if (_selected.isEmpty) {
@@ -822,11 +988,19 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       );
       return;
     }
-    final missingShift = _selected.where((id) => (_shiftByShare[id] ?? '').isEmpty);
+    await _fillMissingShiftsForSelected();
+    if (mounted) setState(() {});
+    final missingShift = _selected.where((id) => _effectiveShiftId(id) == null).toList();
     if (missingShift.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Alle valgte ruter må ha skift.')),
+        SnackBar(
+          content: Text(
+            '${missingShift.length} rute(r) mangler skift — se fanen «Mangler skift».',
+          ),
+          backgroundColor: Colors.orange.shade800,
+        ),
       );
+      _setTabIndex(2);
       return;
     }
 
@@ -865,7 +1039,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           await PartnerService.updateRouteShareFields(id, {'notes': note});
         }
       }
-      final map = {for (final id in _selected) id: _shiftByShare[id]!};
+      final map = {
+        for (final id in _selected)
+          if (_effectiveShiftId(id) != null) id: _effectiveShiftId(id)!,
+      };
       final starts = <String, DateTime?>{};
       for (final id in _selected) {
         final t = _startByShare[id];
@@ -903,121 +1080,216 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    if (_loading) {
-      return const SizedBox(height: 320, child: Center(child: CircularProgressIndicator()));
-    }
+  int get _tabIndex => switch (_sheetTab) {
+        _MassTab.allRoutes => 0,
+        _MassTab.drivers => 1,
+        _MassTab.missingShift => 2,
+        _MassTab.importLog => 3,
+        _MassTab.skipped => 4,
+      };
 
-    final ui = _ui;
+  void _setTabIndex(int i) {
+    setState(() {
+      _sheetTab = switch (i) {
+        0 => _MassTab.allRoutes,
+        1 => _MassTab.drivers,
+        2 => _MassTab.missingShift,
+        3 => _MassTab.importLog,
+        4 => _MassTab.skipped,
+        _ => _MassTab.allRoutes,
+      };
+      if (_sheetTab == _MassTab.missingShift) {
+        _queueFilter = _RouteQueueFilter.missingShift;
+      }
+    });
+  }
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border(left: BorderSide(color: ui.accent, width: 5)),
-      ),
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(14, 0, 14, 12 + bottom),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildHeader(ui),
-            const SizedBox(height: 10),
-            _buildWorkflowGuide(ui),
-            const SizedBox(height: 10),
-            _buildActionsRow(ui),
-            const SizedBox(height: 10),
-            _buildMetricsDashboard(ui),
-            const SizedBox(height: 8),
-            _buildAlertsPanel(ui),
-            const SizedBox(height: 10),
-            _buildTabSection(ui),
-            const SizedBox(height: 8),
-            Expanded(child: _buildTabContent(ui)),
-            const SizedBox(height: 10),
-            _buildPublishBar(ui),
-          ],
+  List<Widget> _infoChips(_MassUi ui) {
+    final chips = <Widget>[];
+    if (_staged.isNotEmpty) {
+      chips.add(
+        routeInfoChip(
+          '${_selected.length}/${_staged.length} valgt',
         ),
+      );
+    }
+    if (_multiLoadDriverCount > 0) {
+      chips.add(
+        routeInfoChip(
+          '$_multiLoadDriverCount sjåfør med 2+ last',
+          onTap: () => _showMultiLoadDetails(),
+        ),
+      );
+    }
+    if (_missingPhoneCount > 0) {
+      chips.add(
+        routeInfoChip(
+          '$_missingPhoneCount uten telefon (ingen SMS)',
+        ),
+      );
+    }
+    if (_missingShiftCount > 0) {
+      chips.add(
+        routeInfoChip(
+          '$_missingShiftCount mangler skift',
+          color: Colors.red.shade800,
+          onTap: () => _setTabIndex(2),
+        ),
+      );
+    }
+    if (_readyShiftCount > 0) {
+      chips.add(
+        routeInfoChip(
+          '$_readyShiftCount med skift',
+          color: Colors.green.shade800,
+          onTap: () {
+            setState(() {
+              _sheetTab = _MassTab.allRoutes;
+              _queueFilter = _RouteQueueFilter.ready;
+            });
+          },
+        ),
+      );
+    }
+    if (_staged.isNotEmpty) {
+      chips.add(
+        TextButton.icon(
+          onPressed: _busyUpload ? null : _clearAllStaged,
+          icon: Icon(Icons.delete_sweep_outlined, size: 18, color: Colors.grey.shade700),
+          label: Text(
+            'Tøm kø (${_staged.length})',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+          ),
+        ),
+      );
+    }
+    return chips;
+  }
+
+  Future<void> _showMultiLoadDetails() async {
+    if (_multiLoadDriverCount == 0) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sjåfører med flere last'),
+        content: SingleChildScrollView(
+          child: Text(_multiLoadSummaryLine(), style: const TextStyle(height: 1.4)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Lukk')),
+        ],
       ),
     );
   }
 
-  Widget _buildHeader(_MassUi ui) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final ui = _ui;
+    final manualOnly = _skipped.isNotEmpty;
+    final missingShift = _missingShiftCount;
+    final ready = _skipped.isEmpty &&
+        _staged.isNotEmpty &&
+        _selected.isNotEmpty &&
+        missingShift == 0 &&
+        _selected.every((id) => _effectiveShiftId(id) != null);
+
+    return PartnerRouteWorkflowShell(
+      accent: ui.accent,
+      accentDark: ui.accentDark,
+      icon: ui.icon,
+      title: ui.title,
+      subtitle: ui.tagline,
+      badge: ui.badge,
+      metrics: [
+        RouteWorkflowMetric(
+          label: 'Ruter i kø',
+          value: '${_staged.length}',
+          icon: Icons.description_outlined,
+          color: ui.accentDark,
+          hint: _isSap && _sapPendingInbox > 0
+              ? '${_selected.length} valgt · $_sapPendingInbox uimporterte SAP-PDF'
+              : '${_selected.length} valgt',
+        ),
+        RouteWorkflowMetric(
+          label: 'Med skift',
+          value: '$_readyShiftCount',
+          icon: Icons.check_circle_outline,
+          color: Colors.green.shade700,
+          hint: missingShift > 0 ? '$missingShift mangler' : null,
+        ),
+        RouteWorkflowMetric(
+          label: 'Mangler skift',
+          value: '$missingShift',
+          icon: Icons.warning_amber_rounded,
+          color: missingShift > 0 ? Colors.red.shade700 : Colors.grey.shade500,
+          hint: missingShift > 0 ? 'Se fanen Mangler skift' : 'Alle har skift',
+        ),
+        RouteWorkflowMetric(
+          label: 'Manuell PDF',
+          value: '${_skipped.length}',
+          icon: Icons.build_outlined,
+          color: manualOnly ? Colors.orange.shade800 : Colors.grey.shade600,
+          hint: manualOnly ? 'Må fordeles' : null,
+        ),
+      ],
+      sidebar: _buildSidebar(ui),
+      guidePanel: _buildWorkflowGuideContent(ui),
+      guideExpanded: _guideExpanded,
+      onGuideToggle: () => setState(() => _guideExpanded = !_guideExpanded),
+      topBanner: _buildTopBanners(),
+      tabLabels: const ['Alle ruter', 'Per sjåfør', 'Mangler skift', 'Importlogg', 'Manuell'],
+      tabBadges: [
+        _staged.isNotEmpty ? _staged.length : null,
+        _driversWithRoutesCount > 0 ? _driversWithRoutesCount : null,
+        missingShift > 0 ? missingShift : null,
+        _importLog.isNotEmpty ? _importLog.length : null,
+        _skipped.isNotEmpty ? _skipped.length : null,
+      ],
+      tabBadgeColors: [
+        ui.accentDark,
+        ui.accentDark,
+        Colors.red.shade700,
+        Colors.grey.shade700,
+        Colors.orange.shade800,
+      ],
+      selectedTabIndex: _tabIndex,
+      onTabSelected: _setTabIndex,
+      tabCaption: _tabHint(),
+      tabBody: _buildTabContent(ui),
+      footer: _buildPublishBar(ui),
+    );
+  }
+
+  Widget _buildSidebar(_MassUi ui) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: ui.accent.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(ui.icon, color: ui.accentDark, size: 26),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(ui.title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 22)),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: ui.accent.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: ui.accent.withValues(alpha: 0.4)),
-                    ),
-                    child: Text(
-                      ui.badge,
-                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: ui.accentDark),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(ui.tagline, style: TextStyle(fontSize: 12, height: 1.35, color: Colors.grey.shade700)),
-            ],
-          ),
-        ),
+        Text('Handlinger', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.grey.shade600)),
+        const SizedBox(height: 8),
+        _buildActionsRow(ui),
+        const SizedBox(height: 14),
+        if (_infoChips(ui).isNotEmpty) ...[
+          Text('Status', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.grey.shade600)),
+          const SizedBox(height: 6),
+          Wrap(spacing: 6, runSpacing: 6, children: _infoChips(ui)),
+        ],
       ],
     );
   }
 
-  Widget _buildWorkflowGuide(_MassUi ui) {
+  Widget _buildWorkflowGuideContent(_MassUi ui) {
     return Material(
       color: ui.surfaceTint,
       borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () => setState(() => _guideExpanded = !_guideExpanded),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.help_outline, size: 18, color: ui.accentDark),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Slik fungerer det',
-                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: ui.accentDark),
-                    ),
-                  ),
-                  Icon(_guideExpanded ? Icons.expand_less : Icons.expand_more, size: 20),
-                ],
-              ),
-              if (_guideExpanded) ...[
-                const SizedBox(height: 10),
-                ...ui.steps.asMap().entries.map((e) => _workflowStep(e.key + 1, e.value, ui)),
-              ],
-            ],
-          ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: ui.steps.asMap().entries.map((e) => _workflowStep(e.key + 1, e.value, ui)).toList(),
         ),
       ),
     );
@@ -1042,232 +1314,115 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Widget _buildActionsRow(_MassUi ui) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          flex: 2,
-          child: OutlinedButton.icon(
-            onPressed: () async {
-              final d = await showDatePicker(
-                context: context,
-                initialDate: _routeDate,
-                firstDate: DateTime.now().subtract(const Duration(days: 7)),
-                lastDate: DateTime.now().add(const Duration(days: 90)),
-              );
-              if (d != null) setState(() => _routeDate = d);
-            },
-            icon: const Icon(Icons.event, size: 18),
-            label: Column(
+        OutlinedButton.icon(
+          onPressed: () async {
+            final d = await showDatePicker(
+              context: context,
+              initialDate: _routeDate,
+              firstDate: DateTime.now().subtract(const Duration(days: 7)),
+              lastDate: DateTime.now().add(const Duration(days: 90)),
+            );
+            if (d != null) {
+              setState(() => _routeDate = d);
+              await _reload();
+            }
+          },
+          icon: const Icon(Icons.event_outlined, size: 20),
+          label: Align(
+            alignment: Alignment.centerLeft,
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('Rutedato', style: TextStyle(fontSize: 10)),
                 Text(
-                  DateFormat('d. MMM yyyy', 'nb').format(_routeDate),
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  DateFormat('EEEE d. MMM yyyy', 'nb').format(_routeDate),
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
                 ),
               ],
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          flex: 3,
-          child: FilledButton.icon(
-            onPressed: _isSap
-                ? (_sapSyncing ? null : _syncSapInbox)
-                : (_busyUpload ? null : _pickPdfs),
-            style: FilledButton.styleFrom(
-              backgroundColor: ui.accentDark,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            icon: _isSap
-                ? (_sapSyncing
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.cloud_download_outlined))
-                : (_busyUpload
-                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                    : const Icon(Icons.upload_file)),
-            label: Text(
-              _isSap
-                  ? (_sapPendingInbox > 0 ? 'Hent nye fra SAP ($_sapPendingInbox)' : 'Synk SAP-innboks')
-                  : 'Last opp rute-PDF-er',
-              textAlign: TextAlign.center,
-            ),
+          style: OutlinedButton.styleFrom(
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           ),
         ),
+        const SizedBox(height: 10),
+        FilledButton.icon(
+          onPressed: _isSap
+              ? (_sapSyncing ? null : _syncSapInbox)
+              : (_busyUpload ? null : _pickPdfs),
+          style: FilledButton.styleFrom(
+            backgroundColor: ui.accentDark,
+            minimumSize: const Size(double.infinity, 50),
+          ),
+          icon: _isSap
+              ? (_sapSyncing
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.cloud_download_outlined))
+              : (_busyUpload
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.upload_file)),
+          label: Text(
+            _isSap
+                ? (_sapPendingInbox > 0
+                    ? 'Importer $_sapPendingInbox SAP-PDF'
+                    : 'Ingen nye SAP-PDF')
+                : 'Last opp PDF-er',
+          ),
+        ),
+        if (_staged.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _fillingShifts ? null : _fillAllShiftsForStaged,
+            icon: _fillingShifts
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.auto_fix_high_outlined),
+            label: Text(_fillingShifts ? 'Fyller skift…' : 'Fyll skift fra PDF (alle)'),
+          ),
+        ],
       ],
     );
   }
 
-  Widget _buildMetricsDashboard(_MassUi ui) {
-    final ready = _skipped.isEmpty && _staged.isNotEmpty && _selected.isNotEmpty;
-    return Row(
-      children: [
-        Expanded(child: _metricTile('Ruter i kø', '${_staged.length}', Icons.description_outlined, ui.accentDark)),
-        const SizedBox(width: 8),
-        Expanded(child: _metricTile('Sjåfører', '$_driversWithRoutesCount', Icons.local_shipping_outlined, ui.accentDark)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _metricTile(
-            'Manuell',
-            '${_skipped.length}',
-            Icons.build_outlined,
-            _skipped.isNotEmpty ? Colors.orange.shade800 : Colors.grey.shade600,
-          ),
+  Widget? _buildTopBanners() {
+    final banners = <Widget>[];
+    if (_missingShiftCount > 0) {
+      banners.add(
+        routeShiftAttentionBanner(
+          count: _missingShiftCount,
+          onOpenList: () => _setTabIndex(2),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _metricTile(
-            'Publiser',
-            ready ? 'Klar' : 'Vent',
-            ready ? Icons.check_circle : Icons.hourglass_empty,
-            ready ? Colors.green.shade700 : Colors.blue.shade700,
-          ),
+      );
+    }
+    if (_skipped.isNotEmpty && _sheetTab != _MassTab.skipped) {
+      if (banners.isNotEmpty) banners.add(const SizedBox(height: 8));
+      banners.add(
+        routeManualAttentionBanner(
+          count: _skipped.length,
+          onOpenManual: () => _setTabIndex(4),
         ),
-      ],
-    );
-  }
-
-  Widget _metricTile(String label, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 4, offset: const Offset(0, 2)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(height: 6),
-          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: color)),
-          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAlertsPanel(_MassUi ui) {
-    final ready = _skipped.isEmpty && _staged.isNotEmpty && _selected.isNotEmpty;
-    final alerts = <Widget>[];
-
-    if (!ready && _staged.isNotEmpty) {
-      alerts.add(_alertRow(Icons.fact_check_outlined, Colors.blue.shade800, 'Kontroller skift, starttid og notat før du publiserer.'));
+      );
     }
-    if (_staged.isNotEmpty && _multiLoadDriverCount > 0) {
-      alerts.add(_alertRow(Icons.layers_outlined, Colors.orange.shade900, _multiLoadSummaryLine()));
-    }
-    if (_missingPhoneCount > 0) {
-      alerts.add(_alertRow(
-        Icons.phone_disabled_outlined,
-        Colors.red.shade700,
-        '$_missingPhoneCount sjåfør uten telefon — de får ikke SMS (ruten publiseres likevel).',
-      ));
-    }
-    if (_skipped.isNotEmpty) {
-      alerts.add(_alertRow(
-        Icons.warning_amber_rounded,
-        Colors.orange.shade900,
-        '${_skipped.length} PDF må fordeles manuelt under fanen «Manuell tildeling».',
-      ));
-    }
-    if (alerts.isEmpty && _staged.isEmpty) {
-      alerts.add(_alertRow(Icons.info_outline, ui.accentDark, ui.emptyHint));
-    }
-
+    if (banners.isEmpty) return null;
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_staged.isNotEmpty)
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: _busyUpload ? null : _clearAllStaged,
-              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-              label: Text('Tøm hele køen (${_staged.length})'),
-              style: TextButton.styleFrom(foregroundColor: DriftProTheme.error),
-            ),
-          ),
-        ...alerts,
-      ],
-    );
-  }
-
-  Widget _alertRow(IconData icon, Color color, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: TextStyle(fontSize: 11.5, height: 1.35, color: color))),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabSection(_MassUi ui) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SegmentedButton<_MassTab>(
-          style: ButtonStyle(
-            visualDensity: VisualDensity.compact,
-            backgroundColor: WidgetStateProperty.all(Colors.white),
-            foregroundColor: WidgetStateProperty.resolveWith((s) {
-              if (s.contains(WidgetState.selected)) return ui.accentDark;
-              return Colors.grey.shade700;
-            }),
-          ),
-          segments: [
-            ButtonSegment(
-              value: _MassTab.drivers,
-              label: const Text('Sjåfører', style: TextStyle(fontSize: 12)),
-              icon: Badge(
-                isLabelVisible: _driversWithRoutesCount > 0,
-                label: Text('$_driversWithRoutesCount'),
-                child: const Icon(Icons.groups_outlined, size: 18),
-              ),
-            ),
-            ButtonSegment(
-              value: _MassTab.overview,
-              label: const Text('Importlogg', style: TextStyle(fontSize: 12)),
-              icon: Badge(
-                isLabelVisible: _importLog.isNotEmpty,
-                label: Text('${_importLog.length}'),
-                child: const Icon(Icons.history, size: 18),
-              ),
-            ),
-            ButtonSegment(
-              value: _MassTab.skipped,
-              label: const Text('Manuell', style: TextStyle(fontSize: 12)),
-              icon: Badge(
-                isLabelVisible: _skipped.isNotEmpty,
-                backgroundColor: Colors.orange,
-                label: Text('${_skipped.length}'),
-                child: const Icon(Icons.pan_tool_alt_outlined, size: 18),
-              ),
-            ),
-          ],
-          selected: {_sheetTab},
-          onSelectionChanged: (s) => setState(() => _sheetTab = s.first),
-        ),
-        const SizedBox(height: 4),
-        Text(_tabHint(), style: TextStyle(fontSize: 11, color: Colors.grey.shade600, height: 1.3)),
-      ],
+      children: banners,
     );
   }
 
   String _tabHint() {
     return switch (_sheetTab) {
+      _MassTab.allRoutes =>
+        'Flat liste over alle ruter i kø. Bruk filter for å finne ruter uten skift.',
       _MassTab.drivers =>
-        'Hver sjåfør kan ha én eller flere ruter samme dag. Velg ruter, juster skift og notat, deretter publiser.',
-      _MassTab.overview =>
+        'Ruter gruppert per sjåfør / MAVI. Utvid for notat og detaljer.',
+      _MassTab.missingShift =>
+        'Kun ruter uten skiftplan — velg skift i kolonnen før publisering.',
+      _MassTab.importLog =>
         'Oversikt over hva systemet gjorde med hver PDF (automatisk MAVI-fordeling eller årsak til manuell).',
       _MassTab.skipped =>
         'PDF-er uten treff på MAVI — velg bil, skiftplan og tildel manuelt før publisering.',
@@ -1275,104 +1430,299 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Widget _buildTabContent(_MassUi ui) {
-    return DecoratedBox(
+    return switch (_sheetTab) {
+      _MassTab.allRoutes => _buildRoutesOverview(ui),
+      _MassTab.drivers => _buildDriverCentricList(ui),
+      _MassTab.missingShift => _buildRoutesOverview(ui, forceMissingOnly: true),
+      _MassTab.importLog => _buildAssignmentOverview(ui),
+      _MassTab.skipped => _buildSkippedList(ui),
+    };
+  }
+
+  Widget _buildQueueSummaryStrip(_MassUi ui) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: ui.accent.withValues(alpha: 0.2)),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade300),
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: switch (_sheetTab) {
-          _MassTab.drivers => _buildDriverCentricList(ui),
-          _MassTab.overview => _buildAssignmentOverview(ui),
-          _MassTab.skipped => _buildSkippedList(ui),
-        },
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.spaceAround,
+        children: [
+          _summaryTile('Totalt', '${_staged.length}', ui.accentDark),
+          _summaryTile('Med skift', '$_readyShiftCount', Colors.green.shade700),
+          _summaryTile('Mangler skift', '$_missingShiftCount', Colors.red.shade700),
+          _summaryTile('Valgt', '${_selected.length}', Colors.blueGrey.shade700),
+        ],
       ),
     );
   }
 
-  Widget _legendDot(String label, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+  Widget _summaryTile(String label, String value, Color color) {
+    return SizedBox(
+      width: 100,
+      child: Column(
+        children: [
+          Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: color)),
+          Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQueueFilterBar() {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
       children: [
-        Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+        ChoiceChip(
+          label: Text('Alle (${_staged.length})'),
+          selected: _queueFilter == _RouteQueueFilter.all,
+          onSelected: (_) => setState(() => _queueFilter = _RouteQueueFilter.all),
         ),
-        const SizedBox(width: 5),
-        Text(label, style: TextStyle(fontSize: 10, color: Colors.grey.shade700)),
+        ChoiceChip(
+          label: Text('Mangler skift ($_missingShiftCount)'),
+          selected: _queueFilter == _RouteQueueFilter.missingShift,
+          onSelected: (_) => setState(() => _queueFilter = _RouteQueueFilter.missingShift),
+        ),
+        ChoiceChip(
+          label: Text('Klare ($_readyShiftCount)'),
+          selected: _queueFilter == _RouteQueueFilter.ready,
+          onSelected: (_) => setState(() => _queueFilter = _RouteQueueFilter.ready),
+        ),
+        ChoiceChip(
+          label: Text('Valgt (${_selected.length})'),
+          selected: _queueFilter == _RouteQueueFilter.selected,
+          onSelected: (_) => setState(() => _queueFilter = _RouteQueueFilter.selected),
+        ),
       ],
     );
   }
 
-  Widget _buildPublishBar(_MassUi ui) {
-    final ready = _skipped.isEmpty && _staged.isNotEmpty;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: ui.surfaceTint,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: ui.accent.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            ready
-                ? 'Alt er fordelt — ${_selected.length} rute(r) klare. Velg registrering uten varsel eller SMS-varsling.'
-                : _skipped.isNotEmpty
-                    ? 'Fullfør manuell tildeling før publisering.'
-                    : 'Legg til ruter før du publiserer.',
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+  Widget _buildRoutesOverview(_MassUi ui, {bool forceMissingOnly = false}) {
+    if (_staged.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(ui.emptyHint, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade700, height: 1.45)),
+        ),
+      );
+    }
+
+    final filter = forceMissingOnly ? _RouteQueueFilter.missingShift : _queueFilter;
+    final routes = forceMissingOnly ? _routesMissingShift : _filteredQueueRoutes;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: _buildQueueSummaryStrip(ui),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: forceMissingOnly
+              ? Text(
+                  '$_missingShiftCount rute(r) uten skift — velg skiftplan i listen',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.red.shade800),
+                )
+              : _buildQueueFilterBar(),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            children: [
+              TextButton(onPressed: () => setState(() => _selected.addAll(_staged.map((s) => s.id))), child: const Text('Velg alle')),
+              TextButton(onPressed: () => setState(() => _selected.clear()), child: const Text('Fjern valg')),
+              const Spacer(),
+              Text('Viser ${routes.length} av ${_staged.length}', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+            ],
           ),
-          const SizedBox(height: 8),
-          if (ready) ...[
-            Row(
-              children: [
-                _legendDot('Uten varsel', RouteDispatchStatus.cellColor(RouteDispatchStatus.registered)),
-                const SizedBox(width: 12),
-                _legendDot('Varslet', RouteDispatchStatus.cellColor(RouteDispatchStatus.sent)),
-              ],
+        ),
+        Expanded(
+          child: routes.isEmpty
+              ? Center(
+                  child: Text(
+                    filter == _RouteQueueFilter.missingShift
+                        ? 'Ingen ruter i dette filteret — bra!'
+                        : 'Ingen ruter matcher filteret.',
+                    style: TextStyle(color: Colors.grey.shade600),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                  itemCount: routes.length,
+                  itemBuilder: (_, i) => _buildCompactRouteRow(routes[i], ui),
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompactRouteRow(PartnerRouteShare share, _MassUi ui) {
+    final row = _rowForShare(share);
+    final mavi = row != null ? MaviUnitCodes.normalize(row.vehicle.unitCode) : '—';
+    final partner = row?.partner.name ?? '—';
+    final fileLabel = (share.title ?? share.pdfStoragePath.split('/').last).split('—').last.trim();
+    final lane = _stowingForShare(share);
+    final shiftId = _effectiveShiftId(share.id);
+    final shiftMissing = shiftId == null;
+    final checked = _selected.contains(share.id);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      elevation: 0,
+      color: shiftMissing ? const Color(0xFFFFEBEE) : Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: shiftMissing ? Colors.red.shade300 : (checked ? ui.accent.withValues(alpha: 0.5) : Colors.grey.shade300),
+          width: shiftMissing || checked ? 2 : 1,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Checkbox(
+              value: checked,
+              onChanged: (v) => setState(() {
+                if (v == true) {
+                  _selected.add(share.id);
+                } else {
+                  _selected.remove(share.id);
+                }
+              }),
             ),
-            const SizedBox(height: 8),
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(mavi, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+                  Text(partner, style: TextStyle(fontSize: 11, color: Colors.grey.shade700), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(fileLabel, style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  if (lane != null) Text('Lane $lane', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                ],
+              ),
+            ),
+            Expanded(
+              flex: 4,
+              child: DropdownButtonFormField<String>(
+                value: shiftId,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: 'Skiftplan',
+                  isDense: true,
+                  border: const OutlineInputBorder(),
+                  errorText: shiftMissing ? 'Påkrevd' : null,
+                ),
+                items: _routeShifts
+                    .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name, overflow: TextOverflow.ellipsis)))
+                    .toList(),
+                onChanged: (v) async {
+                  if (v == null) return;
+                  setState(() => _shiftByShare[share.id] = v);
+                  await PartnerService.updateRouteShareFields(share.id, {'shift_id': v});
+                },
+              ),
+            ),
+            IconButton(
+              tooltip: 'PDF',
+              onPressed: () => PartnerRoutePdfActions.openPdf(context, share),
+              icon: Icon(Icons.picture_as_pdf_outlined, color: ui.accentDark, size: 22),
+            ),
           ],
-          FilledButton.icon(
-            onPressed: _publishing || !ready ? null : () => _publish(notifyDriver: false),
-            icon: _publishing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.inventory_2_outlined),
-            label: Text(
-              _skipped.isNotEmpty
-                  ? 'Fordel ${_skipped.length} manuell(e) først'
-                  : 'Publiser uten varsel (${_selected.length})',
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
-              minimumSize: const Size(double.infinity, 48),
-            ),
-          ),
-          const SizedBox(height: 8),
-          FilledButton.icon(
-            onPressed: _publishing || _staged.isEmpty ? null : () => _publish(notifyDriver: true),
-            icon: _publishing
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.rocket_launch_outlined),
-            label: Text(
-              _skipped.isNotEmpty
-                  ? 'Fordel ${_skipped.length} manuell(e) først'
-                  : _multiLoadDriverCount > 0
-                      ? 'Publiser med SMS · ${_selected.length} ruter · $_multiLoadDriverCount med 2+ last'
-                      : 'Publiser med SMS (${_selected.length})',
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: ui.accentDark,
-              minimumSize: const Size(double.infinity, 48),
-            ),
-          ),
-        ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildPublishBar(_MassUi ui) {
+    final blocked = _skipped.isNotEmpty;
+    final missing = _missingShiftCount;
+    final selectedMissing =
+        _selected.where((id) => _effectiveShiftId(id) == null).length;
+    final canPublish = _skipped.isEmpty &&
+        _staged.isNotEmpty &&
+        _selected.isNotEmpty &&
+        selectedMissing == 0;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 640;
+        final statusText = blocked
+            ? 'Fordel ${_skipped.length} manuell(e) PDF først'
+            : _staged.isEmpty
+                ? 'Ingen ruter i kø'
+                : selectedMissing > 0
+                    ? '$selectedMissing valgte rute(r) mangler skift · $_readyShiftCount OK totalt'
+                    : canPublish
+                        ? '${_selected.length} rute(r) klare til publisering'
+                        : 'Velg ruter og skift før publisering';
+
+        final status = Text(
+          statusText,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: selectedMissing > 0 ? Colors.red.shade800 : Colors.grey.shade800,
+          ),
+        );
+
+        final btnGrey = FilledButton.icon(
+          onPressed: _publishing || !canPublish ? null : () => _publish(notifyDriver: false),
+          icon: _publishing
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.inventory_2_outlined, size: 20),
+          label: Text(blocked ? 'Manuell først' : 'Uten varsel (${_selected.length})'),
+          style: FilledButton.styleFrom(
+            backgroundColor: RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
+            minimumSize: const Size(0, 46),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+          ),
+        );
+
+        final btnSms = FilledButton.icon(
+          onPressed: _publishing || !canPublish ? null : () => _publish(notifyDriver: true),
+          icon: _publishing
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.rocket_launch_outlined, size: 20),
+          label: Text(blocked ? 'Manuell først' : 'Med SMS (${_selected.length})'),
+          style: FilledButton.styleFrom(
+            backgroundColor: ui.accentDark,
+            minimumSize: const Size(0, 46),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+          ),
+        );
+
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              status,
+              const SizedBox(height: 10),
+              btnGrey,
+              const SizedBox(height: 8),
+              btnSms,
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: status),
+            const SizedBox(width: 12),
+            btnGrey,
+            const SizedBox(width: 10),
+            btnSms,
+          ],
+        );
+      },
     );
   }
 
@@ -1391,8 +1741,29 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         : _maviFleet.where((r) => _staged.any((s) => s.partnerVehicleId == r.vehicle.id)).toList();
 
     return ListView(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+      physics: const AlwaysScrollableScrollPhysics(),
       children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: ui.surfaceTint.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              Icon(Icons.groups_outlined, size: 20, color: ui.accentDark),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '$_driversWithRoutesCount sjåfører · ${_staged.length} ruter',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: ui.accentDark),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           dense: true,
@@ -1477,7 +1848,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     : '${routes.length} rute · ${lanes.isNotEmpty ? "Lane ${lanes.first}" : "PDF"} · ${hasPhone ? "SMS OK" : "uten telefon"}',
             style: TextStyle(
               fontSize: 11,
-              color: routes.isEmpty ? Colors.grey : (multi ? Colors.orange.shade900 : Colors.grey.shade700),
+              color: routes.isEmpty ? Colors.grey : Colors.grey.shade700,
               fontWeight: multi ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
@@ -1503,6 +1874,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final fileLabel = (share.title ?? share.pdfStoragePath.split('/').last).split('—').last.trim();
     final start = _startByShare[share.id] ?? const TimeOfDay(hour: 6, minute: 0);
     final startLabel = '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}';
+    final shiftId = _effectiveShiftId(share.id);
+    final shiftMissing = shiftId == null;
+    final shiftName = _shiftLabel(shiftId);
 
     return Container(
       margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
@@ -1581,12 +1955,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               Expanded(
                 flex: 3,
                 child: DropdownButtonFormField<String>(
-                  value: _shiftByShare[share.id]?.isNotEmpty == true ? _shiftByShare[share.id] : null,
+                  value: shiftId,
                   isExpanded: true,
-                  decoration: _fieldDeco('Skiftplan'),
-                  items: _shifts.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _shiftByShare[share.id] = v);
+                  decoration: _fieldDeco('Skiftplan').copyWith(
+                    errorText: shiftMissing && checked ? 'Velg dag- eller kveldsrute' : null,
+                  ),
+                  items: _routeShifts
+                      .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
+                      .toList(),
+                  onChanged: (v) async {
+                    if (v == null) return;
+                    setState(() => _shiftByShare[share.id] = v);
+                    await PartnerService.updateRouteShareFields(share.id, {'shift_id': v});
                   },
                 ),
               ),
@@ -1633,6 +2013,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
     return ListView.separated(
       padding: const EdgeInsets.all(10),
+      physics: const AlwaysScrollableScrollPhysics(),
       itemCount: _importLog.length,
       separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (_, i) {
@@ -1671,10 +2052,17 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
     return ListView.separated(
       padding: const EdgeInsets.all(10),
-      itemCount: _skipped.length,
+      physics: const AlwaysScrollableScrollPhysics(),
+      itemCount: _skipped.length + 1,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (_, i) {
-        final item = _skipped[i];
+        if (i == 0) {
+          return routeManualAttentionBanner(
+            count: _skipped.length,
+            onOpenManual: () {},
+          );
+        }
+        final item = _skipped[i - 1];
         return Card(
           elevation: 0,
           color: ui.surfaceTint,
@@ -1723,7 +2111,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     isDense: true,
                   ),
                   isExpanded: true,
-                  items: _shifts
+                  items: _routeShifts
                       .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
                       .toList(),
                   onChanged: (v) => setState(() => item.shiftId = v),

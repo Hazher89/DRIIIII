@@ -10,6 +10,7 @@ import '../../core/services/storage/company_file_storage.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
+import '../../models/ticket_assignee_options.dart';
 import '../../models/user_profile.dart';
 
 /// Enkel, rask innrapportering for ansatte (tekst + bilder + alvor).
@@ -32,7 +33,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   String? _error;
   String? _category;
   String? _selectedHandlerId;
-  List<UserProfile> _handlers = [];
+  TicketAssigneeOptions _assignees = const TicketAssigneeOptions();
 
   static const _categories = [
     'Helse og sikkerhet',
@@ -65,39 +66,29 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
       final profile = await SupabaseService.fetchCurrentUserProfile();
       if (companyId == null) {
         setState(() {
-          _handlers = [];
+          _assignees = const TicketAssigneeOptions();
           _loadingHandlers = false;
         });
         return;
       }
-      final handlers = await SupabaseService.fetchTicketHandlersForDepartment(
+      final options = await SupabaseService.fetchTicketAssigneeOptions(
         companyId: companyId,
         departmentId: profile?.departmentId,
       );
       if (!mounted) return;
       setState(() {
-        _handlers = handlers;
-        _selectedHandlerId = handlers.length == 1 ? handlers.first.id : null;
+        _assignees = options;
+        _selectedHandlerId = options.defaultAssigneeId;
         _loadingHandlers = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _handlers = [];
+        _assignees = const TicketAssigneeOptions();
         _loadingHandlers = false;
-        _error = 'Kunne ikke hente ledere: $e';
+        _error = 'Kunne ikke hente saksbehandlere: $e';
       });
     }
-  }
-
-  String _handlerLabel(UserProfile p) {
-    final role = switch (p.role) {
-      UserRole.superadmin => 'Superadmin',
-      UserRole.admin => 'Admin',
-      UserRole.leder => 'Avdelingsleder',
-      _ => p.role.name,
-    };
-    return '${p.fullName} · $role';
   }
 
   Future<void> _pickGallery() async {
@@ -122,7 +113,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     if (_selectedHandlerId == null || _selectedHandlerId!.isEmpty) {
-      setState(() => _error = 'Velg leder som skal behandle avviket.');
+      setState(() => _error = 'Velg hvem som skal behandle avviket.');
       return;
     }
 
@@ -186,7 +177,16 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Avvik sendt, men $failedUploads bilde(r) kunne ikke lastes opp. Be admin kjøre storage-policy SQL.',
+              'Avvik sendt. SMS er sendt til valgt saksbehandler. '
+              '$failedUploads bilde(r) kunne ikke lastes opp.',
+            ),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Avvik sendt. Valgt saksbehandler får SMS med beskjed om å behandle saken.',
             ),
           ),
         );
@@ -201,6 +201,76 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         setState(() => _isSubmitting = false);
       }
     }
+  }
+
+  Widget _buildAssigneePicker() {
+    if (_assignees.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Text(
+          'Ingen saksbehandler funnet — kontakt HR.',
+          style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Velg saksbehandler', style: DriftProTheme.labelLg),
+        const SizedBox(height: 8),
+        ..._assignees.nearestLeaders.map(_assigneeTile),
+        ..._assignees.superadmins.map(_assigneeTile),
+      ],
+    );
+  }
+
+  String _displayName(UserProfile p) {
+    var name = p.fullName.trim();
+    for (final suffix in [
+      ' · Superadmin',
+      ' · superadmin',
+      ' - Superadmin',
+      ' - superadmin',
+    ]) {
+      if (name.endsWith(suffix)) {
+        name = name.substring(0, name.length - suffix.length).trim();
+      }
+    }
+    return name.isEmpty ? p.fullName : name;
+  }
+
+  Widget _assigneeTile(UserProfile p) {
+    final selected = _selectedHandlerId == p.id;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(
+          color: selected
+              ? DriftProTheme.primaryGreen
+              : Colors.grey.shade300,
+          width: selected ? 2 : 1,
+        ),
+      ),
+      child: RadioListTile<String>(
+        value: p.id,
+        groupValue: _selectedHandlerId,
+        onChanged: (v) => setState(() => _selectedHandlerId = v),
+        title: Text(
+          _displayName(p),
+          style: TextStyle(
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+        subtitle: const Text(
+          'Får SMS når du sender avviket',
+          style: TextStyle(fontSize: 11),
+        ),
+        activeColor: DriftProTheme.primaryGreen,
+      ),
+    );
   }
 
   @override
@@ -226,12 +296,12 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.emergency_outlined,
-                      color: DriftProTheme.primaryGreen),
+                  Icon(Icons.sms_outlined, color: DriftProTheme.primaryGreen),
                   SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Velg leder som skal behandle avviket. Superadmin og avdelingsleder kan følge opp i kontrollsenteret.',
+                      'Velg hvem som skal behandle avviket. '
+                      'Valgt person får SMS med en gang.',
                       style: TextStyle(fontSize: 13),
                     ),
                   ),
@@ -244,33 +314,8 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
                 padding: EdgeInsets.symmetric(vertical: 12),
                 child: Center(child: CircularProgressIndicator()),
               )
-            else if (_handlers.isEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Text(
-                  'Ingen leder funnet — kontakt HR eller admin.',
-                  style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
-                ),
-              )
             else
-              DropdownButtonFormField<String>(
-                value: _selectedHandlerId,
-                decoration: const InputDecoration(
-                  labelText: 'Leder som behandler avviket *',
-                  border: OutlineInputBorder(),
-                ),
-                items: _handlers
-                    .map(
-                      (p) => DropdownMenuItem(
-                        value: p.id,
-                        child: Text(_handlerLabel(p)),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (v) => setState(() => _selectedHandlerId = v),
-                validator: (v) =>
-                    v == null || v.isEmpty ? 'Velg leder' : null,
-              ),
+              _buildAssigneePicker(),
             const SizedBox(height: 16),
             TextFormField(
               controller: _titleController,
@@ -405,7 +450,8 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
             ],
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: _isSubmitting || _handlers.isEmpty ? null : _submit,
+              onPressed:
+                  _isSubmitting || _assignees.isEmpty ? null : _submit,
               child: _isSubmitting
                   ? const SizedBox(
                       width: 22,
