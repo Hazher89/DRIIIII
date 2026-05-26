@@ -248,7 +248,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     );
   }
 
-  @override
   Future<void> _setRoutesOwnerOnly(bool value) async {
     setState(() {
       _routesOwnerOnly = value;
@@ -263,8 +262,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           SnackBar(
             content: Text(
               value
-                  ? 'Kun bil-eier mottar ruter og varsler — sjåfør-portalen viser ikke ruter'
-                  : 'Normal modus — sjåfør og bil-eier får hver sin rute som før',
+                  ? 'Kun bil-eier får SMS-varsel. Sjåfør ser fortsatt ruter på egen bil i portal.'
+                  : 'Bil-eier + sjåfør får SMS-varsel. Sjåfør ser fortsatt kun ruter på egen bil.',
             ),
           ),
         );
@@ -1033,14 +1032,13 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text(
-                    'Kun bil-eier mottar ruter',
+                    'Kun bil-eier får SMS-varsel',
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                   subtitle: Text(
                     _routesOwnerOnly
-                        ? 'På: SMS og ruter går kun til bil-eier. Han ser alle ruter og notater for alle MAVI '
-                            'og må godkjenne hver rute selv. Sjåfør får ikke ruter i portal.'
-                        : 'Av: Sjåfør får rute på sin bil som vanlig, i tillegg til bil-eier.',
+                        ? 'På: Bare bileiere får SMS. Sjåfører får ikke SMS, men ser fortsatt alle ruter som er tildelt sin egen bil og kan godkjenne/avvise.'
+                        : 'Av: Både bileiere og sjåfører får SMS. Sjåfører ser fortsatt kun ruter for sin egen bil (GDPR).',
                     style: const TextStyle(fontSize: 12, height: 1.35),
                   ),
                   value: _routesOwnerOnly,

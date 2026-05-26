@@ -69,6 +69,20 @@ class PostalRegionMapper {
     'raelingen': 'Indre',
     'nesoddtangen': 'Nesodden',
     'frogn': 'Nesodden',
+    'rolvsøy': 'Østfold',
+    'rolvsoy': 'Østfold',
+    'borgenhaugen': 'Østfold',
+    'tistedal': 'Østfold',
+    'magnor': 'Kongsvinger',
+    'skotterud': 'Kongsvinger',
+    'eidsvoll': 'Indre',
+    'kolsås': 'Bærum',
+    'kolsaas': 'Bærum',
+    'våler': 'Østfold',
+    'valer': 'Østfold',
+    'spydeberg': 'Østfold',
+    'rakkestad': 'Østfold',
+    'mysen': 'Østfold',
   };
 
   static bool _hasWord(String haystack, String word) {
@@ -183,8 +197,24 @@ class PostalRegionMapper {
       'mysen',
       'rakkestad',
       'indre ostfold',
+      'rolvsøy',
+      'rolvsoy',
+      'borgenhaugen',
+      'tistedal',
     ])) {
       return 'Østfold';
+    }
+
+    if (_hasAnyWord(s, ['magnor', 'skotterud', 'grue', 'kirkenær'])) {
+      return 'Kongsvinger';
+    }
+
+    if (_hasAnyWord(s, ['eidsvoll', 'dal', 'feiring'])) {
+      return 'Indre';
+    }
+
+    if (_hasAnyWord(s, ['kolsås', 'kolsaas', 'bekkestua', 'sandvika'])) {
+      return 'Bærum';
     }
 
     if (_hasAnyWord(s, [

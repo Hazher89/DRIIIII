@@ -327,7 +327,45 @@ class RoutePdfTextService {
     if (raw.trim().isEmpty) return const [];
     final fromOverview = _parseCustomersFromTripOverview(raw);
     if (fromOverview.isNotEmpty) return fromOverview;
+    final fromServices = _parseCustomersFromServicesTable(raw);
+    if (fromServices.isNotEmpty) return fromServices;
+    final loose = _parseCustomersFromTripOverviewLoose(raw);
+    if (loose.isNotEmpty) return loose;
     return _parseCustomersFromStopBlocks(raw);
+  }
+
+  /// SAP-tabell: Seq · Freight · Kunde · CURB/SITES · Start · Slutt (ofte uten +47 per rad).
+  static List<RoutePdfCustomer> _parseCustomersFromServicesTable(String raw) {
+    final flat = raw.replaceAll('\uFF3F', '_').replaceAll(RegExp(r'[\r\n]+'), ' ');
+    final re = RegExp(
+      r'\b(\d+)\s+(\d{8,12}(?:\s*,\s*\d{8,12})*)\s+(.+?)\s+'
+      r'(?:CURB|SITE|SITES|RETG|RETGS|DEVUN|STAIR)(?:\s+(?:CURB|SITE|SITES|RETG|RETGS|DEVUN|STAIR))*'
+      r'\s+(\d{1,2}:\d{2})\s+(\d{1,2}:\d{2})\b',
+      caseSensitive: false,
+    );
+    final out = <RoutePdfCustomer>[];
+    final seenSeq = <int>{};
+    for (final m in re.allMatches(flat)) {
+      final seq = int.tryParse(m.group(1)!);
+      if (seq == null || !seenSeq.add(seq)) continue;
+      final rest = m.group(3)!.trim();
+      final startT = _shortTime(m.group(4)!);
+      final endT = _shortTime(m.group(5)!);
+      out.add(
+        RoutePdfCustomer(
+          sequence: seq,
+          name: _customerNameFromRest(rest),
+          phoneDisplay: '—',
+          phoneNormalizedKey: '00000000',
+          freightUnit: m.group(2),
+          addressHint: rest,
+          postalCode: _postalFromAddressSnippet(rest),
+          deliveryWindow: startT != null && endT != null ? '$startT–$endT' : null,
+        ),
+      );
+    }
+    out.sort((a, b) => a.sequence.compareTo(b.sequence));
+    return out;
   }
 
   static List<RoutePdfCustomer> parseCustomersFromBytes(Uint8List bytes) {

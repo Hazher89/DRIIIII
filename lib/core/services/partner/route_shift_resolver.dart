@@ -105,6 +105,28 @@ class RouteShiftResolver {
       return null;
     }
 
+    String? regionForStop(RoutePdfCustomer stop) {
+      final fromPostal = regionForPostal(
+        stop.postalCode,
+        placeHint: placeHintForStop(stop),
+      );
+      if (fromPostal != null) return fromPostal;
+
+      final paren = RegExp(r'\(([^)]+)\)').firstMatch(stop.name);
+      if (paren != null) {
+        final place = paren.group(1)!.trim();
+        final r = PostalRegionMapper.stedToRegion(place) ??
+            PostalRegionMapper.regionFromFreeText(place);
+        if (r != null) return r;
+      }
+
+      if (stop.addressHint != null && stop.addressHint!.isNotEmpty) {
+        final r = PostalRegionMapper.regionFromFreeText(stop.addressHint);
+        if (r != null) return r;
+      }
+      return PostalRegionMapper.regionFromFreeText(stop.name);
+    }
+
     void countRegion(String? region) {
       if (region == null) return;
       regionCounts[region] = (regionCounts[region] ?? 0) + 1;
@@ -114,10 +136,7 @@ class RouteShiftResolver {
     final stopCount = stops.length;
     if (stops.isNotEmpty) {
       for (final stop in stops) {
-        final region = regionForPostal(
-          stop.postalCode,
-          placeHint: placeHintForStop(stop),
-        );
+        final region = regionForStop(stop);
         firstStopRegion ??= region;
         countRegion(region);
       }
@@ -125,6 +144,8 @@ class RouteShiftResolver {
       for (final code in RoutePdfTextService.extractPostalCodes(pdfText)) {
         countRegion(regionForPostal(code));
       }
+      final fromText = PostalRegionMapper.regionFromFreeText(pdfText);
+      countRegion(fromText);
     }
 
     var dominant = _pickDominantRegion(
@@ -184,11 +205,12 @@ class RouteShiftResolver {
     required List<FleetShiftDefinition> shifts,
     required String region,
     DateTime? routeStartAt,
+    String? timeBand,
   }) {
     final ops = FleetShiftFilters.forRouteAssignment(shifts);
     if (ops.isEmpty) return null;
 
-    final band = RouteTimeBand.fromDateTime(routeStartAt);
+    final band = timeBand ?? RouteTimeBand.fromDateTime(routeStartAt);
     final regionNorm = _norm(region);
 
     for (final s in ops) {
@@ -207,10 +229,26 @@ class RouteShiftResolver {
     return null;
   }
 
+  static ({DateTime? start, String band}) _inferScheduleFromPdf(
+    String? pdfText,
+    DateTime? routeDate,
+    DateTime? routeStartAt,
+  ) {
+    final day = routeDate ?? DateTime.now();
+    final local = DateTime(day.year, day.month, day.day);
+    final stops = pdfText == null || pdfText.trim().isEmpty
+        ? const <RoutePdfCustomer>[]
+        : RoutePdfTextService.parseCustomers(pdfText);
+    final start = routeStartAt ?? _routeStartFromPdf(pdfText, local);
+    final band = RouteTimeBand.inferFromStops(stops, fallbackStart: start);
+    return (start: start, band: band);
+  }
+
   static Future<FleetShiftDefinition?> resolveFromPdfText({
     required String? pdfText,
     required List<FleetShiftDefinition> shifts,
     DateTime? routeStartAt,
+    DateTime? routeDate,
     bool bestEffort = false,
   }) async {
     final analysis = await analyzePdfText(pdfText);
@@ -218,10 +256,12 @@ class RouteShiftResolver {
         bestEffort ? analysis.bestEffortRegion : analysis.dominantRegion;
     if (region == null) return null;
     if (!bestEffort && !analysis.hasConfidentRegion) return null;
+    final sched = _inferScheduleFromPdf(pdfText, routeDate, routeStartAt);
     return pickShiftForRegion(
       shifts: shifts,
       region: region,
-      routeStartAt: routeStartAt,
+      routeStartAt: sched.start,
+      timeBand: sched.band,
     );
   }
 
@@ -241,11 +281,12 @@ class RouteShiftResolver {
     String? title,
     String? notes,
   }) async {
-    final start = routeStartAt ?? _routeStartFromPdf(pdfText, routeDate);
+    final sched = _inferScheduleFromPdf(pdfText, routeDate, routeStartAt);
     final fromPdf = await resolveFromPdfText(
       pdfText: pdfText,
       shifts: shifts,
-      routeStartAt: start,
+      routeStartAt: sched.start,
+      routeDate: routeDate,
       bestEffort: true,
     );
     if (fromPdf != null) return fromPdf;
@@ -254,12 +295,27 @@ class RouteShiftResolver {
       title: title,
       notes: notes,
     );
-    if (metaRegion == null) return null;
-    return pickShiftForRegion(
-      shifts: shifts,
-      region: metaRegion,
-      routeStartAt: start,
-    );
+    if (metaRegion != null) {
+      return pickShiftForRegion(
+        shifts: shifts,
+        region: metaRegion,
+        routeStartAt: sched.start,
+        timeBand: sched.band,
+      );
+    }
+
+    if (pdfText != null && pdfText.trim().isNotEmpty) {
+      final fallbackRegion = PostalRegionMapper.regionFromFreeText(pdfText);
+      if (fallbackRegion != null) {
+        return pickShiftForRegion(
+          shifts: shifts,
+          region: fallbackRegion,
+          routeStartAt: sched.start,
+          timeBand: sched.band,
+        );
+      }
+    }
+    return null;
   }
 
   static bool pdfTextUsableForShift(String? text) {
@@ -303,13 +359,15 @@ class RouteShiftResolver {
       if (title.contains(name)) return s.id;
     }
 
-    final fromPostal = await resolveFromPdfText(
+    final best = await resolveBestFromPdfText(
       pdfText: share.pdfSearchText,
       shifts: ops,
       routeStartAt: share.routeStartAt,
-      bestEffort: false,
+      routeDate: share.shareDate,
+      title: share.title,
+      notes: share.notes,
     );
-    return fromPostal?.id;
+    return best?.id;
   }
 
   /// Beste skift for kladd: PDF → lagret shift (ikke Geilo) → best-effort område/tid.

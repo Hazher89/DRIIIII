@@ -23,6 +23,7 @@ import 'owner_portal/owner_portal_inspections_page.dart';
 import 'owner_portal/owner_portal_meetings_page.dart';
 import 'owner_portal/owner_portal_overview_page.dart';
 import 'owner_portal/owner_portal_routes_page.dart';
+import 'owner_portal/owner_portal_vehicle_rental_page.dart';
 import 'owner_portal/owner_portal_summary_page.dart';
 import 'widgets/partner_route_pdf_actions.dart';
 import 'widgets/partner_ui.dart' show PartnerStatusBadge;
@@ -158,6 +159,7 @@ class _PartnerShellState extends State<PartnerShell> {
             OwnerPortalSummaryPage(partner: p),
             OwnerPortalDocsPage(partner: p),
             OwnerPortalRoutesPage(partner: p),
+            OwnerPortalVehicleRentalPage(partner: p),
             OwnerPortalMeetingsPage(partner: p),
             OwnerPortalInspectionsPage(partner: p),
             _PartnerProfilePage(profile: widget.profile, isOwner: true),
@@ -175,6 +177,7 @@ class _PartnerShellState extends State<PartnerShell> {
             NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Oppsummering'),
             NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
             NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Alle ruter'),
+            NavigationDestination(icon: Icon(Icons.car_rental_outlined), selectedIcon: Icon(Icons.car_rental), label: 'Utleie'),
             NavigationDestination(icon: Icon(Icons.event_note_outlined), selectedIcon: Icon(Icons.event_note), label: 'Møter'),
             NavigationDestination(icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Bilkontroll'),
             NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),

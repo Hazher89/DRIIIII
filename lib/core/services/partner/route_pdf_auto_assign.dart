@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import 'postal_code_registry.dart';
+import 'postal_region_mapper.dart';
 import 'route_pdf_text_service.dart';
 import 'route_shift_resolver.dart';
 import 'route_time_band.dart';
@@ -48,14 +49,20 @@ class RoutePdfAutoAssign {
     final driverPdf = RoutePdfTextService.parseDriverName(parsed.headerText) ??
         RoutePdfTextService.parseDriverName(text);
     final schedule = parsed.schedule;
-    final band = RouteTimeBand.fromDateTime(schedule.routeStartAt);
+    final stops = RoutePdfTextService.parseCustomers(text);
+    final band = RouteTimeBand.inferFromStops(
+      stops,
+      fallbackStart: schedule.routeStartAt,
+    );
     final postal = await RouteShiftResolver.analyzePdfText(text);
-    final region = postal.bestEffortRegion;
+    final region = postal.bestEffortRegion ??
+        PostalRegionMapper.regionFromFreeText(text);
     final shift = region != null
         ? RouteShiftResolver.pickShiftForRegion(
             shifts: shifts,
             region: region,
             routeStartAt: schedule.routeStartAt,
+            timeBand: band,
           )
         : null;
 

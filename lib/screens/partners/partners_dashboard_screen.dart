@@ -15,6 +15,7 @@ import 'new_partner_screen.dart';
 import 'partner_route_planner_screen.dart';
 import 'widgets/partner_companies_board.dart';
 import 'partner_sms_hub_screen.dart';
+import 'vehicle_rental_hub_screen.dart';
 import 'widgets/partner_companies_ui.dart';
 import 'widgets/partner_ui.dart';
 
@@ -39,6 +40,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   bool _showCompaniesTab = true;
   bool _showRoutesTab = true;
   bool _showSmsTab = true;
+  bool _showRentalTab = true;
   int _savedTabIndex = 0;
   int _currentTabIndex = 0;
 
@@ -75,11 +77,13 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     final companies = _canCompaniesList(access);
     final routes = access?.canFleetRoutes == true;
     final sms = PartnerAccess.canOpenPartnersModule(access);
-    final length = (companies ? 1 : 0) + (routes ? 1 : 0) + (sms ? 1 : 0);
+    final rental = PartnerAccess.canOpenPartnersModule(access);
+    final length = (companies ? 1 : 0) + (routes ? 1 : 0) + (sms ? 1 : 0) + (rental ? 1 : 0);
 
     _showCompaniesTab = companies;
     _showRoutesTab = routes;
     _showSmsTab = sms;
+    _showRentalTab = rental;
 
     if (length == 0) {
       _tabs?.removeListener(_onTabChanged);
@@ -116,6 +120,15 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     var i = 0;
     if (_showCompaniesTab) i++;
     if (_showRoutesTab) i++;
+    return i;
+  }
+
+  int _tabIndexRental() {
+    if (!_showRentalTab) return -1;
+    var i = 0;
+    if (_showCompaniesTab) i++;
+    if (_showRoutesTab) i++;
+    if (_showSmsTab) i++;
     return i;
   }
 
@@ -272,6 +285,11 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                       icon: Icon(Icons.sms_outlined, size: 18),
                       text: 'SMS',
                     ),
+                  if (_showRentalTab)
+                    const Tab(
+                      icon: Icon(Icons.car_rental_outlined, size: 18),
+                      text: 'Utleie av bil',
+                    ),
                 ],
               )
             : null,
@@ -328,6 +346,11 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                   ),
                 if (_showSmsTab)
                   PartnerSmsHubScreen(
+                    embedded: true,
+                    partners: _partners,
+                  ),
+                if (_showRentalTab)
+                  VehicleRentalHubScreen(
                     embedded: true,
                     partners: _partners,
                   ),

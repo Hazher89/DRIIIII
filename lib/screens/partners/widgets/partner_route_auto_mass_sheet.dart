@@ -73,6 +73,8 @@ enum _MassTab { allRoutes, drivers, missingShift, importLog, skipped }
 
 enum _RouteQueueFilter { all, missingShift, ready, selected }
 
+enum _DateQueueAction { clearAll, publishNoSms, publishSms }
+
 /// Felles popup: AUTO MASS (manuell PDF) og Ruter fra SAP (auto-import + samme UI).
 class PartnerRouteMassDispatchSheet extends StatefulWidget {
   final List<FleetPartnerVehicleRow> fleet;
@@ -459,21 +461,390 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     setState(() => _dateByShare[share.id] = dn);
   }
 
-  String _publishDatesSummary() {
+  String _publishDatesSummary({Set<String>? routeIds}) {
+    final ids = routeIds ?? _selected;
     final byDay = <DateTime, int>{};
-    for (final id in _selected) {
+    for (final id in ids) {
       final d = _routeDayFor(id);
       byDay[d] = (byDay[d] ?? 0) + 1;
     }
     final keys = byDay.keys.toList()..sort();
     if (keys.isEmpty) return '';
     if (keys.length == 1) {
-      return 'Rutedato: ${DateFormat('EEEE d. MMM yyyy', 'nb').format(keys.first)}';
+      return 'Rutedato: ${DateFormat('EEEE d. MMM yyyy', 'nb').format(keys.first)} (${ids.length} rute(r))';
     }
     final lines = keys
         .map((d) => '• ${DateFormat('EEE d.M.y', 'nb').format(d)}: ${byDay[d]} rute(r)')
         .join('\n');
-    return '${_selected.length} ruter på ${keys.length} datoer:\n$lines';
+    return '${ids.length} ruter på ${keys.length} datoer:\n$lines';
+  }
+
+  Future<({int updated, int unchanged, List<String> missingDateLabels})> _syncAllDatesFromPdfs() async {
+    var updated = 0;
+    var unchanged = 0;
+    final missingDateLabels = <String>[];
+
+    for (final share in _staged) {
+      final label = (share.title ?? share.pdfStoragePath.split('/').last).split('—').last.trim();
+      final pdfText = await RouteShiftResolver.loadPdfTextForShare(share);
+      if (pdfText == null || pdfText.trim().isEmpty) {
+        missingDateLabels.add(label);
+        continue;
+      }
+
+      final parsedDate = RoutePdfTextService.parseRouteDate(pdfText);
+      if (parsedDate == null) {
+        missingDateLabels.add(label);
+        continue;
+      }
+
+      final schedule = RoutePdfTextService.resolveSchedule(
+        pdfText,
+        fallbackDate: parsedDate,
+      );
+      final targetDay = DateTime(
+        schedule.routeDate.year,
+        schedule.routeDate.month,
+        schedule.routeDate.day,
+      );
+      final current = _routeDayFor(share.id);
+      final h = schedule.routeStartAt?.hour ?? share.routeStartAt?.hour ?? 6;
+      final m = schedule.routeStartAt?.minute ?? share.routeStartAt?.minute ?? 0;
+
+      if (current.year == targetDay.year &&
+          current.month == targetDay.month &&
+          current.day == targetDay.day) {
+        unchanged++;
+      } else {
+        await PartnerService.updateShareRouteDay(
+          share: share,
+          day: targetDay,
+          startHour: h,
+          startMinute: m,
+        );
+        updated++;
+      }
+
+      if (mounted) {
+        _dateByShare[share.id] = targetDay;
+        _startByShare[share.id] = TimeOfDay(hour: h, minute: m);
+      }
+    }
+
+    return (updated: updated, unchanged: unchanged, missingDateLabels: missingDateLabels);
+  }
+
+  String _multiLoadNoteFor(Set<String> routeIds) {
+    final byVehicle = <String, List<PartnerRouteShare>>{};
+    for (final id in routeIds) {
+      final share = _staged.where((s) => s.id == id).firstOrNull;
+      final vid = share?.partnerVehicleId;
+      if (vid == null) continue;
+      byVehicle.putIfAbsent(vid, () => []).add(share!);
+    }
+    final multi = byVehicle.entries.where((e) => e.value.length >= 2).toList()
+      ..sort((a, b) => b.value.length.compareTo(a.value.length));
+    if (multi.isEmpty) return '';
+    final lines = multi.take(6).map((e) {
+      final row = _rowForVehicleId(e.key);
+      final mavi = row != null ? MaviUnitCodes.normalize(row.vehicle.unitCode) : '?';
+      return '• $mavi (${e.value.length} last)';
+    }).join('\n');
+    return '\n\n⚠ ${multi.length} sjåfør(er) har 2+ last:\n$lines${multi.length > 6 ? '\n…' : ''}';
+  }
+
+  Future<bool> _confirmPublish({
+    required bool notifyDriver,
+    required Set<String> routeIds,
+    String? dateSyncSummary,
+  }) async {
+    final multiLoadNote = _multiLoadNoteFor(routeIds);
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(notifyDriver ? 'Publiser og varsle?' : 'Publiser uten varsel?'),
+        content: SingleChildScrollView(
+          child: Text(
+            [
+              if (dateSyncSummary != null && dateSyncSummary.isNotEmpty) dateSyncSummary,
+              if (routeIds.length == _staged.length && _staged.isNotEmpty) _multiLoadSummaryLine(),
+              _publishDatesSummary(routeIds: routeIds),
+              multiLoadNote,
+              notifyDriver
+                  ? 'Sender ${routeIds.length} rute(r) med SMS (${_missingPhoneCountFor(routeIds) > 0 ? "${_missingPhoneCountFor(routeIds)} uten telefon — får ikke SMS" : "alle med telefon varsles"}).'
+                  : 'Registrerer ${routeIds.length} rute(r) i kalender uten SMS — synlig som grå «Uten varsel».',
+              'Hver rute publiseres på sin egen rutedato fra PDF.',
+            ].where((s) => s.trim().isNotEmpty).join('\n\n'),
+            style: const TextStyle(height: 1.4),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: notifyDriver
+                  ? DriftProTheme.primaryGreen
+                  : RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
+            ),
+            child: Text(notifyDriver ? 'Publiser med SMS' : 'Publiser uten varsel'),
+          ),
+        ],
+      ),
+    );
+    return confirm == true;
+  }
+
+  int _missingPhoneCountFor(Set<String> routeIds) {
+    var n = 0;
+    final seen = <String>{};
+    for (final id in routeIds) {
+      final share = _staged.where((s) => s.id == id).firstOrNull;
+      final vid = share?.partnerVehicleId;
+      if (vid == null || seen.contains(vid)) continue;
+      seen.add(vid);
+      final acc = _portalByVehicle[vid];
+      final row = share != null ? _rowForShare(share) : null;
+      final phone = acc?.phone ?? row?.vehicle.phone;
+      if (phone == null || phone.trim().length < 8) n++;
+    }
+    return n;
+  }
+
+  Future<void> _executePublish({
+    required Set<String> routeIds,
+    required bool notifyDriver,
+  }) async {
+    final cid = await SupabaseService.getCurrentCompanyId();
+    if (cid == null) return;
+    setState(() => _publishing = true);
+    try {
+      for (final id in routeIds) {
+        final note = _noteByShare[id]?.text.trim();
+        if (note != null && note.isNotEmpty) {
+          await PartnerService.updateRouteShareFields(id, {'notes': note});
+        }
+      }
+      final map = {
+        for (final id in routeIds)
+          if (_effectiveShiftId(id) != null) id: _effectiveShiftId(id)!,
+      };
+      final starts = <String, DateTime?>{};
+      for (final id in routeIds) {
+        final t = _startByShare[id];
+        if (t == null) continue;
+        final day = _routeDayFor(id);
+        starts[id] = DateTime(day.year, day.month, day.day, t.hour, t.minute);
+      }
+      await PartnerService.dispatchRouteShares(
+        companyId: cid,
+        shareIdToShiftId: map,
+        date: routeIds.isNotEmpty ? _routeDayFor(routeIds.first) : _routeDate,
+        shareIdToStartAt: starts,
+        notifyDriver: notifyDriver,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              notifyDriver
+                  ? 'Publisert ${map.length} rute(r). SMS sendt der telefon finnes.'
+                  : 'Registrert ${map.length} rute(r) uten varsel — ingen SMS sendt.',
+            ),
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Publisering feilet: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _publishing = false);
+    }
+  }
+
+  Future<void> _smartPublishFromPdfs({required bool notifyDriver}) async {
+    if (_skipped.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Du har ${_skipped.length} PDF som ikke er tildelt sjåfør. Fordel alle før publisering.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      _setTabIndex(4);
+      return;
+    }
+    if (_staged.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ingen ruter i kø.')),
+      );
+      return;
+    }
+
+    setState(() => _busyUpload = true);
+    String? dateSyncSummary;
+    try {
+      final sync = await _syncAllDatesFromPdfs();
+      await _fillAllShiftsForStaged();
+      if (!mounted) return;
+      setState(() {});
+
+      dateSyncSummary = 'PDF-datoer: ${sync.updated} oppdatert, ${sync.unchanged} uendret'
+          '${sync.missingDateLabels.isNotEmpty ? "\n${sync.missingDateLabels.length} PDF uten «Start date» — bruker eksisterende dato" : ""}';
+
+      final missingShift = _staged.where((s) => _effectiveShiftId(s.id) == null).map((s) => s.id).toList();
+      if (missingShift.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${missingShift.length} rute(r) mangler skift etter PDF-lesing — se fanen «Mangler skift».',
+            ),
+            backgroundColor: Colors.orange.shade800,
+          ),
+        );
+        _setTabIndex(2);
+        return;
+      }
+
+      final routeIds = _staged.map((s) => s.id).toSet();
+      final confirmed = await _confirmPublish(
+        notifyDriver: notifyDriver,
+        routeIds: routeIds,
+        dateSyncSummary: dateSyncSummary,
+      );
+      if (!confirmed || !mounted) return;
+      await _executePublish(routeIds: routeIds, notifyDriver: notifyDriver);
+    } finally {
+      if (mounted) setState(() => _busyUpload = false);
+    }
+  }
+
+  Future<void> _onDateQueueMenuSelected(Object? value) async {
+    if (value == _DateQueueAction.clearAll) {
+      await _clearAllStaged();
+    } else if (value is DateTime) {
+      await _clearStagedForDay(value);
+    } else if (value == _DateQueueAction.publishNoSms) {
+      await _smartPublishFromPdfs(notifyDriver: false);
+    } else if (value == _DateQueueAction.publishSms) {
+      await _smartPublishFromPdfs(notifyDriver: true);
+    }
+  }
+
+  Widget _buildDateQueueMenu(Map<DateTime, List<PartnerRouteShare>> groups) {
+    final busy = _busyUpload || _publishing;
+    return PopupMenuButton<Object>(
+      enabled: !busy,
+      tooltip: 'Dato, tøm og publiser',
+      onSelected: _onDateQueueMenuSelected,
+      itemBuilder: (ctx) {
+        final items = <PopupMenuEntry<Object>>[
+          PopupMenuItem(
+            enabled: false,
+            child: Text(
+              'Tøm ruter',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.grey.shade700),
+            ),
+          ),
+          ...groups.entries.map((e) {
+            final day = e.key;
+            final n = e.value.length;
+            return PopupMenuItem<Object>(
+              value: day,
+              child: Row(
+                children: [
+                  Icon(Icons.delete_sweep_outlined, size: 18, color: Colors.red.shade700),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Tøm ${DateFormat('EEE d.M.y', 'nb').format(day)} ($n)',
+                      style: TextStyle(color: Colors.red.shade800, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const PopupMenuDivider(),
+          PopupMenuItem<Object>(
+            value: _DateQueueAction.clearAll,
+            child: Row(
+              children: [
+                Icon(Icons.delete_forever_outlined, size: 18, color: Colors.red.shade900),
+                const SizedBox(width: 10),
+                Text(
+                  'Tøm alle rutene (${_staged.length})',
+                  style: TextStyle(color: Colors.red.shade900, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+          const PopupMenuDivider(),
+          PopupMenuItem(
+            enabled: false,
+            child: Text(
+              'Publiser til riktige dato (les PDF)',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.grey.shade700),
+            ),
+          ),
+          PopupMenuItem<Object>(
+            value: _DateQueueAction.publishNoSms,
+            child: const Row(
+              children: [
+                Icon(Icons.inventory_2_outlined, size: 18),
+                SizedBox(width: 10),
+                Expanded(child: Text('Publiser alle — uten SMS')),
+              ],
+            ),
+          ),
+          PopupMenuItem<Object>(
+            value: _DateQueueAction.publishSms,
+            child: Row(
+              children: [
+                Icon(Icons.rocket_launch_outlined, size: 18, color: DriftProTheme.primaryGreen),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Publiser alle — med SMS',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: DriftProTheme.primaryGreen),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ];
+        return items;
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.blueGrey.shade300),
+          color: busy ? Colors.grey.shade100 : Colors.white,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.tune, size: 18, color: Colors.blueGrey.shade800),
+            const SizedBox(width: 8),
+            Text(
+              'Dato & publisering (${groups.length} dager)',
+              style: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+                color: busy ? Colors.grey : Colors.blueGrey.shade900,
+              ),
+            ),
+            Icon(Icons.arrow_drop_down, color: Colors.blueGrey.shade700),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _moveStagedDayToDate(DateTime from, DateTime to) async {
@@ -542,6 +913,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   int get _multiLoadDriverCount =>
       _routesByVehicle.values.where((list) => list.length >= 2).length;
+
+  List<MapEntry<String, List<PartnerRouteShare>>> get _multiLoadEntries =>
+      _routesByVehicle.entries.where((e) => e.value.length >= 2).toList()
+        ..sort((a, b) => b.value.length.compareTo(a.value.length));
 
   String? _stowingForShare(PartnerRouteShare share) =>
       _stowingByShare[share.id] ??
@@ -1104,6 +1479,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (mounted) setState(() {});
     final missingShift = _selected.where((id) => _effectiveShiftId(id) == null).toList();
     if (missingShift.isNotEmpty) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -1116,82 +1492,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       return;
     }
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(notifyDriver ? 'Publiser og varsle?' : 'Publiser uten varsel?'),
-        content: Text(
-          '${_multiLoadSummaryLine()}\n\n'
-          '${_publishDatesSummary()}\n\n'
-          '${notifyDriver ? "Sender ${_selected.length} valgte rute(r) med SMS (${_missingPhoneCount > 0 ? "$_missingPhoneCount uten telefon — får ikke SMS" : "alle med telefon varsles"})." : "Registrerer ${_selected.length} rute(r) i kalender uten SMS — synlig som grå «Uten varsel»."}\n\n'
-          'Hver rute publiseres på sin egen rutedato fra PDF (ikke dagens dato i kalenderen). '
-          'Flere PDF med samme MAVI samme dag = flere last (Stowing Lane 1A, 1B, 17B osv.).',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: notifyDriver
-                  ? DriftProTheme.primaryGreen
-                  : RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
-            ),
-            child: Text(notifyDriver ? 'Publiser med SMS' : 'Publiser uten varsel'),
-          ),
-        ],
-      ),
+    final routeIds = Set<String>.from(_selected);
+    final confirmed = await _confirmPublish(
+      notifyDriver: notifyDriver,
+      routeIds: routeIds,
     );
-    if (confirm != true) return;
-
-    final cid = await SupabaseService.getCurrentCompanyId();
-    if (cid == null) return;
-    setState(() => _publishing = true);
-    try {
-      for (final id in _selected) {
-        final note = _noteByShare[id]?.text.trim();
-        if (note != null && note.isNotEmpty) {
-          await PartnerService.updateRouteShareFields(id, {'notes': note});
-        }
-      }
-      final map = {
-        for (final id in _selected)
-          if (_effectiveShiftId(id) != null) id: _effectiveShiftId(id)!,
-      };
-      final starts = <String, DateTime?>{};
-      for (final id in _selected) {
-        final t = _startByShare[id];
-        if (t == null) continue;
-        final day = _routeDayFor(id);
-        starts[id] = DateTime(day.year, day.month, day.day, t.hour, t.minute);
-      }
-      await PartnerService.dispatchRouteShares(
-        companyId: cid,
-        shareIdToShiftId: map,
-        date: _selected.isNotEmpty ? _routeDayFor(_selected.first) : _routeDate,
-        shareIdToStartAt: starts,
-        notifyDriver: notifyDriver,
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              notifyDriver
-                  ? 'Publisert ${map.length} rute(r). SMS sendt der telefon finnes.'
-                  : 'Registrert ${map.length} rute(r) uten varsel — ingen SMS sendt.',
-            ),
-          ),
-        );
-        Navigator.pop(context, true);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Publisering feilet: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _publishing = false);
-    }
+    if (!confirmed || !mounted) return;
+    await _executePublish(routeIds: routeIds, notifyDriver: notifyDriver);
   }
 
   int get _tabIndex => switch (_sheetTab) {
@@ -1285,13 +1592,104 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Sjåfører med flere last'),
+        title: const Text('Sjåfører med 2+ last'),
         content: SingleChildScrollView(
-          child: Text(_multiLoadSummaryLine(), style: const TextStyle(height: 1.4)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Disse sjåførene har flere PDF / last samme dag. Sjekk at fordelingen er rettferdig før publisering.',
+                style: TextStyle(fontSize: 12, height: 1.4, color: Colors.grey.shade800),
+              ),
+              const SizedBox(height: 12),
+              ..._multiLoadEntries.map(_multiLoadDetailTile),
+            ],
+          ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Lukk')),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _setTabIndex(1);
+            },
+            child: const Text('Se per sjåfør'),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _multiLoadDetailTile(MapEntry<String, List<PartnerRouteShare>> entry) {
+    final row = _rowForVehicleId(entry.key);
+    final mavi = row != null ? MaviUnitCodes.normalize(row.vehicle.unitCode) : '?';
+    final partner = row?.partner.name ?? '—';
+    final lanes = entry.value.map(_stowingForShare).whereType<String>().toSet().toList()..sort();
+    final dates = entry.value.map((s) => _routeDayFor(s.id)).toSet().length;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$mavi · $partner', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+          const SizedBox(height: 4),
+          Text(
+            '${entry.value.length} last${dates > 1 ? " · $dates datoer" : ""}${lanes.isNotEmpty ? " · Lane ${lanes.join(", ")}" : ""}',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMultiLoadFairnessPanel() {
+    return Material(
+      color: Colors.orange.shade50,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: _showMultiLoadDetails,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.orange.shade300, width: 1.5),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.layers_outlined, color: Colors.orange.shade900, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '$_multiLoadDriverCount sjåfør(er) med 2+ last — sjekk før publisering',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Colors.orange.shade900),
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: Colors.orange.shade800),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ..._multiLoadEntries.take(4).map(_multiLoadDetailTile),
+              if (_multiLoadEntries.length > 4)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '+ ${_multiLoadEntries.length - 4} til — trykk for full liste',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange.shade900),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1349,6 +1747,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           color: manualOnly ? Colors.orange.shade800 : Colors.grey.shade600,
           hint: manualOnly ? 'Må fordeles' : null,
         ),
+        if (_multiLoadDriverCount > 0)
+          RouteWorkflowMetric(
+            label: '2+ last',
+            value: '$_multiLoadDriverCount',
+            icon: Icons.layers_outlined,
+            color: Colors.orange.shade900,
+            hint: 'Sjåfører med flere PDF samme dag — sjekk rettferdighet',
+          ),
       ],
       sidebar: _buildSidebar(ui),
       guidePanel: _buildWorkflowGuideContent(ui),
@@ -1358,14 +1764,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       tabLabels: const ['Alle ruter', 'Per sjåfør', 'Mangler skift', 'Importlogg', 'Manuell'],
       tabBadges: [
         _staged.isNotEmpty ? _staged.length : null,
-        _driversWithRoutesCount > 0 ? _driversWithRoutesCount : null,
+        _multiLoadDriverCount > 0 ? _multiLoadDriverCount : (_driversWithRoutesCount > 0 ? _driversWithRoutesCount : null),
         missingShift > 0 ? missingShift : null,
         _importLog.isNotEmpty ? _importLog.length : null,
         _skipped.isNotEmpty ? _skipped.length : null,
       ],
       tabBadgeColors: [
         ui.accentDark,
-        ui.accentDark,
+        _multiLoadDriverCount > 0 ? Colors.orange.shade900 : ui.accentDark,
         Colors.red.shade700,
         Colors.grey.shade700,
         Colors.orange.shade800,
@@ -1501,6 +1907,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ],
         ),
         const SizedBox(height: 8),
+        _buildDateQueueMenu(groups),
+        const SizedBox(height: 8),
         ...groups.entries.map((e) => _buildDateGroupCard(e.key, e.value, ui)),
       ],
     );
@@ -1546,11 +1954,6 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   },
                   icon: const Icon(Icons.edit_calendar, size: 16),
                   label: const Text('Flytt alle til dato'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => _clearStagedForDay(day),
-                  icon: Icon(Icons.delete_sweep_outlined, size: 16, color: Colors.red.shade700),
-                  label: Text('Tøm dag', style: TextStyle(color: Colors.red.shade700)),
                 ),
               ],
             ),
@@ -1605,7 +2008,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   Widget? _buildTopBanners() {
     final banners = <Widget>[];
+    if (_multiLoadDriverCount > 0) {
+      banners.add(_buildMultiLoadFairnessPanel());
+    }
     if (_missingShiftCount > 0) {
+      if (banners.isNotEmpty) banners.add(const SizedBox(height: 8));
       banners.add(
         routeShiftAttentionBanner(
           count: _missingShiftCount,
@@ -1635,7 +2042,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       _MassTab.allRoutes =>
         'Flat liste over alle ruter i kø. Bruk filter for å finne ruter uten skift.',
       _MassTab.drivers =>
-        'Ruter gruppert per sjåfør / MAVI. Utvid for notat og detaljer.',
+        _multiLoadDriverCount > 0
+            ? '$_multiLoadDriverCount sjåfører har 2+ last — markert med oransje. Sjekk rettferdig fordeling før publisering.'
+            : 'Ruter gruppert per sjåfør / MAVI. Utvid for notat og detaljer.',
       _MassTab.missingShift =>
         'Kun ruter uten skiftplan — velg skift i kolonnen før publisering.',
       _MassTab.importLog =>
@@ -1672,6 +2081,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           _summaryTile('Med skift', '$_readyShiftCount', Colors.green.shade700),
           _summaryTile('Mangler skift', '$_missingShiftCount', Colors.red.shade700),
           _summaryTile('Valgt', '${_selected.length}', Colors.blueGrey.shade700),
+          if (_multiLoadDriverCount > 0)
+            _summaryTile('2+ last', '$_multiLoadDriverCount', Colors.orange.shade900),
         ],
       ),
     );
@@ -1877,16 +2288,22 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 ? 'Ingen ruter i kø'
                 : selectedMissing > 0
                     ? '$selectedMissing valgte rute(r) mangler skift · $_readyShiftCount OK totalt'
-                    : canPublish
-                        ? '${_selected.length} rute(r) klare til publisering'
-                        : 'Velg ruter og skift før publisering';
+                    : _multiLoadDriverCount > 0 && canPublish
+                        ? '$_multiLoadDriverCount sjåfør med 2+ last — sjekk rettferdighet · ${_selected.length} valgt'
+                        : canPublish
+                            ? '${_selected.length} rute(r) klare til publisering'
+                            : 'Velg ruter og skift før publisering';
 
         final status = Text(
           statusText,
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: selectedMissing > 0 ? Colors.red.shade800 : Colors.grey.shade800,
+            color: selectedMissing > 0
+                ? Colors.red.shade800
+                : _multiLoadDriverCount > 0 && canPublish
+                    ? Colors.orange.shade900
+                    : Colors.grey.shade800,
           ),
         );
 
@@ -1953,13 +2370,25 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
 
     final rows = _showAllDrivers
-        ? _maviFleet
+        ? [..._maviFleet]
         : _maviFleet.where((r) => _staged.any((s) => s.partnerVehicleId == r.vehicle.id)).toList();
+    rows.sort((a, b) {
+      final aMulti = _visibleStaged.where((s) => s.partnerVehicleId == a.vehicle.id).length >= 2;
+      final bMulti = _visibleStaged.where((s) => s.partnerVehicleId == b.vehicle.id).length >= 2;
+      if (aMulti != bMulti) return aMulti ? -1 : 1;
+      final ac = _visibleStaged.where((s) => s.partnerVehicleId == a.vehicle.id).length;
+      final bc = _visibleStaged.where((s) => s.partnerVehicleId == b.vehicle.id).length;
+      return bc.compareTo(ac);
+    });
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
+        if (_multiLoadDriverCount > 0) ...[
+          _buildMultiLoadFairnessPanel(),
+          const SizedBox(height: 10),
+        ],
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -2037,9 +2466,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: routes.isNotEmpty ? ui.accent.withValues(alpha: 0.35) : Colors.grey.shade300,
+          color: multi
+              ? Colors.orange.shade400
+              : routes.isNotEmpty
+                  ? ui.accent.withValues(alpha: 0.35)
+                  : Colors.grey.shade300,
+          width: multi ? 2 : 1,
         ),
-        color: routes.isNotEmpty ? ui.surfaceTint.withValues(alpha: 0.5) : Colors.grey.shade50,
+        color: multi
+            ? Colors.orange.shade50.withValues(alpha: 0.65)
+            : routes.isNotEmpty
+                ? ui.surfaceTint.withValues(alpha: 0.5)
+                : Colors.grey.shade50,
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -2048,14 +2486,40 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           leading: CircleAvatar(
             radius: 16,
-            backgroundColor: routes.isNotEmpty ? ui.accent.withValues(alpha: 0.2) : Colors.grey.shade200,
+            backgroundColor: multi
+                ? Colors.orange.shade100
+                : routes.isNotEmpty
+                    ? ui.accent.withValues(alpha: 0.2)
+                    : Colors.grey.shade200,
             child: Icon(
-              routes.isNotEmpty ? Icons.check : Icons.more_horiz,
+              multi
+                  ? Icons.layers_outlined
+                  : routes.isNotEmpty
+                      ? Icons.check
+                      : Icons.more_horiz,
               size: 18,
-              color: routes.isNotEmpty ? ui.accentDark : Colors.grey,
+              color: multi ? Colors.orange.shade900 : routes.isNotEmpty ? ui.accentDark : Colors.grey,
             ),
           ),
-          title: Text('$mavi · ${row.partner.name}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text('$mavi · ${row.partner.name}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+              ),
+              if (multi)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade800,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${routes.length} LAST',
+                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
+                  ),
+                ),
+            ],
+          ),
           subtitle: Text(
             routes.isEmpty
                 ? 'Venter på PDF'

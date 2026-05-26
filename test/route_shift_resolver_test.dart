@@ -103,6 +103,55 @@ void main() {
     expect(RoutePdfTextService.parseCustomers(text).length, 1);
   });
 
+  test('SAP M0124 — kunde (Rolvsøy) uten +47, 08–16 → Østfold dag', () async {
+    const text = '''
+Start date 26.05.26
+Resource ID NO_O_M0124
+1 4106081371 Ronny Helstad (Rolvsøy) CURB 08:00 16:00
+2 4106094489 Anita Kristiansen (Borgenhaugen) CURB 08:00 16:00
+3 4106087267 Tor Odd Warth (Borgenhaugen) CURB 08:00 16:00
+4 4106086564 Tdm AS (Tistedal) CURB 08:00 16:00
+5 4106094484 Therese Gjessing (Tistedal) CURB 08:00 16:00
+''';
+    final stops = RoutePdfTextService.parseCustomers(text);
+    expect(stops.length, 5);
+    final a = await RouteShiftResolver.analyzePdfText(text);
+    expect(a.bestEffortRegion, 'Østfold');
+    expect(RouteTimeBand.inferFromStops(stops), 'dag');
+  });
+
+  test('SAP M0023 — blandet 08–16 og 16–22 → dag (tidligste start 08:00)', () async {
+    const text = '''
+1 4106116768 Erik Pettersen, Villavegen 4, 2240 Magnor, +47 (95416636) CURB RETG 08:00 16:00
+2 4106102670 Ellen Brandt, Svensrudvegen 19, 2240 Magnor, +47 (97000550) SITES 08:00 16:00
+3 4106089057 Rønnaug Eike, Vålvassvegen 329, 2230 Skotterud, +47 (48168777) SITE RETG 08:00 16:00
+4 4106112745 Asgeir Velten, Kastellvegen 11, 2080 Eidsvoll, +47 (95912451) SITES RETGS DEVUN 16:00 22:00
+''';
+    final stops = RoutePdfTextService.parseCustomers(text);
+    expect(stops.length, 4);
+    expect(RouteTimeBand.inferFromStops(stops), 'dag');
+    final a = await RouteShiftResolver.analyzePdfText(text);
+    expect(a.bestEffortRegion, isNotNull);
+  });
+
+  test('RouteTimeBand — start 16:00 er kveld', () {
+    expect(RouteTimeBand.fromMinutes(16 * 60), 'kveld');
+    expect(RouteTimeBand.fromMinutes(11 * 60 + 30), 'dag');
+    expect(RouteTimeBand.fromMinutes(11 * 60 + 31), 'kveld');
+  });
+
+  test('SAP M0086 — Kolsås 08–13 dag', () async {
+    const text = '''
+Start date 15.04.26
+1 4106137729 Astrid Sævig, Riskegrenna 31, 1352 Kolsås, +47 (99621787) RETG 08:00 13:00
+''';
+    final stops = RoutePdfTextService.parseCustomers(text);
+    expect(stops.length, 1);
+    expect(RouteTimeBand.inferFromStops(stops), 'dag');
+    final a = await RouteShiftResolver.analyzePdfText(text);
+    expect(a.bestEffortRegion, 'Bærum');
+  });
+
   test('SAP Abdallah M0060 — 3 stopp Østfold kveld', () async {
     const text = '''
 1 4106071840 Gro Iversen Herfordts Gate 9 1532 Moss +47 (92061347) 15:00 22:00

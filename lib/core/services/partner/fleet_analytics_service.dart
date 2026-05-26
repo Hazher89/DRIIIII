@@ -72,6 +72,8 @@ class FleetDriverStat {
   final int friDays;
   final double routeVsAvg;
   final double customerVsAvg;
+  final Map<String, int> routesByRegion;
+  final Map<String, int> customersByRegion;
 
   const FleetDriverStat({
     required this.vehicleId,
@@ -83,6 +85,8 @@ class FleetDriverStat {
     required this.friDays,
     this.routeVsAvg = 0,
     this.customerVsAvg = 0,
+    this.routesByRegion = const {},
+    this.customersByRegion = const {},
   });
 
   /// Primær identitet i statistikk — alltid MAVI-nummer.
@@ -99,6 +103,13 @@ class FleetDriverStat {
 
   double get customersPerRoute => routeCount > 0 ? customerCount / routeCount : 0;
 
+  String? get topRegion {
+    if (routesByRegion.isEmpty) return null;
+    return routesByRegion.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+  }
+
+  int get regionCount => routesByRegion.length;
+
   String get description =>
       '$routeCount ${routeCount == 1 ? 'rute' : 'ruter'} · $customerCount ${customerCount == 1 ? 'kunde' : 'kunder'}'
       '${friDays > 0 ? ' · $friDays fri' : ''}';
@@ -109,10 +120,18 @@ enum FleetDriverSortKey {
   routesAsc,
   customersDesc,
   customersAsc,
+  customersPerRouteDesc,
+  customersPerRouteAsc,
   friDesc,
   maviAsc,
+  driverAsc,
+  partnerAsc,
   fairnessDesc,
   fairnessAsc,
+  customerFairnessDesc,
+  customerFairnessAsc,
+  topRegionAsc,
+  regionSpreadDesc,
 }
 
 extension FleetDriverSortKeyX on FleetDriverSortKey {
@@ -134,6 +153,70 @@ extension FleetDriverSortKeyX on FleetDriverSortKey {
         return 'Over snitt (ruter)';
       case FleetDriverSortKey.fairnessAsc:
         return 'Under snitt (ruter)';
+      case FleetDriverSortKey.customersPerRouteDesc:
+        return 'Flest knd/rute';
+      case FleetDriverSortKey.customersPerRouteAsc:
+        return 'Færrest knd/rute';
+      case FleetDriverSortKey.driverAsc:
+        return 'Sjåfør A–Å';
+      case FleetDriverSortKey.partnerAsc:
+        return 'Partner A–Å';
+      case FleetDriverSortKey.customerFairnessDesc:
+        return 'Over snitt (kunder)';
+      case FleetDriverSortKey.customerFairnessAsc:
+        return 'Under snitt (kunder)';
+      case FleetDriverSortKey.topRegionAsc:
+        return 'Område A–Å';
+      case FleetDriverSortKey.regionSpreadDesc:
+        return 'Flest områder';
+    }
+  }
+}
+
+class FleetRegionStat {
+  final String region;
+  final int routeCount;
+  final int customerCount;
+  final int driverCount;
+  final String? topDriverMavi;
+  final String? topDriverName;
+  final int topDriverRoutes;
+
+  const FleetRegionStat({
+    required this.region,
+    required this.routeCount,
+    required this.customerCount,
+    required this.driverCount,
+    this.topDriverMavi,
+    this.topDriverName,
+    this.topDriverRoutes = 0,
+  });
+}
+
+enum FleetRegionSortKey {
+  routesDesc,
+  routesAsc,
+  customersDesc,
+  customersAsc,
+  regionAsc,
+  driversDesc,
+}
+
+extension FleetRegionSortKeyX on FleetRegionSortKey {
+  String get label {
+    switch (this) {
+      case FleetRegionSortKey.routesDesc:
+        return 'Flest ruter';
+      case FleetRegionSortKey.routesAsc:
+        return 'Færrest ruter';
+      case FleetRegionSortKey.customersDesc:
+        return 'Flest kunder';
+      case FleetRegionSortKey.customersAsc:
+        return 'Færrest kunder';
+      case FleetRegionSortKey.regionAsc:
+        return 'Område A–Å';
+      case FleetRegionSortKey.driversDesc:
+        return 'Flest sjåfører';
     }
   }
 }
@@ -160,6 +243,7 @@ extension FleetDriverFilterKeyX on FleetDriverFilterKey {
 class FleetDriverStatsBundle {
   final FleetCalendarPeriod period;
   final List<FleetDriverStat> drivers;
+  final List<FleetRegionStat> regions;
   final int totalRoutes;
   final int totalCustomers;
   final int activeMaviCount;
@@ -170,10 +254,12 @@ class FleetDriverStatsBundle {
   final FleetDriverStat? mostCustomers;
   final FleetDriverStat? leastCustomers;
   final FleetDriverStat? mostFri;
+  final FleetRegionStat? mostActiveRegion;
 
   const FleetDriverStatsBundle({
     required this.period,
     required this.drivers,
+    this.regions = const [],
     required this.totalRoutes,
     required this.totalCustomers,
     required this.activeMaviCount,
@@ -184,6 +270,7 @@ class FleetDriverStatsBundle {
     this.mostCustomers,
     this.leastCustomers,
     this.mostFri,
+    this.mostActiveRegion,
   });
 
   List<FleetDriverStat> filtered({
@@ -244,6 +331,55 @@ class FleetDriverStatsBundle {
         break;
       case FleetDriverSortKey.fairnessAsc:
         copy.sort((a, b) => a.routeVsAvg.compareTo(b.routeVsAvg));
+        break;
+      case FleetDriverSortKey.customersPerRouteDesc:
+        copy.sort((a, b) => b.customersPerRoute.compareTo(a.customersPerRoute));
+        break;
+      case FleetDriverSortKey.customersPerRouteAsc:
+        copy.sort((a, b) => a.customersPerRoute.compareTo(b.customersPerRoute));
+        break;
+      case FleetDriverSortKey.driverAsc:
+        copy.sort((a, b) => (a.displayDriver ?? a.displayMavi).compareTo(b.displayDriver ?? b.displayMavi));
+        break;
+      case FleetDriverSortKey.partnerAsc:
+        copy.sort((a, b) => a.partnerName.compareTo(b.partnerName));
+        break;
+      case FleetDriverSortKey.customerFairnessDesc:
+        copy.sort((a, b) => b.customerVsAvg.compareTo(a.customerVsAvg));
+        break;
+      case FleetDriverSortKey.customerFairnessAsc:
+        copy.sort((a, b) => a.customerVsAvg.compareTo(b.customerVsAvg));
+        break;
+      case FleetDriverSortKey.topRegionAsc:
+        copy.sort((a, b) => (a.topRegion ?? '').compareTo(b.topRegion ?? ''));
+        break;
+      case FleetDriverSortKey.regionSpreadDesc:
+        copy.sort((a, b) => b.regionCount.compareTo(a.regionCount));
+        break;
+    }
+    return copy;
+  }
+
+  static List<FleetRegionStat> sortedRegions(List<FleetRegionStat> list, FleetRegionSortKey key) {
+    final copy = [...list];
+    switch (key) {
+      case FleetRegionSortKey.routesDesc:
+        copy.sort((a, b) => b.routeCount.compareTo(a.routeCount));
+        break;
+      case FleetRegionSortKey.routesAsc:
+        copy.sort((a, b) => a.routeCount.compareTo(b.routeCount));
+        break;
+      case FleetRegionSortKey.customersDesc:
+        copy.sort((a, b) => b.customerCount.compareTo(a.customerCount));
+        break;
+      case FleetRegionSortKey.customersAsc:
+        copy.sort((a, b) => a.customerCount.compareTo(b.customerCount));
+        break;
+      case FleetRegionSortKey.regionAsc:
+        copy.sort((a, b) => a.region.compareTo(b.region));
+        break;
+      case FleetRegionSortKey.driversDesc:
+        copy.sort((a, b) => b.driverCount.compareTo(a.driverCount));
         break;
     }
     return copy;
@@ -631,11 +767,63 @@ class FleetAnalyticsService {
     return !d.isBefore(start) && !d.isAfter(end);
   }
 
+  static String _regionLabelForShare(
+    PartnerRouteShare share,
+    Map<String, String> regionByShiftId,
+  ) {
+    final sid = share.shiftId;
+    if (sid != null) {
+      final fromShift = regionByShiftId[sid];
+      if (fromShift != null && fromShift.trim().isNotEmpty) {
+        return fromShift.trim();
+      }
+    }
+    return 'Ukjent område';
+  }
+
+  static List<FleetRegionStat> _buildRegionStats(List<FleetDriverStat> drivers) {
+    final routesByRegion = <String, int>{};
+    final customersByRegion = <String, int>{};
+    final driversByRegion = <String, Set<String>>{};
+    final topByRegion = <String, ({String mavi, String? driver, int routes})>{};
+
+    for (final d in drivers) {
+      for (final e in d.routesByRegion.entries) {
+        final region = e.key;
+        routesByRegion[region] = (routesByRegion[region] ?? 0) + e.value;
+        driversByRegion.putIfAbsent(region, () => {}).add(d.vehicleId);
+        final cur = topByRegion[region];
+        if (cur == null || e.value > cur.routes) {
+          topByRegion[region] = (mavi: d.displayMavi, driver: d.displayDriver, routes: e.value);
+        }
+      }
+      for (final e in d.customersByRegion.entries) {
+        customersByRegion[e.key] = (customersByRegion[e.key] ?? 0) + e.value;
+      }
+    }
+
+    return routesByRegion.keys
+        .map(
+          (region) => FleetRegionStat(
+            region: region,
+            routeCount: routesByRegion[region] ?? 0,
+            customerCount: customersByRegion[region] ?? 0,
+            driverCount: driversByRegion[region]?.length ?? 0,
+            topDriverMavi: topByRegion[region]?.mavi,
+            topDriverName: topByRegion[region]?.driver,
+            topDriverRoutes: topByRegion[region]?.routes ?? 0,
+          ),
+        )
+        .toList()
+      ..sort((a, b) => b.routeCount.compareTo(a.routeCount));
+  }
+
   static FleetDriverStatsBundle buildDriverStats({
     required FleetCalendarPeriod period,
     required List<PartnerRouteShare> shares,
     required List<PartnerVehicleFleetSnapshot> snapshots,
     required List<FleetPartnerVehicleRow> fleet,
+    List<FleetShiftDefinition> shifts = const [],
     DateTime? referenceNow,
   }) {
     final now = referenceNow ?? DateTime.now();
@@ -653,16 +841,29 @@ class FleetAnalyticsService {
       );
     }
 
+    final regionByShiftId = <String, String>{
+      for (final sh in shifts)
+        if (sh.regionGroup != null && sh.regionGroup!.trim().isNotEmpty) sh.id: sh.regionGroup!.trim(),
+    };
+
     final routesByV = <String, int>{};
     final customersByV = <String, int>{};
+    final routesByVRegion = <String, Map<String, int>>{};
+    final customersByVRegion = <String, Map<String, int>>{};
     final friByV = <String, int>{};
 
     for (final s in shares) {
       if (!_shareInRange(s, start, end)) continue;
       final vid = s.partnerVehicleId;
       if (vid == null) continue;
+      final region = _regionLabelForShare(s, regionByShiftId);
+      final cust = _customersOnShare(s);
       routesByV[vid] = (routesByV[vid] ?? 0) + 1;
-      customersByV[vid] = (customersByV[vid] ?? 0) + _customersOnShare(s);
+      customersByV[vid] = (customersByV[vid] ?? 0) + cust;
+      final rMap = routesByVRegion.putIfAbsent(vid, () => {});
+      rMap[region] = (rMap[region] ?? 0) + 1;
+      final cMap = customersByVRegion.putIfAbsent(vid, () => {});
+      cMap[region] = (cMap[region] ?? 0) + cust;
     }
 
     for (final snap in snapshots) {
@@ -688,6 +889,8 @@ class FleetAnalyticsService {
         routeCount: routesByV[vid] ?? 0,
         customerCount: customersByV[vid] ?? 0,
         friDays: friByV[vid] ?? 0,
+        routesByRegion: Map.unmodifiable(routesByVRegion[vid] ?? const {}),
+        customersByRegion: Map.unmodifiable(customersByVRegion[vid] ?? const {}),
       );
     }).where((d) => d.routeCount > 0 || d.customerCount > 0 || d.friDays > 0).toList();
 
@@ -709,6 +912,8 @@ class FleetAnalyticsService {
             friDays: d.friDays,
             routeVsAvg: d.routeCount - avgRoutes,
             customerVsAvg: d.customerCount - avgCustomers,
+            routesByRegion: d.routesByRegion,
+            customersByRegion: d.customersByRegion,
           ),
         )
         .toList()
@@ -738,9 +943,16 @@ class FleetAnalyticsService {
       mostFri = friList.reduce((a, b) => a.friDays >= b.friDays ? a : b);
     }
 
+    final regions = _buildRegionStats(drivers);
+    FleetRegionStat? mostActiveRegion;
+    if (regions.isNotEmpty) {
+      mostActiveRegion = regions.reduce((a, b) => a.routeCount >= b.routeCount ? a : b);
+    }
+
     return FleetDriverStatsBundle(
       period: period,
       drivers: drivers,
+      regions: regions,
       totalRoutes: totalRoutes,
       totalCustomers: totalCustomers,
       activeMaviCount: fleet.length,
@@ -751,6 +963,7 @@ class FleetAnalyticsService {
       mostCustomers: mostCustomers,
       leastCustomers: leastCustomers,
       mostFri: mostFri,
+      mostActiveRegion: mostActiveRegion,
     );
   }
 }

@@ -99,7 +99,7 @@ class Partner {
           ? DateTime.parse(json['next_audit_at'] as String)
           : null,
       isActive: json['is_active'] as bool? ?? true,
-      routesOwnerOnly: json['routes_owner_only'] as bool? ?? false,
+      routesOwnerOnly: json['routes_owner_only'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
