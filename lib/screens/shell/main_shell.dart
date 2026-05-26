@@ -2,20 +2,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/routing/app_paths.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/constants/app_icons.dart';
 import '../auth/onboarding_screen.dart';
 import '../auth/pending_approval_screen.dart';
-import '../dashboard/dashboard_screen.dart';
-import '../absence/absence_screen.dart';
-import '../tickets/tickets_screen.dart';
-import '../hms/hms_screen.dart';
-import '../surveys/survey_list_screen.dart';
-import '../partners/partners_dashboard_screen.dart';
 import '../partners/partner_shell.dart';
-import '../more/more_screen.dart';
 import '../../models/user_profile.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -23,14 +18,15 @@ import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/user_access.dart';
 
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  final StatefulNavigationShell navigationShell;
+
+  const MainShell({super.key, required this.navigationShell});
 
   @override
   State<MainShell> createState() => _MainShellState();
 }
 
 class _MainShellState extends State<MainShell> {
-  int _currentIndex = 0;
   UserProfile? _profile;
   String? _portalAccountKind;
   bool _isLoadingAccess = true;
@@ -165,29 +161,36 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
-  void _onNavigate(int index) {
+  void _onNavigate(int visibleIndex, List<Map<String, dynamic>> visibleScreens) {
     HapticFeedback.selectionClick();
-    setState(() => _currentIndex = index);
+    final access = visibleScreens[visibleIndex]['access'] as String;
+    final path = AppPaths.pathForAccess(access) ?? AppPaths.dashboard;
+    final branch = AppPaths.branchIndexForPath(path);
+    if (branch != null) {
+      widget.navigationShell.goBranch(branch);
+    }
   }
 
-  /// Naviger til fane som matcher tilgangsnøkkel (f.eks. [AccessKeys.avvik]).
-  void _navigateByAccess(String accessKey) {
-    if (_profile == null) return;
-    final allScreens = _allShellEntries;
-    final visible = allScreens.where((s) => _hasAccess(s['access'] as String)).toList();
-    final idx = visible.indexWhere((s) => s['access'] == accessKey);
-    if (idx >= 0) _onNavigate(idx);
+  int _visibleIndexForCurrentBranch(List<Map<String, dynamic>> visibleScreens) {
+    final branch = widget.navigationShell.currentIndex;
+    if (branch < 0 || branch >= AppPaths.shellTabs.length) return 0;
+    final access = AppPaths.shellTabs[branch].access;
+    final idx = visibleScreens.indexWhere((s) => s['access'] == access);
+    return idx >= 0 ? idx : 0;
   }
 
-  static final _allShellEntries = [
-    {'access': AccessKeys.dashboard},
-    {'access': AccessKeys.surveys},
-    {'access': AccessKeys.fravaer},
-    {'access': AccessKeys.avvik},
-    {'access': AccessKeys.hms},
-    {'access': AccessKeys.partners},
-    {'access': AccessKeys.more},
-  ];
+  void _ensureAllowedRoute(List<Map<String, dynamic>> visibleScreens) {
+    if (visibleScreens.isEmpty || !mounted) return;
+    final branch = widget.navigationShell.currentIndex;
+    if (branch < 0 || branch >= AppPaths.shellTabs.length) return;
+    final currentAccess = AppPaths.shellTabs[branch].access;
+    final allowed = visibleScreens.any((s) => s['access'] == currentAccess);
+    if (!allowed) {
+      final first = visibleScreens.first['access'] as String;
+      final path = AppPaths.pathForAccess(first) ?? AppPaths.dashboard;
+      context.go(path);
+    }
+  }
 
   bool _hasAccess(String key) {
     if (_profile == null) return false;
@@ -234,27 +237,24 @@ class _MainShellState extends State<MainShell> {
 
     final allScreens = [
       {
-        'screen': DashboardScreen(onNavigateByAccess: _navigateByAccess),
         'icon': AppIcons.dashboard,
         'label': AppStrings.navDashboard,
         'access': AccessKeys.dashboard,
       },
-      {'screen': const SurveyListScreen(), 'icon': AppIcons.survey, 'label': AppStrings.navSurveys, 'access': AccessKeys.surveys},
-      {'screen': const AbsenceScreen(), 'icon': AppIcons.absence, 'label': AppStrings.navAbsence, 'access': AccessKeys.fravaer},
-      {'screen': const TicketsScreen(), 'icon': AppIcons.ticket, 'label': AppStrings.navTickets, 'access': AccessKeys.avvik},
-      {'screen': const HmsScreen(), 'icon': AppIcons.hms, 'label': AppStrings.navHMS, 'access': AccessKeys.hms},
-      {'screen': const PartnersDashboardScreen(), 'icon': Icons.handshake_outlined, 'label': AppStrings.navPartners, 'access': AccessKeys.partners},
-      {'screen': const MoreScreen(), 'icon': AppIcons.more, 'label': AppStrings.navMore, 'access': AccessKeys.more},
+      {'icon': AppIcons.survey, 'label': AppStrings.navSurveys, 'access': AccessKeys.surveys},
+      {'icon': AppIcons.absence, 'label': AppStrings.navAbsence, 'access': AccessKeys.fravaer},
+      {'icon': AppIcons.ticket, 'label': AppStrings.navTickets, 'access': AccessKeys.avvik},
+      {'icon': AppIcons.hms, 'label': AppStrings.navHMS, 'access': AccessKeys.hms},
+      {'icon': Icons.handshake_outlined, 'label': AppStrings.navPartners, 'access': AccessKeys.partners},
+      {'icon': AppIcons.more, 'label': AppStrings.navMore, 'access': AccessKeys.more},
     ];
 
-    // Filter screens based on access settings
     final visibleScreens = allScreens.where((s) => _hasAccess(s['access'] as String)).toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureAllowedRoute(visibleScreens));
+    final navIndex = _visibleIndexForCurrentBranch(visibleScreens);
 
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex.clamp(0, visibleScreens.length - 1),
-        children: visibleScreens.map((s) => s['screen'] as Widget).toList(),
-      ),
+      body: widget.navigationShell,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: isDark ? DriftProTheme.cardDark : Colors.white,
@@ -274,7 +274,14 @@ class _MainShellState extends State<MainShell> {
               children: visibleScreens.asMap().entries.map((entry) {
                 final i = entry.key;
                 final s = entry.value;
-                return _buildNavItem(i, s['icon'] as IconData, s['label'] as String, isDark);
+                return _buildNavItem(
+                  i,
+                  s['icon'] as IconData,
+                  s['label'] as String,
+                  isDark,
+                  navIndex: navIndex,
+                  visibleScreens: visibleScreens,
+                );
               }).toList(),
             ),
           ),
@@ -283,10 +290,18 @@ class _MainShellState extends State<MainShell> {
     );
   }
 
-  Widget _buildNavItem(int index, IconData icon, String label, bool isDark, {int? badge}) {
-    final isSelected = _currentIndex == index;
+  Widget _buildNavItem(
+    int index,
+    IconData icon,
+    String label,
+    bool isDark, {
+    required int navIndex,
+    required List<Map<String, dynamic>> visibleScreens,
+    int? badge,
+  }) {
+    final isSelected = navIndex == index;
     return GestureDetector(
-      onTap: () => _onNavigate(index),
+      onTap: () => _onNavigate(index, visibleScreens),
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),

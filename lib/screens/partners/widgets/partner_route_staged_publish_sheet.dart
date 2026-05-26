@@ -35,7 +35,16 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
   final Set<String> _selected = {};
   final Map<String, String> _shiftByShare = {};
   final Map<String, TimeOfDay> _startByShare = {};
+  final Map<String, DateTime> _dateByShare = {};
   final Map<String, TextEditingController> _noteCtrls = {};
+
+  DateTime _routeDayFor(String shareId) {
+    final cached = _dateByShare[shareId];
+    if (cached != null) return cached;
+    final share = _staged.where((s) => s.id == shareId).firstOrNull;
+    if (share == null) return widget.routeDate;
+    return PartnerService.routeDayForShare(share);
+  }
 
   FleetPartnerVehicleRow? _rowForShare(PartnerRouteShare share) {
     final vid = share.partnerVehicleId;
@@ -85,7 +94,9 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
         _selected
           ..clear()
           ..addAll(staged.map((s) => s.id));
+        _dateByShare.clear();
         for (final s in staged) {
+          _dateByShare[s.id] = PartnerService.routeDayForShare(s);
           _shiftByShare[s.id] = s.shiftId ?? defaultShift ?? '';
           _startByShare[s.id] = s.routeStartAt != null
               ? TimeOfDay.fromDateTime(s.routeStartAt!.toLocal())
@@ -133,7 +144,8 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
       final partner = row?.partner.name ?? '';
       final shiftName = widget.shifts.where((s) => s.id == _shiftByShare[id]).map((s) => s.name).firstOrNull ?? '—';
       final t = _startByShare[id] ?? const TimeOfDay(hour: 6, minute: 0);
-      lines.add('• $partner · $mavi — $shiftName, start ${t.format(context)}');
+      final dayLabel = DateFormat('d.M.y').format(_routeDayFor(id));
+      lines.add('• $dayLabel · $partner · $mavi — $shiftName, start ${t.format(context)}');
     }
 
     final ok = await showDialog<bool>(
@@ -189,18 +201,13 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
       final starts = <String, DateTime?>{};
       for (final id in _selected) {
         final t = _startByShare[id] ?? const TimeOfDay(hour: 6, minute: 0);
-        starts[id] = DateTime(
-          widget.routeDate.year,
-          widget.routeDate.month,
-          widget.routeDate.day,
-          t.hour,
-          t.minute,
-        );
+        final day = _routeDayFor(id);
+        starts[id] = DateTime(day.year, day.month, day.day, t.hour, t.minute);
       }
       await PartnerService.dispatchRouteShares(
         companyId: widget.companyId,
         shareIdToShiftId: map,
-        date: widget.routeDate,
+        date: _selected.isNotEmpty ? _routeDayFor(_selected.first) : widget.routeDate,
         shareIdToStartAt: starts,
       );
       if (mounted) {
@@ -243,8 +250,13 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
         children: [
           Text('Publiser kladd-ruter', style: DriftProTheme.headingMd),
           Text(
-            'Rutedato: ${DateFormat('d. MMM yyyy', 'nb').format(widget.routeDate)} · '
-            '${_staged.length} i kø · ${_selected.length} valgt',
+            () {
+              final groups = PartnerService.groupSharesByRouteDay(_staged);
+              final datePart = groups.length <= 1
+                  ? 'Rutedato: ${DateFormat('d. MMM yyyy', 'nb').format(groups.keys.firstOrNull ?? widget.routeDate)}'
+                  : '${groups.length} ulike datoer i kø';
+              return '$datePart · ${_staged.length} i kø · ${_selected.length} valgt';
+            }(),
             style: TextStyle(color: Colors.grey[700], fontSize: 12),
           ),
           const SizedBox(height: 12),

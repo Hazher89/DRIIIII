@@ -15,4 +15,7 @@ class SupabaseConfig {
   static const String documentsBucket = 'documents';
   static const String sjaBucket = 'sja';
   static const String riskBucket = 'risk-assessments';
+
+  static bool get isConfigured =>
+      !url.startsWith('YOUR_') && !anonKey.startsWith('YOUR_');
 }

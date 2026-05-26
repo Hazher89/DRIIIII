@@ -8,6 +8,7 @@ import '../../core/auth/employee_oauth_sign_in.dart';
 import '../../core/services/employee_auth_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
+import '../../core/config/driftpro_client.dart';
 import '../../core/theme/app_theme.dart';
 
 /// Første valg: MAVI-ansatte (OAuth) eller samarbeidspartner (brukernavn/passord).
@@ -47,7 +48,7 @@ class AuthGateScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'DriftPro',
+                      DriftProClient.displayName,
                       style: DriftProTheme.headingLg.copyWith(
                         fontSize: 40,
                         fontWeight: FontWeight.w900,
@@ -56,7 +57,10 @@ class AuthGateScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Velg hvordan du logger inn',
+                      DriftProClient.isDesktop
+                          ? '${DriftProClient.tagline}\nVelg hvordan du logger inn'
+                          : 'Velg hvordan du logger inn',
+                      textAlign: TextAlign.center,
                       style: DriftProTheme.bodyMd.copyWith(
                         color: isDark ? Colors.white70 : Colors.grey[700],
                       ),

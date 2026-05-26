@@ -33,7 +33,7 @@ class SapRouteImportService {
       partnerById.putIfAbsent(p.id, () => p);
     }
 
-    final day = DateTime(routeDate.year, routeDate.month, routeDate.day);
+    final fallbackDay = DateTime(routeDate.year, routeDate.month, routeDate.day);
     final lines = <SapRouteImportLine>[];
     final skippedItems = <SapRouteImportSkippedItem>[];
     var imported = 0;
@@ -119,13 +119,15 @@ class SapRouteImportService {
           continue;
         }
 
+        final bundle = RoutePdfTextService.parseBundle(bytes, fallbackDate: fallbackDay);
         final shareId = await PartnerService.createStagedRouteShareFromPdf(
           companyId: companyId,
           partner: partner,
           vehicle: vehicle,
           fileName: item.fileName,
           bytes: bytes,
-          routeDate: day,
+          routeDate: bundle.schedule.routeDate,
+          parsed: bundle,
         );
 
         await PartnerService.markSapRouteInboxImported(

@@ -74,7 +74,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   static const double _rowHeight = 100;
   static const double _sidebarW = 232;
-  static const double _dayColW = 128;
+  static const double _dayColW = 140;
 
   @override
   void initState() {
@@ -246,6 +246,55 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       final rs = s.routeStartAt != null ? _dayOnly(s.routeStartAt!.toLocal()) : null;
       return sd == dn || rs == dn;
     }).length;
+  }
+
+  Future<void> _clearAllRoutesForDay(DateTime day) async {
+    final cid = await SupabaseService.getCurrentCompanyId();
+    if (cid == null || !mounted) return;
+    final n = _weekRouteCount(day);
+    if (n == 0) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tøm hele dagen?'),
+        content: Text(
+          'Fjerner alle $n rute(r) fra alle sjåfører på '
+          '${DateFormat('EEEE d. MMMM yyyy', 'nb').format(day)}.\n\n'
+          'Kladd og publiserte ruter slettes. Dette kan ikke angres.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
+            child: const Text('Tøm dag'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final removed = await PartnerService.clearRouteSharesForCompanyDay(
+        companyId: cid,
+        day: day,
+      );
+      widget.onChanged?.call();
+      await _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fjernet $removed rute(r) fra ${DateFormat('d.M.y', 'nb').format(day)}')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke tømme dag: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Color _shiftColor(String? shiftId) {
@@ -628,6 +677,18 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         icon: const Icon(Icons.event_outlined, size: 18),
                         label: Text('Dag: ${DateFormat('d.M.y', 'nb').format(_focusDay)}'),
                       ),
+                      if (_weekRouteCount(_focusDay) > 0)
+                        FilledButton.icon(
+                          onPressed: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.red.shade700,
+                            foregroundColor: Colors.white,
+                          ),
+                          icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                          label: Text(
+                            'Tøm dag (${_weekRouteCount(_focusDay)} ruter)',
+                          ),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 10),
@@ -829,7 +890,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     children: [
                       // Day headers (horizontal scroll)
                       SizedBox(
-                        height: 62,
+                        height: 96,
                         child: SingleChildScrollView(
                           controller: _headerH,
                           scrollDirection: Axis.horizontal,
@@ -846,11 +907,11 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                                     color: isToday ? Colors.lightBlue.withValues(alpha: 0.12) : null,
                                     border: Border(right: BorderSide(color: borderCol)),
                                   ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                                  alignment: Alignment.centerLeft,
+                                  padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
+                                  alignment: Alignment.topLeft,
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    mainAxisAlignment: MainAxisAlignment.start,
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Text(
@@ -871,8 +932,42 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                                       Text(
                                         '$n ruter',
                                         maxLines: 1,
-                                        style: TextStyle(fontSize: 9, height: 1.1, color: Colors.grey[700]),
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 9, height: 1.2, color: Colors.grey[700]),
                                       ),
+                                      if (n > 0) ...[
+                                        const SizedBox(height: 3),
+                                        Material(
+                                          color: Colors.red.shade50,
+                                          borderRadius: BorderRadius.circular(6),
+                                          child: InkWell(
+                                            onTap: _busy ? null : () => _clearAllRoutesForDay(d),
+                                            borderRadius: BorderRadius.circular(6),
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                                              child: Row(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                children: [
+                                                  Icon(Icons.delete_sweep_outlined, size: 13, color: Colors.red.shade800),
+                                                  const SizedBox(width: 3),
+                                                  Flexible(
+                                                    child: Text(
+                                                      'Tøm',
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        fontSize: 10,
+                                                        fontWeight: FontWeight.w800,
+                                                        color: Colors.red.shade800,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 );

@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>DriftPro trenger posisjon for GPS-sporing under levering.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>DriftPro trenger kamera for strekkodeskann i lageret.</string>
 </dict>
 </plist>

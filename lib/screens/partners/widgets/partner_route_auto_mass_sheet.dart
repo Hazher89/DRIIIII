@@ -123,6 +123,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   List<_PdfAssignmentRow> _importLog = [];
   final Map<String, String> _stowingByShare = {};
   late DateTime _routeDate;
+  final Map<String, DateTime> _dateByShare = {};
+  DateTime? _filterDay;
   _MassTab _sheetTab = _MassTab.allRoutes;
   _RouteQueueFilter _queueFilter = _RouteQueueFilter.all;
   bool _sapSyncing = false;
@@ -149,14 +151,34 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   int get _readyShiftCount => _staged.length - _missingShiftCount;
 
+  DateTime _routeDayFor(String shareId) {
+    final cached = _dateByShare[shareId];
+    if (cached != null) return cached;
+    final share = _staged.where((s) => s.id == shareId).firstOrNull;
+    if (share == null) return _routeDate;
+    return PartnerService.routeDayForShare(share);
+  }
+
+  Map<DateTime, List<PartnerRouteShare>> get _stagedByDate =>
+      PartnerService.groupSharesByRouteDay(_staged);
+
+  bool get _hasMultipleRouteDates => _stagedByDate.length > 1;
+
+  Iterable<PartnerRouteShare> get _visibleStaged {
+    if (_filterDay == null) return _staged;
+    return _staged.where((s) => _routeDayFor(s.id) == _filterDay);
+  }
+
   List<PartnerRouteShare> get _filteredQueueRoutes {
+    final base = _visibleStaged.toList();
     final list = switch (_queueFilter) {
-      _RouteQueueFilter.all => List<PartnerRouteShare>.from(_staged),
-      _RouteQueueFilter.missingShift => _routesMissingShift,
+      _RouteQueueFilter.all => List<PartnerRouteShare>.from(base),
+      _RouteQueueFilter.missingShift =>
+        base.where((s) => _effectiveShiftId(s.id) == null).toList(),
       _RouteQueueFilter.ready =>
-        _staged.where((s) => _effectiveShiftId(s.id) != null).toList(),
+        base.where((s) => _effectiveShiftId(s.id) != null).toList(),
       _RouteQueueFilter.selected =>
-        _staged.where((s) => _selected.contains(s.id)).toList(),
+        base.where((s) => _selected.contains(s.id)).toList(),
     };
     list.sort((a, b) {
       final am = _effectiveShiftId(a.id) == null;
@@ -382,7 +404,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         _shiftByShare
           ..clear()
           ..addAll(shiftById);
+        _dateByShare.clear();
         for (final s in staged) {
+          _dateByShare[s.id] = PartnerService.routeDayForShare(s);
           _startByShare.putIfAbsent(s.id, () {
             if (s.routeStartAt != null) {
               return TimeOfDay(hour: s.routeStartAt!.hour, minute: s.routeStartAt!.minute);
@@ -393,6 +417,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           final lane = RoutePdfTextService.parseStowingLaneFromNotes(s.notes) ??
               RoutePdfTextService.parseStowingLane(s.pdfSearchText ?? '');
           if (lane != null) _stowingByShare[s.id] = lane;
+        }
+        if (staged.isNotEmpty) {
+          final groups = PartnerService.groupSharesByRouteDay(staged);
+          _routeDate = groups.keys.first;
         }
         if (!_initialTabSet && _routesMissingShift.isNotEmpty) {
           _sheetTab = _MassTab.missingShift;
@@ -418,9 +446,93 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     return ids.length;
   }
 
+  Future<void> _setShareRouteDay(PartnerRouteShare share, DateTime day) async {
+    final dn = DateTime(day.year, day.month, day.day);
+    final start = _startByShare[share.id];
+    await PartnerService.updateShareRouteDay(
+      share: share,
+      day: dn,
+      startHour: start?.hour,
+      startMinute: start?.minute,
+    );
+    if (!mounted) return;
+    setState(() => _dateByShare[share.id] = dn);
+  }
+
+  String _publishDatesSummary() {
+    final byDay = <DateTime, int>{};
+    for (final id in _selected) {
+      final d = _routeDayFor(id);
+      byDay[d] = (byDay[d] ?? 0) + 1;
+    }
+    final keys = byDay.keys.toList()..sort();
+    if (keys.isEmpty) return '';
+    if (keys.length == 1) {
+      return 'Rutedato: ${DateFormat('EEEE d. MMM yyyy', 'nb').format(keys.first)}';
+    }
+    final lines = keys
+        .map((d) => '• ${DateFormat('EEE d.M.y', 'nb').format(d)}: ${byDay[d]} rute(r)')
+        .join('\n');
+    return '${_selected.length} ruter på ${keys.length} datoer:\n$lines';
+  }
+
+  Future<void> _moveStagedDayToDate(DateTime from, DateTime to) async {
+    final targets = _staged.where((s) => _routeDayFor(s.id) == from).toList();
+    if (targets.isEmpty) return;
+    for (final s in targets) {
+      await _setShareRouteDay(s, to);
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${targets.length} rute(r) flyttet til ${DateFormat('d.M.y', 'nb').format(to)}')),
+      );
+    }
+  }
+
+  Future<void> _clearStagedForDay(DateTime day) async {
+    final targets = _staged.where((s) => _routeDayFor(s.id) == day).toList();
+    if (targets.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tøm dag fra kø?'),
+        content: Text(
+          'Fjerner ${targets.length} kladd-rute(r) for '
+          '${DateFormat('EEEE d. MMM yyyy', 'nb').format(day)} fra alle sjåfører. '
+          'Dette kan ikke angres.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
+            child: const Text('Tøm dag'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busyUpload = true);
+    try {
+      for (final s in targets) {
+        await PartnerService.deleteRouteShare(s);
+        _dateByShare.remove(s.id);
+        _selected.remove(s.id);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fjernet ${targets.length} rute(r) fra køen')),
+        );
+      }
+      await _reload();
+    } finally {
+      if (mounted) setState(() => _busyUpload = false);
+    }
+  }
+
   Map<String, List<PartnerRouteShare>> get _routesByVehicle {
     final map = <String, List<PartnerRouteShare>>{};
-    for (final s in _staged) {
+    for (final s in _visibleStaged) {
       final vid = s.partnerVehicleId;
       if (vid == null) continue;
       map.putIfAbsent(vid, () => []).add(s);
@@ -1010,7 +1122,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         title: Text(notifyDriver ? 'Publiser og varsle?' : 'Publiser uten varsel?'),
         content: Text(
           '${_multiLoadSummaryLine()}\n\n'
+          '${_publishDatesSummary()}\n\n'
           '${notifyDriver ? "Sender ${_selected.length} valgte rute(r) med SMS (${_missingPhoneCount > 0 ? "$_missingPhoneCount uten telefon — får ikke SMS" : "alle med telefon varsles"})." : "Registrerer ${_selected.length} rute(r) i kalender uten SMS — synlig som grå «Uten varsel»."}\n\n'
+          'Hver rute publiseres på sin egen rutedato fra PDF (ikke dagens dato i kalenderen). '
           'Flere PDF med samme MAVI samme dag = flere last (Stowing Lane 1A, 1B, 17B osv.).',
         ),
         actions: [
@@ -1046,14 +1160,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       final starts = <String, DateTime?>{};
       for (final id in _selected) {
         final t = _startByShare[id];
-        if (t != null) {
-          starts[id] = DateTime(_routeDate.year, _routeDate.month, _routeDate.day, t.hour, t.minute);
-        }
+        if (t == null) continue;
+        final day = _routeDayFor(id);
+        starts[id] = DateTime(day.year, day.month, day.day, t.hour, t.minute);
       }
       await PartnerService.dispatchRouteShares(
         companyId: cid,
         shareIdToShiftId: map,
-        date: _routeDate,
+        date: _selected.isNotEmpty ? _routeDayFor(_selected.first) : _routeDate,
         shareIdToStartAt: starts,
         notifyDriver: notifyDriver,
       );
@@ -1313,42 +1427,144 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
-  Widget _buildActionsRow(_MassUi ui) {
+  Widget _buildMultiDatePanel(_MassUi ui) {
+    if (_staged.isEmpty) {
+      return OutlinedButton.icon(
+        onPressed: () async {
+          final d = await showDatePicker(
+            context: context,
+            initialDate: _routeDate,
+            firstDate: DateTime.now().subtract(const Duration(days: 30)),
+            lastDate: DateTime.now().add(const Duration(days: 365)),
+          );
+          if (d != null) setState(() => _routeDate = DateTime(d.year, d.month, d.day));
+        },
+        icon: const Icon(Icons.event_outlined, size: 20),
+        label: Text(
+          'Standarddato for nye PDF: ${DateFormat('d. MMM yyyy', 'nb').format(_routeDate)}',
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      );
+    }
+
+    final groups = _stagedByDate;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        OutlinedButton.icon(
-          onPressed: () async {
-            final d = await showDatePicker(
-              context: context,
-              initialDate: _routeDate,
-              firstDate: DateTime.now().subtract(const Duration(days: 7)),
-              lastDate: DateTime.now().add(const Duration(days: 90)),
-            );
-            if (d != null) {
-              setState(() => _routeDate = d);
-              await _reload();
-            }
-          },
-          icon: const Icon(Icons.event_outlined, size: 20),
-          label: Align(
-            alignment: Alignment.centerLeft,
-            child: Column(
+        if (_hasMultipleRouteDates)
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.amber.shade300),
+            ),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Rutedato', style: TextStyle(fontSize: 10)),
-                Text(
-                  DateFormat('EEEE d. MMM yyyy', 'nb').format(_routeDate),
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                Icon(Icons.date_range, color: Colors.amber.shade900, size: 22),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '${_staged.length} ruter fordelt på ${groups.length} datoer. '
+                    'Publisering bruker dato fra hver PDF — ikke «i dag».',
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.35,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.amber.shade900,
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          style: OutlinedButton.styleFrom(
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          ),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilterChip(
+              label: Text('Alle (${_staged.length})'),
+              selected: _filterDay == null,
+              onSelected: (_) => setState(() => _filterDay = null),
+            ),
+            ...groups.entries.map((e) {
+              final day = e.key;
+              final n = e.value.length;
+              return FilterChip(
+                label: Text('${DateFormat('EEE d.M', 'nb').format(day)} ($n)'),
+                selected: _filterDay == day,
+                onSelected: (_) => setState(() => _filterDay = _filterDay == day ? null : day),
+              );
+            }),
+          ],
         ),
+        const SizedBox(height: 8),
+        ...groups.entries.map((e) => _buildDateGroupCard(e.key, e.value, ui)),
+      ],
+    );
+  }
+
+  Widget _buildDateGroupCard(DateTime day, List<PartnerRouteShare> routes, _MassUi ui) {
+    final selectedOnDay = routes.where((s) => _selected.contains(s.id)).length;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    DateFormat('EEEE d. MMMM yyyy', 'nb').format(day),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  ),
+                ),
+                Text(
+                  '${routes.length} rute(r) · $selectedOnDay valgt',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: context,
+                      initialDate: day,
+                      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (d != null) await _moveStagedDayToDate(day, d);
+                  },
+                  icon: const Icon(Icons.edit_calendar, size: 16),
+                  label: const Text('Flytt alle til dato'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => _clearStagedForDay(day),
+                  icon: Icon(Icons.delete_sweep_outlined, size: 16, color: Colors.red.shade700),
+                  label: Text('Tøm dag', style: TextStyle(color: Colors.red.shade700)),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionsRow(_MassUi ui) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildMultiDatePanel(ui),
         const SizedBox(height: 10),
         FilledButton.icon(
           onPressed: _isSap
@@ -1806,7 +2022,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   Widget _buildDriverSection(FleetPartnerVehicleRow row, _MassUi ui) {
     final vid = row.vehicle.id;
-    final routes = _staged.where((s) => s.partnerVehicleId == vid).toList();
+    final routes = _visibleStaged.where((s) => s.partnerVehicleId == vid).toList();
     final mavi = MaviUnitCodes.normalize(row.vehicle.unitCode);
     final portal = _portalByVehicle[vid];
     final phone = portal?.phone ?? row.vehicle.phone;
@@ -1874,6 +2090,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final fileLabel = (share.title ?? share.pdfStoragePath.split('/').last).split('—').last.trim();
     final start = _startByShare[share.id] ?? const TimeOfDay(hour: 6, minute: 0);
     final startLabel = '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}';
+    final routeDay = _routeDayFor(share.id);
+    final dateLabel = DateFormat('EEE d.M.y', 'nb').format(routeDay);
     final shiftId = _effectiveShiftId(share.id);
     final shiftMissing = shiftId == null;
     final shiftName = _shiftLabel(shiftId);
@@ -1908,7 +2126,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   children: [
                     Text(fileLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
                     Text(
-                      lane != null ? 'Stowing Lane $lane · $mavi' : 'MAVI $mavi',
+                      '$dateLabel · ${lane != null ? 'Lane $lane' : 'MAVI $mavi'}',
                       style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
                     ),
                   ],
@@ -1952,6 +2170,23 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           const SizedBox(height: 8),
           Row(
             children: [
+              Expanded(
+                flex: 2,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: routeDay,
+                      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                      lastDate: DateTime.now().add(const Duration(days: 365)),
+                    );
+                    if (picked != null) await _setShareRouteDay(share, picked);
+                  },
+                  icon: const Icon(Icons.event, size: 18),
+                  label: Text(dateLabel, overflow: TextOverflow.ellipsis),
+                ),
+              ),
+              const SizedBox(width: 8),
               Expanded(
                 flex: 3,
                 child: DropdownButtonFormField<String>(

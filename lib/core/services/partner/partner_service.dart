@@ -437,7 +437,56 @@ class PartnerService {
   /// Kalenderdag for en rute — prioriterer planlagt start, ellers share_date.
   static DateTime routeDayForShare(PartnerRouteShare share) {
     final base = share.routeStartAt?.toLocal() ?? share.shareDate;
-    return DateTime(base.year, base.month, base.day);
+    return _dayOnly(base);
+  }
+
+  /// Grupperer ruter etter kalenderdag (sortert kronologisk).
+  static Map<DateTime, List<PartnerRouteShare>> groupSharesByRouteDay(
+    List<PartnerRouteShare> shares,
+  ) {
+    final buckets = <DateTime, List<PartnerRouteShare>>{};
+    for (final s in shares) {
+      final d = routeDayForShare(s);
+      buckets.putIfAbsent(d, () => []).add(s);
+    }
+    final keys = buckets.keys.toList()..sort();
+    return {for (final k in keys) k: buckets[k]!};
+  }
+
+  /// Oppdaterer [share_date] og justerer [route_start_at] til samme dag.
+  static Future<void> updateShareRouteDay({
+    required PartnerRouteShare share,
+    required DateTime day,
+    int? startHour,
+    int? startMinute,
+  }) async {
+    final dn = _dayOnly(day);
+    final h = startHour ?? share.routeStartAt?.toLocal().hour ?? 6;
+    final m = startMinute ?? share.routeStartAt?.toLocal().minute ?? 0;
+    await updateRouteShareFields(share.id, {
+      'share_date': dn.toIso8601String().split('T').first,
+      'route_start_at': DateTime(dn.year, dn.month, dn.day, h, m).toUtc().toIso8601String(),
+    });
+  }
+
+  /// Sletter alle ruter på en dag (kladd + publiserte) og nullstiller snapshots.
+  static Future<int> clearRouteSharesForCompanyDay({
+    required String companyId,
+    required DateTime day,
+    bool stagedOnly = false,
+  }) async {
+    if (!_ok) return 0;
+    final dn = _dayOnly(day);
+    final shares = await fetchRouteSharesForCalendarWindow(
+      companyId: companyId,
+      fromDay: dn,
+      toDay: dn,
+    );
+    final targets = stagedOnly ? shares.where((s) => s.isStaged).toList() : shares;
+    for (final s in targets) {
+      await deleteRouteShare(s);
+    }
+    return targets.length;
   }
 
   /// Fjerner rute-PDF fra bil og nullstiller flåtesnapshot.
@@ -703,12 +752,13 @@ class PartnerService {
     final starts = <String, DateTime?>{};
 
     for (final s in staged) {
+      final day = routeDayForShare(s);
       map[s.id] = s.shiftId ?? fallbackShift;
       starts[s.id] = s.routeStartAt ??
           DateTime(
-            routeDate.year,
-            routeDate.month,
-            routeDate.day,
+            day.year,
+            day.month,
+            day.day,
             defaultStartHour,
             defaultStartMinute,
           );
@@ -717,7 +767,7 @@ class PartnerService {
     await dispatchRouteShares(
       companyId: companyId,
       shareIdToShiftId: map,
-      date: routeDate,
+      date: staged.isNotEmpty ? routeDayForShare(staged.first) : routeDate,
       shareIdToStartAt: starts,
     );
     return staged.length;

@@ -40,9 +40,18 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
   final Set<String> _selected = {};
   final Map<String, String> _shiftByShare = {};
   final Map<String, TimeOfDay?> _startByShare = {};
+  final Map<String, DateTime> _dateByShare = {};
   List<FleetShiftDefinition> _shifts = [];
   Map<String, PartnerPortalAccount> _portalByVehicle = {};
   DateTime _routeDate = DateTime.now();
+
+  DateTime _routeDayFor(String shareId) {
+    final cached = _dateByShare[shareId];
+    if (cached != null) return cached;
+    final share = _staged.where((s) => s.id == shareId).firstOrNull;
+    if (share == null) return _routeDate;
+    return PartnerService.routeDayForShare(share);
+  }
 
   @override
   void initState() {
@@ -94,7 +103,9 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
         _shiftByShare
           ..clear()
           ..addAll(shiftById);
+        _dateByShare.clear();
         for (final s in staged) {
+          _dateByShare[s.id] = PartnerService.routeDayForShare(s);
           _startByShare.putIfAbsent(s.id, () {
             if (s.routeStartAt != null) {
               return TimeOfDay(
@@ -104,6 +115,9 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
             }
             return const TimeOfDay(hour: 6, minute: 0);
           });
+        }
+        if (staged.isNotEmpty) {
+          _routeDate = PartnerService.groupSharesByRouteDay(staged).keys.first;
         }
         _loading = false;
       });
@@ -272,8 +286,9 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
           : '—';
       final t = _startByShare[id] ?? const TimeOfDay(hour: 6, minute: 0);
       final startStr = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+      final dayLabel = DateFormat('d.M.y').format(_routeDayFor(id));
       if (seenVehicle.add(share.partnerVehicleId ?? id)) {
-        lines.add('• $partner · $mavi — skift «$shiftName», start $startStr');
+        lines.add('• $dayLabel · $partner · $mavi — skift «$shiftName», start $startStr');
       }
     }
 
@@ -326,14 +341,14 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
       final starts = <String, DateTime?>{};
       for (final id in _selected) {
         final t = _startByShare[id];
-        if (t != null) {
-          starts[id] = DateTime(_routeDate.year, _routeDate.month, _routeDate.day, t.hour, t.minute);
-        }
+        if (t == null) continue;
+        final day = _routeDayFor(id);
+        starts[id] = DateTime(day.year, day.month, day.day, t.hour, t.minute);
       }
       await PartnerService.dispatchRouteShares(
         companyId: cid,
         shareIdToShiftId: map,
-        date: _routeDate,
+        date: _selected.isNotEmpty ? _routeDayFor(_selected.first) : _routeDate,
         shareIdToStartAt: starts,
       );
       if (mounted) {
@@ -412,19 +427,20 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
               ],
             ),
             const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () async {
-                final d = await showDatePicker(
-                  context: context,
-                  initialDate: _routeDate,
-                  firstDate: DateTime.now().subtract(const Duration(days: 7)),
-                  lastDate: DateTime.now().add(const Duration(days: 90)),
-                );
-                if (d != null) setState(() => _routeDate = d);
-              },
-              icon: const Icon(Icons.calendar_today, size: 18),
-              label: Text('Rutedato: ${DateFormat('d. MMM yyyy', 'nb').format(_routeDate)}'),
-            ),
+            if (PartnerService.groupSharesByRouteDay(_staged).length > 1)
+              Container(
+                padding: const EdgeInsets.all(10),
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.amber.shade300),
+                ),
+                child: Text(
+                  '${_staged.length} ruter på ${PartnerService.groupSharesByRouteDay(_staged).length} datoer — publiseres per PDF-dato.',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.amber.shade900),
+                ),
+              ),
             const SizedBox(height: 12),
             _statusBanner(vehicleCount, selectedCount),
             const SizedBox(height: 10),
@@ -591,22 +607,56 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
                         },
                       ),
                       const SizedBox(height: 6),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: const Text('Starttid', style: TextStyle(fontSize: 12)),
-                        subtitle: Text(
-                          () {
-                            final t = _startByShare[share.id] ?? const TimeOfDay(hour: 6, minute: 0);
-                            return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-                          }(),
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        trailing: const Icon(Icons.schedule, size: 20),
-                        onTap: () async {
-                          final t = _startByShare[share.id] ?? const TimeOfDay(hour: 6, minute: 0);
-                          final picked = await showTimePicker(context: context, initialTime: t);
-                          if (picked != null) setState(() => _startByShare[share.id] = picked);
-                        },
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Rutedato', style: TextStyle(fontSize: 12)),
+                              subtitle: Text(
+                                DateFormat('EEE d.M.y', 'nb').format(_routeDayFor(share.id)),
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              trailing: const Icon(Icons.event, size: 20),
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: _routeDayFor(share.id),
+                                  firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                                );
+                                if (picked == null) return;
+                                final t = _startByShare[share.id] ?? const TimeOfDay(hour: 6, minute: 0);
+                                await PartnerService.updateShareRouteDay(
+                                  share: share,
+                                  day: picked,
+                                  startHour: t.hour,
+                                  startMinute: t.minute,
+                                );
+                                if (mounted) setState(() => _dateByShare[share.id] = DateTime(picked.year, picked.month, picked.day));
+                              },
+                            ),
+                          ),
+                          Expanded(
+                            child: ListTile(
+                              contentPadding: EdgeInsets.zero,
+                              title: const Text('Starttid', style: TextStyle(fontSize: 12)),
+                              subtitle: Text(
+                                () {
+                                  final t = _startByShare[share.id] ?? const TimeOfDay(hour: 6, minute: 0);
+                                  return '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+                                }(),
+                                style: const TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              trailing: const Icon(Icons.schedule, size: 20),
+                              onTap: () async {
+                                final t = _startByShare[share.id] ?? const TimeOfDay(hour: 6, minute: 0);
+                                final picked = await showTimePicker(context: context, initialTime: t);
+                                if (picked != null) setState(() => _startByShare[share.id] = picked);
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ],
