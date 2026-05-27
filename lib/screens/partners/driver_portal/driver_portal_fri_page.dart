@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/auth/session_sign_out.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/utils/business_days.dart';
 import '../../../core/utils/nb_date_format.dart';
@@ -22,6 +23,31 @@ class DriverPortalFriPage extends StatefulWidget {
 class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
   List<PartnerFriRequest> _mine = [];
   bool _loading = true;
+
+  Map<String, int> _friCounts() {
+    final now = DateTime.now();
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    final weekEnd = weekStart.add(const Duration(days: 7));
+    final monthStart = DateTime(now.year, now.month, 1);
+    final monthEnd = DateTime(
+      now.month == 12 ? now.year + 1 : now.year,
+      now.month == 12 ? 1 : now.month + 1,
+      1,
+    );
+    final yearStart = DateTime(now.year, 1, 1);
+    final yearEnd = DateTime(now.year + 1, 1, 1);
+
+    int countBetween(DateTime start, DateTime end) => _mine
+        .where((r) => !r.requestDate.isBefore(start) && r.requestDate.isBefore(end))
+        .length;
+
+    return {
+      'Uke': countBetween(weekStart, weekEnd),
+      'Mnd': countBetween(monthStart, monthEnd),
+      'År': countBetween(yearStart, yearEnd),
+      'Totalt': _mine.length,
+    };
+  }
 
   @override
   void initState() {
@@ -161,10 +187,13 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
                   child: ListView.separated(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(16),
-                    itemCount: _mine.length,
+                    itemCount: _mine.length + 1,
                     separatorBuilder: (_, index) => const SizedBox(height: 8),
                     itemBuilder: (_, i) {
-                      final r = _mine[i];
+                      if (i == 0) {
+                        return _FriSummaryRow(counts: _friCounts());
+                      }
+                      final r = _mine[i - 1];
                       Color c = Colors.orange;
                       if (r.status == 'approved') c = Colors.green;
                       if (r.status == 'rejected') c = Colors.red;
@@ -182,6 +211,88 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
                     },
                   ),
                 ),
+    );
+  }
+}
+
+class _FriSummaryRow extends StatelessWidget {
+  final Map<String, int> counts;
+
+  const _FriSummaryRow({required this.counts});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        _FriSummaryChip(
+          label: 'Uke',
+          value: counts['Uke'] ?? 0,
+          color: DriftProTheme.accentBlue,
+        ),
+        _FriSummaryChip(
+          label: 'Mnd',
+          value: counts['Mnd'] ?? 0,
+          color: Colors.deepPurple.shade600,
+        ),
+        _FriSummaryChip(
+          label: 'År',
+          value: counts['År'] ?? 0,
+          color: Colors.teal.shade700,
+        ),
+        _FriSummaryChip(
+          label: 'Totalt',
+          value: counts['Totalt'] ?? 0,
+          color: Colors.grey.shade700,
+        ),
+      ],
+    );
+  }
+}
+
+class _FriSummaryChip extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+
+  const _FriSummaryChip({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [color.withValues(alpha: 0.12), color.withValues(alpha: 0.22)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$value',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

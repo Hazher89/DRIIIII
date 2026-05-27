@@ -1029,20 +1029,41 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               subtitle: 'Styr hvem som mottar ruter fra MAVI',
               initiallyExpanded: true,
               children: [
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text(
-                    'Kun bil-eier får SMS-varsel',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    'Del ruter og godkjenning i portal (GDPR).',
+                    style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)),
                   ),
-                  subtitle: Text(
-                    _routesOwnerOnly
-                        ? 'På: Bare bileiere får SMS. Sjåfører får ikke SMS, men ser fortsatt alle ruter som er tildelt sin egen bil og kan godkjenne/avvise.'
-                        : 'Av: Både bileiere og sjåfører får SMS. Sjåfører ser fortsatt kun ruter for sin egen bil (GDPR).',
-                    style: const TextStyle(fontSize: 12, height: 1.35),
-                  ),
-                  value: _routesOwnerOnly,
-                  onChanged: _routesOwnerOnlySaving ? null : _setRoutesOwnerOnly,
+                ),
+                Column(
+                  children: [
+                    RadioListTile<int>(
+                      value: 1,
+                      groupValue: _routesOwnerOnly ? 1 : 2,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Kun bil-eier', style: TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: const Text('Sjåfører ser ikke ruter · MAVI-ansvar hos bileier'),
+                      onChanged: _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(true),
+                    ),
+                    RadioListTile<int>(
+                      value: 2,
+                      groupValue: _routesOwnerOnly ? 1 : 2,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Bil-eier + sjåfører', style: TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: const Text('Sjåfører ser ruter for sin egen bil og kan godkjenne/avvise'),
+                      onChanged: _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(false),
+                    ),
+                    RadioListTile<int>(
+                      value: 3,
+                      groupValue: _routesOwnerOnly ? 1 : 2,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Sjåfører ser ruter, men kan ikke godkjenne'),
+                      subtitle: const Text('Kommer snart: krever ny backend-styring for akseptrettigheter'),
+                      enabled: false,
+                      onChanged: null,
+                    ),
+                  ],
                 ),
                 if (_routesOwnerOnlySaving)
                   const Padding(

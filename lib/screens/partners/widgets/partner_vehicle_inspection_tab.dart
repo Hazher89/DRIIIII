@@ -36,6 +36,16 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   DateTime? _followUpDue;
   bool _saving = false;
 
+  int _countNotChecked(PartnerVehicleInspection ins) {
+    var c = 0;
+    for (final f in VehicleInspectionTemplate.items) {
+      if (f.type != InspectionFieldType.okAvvik) continue;
+      final raw = ins.checklist[f.key];
+      if (raw is String && raw == 'not_checked') c++;
+    }
+    return c;
+  }
+
   List<PartnerVehicle> get _regVehicles => widget.vehicles
       .where((v) =>
           v.vehicleKind == 'registration' || MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
@@ -351,6 +361,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
               )
             else
               ..._archive.take(20).map((a) {
+                    final notCheckedCount = _countNotChecked(a);
                 return Container(
                   margin: const EdgeInsets.only(bottom: 8),
                   decoration: BoxDecoration(
@@ -364,13 +375,17 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: Text(
-                      a.hasDeviation
-                          ? 'Avvik: ${a.deviationNotes ?? "—"}'
-                          : 'OK — ingen avvik',
+                          a.hasDeviation
+                              ? 'Avvik: ${a.deviationNotes ?? "—"}'
+                              : notCheckedCount > 0
+                                  ? 'Kan ikke sjekkes: $notCheckedCount felt'
+                                  : 'OK — ingen avvik',
                     ),
                     trailing: a.hasDeviation
                         ? Icon(Icons.warning_amber, color: Colors.orange.shade700)
-                        : const Icon(Icons.check_circle, color: Colors.green),
+                            : notCheckedCount > 0
+                                ? const Icon(Icons.help_outline, color: Colors.grey)
+                                : const Icon(Icons.check_circle, color: Colors.green),
                   ),
                 );
               }),
@@ -393,6 +408,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
                 segments: const [
                   ButtonSegment(value: 'ok', label: Text('OK')),
                   ButtonSegment(value: 'avvik', label: Text('Avvik')),
+                  ButtonSegment(value: 'not_checked', label: Text('Kan ikke sjekkes')),
                 ],
                 selected: {val},
                 onSelectionChanged: (s) {

@@ -86,6 +86,31 @@ class _PartnerFriTabState extends State<PartnerFriTab> {
     }
   }
 
+  Map<String, int> _friCounts() {
+    final now = DateTime.now();
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    final weekEnd = weekStart.add(const Duration(days: 7));
+    final monthStart = DateTime(now.year, now.month, 1);
+    final monthEnd = DateTime(
+      now.month == 12 ? now.year + 1 : now.year,
+      now.month == 12 ? 1 : now.month + 1,
+      1,
+    );
+    final yearStart = DateTime(now.year, 1, 1);
+    final yearEnd = DateTime(now.year + 1, 1, 1);
+
+    int countBetween(DateTime start, DateTime end) => _requests
+        .where((r) => !r.requestDate.isBefore(start) && r.requestDate.isBefore(end))
+        .length;
+
+    return {
+      'Uke': countBetween(weekStart, weekEnd),
+      'Mnd': countBetween(monthStart, monthEnd),
+      'År': countBetween(yearStart, yearEnd),
+      'Totalt': _requests.length,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -103,14 +128,18 @@ class _PartnerFriTabState extends State<PartnerFriTab> {
       );
     }
 
+    final counts = _friCounts();
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.separated(
         padding: const EdgeInsets.all(16),
-        itemCount: _requests.length,
+        itemCount: _requests.length + 1,
         separatorBuilder: (_, __) => const SizedBox(height: 8),
         itemBuilder: (_, i) {
-          final r = _requests[i];
+          if (i == 0) {
+            return _FriSummaryRow(counts: counts);
+          }
+          final r = _requests[i - 1];
           final df = DateFormat('d. MMM yyyy', 'nb');
           return Card(
             child: Padding(
@@ -169,6 +198,91 @@ class _PartnerFriTabState extends State<PartnerFriTab> {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+class _FriSummaryRow extends StatelessWidget {
+  final Map<String, int> counts;
+
+  const _FriSummaryRow({required this.counts});
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: [
+        _FriSummaryChip(
+          label: 'Uke',
+          value: counts['Uke'] ?? 0,
+          color: DriftProTheme.accentBlue,
+        ),
+        _FriSummaryChip(
+          label: 'Mnd',
+          value: counts['Mnd'] ?? 0,
+          color: Colors.deepPurple.shade600,
+        ),
+        _FriSummaryChip(
+          label: 'År',
+          value: counts['År'] ?? 0,
+          color: Colors.teal.shade700,
+        ),
+        _FriSummaryChip(
+          label: 'Totalt',
+          value: counts['Totalt'] ?? 0,
+          color: Colors.grey.shade700,
+        ),
+      ],
+    );
+  }
+}
+
+class _FriSummaryChip extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+
+  const _FriSummaryChip({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            color.withValues(alpha: 0.12),
+            color.withValues(alpha: 0.22),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$value',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }

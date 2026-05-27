@@ -32,11 +32,6 @@ class PartnerAccess {
       label: 'Bilkontroll',
     ),
     PartnerDetailTabDef(
-      accessKey: AccessKeys.partnersTabRuter,
-      icon: Icons.alt_route_outlined,
-      label: 'Ruter',
-    ),
-    PartnerDetailTabDef(
       accessKey: AccessKeys.partnersTabDokumenter,
       icon: Icons.folder_shared_outlined,
       label: 'Dokumenter',

@@ -269,30 +269,20 @@ class _SummaryTabState extends State<_SummaryTab> {
     if (mounted) setState(() => _list = d);
   }
 
-  Future<void> _uploadPdf() async {
+  Future<void> _uploadFiles() async {
     final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf'],
+      type: FileType.any,
+      allowMultiple: true,
       withData: true,
     );
     if (picked == null || picked.files.isEmpty) return;
-    final file = picked.files.first;
-    final bytes = file.bytes ??
-        (file.path != null && !kIsWeb ? await File(file.path!).readAsBytes() : null);
-    if (bytes == null || bytes.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Kunne ikke lese PDF-fil.')),
-        );
-      }
-      return;
-    }
+
     if (!mounted) return;
     final title = TextEditingController(text: 'Oppsummering');
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Last opp oppsummering (PDF)'),
+        title: const Text('Last opp oppsummering (PDF/filer)'),
         content: TextField(
           controller: title,
           decoration: const InputDecoration(
@@ -307,37 +297,80 @@ class _SummaryTabState extends State<_SummaryTab> {
       ),
     );
     if (ok != true || !mounted) return;
-    final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-    final storagePath =
-        'company_${widget.partner.companyId}/partner_summaries/${widget.partner.id}/${DateTime.now().millisecondsSinceEpoch}_$safeName';
-    try {
-      await PartnerService.uploadPartnerDocumentPdf(storagePath: storagePath, bytes: bytes);
-      await PartnerService.addDocument(
-        PartnerDocument(
-          id: '',
-          partnerId: widget.partner.id,
-          companyId: widget.partner.companyId,
-          title: title.text.trim().isEmpty ? 'Oppsummering' : title.text.trim(),
-          storagePath: storagePath,
-          fileName: file.name,
-          mimeType: 'application/pdf',
-          docCategory: 'summary',
-          createdAt: DateTime.now(),
+
+    final baseTitle = title.text.trim().isEmpty ? 'Oppsummering' : title.text.trim();
+    title.dispose();
+
+    var uploadedCount = 0;
+    for (var i = 0; i < picked.files.length; i++) {
+      final file = picked.files[i];
+      final bytes = file.bytes ??
+          (file.path != null && !kIsWeb ? await File(file.path!).readAsBytes() : null);
+      if (bytes == null || bytes.isEmpty) continue;
+
+      final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final storagePath =
+          'company_${widget.partner.companyId}/partner_summaries/${widget.partner.id}/${DateTime.now().millisecondsSinceEpoch}_${i}_$safeName';
+
+      final ext = file.name.split('.').length > 1 ? file.name.split('.').last.toLowerCase() : '';
+      final mime = (ext == 'pdf'
+          ? 'application/pdf'
+          : ext == 'png'
+              ? 'image/png'
+              : ext == 'jpg' || ext == 'jpeg'
+                  ? 'image/jpeg'
+                  : ext == 'txt'
+                      ? 'text/plain'
+                      : ext == 'doc'
+                          ? 'application/msword'
+                          : ext == 'docx'
+                              ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                              : ext == 'xls'
+                                  ? 'application/vnd.ms-excel'
+                                  : ext == 'xlsx'
+                                      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                                      : null);
+
+      try {
+        final storedPath = (mime == 'application/pdf' || ext == 'pdf')
+            ? await PartnerService.uploadPartnerDocumentPdf(storagePath: storagePath, bytes: bytes)
+            : await PartnerService.uploadPartnerDocumentFile(
+                storagePath: storagePath,
+                bytes: bytes,
+                mimeType: mime,
+              );
+
+        await PartnerService.addDocument(
+          PartnerDocument(
+            id: '',
+            partnerId: widget.partner.id,
+            companyId: widget.partner.companyId,
+            title: picked.files.length > 1 ? '$baseTitle — ${i + 1}' : baseTitle,
+            storagePath: storedPath,
+            fileName: file.name,
+            mimeType: mime,
+            docCategory: 'summary',
+            createdAt: DateTime.now(),
+          ),
+        );
+        uploadedCount++;
+      } catch (_) {
+        // Fortsetter med neste fil
+      }
+    }
+
+    await _load();
+    await widget.onChanged();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            uploadedCount > 0
+                ? 'Lastet opp $uploadedCount fil(er) til oppsummering.'
+                : 'Ingen filer ble lastet opp (feil eller tom fil).',
+          ),
         ),
       );
-      await _load();
-      await widget.onChanged();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Oppsummering er delt med partner (kun deres tilgang).')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Opplasting feilet: $e')));
-      }
-    } finally {
-      title.dispose();
     }
   }
 
@@ -345,8 +378,46 @@ class _SummaryTabState extends State<_SummaryTab> {
     final p = d.storagePath;
     if (p == null || p.isEmpty) return;
     try {
-      final url = await PartnerService.getDocumentPdfSignedUrl(p);
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      final url = await PartnerService.resolveStorageUrl(p);
+      final mime = d.mimeType ?? '';
+      final extParts = (d.fileName ?? '').split('.');
+      final ext = extParts.length > 1 ? extParts.last.toLowerCase() : null;
+      final isImage = mime.startsWith('image/') || (ext == 'png' || ext == 'jpg' || ext == 'jpeg');
+
+      if (isImage) {
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => Dialog(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          d.title,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      IconButton(onPressed: () => Navigator.pop(ctx), icon: const Icon(Icons.close)),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: InteractiveViewer(
+                    child: Image.network(url, fit: BoxFit.contain),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      } else {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke åpne: $e')));
@@ -362,7 +433,7 @@ class _SummaryTabState extends State<_SummaryTab> {
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
           child: Text(
-            'Oppsummerings-PDF er kun synlig for dere internt og for denne samarbeidspartneren (dataminimering).',
+            'Oppsummering (PDF/filer) er kun synlig internt og for denne samarbeidspartneren (dataminimering).',
             style: TextStyle(fontSize: 12, color: Colors.grey[700]),
           ),
         ),
@@ -371,9 +442,9 @@ class _SummaryTabState extends State<_SummaryTab> {
           child: Align(
             alignment: Alignment.centerRight,
             child: FilledButton.icon(
-              onPressed: _uploadPdf,
+              onPressed: _uploadFiles,
               icon: const Icon(Icons.summarize_outlined),
-              label: const Text('Last opp oppsummering-PDF'),
+              label: const Text('Last opp oppsummering (PDF/filer)'),
               style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
             ),
           ),
@@ -386,11 +457,20 @@ class _SummaryTabState extends State<_SummaryTab> {
                   itemCount: _list.length,
                   itemBuilder: (_, i) {
                     final d = _list[i];
+                    final mime = d.mimeType ?? '';
+                    final extParts = (d.fileName ?? '').split('.');
+                    final ext = extParts.length > 1 ? extParts.last.toLowerCase() : null;
+                    final isPdf = mime == 'application/pdf' || ext == 'pdf';
+                    final isImg = mime.startsWith('image/') || (ext == 'png' || ext == 'jpg' || ext == 'jpeg');
                     return Card(
                       child: ListTile(
-                        leading: const Icon(Icons.picture_as_pdf_outlined),
+                        leading: isImg
+                            ? const Icon(Icons.image_outlined)
+                            : isPdf
+                                ? const Icon(Icons.picture_as_pdf_outlined)
+                                : const Icon(Icons.insert_drive_file_outlined),
                         title: Text(d.title),
-                        subtitle: Text(d.fileName ?? d.storagePath ?? ''),
+                        subtitle: Text('${d.fileName ?? d.storagePath ?? ''}\n${mime.isNotEmpty ? mime : '—'}'),
                         trailing: IconButton(
                           icon: const Icon(Icons.open_in_new),
                           onPressed: () => _open(d),
