@@ -164,6 +164,31 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final sharedInfo = Container(
+      margin: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: DriftProTheme.primaryGreen.withValues(alpha: 0.25),
+        ),
+      ),
+      child: const Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Felles mappe delt med alle samarbeidspartnere i bedriften og superadmin.',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+
     final content = _loading
         ? const Center(child: CircularProgressIndicator())
         : _error != null
@@ -173,7 +198,7 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
                     child: Padding(
                       padding: EdgeInsets.all(24),
                       child: Text(
-                        'Ingen rutiner/prosedyrer delt ennå.',
+                        'Ingen rutiner/prosedyrer delt ennå.\nTrykk «Last opp rutine/prosedyre».',
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -210,6 +235,7 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
     if (widget.embedded) {
       return Column(
         children: [
+          sharedInfo,
           if (widget.canManage)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -244,7 +270,12 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
           ),
         ],
       ),
-      body: content,
+      body: Column(
+        children: [
+          sharedInfo,
+          Expanded(child: content),
+        ],
+      ),
     );
   }
 }

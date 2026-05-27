@@ -194,15 +194,7 @@ class VehicleRentalService {
       throw StateError('Denne bilen er allerede i en aktiv utleie og er blokkert.');
     }
 
-    final maviBorrowerId = await _client.rpc(
-      'resolve_mavi_borrower_partner_id',
-      params: {'p_company_id': companyId},
-    );
-    if (maviBorrowerId == null || (maviBorrowerId as String).isEmpty) {
-      throw StateError(
-        'Mangler aktiv samarbeidspartner «MAVI Logistikk AS». Opprett/aktiver denne i Samarbeidspartnere før utleie.',
-      );
-    }
+    final maviBorrowerId = await _resolveOrCreateMaviBorrowerPartnerId(companyId);
 
     final uid = _client.auth.currentUser?.id;
     final reg = vehicle.registrationNumber.trim();
@@ -365,4 +357,41 @@ class VehicleRentalService {
 
   static Future<String> photoSignedUrl(String storagePath) =>
       PartnerService.resolveStorageUrl(storagePath);
+
+  static Future<String> _resolveOrCreateMaviBorrowerPartnerId(String companyId) async {
+    final resolved = await _client.rpc(
+      'resolve_mavi_borrower_partner_id',
+      params: {'p_company_id': companyId},
+    );
+    if (resolved is String && resolved.isNotEmpty) return resolved;
+
+    final existing = await _client
+        .from('partners')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .ilike('name', 'mavi logistikk%')
+        .limit(1)
+        .maybeSingle();
+    if (existing != null && existing['id'] is String) {
+      return existing['id'] as String;
+    }
+
+    final inserted = await _client
+        .from('partners')
+        .insert({
+          'company_id': companyId,
+          'name': 'MAVI Logistikk AS',
+          'trade_name': 'MAVI Logistikk AS',
+          'is_active': true,
+          'notes': 'Auto-opprettet for bilutleie-låntaker',
+        })
+        .select('id')
+        .single();
+    final id = inserted['id'] as String?;
+    if (id == null || id.isEmpty) {
+      throw StateError('Klarte ikke opprette MAVI Logistikk AS for bilutleie.');
+    }
+    return id;
+  }
 }
