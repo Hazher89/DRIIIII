@@ -15,11 +15,13 @@ import 'widgets/vehicle_rental_ui.dart';
 class VehicleRentalHubScreen extends StatefulWidget {
   final bool embedded;
   final List<Partner> partners;
+  final bool canApproveRentals;
 
   const VehicleRentalHubScreen({
     super.key,
     this.embedded = false,
     required this.partners,
+    this.canApproveRentals = false,
   });
 
   @override
@@ -89,7 +91,6 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     if (cid == null || !mounted) return;
 
     String? lenderId;
-    String? borrowerId;
     String? vehicleId;
     DateTime? start;
     DateTime? end;
@@ -163,15 +164,23 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                     onChanged: lenderVehicles.isEmpty ? null : (v) => setDlg(() => vehicleId = v),
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: borrowerId,
-                    decoration: const InputDecoration(labelText: 'Låntaker'),
-                    isExpanded: true,
-                    items: widget.partners
-                        .where((p) => p.id != lenderId)
-                        .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))
-                        .toList(),
-                    onChanged: (v) => setDlg(() => borrowerId = v),
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Låntaker',
+                      border: OutlineInputBorder(),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.business, size: 20, color: Colors.grey.shade700),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            'MAVI Logistikk AS',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -211,7 +220,7 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                   ),
                   const SizedBox(height: 20),
                   FilledButton.icon(
-                    onPressed: lenderId != null && borrowerId != null && vehicleId != null
+                    onPressed: lenderId != null && vehicleId != null
                         ? () => Navigator.pop(ctx, true)
                         : null,
                     style: FilledButton.styleFrom(
@@ -230,7 +239,7 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
       ),
     );
 
-    if (ok != true || lenderId == null || borrowerId == null || vehicleId == null) return;
+    if (ok != true || lenderId == null || vehicleId == null) return;
 
     PartnerVehicle? vehicle;
     for (final list in _vehiclesByPartner.values) {
@@ -247,7 +256,6 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
       await VehicleRentalService.createRental(
         companyId: cid,
         lenderPartnerId: lenderId!,
-        borrowerPartnerId: borrowerId!,
         vehicle: vehicle,
         rentalStart: start,
         rentalEnd: end,
@@ -364,42 +372,44 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     await showVehicleRentalDetailSheet(
       context,
       rental: rental,
-      actions: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (rental.isPendingMavi) ...[
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _approveCheckout(rental);
-              },
-              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-              icon: const Icon(Icons.check),
-              label: const Text('Godkjenn utleie'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _reject(rental);
-              },
-              icon: const Icon(Icons.close),
-              label: const Text('Avvis'),
-            ),
-          ],
-          if (rental.isPendingReturnMavi) ...[
-            FilledButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _approveReturn(rental);
-              },
-              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.success),
-              icon: const Icon(Icons.assignment_return),
-              label: const Text('Godkjenn retur'),
-            ),
-          ],
-        ],
-      ),
+      actions: widget.canApproveRentals
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (rental.isPendingMavi) ...[
+                  FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _approveCheckout(rental);
+                    },
+                    style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+                    icon: const Icon(Icons.check),
+                    label: const Text('Godkjenn utleie'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _reject(rental);
+                    },
+                    icon: const Icon(Icons.close),
+                    label: const Text('Avvis'),
+                  ),
+                ],
+                if (rental.isPendingReturnMavi) ...[
+                  FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _approveReturn(rental);
+                    },
+                    style: FilledButton.styleFrom(backgroundColor: DriftProTheme.success),
+                    icon: const Icon(Icons.assignment_return),
+                    label: const Text('Godkjenn retur'),
+                  ),
+                ],
+              ],
+            )
+          : null,
     );
   }
 
@@ -546,6 +556,7 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
   }
 
   Widget? _buildCardAction(VehicleRental r) {
+    if (!widget.canApproveRentals) return null;
     if (r.isPendingMavi) {
       return FilledButton.icon(
         onPressed: () => _approveCheckout(r),

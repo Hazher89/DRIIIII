@@ -112,6 +112,15 @@ class RouteShiftResolver {
       );
       if (fromPostal != null) return fromPostal;
 
+      // Postnr kjent men uten region (sjelden) — bruk stedsnavn fra register, ikke gatenavn.
+      if (stop.postalCode != null &&
+          stop.postalCode!.length == 4 &&
+          PostalCodeRegistry.isKnown(stop.postalCode!)) {
+        final sted = PostalCodeRegistry.lookupSted(stop.postalCode!);
+        final fromSted = PostalRegionMapper.stedToRegion(sted);
+        if (fromSted != null) return fromSted;
+      }
+
       final paren = RegExp(r'\(([^)]+)\)').firstMatch(stop.name);
       if (paren != null) {
         final place = paren.group(1)!.trim();

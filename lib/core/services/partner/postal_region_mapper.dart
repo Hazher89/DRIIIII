@@ -24,6 +24,7 @@ class PostalRegionMapper {
   /// Eksakt stedsnavn fra postnummer-register (unngår feil som Jaren → jar → Bærum).
   static const Map<String, String> _exactStedToRegion = {
     'oslo': 'Oslo',
+    'oslo hub': 'Oslo',
     'jaren': 'Hadeland',
     'harestua': 'Hadeland',
     'maura': 'Hadeland',
@@ -176,7 +177,11 @@ class PostalRegionMapper {
       return 'Hønefoss';
     }
 
-    if (_hasAnyWord(s, ['kongsvinger', 'flisa'])) {
+    // Ikke match «kongsvinger» inne i gatenavn (f.eks. Kongsvingergata i Oslo).
+    if (_hasWord(s, 'kongsvinger') && !_hasWord(s, 'kongsvingergata')) {
+      return 'Kongsvinger';
+    }
+    if (_hasWord(s, 'flisa')) {
       return 'Kongsvinger';
     }
 

@@ -104,6 +104,8 @@ class AccessCatalog {
         AccessKeys.partnersCreate,
         AccessKeys.partnersDelete,
         AccessKeys.partnersEdit,
+        AccessKeys.partnersVehicleRental,
+        AccessKeys.partnersVehicleRentalApprove,
       ],
     ),
     AccessSection(

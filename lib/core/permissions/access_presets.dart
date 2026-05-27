@@ -44,6 +44,8 @@ class AccessPresets {
         AccessKeys.partnersCreate: true,
         AccessKeys.partnersDelete: true,
         AccessKeys.partnersEdit: true,
+        AccessKeys.partnersVehicleRental: true,
+        AccessKeys.partnersVehicleRentalApprove: true,
         for (final k in AccessKeys.partnerDetailTabKeys) k: true,
         AccessKeys.ferieAdmin: true,
       };

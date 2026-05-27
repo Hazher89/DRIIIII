@@ -427,6 +427,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         if (!_initialTabSet && _routesMissingShift.isNotEmpty) {
           _sheetTab = _MassTab.missingShift;
           _queueFilter = _RouteQueueFilter.missingShift;
+        } else if (!_initialTabSet && _staged.isNotEmpty) {
+          _sheetTab = _MassTab.drivers;
         }
         _initialTabSet = true;
         _loading = false;
@@ -1760,7 +1762,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       guidePanel: _buildWorkflowGuideContent(ui),
       guideExpanded: _guideExpanded,
       onGuideToggle: () => setState(() => _guideExpanded = !_guideExpanded),
-      topBanner: _buildTopBanners(),
+      topBanner: _buildTopBannersWithDateFilter(),
       tabLabels: const ['Alle ruter', 'Per sjåfør', 'Mangler skift', 'Importlogg', 'Manuell'],
       tabBadges: [
         _staged.isNotEmpty ? _staged.length : null,
@@ -1847,119 +1849,25 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         },
         icon: const Icon(Icons.event_outlined, size: 20),
         label: Text(
-          'Standarddato for nye PDF: ${DateFormat('d. MMM yyyy', 'nb').format(_routeDate)}',
+          'Standarddato nye PDF: ${DateFormat('d. MMM yyyy', 'nb').format(_routeDate)}',
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
       );
     }
 
-    final groups = _stagedByDate;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_hasMultipleRouteDates)
-          Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.amber.shade50,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.amber.shade300),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.date_range, color: Colors.amber.shade900, size: 22),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '${_staged.length} ruter fordelt på ${groups.length} datoer. '
-                    'Publisering bruker dato fra hver PDF — ikke «i dag».',
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.35,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.amber.shade900,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilterChip(
-              label: Text('Alle (${_staged.length})'),
-              selected: _filterDay == null,
-              onSelected: (_) => setState(() => _filterDay = null),
-            ),
-            ...groups.entries.map((e) {
-              final day = e.key;
-              final n = e.value.length;
-              return FilterChip(
-                label: Text('${DateFormat('EEE d.M', 'nb').format(day)} ($n)'),
-                selected: _filterDay == day,
-                onSelected: (_) => setState(() => _filterDay = _filterDay == day ? null : day),
-              );
-            }),
-          ],
+        Text(
+          '${_staged.length} ruter i kø${_filterDay != null ? ' · filtrert' : ''}',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: ui.accentDark),
         ),
-        const SizedBox(height: 8),
-        _buildDateQueueMenu(groups),
-        const SizedBox(height: 8),
-        ...groups.entries.map((e) => _buildDateGroupCard(e.key, e.value, ui)),
+        const SizedBox(height: 6),
+        Text(
+          'Datofilter og massehandlinger ligger i stripen over rute-listen.',
+          style: TextStyle(fontSize: 11, height: 1.35, color: Colors.grey.shade600),
+        ),
       ],
-    );
-  }
-
-  Widget _buildDateGroupCard(DateTime day, List<PartnerRouteShare> routes, _MassUi ui) {
-    final selectedOnDay = routes.where((s) => _selected.contains(s.id)).length;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    DateFormat('EEEE d. MMMM yyyy', 'nb').format(day),
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                  ),
-                ),
-                Text(
-                  '${routes.length} rute(r) · $selectedOnDay valgt',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final d = await showDatePicker(
-                      context: context,
-                      initialDate: day,
-                      firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (d != null) await _moveStagedDayToDate(day, d);
-                  },
-                  icon: const Icon(Icons.edit_calendar, size: 16),
-                  label: const Text('Flytt alle til dato'),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -2003,6 +1911,82 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ),
         ],
       ],
+    );
+  }
+
+  Widget? _buildTopBannersWithDateFilter() {
+    final dateStrip = _staged.isNotEmpty ? _buildDateFilterStrip() : null;
+    final banners = _buildTopBanners();
+    if (dateStrip == null && banners == null) return null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (dateStrip != null) dateStrip,
+        if (dateStrip != null && banners != null) const SizedBox(height: 8),
+        if (banners != null) banners,
+      ],
+    );
+  }
+
+  Widget _buildDateFilterStrip() {
+    final groups = _stagedByDate;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_hasMultipleRouteDates)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.date_range, size: 18, color: Colors.amber.shade900),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${_staged.length} ruter fordelt på ${groups.length} datoer — publisering bruker dato fra hver PDF.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.35,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.amber.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              FilterChip(
+                label: Text('Alle datoer (${_staged.length})'),
+                selected: _filterDay == null,
+                onSelected: (_) => setState(() => _filterDay = null),
+              ),
+              ...groups.entries.map((e) {
+                final day = e.key;
+                final n = e.value.length;
+                return FilterChip(
+                  label: Text('${DateFormat('EEE d.M', 'nb').format(day)} ($n)'),
+                  selected: _filterDay == day,
+                  onSelected: (_) => setState(() => _filterDay = _filterDay == day ? null : day),
+                );
+              }),
+              _buildDateQueueMenu(groups),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -2181,90 +2165,44 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 )
               : ListView.builder(
                   padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                  physics: const AlwaysScrollableScrollPhysics(),
                   itemCount: routes.length,
-                  itemBuilder: (_, i) => _buildCompactRouteRow(routes[i], ui),
+                  itemBuilder: (_, i) {
+                    final share = routes[i];
+                    final row = _rowForShare(share);
+                    if (row == null) {
+                      return _buildOrphanRouteCard(share, ui);
+                    }
+                    return _buildRouteCard(share, row, ui);
+                  },
                 ),
         ),
       ],
     );
   }
 
-  Widget _buildCompactRouteRow(PartnerRouteShare share, _MassUi ui) {
-    final row = _rowForShare(share);
-    final mavi = row != null ? MaviUnitCodes.normalize(row.vehicle.unitCode) : '—';
-    final partner = row?.partner.name ?? '—';
-    final fileLabel = (share.title ?? share.pdfStoragePath.split('/').last).split('—').last.trim();
-    final lane = _stowingForShare(share);
-    final shiftId = _effectiveShiftId(share.id);
-    final shiftMissing = shiftId == null;
-    final checked = _selected.contains(share.id);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 6),
-      elevation: 0,
-      color: shiftMissing ? const Color(0xFFFFEBEE) : Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-          color: shiftMissing ? Colors.red.shade300 : (checked ? ui.accent.withValues(alpha: 0.5) : Colors.grey.shade300),
-          width: shiftMissing || checked ? 2 : 1,
-        ),
+  Widget _buildOrphanRouteCard(PartnerRouteShare share, _MassUi ui) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade300, width: 2),
       ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Checkbox(
-              value: checked,
-              onChanged: (v) => setState(() {
-                if (v == true) {
-                  _selected.add(share.id);
-                } else {
-                  _selected.remove(share.id);
-                }
-              }),
-            ),
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(mavi, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
-                  Text(partner, style: TextStyle(fontSize: 11, color: Colors.grey.shade700), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  Text(fileLabel, style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
-                  if (lane != null) Text('Lane $lane', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
-                ],
-              ),
-            ),
-            Expanded(
-              flex: 4,
-              child: DropdownButtonFormField<String>(
-                value: shiftId,
-                isExpanded: true,
-                decoration: InputDecoration(
-                  labelText: 'Skiftplan',
-                  isDense: true,
-                  border: const OutlineInputBorder(),
-                  errorText: shiftMissing ? 'Påkrevd' : null,
-                ),
-                items: _routeShifts
-                    .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name, overflow: TextOverflow.ellipsis)))
-                    .toList(),
-                onChanged: (v) async {
-                  if (v == null) return;
-                  setState(() => _shiftByShare[share.id] = v);
-                  await PartnerService.updateRouteShareFields(share.id, {'shift_id': v});
-                },
-              ),
-            ),
-            IconButton(
-              tooltip: 'PDF',
-              onPressed: () => PartnerRoutePdfActions.openPdf(context, share),
-              icon: Icon(Icons.picture_as_pdf_outlined, color: ui.accentDark, size: 22),
-            ),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            share.title ?? share.pdfStoragePath.split('/').last,
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Ingen sjåfør koblet — velg bil i Manuell-fanen eller tildel på nytt.',
+            style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+          ),
+        ],
       ),
     );
   }
@@ -2561,12 +2499,26 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final shiftName = _shiftLabel(shiftId);
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(10, 0, 10, 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: checked ? ui.accent.withValues(alpha: 0.5) : Colors.grey.shade300, width: checked ? 2 : 1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: shiftMissing
+              ? Colors.amber.shade600
+              : checked
+                  ? ui.accent.withValues(alpha: 0.55)
+                  : Colors.grey.shade300,
+          width: shiftMissing || checked ? 2 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2588,10 +2540,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(fileLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                    Text(fileLabel, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                     Text(
-                      '$dateLabel · ${lane != null ? 'Lane $lane' : 'MAVI $mavi'}',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                      '$mavi · ${row.partner.name}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    ),
+                    Text(
+                      '$dateLabel · ${lane != null ? 'Lane $lane' : shiftName ?? 'Uten skift'}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                     ),
                   ],
                 ),
@@ -2631,57 +2587,70 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             maxLines: 2,
             decoration: _fieldDeco('Notat til sjåfør (vises i portal / SMS)'),
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: routeDay,
-                      firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                      lastDate: DateTime.now().add(const Duration(days: 365)),
-                    );
-                    if (picked != null) await _setShareRouteDay(share, picked);
-                  },
-                  icon: const Icon(Icons.event, size: 18),
-                  label: Text(dateLabel, overflow: TextOverflow.ellipsis),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final stacked = constraints.maxWidth < 720;
+              final dateBtn = OutlinedButton.icon(
+                onPressed: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: routeDay,
+                    firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (picked != null) await _setShareRouteDay(share, picked);
+                },
+                icon: const Icon(Icons.event, size: 18),
+                label: Text(dateLabel, overflow: TextOverflow.ellipsis),
+              );
+              final shiftField = DropdownButtonFormField<String>(
+                value: shiftId,
+                isExpanded: true,
+                decoration: _fieldDeco('Skiftplan').copyWith(
+                  errorText: shiftMissing && checked ? 'Velg dag- eller kveldsrute' : null,
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 3,
-                child: DropdownButtonFormField<String>(
-                  value: shiftId,
-                  isExpanded: true,
-                  decoration: _fieldDeco('Skiftplan').copyWith(
-                    errorText: shiftMissing && checked ? 'Velg dag- eller kveldsrute' : null,
-                  ),
-                  items: _routeShifts
-                      .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
-                      .toList(),
-                  onChanged: (v) async {
-                    if (v == null) return;
-                    setState(() => _shiftByShare[share.id] = v);
-                    await PartnerService.updateRouteShareFields(share.id, {'shift_id': v});
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final picked = await showTimePicker(context: context, initialTime: start);
-                    if (picked != null) setState(() => _startByShare[share.id] = picked);
-                  },
-                  icon: const Icon(Icons.schedule, size: 18),
-                  label: Text('Start $startLabel'),
-                ),
-              ),
-            ],
+                items: _routeShifts
+                    .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
+                    .toList(),
+                onChanged: (v) async {
+                  if (v == null) return;
+                  setState(() => _shiftByShare[share.id] = v);
+                  await PartnerService.updateRouteShareFields(share.id, {'shift_id': v});
+                },
+              );
+              final startBtn = OutlinedButton.icon(
+                onPressed: () async {
+                  final picked = await showTimePicker(context: context, initialTime: start);
+                  if (picked != null) setState(() => _startByShare[share.id] = picked);
+                },
+                icon: const Icon(Icons.schedule, size: 18),
+                label: Text('Start $startLabel'),
+              );
+
+              if (stacked) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    dateBtn,
+                    const SizedBox(height: 8),
+                    shiftField,
+                    const SizedBox(height: 8),
+                    startBtn,
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(flex: 2, child: dateBtn),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 3, child: shiftField),
+                  const SizedBox(width: 8),
+                  Expanded(flex: 2, child: startBtn),
+                ],
+              );
+            },
           ),
         ],
       ),

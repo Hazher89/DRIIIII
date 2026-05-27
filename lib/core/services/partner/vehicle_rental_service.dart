@@ -183,7 +183,6 @@ class VehicleRentalService {
   static Future<VehicleRental> createRental({
     required String companyId,
     required String lenderPartnerId,
-    required String borrowerPartnerId,
     required PartnerVehicle vehicle,
     DateTime? rentalStart,
     DateTime? rentalEnd,
@@ -200,7 +199,6 @@ class VehicleRentalService {
     final row = {
       'company_id': companyId,
       'lender_partner_id': lenderPartnerId,
-      'borrower_partner_id': borrowerPartnerId,
       'partner_vehicle_id': vehicle.id,
       'registration_number': reg,
       'vehicle_make': vehicleMakeFrom(vehicle),
@@ -276,27 +274,33 @@ class VehicleRentalService {
   }
 
   static Future<VehicleRental> approveCheckout(String rentalId, {String? maviComment}) async {
-    final uid = _client.auth.currentUser?.id;
-    final now = DateTime.now().toUtc().toIso8601String();
-    await _client.from('vehicle_rentals').update({
-      'status': 'approved',
-      'approved_at': now,
-      'approved_by': uid,
-      'mavi_checkout_comment': maviComment?.trim(),
-      'updated_at': now,
-    }).eq('id', rentalId);
-    return (await fetchById(rentalId))!;
+    final row = await _client.rpc(
+      'vehicle_rental_approve_checkout',
+      params: {
+        'p_rental_id': rentalId,
+        'p_comment': maviComment,
+      },
+    );
+    try {
+      await PartnerService.flushSmsOutbox();
+    } catch (_) {}
+    final list = await _attachPartnerNames([VehicleRental.fromJson(row as Map<String, dynamic>)]);
+    return list.first;
   }
 
   static Future<VehicleRental> reject(String rentalId, {String? reason}) async {
-    final now = DateTime.now().toUtc().toIso8601String();
-    await _client.from('vehicle_rentals').update({
-      'status': 'rejected',
-      'rejected_at': now,
-      'rejection_reason': reason?.trim(),
-      'updated_at': now,
-    }).eq('id', rentalId);
-    return (await fetchById(rentalId))!;
+    final row = await _client.rpc(
+      'vehicle_rental_reject',
+      params: {
+        'p_rental_id': rentalId,
+        'p_reason': reason,
+      },
+    );
+    try {
+      await PartnerService.flushSmsOutbox();
+    } catch (_) {}
+    final list = await _attachPartnerNames([VehicleRental.fromJson(row as Map<String, dynamic>)]);
+    return list.first;
   }
 
   static Future<VehicleRental> borrowerSubmitReturn({
@@ -316,20 +320,29 @@ class VehicleRentalService {
       'status': 'pending_return_mavi',
       'updated_at': now,
     }).eq('id', rentalId);
+    try {
+      await _client.rpc(
+        'notify_vehicle_rental_partner_sms',
+        params: {'p_rental_id': rentalId, 'p_event': 'return_submitted'},
+      );
+      await PartnerService.flushSmsOutbox();
+    } catch (_) {}
     return (await fetchById(rentalId))!;
   }
 
   static Future<VehicleRental> approveReturn(String rentalId, {String? maviComment}) async {
-    final uid = _client.auth.currentUser?.id;
-    final now = DateTime.now().toUtc().toIso8601String();
-    await _client.from('vehicle_rentals').update({
-      'status': 'returned',
-      'return_approved_at': now,
-      'return_approved_by': uid,
-      'mavi_return_comment': maviComment?.trim(),
-      'updated_at': now,
-    }).eq('id', rentalId);
-    return (await fetchById(rentalId))!;
+    final row = await _client.rpc(
+      'vehicle_rental_approve_return',
+      params: {
+        'p_rental_id': rentalId,
+        'p_comment': maviComment,
+      },
+    );
+    try {
+      await PartnerService.flushSmsOutbox();
+    } catch (_) {}
+    final list = await _attachPartnerNames([VehicleRental.fromJson(row as Map<String, dynamic>)]);
+    return list.first;
   }
 
   static Future<void> cancel(String rentalId) async {

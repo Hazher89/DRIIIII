@@ -103,6 +103,23 @@ void main() {
     expect(RoutePdfTextService.parseCustomers(text).length, 1);
   });
 
+  test('Oslo postnr og Kongsvingergata — ikke Kongsvinger-område', () async {
+    expect(PostalRegionMapper.stedToRegion('Oslo'), 'Oslo');
+    expect(PostalRegionMapper.stedToRegion('Kongsvingergata'), isNull);
+    expect(PostalCodeRegistry.lookupSted('0464'), 'Oslo');
+
+    const text = '''
+Start date 27.05.26
+0484 Oslo HUB
+1 4106056634 Grethe Aastveit Kongsvingergata 9g 0464 Oslo +47 91835421 08:00 13:00
+2 4106077220 Johnny Brevik Torvgata 15D 2000 Lillestrøm +47 95988888 07:00 09:00
+''';
+    expect(RoutePdfTextService.parseRouteDate(text), DateTime(2026, 5, 27));
+    final a = await RouteShiftResolver.analyzePdfText(text);
+    expect(a.dominantRegion, isNot('Kongsvinger'));
+    expect(a.regionCounts['Kongsvinger'], anyOf(isNull, 0));
+  });
+
   test('SAP M0124 — kunde (Rolvsøy) uten +47, 08–16 → Østfold dag', () async {
     const text = '''
 Start date 26.05.26

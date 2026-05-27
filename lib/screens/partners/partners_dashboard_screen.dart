@@ -72,12 +72,24 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
         PartnerAccess.canOpenPartnerDetail(access);
   }
 
+  bool _canManageVehicleRentals(UserAccess? access) {
+    if (access == null) return false;
+    return access.canPartnersVehicleRental ||
+        access.canFleetRoutes ||
+        access.canPartnersAdmin;
+  }
+
+  bool _canApproveVehicleRentals(UserAccess? access) {
+    if (access == null) return false;
+    return access.canPartnersVehicleRentalApprove || access.canPartnersAdmin;
+  }
+
   void _syncDashboardTabs(UserProfile? profile) {
     final access = profile?.access;
     final companies = _canCompaniesList(access);
     final routes = access?.canFleetRoutes == true;
     final sms = PartnerAccess.canOpenPartnersModule(access);
-    final rental = PartnerAccess.canOpenPartnersModule(access);
+    final rental = _canManageVehicleRentals(access);
     final length = (companies ? 1 : 0) + (routes ? 1 : 0) + (sms ? 1 : 0) + (rental ? 1 : 0);
 
     _showCompaniesTab = companies;
@@ -353,6 +365,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                   VehicleRentalHubScreen(
                     embedded: true,
                     partners: _partners,
+                    canApproveRentals: _canApproveVehicleRentals(_profile?.access),
                   ),
               ],
             ),

@@ -431,7 +431,9 @@ class RoutePdfTextService {
       if (norm == null) continue;
       final rest = m.group(3)!.trim();
       final tailEnd = i + 1 < matches.length ? matches[i + 1].start : flat.length;
-      final tail = flat.substring(m.end, tailEnd);
+      final safeEnd = tailEnd.clamp(m.end, flat.length);
+      if (safeEnd <= m.end) continue;
+      final tail = flat.substring(m.end, safeEnd);
       final postal = m.groupCount >= 6 ? m.group(4) : _postalFromAddressSnippet('$rest $tail');
       out.add(
         RoutePdfCustomer(
@@ -468,7 +470,9 @@ class RoutePdfTextService {
       if (norm == null) continue;
       final rest = m.group(2)!.trim();
       final tailEnd = i + 1 < matches.length ? matches[i + 1].start : flat.length;
-      final tail = flat.substring(m.end, tailEnd);
+      final safeEnd = tailEnd.clamp(m.end, flat.length);
+      if (safeEnd <= m.end) continue;
+      final tail = flat.substring(m.end, safeEnd);
       final addr = '${m.group(3)} ${m.group(4)}';
       out.add(
         RoutePdfCustomer(

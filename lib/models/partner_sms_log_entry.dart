@@ -82,6 +82,10 @@ class PartnerSmsLogEntry {
         return 'Møte / oppfølging';
       case 'partner_portal':
         return 'Portal-innlogging';
+      case 'vehicle_rental':
+        return 'Bilutleie — ny';
+      case 'vehicle_rental_status':
+        return 'Bilutleie — status';
       default:
         if (cat != null && cat.startsWith('partner')) return cat;
         return 'Samarbeid';

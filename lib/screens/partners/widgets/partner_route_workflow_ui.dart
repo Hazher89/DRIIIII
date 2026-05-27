@@ -10,13 +10,16 @@ Future<T?> showPartnerRouteWorkflowDialog<T>(
     barrierDismissible: true,
     builder: (ctx) {
       final size = MediaQuery.sizeOf(ctx);
-      final inset = 12.0;
-      final w = (size.width - inset * 2).clamp(320.0, 1180.0);
+      final compact = size.width < 640;
+      // Nesten fullskjerm — samme størrelse for AUTO MASS, SAP og Ny rute.
+      final inset = compact ? 0.0 : 6.0;
+      final radius = compact ? 0.0 : 16.0;
+      final w = size.width - inset * 2;
       final h = size.height - inset * 2;
       return Dialog(
         insetPadding: EdgeInsets.all(inset),
         clipBehavior: Clip.antiAlias,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radius)),
         child: SizedBox(width: w, height: h, child: child),
       );
     },
@@ -87,8 +90,8 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
   });
 
   static const _bg = Color(0xFFEEF1F5);
-  static const _railWidth = 300.0;
-  static const _breakpoint = 860.0;
+  static const _railWidth = 340.0;
+  static const _breakpoint = 980.0;
 
   @override
   Widget build(BuildContext context) {
@@ -288,7 +291,9 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
           topBanner!,
           const SizedBox(height: 8),
         ],
-        _buildTabBar(),
+        LayoutBuilder(
+          builder: (context, constraints) => _buildTabBar(wide: constraints.maxWidth >= _breakpoint),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
           child: Text(
@@ -320,65 +325,85 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     );
   }
 
-  Widget _buildTabBar() {
+  Widget _buildTabBar({required bool wide}) {
+    Widget tabChip(int i) {
+      final selected = i == selectedTabIndex;
+      final badge = i < tabBadges.length ? tabBadges[i] : null;
+      final badgeColor = i < tabBadgeColors.length ? tabBadgeColors[i] : null;
+      return Padding(
+        padding: EdgeInsets.only(right: wide ? 0 : 6, left: wide ? 0 : i == 0 ? 4 : 0),
+        child: Material(
+          color: selected ? accent.withValues(alpha: 0.14) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(10),
+            onTap: () => onTabSelected(i),
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: wide ? 8 : 14,
+                vertical: 12,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: wide ? MainAxisSize.max : MainAxisSize.min,
+                children: [
+                  Text(
+                    tabLabels[i],
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                      color: selected ? accentDark : Colors.grey.shade700,
+                    ),
+                  ),
+                  if (badge != null && badge > 0) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: (badgeColor ?? accentDark).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$badge',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: badgeColor ?? accentDark,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
-      height: 52,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade300),
       ),
-      child: Row(
-        children: List.generate(tabLabels.length, (i) {
-          final selected = i == selectedTabIndex;
-          final badge = i < tabBadges.length ? tabBadges[i] : null;
-          final badgeColor = i < tabBadgeColors.length ? tabBadgeColors[i] : null;
-          return Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(4),
-              child: Material(
-                color: selected ? accent.withValues(alpha: 0.14) : Colors.transparent,
-                borderRadius: BorderRadius.circular(10),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: () => onTabSelected(i),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        tabLabels[i],
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                          color: selected ? accentDark : Colors.grey.shade700,
-                        ),
-                      ),
-                      if (badge != null && badge > 0) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: (badgeColor ?? accentDark).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text(
-                            '$badge',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: badgeColor ?? accentDark,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+      child: wide
+          ? SizedBox(
+              height: 52,
+              child: Row(
+                children: List.generate(
+                  tabLabels.length,
+                  (i) => Expanded(child: tabChip(i)),
                 ),
               ),
+            )
+          : SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: List.generate(tabLabels.length, tabChip),
+              ),
             ),
-          );
-        }),
-      ),
     );
   }
 

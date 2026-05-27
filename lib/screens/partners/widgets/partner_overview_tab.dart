@@ -1026,7 +1026,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
             ),
             PartnerModernSection(
               title: 'Ruter og varsler',
-              subtitle: 'Styr hvem som mottar ruter fra MAVI',
+              subtitle: 'Styr hvem som mottar ruter fra DriftPro',
               initiallyExpanded: true,
               children: [
                 Padding(
@@ -1043,7 +1043,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                       groupValue: _routesOwnerOnly ? 1 : 2,
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Kun bil-eier', style: TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: const Text('Sjåfører ser ikke ruter · MAVI-ansvar hos bileier'),
+                      subtitle: const Text('Sjåfører ser ikke ruter · bileier håndterer ruter'),
                       onChanged: _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(true),
                     ),
                     RadioListTile<int>(

@@ -73,6 +73,8 @@ class UserAccess {
   bool get canPartnersCreate => can(AccessKeys.partnersCreate);
   bool get canPartnersDelete => can(AccessKeys.partnersDelete);
   bool get canPartnersEdit => can(AccessKeys.partnersEdit);
+  bool get canPartnersVehicleRental => can(AccessKeys.partnersVehicleRental);
+  bool get canPartnersVehicleRentalApprove => can(AccessKeys.partnersVehicleRentalApprove);
 
   bool get canPartnersTabOversikt => can(AccessKeys.partnersTabOversikt);
   bool get canPartnersTabBilkontroll => can(AccessKeys.partnersTabBilkontroll);

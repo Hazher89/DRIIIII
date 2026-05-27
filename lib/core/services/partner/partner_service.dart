@@ -1053,6 +1053,11 @@ class PartnerService {
         .from('partner_portal_accounts')
         .update({'is_active': false})
         .eq('partner_vehicle_id', partnerVehicleId);
+    // Fjern telefon på bilrad — ellers kan rute-SMS fortsatt gå til slettet sjåfør via vehicle.phone.
+    await _client
+        .from('partner_vehicles')
+        .update({'phone': null})
+        .eq('id', partnerVehicleId);
   }
 
   static Future<void> deleteOwnerPortal({

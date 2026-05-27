@@ -57,6 +57,8 @@ class AccessKeys {
   static const partnersCreate = 'partners_create';
   static const partnersDelete = 'partners_delete';
   static const partnersEdit = 'partners_edit';
+  static const partnersVehicleRental = 'partners_vehicle_rental';
+  static const partnersVehicleRentalApprove = 'partners_vehicle_rental_approve';
 
   /// Faner i bedriftsdetalj (samarbeidspartner).
   static const partnersTabOversikt = 'partners_tab_oversikt';
@@ -188,6 +190,8 @@ class AccessKeys {
     partnersCreate: 'Opprette nye samarbeidspartnere',
     partnersDelete: 'Slette samarbeidspartnere',
     partnersEdit: 'Redigere partnerdata (lagre/endre)',
+    partnersVehicleRental: 'Bilutleie — opprette og følge opp',
+    partnersVehicleRentalApprove: 'Bilutleie — godkjenne utleie og retur',
     partnersTabOversikt: 'Partner – Oversikt-fane',
     partnersTabBilkontroll: 'Partner – Bilkontroll-fane',
     partnersTabRuter: 'Partner – Ruter-fane',

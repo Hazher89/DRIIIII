@@ -372,6 +372,8 @@ class _PartnerSmsLogPanelState extends State<PartnerSmsLogPanel> {
               _catChip('Manuell', 'partner_compose'),
               _catChip('Portal', 'partner_portal'),
               _catChip('Møte', 'partner_meeting'),
+              _catChip('Bilutleie', 'vehicle_rental'),
+              _catChip('Utleie status', 'vehicle_rental_status'),
             ],
           ),
         ),
