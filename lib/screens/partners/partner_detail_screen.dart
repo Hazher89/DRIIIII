@@ -87,24 +87,48 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
         _profile?.access.canPartnersAdmin != true) {
       return;
     }
+    final confirmCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Slett samarbeidspartner?'),
-        content: Text(
-          '«${_p.name}» og alle tilknyttede data (biler, ruter, dokumenter) '
-          'fjernes permanent fra systemet.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Slett'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: const Text('Slett samarbeidspartner permanent?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Dette sletter «${_p.name}» permanent fra Supabase og systemet.',
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Alt knyttet til bedriften fjernes: ruter, dokumenter, portaltilganger, kjøretøy, bilutleie og historikk.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Skriv SLETT for å bekrefte',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => setDlg(() {}),
+              ),
+            ],
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+            FilledButton(
+              onPressed: confirmCtrl.text.trim().toUpperCase() == 'SLETT'
+                  ? () => Navigator.pop(ctx, true)
+                  : null,
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Slett permanent'),
+            ),
+          ],
+        ),
       ),
     );
+    confirmCtrl.dispose();
     if (ok != true || !mounted) return;
     await PartnerService.deletePartner(_p.id);
     if (mounted) {

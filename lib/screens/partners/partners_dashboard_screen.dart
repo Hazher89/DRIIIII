@@ -15,6 +15,7 @@ import 'new_partner_screen.dart';
 import 'partner_route_planner_screen.dart';
 import 'widgets/partner_companies_board.dart';
 import 'partner_sms_hub_screen.dart';
+import 'shared_routines_hub_screen.dart';
 import 'vehicle_rental_hub_screen.dart';
 import 'widgets/partner_companies_ui.dart';
 import 'widgets/partner_ui.dart';
@@ -40,6 +41,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   bool _showCompaniesTab = true;
   bool _showRoutesTab = true;
   bool _showSmsTab = true;
+  bool _showRoutinesTab = true;
   bool _showRentalTab = true;
   int _savedTabIndex = 0;
   int _currentTabIndex = 0;
@@ -84,17 +86,25 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     return access.canPartnersVehicleRentalApprove || access.canPartnersAdmin;
   }
 
+  bool _canManageSharedRoutines(UserAccess? access) {
+    if (access == null) return false;
+    return access.canPartnersAdmin || access.canPartnersEdit;
+  }
+
   void _syncDashboardTabs(UserProfile? profile) {
     final access = profile?.access;
     final companies = _canCompaniesList(access);
     final routes = access?.canFleetRoutes == true;
     final sms = PartnerAccess.canOpenPartnersModule(access);
+    final routines = PartnerAccess.canOpenPartnersModule(access);
     final rental = _canManageVehicleRentals(access);
-    final length = (companies ? 1 : 0) + (routes ? 1 : 0) + (sms ? 1 : 0) + (rental ? 1 : 0);
+    final length =
+        (companies ? 1 : 0) + (routes ? 1 : 0) + (sms ? 1 : 0) + (routines ? 1 : 0) + (rental ? 1 : 0);
 
     _showCompaniesTab = companies;
     _showRoutesTab = routes;
     _showSmsTab = sms;
+    _showRoutinesTab = routines;
     _showRentalTab = rental;
 
     if (length == 0) {
@@ -141,6 +151,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     if (_showCompaniesTab) i++;
     if (_showRoutesTab) i++;
     if (_showSmsTab) i++;
+    if (_showRoutinesTab) i++;
     return i;
   }
 
@@ -297,6 +308,11 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                       icon: Icon(Icons.sms_outlined, size: 18),
                       text: 'SMS',
                     ),
+                  if (_showRoutinesTab)
+                    const Tab(
+                      icon: Icon(Icons.menu_book_outlined, size: 18),
+                      text: 'Rutiner',
+                    ),
                   if (_showRentalTab)
                     const Tab(
                       icon: Icon(Icons.car_rental_outlined, size: 18),
@@ -360,6 +376,11 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                   PartnerSmsHubScreen(
                     embedded: true,
                     partners: _partners,
+                  ),
+                if (_showRoutinesTab)
+                  SharedRoutinesHubScreen(
+                    embedded: true,
+                    canManage: _canManageSharedRoutines(_profile?.access),
                   ),
                 if (_showRentalTab)
                   VehicleRentalHubScreen(

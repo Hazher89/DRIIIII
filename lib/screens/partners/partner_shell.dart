@@ -25,6 +25,7 @@ import 'owner_portal/owner_portal_overview_page.dart';
 import 'owner_portal/owner_portal_routes_page.dart';
 import 'owner_portal/owner_portal_vehicle_rental_page.dart';
 import 'owner_portal/owner_portal_summary_page.dart';
+import 'shared_routines_hub_screen.dart';
 import 'widgets/partner_route_pdf_actions.dart';
 import 'widgets/partner_ui.dart' show PartnerStatusBadge;
 
@@ -158,6 +159,7 @@ class _PartnerShellState extends State<PartnerShell> {
             OwnerPortalOverviewPage(partner: p),
             OwnerPortalSummaryPage(partner: p),
             OwnerPortalDocsPage(partner: p),
+            const SharedRoutinesHubScreen(),
             OwnerPortalRoutesPage(partner: p),
             OwnerPortalVehicleRentalPage(partner: p),
             OwnerPortalMeetingsPage(partner: p),
@@ -168,6 +170,7 @@ class _PartnerShellState extends State<PartnerShell> {
             DriverPortalOverviewPage(partner: p, profile: widget.profile),
             DriverPortalRoutesPage(partner: p, profile: widget.profile),
             DriverPortalDocsPage(partner: p),
+            const SharedRoutinesHubScreen(),
             DriverPortalFriPage(partner: p, profile: widget.profile),
             DriverPortalProfilePage(profile: widget.profile),
           ];
@@ -176,6 +179,7 @@ class _PartnerShellState extends State<PartnerShell> {
             NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
             NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Oppsummering'),
             NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
+            NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book), label: 'Rutiner'),
             NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Alle ruter'),
             NavigationDestination(icon: Icon(Icons.car_rental_outlined), selectedIcon: Icon(Icons.car_rental), label: 'Utleie'),
             NavigationDestination(icon: Icon(Icons.event_note_outlined), selectedIcon: Icon(Icons.event_note), label: 'Møter'),
@@ -186,6 +190,7 @@ class _PartnerShellState extends State<PartnerShell> {
             NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
             NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Mine ruter'),
             NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
+            NavigationDestination(icon: Icon(Icons.menu_book_outlined), selectedIcon: Icon(Icons.menu_book), label: 'Rutiner'),
             NavigationDestination(icon: Icon(Icons.beach_access_outlined), selectedIcon: Icon(Icons.beach_access), label: 'Fri'),
             NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
           ];

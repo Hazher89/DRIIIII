@@ -194,11 +194,22 @@ class VehicleRentalService {
       throw StateError('Denne bilen er allerede i en aktiv utleie og er blokkert.');
     }
 
+    final maviBorrowerId = await _client.rpc(
+      'resolve_mavi_borrower_partner_id',
+      params: {'p_company_id': companyId},
+    );
+    if (maviBorrowerId == null || (maviBorrowerId as String).isEmpty) {
+      throw StateError(
+        'Mangler aktiv samarbeidspartner «MAVI Logistikk AS». Opprett/aktiver denne i Samarbeidspartnere før utleie.',
+      );
+    }
+
     final uid = _client.auth.currentUser?.id;
     final reg = vehicle.registrationNumber.trim();
     final row = {
       'company_id': companyId,
       'lender_partner_id': lenderPartnerId,
+      'borrower_partner_id': maviBorrowerId,
       'partner_vehicle_id': vehicle.id,
       'registration_number': reg,
       'vehicle_make': vehicleMakeFrom(vehicle),

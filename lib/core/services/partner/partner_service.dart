@@ -7,6 +7,7 @@ import '../../config/app_origin.dart';
 import '../../config/supabase_config.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/shared_partner_document.dart';
 import '../../../models/partner/vehicle_inspection.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/sap_route_inbox.dart';
@@ -94,7 +95,43 @@ class PartnerService {
 
   static Future<void> deletePartner(String id) async {
     if (!_ok) return;
-    await _client.from('partners').delete().eq('id', id);
+    final raw = await _client.rpc(
+      'hard_delete_partner_company',
+      params: {
+        'p_partner_id': id,
+        'p_confirm': true,
+      },
+    );
+    final payload = raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    final paths = (payload['storage_paths'] as List?)?.whereType<String>().toList() ?? const <String>[];
+    await _deletePartnerStoragePaths(paths);
+  }
+
+  static Future<void> _deletePartnerStoragePaths(List<String> paths) async {
+    if (paths.isEmpty) return;
+    final supabasePaths = <String>[];
+    for (final raw in paths) {
+      final p = raw.trim();
+      if (p.isEmpty) continue;
+      if (CompanyFileStorage.isDropboxReference(p) || CompanyFileStorage.isDropboxPath(p)) {
+        // Dropbox-filer kan ligge utenfor Supabase bucket; behold sporbarhet i Dropbox-logikk.
+        continue;
+      }
+      final normalized = p.replaceFirst(RegExp(r'^https?://[^/]+/storage/v1/object/(public|sign)/documents/'), '');
+      supabasePaths.add(normalized.replaceFirst(RegExp(r'^documents/'), '').replaceFirst(RegExp(r'^/'), ''));
+    }
+    if (supabasePaths.isEmpty) return;
+    final unique = supabasePaths.toSet().toList();
+    const batchSize = 100;
+    for (var i = 0; i < unique.length; i += batchSize) {
+      final end = (i + batchSize > unique.length) ? unique.length : i + batchSize;
+      final chunk = unique.sublist(i, end);
+      try {
+        await _client.storage.from('documents').remove(chunk);
+      } catch (_) {
+        // Ignorer fil-slettefeil; DB-sletting er allerede gjennomført.
+      }
+    }
   }
 
   static Future<int> notifyMeetingSms({
@@ -840,6 +877,41 @@ class PartnerService {
   static Future<List<PartnerDocument>> fetchDriverPortalDocuments(String partnerId) async {
     final all = await fetchDocuments(partnerId);
     return all.where((d) => d.driverVisible).toList();
+  }
+
+  static Future<List<SharedPartnerDocument>> fetchSharedPartnerDocuments({
+    required String companyId,
+  }) async {
+    if (!_ok) return const [];
+    final data = await _client
+            .from('partner_shared_documents')
+            .select()
+            .eq('company_id', companyId)
+            .eq('is_active', true)
+            .order('created_at', ascending: false)
+        as List<dynamic>;
+    return data
+        .map((e) => SharedPartnerDocument.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<SharedPartnerDocument> addSharedPartnerDocument(
+    SharedPartnerDocument doc, {
+    String? createdBy,
+  }) async {
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final uid = createdBy ?? _client.auth.currentUser?.id;
+    final row = await _client
+        .from('partner_shared_documents')
+        .insert(doc.toInsertJson(createdBy: uid))
+        .select()
+        .single();
+    return SharedPartnerDocument.fromJson(row as Map<String, dynamic>);
+  }
+
+  static Future<void> deleteSharedPartnerDocument(String id) async {
+    if (!_ok) return;
+    await _client.from('partner_shared_documents').delete().eq('id', id);
   }
 
   static Future<List<PartnerMeeting>> fetchPortalMeetings(String partnerId) async {
