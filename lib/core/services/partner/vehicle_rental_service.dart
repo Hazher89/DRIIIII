@@ -191,19 +191,34 @@ class VehicleRentalService {
 
   static Future<VehicleRental> createRental({
     required String companyId,
-    required String lenderPartnerId,
     required String borrowerPartnerId,
     required PartnerVehicle vehicle,
-    DateTime? rentalStart,
-    DateTime? rentalEnd,
-    DateTime? rentalStartAt,
-    DateTime? rentalEndAt,
+    required DateTime rentalStartAt,
+    required DateTime rentalEndAt,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
+    if (!rentalEndAt.isAfter(rentalStartAt)) {
+      throw StateError('Sluttid må være etter starttid.');
+    }
 
     final blocked = await fetchBlockedVehicleIds(companyId);
     if (blocked.contains(vehicle.id)) {
       throw StateError('Denne bilen er allerede i en aktiv utleie og er blokkert.');
+    }
+
+    final lenderPartnerId = await resolveOrCreateMaviLenderPartnerId(companyId);
+    if (borrowerPartnerId == lenderPartnerId) {
+      throw StateError('Låntaker kan ikke være MAVI Logistikk AS.');
+    }
+    final lender = await _client
+        .from('partners')
+        .select('name, is_active')
+        .eq('id', lenderPartnerId)
+        .maybeSingle();
+    final lenderName = (lender?['name'] as String? ?? '').trim().toLowerCase();
+    final lenderActive = lender?['is_active'] == true;
+    if (!lenderActive || !lenderName.startsWith('mavi logistikk')) {
+      throw StateError('Utleier må være aktiv MAVI Logistikk AS.');
     }
 
     final uid = _client.auth.currentUser?.id;
@@ -216,10 +231,10 @@ class VehicleRentalService {
       'registration_number': reg,
       'vehicle_make': vehicleMakeFrom(vehicle),
       'unit_code': vehicle.unitCode,
-      if (rentalStart != null) 'rental_start': rentalStart.toIso8601String().split('T').first,
-      if (rentalEnd != null) 'rental_end': rentalEnd.toIso8601String().split('T').first,
-      if (rentalStartAt != null) 'rental_start_at': rentalStartAt.toUtc().toIso8601String(),
-      if (rentalEndAt != null) 'rental_end_at': rentalEndAt.toUtc().toIso8601String(),
+      'rental_start': rentalStartAt.toIso8601String().split('T').first,
+      'rental_end': rentalEndAt.toIso8601String().split('T').first,
+      'rental_start_at': rentalStartAt.toUtc().toIso8601String(),
+      'rental_end_at': rentalEndAt.toUtc().toIso8601String(),
       'status': 'pending_owner',
       if (uid != null) 'created_by': uid,
     };
@@ -369,4 +384,41 @@ class VehicleRentalService {
 
   static Future<String> photoSignedUrl(String storagePath) =>
       PartnerService.resolveStorageUrl(storagePath);
+
+  static Future<String> resolveOrCreateMaviLenderPartnerId(String companyId) async {
+    final resolved = await _client.rpc(
+      'resolve_mavi_borrower_partner_id',
+      params: {'p_company_id': companyId},
+    );
+    if (resolved is String && resolved.isNotEmpty) return resolved;
+
+    final existing = await _client
+        .from('partners')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('is_active', true)
+        .ilike('name', 'mavi logistikk%')
+        .limit(1)
+        .maybeSingle();
+    if (existing != null && existing['id'] is String) {
+      return existing['id'] as String;
+    }
+
+    final inserted = await _client
+        .from('partners')
+        .insert({
+          'company_id': companyId,
+          'name': 'MAVI Logistikk AS',
+          'trade_name': 'MAVI Logistikk AS',
+          'is_active': true,
+          'notes': 'Auto-opprettet for utleie (utleier)',
+        })
+        .select('id')
+        .single();
+    final id = inserted['id'] as String?;
+    if (id == null || id.isEmpty) {
+      throw StateError('Klarte ikke opprette/finne MAVI Logistikk AS som utleier.');
+    }
+    return id;
+  }
 }

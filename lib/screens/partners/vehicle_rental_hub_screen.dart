@@ -90,7 +90,26 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     final cid = await SupabaseService.getCurrentCompanyId();
     if (cid == null || !mounted) return;
 
-    String? lenderId;
+    Partner? maviPartner;
+    for (final p in widget.partners) {
+      if (p.isActive && p.name.trim().toLowerCase().startsWith('mavi logistikk')) {
+        maviPartner = p;
+        break;
+      }
+    }
+    if (maviPartner == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Fant ikke aktiv bedrift «MAVI Logistikk AS». Aktiver/opprett denne først.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final String lenderId = maviPartner.id;
     String? borrowerId;
     String? vehicleId;
     DateTime? start;
@@ -107,12 +126,10 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) {
-          final lenderVehicles = lenderId == null
-              ? const <PartnerVehicle>[]
-              : (_vehiclesByPartner[lenderId] ?? [])
-                  .where((v) => v.vehicleKind == 'mavi')
-                  .where((v) => !_blockedVehicleIds.contains(v.id))
-                  .toList();
+          final lenderVehicles = (_vehiclesByPartner[lenderId] ?? [])
+              .where((v) => v.vehicleKind == 'mavi')
+              .where((v) => !_blockedVehicleIds.contains(v.id))
+              .toList();
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
             child: SingleChildScrollView(
@@ -134,26 +151,30 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                   const SizedBox(height: 16),
                   const Text('Ny bilutleie', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
                   const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: lenderId,
-                    decoration: const InputDecoration(labelText: 'Utleier (bil-eier)'),
-                    isExpanded: true,
-                    items: widget.partners
-                        .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))
-                        .toList(),
-                    onChanged: (v) => setDlg(() {
-                      lenderId = v;
-                      vehicleId = null;
-                    }),
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Utleier (alltid)',
+                      border: OutlineInputBorder(),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.business, size: 20),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'MAVI Logistikk AS',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: vehicleId,
                     decoration: InputDecoration(
                       labelText: 'MAVI-bil',
-                      helperText: lenderVehicles.isEmpty && lenderId != null
-                          ? 'Alle biler er blokkert eller utlånt'
-                          : null,
+                      helperText: lenderVehicles.isEmpty ? 'Alle biler er blokkert eller utlånt' : null,
                     ),
                     isExpanded: true,
                     items: lenderVehicles
@@ -243,7 +264,12 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                   ),
                   const SizedBox(height: 20),
                   FilledButton.icon(
-                    onPressed: lenderId != null && borrowerId != null && vehicleId != null
+                    onPressed: borrowerId != null &&
+                            vehicleId != null &&
+                            start != null &&
+                            end != null &&
+                            startTime != null &&
+                            endTime != null
                         ? () => Navigator.pop(ctx, true)
                         : null,
                     style: FilledButton.styleFrom(
@@ -262,7 +288,20 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
       ),
     );
 
-    if (ok != true || lenderId == null || borrowerId == null || vehicleId == null) return;
+    if (ok != true ||
+        borrowerId == null ||
+        vehicleId == null ||
+        start == null ||
+        end == null ||
+        startTime == null ||
+        endTime == null) {
+      return;
+    }
+    final selectedBorrowerId = borrowerId!;
+    final selectedStart = start!;
+    final selectedEnd = end!;
+    final selectedStartTime = startTime!;
+    final selectedEndTime = endTime!;
 
     PartnerVehicle? vehicle;
     for (final list in _vehiclesByPartner.values) {
@@ -274,21 +313,34 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
       }
     }
     if (vehicle == null) return;
-    final startAt = (start != null && startTime != null)
-        ? DateTime(start!.year, start!.month, start!.day, startTime!.hour, startTime!.minute)
-        : null;
-    final endAt = (end != null && endTime != null)
-        ? DateTime(end!.year, end!.month, end!.day, endTime!.hour, endTime!.minute)
-        : null;
+    final startAt = DateTime(
+      selectedStart.year,
+      selectedStart.month,
+      selectedStart.day,
+      selectedStartTime.hour,
+      selectedStartTime.minute,
+    );
+    final endAt = DateTime(
+      selectedEnd.year,
+      selectedEnd.month,
+      selectedEnd.day,
+      selectedEndTime.hour,
+      selectedEndTime.minute,
+    );
+    if (!endAt.isAfter(startAt)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sluttdato/tid må være etter startdato/tid.'), backgroundColor: Colors.red),
+        );
+      }
+      return;
+    }
 
     try {
       await VehicleRentalService.createRental(
         companyId: cid,
-        lenderPartnerId: lenderId!,
-        borrowerPartnerId: borrowerId!,
+        borrowerPartnerId: selectedBorrowerId,
         vehicle: vehicle,
-        rentalStart: start,
-        rentalEnd: end,
         rentalStartAt: startAt,
         rentalEndAt: endAt,
       );
