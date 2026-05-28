@@ -175,12 +175,51 @@ class PartnerService {
     List<String>? docCategories,
   }) async {
     if (!_ok) return const [];
-    var q = _client.from('partner_documents').select().eq('partner_id', partnerId);
+    var q = _client
+        .from('partner_documents')
+        .select('*, partner_document_folders(name)')
+        .eq('partner_id', partnerId);
     if (docCategories != null && docCategories.isNotEmpty) {
       q = q.inFilter('doc_category', docCategories);
     }
     final data = await q.order('created_at', ascending: false) as List<dynamic>;
-    return data.map((e) => PartnerDocument.fromJson(e as Map<String, dynamic>)).toList();
+    return data.map((e) {
+      final m = Map<String, dynamic>.from(e as Map<String, dynamic>);
+      final folder = m['partner_document_folders'];
+      if (folder is Map && folder['name'] != null) {
+        m['folder_name'] = folder['name'];
+      }
+      return PartnerDocument.fromJson(m);
+    }).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchDocumentFolders({
+    required String partnerId,
+  }) async {
+    if (!_ok) return const [];
+    final data = await _client
+            .from('partner_document_folders')
+            .select('id, name, visibility, template_id')
+            .eq('partner_id', partnerId)
+            .order('name')
+        as List<dynamic>;
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  static Future<String?> createDocumentFolder({
+    required String companyId,
+    required String partnerId,
+    required String name,
+    required bool shared,
+  }) async {
+    if (!_ok) return null;
+    final id = await _client.rpc('create_partner_document_folder', params: {
+      'p_company_id': companyId,
+      'p_partner_id': partnerId,
+      'p_name': name,
+      'p_visibility': shared ? 'shared' : 'private',
+    });
+    return id?.toString();
   }
 
   /// Sender magic link / OTP til portal-e-post (ingen passord i skjema). Krever e-postmal i Supabase.
@@ -207,6 +246,49 @@ class PartnerService {
         .select()
         .single();
     return PartnerDocument.fromJson(row);
+  }
+
+  static Future<void> addDocumentToFolder(
+    PartnerDocument doc, {
+    required String folderId,
+    String? createdBy,
+  }) async {
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final uid = createdBy ?? _client.auth.currentUser?.id;
+    final folder = await _client
+        .from('partner_document_folders')
+        .select('id, company_id, partner_id, visibility, template_id')
+        .eq('id', folderId)
+        .single();
+    final visibility = folder['visibility'] as String? ?? 'private';
+    final templateId = folder['template_id'] as String?;
+
+    Future<void> insertForFolder(String targetFolderId, String targetPartnerId) async {
+      await _client.from('partner_documents').insert(
+        doc.copyForPartner(
+          partnerId: targetPartnerId,
+          folderId: targetFolderId,
+        ).toInsertJson(createdBy: uid),
+      );
+    }
+
+    if (visibility != 'shared' || templateId == null) {
+      await insertForFolder(folderId, folder['partner_id'] as String);
+      return;
+    }
+
+    final folders = await _client
+            .from('partner_document_folders')
+            .select('id, partner_id')
+            .eq('company_id', folder['company_id'] as String)
+            .eq('template_id', templateId)
+            .eq('visibility', 'shared')
+        as List<dynamic>;
+
+    for (final row in folders) {
+      final m = Map<String, dynamic>.from(row as Map);
+      await insertForFolder(m['id'] as String, m['partner_id'] as String);
+    }
   }
 
   static Future<void> deleteDocument(String id) async {

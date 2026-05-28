@@ -91,9 +91,12 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     if (cid == null || !mounted) return;
 
     String? lenderId;
+    String? borrowerId;
     String? vehicleId;
     DateTime? start;
     DateTime? end;
+    TimeOfDay? startTime;
+    TimeOfDay? endTime;
 
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -164,23 +167,15 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                     onChanged: lenderVehicles.isEmpty ? null : (v) => setDlg(() => vehicleId = v),
                   ),
                   const SizedBox(height: 12),
-                  InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Låntaker',
-                      border: OutlineInputBorder(),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.business, size: 20, color: Colors.grey.shade700),
-                        const SizedBox(width: 8),
-                        const Expanded(
-                          child: Text(
-                            'MAVI Logistikk AS',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
+                  DropdownButtonFormField<String>(
+                    value: borrowerId,
+                    decoration: const InputDecoration(labelText: 'Låntaker (bedrift som skal få leiebil)'),
+                    isExpanded: true,
+                    items: widget.partners
+                        .where((p) => p.id != lenderId)
+                        .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))
+                        .toList(),
+                    onChanged: (v) => setDlg(() => borrowerId = v),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -204,6 +199,20 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                       Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () async {
+                            final t = await showTimePicker(
+                              context: ctx,
+                              initialTime: startTime ?? const TimeOfDay(hour: 8, minute: 0),
+                            );
+                            if (t != null) setDlg(() => startTime = t);
+                          },
+                          icon: const Icon(Icons.schedule, size: 18),
+                          label: Text(startTime == null ? 'Starttid' : startTime!.format(ctx)),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
                             final d = await showDatePicker(
                               context: ctx,
                               initialDate: start ?? DateTime.now(),
@@ -216,11 +225,25 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                           label: Text(end == null ? 'Slutt' : DateFormat('d.M.y').format(end!)),
                         ),
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            final t = await showTimePicker(
+                              context: ctx,
+                              initialTime: endTime ?? const TimeOfDay(hour: 16, minute: 0),
+                            );
+                            if (t != null) setDlg(() => endTime = t);
+                          },
+                          icon: const Icon(Icons.schedule, size: 18),
+                          label: Text(endTime == null ? 'Sluttid' : endTime!.format(ctx)),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 20),
                   FilledButton.icon(
-                    onPressed: lenderId != null && vehicleId != null
+                    onPressed: lenderId != null && borrowerId != null && vehicleId != null
                         ? () => Navigator.pop(ctx, true)
                         : null,
                     style: FilledButton.styleFrom(
@@ -239,7 +262,7 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
       ),
     );
 
-    if (ok != true || lenderId == null || vehicleId == null) return;
+    if (ok != true || lenderId == null || borrowerId == null || vehicleId == null) return;
 
     PartnerVehicle? vehicle;
     for (final list in _vehiclesByPartner.values) {
@@ -251,14 +274,23 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
       }
     }
     if (vehicle == null) return;
+    final startAt = (start != null && startTime != null)
+        ? DateTime(start!.year, start!.month, start!.day, startTime!.hour, startTime!.minute)
+        : null;
+    final endAt = (end != null && endTime != null)
+        ? DateTime(end!.year, end!.month, end!.day, endTime!.hour, endTime!.minute)
+        : null;
 
     try {
       await VehicleRentalService.createRental(
         companyId: cid,
         lenderPartnerId: lenderId!,
+        borrowerPartnerId: borrowerId!,
         vehicle: vehicle,
         rentalStart: start,
         rentalEnd: end,
+        rentalStartAt: startAt,
+        rentalEndAt: endAt,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -337,18 +369,146 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     }
   }
 
-  Future<void> _approveReturn(VehicleRental rental) async {
-    final comment = await _askMaviComment(
-      title: 'Godkjenn retur',
-      hint: 'F.eks. bil mottatt, skader notert…',
+  _ReturnSettlementSummary _computeReturnSettlement(VehicleRental rental) {
+    final start = rental.rentalStartAt ??
+        rental.rentalStart ??
+        rental.approvedAt ??
+        rental.ownerSubmittedAt ??
+        rental.createdAt;
+    final end = rental.returnSubmittedAt ?? DateTime.now();
+
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
+    final rentalDays = endDay.difference(startDay).inDays + 1;
+    final chargeDays = rentalDays < 1 ? 1 : rentalDays;
+    const dayRate = 1000;
+    final daysAmount = chargeDays * dayRate;
+
+    final expectedFuel = (rental.fuelLevel ?? '').trim().toLowerCase();
+    final returnedFuel = (rental.returnFuelLevel ?? '').trim().toLowerCase();
+    final fuelMismatch = expectedFuel.isNotEmpty &&
+        returnedFuel.isNotEmpty &&
+        expectedFuel != returnedFuel;
+    final fuelFee = fuelMismatch ? 500 : 0;
+    final total = daysAmount + fuelFee;
+
+    final plannedEnd = rental.rentalEndAt ?? rental.rentalEnd;
+    final returnedEarly = plannedEnd != null && end.isBefore(plannedEnd);
+
+    return _ReturnSettlementSummary(
+      chargeDays: chargeDays,
+      dayRate: dayRate,
+      daysAmount: daysAmount,
+      fuelFee: fuelFee,
+      fuelMismatch: fuelMismatch,
+      totalAmount: total,
+      returnedEarly: returnedEarly,
     );
+  }
+
+  Future<String?> _askReturnApprovalWithSettlement(VehicleRental rental) async {
+    final summary = _computeReturnSettlement(rental);
+    final ctrl = TextEditingController();
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.viewInsetsOf(ctx).bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Godkjenn retur og registrer trekk',
+              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade300),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Registrer dette i trekkfilen:', style: TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  Text('MAVI nr: ${rental.unitCode ?? '—'}'),
+                  Text('Reg.nr: ${rental.registrationNumber ?? '—'}'),
+                  Text('Antall dager: ${summary.chargeDays}'),
+                  Text('Sats per dag: ${summary.dayRate},-'),
+                  Text('Sum leie: ${summary.daysAmount},-'),
+                  Text(
+                    summary.fuelMismatch
+                        ? 'Drivstofftillegg: 500,- (nivå avviker)'
+                        : 'Drivstofftillegg: 0,-',
+                  ),
+                  if (summary.returnedEarly)
+                    const Text(
+                      'Retur før avtalt sluttdato registrert.',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Totalt trekk: ${summary.totalAmount},-',
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: 'Valgfri MAVI-kommentar',
+                labelText: 'Kommentar',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: () {
+                final extra = ctrl.text.trim();
+                final autoSummary =
+                    'Trekkfil: MAVI ${rental.unitCode ?? '—'} / ${rental.registrationNumber ?? '—'} · '
+                    '${summary.chargeDays} dager x ${summary.dayRate},- = ${summary.daysAmount},-'
+                    '${summary.fuelMismatch ? ' + drivstoff 500,-' : ''} · '
+                    'Totalt ${summary.totalAmount},-.';
+                final finalComment = extra.isEmpty ? autoSummary : '$extra\n\n$autoSummary';
+                Navigator.pop(ctx, finalComment);
+              },
+              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.success),
+              child: const Text('Godkjenn retur'),
+            ),
+          ],
+        ),
+      ),
+    );
+    ctrl.dispose();
+    return result;
+  }
+
+  Future<void> _approveReturn(VehicleRental rental) async {
+    final comment = await _askReturnApprovalWithSettlement(rental);
     if (!mounted) return;
     if (comment == null) return;
 
-    await VehicleRentalService.approveReturn(rental.id, maviComment: comment.isEmpty ? null : comment);
+    await VehicleRentalService.approveReturn(rental.id, maviComment: comment);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Retur godkjent — bil tilgjengelig igjen')),
+        const SnackBar(content: Text('Retur godkjent — registrer trekkfil med oppgitt beløp')),
       );
       await _load();
     }
@@ -559,24 +719,24 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     if (!widget.canApproveRentals) return null;
     if (r.isPendingMavi) {
       return FilledButton.icon(
-        onPressed: () => _approveCheckout(r),
+        onPressed: () => _showDetail(r),
         style: FilledButton.styleFrom(
           backgroundColor: DriftProTheme.primaryGreen,
           minimumSize: const Size(double.infinity, 44),
         ),
-        icon: const Icon(Icons.check, size: 18),
-        label: const Text('Godkjenn utleie'),
+        icon: const Icon(Icons.visibility_outlined, size: 18),
+        label: const Text('Se bilder før godkjenning'),
       );
     }
     if (r.isPendingReturnMavi) {
       return FilledButton.icon(
-        onPressed: () => _approveReturn(r),
+        onPressed: () => _showDetail(r),
         style: FilledButton.styleFrom(
           backgroundColor: DriftProTheme.success,
           minimumSize: const Size(double.infinity, 44),
         ),
-        icon: const Icon(Icons.assignment_return, size: 18),
-        label: const Text('Godkjenn retur'),
+        icon: const Icon(Icons.visibility_outlined, size: 18),
+        label: const Text('Se retur før godkjenning'),
       );
     }
     return null;
@@ -608,4 +768,24 @@ class _FilterChip extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ReturnSettlementSummary {
+  final int chargeDays;
+  final int dayRate;
+  final int daysAmount;
+  final int fuelFee;
+  final bool fuelMismatch;
+  final int totalAmount;
+  final bool returnedEarly;
+
+  const _ReturnSettlementSummary({
+    required this.chargeDays,
+    required this.dayRate,
+    required this.daysAmount,
+    required this.fuelFee,
+    required this.fuelMismatch,
+    required this.totalAmount,
+    required this.returnedEarly,
+  });
 }

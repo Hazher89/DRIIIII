@@ -12,6 +12,8 @@ class VehicleRental {
   final String? unitCode;
   final DateTime? rentalStart;
   final DateTime? rentalEnd;
+  final DateTime? rentalStartAt;
+  final DateTime? rentalEndAt;
   final String status;
   final DateTime? agreementAcceptedAt;
   final DateTime? ownerSubmittedAt;
@@ -37,6 +39,8 @@ class VehicleRental {
   /// Låntaker / låner navn (fylls inn av service ved listevisning).
   final String? lenderPartnerName;
   final String? borrowerPartnerName;
+  final String? lenderPartnerOrgNumber;
+  final String? borrowerPartnerOrgNumber;
 
   const VehicleRental({
     required this.id,
@@ -49,6 +53,8 @@ class VehicleRental {
     this.unitCode,
     this.rentalStart,
     this.rentalEnd,
+    this.rentalStartAt,
+    this.rentalEndAt,
     required this.status,
     this.agreementAcceptedAt,
     this.ownerSubmittedAt,
@@ -72,6 +78,8 @@ class VehicleRental {
     required this.updatedAt,
     this.lenderPartnerName,
     this.borrowerPartnerName,
+    this.lenderPartnerOrgNumber,
+    this.borrowerPartnerOrgNumber,
   });
 
   bool get isPendingOwner => status == 'pending_owner';
@@ -126,6 +134,8 @@ class VehicleRental {
       unitCode: json['unit_code'] as String?,
       rentalStart: parseDate(json['rental_start']),
       rentalEnd: parseDate(json['rental_end']),
+      rentalStartAt: parseTs(json['rental_start_at']),
+      rentalEndAt: parseTs(json['rental_end_at']),
       status: (json['status'] as String?) ?? 'pending_owner',
       agreementAcceptedAt: parseTs(json['agreement_accepted_at']),
       ownerSubmittedAt: parseTs(json['owner_submitted_at']),
@@ -149,6 +159,8 @@ class VehicleRental {
       updatedAt: DateTime.parse(json['updated_at'] as String),
       lenderPartnerName: json['lender_partner_name'] as String?,
       borrowerPartnerName: json['borrower_partner_name'] as String?,
+      lenderPartnerOrgNumber: json['lender_partner_org_number'] as String?,
+      borrowerPartnerOrgNumber: json['borrower_partner_org_number'] as String?,
     );
   }
 

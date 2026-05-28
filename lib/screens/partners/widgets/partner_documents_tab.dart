@@ -29,8 +29,10 @@ class PartnerDocumentsTab extends StatefulWidget {
 
 class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
   List<PartnerDocument> _docs = [];
+  List<Map<String, dynamic>> _folders = [];
   bool _loading = true;
   String _filterType = 'alle';
+  String? _selectedFolderId;
 
   static const _types = ['alle', 'avtale', 'sertifikat', 'transport', 'revisjon', 'okonomi', 'annet'];
 
@@ -42,24 +44,42 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final d = await PartnerService.fetchDocuments(
-      widget.partner.id,
-      docCategories: const ['general', 'agreement'],
-    );
+    final results = await Future.wait([
+      PartnerService.fetchDocuments(
+        widget.partner.id,
+        docCategories: const ['general', 'agreement'],
+      ),
+      PartnerService.fetchDocumentFolders(partnerId: widget.partner.id),
+    ]);
+    final d = results[0] as List<PartnerDocument>;
+    final folders = results[1] as List<Map<String, dynamic>>;
     if (mounted) {
       setState(() {
         _docs = d.where((x) => x.ownerVisible && !x.driverVisible).toList();
+        _folders = folders;
+        if (_selectedFolderId == null && folders.isNotEmpty) {
+          _selectedFolderId = folders.first['id'] as String?;
+        }
         _loading = false;
       });
     }
   }
 
   List<PartnerDocument> get _filtered {
-    if (_filterType == 'alle') return _docs;
-    return _docs.where((d) => d.documentType == _filterType).toList();
+    final byFolder = _selectedFolderId == null
+        ? _docs
+        : _docs.where((d) => d.folderId == _selectedFolderId).toList();
+    if (_filterType == 'alle') return byFolder;
+    return byFolder.where((d) => d.documentType == _filterType).toList();
   }
 
   Future<void> _upload() async {
+    if (_selectedFolderId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Opprett eller velg mappe først.')),
+      );
+      return;
+    }
     final picked = await FilePicker.platform.pickFiles(
       withData: true,
       type: FileType.custom,
@@ -151,7 +171,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
         bytes: bytes,
         mimeType: file.extension != null ? _mimeForExt(file.extension!) : null,
       );
-      await PartnerService.addDocument(
+      await PartnerService.addDocumentToFolder(
         PartnerDocument(
           id: '',
           partnerId: widget.partner.id,
@@ -163,11 +183,13 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
           mimeType: file.extension,
           documentType: docType,
           expiresAt: expires,
+          folderId: _selectedFolderId,
           ownerVisible: true,
           driverVisible: false,
           docCategory: 'general',
           createdAt: DateTime.now(),
         ),
+        folderId: _selectedFolderId!,
       );
       await _load();
       await widget.onChanged();
@@ -186,6 +208,86 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
       titleCtrl.dispose();
       descCtrl.dispose();
     }
+  }
+
+  Future<void> _createFolder() async {
+    final nameCtrl = TextEditingController();
+    var shared = false;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('Ny mappe'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Mappenavn',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Skal mappen være felles eller privat?',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(height: 6),
+              RadioListTile<bool>(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Privat (kun denne bedriften)'),
+                value: false,
+                groupValue: shared,
+                onChanged: (v) => setSt(() => shared = v ?? false),
+              ),
+              RadioListTile<bool>(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Felles (synlig for alle bedrifter)'),
+                value: true,
+                groupValue: shared,
+                onChanged: (v) => setSt(() => shared = v ?? false),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, nameCtrl.text.trim().isNotEmpty),
+              child: const Text('Opprett'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (ok != true) {
+      nameCtrl.dispose();
+      return;
+    }
+    final id = await PartnerService.createDocumentFolder(
+      companyId: widget.partner.companyId,
+      partnerId: widget.partner.id,
+      name: nameCtrl.text.trim(),
+      shared: shared,
+    );
+    nameCtrl.dispose();
+    await _load();
+    if (!mounted) return;
+    if (id != null) {
+      setState(() => _selectedFolderId = id);
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          shared
+              ? 'Felles mappe opprettet for alle bedrifter i systemet.'
+              : 'Privat mappe opprettet for denne bedriften.',
+        ),
+      ),
+    );
   }
 
   String? _mimeForExt(String ext) {
@@ -283,6 +385,37 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
                 onSelected: (_) => setState(() => _filterType = t),
               );
             }).toList(),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: DropdownButtonFormField<String>(
+                  value: _selectedFolderId,
+                  decoration: const InputDecoration(
+                    labelText: 'Mappe',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _folders
+                      .map(
+                        (f) => DropdownMenuItem(
+                          value: f['id'] as String,
+                          child: Text(
+                            '${f['name']} ${f['visibility'] == 'shared' ? '(Felles)' : '(Privat)'}',
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (v) => setState(() => _selectedFolderId = v),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _createFolder,
+                icon: const Icon(Icons.create_new_folder_outlined),
+                label: const Text('Ny mappe'),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           Align(

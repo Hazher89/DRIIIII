@@ -26,6 +26,10 @@ class SharedRoutinesHubScreen extends StatefulWidget {
 }
 
 class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
+  static const _defaultProcedureTitle = 'Retur av litiumbatterier (standard prosedyre)';
+  static const _defaultProcedureUrl =
+      'https://raw.githubusercontent.com/Hazher89/DRIIIII/main/docs/Retur%20av%20litiumbatterier.pdf';
+
   bool _loading = true;
   String? _error;
   String? _companyId;
@@ -232,6 +236,21 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
                     },
                   );
 
+    final defaultProcedureCard = Card(
+      color: DriftProTheme.primaryGreen.withValues(alpha: 0.06),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: ListTile(
+        leading: const Icon(Icons.picture_as_pdf_outlined, color: DriftProTheme.primaryGreen),
+        title: const Text(
+          _defaultProcedureTitle,
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: const Text('Felles standard dokument'),
+        trailing: const Icon(Icons.open_in_new),
+        onTap: () => launchUrl(Uri.parse(_defaultProcedureUrl), mode: LaunchMode.externalApplication),
+      ),
+    );
+
     if (widget.embedded) {
       return Column(
         children: [
@@ -248,6 +267,7 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
                 ),
               ),
             ),
+          defaultProcedureCard,
           Expanded(child: content),
         ],
       );
@@ -273,6 +293,7 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
       body: Column(
         children: [
           sharedInfo,
+          defaultProcedureCard,
           Expanded(child: content),
         ],
       ),

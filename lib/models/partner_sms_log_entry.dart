@@ -86,6 +86,8 @@ class PartnerSmsLogEntry {
         return 'Bilutleie — ny';
       case 'vehicle_rental_status':
         return 'Bilutleie — status';
+      case 'vehicle_rental_return_reminder':
+        return 'Bilutleie — returpåminnelse';
       default:
         if (cat != null && cat.startsWith('partner')) return cat;
         return 'Samarbeid';

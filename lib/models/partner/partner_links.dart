@@ -8,6 +8,8 @@ class PartnerDocument {
   final String? mimeType;
   final String? notes;
   final String? description;
+  final String? folderId;
+  final String? folderName;
   /// general | summary | agreement
   final String docCategory;
   /// avtale | sertifikat | transport | revisjon | okonomi | annet
@@ -28,6 +30,8 @@ class PartnerDocument {
     this.mimeType,
     this.notes,
     this.description,
+    this.folderId,
+    this.folderName,
     this.docCategory = 'general',
     this.documentType = 'annet',
     this.expiresAt,
@@ -72,6 +76,8 @@ class PartnerDocument {
       mimeType: json['mime_type'] as String?,
       notes: json['notes'] as String?,
       description: json['description'] as String?,
+      folderId: json['folder_id'] as String?,
+      folderName: json['folder_name'] as String?,
       docCategory: json['doc_category'] as String? ?? 'general',
       documentType: json['document_type'] as String? ?? 'annet',
       expiresAt: parseDate(json['expires_at']),
@@ -91,6 +97,7 @@ class PartnerDocument {
       'mime_type': mimeType,
       'notes': notes,
       'description': description,
+      'folder_id': folderId,
       'doc_category': docCategory,
       'document_type': documentType,
       'expires_at': expiresAt?.toIso8601String().split('T').first,
@@ -98,6 +105,31 @@ class PartnerDocument {
       'driver_visible': driverVisible,
       ...?createdBy != null ? {'created_by': createdBy} : null,
     };
+  }
+
+  PartnerDocument copyForPartner({
+    required String partnerId,
+    String? folderId,
+  }) {
+    return PartnerDocument(
+      id: id,
+      partnerId: partnerId,
+      companyId: companyId,
+      title: title,
+      storagePath: storagePath,
+      fileName: fileName,
+      mimeType: mimeType,
+      notes: notes,
+      description: description,
+      folderId: folderId,
+      folderName: folderName,
+      docCategory: docCategory,
+      documentType: documentType,
+      expiresAt: expiresAt,
+      ownerVisible: ownerVisible,
+      driverVisible: driverVisible,
+      createdAt: createdAt,
+    );
   }
 }
 

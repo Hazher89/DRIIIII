@@ -124,12 +124,9 @@ class CompanyFileStorage {
   }) async {
     final status = await dropboxStatus();
     final connected = status?['connected'] == true;
-    final threshold = (status?['large_file_threshold_bytes'] as int?) ?? defaultThresholdBytes;
     final name = fileName ?? storagePath.split('/').last;
 
-    if (connected &&
-        bytes.length > threshold &&
-        isModuleEnabled(status, category)) {
+    if (connected && isModuleEnabled(status, category)) {
       final b64 = base64Encode(bytes);
       final res = await _client.functions.invoke(
         'dropbox-storage',
@@ -157,6 +154,7 @@ class CompanyFileStorage {
       }
     }
 
+    // Fallback hvis Dropbox ikke er koblet, modul er av, eller Dropbox svarer "use_supabase".
     return _uploadSupabase(supabaseBucket, storagePath, bytes);
   }
 

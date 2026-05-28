@@ -75,6 +75,12 @@ Widget vehicleRentalStatusChip(VehicleRental rental, {bool compact = false}) {
 }
 
 String vehicleRentalPeriodLabel(VehicleRental r) {
+  final fmtTs = DateFormat('d.M.y HH:mm', 'nb');
+  if (r.rentalStartAt != null && r.rentalEndAt != null) {
+    return '${fmtTs.format(r.rentalStartAt!.toLocal())} – ${fmtTs.format(r.rentalEndAt!.toLocal())}';
+  }
+  if (r.rentalStartAt != null) return 'Fra ${fmtTs.format(r.rentalStartAt!.toLocal())}';
+  if (r.rentalEndAt != null) return 'Til ${fmtTs.format(r.rentalEndAt!.toLocal())}';
   if (r.rentalStart == null && r.rentalEnd == null) return 'Periode ikke satt';
   final fmt = DateFormat('d.M.y', 'nb');
   if (r.rentalStart != null && r.rentalEnd != null) {
@@ -89,7 +95,10 @@ String vehicleRentalAgreementText(VehicleRental rental) {
     registrationNumber: rental.registrationNumber ?? '—',
     vehicleMake: rental.vehicleMake ?? '—',
     unitCode: rental.unitCode,
+    lenderName: rental.lenderPartnerName,
+    lenderOrgNumber: rental.lenderPartnerOrgNumber,
     borrowerName: rental.borrowerPartnerName,
+    borrowerOrgNumber: rental.borrowerPartnerOrgNumber,
     rentalPeriodLabel: vehicleRentalPeriodLabel(rental),
   );
 }
