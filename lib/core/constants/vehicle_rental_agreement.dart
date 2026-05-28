@@ -12,8 +12,13 @@ class VehicleRentalAgreement {
     String? borrowerOrgNumber,
     String? rentalPeriodLabel,
   }) {
-    final reg = registrationNumber.trim().isEmpty ? 'JD77645' : registrationNumber.trim();
-    final make = vehicleMake.trim().isEmpty ? 'PEUGEOT BOXER' : vehicleMake.trim().toUpperCase();
+    bool isMissing(String value) {
+      final t = value.trim();
+      return t.isEmpty || t == '-' || t == '—';
+    }
+
+    final reg = isMissing(registrationNumber) ? 'JD77645' : registrationNumber.trim().toUpperCase();
+    final make = isMissing(vehicleMake) ? 'PEUGEOT BOXER' : vehicleMake.trim().toUpperCase();
     final mavi = unitCode?.trim().isEmpty ?? true ? '—' : unitCode!.trim();
     final lender = lenderName?.trim().isEmpty ?? true ? 'MAVI Logistikk AS' : lenderName!.trim();
     final lenderOrg = lenderOrgNumber?.trim().isEmpty ?? true ? '912 332 209' : lenderOrgNumber!.trim();

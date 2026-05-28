@@ -366,6 +366,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                     embedded: true,
                     partners: _partners,
                     canApproveRentals: _canApproveVehicleRentals(_profile?.access),
+                    canForceDeleteRentals: _profile?.role == UserRole.superadmin,
                   ),
               ],
             ),

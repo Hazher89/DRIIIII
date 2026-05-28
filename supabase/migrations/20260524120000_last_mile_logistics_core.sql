@@ -121,9 +121,20 @@ CREATE TABLE IF NOT EXISTS public.lm_optimization_runs (
   completed_at TIMESTAMPTZ
 );
 
-ALTER TABLE public.lm_routes
-  ADD CONSTRAINT lm_routes_optimization_fk
-  FOREIGN KEY (optimization_run_id) REFERENCES public.lm_optimization_runs(id) ON DELETE SET NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'lm_routes_optimization_fk'
+      AND conrelid = 'public.lm_routes'::regclass
+  ) THEN
+    ALTER TABLE public.lm_routes
+      ADD CONSTRAINT lm_routes_optimization_fk
+      FOREIGN KEY (optimization_run_id) REFERENCES public.lm_optimization_runs(id) ON DELETE SET NULL;
+  END IF;
+END;
+$$;
 
 -- ── GPS (sjåfør-app → Realtime) ──
 CREATE TABLE IF NOT EXISTS public.lm_gps_positions (

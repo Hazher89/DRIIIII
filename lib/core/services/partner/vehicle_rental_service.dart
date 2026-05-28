@@ -78,9 +78,16 @@ class VehicleRentalService {
             .from('vehicle_rentals')
             .select()
             .eq('borrower_partner_id', partnerId)
-            .inFilter('status', ['approved', 'pending_return_mavi', 'returned'])
-            .order('approved_at', ascending: false)
-            .limit(100)
+            .inFilter('status', [
+              'pending_owner',
+              'pending_mavi',
+              'approved',
+              'pending_return_mavi',
+              'returned',
+              'rejected',
+            ])
+            .order('created_at', ascending: false)
+            .limit(200)
         as List<dynamic>;
     return _attachPartnerNames(
       data.map((e) => VehicleRental.fromJson(e as Map<String, dynamic>)).toList(),
@@ -341,15 +348,25 @@ class VehicleRentalService {
     String? comment,
   }) async {
     final now = DateTime.now().toUtc().toIso8601String();
-    await _client.from('vehicle_rentals').update({
-      'return_photos': returnPhotos,
-      'return_fuel_level': fuelLevel.trim(),
-      'return_odometer_km': odometerKm,
-      'return_comment': comment?.trim(),
-      'return_submitted_at': now,
-      'status': 'pending_return_mavi',
-      'updated_at': now,
-    }).eq('id', rentalId);
+    final updatedRows = await _client
+        .from('vehicle_rentals')
+        .update({
+          'return_photos': returnPhotos,
+          'return_fuel_level': fuelLevel.trim(),
+          'return_odometer_km': odometerKm,
+          'return_comment': comment?.trim(),
+          'return_submitted_at': now,
+          'status': 'pending_return_mavi',
+          'updated_at': now,
+        })
+        .eq('id', rentalId)
+        .eq('status', 'approved')
+        .select('id, status') as List<dynamic>;
+    if (updatedRows.isEmpty) {
+      throw StateError(
+        'Kunne ikke sende retur til godkjenning. Utleien er ikke i aktiv status eller du mangler tilgang.',
+      );
+    }
     try {
       await _client.rpc(
         'notify_vehicle_rental_partner_sms',
@@ -380,6 +397,20 @@ class VehicleRentalService {
       'status': 'cancelled',
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', rentalId);
+  }
+
+  /// Superadmin nødstopp: permanent slett avtale for å frigjøre blokkering.
+  static Future<void> superadminForceDeleteRental({
+    required String rentalId,
+    String? reason,
+  }) async {
+    await _client.rpc(
+      'superadmin_force_delete_vehicle_rental',
+      params: {
+        'p_rental_id': rentalId,
+        'p_reason': reason,
+      },
+    );
   }
 
   static Future<String> photoSignedUrl(String storagePath) =>

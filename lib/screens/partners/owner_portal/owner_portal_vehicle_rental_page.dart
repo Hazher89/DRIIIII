@@ -60,10 +60,26 @@ class _OwnerPortalVehicleRentalPageState extends State<OwnerPortalVehicleRentalP
       );
       return;
     }
+    if (rental.isApproved) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => _BorrowerReturnFlowScreen(rental: rental, onDone: _load),
+        ),
+      );
+      return;
+    }
     await showVehicleRentalDetailSheet(context, rental: rental);
   }
 
   Future<void> _openBorrowerFlow(VehicleRental rental) async {
+    if (rental.isPendingOwner) {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => _OwnerCheckoutFlowScreen(rental: rental, onDone: _load),
+        ),
+      );
+      return;
+    }
     if (rental.isApproved) {
       await Navigator.of(context).push<void>(
         MaterialPageRoute(
@@ -77,7 +93,16 @@ class _OwnerPortalVehicleRentalPageState extends State<OwnerPortalVehicleRentalP
 
   @override
   Widget build(BuildContext context) {
-    final lenderPending = _asLender.where((r) => r.isPendingOwner).length;
+    final mineRentalsById = <String, VehicleRental>{
+      for (final r in _asLender) r.id: r,
+      for (final r in _asBorrower)
+        if (r.isPendingOwner || r.isPendingMavi) r.id: r,
+    };
+    final mineRentals = mineRentalsById.values.toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final borrowerVisible = _asBorrower.where((r) => !r.isPendingOwner && !r.isPendingMavi).toList();
+
+    final lenderPending = mineRentals.where((r) => r.isPendingOwner).length;
     final borrowerActive = _asBorrower.where((r) => r.isApproved).length;
 
     return Scaffold(
@@ -97,8 +122,8 @@ class _OwnerPortalVehicleRentalPageState extends State<OwnerPortalVehicleRentalP
           : TabBarView(
               controller: _tabs,
               children: [
-                _LenderTab(rentals: _asLender, onOpen: _openLenderFlow, onRefresh: _load),
-                _BorrowerTab(rentals: _asBorrower, onOpen: _openBorrowerFlow, onRefresh: _load),
+                _LenderTab(rentals: mineRentals, onOpen: _openLenderFlow, onRefresh: _load),
+                _BorrowerTab(rentals: borrowerVisible, onOpen: _openBorrowerFlow, onRefresh: _load),
               ],
             ),
     );
@@ -114,8 +139,10 @@ class _LenderTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pending = rentals.where((r) => r.isPendingOwner).toList();
-    final rest = rentals.where((r) => !r.isPendingOwner).toList();
+    final pending = rentals.where((r) => r.isPendingOwner || r.isPendingMavi).toList();
+    final activeOnLoan = rentals.where((r) => r.isApproved).toList();
+    final pendingReturn = rentals.where((r) => r.isPendingReturnMavi).toList();
+    final rest = rentals.where((r) => !r.isPendingOwner && !r.isApproved && !r.isPendingReturnMavi).toList();
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -135,14 +162,49 @@ class _LenderTab extends StatelessWidget {
                     minimumSize: const Size(double.infinity, 44),
                   ),
                   icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                  label: const Text('Dokumenter og send'),
+                  label: Text(r.isPendingOwner ? 'Dokumenter og send' : 'Venter MAVI-godkjenning'),
                 ),
               ),
             ),
             const SizedBox(height: 16),
           ],
+          if (activeOnLoan.isNotEmpty) ...[
+            _SectionHeader(title: 'Aktive utlån', count: activeOnLoan.length, color: DriftProTheme.error),
+            ...activeOnLoan.map(
+              (r) => VehicleRentalMobileCard(
+                rental: r,
+                onTap: () => onOpen(r),
+                showBlockedBanner: true,
+                action: FilledButton.icon(
+                  onPressed: () => onOpen(r),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DriftProTheme.error,
+                    minimumSize: const Size(double.infinity, 44),
+                  ),
+                  icon: const Icon(Icons.assignment_return, size: 18),
+                  label: const Text('Returner før sluttdato'),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (pendingReturn.isNotEmpty) ...[
+            _SectionHeader(
+              title: 'Venter retur-godkjenning',
+              count: pendingReturn.length,
+              color: Colors.deepOrange,
+            ),
+            ...pendingReturn.map(
+              (r) => VehicleRentalMobileCard(
+                rental: r,
+                onTap: () => onOpen(r),
+                showBlockedBanner: true,
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           _SectionHeader(title: 'Arkiv', count: rest.length, color: DriftProTheme.accentBlue),
-          if (rest.isEmpty && pending.isEmpty)
+          if (rest.isEmpty && pending.isEmpty && activeOnLoan.isEmpty && pendingReturn.isEmpty)
             Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
@@ -175,7 +237,7 @@ class _BorrowerTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = rentals.where((r) => r.isApproved).toList();
     final pendingReturn = rentals.where((r) => r.isPendingReturnMavi).toList();
-    final archive = rentals.where((r) => r.isReturned).toList();
+    final archive = rentals.where((r) => r.isReturned || r.isRejected || r.isCancelled).toList();
 
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -225,6 +287,17 @@ class _BorrowerTab extends StatelessWidget {
                 rental: r,
                 onTap: () => onOpen(r),
                 showBlockedBanner: false,
+                action: r.isApproved
+                    ? FilledButton.icon(
+                        onPressed: () => onOpen(r),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: DriftProTheme.error,
+                          minimumSize: const Size(double.infinity, 44),
+                        ),
+                        icon: const Icon(Icons.assignment_return, size: 18),
+                        label: const Text('Returner før sluttdato'),
+                      )
+                    : null,
               ),
             ),
         ],
@@ -361,13 +434,14 @@ class _OwnerCheckoutFlowScreenState extends State<_OwnerCheckoutFlowScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Dokumenter utleie')),
       body: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16),
         children: [
           VehicleRentalMobileCard(rental: rental, showBlockedBanner: false),
           const SizedBox(height: 16),
           _InfoBlock(
             title: 'Leieavtale',
-            child: SelectableText(
+            child: Text(
               vehicleRentalAgreementText(rental),
               style: const TextStyle(fontSize: 12, height: 1.45),
             ),
@@ -485,12 +559,21 @@ class _BorrowerReturnFlowScreenState extends State<_BorrowerReturnFlowScreen> {
       return;
     }
 
+    final plannedEnd = rental.rentalEndAt ?? rental.rentalEnd;
+    final now = DateTime.now();
+    final isEarlyReturn = plannedEnd != null && now.isBefore(plannedEnd);
+    final plannedEndLabel = plannedEnd == null
+        ? null
+        : '${plannedEnd.day}.${plannedEnd.month}.${plannedEnd.year} '
+            '${plannedEnd.hour.toString().padLeft(2, '0')}:${plannedEnd.minute.toString().padLeft(2, '0')}';
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Send retur?'),
         content: Text(
           'Du returnerer ${rental.registrationNumber ?? 'bilen'} til ${rental.lenderPartnerName ?? 'utleier'}.\n'
+          '${isEarlyReturn ? 'Dette er retur før avtalt sluttdato (${plannedEndLabel ?? 'ukjent'}).\n' : ''}'
           'MAVI må godkjenne før bilen blir grønn og tilgjengelig igjen.',
         ),
         actions: [

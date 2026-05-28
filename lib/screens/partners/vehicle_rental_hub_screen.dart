@@ -16,12 +16,14 @@ class VehicleRentalHubScreen extends StatefulWidget {
   final bool embedded;
   final List<Partner> partners;
   final bool canApproveRentals;
+  final bool canForceDeleteRentals;
 
   const VehicleRentalHubScreen({
     super.key,
     this.embedded = false,
     required this.partners,
     this.canApproveRentals = false,
+    this.canForceDeleteRentals = false,
   });
 
   @override
@@ -36,6 +38,9 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
   List<VehicleRental> _rentals = [];
   Map<String, List<PartnerVehicle>> _vehiclesByPartner = {};
   Set<String> _blockedVehicleIds = {};
+
+  String _formatTime24(TimeOfDay time) =>
+      '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
 
   @override
   void initState() {
@@ -126,10 +131,17 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) {
-          final lenderVehicles = (_vehiclesByPartner[lenderId] ?? [])
-              .where((v) => v.vehicleKind == 'mavi')
-              .where((v) => !_blockedVehicleIds.contains(v.id))
-              .toList();
+          final allBorrowerVehicles =
+              borrowerId == null ? const <PartnerVehicle>[] : (_vehiclesByPartner[borrowerId] ?? []);
+          final borrowerVehicles =
+              allBorrowerVehicles.where((v) => !_blockedVehicleIds.contains(v.id)).toList();
+          final blockedBorrowerVehicles =
+              allBorrowerVehicles.where((v) => _blockedVehicleIds.contains(v.id)).toList();
+          final selectedBorrowerVehicleStillExists =
+              vehicleId != null && borrowerVehicles.any((v) => v.id == vehicleId);
+          if (!selectedBorrowerVehicleStillExists) {
+            vehicleId = null;
+          }
           return Padding(
             padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(ctx).bottom),
             child: SingleChildScrollView(
@@ -171,24 +183,6 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                   ),
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
-                    value: vehicleId,
-                    decoration: InputDecoration(
-                      labelText: 'MAVI-bil',
-                      helperText: lenderVehicles.isEmpty ? 'Alle biler er blokkert eller utlånt' : null,
-                    ),
-                    isExpanded: true,
-                    items: lenderVehicles
-                        .map(
-                          (v) => DropdownMenuItem(
-                            value: v.id,
-                            child: Text('${MaviUnitCodes.normalize(v.unitCode)} · ${v.registrationNumber}'),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: lenderVehicles.isEmpty ? null : (v) => setDlg(() => vehicleId = v),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
                     value: borrowerId,
                     decoration: const InputDecoration(labelText: 'Låntaker (bedrift som skal få leiebil)'),
                     isExpanded: true,
@@ -197,6 +191,99 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                         .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))
                         .toList(),
                     onChanged: (v) => setDlg(() => borrowerId = v),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: borrowerId == null
+                        ? const Text(
+                            'Velg låntaker for å velge bil.',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                          )
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Velg bil registrert på valgt bedrift',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                              ),
+                              const SizedBox(height: 8),
+                              DropdownButtonFormField<String>(
+                                value: vehicleId,
+                                decoration: InputDecoration(
+                                  labelText: 'Bedriftens bil',
+                                  helperText: borrowerVehicles.isEmpty
+                                      ? 'Ingen tilgjengelige biler (kan være blokkert/utlånt)'
+                                      : null,
+                                ),
+                                isExpanded: true,
+                                items: borrowerVehicles
+                                    .map(
+                                      (v) => DropdownMenuItem(
+                                        value: v.id,
+                                        child: Text(
+                                          '${MaviUnitCodes.normalize(v.unitCode)} · ${v.registrationNumber}',
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: borrowerVehicles.isEmpty
+                                    ? null
+                                    : (v) => setDlg(() => vehicleId = v),
+                              ),
+                              if (blockedBorrowerVehicles.isNotEmpty) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.shade50,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: Colors.orange.shade300),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      const Text(
+                                        'Disse bilene er allerede utlånt/blokkert:',
+                                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      ...blockedBorrowerVehicles.map((vehicle) {
+                                        VehicleRental? activeRental;
+                                        for (final r in _rentals) {
+                                          if (r.partnerVehicleId == vehicle.id &&
+                                              VehicleRentalService.activeStatuses.contains(r.status)) {
+                                            activeRental = r;
+                                            break;
+                                          }
+                                        }
+                                        final holder = activeRental?.borrowerPartnerName ?? 'ukjent låntaker';
+                                        final until = activeRental?.rentalEndAt;
+                                        final untilLabel = until == null
+                                            ? 'ukjent slutttid'
+                                            : DateFormat('d.M.y HH:mm', 'nb').format(until.toLocal());
+                                        return Padding(
+                                          padding: const EdgeInsets.only(bottom: 4),
+                                          child: Text(
+                                            '• ${MaviUnitCodes.normalize(vehicle.unitCode)} · ${vehicle.registrationNumber} '
+                                            '— har bilen: $holder, til: $untilLabel',
+                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -223,11 +310,17 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                             final t = await showTimePicker(
                               context: ctx,
                               initialTime: startTime ?? const TimeOfDay(hour: 8, minute: 0),
+                              builder: (context, child) {
+                                return MediaQuery(
+                                  data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                                  child: child!,
+                                );
+                              },
                             );
                             if (t != null) setDlg(() => startTime = t);
                           },
                           icon: const Icon(Icons.schedule, size: 18),
-                          label: Text(startTime == null ? 'Starttid' : startTime!.format(ctx)),
+                          label: Text(startTime == null ? 'Starttid' : _formatTime24(startTime!)),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -253,11 +346,17 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                             final t = await showTimePicker(
                               context: ctx,
                               initialTime: endTime ?? const TimeOfDay(hour: 16, minute: 0),
+                              builder: (context, child) {
+                                return MediaQuery(
+                                  data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                                  child: child!,
+                                );
+                              },
                             );
                             if (t != null) setDlg(() => endTime = t);
                           },
                           icon: const Icon(Icons.schedule, size: 18),
-                          label: Text(endTime == null ? 'Sluttid' : endTime!.format(ctx)),
+                          label: Text(endTime == null ? 'Sluttid' : _formatTime24(endTime!)),
                         ),
                       ),
                     ],
@@ -580,6 +679,85 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     }
   }
 
+  Future<void> _forceDeleteRental(VehicleRental rental) async {
+    final reasonCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Superadmin: slett utleieavtale'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Dette sletter avtalen permanent og frigjør blokkering på bilen ${rental.registrationNumber ?? '—'}.',
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: reasonCtrl,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                labelText: 'Årsak (valgfritt)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: confirmCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Skriv SLETT for å bekrefte',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () {
+              if (confirmCtrl.text.trim().toUpperCase() != 'SLETT') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Skriv SLETT for å bekrefte permanent sletting.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(ctx, true);
+            },
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Slett avtale'),
+          ),
+        ],
+      ),
+    );
+    final reasonText = reasonCtrl.text.trim();
+    reasonCtrl.dispose();
+    confirmCtrl.dispose();
+    if (ok != true || !mounted) return;
+
+    try {
+      await VehicleRentalService.superadminForceDeleteRental(
+        rentalId: rental.id,
+        reason: reasonText.isEmpty ? null : reasonText,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Utleieavtale slettet. Bil er frigjort fra blokkering.')),
+        );
+        await _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke slette avtale: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   Future<void> _showDetail(VehicleRental rental) async {
     await showVehicleRentalDetailSheet(
       context,
@@ -617,6 +795,19 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                     style: FilledButton.styleFrom(backgroundColor: DriftProTheme.success),
                     icon: const Icon(Icons.assignment_return),
                     label: const Text('Godkjenn retur'),
+                  ),
+                ],
+                if (widget.canForceDeleteRentals &&
+                    VehicleRentalService.activeStatuses.contains(rental.status)) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _forceDeleteRental(rental);
+                    },
+                    icon: const Icon(Icons.delete_forever, color: Colors.red),
+                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                    label: const Text('Superadmin: Slett avtale og frigjør bil'),
                   ),
                 ],
               ],
@@ -768,6 +959,17 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
   }
 
   Widget? _buildCardAction(VehicleRental r) {
+    if (r.isApproved) {
+      return FilledButton.icon(
+        onPressed: () => _showDetail(r),
+        style: FilledButton.styleFrom(
+          backgroundColor: DriftProTheme.error,
+          minimumSize: const Size(double.infinity, 44),
+        ),
+        icon: const Icon(Icons.assignment_return, size: 18),
+        label: const Text('Se utlån / returstatus'),
+      );
+    }
     if (!widget.canApproveRentals) return null;
     if (r.isPendingMavi) {
       return FilledButton.icon(
