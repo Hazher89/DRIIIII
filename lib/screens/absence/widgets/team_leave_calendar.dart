@@ -35,7 +35,7 @@ class TeamLeaveCalendar extends StatefulWidget {
 
 class _TeamLeaveCalendarState extends State<TeamLeaveCalendar> {
   static const _weekdays = ['Ma', 'Ti', 'On', 'To', 'Fr', 'Lø', 'Sø'];
-  static const double _monthCellH = 58;
+  static const double _monthCellH = 66;
 
   late LeaveCalendarScale _scale;
   late DateTime _focus;
@@ -119,52 +119,44 @@ class _TeamLeaveCalendarState extends State<TeamLeaveCalendar> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final width = MediaQuery.of(context).size.width;
-    final maxWidth = width > 1500 ? 1460.0 : width - 24;
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      child: Center(
-        child: SizedBox(
-          width: maxWidth,
-          child: Card(
-          margin: EdgeInsets.zero,
-          elevation: 0,
-          color: isDark ? DriftProTheme.cardDark : Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: BorderSide(
-              color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
-            ),
-          ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildToolbar(isDark),
-                  const SizedBox(height: 10),
-                  _buildWeekdayHeader(isDark),
-                  const SizedBox(height: 4),
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: KeyedSubtree(
-                      key: ValueKey('$_scale-${_focus.year}-${_focus.month}-${_focus.day}'),
-                      child: switch (_scale) {
-                        LeaveCalendarScale.week => _buildWeekView(isDark),
-                        LeaveCalendarScale.month => _buildMonthView(isDark),
-                        LeaveCalendarScale.year => _buildYearView(isDark),
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _Legend(colorForType: widget.colorForType),
-                ],
-              ),
-            ),
+      child: Card(
+        margin: EdgeInsets.zero,
+        elevation: 0,
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
           ),
         ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildToolbar(isDark),
+              const SizedBox(height: 10),
+              _buildWeekdayHeader(isDark),
+              const SizedBox(height: 4),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: KeyedSubtree(
+                  key: ValueKey('$_scale-${_focus.year}-${_focus.month}-${_focus.day}'),
+                  child: switch (_scale) {
+                    LeaveCalendarScale.week => _buildWeekView(isDark),
+                    LeaveCalendarScale.month => _buildMonthView(isDark),
+                    LeaveCalendarScale.year => _buildYearView(isDark),
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              _Legend(colorForType: widget.colorForType),
+            ],
+          ),
+          ),
       ),
     );
   }
