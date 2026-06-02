@@ -53,6 +53,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   EmployeeAttendance? _myAttendance;
   bool _isLoading = false;
   int _activeTabIndex = 0;
+  _OpsWindow _opsWindow = _OpsWindow.week;
   List<_DashboardNotice> _notices = const [];
   KioskSettings _kiosk = KioskSettings.defaults;
   String? _companyName;
@@ -386,6 +387,56 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<Ticket> get _openTickets =>
       _scopedTickets.where((t) => t.isOpen).toList();
 
+  DateTimeRange get _opsRange {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    switch (_opsWindow) {
+      case _OpsWindow.today:
+        return DateTimeRange(start: today, end: today);
+      case _OpsWindow.week:
+        return DateTimeRange(start: today, end: today.add(const Duration(days: 6)));
+      case _OpsWindow.month:
+        return DateTimeRange(start: today, end: today.add(const Duration(days: 29)));
+    }
+  }
+
+  bool _absenceOverlapsRange(Absence a, DateTimeRange range) {
+    if (a.status != AbsenceStatus.godkjent) return false;
+    final start = DateTime(a.startDate.year, a.startDate.month, a.startDate.day);
+    final end = DateTime(a.endDate.year, a.endDate.month, a.endDate.day);
+    return !end.isBefore(range.start) && !start.isAfter(range.end);
+  }
+
+  List<Absence> _vacationInOpsRange() {
+    final range = _opsRange;
+    return _scopedAbsences
+        .where((a) => a.type == AbsenceType.ferie && _absenceOverlapsRange(a, range))
+        .toList();
+  }
+
+  List<Absence> _otherAbsenceInOpsRange() {
+    final range = _opsRange;
+    return _scopedAbsences
+        .where((a) => a.type != AbsenceType.ferie && _absenceOverlapsRange(a, range))
+        .toList();
+  }
+
+  List<Ticket> _openTicketsInOpsRange() {
+    final range = _opsRange;
+    return _openTickets.where((t) {
+      final created = t.createdAt;
+      if (created == null) return true;
+      final d = DateTime(created.year, created.month, created.day);
+      return !d.isBefore(range.start) && !d.isAfter(range.end);
+    }).toList();
+  }
+
+  String get _opsWindowLabel => switch (_opsWindow) {
+        _OpsWindow.today => 'I dag',
+        _OpsWindow.week => 'Neste 7 dager',
+        _OpsWindow.month => 'Neste 30 dager',
+      };
+
   String get _dataScopeLabel {
     if (_profile?.isAdmin == true) return 'Hele bedriften';
     if (_profile?.role == UserRole.leder) return 'Din avdeling og deg';
@@ -653,9 +704,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     final canAvvik = _access?.canAvvik == true;
     if (!canFravaer && !canAvvik) return const SizedBox.shrink();
 
-    final vacation = _vacationToday;
-    final away = _otherAbsenceToday;
-    final open = List<Ticket>.from(_openTickets)
+    final vacation = _vacationInOpsRange();
+    final away = _otherAbsenceInOpsRange();
+    final open = List<Ticket>.from(_openTicketsInOpsRange())
       ..sort((a, b) {
         final sev = b.severity.index.compareTo(a.severity.index);
         if (sev != 0) return sev;
@@ -704,6 +755,28 @@ class _DashboardScreenState extends State<DashboardScreen>
                   _dataScopeLabel,
                   style: DriftProTheme.bodySm.copyWith(color: Colors.white70),
                 ),
+                const SizedBox(height: 8),
+                SegmentedButton<_OpsWindow>(
+                  segments: const [
+                    ButtonSegment(value: _OpsWindow.today, label: Text('I dag')),
+                    ButtonSegment(value: _OpsWindow.week, label: Text('7 dager')),
+                    ButtonSegment(value: _OpsWindow.month, label: Text('30 dager')),
+                  ],
+                  selected: {_opsWindow},
+                  onSelectionChanged: (s) => setState(() => _opsWindow = s.first),
+                  style: ButtonStyle(
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor: const WidgetStatePropertyAll(Colors.white),
+                    backgroundColor: WidgetStateProperty.resolveWith((states) {
+                      return states.contains(WidgetState.selected)
+                          ? Colors.white.withValues(alpha: 0.20)
+                          : Colors.white.withValues(alpha: 0.08);
+                    }),
+                    side: WidgetStatePropertyAll(
+                      BorderSide(color: Colors.white.withValues(alpha: 0.25)),
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 8,
@@ -737,7 +810,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               title: 'På ferie nå',
               subtitle: vacation.isEmpty
                   ? _emptyOpsMessage('ferie')
-                  : '${vacation.length} godkjent${vacation.length == 1 ? '' : 'e'}',
+                  : '${vacation.length} godkjent${vacation.length == 1 ? '' : 'e'} · $_opsWindowLabel',
               icon: Icons.beach_access_outlined,
               color: DriftProTheme.absenceVacation,
               onOpen: () => _go(AccessKeys.fravaer),
@@ -757,7 +830,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               title: 'Fravær i dag',
               subtitle: away.isEmpty
                   ? _emptyOpsMessage('fravær')
-                  : '${away.length} registrert',
+                  : '${away.length} registrert · $_opsWindowLabel',
               icon: AppIcons.absence,
               color: DriftProTheme.warning,
               onOpen: () => _go(AccessKeys.fravaer),
@@ -793,7 +866,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               title: 'Åpne avvik',
               subtitle: open.isEmpty
                   ? _emptyOpsMessage('avvik')
-                  : '${open.length} åpne · ${_stats.criticalTickets} kritiske',
+                  : '${open.length} åpne · ${open.where((t) => t.severity == TicketSeverity.kritisk).length} kritiske · $_opsWindowLabel',
               icon: AppIcons.ticket,
               color: DriftProTheme.severityCritical,
               onOpen: () => _go(AccessKeys.avvik),
@@ -805,6 +878,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
             ),
           ],
+          const SizedBox(height: 10),
+          _buildUtilityStrip(isDark),
         ],
       ),
     );
@@ -834,6 +909,54 @@ class _DashboardScreenState extends State<DashboardScreen>
           const SizedBox(width: 4),
           Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildUtilityStrip(bool isDark) {
+    final items = <Widget>[
+      if (_access?.canFravaer == true)
+        _utilityButton(
+          icon: Icons.calendar_month_outlined,
+          label: 'Se ferie/fravær',
+          onTap: () => _go(AccessKeys.fravaer),
+          isDark: isDark,
+        ),
+      if (_access?.canAvvik == true)
+        _utilityButton(
+          icon: Icons.report_problem_outlined,
+          label: 'Se avvik',
+          onTap: () => _go(AccessKeys.avvik),
+          isDark: isDark,
+        ),
+      if (_access?.canFravaer == true)
+        _utilityButton(
+          icon: Icons.event_available_outlined,
+          label: 'Ny registrering',
+          onTap: () => _go(AccessKeys.fravaer),
+          isDark: isDark,
+        ),
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Wrap(spacing: 8, runSpacing: 8, children: items);
+  }
+
+  Widget _utilityButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        visualDensity: VisualDensity.compact,
+        foregroundColor: isDark ? Colors.white70 : Colors.grey.shade800,
+        side: BorderSide(
+          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade300,
+        ),
       ),
     );
   }
@@ -1738,6 +1861,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 }
+
+enum _OpsWindow { today, week, month }
 
 enum _NoticeType {
   pendingUsers,
