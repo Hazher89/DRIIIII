@@ -728,28 +728,21 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
                   onChanged: (v) => setState(() => _calendarUserFilter = v),
                 ),
               ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-              child: Text('Kalender', style: DriftProTheme.headingSm),
-            ),
-            SizedBox(
-              height: 420,
-              child: TeamLeaveCalendar(
-                month: _calendarMonth,
-                absences: approved,
-                employees: _teamProfiles,
-                filterUserId: _calendarUserFilter,
-                colorForType: _colorForType,
-                onMonthChanged: (m) {
-                  setState(() => _calendarMonth = m);
-                  if (m.year != _selectedYear && _profile != null) {
-                    _selectedYear = m.year;
-                    _loadTeamOverview(_profile!);
-                    _loadSaldo(_profile!);
-                  }
-                },
-                onDayTap: isManager ? _onCalendarDayTap : null,
-              ),
+            TeamLeaveCalendar(
+              month: _calendarMonth,
+              absences: approved,
+              employees: _teamProfiles,
+              filterUserId: _calendarUserFilter,
+              colorForType: _colorForType,
+              onMonthChanged: (m) {
+                setState(() => _calendarMonth = m);
+                if (m.year != _selectedYear && _profile != null) {
+                  _selectedYear = m.year;
+                  _loadTeamOverview(_profile!);
+                  _loadSaldo(_profile!);
+                }
+              },
+              onDayTap: isManager ? _onCalendarDayTap : null,
             ),
             if (!isManager)
               Padding(
