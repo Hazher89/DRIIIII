@@ -10,6 +10,7 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../shared_routines_hub_screen.dart';
 import 'partner_ui.dart';
 
 /// Dokumenter for bil-eier — samme funksjoner som HMS-dokumenter, kun eier-tilgang.
@@ -32,7 +33,8 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
   List<Map<String, dynamic>> _folders = [];
   bool _loading = true;
   String _filterType = 'alle';
-  String? _selectedFolderId;
+  String? _activeFolderId;
+  static const String _sharedHubFolderId = '__shared_routines__';
 
   static const _types = ['alle', 'avtale', 'sertifikat', 'transport', 'revisjon', 'okonomi', 'annet'];
 
@@ -57,8 +59,8 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
       setState(() {
         _docs = d.where((x) => x.ownerVisible && !x.driverVisible).toList();
         _folders = folders;
-        if (_selectedFolderId == null && folders.isNotEmpty) {
-          _selectedFolderId = folders.first['id'] as String?;
+        if (_activeFolderId == null && folders.isNotEmpty) {
+          _activeFolderId = folders.first['id'] as String?;
         }
         _loading = false;
       });
@@ -66,17 +68,17 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
   }
 
   List<PartnerDocument> get _filtered {
-    final byFolder = _selectedFolderId == null
+    final byFolder = _activeFolderId == null
         ? _docs
-        : _docs.where((d) => d.folderId == _selectedFolderId).toList();
+        : _docs.where((d) => d.folderId == _activeFolderId).toList();
     if (_filterType == 'alle') return byFolder;
     return byFolder.where((d) => d.documentType == _filterType).toList();
   }
 
   Future<void> _upload() async {
-    if (_selectedFolderId == null) {
+    if (_activeFolderId == null || _activeFolderId == _sharedHubFolderId) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Opprett eller velg mappe først.')),
+        const SnackBar(content: Text('Gå inn i en mappe først.')),
       );
       return;
     }
@@ -183,13 +185,13 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
           mimeType: file.extension,
           documentType: docType,
           expiresAt: expires,
-          folderId: _selectedFolderId,
+          folderId: _activeFolderId,
           ownerVisible: true,
           driverVisible: false,
           docCategory: 'general',
           createdAt: DateTime.now(),
         ),
-        folderId: _selectedFolderId!,
+        folderId: _activeFolderId!,
       );
       await _load();
       await widget.onChanged();
@@ -277,7 +279,17 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
     await _load();
     if (!mounted) return;
     if (id != null) {
-      setState(() => _selectedFolderId = id);
+      setState(() {
+        _folders = [
+          ..._folders,
+          {
+            'id': id,
+            'name': nameCtrl.text.trim(),
+            'visibility': shared ? 'shared' : 'private',
+          },
+        ]..sort((a, b) => (a['name']?.toString() ?? '').compareTo(b['name']?.toString() ?? ''));
+        _activeFolderId = id;
+      });
     }
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -373,43 +385,21 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: _types.map((t) {
-              final selected = _filterType == t;
-              return FilterChip(
-                label: Text(t == 'alle' ? 'Alle' : PartnerDocument.documentTypeLabel(t)),
-                selected: selected,
-                onSelected: (_) => setState(() => _filterType = t),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Row(
             children: [
+              if (_activeFolderId != null)
+                IconButton(
+                  tooltip: 'Tilbake',
+                  onPressed: () => setState(() => _activeFolderId = null),
+                  icon: const Icon(Icons.arrow_back),
+                ),
               Expanded(
-                child: DropdownButtonFormField<String>(
-                  value: _selectedFolderId,
-                  decoration: const InputDecoration(
-                    labelText: 'Mappe',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _folders
-                      .map(
-                        (f) => DropdownMenuItem(
-                          value: f['id'] as String,
-                          child: Text(
-                            '${f['name']} ${f['visibility'] == 'shared' ? '(Felles)' : '(Privat)'}',
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setState(() => _selectedFolderId = v),
+                child: Text(
+                  _activeFolderId == null ? 'Mapper' : 'Mappeinnhold',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                 ),
               ),
-              const SizedBox(width: 8),
               OutlinedButton.icon(
                 onPressed: _createFolder,
                 icon: const Icon(Icons.create_new_folder_outlined),
@@ -417,31 +407,116 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerRight,
-            child: FilledButton.icon(
-              onPressed: _upload,
-              icon: const Icon(Icons.upload_file),
-              label: const Text('Last opp dokument'),
-              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+          const SizedBox(height: 8),
+          if (_activeFolderId == null) ...[
+            Wrap(
+              spacing: 14,
+              runSpacing: 14,
+              children: [
+                _folderTile(
+                  title: 'Felles dokumenter',
+                  shared: true,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const SharedRoutinesHubScreen(canManage: true),
+                    ),
+                  ),
+                ),
+                ..._folders.map(
+                  (f) => _folderTile(
+                    title: (f['name'] as String?) ?? 'Mappe',
+                    shared: (f['visibility'] as String?) == 'shared',
+                    onTap: () => setState(() => _activeFolderId = f['id'] as String?),
+                  ),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          if (_filtered.isEmpty)
-            PartnerEmptyState(
-              icon: Icons.upload_file_outlined,
-              title: 'Ingen dokumenter',
-              subtitle: 'Last opp PDF eller bilde — bil-eier får tilgang i sin portal.',
-              action: OutlinedButton.icon(
-                onPressed: _upload,
-                icon: const Icon(Icons.add),
-                label: const Text('Last opp'),
+          ] else ...[
+            if (_activeFolderId != _sharedHubFolderId) ...[
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: _types.map((t) {
+                  final selected = _filterType == t;
+                  return FilterChip(
+                    label: Text(t == 'alle' ? 'Alle' : PartnerDocument.documentTypeLabel(t)),
+                    selected: selected,
+                    onSelected: (_) => setState(() => _filterType = t),
+                  );
+                }).toList(),
               ),
-            )
-          else
-            ..._filtered.map((d) => _docCard(d)),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: _upload,
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Last opp dokument'),
+                  style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (_filtered.isEmpty)
+                PartnerEmptyState(
+                  icon: Icons.upload_file_outlined,
+                  title: 'Ingen dokumenter',
+                  subtitle: 'Last opp PDF eller bilde — bil-eier får tilgang i sin portal.',
+                  action: OutlinedButton.icon(
+                    onPressed: _upload,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Last opp'),
+                  ),
+                )
+              else
+                ..._filtered.map((d) => _docCard(d)),
+            ],
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _folderTile({
+    required String title,
+    required bool shared,
+    required VoidCallback onTap,
+  }) {
+    return SizedBox(
+      width: 150,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.folder, color: Color(0xFFF4B400), size: 34),
+              const SizedBox(height: 4),
+              Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+              ),
+              if (shared) ...[
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F4FF),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: const Text(
+                    'Felles',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }

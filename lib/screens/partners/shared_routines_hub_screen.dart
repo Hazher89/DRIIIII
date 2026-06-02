@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/services/partner/partner_service.dart';
@@ -121,6 +122,69 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Rutine/prosedyre lastet opp i fellesmappe')),
     );
+  }
+
+  Future<void> _importDefaultProcedure() async {
+    if (!widget.canManage || _companyId == null) return;
+    if (_docs.any((d) => d.title.trim() == _defaultProcedureTitle.trim())) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Standard prosedyre finnes allerede i fellesmappen.')),
+      );
+      return;
+    }
+
+    try {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+
+      final res = await http.get(Uri.parse(_defaultProcedureUrl));
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        throw Exception('Kunne ikke hente PDF (HTTP ${res.statusCode}).');
+      }
+      final bytes = res.bodyBytes;
+      if (bytes.isEmpty) {
+        throw Exception('PDF er tom.');
+      }
+
+      const safeName = 'Retur_av_litiumbatterier.pdf';
+      final storagePath = 'company_${_companyId!}/partner_shared_routines/standard_$safeName';
+      final storedPath = await PartnerService.uploadPartnerDocumentFile(
+        storagePath: storagePath,
+        bytes: Uint8List.fromList(bytes),
+        mimeType: 'application/pdf',
+      );
+
+      await PartnerService.addSharedPartnerDocument(
+        SharedPartnerDocument(
+          id: '',
+          companyId: _companyId!,
+          title: _defaultProcedureTitle,
+          storagePath: storedPath,
+          fileName: safeName,
+          mimeType: 'application/pdf',
+          category: 'procedure',
+          createdAt: DateTime.now(),
+        ),
+      );
+
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Standard prosedyre lagt i fellesmappen.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$e';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kunne ikke importere standard prosedyre: $e')),
+      );
+    }
   }
 
   Future<void> _delete(SharedPartnerDocument doc) async {
@@ -257,6 +321,15 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
           sharedInfo,
           if (widget.canManage)
             Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: OutlinedButton.icon(
+                onPressed: _loading ? null : _importDefaultProcedure,
+                icon: const Icon(Icons.download_outlined),
+                label: const Text('Importer standard prosedyre (PDF)'),
+              ),
+            ),
+          if (widget.canManage)
+            Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
               child: Align(
                 alignment: Alignment.centerRight,
@@ -293,6 +366,15 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
       body: Column(
         children: [
           sharedInfo,
+          if (widget.canManage)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: OutlinedButton.icon(
+                onPressed: _loading ? null : _importDefaultProcedure,
+                icon: const Icon(Icons.download_outlined),
+                label: const Text('Importer standard prosedyre (PDF)'),
+              ),
+            ),
           defaultProcedureCard,
           Expanded(child: content),
         ],

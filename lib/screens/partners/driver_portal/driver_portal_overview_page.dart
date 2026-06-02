@@ -8,6 +8,7 @@ import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
 import '../owner_portal/owner_portal_common.dart';
 import '../partner_shell.dart';
+import '../widgets/partner_modern_ui.dart';
 import '../widgets/partner_ui.dart';
 import 'driver_portal_common.dart';
 import 'driver_portal_route_card.dart';
@@ -104,6 +105,21 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                         ? '${v.registrationNumber}${v.driverName != null && v.driverName!.trim().isNotEmpty ? ' · ${v.driverName}' : ''}'
                         : 'Dine tildelte ruter',
                     leading: const Icon(Icons.local_shipping_outlined, color: Colors.white, size: 32),
+                  ),
+                  PartnerSmartActionsPanel(
+                    title: 'Anbefalte handlinger',
+                    actions: [
+                      PartnerSmartAction(
+                        label: 'Svar på ${_data!.pendingAck} ventende ruter',
+                        hint: 'Aksepter eller avvis med kommentar',
+                        icon: Icons.mark_email_unread_outlined,
+                      ),
+                      const PartnerSmartAction(
+                        label: 'Sjekk dagens rute-PDF',
+                        hint: 'Bekreft starttid og kundeliste før oppdrag',
+                        icon: Icons.picture_as_pdf_outlined,
+                      ),
+                    ],
                   ),
                   if (_highlightRoutes.isNotEmpty) ...[
                     const OwnerSectionTitle(

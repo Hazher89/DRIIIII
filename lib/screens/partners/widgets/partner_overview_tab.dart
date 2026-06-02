@@ -87,6 +87,17 @@ class _VehicleRowState {
   }
 }
 
+enum _OverviewSection {
+  profile('Bedrift'),
+  routing('Ruter'),
+  ownerPortal('Bedriftsansvarlig'),
+  registrations('Skiltnummer'),
+  maviDrivers('MAVI Nummer');
+
+  const _OverviewSection(this.label);
+  final String label;
+}
+
 class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   late final TextEditingController _owner;
   late final TextEditingController _phone;
@@ -99,8 +110,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   late final TextEditingController _transportCount;
   late final TextEditingController _auditPlate;
   late final TextEditingController _notes;
-  bool _hasTransportLicense = false;
-  String _auditStatus = 'ukjent';
   final List<_VehicleRowState> _rows = [];
   bool _saving = false;
   bool _portalSaving = false;
@@ -112,6 +121,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   Map<String, PartnerPortalAccount> _portalByVehicle = {};
   PartnerPortalAccount? _ownerPortal;
   final TextEditingController _ownerPortalPhone = TextEditingController();
+  _OverviewSection _activeSection = _OverviewSection.profile;
 
   @override
   void initState() {
@@ -128,8 +138,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _transportCount = TextEditingController(text: '${p.transportLicenseCount}');
     _auditPlate = TextEditingController(text: p.auditPlate ?? '');
     _notes = TextEditingController(text: p.notes ?? '');
-    _hasTransportLicense = p.hasTransportLicense;
-    _auditStatus = p.auditStatus;
     _routesOwnerOnly = p.routesOwnerOnly;
     _ownerPortalPhone.text = widget.partner.phone ?? '';
     _resetVehicles(widget.vehicles);
@@ -262,8 +270,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           SnackBar(
             content: Text(
               value
-                  ? 'Kun bil-eier får SMS-varsel. Sjåfør ser fortsatt ruter på egen bil i portal.'
-                  : 'Bil-eier + sjåfør får SMS-varsel. Sjåfør ser fortsatt kun ruter på egen bil.',
+                  ? 'Kun bedriftsansvarlig får SMS-varsel. Sjåfør ser fortsatt ruter på egen bil i portal.'
+                  : 'Bedriftsansvarlig og sjåfør får SMS-varsel. Sjåfør ser fortsatt kun ruter på egen bil.',
             ),
           ),
         );
@@ -289,8 +297,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _owner.text = p.ownerName ?? '';
     _phone.text = p.phone ?? '';
     _employees.text = p.employeeCount?.toString() ?? '';
-    _hasTransportLicense = p.hasTransportLicense;
-    _auditStatus = p.auditStatus;
     _routesOwnerOnly = p.routesOwnerOnly;
     if (_vehiclesDiffer(oldWidget.vehicles, widget.vehicles)) {
       _resetVehicles(widget.vehicles);
@@ -412,7 +418,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     final phone = _ownerPortalPhone.text.trim();
     if (phone.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Telefon til bil-eier er påkrevd (SMS med innlogging).')),
+        const SnackBar(content: Text('Telefon til bedriftsansvarlig er påkrevd (SMS med innlogging).')),
       );
       return;
     }
@@ -425,12 +431,12 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         partnerName: widget.partner.name,
         orgNumber: widget.partner.orgNumber,
       );
-      await _showCredentialsDialog(res, title: 'Bil-eier portal opprettet');
+      await _showCredentialsDialog(res, title: 'Portal for bedriftsansvarlig opprettet');
       await _loadPortals();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke opprette bil-eier: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Kunne ikke opprette bedriftsansvarlig: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -443,11 +449,11 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     final phone = _ownerPortalPhone.text.trim();
     if (phone.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Telefon til bil-eier er påkrevd (SMS med innlogging).')),
+        const SnackBar(content: Text('Telefon til bedriftsansvarlig er påkrevd (SMS med innlogging).')),
       );
       return;
     }
-    if (!await _confirmSendNewPassword(who: 'bil-eier', phone: phone)) return;
+    if (!await _confirmSendNewPassword(who: 'bedriftsansvarlig', phone: phone)) return;
     setState(() => _portalSaving = true);
     try {
       final res = await PartnerService.resendOwnerPortalPassword(
@@ -457,7 +463,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         partnerName: widget.partner.name,
         orgNumber: widget.partner.orgNumber,
       );
-      await _showCredentialsDialog(res, title: 'Nytt passord sendt til bil-eier');
+      await _showCredentialsDialog(res, title: 'Nytt passord sendt til bedriftsansvarlig');
       await _loadPortals();
     } catch (e) {
       if (mounted) {
@@ -951,6 +957,11 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     final p = widget.partner;
     final regRows = _rows.where((r) => r.isRegOnly).toList();
     final maviRows = _rows.where((r) => !r.isRegOnly).toList();
+    final smsPhones = <String>{
+      if (_phone.text.trim().isNotEmpty) _phone.text.trim(),
+      if (_ownerPortalPhone.text.trim().isNotEmpty) _ownerPortalPhone.text.trim(),
+      ...maviRows.map((r) => r.portalPhone.text.trim()).where((v) => v.isNotEmpty),
+    };
 
     return Stack(
       children: [
@@ -985,7 +996,45 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                   ),
                 ),
               ),
-            PartnerModernSection(
+            PartnerModernKpiGrid(
+              items: [
+                ('MAVI Nummer', '${maviRows.length}'),
+                ('Skiltnummer', '${regRows.length}'),
+                ('SMS', '${smsPhones.length}'),
+                ('Portal', _ownerPortal == null ? 'Mangler' : 'Aktiv'),
+              ],
+            ),
+            PartnerSmartActionsPanel(
+              title: 'Smart oppfølging',
+              actions: [
+                if (_ownerPortal == null)
+                  const PartnerSmartAction(
+                    label: 'Mangler portal for bedriftsansvarlig',
+                    hint: 'Opprett portal for bedriftsansvarlig for bedre kontroll og varsling',
+                    icon: Icons.warning_amber_rounded,
+                  ),
+                if (maviRows.isEmpty)
+                  const PartnerSmartAction(
+                    label: 'Ingen MAVI registrert',
+                    hint: 'Legg til minst én MAVI for rute- og portalflyt',
+                    icon: Icons.add_road_outlined,
+                  ),
+                PartnerSmartAction(
+                  label: 'SMS-nummer registrert: ${smsPhones.length}',
+                  hint: 'Kontroller at mottakere er riktige',
+                  icon: Icons.sms_outlined,
+                ),
+              ],
+            ),
+            PartnerModernSegmented<_OverviewSection>(
+              options: _OverviewSection.values,
+              selected: _activeSection,
+              labelOf: (s) => s.label,
+              onSelected: (s) => setState(() => _activeSection = s),
+            ),
+            const SizedBox(height: 8),
+            if (_activeSection == _OverviewSection.profile)
+              PartnerModernSection(
               title: 'Kommentar',
               subtitle: 'Intern notat',
               children: [
@@ -999,12 +1048,13 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
-            PartnerModernSection(
+            if (_activeSection == _OverviewSection.profile)
+              PartnerModernSection(
               title: 'Kontakt & bedrift',
               subtitle: 'Org.nr ${p.orgNumber ?? "—"}',
               initiallyExpanded: true,
               children: [
-                _field('Eier / kontakt', _owner),
+                  _field('Bedriftsansvarlig', _owner),
                 _field('Telefon (SMS-varsler)', _phone),
                 _field('E-post', _email),
                 _field('Adresse', _address),
@@ -1024,7 +1074,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
-            PartnerModernSection(
+            if (_activeSection == _OverviewSection.routing)
+              PartnerModernSection(
               title: 'Ruter og varsler',
               subtitle: 'Styr hvem som mottar ruter fra DriftPro',
               initiallyExpanded: true,
@@ -1042,15 +1093,15 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                       value: 1,
                       groupValue: _routesOwnerOnly ? 1 : 2,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Kun bil-eier', style: TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: const Text('Sjåfører ser ikke ruter · bileier håndterer ruter'),
+                      title: const Text('Kun bedriftsansvarlig', style: TextStyle(fontWeight: FontWeight.w800)),
+                      subtitle: const Text('Sjåfører ser ikke ruter · bedriftsansvarlig håndterer ruter'),
                       onChanged: _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(true),
                     ),
                     RadioListTile<int>(
                       value: 2,
                       groupValue: _routesOwnerOnly ? 1 : 2,
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Bil-eier + sjåfører', style: TextStyle(fontWeight: FontWeight.w800)),
+                      title: const Text('Bedriftsansvarlig og sjåfør', style: TextStyle(fontWeight: FontWeight.w800)),
                       subtitle: const Text('Sjåfører ser ruter for sin egen bil og kan godkjenne/avvise'),
                       onChanged: _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(false),
                     ),
@@ -1072,16 +1123,17 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                   ),
               ],
             ),
-            PartnerModernSection(
-              title: 'Bil-eier portal',
+            if (_activeSection == _OverviewSection.ownerPortal)
+              PartnerModernSection(
+              title: 'Portal for bedriftsansvarlig',
               subtitle:
                   'Auto-generert brukernavn og passord registreres i Supabase og sendes på SMS. '
-                  'Eier får tilgang til dokumenter, møter og revisjon — ikke sjåfører.',
+                  'Bedriftsansvarlig får tilgang til dokumenter, møter og revisjon — ikke sjåfører.',
               children: [
                 TextField(
                   controller: _ownerPortalPhone,
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Bil-eier telefon (SMS) *'),
+                  decoration: const InputDecoration(labelText: 'Bedriftsansvarlig telefon (SMS) *'),
                 ),
                 Container(
                   width: double.infinity,
@@ -1132,7 +1184,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                       FilledButton.icon(
                         onPressed: _portalSaving ? null : _saveOwnerPortal,
                         icon: const Icon(Icons.sms_outlined, size: 18),
-                        label: const Text('Opprett bil-eier (SMS)'),
+                        label: const Text('Opprett bedriftsansvarlig (SMS)'),
                         style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
                       )
                     else if (_isSuperAdmin)
@@ -1146,11 +1198,12 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
-            PartnerModernSection(
-              title: 'Registrerte biler (reg.nr)',
+            if (_activeSection == _OverviewSection.registrations)
+              PartnerModernSection(
+              title: 'Registrerte skiltnummer på dette firmaet',
               subtitle:
-                  'Reg.nr, årsmodell, nyttelast og EU-kontroll. '
-                  'EU-dato hentes automatisk fra Vegvesen når du skriver reg.nr.',
+                  'Skiltnummer, årsmodell, nyttelast og EU-kontroll. '
+                  'EU-dato hentes automatisk fra Vegvesen når du skriver skiltnummer.',
               trailing: Text('${regRows.length}', style: TextStyle(fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context))),
               children: [
                 if (regRows.isEmpty)
@@ -1168,7 +1221,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
-            PartnerModernSection(
+            if (_activeSection == _OverviewSection.maviDrivers)
+              PartnerModernSection(
               title: 'MAVI & sjåfør',
               subtitle: 'Auto brukernavn · SMS ved opprettelse',
               initiallyExpanded: true,
@@ -1576,7 +1630,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: row.imagePaths.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 6),
+                  separatorBuilder: (_, _) => const SizedBox(width: 6),
                   itemBuilder: (_, i) => Chip(
                     label: Text('Bilde ${i + 1}', style: const TextStyle(fontSize: 10)),
                     onDeleted: () => setState(() => row.imagePaths.removeAt(i)),

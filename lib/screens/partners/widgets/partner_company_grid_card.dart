@@ -12,6 +12,10 @@ class PartnerCompanyGridCard extends StatelessWidget {
     required this.maviCount,
     required this.regCount,
     required this.isActive,
+    required this.routesOwnerOnly,
+    required this.ownerAccounts,
+    required this.driverAccounts,
+    required this.smsPhones,
     required this.onTap,
     this.ownerName,
   });
@@ -22,6 +26,10 @@ class PartnerCompanyGridCard extends StatelessWidget {
   final int maviCount;
   final int regCount;
   final bool isActive;
+  final bool routesOwnerOnly;
+  final int ownerAccounts;
+  final int driverAccounts;
+  final List<String> smsPhones;
   final VoidCallback onTap;
   final String? ownerName;
 
@@ -134,6 +142,33 @@ class PartnerCompanyGridCard extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 10),
+                _statLine(
+                  context,
+                  label: 'Registrert',
+                  value: '$ownerAccounts bedriftsansvarlig${ownerAccounts == 1 ? '' : 'e'} · '
+                      '$driverAccounts sjåfør${driverAccounts == 1 ? '' : 'er'}',
+                  icon: Icons.badge_outlined,
+                ),
+                const SizedBox(height: 6),
+                _statLine(
+                  context,
+                  label: 'Rute-SMS',
+                  value: routesOwnerOnly
+                      ? 'Kun bedriftsansvarlig'
+                      : 'Bedriftsansvarlig + sjåfør',
+                  icon: routesOwnerOnly ? Icons.person_outline : Icons.groups_2_outlined,
+                ),
+                const SizedBox(height: 6),
+                _statLine(
+                  context,
+                  label: 'SMS-nummer',
+                  value: smsPhones.isEmpty
+                      ? 'Ingen registrert'
+                      : '${smsPhones.length} nummer · ${smsPhones.take(2).join(' · ')}'
+                          '${smsPhones.length > 2 ? ' · +${smsPhones.length - 2}' : ''}',
+                  icon: Icons.sms_outlined,
+                ),
+                const SizedBox(height: 10),
                 if (maviCodes.isEmpty)
                   Text(
                     'Ingen MAVI — trykk for å legge til',
@@ -197,6 +232,40 @@ class PartnerCompanyGridCard extends StatelessWidget {
         t,
         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context)),
       ),
+    );
+  }
+
+  Widget _statLine(
+    BuildContext context, {
+    required String label,
+    required String value,
+    required IconData icon,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: PartnerModernUi.muted(context)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: RichText(
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            text: TextSpan(
+              style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+              children: [
+                TextSpan(
+                  text: '$label: ',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: PartnerModernUi.textPrimary(context).withValues(alpha: 0.78),
+                  ),
+                ),
+                TextSpan(text: value),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

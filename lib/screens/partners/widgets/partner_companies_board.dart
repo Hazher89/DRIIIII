@@ -38,6 +38,7 @@ class PartnerCompaniesBoard extends StatefulWidget {
     super.key,
     required this.partners,
     required this.vehiclesByPartner,
+    required this.portalAccountsByPartner,
     required this.profile,
     required this.onRefresh,
     this.onRegister,
@@ -45,6 +46,7 @@ class PartnerCompaniesBoard extends StatefulWidget {
 
   final List<Partner> partners;
   final Map<String, List<PartnerVehicle>> vehiclesByPartner;
+  final Map<String, List<PartnerPortalAccount>> portalAccountsByPartner;
   final UserProfile? profile;
   final Future<void> Function() onRefresh;
   final VoidCallback? onRegister;
@@ -184,6 +186,14 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
   }
 
   Widget _gridPanel(List<PartnerSearchHit> filtered, int maviTotal, double width) {
+    final activePartners = widget.partners.where((p) => p.isActive).length;
+    final totalSmsPhones = widget.partners
+        .map((p) => _smsPhonesForHit(PartnerSearchHit(partner: p, vehicles: widget.vehiclesByPartner[p.id] ?? const [])))
+        .fold<int>(0, (sum, list) => sum + list.length);
+    final missingOwnerCount = widget.partners.where((p) {
+      final accounts = widget.portalAccountsByPartner[p.id] ?? const <PartnerPortalAccount>[];
+      return !accounts.any((a) => a.isOwner);
+    }).length;
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
@@ -201,6 +211,34 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
                     icon: const Icon(Icons.add, size: 20),
                   )
                 : null,
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: PartnerModernKpiGrid(
+            items: [
+              ('Bedrifter', '${widget.partners.length}'),
+              ('Aktive', '$activePartners'),
+              ('MAVI', '$maviTotal'),
+              ('SMS-numre', '$totalSmsPhones'),
+            ],
+          ),
+        ),
+        SliverToBoxAdapter(
+          child: PartnerSmartActionsPanel(
+            title: 'Anbefalte handlinger',
+            actions: [
+              if (missingOwnerCount > 0)
+                PartnerSmartAction(
+                  label: 'Mangler eierkonto på $missingOwnerCount bedrifter',
+                  hint: 'Åpne bedrift for å opprette portal for bedriftsansvarlig',
+                  icon: Icons.warning_amber_rounded,
+                ),
+              PartnerSmartAction(
+                label: 'Åpne SMS-hub for rask utsending',
+                hint: 'Bruk fanen SMS for masseutsending og logg',
+                icon: Icons.sms_outlined,
+              ),
+            ],
           ),
         ),
         SliverToBoxAdapter(
@@ -260,6 +298,16 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
                     maviCount: mavi.length,
                     regCount: _regCount(hit),
                     isActive: hit.partner.isActive,
+                    routesOwnerOnly: hit.partner.routesOwnerOnly,
+                    ownerAccounts: widget.portalAccountsByPartner[hit.partner.id]
+                            ?.where((a) => a.isOwner)
+                            .length ??
+                        0,
+                    driverAccounts: widget.portalAccountsByPartner[hit.partner.id]
+                            ?.where((a) => a.isDriver)
+                            .length ??
+                        0,
+                    smsPhones: _smsPhonesForHit(hit),
                     onTap: () => _openCompany(hit.partner),
                   );
                 },
@@ -319,5 +367,28 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
         ],
       ),
     );
+  }
+
+  List<String> _smsPhonesForHit(PartnerSearchHit hit) {
+    final phones = <String>{};
+    void addPhone(String? raw) {
+      if (raw == null) return;
+      final cleaned = raw.trim();
+      if (cleaned.isEmpty) return;
+      phones.add(cleaned);
+    }
+
+    addPhone(hit.partner.phone);
+    final accounts = widget.portalAccountsByPartner[hit.partner.id] ?? const <PartnerPortalAccount>[];
+    for (final account in accounts) {
+      addPhone(account.phone);
+    }
+    for (final vehicle in hit.vehicles) {
+      if (vehicle.isActive) {
+        addPhone(vehicle.phone);
+      }
+    }
+    final out = phones.toList()..sort();
+    return out;
   }
 }

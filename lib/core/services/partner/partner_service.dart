@@ -1191,6 +1191,20 @@ class PartnerService {
     required String companyId,
   }) async {
     if (!_ok) return;
+    String? profileId;
+    String? phone;
+    try {
+      final portal = await _client
+          .from('partner_portal_accounts')
+          .select('profile_id, phone')
+          .eq('partner_vehicle_id', partnerVehicleId)
+          .order('updated_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      profileId = portal?['profile_id'] as String?;
+      phone = portal?['phone'] as String?;
+    } catch (_) {}
+
     try {
       await _client.functions.invoke(
         'partner-portal-provision',
@@ -1203,15 +1217,28 @@ class PartnerService {
         },
       );
     } catch (_) {}
-    await _client
-        .from('partner_portal_accounts')
-        .update({'is_active': false})
-        .eq('partner_vehicle_id', partnerVehicleId);
-    // Fjern telefon på bilrad — ellers kan rute-SMS fortsatt gå til slettet sjåfør via vehicle.phone.
-    await _client
-        .from('partner_vehicles')
-        .update({'phone': null})
-        .eq('id', partnerVehicleId);
+    await _client.from('partner_portal_accounts').update({
+      'is_active': false,
+      'phone': null,
+    }).eq('partner_vehicle_id', partnerVehicleId);
+    await _client.from('partner_vehicles').update({'phone': null}).eq('id', partnerVehicleId);
+    if (profileId != null) {
+      try {
+        await _client.from('profiles').update({
+          'is_active': false,
+          'phone': null,
+          'phone_normalized': null,
+        }).eq('id', profileId);
+      } catch (_) {}
+    }
+    if (phone != null && phone.isNotEmpty) {
+      try {
+        await _client.rpc('purge_pending_sms_for_phone', params: {
+          'p_company_id': companyId,
+          'p_phone': phone,
+        });
+      } catch (_) {}
+    }
   }
 
   static Future<void> deleteOwnerPortal({
@@ -1423,6 +1450,11 @@ class PartnerService {
 
     for (final old in existing) {
       if (!keepUnits.contains(old.unitCode.toUpperCase())) {
+        await deleteDriverPortal(
+          partnerVehicleId: old.id,
+          partnerId: partnerId,
+          companyId: companyId,
+        );
         await _client.from('partner_vehicles').delete().eq('id', old.id);
       }
     }
@@ -1431,6 +1463,22 @@ class PartnerService {
       final json = v.toUpsertJson()..remove('id');
       if (v.id.isNotEmpty) {
         await _client.from('partner_vehicles').update(json).eq('id', v.id);
+        final phoneEmpty = v.phone == null || v.phone!.trim().isEmpty;
+        if (phoneEmpty && v.vehicleKind == 'mavi') {
+          final portal = await _client
+              .from('partner_portal_accounts')
+              .select('id')
+              .eq('partner_vehicle_id', v.id)
+              .eq('is_active', true)
+              .maybeSingle();
+          if (portal != null) {
+            await deleteDriverPortal(
+              partnerVehicleId: v.id,
+              partnerId: partnerId,
+              companyId: companyId,
+            );
+          }
+        }
       } else {
         await _client.from('partner_vehicles').insert(json);
       }
@@ -1675,6 +1723,10 @@ class PartnerService {
 
   /// Visnings-URL for lagret filsti (Supabase eller Dropbox).
   static Future<String> resolveStorageUrl(String storagePathOrUrl) async {
+    final u = storagePathOrUrl.trim();
+    if (u.startsWith('http://') || u.startsWith('https://')) {
+      return u;
+    }
     if (CompanyFileStorage.isDropboxReference(storagePathOrUrl)) {
       return CompanyFileStorage.resolveDisplayUrl(storagePathOrUrl);
     }

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/auth/session_sign_out.dart';
 import '../../core/permissions/user_access.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -190,7 +190,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () async {
-                await Supabase.instance.client.auth.signOut();
+                await signOutFromPortal(context);
               },
               icon: const Icon(AppIcons.logout),
               label: const Text('Logg ut'),

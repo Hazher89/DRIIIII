@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_notifier.dart';
+import '../../core/auth/session_sign_out.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
 import '../../core/permissions/access_keys.dart';
@@ -22,6 +22,7 @@ import '../admin/kiosk_settings_screen.dart';
 import '../admin/dropbox_storage_settings_screen.dart';
 import '../surveys/survey_list_screen.dart';
 import '../partners/partners_dashboard_screen.dart';
+import 'organization_chart_screen.dart';
 import 'whistleblowing_screen.dart';
 
 class MoreScreen extends StatefulWidget {
@@ -140,6 +141,8 @@ class _MoreScreenState extends State<MoreScreen> {
               _buildMenuItem(context, AppIcons.department, 'Avdelinger', isDark),
             if (_profile!.isSuperAdmin || _profile!.access.canEmployeesList)
               _buildMenuItem(context, AppIcons.employees, 'Ansatte', isDark),
+            if (_profile!.isSuperAdmin || _profile!.access.canEmployeesList)
+              _buildMenuItem(context, Icons.account_tree_outlined, 'Organisasjonskart', isDark),
             if (_profile!.access.canPartnersMenu)
               _buildMenuItem(
                 context,
@@ -364,6 +367,16 @@ class _MoreScreenState extends State<MoreScreen> {
             );
             return;
           }
+          if (title == 'Organisasjonskart') {
+            Navigator.of(context).push(
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.ansatte,
+                child: const OrganizationChartScreen(),
+              ),
+            );
+            return;
+          }
           if (title == 'Tilgangskontroll') {
             Navigator.of(context).push(
               guardedMaterialRoute(
@@ -504,7 +517,7 @@ class _MoreScreenState extends State<MoreScreen> {
         ),
         onTap: () async {
           try {
-            await Supabase.instance.client.auth.signOut();
+            await signOutFromPortal(context);
           } catch (_) {}
         },
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DriftProTheme.radiusMd)),

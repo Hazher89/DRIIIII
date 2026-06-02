@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../partner_shell.dart';
+import '../widgets/partner_modern_ui.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_common.dart';
 
@@ -66,6 +67,21 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     title: 'Bil-eier oversikt',
                     subtitle: '${_data!.vehicles.length} kjøretøy · ${_data!.routes.length} ruter (90 d)',
                     leading: const Icon(Icons.business_center, color: Colors.white, size: 32),
+                  ),
+                  PartnerSmartActionsPanel(
+                    title: 'Anbefalte handlinger',
+                    actions: [
+                      PartnerSmartAction(
+                        label: 'Følg opp ${_data!.pendingAckTotal} ruter som venter svar',
+                        hint: 'Gå til Alle ruter for å se status',
+                        icon: Icons.route_outlined,
+                      ),
+                      const PartnerSmartAction(
+                        label: 'Kontroller dokumenter og avtaler',
+                        hint: 'Sikre at gyldige dokumenter er tilgjengelige',
+                        icon: Icons.folder_open_outlined,
+                      ),
+                    ],
                   ),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),

@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 
 /// Bytt passord for MAVI-ansatt — nytt passord sendes på SMS.
 Future<void> showEmployeeChangePasswordSheet(BuildContext context) async {
+  if (!context.mounted) return;
   final newPw = TextEditingController();
   final confirmPw = TextEditingController();
   var obscure = true;
@@ -84,23 +85,31 @@ Future<void> showEmployeeChangePasswordSheet(BuildContext context) async {
                             final result = await EmployeeAuthService.changePasswordAndNotifySms(
                               newPassword: a,
                             );
-                            await EmployeeAuthService.flushSmsOutbox();
-                            if (ctx.mounted) {
-                              Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(
+                            try {
+                              await EmployeeAuthService.flushSmsOutbox();
+                            } catch (_) {}
+                            if (!ctx.mounted) return;
+                            Navigator.of(ctx).pop();
+                            if (context.mounted) {
+                              final messenger = ScaffoldMessenger.maybeOf(context);
+                              messenger?.showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                    result['message']?.toString() ??
-                                        'Passord oppdatert.',
+                                    result['message']?.toString() ?? 'Passord oppdatert.',
                                   ),
                                 ),
                               );
                             }
                           } catch (e) {
                             if (ctx.mounted) {
+                              final msg = '$e';
                               ScaffoldMessenger.of(ctx).showSnackBar(
                                 SnackBar(
-                                  content: Text('$e'),
+                                  content: Text(
+                                    msg.contains('session_not_found')
+                                        ? 'Økten er utløpt. Logg ut og inn igjen, og prøv på nytt.'
+                                        : msg,
+                                  ),
                                   backgroundColor: DriftProTheme.error,
                                 ),
                               );

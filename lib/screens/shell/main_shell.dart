@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/auth/session_sign_out.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_strings.dart';
@@ -224,7 +225,7 @@ class _MainShellState extends State<MainShell> {
               const Text('Du har ikke tilgang til denne delen av systemet.', textAlign: TextAlign.center),
               const SizedBox(height: 32),
               ElevatedButton(
-                onPressed: () => Supabase.instance.client.auth.signOut(),
+                onPressed: () => signOutFromPortal(context),
                 child: const Text('Logg ut'),
               ),
             ],

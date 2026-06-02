@@ -4,7 +4,6 @@ import '../../core/constants/app_strings.dart';
 import '../../core/constants/build_info.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/permission_gate.dart';
-import '../../core/permissions/user_access.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -48,12 +47,11 @@ class _TicketsScreenState extends State<TicketsScreen> {
       _error = null;
     });
     try {
-      final cid =
-          _profile?.companyId ?? await SupabaseService.getCurrentCompanyId();
-      final tickets = cid != null
-          ? await SupabaseService.fetchTickets(companyId: cid)
-          : await SupabaseService.fetchTickets();
-      final scoped = _scopeTicketsByRole(tickets, _profile);
+      final profile = _profile;
+      if (profile == null) {
+        throw StateError('Fant ikke brukerprofil.');
+      }
+      final scoped = await SupabaseService.fetchScopedTickets(profile: profile);
       setState(() {
         _tickets = scoped;
       });
@@ -68,20 +66,6 @@ class _TicketsScreenState extends State<TicketsScreen> {
         });
       }
     }
-  }
-
-  List<Ticket> _scopeTicketsByRole(List<Ticket> tickets, UserProfile? profile) {
-    if (profile == null) return const [];
-    if (profile.isAdmin) return tickets;
-    if (profile.isLeader) {
-      return tickets
-          .where((t) =>
-              t.assignedTo == profile.id ||
-              t.departmentId == profile.departmentId ||
-              t.reportedBy == profile.id)
-          .toList();
-    }
-    return tickets.where((t) => t.reportedBy == profile.id).toList();
   }
 
   void _openNewTicket() {
@@ -149,8 +133,8 @@ class _TicketsScreenState extends State<TicketsScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final stats = TicketDashboardStats.fromTickets(_tickets);
-    final coord = _profile?.access.canCoordinateTickets == true;
-    final ticketAdmin = _profile?.access.canTicketAdmin == true;
+    final coord = _profile?.role == UserRole.leder || _profile?.isAdmin == true;
+    final ticketAdmin = _profile?.isAdmin == true;
 
     return PermissionGuard(
       profile: _profile,
@@ -159,21 +143,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
       backgroundColor:
           isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(AppStrings.navTickets),
-            Text(
-              'Operativ hub · mørk/oransje topp · ${BuildInfo.clientTag}',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.normal,
-                color: isDark ? Colors.white70 : Colors.black54,
-              ),
-            ),
-          ],
-        ),
+        title: const Text(AppStrings.navTickets),
         actions: [
           if (coord || ticketAdmin)
             IconButton(
@@ -296,101 +266,33 @@ class _TicketsScreenState extends State<TicketsScreen> {
   }
 
   Widget _buildHubHeader(TicketDashboardStats s, bool isDark) {
-    final gradient = LinearGradient(
-      begin: Alignment.topLeft,
-      end: Alignment.bottomRight,
-      colors: [
-        const Color(0xFF0D1B2A),
-        const Color(0xFF1B263B),
-        const Color(0xFFE65100),
-      ],
-      stops: const [0.0, 0.55, 1.0],
-    );
-
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-      padding: const EdgeInsets.all(22),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
+        ),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFE65100).withValues(alpha: 0.28),
-            blurRadius: 22,
-            offset: const Offset(0, 10),
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-                ),
-                child: const Icon(
-                  Icons.shield_moon_outlined,
-                  color: Colors.white,
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Text(
-                          'Avvik — operativ hub',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFB74D).withValues(alpha: 0.25),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: Colors.white24),
-                          ),
-                          child: const Text(
-                            '3.0',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Operativ sikkerhet · ${s.total} saker · live tall og filter',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.88),
-                        fontSize: 13,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          Text('Avvikssenter', style: DriftProTheme.headingSm),
+          const SizedBox(height: 4),
+          Text(
+            'Smart oversikt med status, alvorlighet og neste handling.',
+            style: DriftProTheme.bodySm,
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
           Wrap(
             spacing: 10,
             runSpacing: 10,
@@ -404,11 +306,11 @@ class _TicketsScreenState extends State<TicketsScreen> {
               _hubStat('Med bilder', '${s.medBilder}', Icons.photo_library_outlined),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
-            'Bildeopplasting · statusløype · tildeling · kontrollsenter',
+            'Bygg: ${BuildInfo.clientTag}',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.75),
+              color: isDark ? Colors.white60 : Colors.grey[600],
               fontSize: 11,
             ),
           ),
@@ -419,16 +321,15 @@ class _TicketsScreenState extends State<TicketsScreen> {
 
   Widget _hubStat(String label, String value, IconData icon) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: Colors.white, size: 18),
+          Icon(icon, color: DriftProTheme.primaryGreen, size: 16),
           const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -436,15 +337,15 @@ class _TicketsScreenState extends State<TicketsScreen> {
               Text(
                 value,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: DriftProTheme.primaryGreen,
                   fontWeight: FontWeight.w800,
-                  fontSize: 16,
+                  fontSize: 14,
                 ),
               ),
               Text(
                 label,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
+                  color: Colors.grey[700],
                   fontSize: 10,
                 ),
               ),
@@ -458,36 +359,25 @@ class _TicketsScreenState extends State<TicketsScreen> {
   Widget _buildQuickActions(bool coordinator, bool isDark) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: _openNewTicket,
+              icon: const Icon(Icons.add),
+              label: const Text('Nytt avvik'),
+            ),
+          ),
           if (coordinator) ...[
-            OutlinedButton.icon(
-              onPressed: _openControlCenter,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: DriftProTheme.primaryGreen,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                side: const BorderSide(color: DriftProTheme.primaryGreen, width: 1.4),
-              ),
-              icon: const Icon(Icons.analytics_outlined),
-              label: const Text(
-                'Åpne kontrollsenter (KPI, kø og saker)',
-                style: TextStyle(fontWeight: FontWeight.w600),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _openControlCenter,
+                icon: const Icon(Icons.analytics_outlined),
+                label: const Text('Kontrollsenter'),
               ),
             ),
           ],
-          if (!coordinator)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Text(
-                'Leder og HMS‑ansvarlige får ekstra verktøy i «Kontrollsenter».',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isDark ? Colors.grey[500] : Colors.grey[600],
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
         ],
       ),
     );
@@ -593,13 +483,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
       decoration: BoxDecoration(
         color: isDark ? DriftProTheme.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-        border: Border.all(
-          color: sev == TicketSeverity.kritisk
-              ? sc.withValues(alpha: 0.35)
-              : isDark
-                  ? DriftProTheme.dividerDark
-                  : Colors.grey.shade100,
-        ),
+        border: Border.all(color: sev == TicketSeverity.kritisk ? sc.withValues(alpha: 0.4) : Colors.grey.shade200),
         boxShadow: DriftProTheme.cardShadow,
       ),
       child: InkWell(
@@ -621,6 +505,15 @@ class _TicketsScreenState extends State<TicketsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Container(
+                height: 4,
+                width: 80,
+                decoration: BoxDecoration(
+                  color: sc,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: [
                   _badge(sev.label, sc),

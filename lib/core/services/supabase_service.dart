@@ -209,6 +209,29 @@ department:departments!department_id(name)
     }
   }
 
+  /// Strengt scoped avviksliste for innlogget bruker:
+  /// - ansatt: kun egne
+  /// - leder: egne + avdeling
+  /// - admin/superadmin: hele bedriften
+  static Future<List<Ticket>> fetchScopedTickets({
+    required UserProfile profile,
+  }) async {
+    final cid = profile.companyId;
+    if (cid == null) return const [];
+    final all = await fetchTickets(companyId: cid);
+    if (profile.isAdmin) return all;
+    if (profile.role == UserRole.leder) {
+      return all
+          .where((t) =>
+              t.reportedBy == profile.id ||
+              t.assignedTo == profile.id ||
+              (profile.departmentId != null &&
+                  t.departmentId == profile.departmentId))
+          .toList();
+    }
+    return all.where((t) => t.reportedBy == profile.id).toList();
+  }
+
   static Future<Ticket?> fetchTicketById(String id) async {
     if (!isConfigured) return null;
     try {
@@ -317,6 +340,27 @@ department:departments!department_id(name)
     if (departmentId != null) query = query.eq('department_id', departmentId);
     final data = await query.order('start_date', ascending: false) as List<dynamic>;
     return data.map((e) => Absence.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Strengt scoped fraværsliste for innlogget bruker:
+  /// - ansatt: kun egne
+  /// - leder: egne + avdeling
+  /// - admin/superadmin: hele bedriften
+  static Future<List<Absence>> fetchScopedAbsences({
+    required UserProfile profile,
+  }) async {
+    if (profile.companyId == null) return const [];
+    final all = await fetchAbsences(companyId: profile.companyId);
+    if (profile.isAdmin) return all;
+    if (profile.role == UserRole.leder) {
+      return all
+          .where((a) =>
+              a.userId == profile.id ||
+              (profile.departmentId != null &&
+                  a.departmentId == profile.departmentId))
+          .toList();
+    }
+    return all.where((a) => a.userId == profile.id).toList();
   }
 
   static Future<Absence> createAbsence(Absence absence, {String? approverId}) async {
@@ -1131,6 +1175,50 @@ department:departments!department_id(name)
     if (smsOptIn != null) patch['sms_opt_in'] = smsOptIn;
     if (patch.isEmpty) return;
     await client.from('profiles').update(patch).eq('id', profileId);
+  }
+
+  /// Oppretter intern ansatt via Edge Function (auth.users + profiles + feriekvote).
+  static Future<UserProfile> createEmployeeProfile({
+    required String companyId,
+    required String fullName,
+    String? departmentId,
+    String? jobTitle,
+    UserRole role = UserRole.ansatt,
+  }) async {
+    final token = client.auth.currentSession?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw StateError('Økten er utløpt. Logg inn på nytt.');
+    }
+    final res = await client.functions.invoke(
+      'create-internal-employee',
+      body: {
+        'company_id': companyId,
+        'full_name': fullName.trim(),
+        'department_id': departmentId,
+        'job_title': jobTitle?.trim().isEmpty == true ? null : jobTitle?.trim(),
+        'role': role.name,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final data = res.data;
+    if (data is Map && data['error'] != null) {
+      throw Exception('${data['error']}');
+    }
+    final profile = data is Map ? data['profile'] : null;
+    if (profile is Map<String, dynamic>) {
+      return UserProfile.fromJson(profile);
+    }
+    if (profile is Map) {
+      return UserProfile.fromJson(Map<String, dynamic>.from(profile));
+    }
+    throw StateError('Kunne ikke opprette ansatt i Supabase.');
+  }
+
+  /// Deaktiverer ansatt (beholder historikk). Ledere: egen avdeling. Admin: hele selskapet.
+  static Future<void> deactivateEmployeeProfile(String profileId) async {
+    await client.rpc('deactivate_employee_profile', params: {
+      'p_profile_id': profileId,
+    });
   }
 
   /// Permanent sletting av bruker (auth + profil + relaterte data via FK).

@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
 import '../../models/partner/vehicle_rental.dart';
+import 'widgets/partner_modern_ui.dart';
 import 'widgets/vehicle_rental_ui.dart';
 
 /// MAVI: opprett utleie, godkjenn, retur, søk i arkiv.
@@ -836,6 +837,30 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            PartnerModernKpiGrid(
+              items: [
+                ('Til godkjenning', '${_count('pending_mavi')}'),
+                ('Utleid', '${_count('approved')}'),
+                ('Retur venter', '${_count('pending_return_mavi')}'),
+                ('Arkiv', '${_count('returned')}'),
+              ],
+            ),
+            PartnerSmartActionsPanel(
+              title: 'Anbefalte handlinger',
+              actions: [
+                const PartnerSmartAction(
+                  label: 'Opprett ny utleie',
+                  hint: 'Start med låntaker, bil og periode',
+                  icon: Icons.add_circle_outline,
+                ),
+                if (_count('pending_mavi') > 0)
+                  const PartnerSmartAction(
+                    label: 'Godkjenn ventende utlån',
+                    hint: 'Sjekk bilder og detaljer før godkjenning',
+                    icon: Icons.task_alt_outlined,
+                  ),
+              ],
+            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
               child: TextField(

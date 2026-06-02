@@ -38,13 +38,10 @@ class _TicketAdminDashboardScreenState extends State<TicketAdminDashboardScreen>
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
       _profile = profile;
-      final companyId = profile?.companyId ??
-          await SupabaseService.getCurrentCompanyId();
-      if (companyId == null) {
-        throw StateError('Ingen bedrift');
+      if (profile == null) {
+        throw StateError('Fant ikke profil');
       }
-      final list =
-          await SupabaseService.fetchTickets(companyId: companyId);
+      final list = await SupabaseService.fetchScopedTickets(profile: profile);
       if (!mounted) return;
       setState(() {
         _tickets = list;

@@ -67,7 +67,7 @@ class PartnerModernPageHeader extends StatelessWidget {
               ],
             ),
           ),
-          if (trailing != null) trailing!,
+          trailing ?? const SizedBox.shrink(),
         ],
       ),
     );
@@ -485,6 +485,156 @@ class PartnerModernSection extends StatelessWidget {
           trailing: trailing,
           children: children,
         ),
+      ),
+    );
+  }
+}
+
+class PartnerSmartAction {
+  const PartnerSmartAction({
+    required this.label,
+    required this.icon,
+    this.hint,
+    this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final String? hint;
+  final VoidCallback? onTap;
+}
+
+class PartnerSmartActionsPanel extends StatelessWidget {
+  const PartnerSmartActionsPanel({
+    super.key,
+    required this.title,
+    required this.actions,
+  });
+
+  final String title;
+  final List<PartnerSmartAction> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    if (actions.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: PartnerModernUi.surface(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: PartnerModernUi.border(context)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: PartnerModernUi.textPrimary(context),
+            ),
+          ),
+          const SizedBox(height: 8),
+          ...actions.map(
+            (a) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Material(
+                color: PartnerModernUi.border(context).withValues(alpha: 0.25),
+                borderRadius: BorderRadius.circular(8),
+                child: InkWell(
+                  onTap: a.onTap,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    child: Row(
+                      children: [
+                        Icon(a.icon, size: 16, color: PartnerModernUi.muted(context)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                a.label,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: PartnerModernUi.textPrimary(context),
+                                ),
+                              ),
+                              if (a.hint != null)
+                                Text(
+                                  a.hint!,
+                                  style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.chevron_right_rounded, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class PartnerSmartSectionPicker extends StatelessWidget {
+  const PartnerSmartSectionPicker({
+    super.key,
+    required this.title,
+    required this.currentLabel,
+    required this.onPick,
+    required this.onToggleAll,
+    required this.showAll,
+  });
+
+  final String title;
+  final String currentLabel;
+  final VoidCallback onPick;
+  final VoidCallback onToggleAll;
+  final bool showAll;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: PartnerModernUi.surface(context),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: PartnerModernUi.border(context)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$title: $currentLabel',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: PartnerModernUi.textPrimary(context),
+              ),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onPick,
+            icon: const Icon(Icons.grid_view_rounded, size: 16),
+            label: const Text('Bytt'),
+          ),
+          IconButton(
+            onPressed: onToggleAll,
+            tooltip: showAll ? 'Skjul alle seksjoner' : 'Vis alle seksjoner',
+            icon: Icon(showAll ? Icons.expand_less : Icons.expand_more),
+          ),
+        ],
       ),
     );
   }

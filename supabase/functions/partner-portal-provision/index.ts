@@ -89,13 +89,45 @@ Deno.serve(async (req) => {
     }
 
     if (delete_account) {
-      let q = admin.from("partner_portal_accounts").update({ is_active: false }).eq("partner_id", partner_id);
+      let selectQ = admin
+        .from("partner_portal_accounts")
+        .select("id, profile_id, phone")
+        .eq("partner_id", partner_id);
       if (isOwner) {
-        q = q.eq("account_kind", "owner");
+        selectQ = selectQ.eq("account_kind", "owner");
       } else if (partner_vehicle_id) {
-        q = q.eq("partner_vehicle_id", partner_vehicle_id);
+        selectQ = selectQ.eq("partner_vehicle_id", partner_vehicle_id);
       }
-      await q;
+      const { data: toDeactivate } = await selectQ;
+
+      for (const acc of toDeactivate ?? []) {
+        await admin
+          .from("partner_portal_accounts")
+          .update({ is_active: false, phone: null })
+          .eq("id", acc.id);
+
+        if (acc.phone) {
+          await admin.rpc("purge_pending_sms_for_phone", {
+            p_company_id: company_id,
+            p_phone: acc.phone,
+          });
+        }
+        if (acc.profile_id) {
+          await admin
+            .from("profiles")
+            .update({
+              is_active: false,
+              phone: null,
+              phone_normalized: null,
+            })
+            .eq("id", acc.profile_id);
+        }
+      }
+
+      if (!isOwner && partner_vehicle_id) {
+        await admin.from("partner_vehicles").update({ phone: null }).eq("id", partner_vehicle_id);
+      }
+
       return new Response(JSON.stringify({ ok: true, deleted: true }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

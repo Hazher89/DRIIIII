@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import 'fleet_route_driver_stats_screen.dart';
 import 'fleet_shift_admin_screen.dart';
 import 'widgets/partner_available_vehicles_bar.dart';
+import 'widgets/partner_modern_ui.dart';
 import 'widgets/partner_route_master_scheduler.dart';
 import 'widgets/partner_route_pdf_search_panel.dart';
 import 'widgets/partner_ui.dart';
@@ -87,6 +88,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
 
     final today = DateTime.now();
     final day = DateTime(today.year, today.month, today.day);
+    final pendingAck = _sharesToday.where((s) => s.ackStatus == 'pending').length;
 
     final body = RefreshIndicator(
       onRefresh: reload,
@@ -107,6 +109,34 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
               ),
               child: const Icon(Icons.alt_route_rounded, color: Colors.white, size: 26),
             ),
+          ),
+          PartnerModernKpiGrid(
+            items: [
+              ('MAVI i plan', '${_fleet.length}'),
+              ('Ruter i dag', '${_sharesToday.length}'),
+              ('Venter svar', '$pendingAck'),
+              ('Verktøy', 'Klar'),
+            ],
+          ),
+          PartnerSmartActionsPanel(
+            title: 'Anbefalte handlinger',
+            actions: [
+              const PartnerSmartAction(
+                label: 'Kjør masseplanlegging for dagens ruter',
+                hint: 'Bruk hovedplanleggeren under',
+                icon: Icons.auto_graph_outlined,
+              ),
+              PartnerSmartAction(
+                label: 'Åpne MAVI-statistikk',
+                hint: 'Sjekk belastning og kapasitet',
+                icon: Icons.insights_outlined,
+                onTap: () {
+                  Navigator.of(context).push<void>(
+                    MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
+                  );
+                },
+              ),
+            ],
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -183,7 +213,6 @@ class _ToolSection extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.child,
-    this.initiallyExpanded = true,
   });
 
   final IconData icon;
@@ -191,7 +220,6 @@ class _ToolSection extends StatelessWidget {
   final String title;
   final String subtitle;
   final Widget child;
-  final bool initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
@@ -199,7 +227,7 @@ class _ToolSection extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: ExpansionTile(
-        initiallyExpanded: initiallyExpanded,
+        initiallyExpanded: true,
         leading: Icon(icon, color: iconColor),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),

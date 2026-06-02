@@ -57,6 +57,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   KioskSettings _kiosk = KioskSettings.defaults;
   String? _companyName;
   List<Absence> _scopedAbsences = const [];
+  List<Ticket> _scopedTickets = const [];
   TidsbankenSyncState? _tidsbankenSync;
   bool _nbDatesReady = false;
   Timer? _clockTimer;
@@ -160,16 +161,17 @@ class _DashboardScreenState extends State<DashboardScreen>
       final access = profile?.access;
       final canAvvik = access?.canAvvik ?? false;
       final canFravaer = access?.canFravaer ?? false;
-      final tickets = canAvvik
-          ? await SupabaseService.fetchTickets(companyId: companyId)
+
+      final scopedTickets = (profile != null && canAvvik)
+          ? await SupabaseService.fetchScopedTickets(profile: profile)
           : <Ticket>[];
-      final absences = canFravaer
-          ? await SupabaseService.fetchAbsences(companyId: companyId)
+      final scopedAbsences = (profile != null && canFravaer)
+          ? await SupabaseService.fetchScopedAbsences(profile: profile)
           : <Absence>[];
+
       final risks = (access?.canHmsRisk ?? false)
           ? await SupabaseService.fetchRiskAssessments(companyId: companyId)
           : <RiskAssessment>[];
-      final profiles = await SupabaseService.fetchProfiles(companyId: companyId);
       final sjas = (access?.canHmsSja ?? false)
           ? await SupabaseService.fetchSjaForms(companyId: companyId)
           : <SjaForm>[];
@@ -177,11 +179,33 @@ class _DashboardScreenState extends State<DashboardScreen>
           ? await SupabaseService.fetchSafetyRounds(companyId: companyId)
           : <SafetyRound>[];
 
-      final isCoordinator = access?.canApproveLeave == true;
-      final scopedTickets = _scopeTicketsByRole(tickets, profile);
-      final scopedAbsences = _scopeAbsencesByRole(absences, profile);
+      List<UserProfile> scopeProfiles = const [];
+      if (profile != null) {
+        if (profile.isAdmin) {
+          scopeProfiles =
+              await SupabaseService.fetchProfiles(companyId: companyId);
+        } else if (profile.role == UserRole.leder &&
+            profile.departmentId != null) {
+          scopeProfiles = await SupabaseService.fetchProfiles(
+            companyId: companyId,
+            departmentId: profile.departmentId,
+          );
+        } else {
+          scopeProfiles = [profile];
+        }
+      }
 
-      final onDuty = await AttendanceService.getOnDutyEmployees(companyId);
+      final isCoordinator = access?.canApproveLeave == true;
+      final scopeUserIds = scopeProfiles.map((p) => p.id).toSet();
+
+      var onDuty = await AttendanceService.getOnDutyEmployees(companyId);
+      if (profile != null && !profile.isAdmin) {
+        if (profile.role == UserRole.leder) {
+          onDuty = onDuty.where((e) => scopeUserIds.contains(e.userId)).toList();
+        } else {
+          onDuty = onDuty.where((e) => e.userId == profile.id).toList();
+        }
+      }
       final myAttendance = await AttendanceService.getMyAttendance();
       TidsbankenSyncState? tidsSync;
       if (meta.kiosk.showTidsbankenPresence) {
@@ -205,11 +229,21 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       int openTickets = scopedTickets.where((t) => t.isOpen).length;
       int criticalTickets = scopedTickets.where((t) => t.severity == TicketSeverity.kritisk && t.isOpen).length;
-      final pendingApprovals = isCoordinator
-          ? scopedAbsences.where((a) => a.status == AbsenceStatus.ventende).length
+      final pendingApprovals = isCoordinator && profile != null
+          ? scopedAbsences
+              .where((a) =>
+                  a.status == AbsenceStatus.ventende && a.userId != profile.id)
+              .length
           : 0;
+      final newTicketsCount = scopedTickets.where((t) {
+        final c = t.createdAt;
+        if (c == null) return false;
+        return DateTime.now().difference(c).inDays <= 7 && t.isOpen;
+      }).length;
       final pendingUsers = (profile?.isSuperAdmin == true)
-          ? profiles.where((u) => !u.isApproved && !u.isPartnerPortalUser).length
+          ? (await SupabaseService.fetchProfiles(companyId: companyId))
+              .where((u) => !u.isApproved && !u.isPartnerPortalUser)
+              .length
           : 0;
       final notices = <_DashboardNotice>[
         if (pendingUsers > 0 && profile?.isSuperAdmin == true)
@@ -236,6 +270,14 @@ class _DashboardScreenState extends State<DashboardScreen>
             color: DriftProTheme.severityCritical,
             type: _NoticeType.criticalTickets,
           ),
+        if (newTicketsCount > 0 && canAvvik)
+          _DashboardNotice(
+            title: '$newTicketsCount nye avvik siste 7 dager',
+            subtitle: 'Trykk for å se avvik',
+            icon: Icons.fiber_new_rounded,
+            color: DriftProTheme.warning,
+            type: _NoticeType.newTickets,
+          ),
       ];
 
       setState(() {
@@ -243,14 +285,18 @@ class _DashboardScreenState extends State<DashboardScreen>
         _kiosk = meta.kiosk;
         _companyName = CompanyDisplay.resolve(meta.companyName);
         _scopedAbsences = scopedAbsences;
+        _scopedTickets = scopedTickets;
         _onDutyEmployees = onDuty;
         _myAttendance = myAttendance;
         _tidsbankenSync = tidsSync;
-        _recentActivity = [
-          if (canAvvik) ...scopedTickets,
-          if (canFravaer) ...scopedAbsences,
-          if (access?.canHmsSja == true) ...sjas,
-        ].take(5).toList();
+        _recentActivity = _buildRecentActivity(
+          tickets: scopedTickets,
+          absences: scopedAbsences,
+          sjas: sjas,
+          canAvvik: canAvvik,
+          canFravaer: canFravaer,
+          canSja: access?.canHmsSja == true,
+        );
         _notices = notices;
         _stats = DashboardStats(
           todayAbsences: todayAbsences,
@@ -268,8 +314,10 @@ class _DashboardScreenState extends State<DashboardScreen>
           upcomingSafetyRounds: (access?.canHmsSafetyRound ?? false)
               ? rounds.where((r) => r.overallStatus == 'planlagt').length
               : 0,
-          totalEmployees: profiles.length,
-          absenceRate: profiles.isEmpty ? 0 : (todayAbsences / profiles.length * 100),
+          totalEmployees: scopeProfiles.length,
+          absenceRate: scopeProfiles.isEmpty
+              ? 0
+              : (todayAbsences / scopeProfiles.length * 100),
         );
       });
     } finally {
@@ -279,29 +327,89 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  List<Ticket> _scopeTicketsByRole(List<Ticket> tickets, UserProfile? profile) {
-    if (profile == null) return const [];
-    if (profile.isAdmin) return tickets;
-    if (profile.isLeader) {
-      return tickets
-          .where((t) =>
-              t.assignedTo == profile.id ||
-              t.departmentId == profile.departmentId ||
-              t.reportedBy == profile.id)
-          .toList();
+  List<dynamic> _buildRecentActivity({
+    required List<Ticket> tickets,
+    required List<Absence> absences,
+    required List<SjaForm> sjas,
+    required bool canAvvik,
+    required bool canFravaer,
+    required bool canSja,
+  }) {
+    final items = <({DateTime? at, dynamic item})>[];
+    if (canAvvik) {
+      for (final t in tickets) {
+        items.add((at: t.createdAt, item: t));
+      }
     }
-    return tickets.where((t) => t.reportedBy == profile.id).toList();
+    if (canFravaer) {
+      for (final a in absences) {
+        items.add((at: a.createdAt ?? a.startDate, item: a));
+      }
+    }
+    if (canSja) {
+      for (final s in sjas) {
+        items.add((at: s.createdAt, item: s));
+      }
+    }
+    items.sort((a, b) {
+      final ta = a.at ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final tb = b.at ?? DateTime.fromMillisecondsSinceEpoch(0);
+      return tb.compareTo(ta);
+    });
+    return items.take(8).map((e) => e.item).toList();
   }
 
-  List<Absence> _scopeAbsencesByRole(List<Absence> absences, UserProfile? profile) {
-    if (profile == null) return const [];
-    if (profile.isAdmin) return absences;
-    if (profile.isLeader) {
-      return absences
-          .where((a) => a.departmentId == profile.departmentId || a.userId == profile.id)
-          .toList();
+  bool _isAbsenceActiveToday(Absence a) {
+    if (a.status != AbsenceStatus.godkjent) return false;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final start =
+        DateTime(a.startDate.year, a.startDate.month, a.startDate.day);
+    final end = DateTime(a.endDate.year, a.endDate.month, a.endDate.day);
+    return !today.isBefore(start) && !today.isAfter(end);
+  }
+
+  List<Absence> get _vacationToday => _scopedAbsences
+      .where((a) => a.type == AbsenceType.ferie && _isAbsenceActiveToday(a))
+      .toList();
+
+  List<Absence> get _otherAbsenceToday => _scopedAbsences
+      .where((a) => a.type != AbsenceType.ferie && _isAbsenceActiveToday(a))
+      .toList();
+
+  List<Absence> get _pendingAbsenceRequests => _scopedAbsences
+      .where((a) =>
+          a.status == AbsenceStatus.ventende &&
+          (_profile == null || a.userId != _profile!.id))
+      .toList();
+
+  List<Ticket> get _openTickets =>
+      _scopedTickets.where((t) => t.isOpen).toList();
+
+  String get _dataScopeLabel {
+    if (_profile?.isAdmin == true) return 'Hele bedriften';
+    if (_profile?.role == UserRole.leder) return 'Din avdeling og deg';
+    return 'Kun dine registreringer';
+  }
+
+  bool get _canShowColleagueNames =>
+      !_anonymizeSharedScreen &&
+      (_profile?.isAdmin == true || _profile?.role == UserRole.leder);
+
+  String _displayPersonName(String? name, {required bool isSelf}) {
+    if (name == null || name.trim().isEmpty) return 'Ukjent';
+    if (isSelf || _canShowColleagueNames) return name.trim();
+    return 'Ansatt';
+  }
+
+  String _absencePeriodLabel(Absence a) {
+    final fmt = DateFormat('d. MMM', 'nb_NO');
+    if (_nbDatesReady) {
+      try {
+        return '${fmt.format(a.startDate)} – ${fmt.format(a.endDate)}';
+      } catch (_) {}
     }
-    return absences.where((a) => a.userId == profile.id).toList();
+    return '${a.startDate.day}.${a.startDate.month} – ${a.endDate.day}.${a.endDate.month}';
   }
 
   String _getGreeting() {
@@ -379,7 +487,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     add(
-      '${_stats.todayAbsences}',
+      '${_vacationToday.length}',
+      'På ferie',
+      Icons.beach_access_outlined,
+      _kiosk.showAbsenceAggregate && (_access?.canFravaer ?? false),
+    );
+    add(
+      '${_otherAbsenceToday.length}',
       'Fravær i dag',
       AppIcons.absence,
       _kiosk.showAbsenceAggregate && (_access?.canFravaer ?? false),
@@ -534,6 +648,380 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Widget _buildOperationsHub(bool isDark) {
+    final canFravaer = _access?.canFravaer == true;
+    final canAvvik = _access?.canAvvik == true;
+    if (!canFravaer && !canAvvik) return const SizedBox.shrink();
+
+    final vacation = _vacationToday;
+    final away = _otherAbsenceToday;
+    final open = List<Ticket>.from(_openTickets)
+      ..sort((a, b) {
+        final sev = b.severity.index.compareTo(a.severity.index);
+        if (sev != 0) return sev;
+        final ta = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final tb = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return tb.compareTo(ta);
+      });
+    final pending = _pendingAbsenceRequests;
+    final showPending =
+        pending.isNotEmpty && (_access?.canApproveLeave == true);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  DriftProTheme.primaryGreen.withValues(alpha: 0.92),
+                  DriftProTheme.primaryGreen.withValues(alpha: 0.72),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.hub_outlined, color: Colors.white, size: 22),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Operasjonssenter',
+                      style: DriftProTheme.headingSm.copyWith(color: Colors.white),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _dataScopeLabel,
+                  style: DriftProTheme.bodySm.copyWith(color: Colors.white70),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    if (canFravaer)
+                      _opsChip(
+                        '${vacation.length}',
+                        'På ferie',
+                        Icons.beach_access_outlined,
+                      ),
+                    if (canFravaer)
+                      _opsChip('${away.length}', 'Fravær', AppIcons.absence),
+                    if (canAvvik)
+                      _opsChip('${open.length}', 'Åpne avvik', AppIcons.ticket),
+                    if (showPending)
+                      _opsChip(
+                        '${pending.length}',
+                        'Venter',
+                        Icons.pending_actions_outlined,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (canFravaer)
+            _opsSection(
+              isDark: isDark,
+              title: 'På ferie nå',
+              subtitle: vacation.isEmpty
+                  ? _emptyOpsMessage('ferie')
+                  : '${vacation.length} godkjent${vacation.length == 1 ? '' : 'e'}',
+              icon: Icons.beach_access_outlined,
+              color: DriftProTheme.absenceVacation,
+              onOpen: () => _go(AccessKeys.fravaer),
+              child: vacation.isEmpty
+                  ? null
+                  : Column(
+                      children: vacation
+                          .take(6)
+                          .map((a) => _absenceOpsRow(a, isDark))
+                          .toList(),
+                    ),
+            ),
+          if (canFravaer) ...[
+            const SizedBox(height: 10),
+            _opsSection(
+              isDark: isDark,
+              title: 'Fravær i dag',
+              subtitle: away.isEmpty
+                  ? _emptyOpsMessage('fravær')
+                  : '${away.length} registrert',
+              icon: AppIcons.absence,
+              color: DriftProTheme.warning,
+              onOpen: () => _go(AccessKeys.fravaer),
+              child: away.isEmpty
+                  ? null
+                  : Column(
+                      children:
+                          away.take(6).map((a) => _absenceOpsRow(a, isDark)).toList(),
+                    ),
+            ),
+          ],
+          if (showPending) ...[
+            const SizedBox(height: 10),
+            _opsSection(
+              isDark: isDark,
+              title: 'Venter på godkjenning',
+              subtitle: '${pending.length} forespørsel${pending.length == 1 ? '' : 'er'}',
+              icon: Icons.pending_actions_outlined,
+              color: DriftProTheme.accentBlue,
+              onOpen: () => _go(AccessKeys.fravaer),
+              child: Column(
+                children: pending
+                    .take(5)
+                    .map((a) => _absenceOpsRow(a, isDark, pending: true))
+                    .toList(),
+              ),
+            ),
+          ],
+          if (canAvvik) ...[
+            const SizedBox(height: 10),
+            _opsSection(
+              isDark: isDark,
+              title: 'Åpne avvik',
+              subtitle: open.isEmpty
+                  ? _emptyOpsMessage('avvik')
+                  : '${open.length} åpne · ${_stats.criticalTickets} kritiske',
+              icon: AppIcons.ticket,
+              color: DriftProTheme.severityCritical,
+              onOpen: () => _go(AccessKeys.avvik),
+              child: open.isEmpty
+                  ? null
+                  : Column(
+                      children:
+                          open.take(5).map((t) => _ticketOpsRow(t, isDark)).toList(),
+                    ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _opsChip(String value, String label, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white, size: 16),
+          const SizedBox(width: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+
+  Widget _opsSection({
+    required bool isDark,
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required VoidCallback onOpen,
+    required Widget? child,
+  }) {
+    return Material(
+      color: isDark ? DriftProTheme.cardDark : Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: color, size: 20),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title, style: DriftProTheme.labelLg),
+                        Text(
+                          subtitle,
+                          style: DriftProTheme.bodySm.copyWith(
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: isDark ? Colors.grey[500] : Colors.grey[400],
+                  ),
+                ],
+              ),
+              if (child != null) ...[
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
+                child,
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _absenceOpsRow(Absence a, bool isDark, {bool pending = false}) {
+    final isSelf = a.userId == _profile?.id;
+    final name = _displayPersonName(a.userName, isSelf: isSelf);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+            backgroundImage:
+                a.userAvatarUrl != null ? NetworkImage(a.userAvatarUrl!) : null,
+            child: a.userAvatarUrl == null
+                ? Text(
+                    name.isNotEmpty ? name.characters.first.toUpperCase() : '?',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: DriftProTheme.primaryGreen,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: DriftProTheme.labelMd),
+                Text(
+                  '${a.type.label} · ${_absencePeriodLabel(a)}',
+                  style: DriftProTheme.bodySm.copyWith(
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (pending)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: DriftProTheme.warning.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                'VENTER',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: DriftProTheme.warning,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ticketOpsRow(Ticket t, bool isDark) {
+    final sevColor = switch (t.severity) {
+      TicketSeverity.kritisk => DriftProTheme.severityCritical,
+      TicketSeverity.hoy => DriftProTheme.riskHigh,
+      TicketSeverity.middels => DriftProTheme.warning,
+      TicketSeverity.lav => DriftProTheme.primaryGreen,
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 4,
+            height: 40,
+            decoration: BoxDecoration(
+              color: sevColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _anonymizeSharedScreen ? 'Avvik #${t.ticketNumber ?? ''}' : t.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: DriftProTheme.labelMd,
+                ),
+                Text(
+                  '${t.severity.label} · ${t.status.label}',
+                  style: DriftProTheme.bodySm.copyWith(
+                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _emptyOpsMessage(String kind) {
+    if (_profile?.role == UserRole.ansatt) {
+      return switch (kind) {
+        'ferie' => 'Du har ingen godkjent ferie i dag.',
+        'fravær' => 'Du har ikke registrert fravær i dag.',
+        _ => 'Du har ingen åpne avvik.',
+      };
+    }
+    return switch (kind) {
+      'ferie' => 'Ingen på ferie i ditt dataområde i dag.',
+      'fravær' => 'Ingen registrert fravær i dag.',
+      _ => 'Ingen åpne avvik i ditt dataområde.',
+    };
+  }
+
   List<Widget> _buildQuickActionButtons() {
     final actions = <Widget>[];
     void add(Widget w) {
@@ -634,7 +1122,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () => _go(AccessKeys.hms),
       ));
     }
-    if (_kiosk.showHmsHighlights && _access?.canFravaer == true) {
+    if (_kiosk.showHmsHighlights &&
+        _access?.canFravaer == true &&
+        (_profile?.isAdmin == true || _profile?.role == UserRole.leder)) {
       cards.add(StatCard(
         title: 'Bemanningsdekning',
         value:
@@ -952,6 +1442,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 ),
 
+                if ((_access?.canFravaer == true || _access?.canAvvik == true) &&
+                    !_isLoading) ...[
+                  SliverToBoxAdapter(child: _buildOperationsHub(isDark)),
+                ],
+
                 if (_kiosk.showLiveTeamBoard) ...[
                   SliverToBoxAdapter(child: _buildLiveTeamBoardCard(isDark)),
                 ],
@@ -1058,8 +1553,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       icon = AppIcons.ticket;
       color = DriftProTheme.warning;
     } else if (item is Absence) {
-      title = item.type.label;
-      subtitle = 'Fravær registrert';
+      final isSelf = item.userId == _profile?.id;
+      final who = _displayPersonName(item.userName, isSelf: isSelf);
+      title = '${item.type.label}${who.isNotEmpty && who != 'Ansatt' ? ' · $who' : ''}';
+      subtitle = item.status.label;
       icon = AppIcons.absence;
       color = DriftProTheme.absenceVacation;
     } else if (item is SjaForm) {
@@ -1231,6 +1728,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         }
         break;
       case _NoticeType.criticalTickets:
+      case _NoticeType.newTickets:
         if (_access?.canAvvik == true) {
           _go(AccessKeys.avvik);
         }
@@ -1241,7 +1739,13 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 }
 
-enum _NoticeType { pendingUsers, pendingAbsence, criticalTickets, noCompany }
+enum _NoticeType {
+  pendingUsers,
+  pendingAbsence,
+  criticalTickets,
+  newTickets,
+  noCompany,
+}
 
 class _DashboardNotice {
   final String title;

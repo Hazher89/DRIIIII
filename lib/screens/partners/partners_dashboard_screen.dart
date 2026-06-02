@@ -34,6 +34,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       GlobalKey<PartnerRoutePlannerScreenState>();
   List<Partner> _partners = [];
   Map<String, List<PartnerVehicle>> _vehiclesByPartner = {};
+  Map<String, List<PartnerPortalAccount>> _portalAccountsByPartner = {};
   bool _loading = true;
   String? _error;
   UserProfile? _profile;
@@ -135,15 +136,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     return i;
   }
 
-  int _tabIndexRental() {
-    if (!_showRentalTab) return -1;
-    var i = 0;
-    if (_showCompaniesTab) i++;
-    if (_showRoutesTab) i++;
-    if (_showSmsTab) i++;
-    return i;
-  }
-
   void _goToSmsTab() {
     final i = _tabIndexSms();
     if (i < 0 || _tabs == null) return;
@@ -170,9 +162,14 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       }
       final list = await PartnerService.fetchPartners(companyId: cid);
       final fleet = await PartnerService.fetchCompanyFleet(cid);
+      final portalAccounts = await PartnerService.fetchCompanyPortalAccounts(cid);
       final byPartner = <String, List<PartnerVehicle>>{};
       for (final row in fleet) {
         byPartner.putIfAbsent(row.partner.id, () => []).add(row.vehicle);
+      }
+      final accountsByPartner = <String, List<PartnerPortalAccount>>{};
+      for (final account in portalAccounts) {
+        accountsByPartner.putIfAbsent(account.partnerId, () => []).add(account);
       }
       if (mounted) {
         setState(() {
@@ -180,6 +177,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
           _syncDashboardTabs(profile);
           _partners = list;
           _vehiclesByPartner = byPartner;
+          _portalAccountsByPartner = accountsByPartner;
           _loading = false;
         });
       }
@@ -200,14 +198,20 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       if (cid == null || !mounted) return;
       final list = await PartnerService.fetchPartners(companyId: cid);
       final fleet = await PartnerService.fetchCompanyFleet(cid);
+      final portalAccounts = await PartnerService.fetchCompanyPortalAccounts(cid);
       final byPartner = <String, List<PartnerVehicle>>{};
       for (final row in fleet) {
         byPartner.putIfAbsent(row.partner.id, () => []).add(row.vehicle);
+      }
+      final accountsByPartner = <String, List<PartnerPortalAccount>>{};
+      for (final account in portalAccounts) {
+        accountsByPartner.putIfAbsent(account.partnerId, () => []).add(account);
       }
       if (mounted) {
         setState(() {
           _partners = list;
           _vehiclesByPartner = byPartner;
+          _portalAccountsByPartner = accountsByPartner;
         });
       }
     } catch (_) {}
@@ -397,6 +401,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     return PartnerCompaniesBoard(
       partners: _partners,
       vehiclesByPartner: _vehiclesByPartner,
+      portalAccountsByPartner: _portalAccountsByPartner,
       profile: _profile,
       onRefresh: _load,
       onRegister: _openRegisterMenu,

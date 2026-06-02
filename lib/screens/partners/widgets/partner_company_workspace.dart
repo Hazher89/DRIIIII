@@ -115,10 +115,12 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
     with SingleTickerProviderStateMixin {
   late Partner _p;
   List<PartnerVehicle> _vehicles = [];
+  List<PartnerPortalAccount> _portalAccounts = [];
   UserProfile? _profile;
   List<PartnerDetailTabDef> _tabs = [];
   TabController? _tabCtrl;
   bool _loading = true;
+  bool _showAllSections = false;
 
   @override
   void initState() {
@@ -162,10 +164,12 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
   Future<void> _reload() async {
     final fresh = await PartnerService.fetchPartner(_p.id);
     final vehicles = await PartnerService.fetchVehicles(_p.id);
+    final portalAccounts = await PartnerService.fetchPortalAccounts(_p.id);
     if (fresh != null && mounted) {
       setState(() {
         _p = fresh;
         _vehicles = vehicles;
+        _portalAccounts = portalAccounts;
       });
       widget.onDataChanged();
     }
@@ -175,6 +179,28 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
       .where((v) =>
           v.vehicleKind != 'registration' && !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
       .length;
+  int get _ownerCount => _portalAccounts.where((a) => a.isOwner && a.isActive).length;
+  int get _driverCount => _portalAccounts.where((a) => a.isDriver && a.isActive).length;
+  Set<String> get _smsPhones {
+    final out = <String>{};
+    void addPhone(String? p) {
+      if (p == null) return;
+      final v = p.trim();
+      if (v.isNotEmpty) out.add(v);
+    }
+
+    addPhone(_p.phone);
+    for (final a in _portalAccounts.where((a) => a.isActive)) {
+      addPhone(a.phone);
+    }
+    for (final v in _vehicles.where((v) => v.isActive)) {
+      addPhone(v.phone);
+    }
+    return out;
+  }
+  bool get _needsOwnerAccount => _ownerCount == 0;
+  bool get _needsSmsPhone => _smsPhones.isEmpty;
+  bool get _hasNoMavi => _maviCount == 0;
 
   Future<void> _openFullScreen() async {
     final deleted = await Navigator.of(context).push<bool>(
@@ -184,6 +210,37 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
       widget.onClose(true);
     } else {
       await _reload();
+    }
+  }
+
+  Future<void> _openSectionPicker() async {
+    final ctrl = _tabCtrl;
+    if (ctrl == null || _tabs.isEmpty) return;
+    final selected = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: ListView.separated(
+            shrinkWrap: true,
+            itemCount: _tabs.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (_, i) {
+              final tab = _tabs[i];
+              final active = ctrl.index == i;
+              return ListTile(
+                leading: Icon(tab.icon),
+                title: Text(tab.label),
+                trailing: active ? const Icon(Icons.check_circle, color: Colors.green) : null,
+                onTap: () => Navigator.of(ctx).pop(i),
+              );
+            },
+          ),
+        );
+      },
+    );
+    if (selected != null && mounted && _tabCtrl != null) {
+      _tabCtrl!.animateTo(selected);
     }
   }
 
@@ -197,7 +254,10 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(context),
+        _smartStatusStrip(context),
         if (_tabCtrl != null)
+          _sectionsToolbar(context),
+        if (_tabCtrl != null && _showAllSections)
           Material(
             color: PartnerModernUi.surface(context),
             child: TabBar(
@@ -220,6 +280,162 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
         ),
       ],
     );
+  }
+
+  Widget _sectionsToolbar(BuildContext context) {
+    final ctrl = _tabCtrl!;
+    return AnimatedBuilder(
+      animation: ctrl,
+      builder: (context, _) {
+        final tab = _tabs[ctrl.index];
+        final quick = _preferredQuickTabs();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            PartnerSmartSectionPicker(
+              title: 'Viser',
+              currentLabel: tab.label,
+              onPick: _openSectionPicker,
+              onToggleAll: () => setState(() => _showAllSections = !_showAllSections),
+              showAll: _showAllSections,
+            ),
+            if (quick.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: quick.map((t) {
+                    final i = _tabs.indexOf(t);
+                    final selected = ctrl.index == i;
+                    return ChoiceChip(
+                      label: Text(t.label, style: const TextStyle(fontSize: 11)),
+                      selected: selected,
+                      onSelected: (_) => ctrl.animateTo(i),
+                      avatar: Icon(t.icon, size: 14),
+                    );
+                  }).toList(),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _smartStatusStrip(BuildContext context) {
+    final issues = <String>[
+      if (_needsOwnerAccount) 'Mangler bedriftsansvarlig-konto',
+      if (_needsSmsPhone) 'Ingen SMS-nummer',
+      if (_hasNoMavi) 'Ingen MAVI registrert',
+    ];
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: PartnerModernUi.surface(context),
+        border: Border.all(color: PartnerModernUi.border(context)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                issues.isEmpty ? Icons.verified_outlined : Icons.warning_amber_rounded,
+                size: 16,
+                color: issues.isEmpty ? const Color(0xFF15803D) : const Color(0xFFD97706),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                issues.isEmpty ? 'Datakvalitet: God' : 'Datakvalitet: Trenger oppfølging',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: PartnerModernUi.textPrimary(context),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${_smsPhones.length} SMS-nummer',
+                style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _kpiChip(context, 'Bedriftsansvarlig', '$_ownerCount'),
+              _kpiChip(context, 'Sjåfører', '$_driverCount'),
+              _kpiChip(context, 'MAVI', '$_maviCount'),
+              _kpiChip(context, 'Reg.nr', '${_vehicles.length - _maviCount}'),
+            ],
+          ),
+          if (issues.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: issues
+                  .map(
+                    (i) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(i, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _kpiChip(BuildContext context, String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: PartnerModernUi.border(context).withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        '$label: $value',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          color: PartnerModernUi.textPrimary(context),
+        ),
+      ),
+    );
+  }
+
+  List<PartnerDetailTabDef> _preferredQuickTabs() {
+    final preferred = <String>[
+      AccessKeys.partnersTabOversikt,
+      AccessKeys.partnersTabRuter,
+      AccessKeys.partnersTabDokumenter,
+      AccessKeys.partnersTabBilkontroll,
+    ];
+    final ranked = <PartnerDetailTabDef>[];
+    for (final key in preferred) {
+      for (final tab in _tabs) {
+        if (tab.accessKey == key) {
+          ranked.add(tab);
+          break;
+        }
+      }
+    }
+    for (final tab in _tabs) {
+      if (!ranked.contains(tab)) ranked.add(tab);
+    }
+    return ranked.take(3).toList();
   }
 
   Widget _header(BuildContext context) {

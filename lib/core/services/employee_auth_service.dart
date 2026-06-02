@@ -57,19 +57,71 @@ class EmployeeAuthService {
     required String newPassword,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
-    final res = await _client.functions.invoke(
-      'employee-change-password',
-      body: {'new_password': newPassword.trim()},
-    );
-    final data = res.data;
-    if (data is Map<String, dynamic>) {
-      if (data['error'] != null) {
-        throw Exception('${data['error']}');
-      }
-      return data;
+    final password = newPassword.trim();
+    if (password.length < 6) {
+      throw Exception('Passord må være minst 6 tegn');
     }
-    if (data is Map) return Map<String, dynamic>.from(data);
-    return {'ok': true};
+
+    Future<Map<String, dynamic>> callEdge() async {
+      final token = _client.auth.currentSession?.accessToken;
+      if (token == null || token.isEmpty) {
+        throw Exception('Økten er utløpt. Logg inn på nytt og prøv igjen.');
+      }
+      final headers = <String, String>{
+        'Authorization': 'Bearer $token',
+      };
+      final res = await _client.functions.invoke(
+        'employee-change-password',
+        body: {'new_password': password},
+        headers: headers,
+      );
+      final data = res.data;
+      if (data is Map<String, dynamic>) {
+        if (data['error'] != null) {
+          throw Exception('${data['error']}');
+        }
+        return data;
+      }
+      if (data is Map) return Map<String, dynamic>.from(data);
+      return {'ok': true};
+    }
+
+    Future<Map<String, dynamic>> fallbackLocalUpdate() async {
+      final session = _client.auth.currentSession;
+      if (session == null) {
+        throw Exception('Økten er utløpt. Logg inn på nytt og prøv igjen.');
+      }
+      await _client.auth.updateUser(UserAttributes(password: password));
+      return {
+        'ok': true,
+        'message':
+            'Passord oppdatert. SMS ble ikke sendt automatisk i denne sesjonen.',
+        'sms_error': 'edge_unauthorized',
+      };
+    }
+
+    try {
+      try {
+        await _client.auth.refreshSession();
+      } catch (_) {}
+      return await callEdge();
+    } on FunctionException catch (e) {
+      final msg = e.details?.toString().toLowerCase() ?? e.toString().toLowerCase();
+      final unauthorized = e.status == 401 || e.status == 403 || msg.contains('session_not_found');
+      if (!unauthorized) rethrow;
+      try {
+        await _client.auth.refreshSession();
+        return await callEdge();
+      } catch (_) {
+        return fallbackLocalUpdate();
+      }
+    } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('session_not_found') || msg.contains('session') || msg.contains('jwt')) {
+        throw Exception('Økten er utløpt. Logg ut og inn igjen, og prøv på nytt.');
+      }
+      rethrow;
+    }
   }
 
   /// Oppretter Supabase Auth for alle rader i employee_login_accounts uten profile_id.

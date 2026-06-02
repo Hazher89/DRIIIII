@@ -73,8 +73,17 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                     !p.isPartnerPortalUser &&
                     p.isActive)
                 .toList();
-        if (!_selectableEmployees.any((p) => p.id == profile.id)) {
+        if (profile.role == UserRole.leder) {
+          _selectableEmployees =
+              _selectableEmployees.where((p) => p.id != profile.id).toList();
+        } else if (!_selectableEmployees.any((p) => p.id == profile.id)) {
           _selectableEmployees = [profile, ..._selectableEmployees];
+        }
+        if (_selectableEmployees.isNotEmpty) {
+          _selectedEmployee = _selectableEmployees.first;
+        } else if (profile.role == UserRole.leder) {
+          _error =
+              'Ingen ansatte i din avdeling å registrere fravær for. Avdelingsleder kan ikke registrere egen ferie/fravær.';
         }
       } else {
         _selectableEmployees = [profile];
@@ -110,6 +119,8 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
   }
 
   bool get _isSelfRequest => _selectedEmployee?.id == _profile?.id;
+  bool get _leaderSelfBlocked =>
+      _profile?.role == UserRole.leder && _isSelfRequest;
 
   bool get _managerRegistersForOther =>
       !_isSelfRequest && (_profile?.isLeader == true || _profile?.isAdmin == true);
@@ -192,6 +203,11 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
       return;
     }
     if (_selectedEmployee == null || _profile == null) return;
+    if (_leaderSelfBlocked) {
+      setState(() => _error =
+          'Avdelingsleder kan ikke registrere eller endre egen ferie/fravær. Kontakt superadmin.');
+      return;
+    }
 
     final validationError = AbsenceService.validateRequest(
       type: widget.type,
@@ -326,7 +342,9 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                     width: double.infinity,
                     height: 56,
                     child: ElevatedButton(
-                      onPressed: _isSubmitting ? null : _submit,
+                      onPressed: (_isSubmitting || _leaderSelfBlocked)
+                          ? null
+                          : _submit,
                       child: _isSubmitting
                           ? const CircularProgressIndicator(color: Colors.white)
                           : Text(
