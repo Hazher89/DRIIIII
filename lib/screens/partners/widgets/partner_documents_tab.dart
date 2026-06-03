@@ -763,7 +763,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
                 if (docCount > 0)
                   Text(
                     '$docCount ${docCount == 1 ? "fil" : "filer"}',
-                    style: TextStyle(fontSize: 10, color: PartnerUi.muted(context)),
+                    style: TextStyle(fontSize: 10, color: PartnerUi.mutedText(context)),
                   ),
                 if (shared) ...[
                   const SizedBox(height: 4),
