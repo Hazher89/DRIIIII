@@ -18,7 +18,9 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/route_reminder_flag.dart';
 import 'partner_route_pdf_actions.dart';
+import 'route_reminder_badge.dart';
 import 'partner_route_single_assign_sheet.dart';
 import 'partner_route_auto_mass_sheet.dart';
 import 'partner_sap_routes_sheet.dart';
@@ -63,6 +65,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   List<FleetShiftDefinition> _shifts = [];
   List<PartnerRouteShare> _shares = [];
+  Map<String, RouteReminderFlag> _reminderFlags = {};
   int _sapInboxPending = 0;
   int _stagedQueueCount = 0;
   Timer? _sapPollTimer;
@@ -181,9 +184,13 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       final sapInbox = await PartnerService.countSapRouteInboxPending(cid);
       await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final stagedQueue = await PartnerService.countStagedRouteShares(cid);
+      final reminders = await PartnerService.fetchRouteReminderFlags(
+        shares.map((s) => s.id),
+      );
       if (mounted) setState(() {
         _shifts = shifts;
         _shares = shares;
+        _reminderFlags = reminders;
         _sapInboxPending = sapInbox;
         _stagedQueueCount = stagedQueue;
         _busy = false;
@@ -471,6 +478,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         day: day,
         shifts: _shifts,
         shares: List.from(_sharesCell(row.vehicle.id, day)),
+        reminderFlags: _reminderFlags,
         onSaved: () {
           widget.onChanged?.call();
           _reload();
@@ -505,6 +513,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         shares: shares,
         shifts: _shifts,
         allFleet: _maviFleet,
+        reminderFlags: _reminderFlags,
         onChanged: () {
           widget.onChanged?.call();
           _reload();
@@ -1041,6 +1050,11 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                                                                           color: Colors.grey[850],
                                                                         ),
                                                                       ),
+                                                                      RouteReminderBadge(
+                                                                        share: s,
+                                                                        flag: _reminderFlags[s.id],
+                                                                        compact: true,
+                                                                      ),
                                                                     ],
                                                                   ),
                                                                 ),
@@ -1084,6 +1098,7 @@ class _RouteManageSheet extends StatefulWidget {
   final List<PartnerRouteShare> shares;
   final List<FleetShiftDefinition> shifts;
   final List<FleetPartnerVehicleRow> allFleet;
+  final Map<String, RouteReminderFlag> reminderFlags;
   final VoidCallback onChanged;
   final VoidCallback onOpenFullEditor;
 
@@ -1094,6 +1109,7 @@ class _RouteManageSheet extends StatefulWidget {
     required this.shares,
     required this.shifts,
     required this.allFleet,
+    required this.reminderFlags,
     required this.onChanged,
     required this.onOpenFullEditor,
   });
@@ -1308,6 +1324,10 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
                         ],
                       ),
                       Text('Start $start · ${_dispatchLabel(s)}', style: const TextStyle(fontSize: 12)),
+                      RouteReminderBadge(
+                        share: s,
+                        flag: widget.reminderFlags[s.id],
+                      ),
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
                         onPressed: _busy ? null : () => PartnerRoutePdfActions.openPdf(context, s),
@@ -1388,6 +1408,7 @@ class _RouteEditorSheet extends StatefulWidget {
   final VoidCallback onSaved;
   final void Function(DateTime routeDay)? onRoutePlacedOnDate;
   final List<FleetPartnerVehicleRow> allFleet;
+  final Map<String, RouteReminderFlag> reminderFlags;
 
   const _RouteEditorSheet({
     required this.companyId,
@@ -1395,6 +1416,7 @@ class _RouteEditorSheet extends StatefulWidget {
     required this.day,
     required this.shifts,
     required this.shares,
+    required this.reminderFlags,
     required this.onSaved,
     this.onRoutePlacedOnDate,
     required this.allFleet,
@@ -1800,6 +1822,10 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                         Text(
                           '${s.isStaged ? 'Kladd' : 'Sendt'} · Aksept: ${_ackShortStatic(s.ackStatus)}',
                           style: const TextStyle(fontSize: 12),
+                        ),
+                        RouteReminderBadge(
+                          share: s,
+                          flag: widget.reminderFlags[s.id],
                         ),
                         const SizedBox(height: 8),
                         Row(

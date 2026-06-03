@@ -6,6 +6,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/route_reminder_flag.dart';
+import 'route_reminder_badge.dart';
 
 /// Tildelte ruter for én partner — status, skift, sporingsinfo.
 class PartnerAssignedRoutesTab extends StatefulWidget {
@@ -20,6 +22,7 @@ class PartnerAssignedRoutesTab extends StatefulWidget {
 
 class _PartnerAssignedRoutesTabState extends State<PartnerAssignedRoutesTab> {
   List<PartnerRouteShare> _routes = [];
+  Map<String, RouteReminderFlag> _reminderFlags = {};
   List<PartnerVehicle> _vehicles = [];
   List<FleetShiftDefinition> _shifts = [];
   bool _loading = true;
@@ -35,12 +38,16 @@ class _PartnerAssignedRoutesTabState extends State<PartnerAssignedRoutesTab> {
     try {
       await PartnerService.ensureDefaultFleetShifts(widget.partner.companyId);
       final routes = await PartnerService.fetchRouteShares(widget.partner.id);
+      final reminders = await PartnerService.fetchRouteReminderFlags(
+        routes.map((r) => r.id),
+      );
       final vehicles = await PartnerService.fetchVehicles(widget.partner.id);
       final shifts =
           await PartnerService.fetchFleetShifts(widget.partner.companyId);
       if (mounted) {
         setState(() {
           _routes = routes;
+          _reminderFlags = reminders;
           _vehicles = vehicles;
           _shifts = shifts;
           _loading = false;
@@ -146,6 +153,7 @@ class _PartnerAssignedRoutesTabState extends State<PartnerAssignedRoutesTab> {
             if (vehicle != null) Text('Bil: $vehicle'),
             if (shift != null) Text('Skift: $shift'),
             Text(ackLabel, style: TextStyle(color: ackColor, fontWeight: FontWeight.w700)),
+            RouteReminderBadge(share: r, flag: _reminderFlags[r.id]),
           ],
         ),
         trailing: IconButton(

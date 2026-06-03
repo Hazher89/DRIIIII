@@ -11,6 +11,7 @@ import '../../../models/partner/shared_partner_document.dart';
 import '../../../models/partner/vehicle_inspection.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/mavi_driver_day_assignment.dart';
+import '../../../models/partner/route_reminder_flag.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import '../../utils/portal_credentials.dart';
 import '../sms/sms_phone_utils.dart';
@@ -575,6 +576,34 @@ class PartnerService {
     }
     final data = await query.order('share_date', ascending: false) as List<dynamic>;
     return data.map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Purring sendt (SMS/e-post) per rute-id — for badge i planlegger.
+  static Future<Map<String, RouteReminderFlag>> fetchRouteReminderFlags(
+    Iterable<String> shareIds,
+  ) async {
+    if (!_ok) return {};
+    final ids = shareIds.where((id) => id.isNotEmpty).toSet().toList();
+    if (ids.isEmpty) return {};
+
+    try {
+      final data = await _client.rpc(
+        'get_partner_route_reminder_flags',
+        params: {'p_share_ids': ids},
+      );
+      final map = <String, RouteReminderFlag>{};
+      for (final row in data as List) {
+        final flag = RouteReminderFlag.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        );
+        if (flag.hasAnyReminder) {
+          map[flag.shareId] = flag;
+        }
+      }
+      return map;
+    } catch (_) {
+      return {};
+    }
   }
 
   static Future<PartnerRouteShare> addRouteShare(PartnerRouteShare r) async {
