@@ -34,6 +34,8 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
   bool _loading = true;
   String _filterType = 'alle';
   String? _activeFolderId;
+  bool _selectMode = false;
+  final Set<String> _selectedDocIds = {};
   static const String _sharedHubFolderId = '__shared_routines__';
 
   static const _types = ['alle', 'avtale', 'sertifikat', 'transport', 'revisjon', 'okonomi', 'annet'];
@@ -59,9 +61,6 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
       setState(() {
         _docs = d.where((x) => x.ownerVisible && !x.driverVisible).toList();
         _folders = folders;
-        if (_activeFolderId == null && folders.isNotEmpty) {
-          _activeFolderId = folders.first['id'] as String?;
-        }
         _loading = false;
       });
     }
@@ -352,10 +351,11 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
       nameCtrl.dispose();
       return;
     }
+    final folderName = nameCtrl.text.trim();
     final id = await PartnerService.createDocumentFolder(
       companyId: widget.partner.companyId,
       partnerId: widget.partner.id,
-      name: nameCtrl.text.trim(),
+      name: folderName,
       shared: shared,
     );
     nameCtrl.dispose();
@@ -367,7 +367,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
           ..._folders,
           {
             'id': id,
-            'name': nameCtrl.text.trim(),
+            'name': folderName,
             'visibility': shared ? 'shared' : 'private',
           },
         ]..sort((a, b) => (a['name']?.toString() ?? '').compareTo(b['name']?.toString() ?? ''));
@@ -401,6 +401,106 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
       default:
         return null;
     }
+  }
+
+  void _exitSelectMode() {
+    setState(() {
+      _selectMode = false;
+      _selectedDocIds.clear();
+    });
+  }
+
+  Future<bool> _confirmPermanentDelete({
+    required String title,
+    required String message,
+  }) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Slett permanent'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _deleteDocuments(Iterable<String> ids) async {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return;
+    final ok = await _confirmPermanentDelete(
+      title: list.length == 1 ? 'Slett dokument?' : 'Slett ${list.length} dokumenter?',
+      message: list.length == 1
+          ? 'Filen fjernes permanent fra systemet og bil-eier portal.'
+          : 'Alle valgte filer fjernes permanent fra systemet og bil-eier portal.',
+    );
+    if (!ok || !mounted) return;
+
+    await PartnerService.deleteDocuments(list);
+    _exitSelectMode();
+    await _load();
+    await widget.onChanged();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(list.length == 1 ? 'Dokument slettet' : '${list.length} dokumenter slettet')),
+    );
+  }
+
+  Future<void> _deleteFolder(Map<String, dynamic> folder) async {
+    final id = folder['id'] as String?;
+    if (id == null) return;
+    final name = (folder['name'] as String?) ?? 'Mappe';
+    final shared = (folder['visibility'] as String?) == 'shared';
+    final count = _docs.where((d) => d.folderId == id).length;
+
+    final ok = await _confirmPermanentDelete(
+      title: 'Slett mappe?',
+      message: shared
+          ? 'Mappen «$name» og $count dokument(er) slettes permanent for alle partnere i bedriften. Dette kan ikke angres.'
+          : 'Mappen «$name» og $count dokument(er) slettes permanent. Dette kan ikke angres.',
+    );
+    if (!ok || !mounted) return;
+
+    final removed = await PartnerService.deleteDocumentFolder(
+      folderId: id,
+      companyId: widget.partner.companyId,
+    );
+    if (_activeFolderId == id) {
+      setState(() => _activeFolderId = null);
+    }
+    _exitSelectMode();
+    await _load();
+    await widget.onChanged();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Mappe slettet ($removed dokumenter)')),
+    );
+  }
+
+  Future<void> _deleteActiveFolder() async {
+    final id = _activeFolderId;
+    if (id == null || id == _sharedHubFolderId) return;
+    final folder = _folders.cast<Map<String, dynamic>?>().firstWhere(
+          (f) => f?['id'] == id,
+          orElse: () => null,
+        );
+    if (folder == null) return;
+    await _deleteFolder(folder);
+  }
+
+  Map<String, dynamic>? _folderById(String? id) {
+    if (id == null) return null;
+    for (final f in _folders) {
+      if (f['id'] == id) return f;
+    }
+    return null;
   }
 
   Future<void> _open(PartnerDocument d) async {
@@ -473,21 +573,53 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
             children: [
               if (_activeFolderId != null)
                 IconButton(
-                  tooltip: 'Tilbake',
-                  onPressed: () => setState(() => _activeFolderId = null),
+                  tooltip: 'Tilbake til mapper',
+                  onPressed: () {
+                    _exitSelectMode();
+                    setState(() => _activeFolderId = null);
+                  },
                   icon: const Icon(Icons.arrow_back),
                 ),
               Expanded(
                 child: Text(
-                  _activeFolderId == null ? 'Mapper' : 'Mappeinnhold',
+                  _activeFolderId == null
+                      ? 'Mapper'
+                      : (_folderById(_activeFolderId)?['name'] as String?) ?? 'Mappeinnhold',
                   style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                 ),
               ),
-              OutlinedButton.icon(
-                onPressed: _createFolder,
-                icon: const Icon(Icons.create_new_folder_outlined),
-                label: const Text('Ny mappe'),
-              ),
+              if (_activeFolderId == null)
+                OutlinedButton.icon(
+                  onPressed: _createFolder,
+                  icon: const Icon(Icons.create_new_folder_outlined),
+                  label: const Text('Ny mappe'),
+                )
+              else if (_activeFolderId != _sharedHubFolderId) ...[
+                if (_selectMode) ...[
+                  TextButton(
+                    onPressed: _selectedDocIds.isEmpty
+                        ? null
+                        : () => _deleteDocuments(_selectedDocIds),
+                    child: Text(
+                      'Slett (${_selectedDocIds.length})',
+                      style: const TextStyle(color: DriftProTheme.error),
+                    ),
+                  ),
+                  TextButton(onPressed: _exitSelectMode, child: const Text('Ferdig')),
+                ] else
+                  TextButton.icon(
+                    onPressed: _filtered.isEmpty
+                        ? null
+                        : () => setState(() => _selectMode = true),
+                    icon: const Icon(Icons.checklist_outlined, size: 18),
+                    label: const Text('Velg'),
+                  ),
+                IconButton(
+                  tooltip: 'Slett mappe og alt innhold',
+                  onPressed: _deleteActiveFolder,
+                  icon: const Icon(Icons.delete_forever_outlined, color: DriftProTheme.error),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 8),
@@ -496,20 +628,47 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
               spacing: 14,
               runSpacing: 14,
               children: [
-                _folderTile(
-                  title: 'Felles dokumenter',
-                  shared: true,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const SharedRoutinesHubScreen(canManage: true),
+                SizedBox(
+                  width: 150,
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SharedRoutinesHubScreen(canManage: true),
+                      ),
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Icon(Icons.folder, color: Color(0xFFF4B400), size: 34),
+                          SizedBox(height: 4),
+                          Text(
+                            'Felles dokumenter',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'Felles',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
                 ..._folders.map(
                   (f) => _folderTile(
-                    title: (f['name'] as String?) ?? 'Mappe',
-                    shared: (f['visibility'] as String?) == 'shared',
-                    onTap: () => setState(() => _activeFolderId = f['id'] as String?),
+                    folder: f,
+                    docCount: _docs.where((d) => d.folderId == f['id']).length,
+                    onOpen: () {
+                      _exitSelectMode();
+                      setState(() => _activeFolderId = f['id'] as String?);
+                    },
+                    onDelete: () => _deleteFolder(f),
                   ),
                 ),
               ],
@@ -560,44 +719,68 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
   }
 
   Widget _folderTile({
-    required String title,
-    required bool shared,
-    required VoidCallback onTap,
+    required Map<String, dynamic> folder,
+    required int docCount,
+    required VoidCallback onOpen,
+    required VoidCallback onDelete,
   }) {
+    final title = (folder['name'] as String?) ?? 'Mappe';
+    final shared = (folder['visibility'] as String?) == 'shared';
+
     return SizedBox(
       width: 150,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.folder, color: Color(0xFFF4B400), size: 34),
-              const SizedBox(height: 4),
-              Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-              ),
-              if (shared) ...[
-                const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F4FF),
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                  child: const Text(
-                    'Felles',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
-                  ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onOpen,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.folder, color: Color(0xFFF4B400), size: 34),
+                    const Spacer(),
+                    IconButton(
+                      tooltip: 'Slett mappe',
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                      onPressed: onDelete,
+                      icon: const Icon(Icons.delete_outline, size: 18, color: DriftProTheme.error),
+                    ),
+                  ],
                 ),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                ),
+                if (docCount > 0)
+                  Text(
+                    '$docCount ${docCount == 1 ? "fil" : "filer"}',
+                    style: TextStyle(fontSize: 10, color: PartnerUi.muted(context)),
+                  ),
+                if (shared) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F4FF),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: const Text(
+                      'Felles',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF1D4ED8)),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -613,24 +796,45 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
       accent = DriftProTheme.warning;
     }
 
+    final selected = _selectedDocIds.contains(d.id);
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: PartnerUi.surface(context),
         borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-        border: Border.all(color: (accent ?? Colors.grey).withValues(alpha: 0.22)),
+        border: Border.all(
+          color: selected
+              ? DriftProTheme.primaryGreen
+              : (accent ?? Colors.grey).withValues(alpha: 0.22),
+          width: selected ? 2 : 1,
+        ),
         boxShadow: DriftProTheme.cardShadow,
       ),
       child: ListTile(
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: const Icon(Icons.insert_drive_file_outlined, color: DriftProTheme.primaryGreen),
-        ),
+        leading: _selectMode
+            ? Checkbox(
+                value: selected,
+                activeColor: DriftProTheme.primaryGreen,
+                onChanged: (v) {
+                  setState(() {
+                    if (v == true) {
+                      _selectedDocIds.add(d.id);
+                    } else {
+                      _selectedDocIds.remove(d.id);
+                    }
+                  });
+                },
+              )
+            : Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.insert_drive_file_outlined, color: DriftProTheme.primaryGreen),
+              ),
         title: Text(d.title, style: DriftProTheme.labelLg),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -651,22 +855,42 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
           ],
         ),
         isThreeLine: true,
-        trailing: PopupMenuButton<String>(
-          onSelected: (v) async {
-            if (v == 'open') {
-              await _open(d);
-            } else if (v == 'delete') {
-              await PartnerService.deleteDocument(d.id);
-              await _load();
-              await widget.onChanged();
-            }
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'open', child: Text('Åpne / last ned')),
-            PopupMenuItem(value: 'delete', child: Text('Slett')),
-          ],
-        ),
-        onTap: () => _open(d),
+        trailing: _selectMode
+            ? null
+            : PopupMenuButton<String>(
+                onSelected: (v) async {
+                  if (v == 'open') {
+                    await _open(d);
+                  } else if (v == 'delete') {
+                    await _deleteDocuments([d.id]);
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'open', child: Text('Åpne / last ned')),
+                  PopupMenuItem(value: 'delete', child: Text('Slett permanent')),
+                ],
+              ),
+        onTap: () {
+          if (_selectMode) {
+            setState(() {
+              if (selected) {
+                _selectedDocIds.remove(d.id);
+              } else {
+                _selectedDocIds.add(d.id);
+              }
+            });
+          } else {
+            _open(d);
+          }
+        },
+        onLongPress: _selectMode
+            ? null
+            : () {
+                setState(() {
+                  _selectMode = true;
+                  _selectedDocIds.add(d.id);
+                });
+              },
       ),
     );
   }

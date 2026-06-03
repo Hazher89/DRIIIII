@@ -294,8 +294,83 @@ class PartnerService {
   }
 
   static Future<void> deleteDocument(String id) async {
-    if (!_ok) return;
-    await _client.from('partner_documents').delete().eq('id', id);
+    await deleteDocuments([id]);
+  }
+
+  /// Sletter dokumenter permanent (database + lagringsfil).
+  static Future<int> deleteDocuments(List<String> ids) async {
+    if (!_ok || ids.isEmpty) return 0;
+    final unique = ids.toSet().toList();
+    final rows = await _client
+            .from('partner_documents')
+            .select('id, storage_path')
+            .inFilter('id', unique)
+        as List<dynamic>;
+    final paths = rows
+        .map((e) => (e as Map<String, dynamic>)['storage_path'] as String?)
+        .whereType<String>()
+        .toList();
+    await _deletePartnerStoragePaths(paths);
+    await _client.from('partner_documents').delete().inFilter('id', unique);
+    return unique.length;
+  }
+
+  /// Sletter mappe og alt innhold permanent. Felles mapper fjernes for alle partnere i bedriften.
+  static Future<int> deleteDocumentFolder({
+    required String folderId,
+    required String companyId,
+  }) async {
+    if (!_ok) return 0;
+    final folder = await _client
+        .from('partner_document_folders')
+        .select('id, visibility, template_id, name')
+        .eq('id', folderId)
+        .maybeSingle();
+    if (folder == null) return 0;
+
+    final templateId = folder['template_id'] as String?;
+    final visibility = folder['visibility'] as String? ?? 'private';
+
+    List<String> folderIds = [folderId];
+    if (visibility == 'shared' && templateId != null) {
+      final linked = await _client
+              .from('partner_document_folders')
+              .select('id')
+              .eq('company_id', companyId)
+              .eq('template_id', templateId)
+          as List<dynamic>;
+      folderIds = linked.map((e) => (e as Map<String, dynamic>)['id'] as String).toList();
+    }
+
+    if (folderIds.isEmpty) return 0;
+
+    final docs = await _client
+            .from('partner_documents')
+            .select('id, storage_path')
+            .inFilter('folder_id', folderIds)
+        as List<dynamic>;
+
+    final docIds = <String>[];
+    final paths = <String>[];
+    for (final row in docs) {
+      final m = Map<String, dynamic>.from(row as Map);
+      docIds.add(m['id'] as String);
+      final p = m['storage_path'] as String?;
+      if (p != null && p.trim().isNotEmpty) paths.add(p);
+    }
+
+    await _deletePartnerStoragePaths(paths);
+    if (docIds.isNotEmpty) {
+      await _client.from('partner_documents').delete().inFilter('id', docIds);
+    }
+    await _client.from('partner_document_folders').delete().inFilter('id', folderIds);
+    if (templateId != null) {
+      await _client
+          .from('partner_document_folder_templates')
+          .delete()
+          .eq('id', templateId);
+    }
+    return docIds.length;
   }
 
   static Future<List<PartnerMeeting>> fetchMeetings(String partnerId) async {
