@@ -7,6 +7,7 @@ import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import '../widgets/partner_route_pdf_actions.dart';
 import 'owner_portal_common.dart';
+import '../widgets/partner_route_howto_strip.dart';
 import '../widgets/partner_route_support_contact.dart';
 import 'owner_portal_route_actions.dart';
 
@@ -115,13 +116,24 @@ class OwnerPortalRouteCard extends StatelessWidget {
               _infoRow(Icons.notes_outlined, 'Notat fra MAVI', route.notes!.trim()),
             if ((route.ackComment ?? '').trim().isNotEmpty)
               _infoRow(Icons.chat_bubble_outline, 'Tilbakemelding', route.ackComment!.trim()),
+            if (pending) ...[
+              const SizedBox(height: 10),
+              const PartnerRouteHowToStrip(compact: true),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
-              child: FilledButton.tonalIcon(
+              child: FilledButton.icon(
                 onPressed: () => PartnerRoutePdfActions.openPdf(context, route),
+                style: FilledButton.styleFrom(
+                  backgroundColor: DriftProTheme.primaryGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
                 icon: const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('Åpne rute-PDF'),
+                label: const Text(
+                  'Steg 2 · Åpne rute-PDF',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
               ),
             ),
             if (pending) ...[
@@ -137,7 +149,10 @@ class OwnerPortalRouteCard extends StatelessWidget {
                     onBehalfOfDriver: onBehalfOfDriver,
                   ),
                   icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('Aksepter rute'),
+                  label: const Text(
+                    'Steg 3 · Aksepter rute',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
                   style: FilledButton.styleFrom(
                     backgroundColor: Colors.green.shade700,
                     padding: const EdgeInsets.symmetric(vertical: 14),
@@ -146,6 +161,21 @@ class OwnerPortalRouteCard extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               const PartnerRouteSupportContactCard(),
+            ] else if (route.ackStatus == 'accepted') ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Ruten er akseptert',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: Colors.green.shade800,
+                    ),
+                  ),
+                ],
+              ),
             ],
           ],
         ),

@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
+import '../widgets/partner_route_howto_strip.dart';
 import 'driver_portal_common.dart';
 import 'driver_portal_route_card.dart';
 
@@ -106,18 +107,29 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
       );
     }
 
+    final hasPending = routes.any((r) => r.ackStatus == 'pending');
+
     return RefreshIndicator(
       onRefresh: _load,
       color: DriftProTheme.primaryGreen,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 100),
-        itemCount: routes.length,
-        itemBuilder: (_, i) => DriverPortalRouteCard(
-          route: routes[i],
-          shifts: _data!.shiftsById,
-          onReload: _load,
-        ),
+        itemCount: routes.length + (hasPending ? 1 : 0),
+        itemBuilder: (_, i) {
+          if (hasPending && i == 0) {
+            return const Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: PartnerRouteHowToStrip(compact: true),
+            );
+          }
+          final ri = hasPending ? i - 1 : i;
+          return DriverPortalRouteCard(
+            route: routes[ri],
+            shifts: _data!.shiftsById,
+            onReload: _load,
+          );
+        },
       ),
     );
   }

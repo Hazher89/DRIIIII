@@ -6,6 +6,7 @@ import '../../../models/partner/partner_links.dart';
 import '../owner_portal/owner_portal_common.dart';
 import '../owner_portal/owner_portal_route_actions.dart';
 import '../widgets/partner_route_pdf_actions.dart';
+import '../widgets/partner_route_howto_strip.dart';
 import '../widgets/partner_route_support_contact.dart';
 
 /// Rute-kort for sjåfør — stor starttid, skift, PDF, aksepter / avlys.
@@ -126,6 +127,10 @@ class DriverPortalRouteCard extends StatelessWidget {
               _line(Icons.notes_outlined, 'Notat fra MAVI', route.notes!.trim()),
             if ((route.ackComment ?? '').trim().isNotEmpty)
               _line(Icons.chat_bubble_outline, 'Din kommentar', route.ackComment!.trim()),
+            if (pending && !compactActions) ...[
+              const SizedBox(height: 10),
+              const PartnerRouteHowToStrip(compact: true),
+            ],
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,
@@ -136,7 +141,10 @@ class DriverPortalRouteCard extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
                 icon: const Icon(Icons.picture_as_pdf_outlined),
-                label: const Text('Åpne rute-PDF', style: TextStyle(fontWeight: FontWeight.w800)),
+                label: Text(
+                  pending ? 'Steg 2 · Åpne rute-PDF' : 'Åpne rute-PDF',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
               ),
             ),
             if (pending) ...[
@@ -155,7 +163,10 @@ class DriverPortalRouteCard extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('Aksepter rute', style: TextStyle(fontWeight: FontWeight.w800)),
+                  label: const Text(
+                    'Steg 3 · Aksepter rute',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
                 ),
               if (!compactActions) const SizedBox(height: 8),
               const PartnerRouteSupportContactCard(),

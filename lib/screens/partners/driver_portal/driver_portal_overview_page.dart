@@ -109,14 +109,15 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                   PartnerSmartActionsPanel(
                     title: 'Anbefalte handlinger',
                     actions: [
-                      PartnerSmartAction(
-                        label: 'Svar på ${_data!.pendingAck} ventende ruter',
-                        hint: 'Aksepter eller avvis med kommentar',
-                        icon: Icons.mark_email_unread_outlined,
-                      ),
+                      if (_data!.pendingAck > 0)
+                        PartnerSmartAction(
+                          label: '${_data!.pendingAck} rute(r) venter på deg',
+                          hint: 'Mine ruter → Åpne PDF → Aksepter rute',
+                          icon: Icons.mark_email_unread_outlined,
+                        ),
                       const PartnerSmartAction(
-                        label: 'Sjekk dagens rute-PDF',
-                        hint: 'Bekreft starttid og kundeliste før oppdrag',
+                        label: 'Åpne rute-PDF før du kjører',
+                        hint: 'Kundeliste og detaljer ligger i PDF-en',
                         icon: Icons.picture_as_pdf_outlined,
                       ),
                     ],

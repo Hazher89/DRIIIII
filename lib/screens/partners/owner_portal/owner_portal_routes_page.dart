@@ -5,6 +5,7 @@ import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../widgets/partner_route_howto_strip.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_common.dart';
 import 'owner_portal_route_card.dart';
@@ -100,6 +101,13 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
+          if (_data!.pendingAckTotal > 0)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(12, 8, 12, 0),
+                child: PartnerRouteHowToStrip(compact: true),
+              ),
+            ),
           SliverToBoxAdapter(child: _vehicleFilters()),
           if (_data!.vehicleStats.isNotEmpty)
             SliverToBoxAdapter(

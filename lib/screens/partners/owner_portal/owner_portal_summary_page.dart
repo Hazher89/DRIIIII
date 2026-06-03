@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/auth/session_sign_out.dart';
+import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
+import '../../../models/partner/partner_summary_meta.dart';
 import '../widgets/partner_ui.dart';
-import 'owner_portal_common.dart';
+import 'owner_portal_economic_summary.dart';
 
+/// Økonomisk oppsummering fra PDF (siste uke, arkiv, måned/år-sum).
 class OwnerPortalSummaryPage extends StatefulWidget {
   final Partner partner;
   const OwnerPortalSummaryPage({super.key, required this.partner});
@@ -15,7 +18,7 @@ class OwnerPortalSummaryPage extends StatefulWidget {
 }
 
 class _OwnerPortalSummaryPageState extends State<OwnerPortalSummaryPage> {
-  OwnerPortalData? _data;
+  List<OwnerEconomicSummaryEntry> _entries = [];
   bool _loading = true;
 
   @override
@@ -26,124 +29,124 @@ class _OwnerPortalSummaryPageState extends State<OwnerPortalSummaryPage> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final d = await OwnerPortalData.load(widget.partner);
-    if (mounted) setState(() { _data = d; _loading = false; });
+    try {
+      final docs = await PartnerService.fetchOwnerPortalDocuments(widget.partner.id);
+      if (mounted) {
+        setState(() {
+          _entries = parseEconomicSummaries(docs);
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
+
+  double get _allTimeTotal =>
+      _entries.fold<double>(0, (sum, e) => sum + e.amount);
 
   @override
   Widget build(BuildContext context) {
-    final s = _data?.summary90;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bg = isDark ? const Color(0xFF0F1419) : const Color(0xFFF4F6F8);
+
     return Scaffold(
+      backgroundColor: bg,
       appBar: AppBar(
+        backgroundColor: bg,
+        surfaceTintColor: Colors.transparent,
         title: const Text('Oppsummering'),
         actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+          IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => signOutFromPortal(context),
           ),
         ],
       ),
-      body: _loading || s == null
+      body: _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _load,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  PartnerHeroBanner(
-                    title: '90-dagers oppsummering',
-                    subtitle: 'Hele flåten din — siste 90 dager',
-                    leading: const Icon(Icons.analytics_outlined, color: Colors.white, size: 32),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childAspectRatio: 1.2,
+              child: _entries.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(24),
                       children: [
-                        OwnerKpiCard(label: 'Ruter mottatt', value: '${s.routesReceived}', icon: Icons.send),
-                        OwnerKpiCard(
-                          label: 'Utnyttelse',
-                          value: '${s.utilizationPercent.toStringAsFixed(0)}%',
-                          icon: Icons.speed,
+                        Icon(Icons.receipt_long_outlined, size: 56, color: Colors.grey.shade400),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Ingen oppsummering delt ennå',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
                         ),
-                        OwnerKpiCard(label: 'Jobbdager', value: '${s.harRuteDays}', icon: Icons.work),
-                        OwnerKpiCard(label: 'Ledig', value: '${s.ledigDays}', icon: Icons.pause, accent: Colors.orange),
-                        OwnerKpiCard(label: 'Fri', value: '${s.friDays}', icon: Icons.beach_access),
-                        OwnerKpiCard(label: 'Gitt bort', value: '${s.gittBortDays}', icon: Icons.swap_horiz),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Når MAVI sender ukesoppsummering fra PDF, vises beløp, datoer og full oversikt her — '
+                          'pluss arkiv og total inntekt per måned og år.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey.shade600, height: 1.4),
+                        ),
+                      ],
+                    )
+                  : ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                      children: [
+                        if (_entries.isNotEmpty) ...[
+                          OwnerPortalEconomicSummaryHero(
+                            entry: _entries.first,
+                            onOpenPdf: () => openOwnerSummaryPdf(context, _entries.first.doc),
+                          ),
+                          const SizedBox(height: 20),
+                          _allTimeBanner(),
+                          const SizedBox(height: 8),
+                          OwnerPortalEconomicTotalsSection(entries: _entries),
+                          const SizedBox(height: 8),
+                          OwnerPortalEconomicArchiveList(
+                            entries: _entries,
+                            onTap: (e) => showOwnerSummaryDetailSheet(context, e),
+                          ),
+                        ],
                       ],
                     ),
-                  ),
-                  const OwnerSectionTitle(title: 'Statusfordeling (kalenderdager)'),
-                  _breakdownBar(context, s.statusBreakdown),
-                  const OwnerSectionTitle(title: 'Per bil — rangert'),
-                  ..._data!.vehicleStats.map((vs) => OwnerVehicleStackCard(stats: vs)),
-                  if (s.dailyTrend.isNotEmpty) ...[
-                    const OwnerSectionTitle(title: 'Siste dager i trend'),
-                    ...s.dailyTrend.reversed.take(14).map(
-                          (p) => ListTile(
-                            dense: true,
-                            title: Text(ownerFmtDate(p.day)),
-                            subtitle: Text(
-                              'Jobb ${p.harRute} · Ledig ${p.ledig} · Fri ${p.fri} · Ruter sendt ${p.routesSent}',
-                            ),
-                          ),
-                        ),
-                  ],
-                  const SizedBox(height: 24),
-                ],
-              ),
             ),
     );
   }
 
-  Widget _breakdownBar(BuildContext context, Map<String, int> b) {
-    final total = b.values.fold<int>(0, (a, c) => a + c);
-    if (total == 0) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('Ingen kalenderdata ennå.'),
-      );
-    }
-    final items = [
-      ('Jobb / rute', b['har_rute'] ?? 0, DriftProTheme.primaryGreen),
-      ('Ledig', b['ledig'] ?? 0, Colors.orange),
-      ('Fri', b['fri'] ?? 0, DriftProTheme.accentBlue),
-      ('Gitt bort', b['gitt_bort'] ?? 0, Colors.grey),
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        children: items.map((e) {
-          final pct = total > 0 ? (e.$2 / total) : 0.0;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+  Widget _allTimeBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.savings_outlined, color: DriftProTheme.primaryGreenDark, size: 32),
+          const SizedBox(width: 12),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(e.$1, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                    Text('${e.$2} (${(pct * 100).toStringAsFixed(0)}%)'),
-                  ],
+                Text(
+                  'Totalt i portalen',
+                  style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context)),
                 ),
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: pct,
-                  minHeight: 6,
-                  backgroundColor: Colors.grey.shade200,
-                  color: e.$3,
+                Text(
+                  '${PartnerSummaryMeta.formatAmount(_allTimeTotal)} kr eks mva',
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+                ),
+                Text(
+                  '${_entries.length} oppsummering${_entries.length == 1 ? '' : 'er'}',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],
             ),
-          );
-        }).toList(),
+          ),
+        ],
       ),
     );
   }

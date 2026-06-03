@@ -6,6 +6,7 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../partner_shell.dart';
 import '../widgets/partner_modern_ui.dart';
+import '../widgets/partner_route_howto_strip.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_common.dart';
 
@@ -68,17 +69,32 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     subtitle: '${_data!.vehicles.length} kjøretøy · ${_data!.routes.length} ruter (90 d)',
                     leading: const Icon(Icons.business_center, color: Colors.white, size: 32),
                   ),
+                  if (_data!.pendingAckTotal > 0) ...[
+                    _pendingRoutesBanner(context),
+                    const SizedBox(height: 12),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: PartnerRouteHowToStrip(),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   PartnerSmartActionsPanel(
                     title: 'Anbefalte handlinger',
                     actions: [
-                      PartnerSmartAction(
-                        label: 'Følg opp ${_data!.pendingAckTotal} ruter som venter svar',
-                        hint: 'Gå til Alle ruter for å se status',
-                        icon: Icons.route_outlined,
+                      if (_data!.pendingAckTotal > 0)
+                        PartnerSmartAction(
+                          label: '${_data!.pendingAckTotal} rute(r) venter på aksept',
+                          hint: 'Gå til «Alle ruter» → åpne PDF → trykk «Aksepter rute»',
+                          icon: Icons.check_circle_outline,
+                        ),
+                      const PartnerSmartAction(
+                        label: 'Se siste økonomiske oppsummering',
+                        hint: 'Fanen «Oppsummering» — beløp, arkiv og total per måned',
+                        icon: Icons.receipt_long_outlined,
                       ),
                       const PartnerSmartAction(
                         label: 'Kontroller dokumenter og avtaler',
-                        hint: 'Sikre at gyldige dokumenter er tilgjengelige',
+                        hint: 'Avtaler og andre filer under «Dokumenter»',
                         icon: Icons.folder_open_outlined,
                       ),
                     ],
@@ -151,6 +167,53 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _pendingRoutesBanner(BuildContext context) {
+    final n = _data!.pendingAckTotal;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Material(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.notifications_active, color: Colors.orange.shade800, size: 28),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$n ny${n == 1 ? '' : 'e'} rute${n == 1 ? '' : 'r'}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                        color: Colors.orange.shade900,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '1. Gå til «Alle ruter»\n'
+                      '2. Trykk «Åpne rute-PDF»\n'
+                      '3. Trykk «Aksepter rute»',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.45,
+                        color: Colors.orange.shade900.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
