@@ -17,6 +17,7 @@ import '../departments/departments_screen.dart';
 import '../employees/employees_screen.dart';
 import '../employees/employee_personal_folder_screen.dart';
 import '../profile/profile_screen.dart';
+import '../profile/notifications_hub_screen.dart';
 import '../admin/access_control_screen.dart';
 import '../admin/kiosk_settings_screen.dart';
 import '../admin/dropbox_storage_settings_screen.dart';
@@ -158,7 +159,6 @@ class _MoreScreenState extends State<MoreScreen> {
                 AppIcons.notification,
                 'Varsler',
                 isDark,
-                badge: '3',
               ),
             if (_profile!.access.canSurveysMenu)
               _buildMenuItem(
@@ -451,6 +451,16 @@ class _MoreScreenState extends State<MoreScreen> {
                 profile: _profile,
                 accessKey: AccessKeys.personalmappe,
                 child: const EmployeePersonalFolderScreen(),
+              ),
+            );
+            return;
+          }
+          if (title == 'Varsler') {
+            Navigator.of(context).push(
+              guardedMaterialRoute(
+                profile: _profile,
+                accessKey: AccessKeys.varsler,
+                child: const NotificationsHubScreen(),
               ),
             );
             return;

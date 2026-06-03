@@ -6,7 +6,6 @@ import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_icons.dart';
 import '../../models/user_profile.dart';
 import 'employee_change_password_sheet.dart';
-import 'profile_notifications_tab.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -15,29 +14,15 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen>
-    with SingleTickerProviderStateMixin {
+class _ProfileScreenState extends State<ProfileScreen> {
   UserProfile? _profile;
   bool _isLoading = true;
-  TabController? _tabs;
-
-  @override
-  void dispose() {
-    _tabs?.dispose();
-    super.dispose();
-  }
 
   Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
       if (!mounted) return;
-      _tabs?.dispose();
-      if (profile?.isSuperAdmin == true) {
-        _tabs = TabController(length: 2, vsync: this);
-      } else {
-        _tabs = null;
-      }
       setState(() => _profile = profile);
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -62,33 +47,14 @@ class _ProfileScreenState extends State<ProfileScreen>
       return const Scaffold(body: Center(child: Text('Kunne ikke laste profil')));
     }
 
-    final isSuperAdmin = _profile!.isSuperAdmin;
-
     return Scaffold(
       backgroundColor:
           isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       appBar: AppBar(
         title: const Text('Min Profil'),
         centerTitle: true,
-        bottom: isSuperAdmin && _tabs != null
-            ? TabBar(
-                controller: _tabs,
-                tabs: const [
-                  Tab(text: 'Profil'),
-                  Tab(text: 'SMS (Mavi)'),
-                ],
-              )
-            : null,
       ),
-      body: isSuperAdmin && _tabs != null
-          ? TabBarView(
-              controller: _tabs,
-              children: [
-                _buildProfileBody(isDark),
-                const ProfileNotificationsTab(),
-              ],
-            )
-          : _buildProfileBody(isDark),
+      body: _buildProfileBody(isDark),
     );
   }
 
@@ -172,12 +138,6 @@ class _ProfileScreenState extends State<ProfileScreen>
                 () => showEmployeeChangePasswordSheet(context),
                 isDark,
               ),
-            _buildActionTile(
-              Icons.notifications_none_rounded,
-              'Varslinginnstillinger',
-              () {},
-              isDark,
-            ),
             _buildActionTile(
               Icons.security_rounded,
               'Personvern og sikkerhet',
