@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/services/notification/publish_action_labels.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../models/notification_channel.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
@@ -37,6 +39,8 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
   final Map<String, TimeOfDay> _startByShare = {};
   final Map<String, DateTime> _dateByShare = {};
   final Map<String, TextEditingController> _noteCtrls = {};
+  String _publishLabel = 'Publiser og send varsel';
+  NotificationChannel _channel = NotificationChannel.both;
 
   DateTime _routeDayFor(String shareId) {
     final cached = _dateByShare[shareId];
@@ -59,6 +63,20 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
   void initState() {
     super.initState();
     _load();
+    _loadPublishLabels();
+  }
+
+  Future<void> _loadPublishLabels() async {
+    try {
+      final label = await PublishActionLabels.singleRoutePublishLabel(widget.companyId);
+      final ch = await PublishActionLabels.singleRouteChannel(widget.companyId);
+      if (mounted) {
+        setState(() {
+          _publishLabel = label;
+          _channel = ch;
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -151,7 +169,7 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Publiser og send SMS?'),
+        title: Text('$_publishLabel?'),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -204,18 +222,24 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
         final day = _routeDayFor(id);
         starts[id] = DateTime(day.year, day.month, day.day, t.hour, t.minute);
       }
+      final notify = _channel != NotificationChannel.none;
       await PartnerService.dispatchRouteShares(
         companyId: widget.companyId,
         shareIdToShiftId: map,
         date: _selected.isNotEmpty ? _routeDayFor(_selected.first) : widget.routeDate,
         shareIdToStartAt: starts,
+        notifyDriver: notify,
       );
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Publisert ${map.length} rute(r). SMS sendt til sjåfør og bil-eier.',
+              PublishActionLabels.successMessage(
+                routeCount: map.length,
+                channel: _channel,
+                notifyDriver: notify,
+              ),
             ),
           ),
         );
@@ -375,7 +399,7 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
               icon: _publishing
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.rocket_launch_outlined),
-              label: Text('Publiser ${_selected.length} rute(r) — send SMS'),
+              label: Text('$_publishLabel (${_selected.length})'),
             ),
           ],
         ],
