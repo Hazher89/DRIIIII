@@ -45,8 +45,8 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
     super.dispose();
   }
 
-  Future<void> reload({bool notifyParent = false}) async {
-    setState(() => _loading = true);
+  Future<void> reload({bool notifyParent = false, bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) return;
@@ -62,11 +62,11 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
         setState(() {
           _fleet = PartnerService.filterMaviFleetOnly(fleet);
           _sharesToday = shares;
-          _loading = false;
+          if (!silent) _loading = false;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && !silent) setState(() => _loading = false);
     }
     if (notifyParent) {
       widget.onDataChanged?.call();
@@ -155,7 +155,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: PartnerRouteMasterScheduler(
               fleet: _fleet,
-              onChanged: () => reload(notifyParent: true),
+              onChanged: () => reload(notifyParent: true, silent: true),
             ),
           ),
           const SizedBox(height: 16),

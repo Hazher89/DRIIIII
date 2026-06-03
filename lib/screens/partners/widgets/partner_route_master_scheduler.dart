@@ -169,20 +169,20 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     _syncHorizontal = false;
   }
 
-  Future<void> _reload() async {
-    setState(() => _busy = true);
+  Future<void> _reload({bool light = false}) async {
+    if (!light) setState(() => _busy = true);
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) return;
-      await PartnerService.ensureCanonicalFleetShifts(cid);
+      if (!light) await PartnerService.ensureCanonicalFleetShifts(cid);
       final shifts = await PartnerService.fetchFleetShifts(cid);
       final shares = await PartnerService.fetchRouteSharesForCalendarWindow(
         companyId: cid,
         fromDay: _weekStart,
         toDay: _weekEnd,
       );
+      if (!light) await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final sapInbox = await PartnerService.countSapRouteInboxPending(cid);
-      await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final stagedQueue = await PartnerService.countStagedRouteShares(cid);
       final reminders = await PartnerService.fetchRouteReminderFlags(
         shares.map((s) => s.id),
@@ -355,7 +355,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       await _refreshSapPendingCount();
       if (ok == true) {
         widget.onChanged?.call();
-        await _reload();
+        await _reload(light: true);
       }
     }
   }
@@ -433,7 +433,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     );
     if (ok == true && mounted) {
       widget.onChanged?.call();
-      await _reload();
+      await _reload(light: true);
     }
   }
 
@@ -459,7 +459,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       initialRow: row,
       onDone: () {
         widget.onChanged?.call();
-        _reload();
+        _reload(light: true);
       },
     );
   }
@@ -481,12 +481,12 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         reminderFlags: _reminderFlags,
         onSaved: () {
           widget.onChanged?.call();
-          _reload();
+          _reload(light: true);
         },
         onRoutePlacedOnDate: (routeDay) {
           _jumpWeek(routeDay);
           widget.onChanged?.call();
-          _reload();
+          _reload(light: true);
         },
         allFleet: _maviFleet,
       ),
@@ -516,7 +516,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         reminderFlags: _reminderFlags,
         onChanged: () {
           widget.onChanged?.call();
-          _reload();
+          _reload(light: true);
         },
         onOpenFullEditor: () {
           Navigator.pop(ctx);

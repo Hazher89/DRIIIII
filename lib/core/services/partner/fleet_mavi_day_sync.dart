@@ -25,6 +25,7 @@ class FleetMaviDaySync {
     required String shiftId,
     String? notes,
     String? partnerRouteShareId,
+    List<FleetShiftDefinition>? shifts,
   }) async {
     await PartnerService.upsertMaviDayAssignment(
       companyId: companyId,
@@ -34,9 +35,9 @@ class FleetMaviDaySync {
       notes: notes,
     );
 
-    final shifts = await PartnerService.fetchFleetShifts(companyId);
+    final shiftList = shifts ?? await PartnerService.fetchFleetShifts(companyId);
     FleetShiftDefinition? shift;
-    for (final s in shifts) {
+    for (final s in shiftList) {
       if (s.id == shiftId) {
         shift = s;
         break;

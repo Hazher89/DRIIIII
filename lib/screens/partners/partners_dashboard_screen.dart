@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/permissions/access_keys.dart';
@@ -162,6 +164,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
         return;
       }
       final list = await PartnerService.fetchPartners(companyId: cid);
+      unawaited(PartnerService.syncPartnerNotificationEmails(cid));
       final fleet = await PartnerService.fetchCompanyFleet(cid);
       final portalAccounts = await PartnerService.fetchCompanyPortalAccounts(cid);
       final byPartner = <String, List<PartnerVehicle>>{};

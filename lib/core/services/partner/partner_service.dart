@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -127,6 +128,9 @@ class PartnerService {
   static Future<void> updatePartner(String id, Partner patch) async {
     if (!_ok) return;
     await _client.from('partners').update(patch.toUpdateJson()).eq('id', id);
+    if (patch.email != null && patch.email!.trim().isNotEmpty) {
+      unawaited(_syncPartnerEmailsQuiet(patch.companyId));
+    }
   }
 
   static Future<void> updatePartnerFields(
@@ -135,6 +139,54 @@ class PartnerService {
   ) async {
     if (!_ok || fields.isEmpty) return;
     await _client.from('partners').update(fields).eq('id', id);
+    if (fields.containsKey('email')) {
+      unawaited(_syncPartnerEmailsForPartner(id));
+    }
+  }
+
+  static Future<void> _syncPartnerEmailsForPartner(String partnerId) async {
+    if (!_ok) return;
+    try {
+      final row = await _client
+          .from('partners')
+          .select('company_id')
+          .eq('id', partnerId)
+          .maybeSingle();
+      final cid = row?['company_id'] as String?;
+      if (cid != null) await _syncPartnerEmailsQuiet(cid);
+    } catch (_) {}
+  }
+
+  /// Fyller portal login_email fra partners.email (og motsatt der det mangler).
+  static Future<Map<String, int>> syncPartnerNotificationEmails(
+    String companyId,
+  ) async {
+    if (!_ok) return {};
+    try {
+      final data = await _client.rpc(
+        'sync_partner_notification_emails',
+        params: {'p_company_id': companyId},
+      );
+      if (data is List && data.isNotEmpty) {
+        final row = Map<String, dynamic>.from(data.first as Map);
+        return {
+          'partners_touched': (row['partners_touched'] as num?)?.toInt() ?? 0,
+          'portal_emails_filled': (row['portal_emails_filled'] as num?)?.toInt() ?? 0,
+          'partner_emails_filled': (row['partner_emails_filled'] as num?)?.toInt() ?? 0,
+        };
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  static Future<void> _syncPartnerEmailsQuiet(String? companyId) async {
+    if (!_ok || companyId == null || companyId.isEmpty) return;
+    try {
+      await _client.rpc(
+        'sync_partner_notification_emails',
+        params: {'p_company_id': companyId},
+      );
+    } catch (_) {}
   }
 
   static Future<void> deletePartner(String id) async {
@@ -983,12 +1035,14 @@ class PartnerService {
     required DateTime date,
     Map<String, DateTime?> shareIdToStartAt = const {},
     bool notifyDriver = true,
+    bool flushOutbox = false,
   }) async {
     if (!_ok) throw StateError('Supabase er ikke konfigurert');
     if (shareIdToShiftId.isEmpty) return;
 
     final status = notifyDriver ? 'sent' : 'registered';
     final sentAt = DateTime.now().toUtc().toIso8601String();
+    final cachedShifts = await fetchFleetShifts(companyId);
 
     for (final entry in shareIdToShiftId.entries) {
       final startAt = shareIdToStartAt[entry.key];
@@ -1023,52 +1077,32 @@ class PartnerService {
 
       final row = await _client
           .from('partner_route_shares')
-          .select('partner_vehicle_id, pdf_search_text')
+          .select('partner_vehicle_id')
           .eq('id', entry.key)
           .maybeSingle();
-      final pdfText = row?['pdf_search_text'] as String?;
-      if (pdfText != null && pdfText.trim().isNotEmpty) {
-        final n = RoutePdfTextService.parseCustomers(pdfText).length;
-        if (n > 0) {
-          await _client.from('partner_route_shares').update({'customer_count': n}).eq('id', entry.key);
-        }
-      }
       final vid = row?['partner_vehicle_id'] as String?;
       if (vid == null) continue;
 
-      await upsertFleetSnapshot(
-        PartnerVehicleFleetSnapshot(
-          id: '',
-          companyId: companyId,
-          partnerVehicleId: vid,
-          snapshotDate: routeDay,
-          shiftId: entry.value,
-          status: 'har_rute',
-          partnerRouteShareId: entry.key,
-          notes: startAt != null
-              ? 'Start ${startAt.hour.toString().padLeft(2, '0')}:${startAt.minute.toString().padLeft(2, '0')}'
-              : null,
-          createdAt: DateTime.now(),
-        ),
-      );
-
+      final note = startAt != null
+          ? 'Start ${startAt.hour.toString().padLeft(2, '0')}:${startAt.minute.toString().padLeft(2, '0')}'
+          : 'Ruteplanlegging';
       await FleetMaviDaySync.apply(
         companyId: companyId,
         partnerVehicleId: vid,
         date: routeDay,
         shiftId: entry.value,
         partnerRouteShareId: entry.key,
-        notes: 'Ruteplanlegging',
+        notes: note,
+        shifts: cachedShifts,
       );
-
-      if (notifyDriver) {
-        await _client.rpc('notify_partner_route_assigned_sms', params: {
-          'p_route_share_id': entry.key,
-        });
-      }
+      // SMS/e-post køes via trg_partner_route_sms_on_sent ved dispatch_status = sent.
     }
     if (notifyDriver) {
-      await flushSmsOutbox();
+      if (flushOutbox) {
+        await flushSmsOutbox();
+      } else {
+        unawaited(flushSmsOutbox());
+      }
     }
   }
 
