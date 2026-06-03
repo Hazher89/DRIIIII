@@ -311,7 +311,7 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                 ),
                 Text(
                   _isSuperAdmin
-                      ? 'Trykk på ansatt for tilganger og avdelingsleder-roller. ✏️ = rediger, ↔ = flytt avdeling. Innlogging: ansattnr. + passord 0000.'
+                      ? 'Trykk på ansatt for tilganger og avdelingsleder-roller. ✏️ = rediger, ↔ = flytt avdeling.'
                       : _canEditEmployees
                           ? 'Trykk for tilganger – eller ✏️ for å redigere telefon og personinfo.'
                           : 'Kun lesetilgang.',

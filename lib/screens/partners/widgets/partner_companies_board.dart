@@ -73,12 +73,22 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
   bool get _canRegister =>
       widget.profile?.access.canPartnersCreate == true || widget.profile?.access.canPartnersAdmin == true;
 
-  bool get _canSendSummaries => PartnerSummaryService.canManage(widget.profile);
+  /// Alltid synlig på Bedrifter — faktisk sending krever admin/superadmin.
+  bool get _showSummaryButton => widget.partners.isNotEmpty;
 
   String? get _companyId =>
       widget.profile?.companyId ?? widget.partners.firstOrNull?.companyId;
 
   Future<void> _openSummaryDispatch() async {
+    if (!PartnerSummaryService.canManage(widget.profile)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Kun administrator kan sende ut oppsummeringer.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     final companyId = _companyId;
     if (companyId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -248,7 +258,7 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
             ],
           ),
         ),
-        if (_canSendSummaries)
+        if (_showSummaryButton)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),

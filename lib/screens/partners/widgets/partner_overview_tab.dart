@@ -1171,28 +1171,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ('Portal', activeOwnerCount == 0 ? 'Mangler' : '$activeOwnerCount eier${activeOwnerCount == 1 ? '' : 'e'}'),
               ],
             ),
-            PartnerSmartActionsPanel(
-              title: 'Smart oppfølging',
-              actions: [
-                if (activeOwnerCount == 0)
-                  const PartnerSmartAction(
-                    label: 'Mangler portal for bedriftsansvarlig',
-                    hint: 'Opprett portal for bedriftsansvarlig for bedre kontroll og varsling',
-                    icon: Icons.warning_amber_rounded,
-                  ),
-                if (maviRows.isEmpty)
-                  const PartnerSmartAction(
-                    label: 'Ingen MAVI registrert',
-                    hint: 'Legg til minst én MAVI for rute- og portalflyt',
-                    icon: Icons.add_road_outlined,
-                  ),
-                PartnerSmartAction(
-                  label: 'SMS-nummer registrert: ${smsPhones.length}',
-                  hint: 'Kontroller at mottakere er riktige',
-                  icon: Icons.sms_outlined,
-                ),
-              ],
-            ),
             PartnerModernSegmented<_OverviewSection>(
               options: _OverviewSection.values,
               selected: _activeSection,

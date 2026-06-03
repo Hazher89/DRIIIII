@@ -250,7 +250,7 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
             content: Text(
               e.message.isNotEmpty
                   ? e.message
-                  : 'Feil ansattnummer eller passord. Standard ved første gangs innlogging er ${EmployeeAuthService.defaultPasswordHint}.',
+                  : 'Feil ansattnummer eller passord.',
             ),
             backgroundColor: DriftProTheme.error,
           ),
@@ -320,8 +320,8 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Logg inn med ansattnummer. Standardpassord: ${EmployeeAuthService.defaultPasswordHint} '
-                  '(fire nuller — lagres som 000000 i systemet). Endre under Profil etter innlogging.',
+                  'Logg inn med ansattnummer og passord du har fått fra MAVI. '
+                  'Endre passord under Profil etter innlogging.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 12,

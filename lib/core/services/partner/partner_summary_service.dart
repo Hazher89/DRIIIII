@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../../core/permissions/user_access.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/partner_summary_meta.dart';
@@ -225,6 +226,10 @@ class PartnerSummaryService {
 
   static bool canManage(UserProfile? profile) {
     if (profile == null) return false;
-    return profile.role == UserRole.superadmin || profile.access.canPartnersAdmin;
+    final access = profile.access;
+    return profile.isSuperAdmin ||
+        profile.role == UserRole.admin ||
+        access.canPartnersAdmin ||
+        access.canPartnersTab;
   }
 }
