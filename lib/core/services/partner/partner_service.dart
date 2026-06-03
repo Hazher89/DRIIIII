@@ -10,6 +10,7 @@ import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/shared_partner_document.dart';
 import '../../../models/partner/vehicle_inspection.dart';
 import '../../../models/partner/fleet_shift.dart';
+import '../../../models/partner/mavi_driver_day_assignment.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import '../../utils/portal_credentials.dart';
 import '../sms/sms_phone_utils.dart';
@@ -21,6 +22,7 @@ import 'postal_code_registry.dart';
 import 'route_pdf_text_service.dart';
 import 'route_pdf_auto_assign.dart';
 import 'route_shift_resolver.dart';
+import 'fleet_mavi_day_sync.dart';
 
 class PartnerService {
   static SupabaseClient get _client => Supabase.instance.client;
@@ -545,6 +547,28 @@ class PartnerService {
       ),
     );
 
+    await FleetMaviDaySync.apply(
+      companyId: share.companyId,
+      partnerVehicleId: newTarget.vehicle.id,
+      date: DateTime.parse(d),
+      shiftId: shiftId,
+      partnerRouteShareId: share.id,
+      notes: 'Ruteplanlegging',
+    );
+
+    if (oldVid != null && oldVid != newTarget.vehicle.id) {
+      final ledigId = await FleetMaviDaySync.firstLedigShiftId(share.companyId);
+      if (ledigId != null) {
+        await FleetMaviDaySync.apply(
+          companyId: share.companyId,
+          partnerVehicleId: oldVid,
+          date: DateTime.parse(d),
+          shiftId: ledigId,
+          notes: 'Rute flyttet',
+        );
+      }
+    }
+
     try {
       await _client.rpc('notify_partner_route_assigned_sms', params: {
         'p_route_share_id': share.id,
@@ -626,6 +650,14 @@ class PartnerService {
           notes: 'Rute fjernet',
           createdAt: DateTime.now(),
         ),
+      );
+      final ledigId = await FleetMaviDaySync.firstLedigShiftId(share.companyId) ?? share.shiftId!;
+      await FleetMaviDaySync.apply(
+        companyId: share.companyId,
+        partnerVehicleId: vid,
+        date: DateTime.parse(d),
+        shiftId: ledigId,
+        notes: 'Rute fjernet',
       );
     }
     await _client.from('partner_route_shares').delete().eq('id', share.id);
@@ -838,6 +870,15 @@ class PartnerService {
               : null,
           createdAt: DateTime.now(),
         ),
+      );
+
+      await FleetMaviDaySync.apply(
+        companyId: companyId,
+        partnerVehicleId: vid,
+        date: routeDay,
+        shiftId: entry.value,
+        partnerRouteShareId: entry.key,
+        notes: 'Ruteplanlegging',
       );
 
       // SMS sendes kun når dispatch_status = sent (trg_partner_route_sms_on_sent).
@@ -1376,6 +1417,14 @@ class PartnerService {
         notes: 'Godkjent fri${note != null && note.isNotEmpty ? ': $note' : ''}',
         createdAt: DateTime.now(),
       ),
+    );
+
+    await FleetMaviDaySync.apply(
+      companyId: companyId,
+      partnerVehicleId: vid,
+      date: requestDate,
+      shiftId: fri.id,
+      notes: 'Godkjent fri',
     );
   }
 
@@ -1925,6 +1974,76 @@ class PartnerService {
     return data.map((e) => PartnerVehicleFleetSnapshot.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  static Future<List<MaviDriverDayAssignment>> fetchMaviDayAssignments({
+    required String companyId,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    if (!_ok) return const [];
+    final a = from.toIso8601String().split('T').first;
+    final b = to.toIso8601String().split('T').first;
+    final data = await _client
+        .from('mavi_driver_day_assignments')
+        .select()
+        .eq('company_id', companyId)
+        .gte('assignment_date', a)
+        .lte('assignment_date', b) as List<dynamic>;
+    return data
+        .map((e) => MaviDriverDayAssignment.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<void> upsertMaviDayAssignment({
+    required String companyId,
+    required String partnerVehicleId,
+    required DateTime date,
+    required String shiftId,
+    String? notes,
+  }) async {
+    if (!_ok) return;
+    final row = MaviDriverDayAssignment(
+      id: '',
+      companyId: companyId,
+      partnerVehicleId: partnerVehicleId,
+      assignmentDate: DateTime(date.year, date.month, date.day),
+      shiftId: shiftId,
+      notes: notes,
+    );
+    await _client.from('mavi_driver_day_assignments').upsert(
+          row.toUpsertJson(),
+          onConflict: 'partner_vehicle_id,assignment_date',
+        );
+  }
+
+  static Future<void> deleteMaviDayAssignment({
+    required String companyId,
+    required String partnerVehicleId,
+    required DateTime date,
+  }) async {
+    if (!_ok) return;
+    final d = date.toIso8601String().split('T').first;
+    await _client
+        .from('mavi_driver_day_assignments')
+        .delete()
+        .eq('company_id', companyId)
+        .eq('partner_vehicle_id', partnerVehicleId)
+        .eq('assignment_date', d);
+  }
+
+  static Future<void> deleteMaviDayAssignmentsInRange({
+    required String companyId,
+    required DateTime from,
+    required DateTime to,
+  }) async {
+    if (!_ok) return;
+    await _client
+        .from('mavi_driver_day_assignments')
+        .delete()
+        .eq('company_id', companyId)
+        .gte('assignment_date', from.toIso8601String().split('T').first)
+        .lte('assignment_date', to.toIso8601String().split('T').first);
+  }
+
   static Future<void> upsertFleetSnapshot(PartnerVehicleFleetSnapshot snap) async {
     if (!_ok) return;
     await _client.from('partner_vehicle_fleet_snapshots').upsert(
@@ -1943,6 +2062,7 @@ class PartnerService {
     if (!_ok) return;
     final fleet = await fetchCompanyFleet(companyId);
     final d = date.toIso8601String().split('T').first;
+    final ledigId = await FleetMaviDaySync.firstLedigShiftId(companyId);
     for (final row in fleet) {
       final vid = row.vehicle.id;
       final shareId = vehicleIdToRouteShareId[vid];
@@ -1958,6 +2078,16 @@ class PartnerService {
         createdAt: DateTime.now(),
       );
       await upsertFleetSnapshot(snap);
+
+      final planShift = shareId != null ? shiftId : (ledigId ?? shiftId);
+      await FleetMaviDaySync.apply(
+        companyId: companyId,
+        partnerVehicleId: vid,
+        date: DateTime.parse(d),
+        shiftId: planShift,
+        partnerRouteShareId: shareId,
+        notes: shareId != null ? 'Massefordeling' : 'Ledig',
+      );
     }
   }
 

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/services/partner/fleet_analytics_service.dart';
+import '../../core/services/partner/fleet_mavi_day_sync.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -262,6 +263,25 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
     );
     try {
       await PartnerService.upsertFleetSnapshot(snap);
+      if (status == 'fri' || status == 'ledig' || status == 'gitt_bort') {
+        await FleetMaviDaySync.apply(
+          companyId: cid,
+          partnerVehicleId: row.vehicle.id,
+          date: d,
+          shiftId: sid,
+          notes: 'Ruteplanlegging',
+        );
+      } else if (status == 'har_rute') {
+        final shareId = _snapByVehicle[row.vehicle.id]?.partnerRouteShareId;
+        await FleetMaviDaySync.apply(
+          companyId: cid,
+          partnerVehicleId: row.vehicle.id,
+          date: d,
+          shiftId: sid,
+          partnerRouteShareId: shareId,
+          notes: 'Ruteplanlegging',
+        );
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${row.vehicle.unitCode}: ${_statusLabel(status)}')),

@@ -75,6 +75,13 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
     return byFolder.where((d) => d.documentType == _filterType).toList();
   }
 
+  static String _titleFromFileName(String name) {
+    var base = name.trim();
+    final dot = base.lastIndexOf('.');
+    if (dot > 0) base = base.substring(0, dot);
+    return base.replaceAll('_', ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
   Future<void> _upload() async {
     if (_activeFolderId == null || _activeFolderId == _sharedHubFolderId) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -84,131 +91,207 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
     }
     final picked = await FilePicker.platform.pickFiles(
       withData: true,
+      allowMultiple: true,
       type: FileType.custom,
       allowedExtensions: const ['pdf', 'png', 'jpg', 'jpeg', 'doc', 'docx'],
     );
     if (picked == null || picked.files.isEmpty) return;
 
-    final titleCtrl = TextEditingController();
+    final files = picked.files;
+    final titleCtrls = <TextEditingController>[
+      for (final f in files) TextEditingController(text: _titleFromFileName(f.name)),
+    ];
     final descCtrl = TextEditingController();
     var docType = 'avtale';
     DateTime? expires;
+    final multi = files.length > 1;
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) => AlertDialog(
-          title: const Text('Last opp dokument til bil-eier'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Dokumentet deles kun med bil-eier portal — ikke MAVI-sjåfører.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: titleCtrl,
-                  decoration: const InputDecoration(labelText: 'Tittel *', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  initialValue: docType,
-                  decoration: const InputDecoration(labelText: 'Dokumenttype', border: OutlineInputBorder()),
-                  items: _types.where((t) => t != 'alle').map((t) {
-                    return DropdownMenuItem(
-                      value: t,
-                      child: Text(PartnerDocument.documentTypeLabel(t)),
-                    );
-                  }).toList(),
-                  onChanged: (v) => setSt(() => docType = v ?? 'annet'),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: descCtrl,
-                  maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Beskrivelse', border: OutlineInputBorder()),
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Utløpsdato (valgfritt)'),
-                  subtitle: Text(
-                    expires != null ? DateFormat('dd.MM.yyyy').format(expires!) : 'Aldri / ikke satt',
+          title: Text(multi ? 'Last opp ${files.length} dokumenter' : 'Last opp dokument til bil-eier'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Dokumentet deles kun med bil-eier portal — ikke MAVI-sjåfører.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
-                  trailing: const Icon(Icons.event_outlined),
-                  onTap: () async {
-                    final d = await showDatePicker(
-                      context: ctx,
-                      initialDate: expires ?? DateTime.now().add(const Duration(days: 365)),
-                      firstDate: DateTime.now(),
-                      lastDate: DateTime(2040),
-                    );
-                    if (d != null) setSt(() => expires = d);
-                  },
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  if (multi) ...[
+                    Text(
+                      '${files.length} filer valgt — tittel fra filnavn:',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 8),
+                    ...List.generate(files.length, (i) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: TextField(
+                          controller: titleCtrls[i],
+                          decoration: InputDecoration(
+                            labelText: files[i].name,
+                            isDense: true,
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      );
+                    }),
+                  ] else
+                    TextField(
+                      controller: titleCtrls.first,
+                      decoration: const InputDecoration(labelText: 'Tittel *', border: OutlineInputBorder()),
+                    ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    initialValue: docType,
+                    decoration: const InputDecoration(labelText: 'Dokumenttype', border: OutlineInputBorder()),
+                    items: _types.where((t) => t != 'alle').map((t) {
+                      return DropdownMenuItem(
+                        value: t,
+                        child: Text(PartnerDocument.documentTypeLabel(t)),
+                      );
+                    }).toList(),
+                    onChanged: (v) => setSt(() => docType = v ?? 'annet'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: descCtrl,
+                    maxLines: 2,
+                    decoration: InputDecoration(
+                      labelText: multi ? 'Beskrivelse (felles)' : 'Beskrivelse',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Utløpsdato (valgfritt)'),
+                    subtitle: Text(
+                      expires != null ? DateFormat('dd.MM.yyyy').format(expires!) : 'Aldri / ikke satt',
+                    ),
+                    trailing: const Icon(Icons.event_outlined),
+                    onTap: () async {
+                      final d = await showDatePicker(
+                        context: ctx,
+                        initialDate: expires ?? DateTime.now().add(const Duration(days: 365)),
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime(2040),
+                      );
+                      if (d != null) setSt(() => expires = d);
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, titleCtrl.text.trim().isNotEmpty), child: const Text('Last opp')),
+            FilledButton(
+              onPressed: () {
+                final allTitles = titleCtrls.every((c) => c.text.trim().isNotEmpty);
+                Navigator.pop(ctx, allTitles);
+              },
+              child: Text(multi ? 'Last opp alle' : 'Last opp'),
+            ),
           ],
         ),
       ),
     );
-    if (ok != true || !mounted) return;
 
-    final file = picked.files.first;
-    final bytes = file.bytes ??
-        (file.path != null && !kIsWeb ? await File(file.path!).readAsBytes() : null);
-    if (bytes == null) return;
-
-    final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-    final storagePath =
-        'company_${widget.partner.companyId}/partner_docs/${widget.partner.id}/${DateTime.now().millisecondsSinceEpoch}_$safeName';
-
-    try {
-      final storedPath = await PartnerService.uploadPartnerDocumentFile(
-        storagePath: storagePath,
-        bytes: bytes,
-        mimeType: file.extension != null ? _mimeForExt(file.extension!) : null,
-      );
-      await PartnerService.addDocumentToFolder(
-        PartnerDocument(
-          id: '',
-          partnerId: widget.partner.id,
-          companyId: widget.partner.companyId,
-          title: titleCtrl.text.trim(),
-          description: descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim(),
-          storagePath: storedPath,
-          fileName: file.name,
-          mimeType: file.extension,
-          documentType: docType,
-          expiresAt: expires,
-          folderId: _activeFolderId,
-          ownerVisible: true,
-          driverVisible: false,
-          docCategory: 'general',
-          createdAt: DateTime.now(),
-        ),
-        folderId: _activeFolderId!,
-      );
-      await _load();
-      await widget.onChanged();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Dokument delt med bil-eier')),
-        );
+    if (ok != true || !mounted) {
+      for (final c in titleCtrls) {
+        c.dispose();
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Opplasting feilet: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      titleCtrl.dispose();
       descCtrl.dispose();
+      return;
+    }
+
+    final description = descCtrl.text.trim().isEmpty ? null : descCtrl.text.trim();
+    var uploaded = 0;
+    String? lastError;
+
+    for (var i = 0; i < files.length; i++) {
+      final file = files[i];
+      final title = titleCtrls[i].text.trim();
+      final bytes = file.bytes ??
+          (file.path != null && !kIsWeb ? await File(file.path!).readAsBytes() : null);
+      if (bytes == null) {
+        lastError = 'Kunne ikke lese ${file.name}';
+        continue;
+      }
+
+      final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final storagePath =
+          'company_${widget.partner.companyId}/partner_docs/${widget.partner.id}/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+
+      try {
+        final storedPath = await PartnerService.uploadPartnerDocumentFile(
+          storagePath: storagePath,
+          bytes: bytes,
+          mimeType: file.extension != null ? _mimeForExt(file.extension!) : null,
+        );
+        await PartnerService.addDocumentToFolder(
+          PartnerDocument(
+            id: '',
+            partnerId: widget.partner.id,
+            companyId: widget.partner.companyId,
+            title: title,
+            description: description,
+            storagePath: storedPath,
+            fileName: file.name,
+            mimeType: file.extension,
+            documentType: docType,
+            expiresAt: expires,
+            folderId: _activeFolderId,
+            ownerVisible: true,
+            driverVisible: false,
+            docCategory: 'general',
+            createdAt: DateTime.now(),
+          ),
+          folderId: _activeFolderId!,
+        );
+        uploaded++;
+      } catch (e) {
+        lastError = '$e';
+      }
+    }
+
+    for (final c in titleCtrls) {
+      c.dispose();
+    }
+    descCtrl.dispose();
+
+    await _load();
+    await widget.onChanged();
+    if (!mounted) return;
+
+    if (uploaded == files.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            uploaded == 1 ? 'Dokument delt med bil-eier' : '$uploaded dokumenter delt med bil-eier',
+          ),
+        ),
+      );
+    } else if (uploaded > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$uploaded av ${files.length} lastet opp. ${lastError ?? ""}'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Opplasting feilet: ${lastError ?? "ukjent"}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -451,7 +534,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
                 child: FilledButton.icon(
                   onPressed: _upload,
                   icon: const Icon(Icons.upload_file),
-                  label: const Text('Last opp dokument'),
+                  label: const Text('Last opp dokumenter'),
                   style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
                 ),
               ),
@@ -460,7 +543,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
                 PartnerEmptyState(
                   icon: Icons.upload_file_outlined,
                   title: 'Ingen dokumenter',
-                  subtitle: 'Last opp PDF eller bilde — bil-eier får tilgang i sin portal.',
+                  subtitle: 'Last opp én eller flere PDF/bilder — bil-eier får tilgang i sin portal.',
                   action: OutlinedButton.icon(
                     onPressed: _upload,
                     icon: const Icon(Icons.add),

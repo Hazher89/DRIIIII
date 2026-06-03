@@ -1,4 +1,5 @@
 import '../../../models/partner/fleet_shift.dart';
+import '../../../models/partner/mavi_driver_day_assignment.dart';
 import '../../../models/partner/partner_links.dart';
 import 'mavi_unit_codes.dart';
 import 'partner_service.dart';
@@ -767,6 +768,17 @@ class FleetAnalyticsService {
     return !d.isBefore(start) && !d.isAfter(end);
   }
 
+  static bool _assignInRange(MaviDriverDayAssignment a, DateTime start, DateTime end) {
+    final d = DateTime(a.assignmentDate.year, a.assignmentDate.month, a.assignmentDate.day);
+    return !d.isBefore(start) && !d.isAfter(end);
+  }
+
+  static String _regionLabelForShift(FleetShiftDefinition shift) {
+    final r = shift.regionGroup?.trim();
+    if (r != null && r.isNotEmpty) return r;
+    return 'Ukjent område';
+  }
+
   static String _regionLabelForShare(
     PartnerRouteShare share,
     Map<String, String> regionByShiftId,
@@ -824,11 +836,16 @@ class FleetAnalyticsService {
     required List<PartnerVehicleFleetSnapshot> snapshots,
     required List<FleetPartnerVehicleRow> fleet,
     List<FleetShiftDefinition> shifts = const [],
+    List<MaviDriverDayAssignment> dayAssignments = const [],
     DateTime? referenceNow,
   }) {
     final now = referenceNow ?? DateTime.now();
     final start = period.rangeStart(now);
     final end = DateTime(now.year, now.month, now.day);
+
+    final shiftById = <String, FleetShiftDefinition>{
+      for (final sh in shifts) sh.id: sh,
+    };
 
     final vehicleMeta = <String, ({String? driver, String mavi, String partner})>{};
     for (final row in fleet) {
@@ -852,29 +869,101 @@ class FleetAnalyticsService {
     final customersByVRegion = <String, Map<String, int>>{};
     final friByV = <String, int>{};
 
+    String dayKey(DateTime d) => d.toIso8601String().split('T').first;
+    String vehDayKey(String vid, String dk) => '$vid|$dk';
+
+    final shareByVehDay = <String, PartnerRouteShare>{};
     for (final s in shares) {
       if (!_shareInRange(s, start, end)) continue;
+      if (s.dispatchStatus == 'staged') continue;
       final vid = s.partnerVehicleId;
       if (vid == null) continue;
-      final region = _regionLabelForShare(s, regionByShiftId);
-      final cust = _customersOnShare(s);
+      final k = vehDayKey(vid, dayKey(s.shareDate));
+      final prev = shareByVehDay[k];
+      if (prev == null || s.createdAt.isAfter(prev.createdAt)) {
+        shareByVehDay[k] = s;
+      }
+    }
+
+    final assignByVehDay = <String, MaviDriverDayAssignment>{};
+    for (final a in dayAssignments) {
+      if (!_assignInRange(a, start, end)) continue;
+      final k = vehDayKey(a.partnerVehicleId, dayKey(a.assignmentDate));
+      final prev = assignByVehDay[k];
+      final aAt = a.updatedAt ?? a.assignmentDate;
+      final pAt = prev?.updatedAt ?? prev?.assignmentDate;
+      if (prev == null || (pAt != null && aAt.isAfter(pAt))) {
+        assignByVehDay[k] = a;
+      }
+    }
+
+    final allVehDays = <String>{...shareByVehDay.keys, ...assignByVehDay.keys};
+
+    void addRoute(String vid, String region) {
       routesByV[vid] = (routesByV[vid] ?? 0) + 1;
-      customersByV[vid] = (customersByV[vid] ?? 0) + cust;
       final rMap = routesByVRegion.putIfAbsent(vid, () => {});
       rMap[region] = (rMap[region] ?? 0) + 1;
+    }
+
+    void addCustomers(String vid, String region, int cust) {
+      if (cust <= 0) return;
+      customersByV[vid] = (customersByV[vid] ?? 0) + cust;
       final cMap = customersByVRegion.putIfAbsent(vid, () => {});
       cMap[region] = (cMap[region] ?? 0) + cust;
+    }
+
+    bool isFriShift(FleetShiftDefinition shift) {
+      final n = shift.name.toLowerCase();
+      return n.contains('fri') && !n.contains('ledig');
+    }
+
+    for (final k in allVehDays) {
+      final share = shareByVehDay[k];
+      final assign = assignByVehDay[k];
+      final vid = share?.partnerVehicleId ?? assign?.partnerVehicleId;
+      if (vid == null) continue;
+
+      final assignAt = assign?.updatedAt ?? assign?.assignmentDate;
+      final shareAt = share?.createdAt;
+      final assignWins = assign != null &&
+          (shareAt == null || (assignAt != null && !assignAt.isBefore(shareAt)));
+
+      final shift = assign != null ? shiftById[assign.shiftId] : null;
+
+      if (assignWins && shift != null && shift.isAvailability && isFriShift(shift)) {
+        friByV[vid] = (friByV[vid] ?? 0) + 1;
+        continue;
+      }
+
+      String region;
+      if (assignWins && shift != null && !shift.isAvailability) {
+        region = _regionLabelForShift(shift);
+      } else if (share != null) {
+        region = _regionLabelForShare(share, regionByShiftId);
+      } else {
+        continue;
+      }
+
+      final hasRouteDay = (assignWins && shift != null && !shift.isAvailability) || share != null;
+      if (hasRouteDay) addRoute(vid, region);
+
+      if (share != null && !(assignWins && shift != null && isFriShift(shift))) {
+        addCustomers(vid, region, _customersOnShare(share));
+      }
     }
 
     for (final snap in snapshots) {
       if (!_snapInRange(snap, start, end)) continue;
       if (snap.status != 'fri') continue;
+      final k = vehDayKey(snap.partnerVehicleId, dayKey(snap.snapshotDate));
+      if (assignByVehDay.containsKey(k)) continue;
       friByV[snap.partnerVehicleId] = (friByV[snap.partnerVehicleId] ?? 0) + 1;
     }
 
     final ids = <String>{
       ...routesByV.keys,
       ...friByV.keys,
+      ...assignByVehDay.keys.map((k) => k.split('|').first),
       ...vehicleMeta.keys,
     };
 

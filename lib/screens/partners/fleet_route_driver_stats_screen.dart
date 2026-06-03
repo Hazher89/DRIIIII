@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import '../../core/services/partner/fleet_analytics_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
+import '../../core/theme/app_theme.dart';
 import '../../models/partner/fleet_shift.dart';
+import '../../models/partner/mavi_driver_day_assignment.dart';
 import '../../models/partner/partner_links.dart';
+import 'fleet_route_overview_tab.dart';
 import 'widgets/partner_modern_ui.dart';
 
-/// MAVI-basert rute-statistikk — rettferdig fordeling, områder, filtre og sortering.
+/// MAVI rute-statistikk: rettferdig fordeling + ruteoversikt.
 class FleetRouteDriverStatsScreen extends StatefulWidget {
   const FleetRouteDriverStatsScreen({super.key});
 
@@ -21,7 +24,6 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
 
   FleetCalendarPeriod _period = FleetCalendarPeriod.month;
   FleetDriverSortKey _driverSort = FleetDriverSortKey.routesDesc;
-  FleetRegionSortKey _regionSort = FleetRegionSortKey.routesDesc;
   FleetDriverFilterKey _filter = FleetDriverFilterKey.withRoutes;
   String? _partnerFilter;
   String? _regionFilter;
@@ -33,17 +35,39 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
   List<PartnerRouteShare> _shares = [];
   List<PartnerVehicleFleetSnapshot> _snaps = [];
   List<FleetShiftDefinition> _shifts = [];
+  List<MaviDriverDayAssignment> _dayAssignments = [];
+
+  static const _fairnessSortKeys = [
+    FleetDriverSortKey.routesDesc,
+    FleetDriverSortKey.routesAsc,
+    FleetDriverSortKey.customersDesc,
+    FleetDriverSortKey.customersAsc,
+    FleetDriverSortKey.fairnessDesc,
+    FleetDriverSortKey.fairnessAsc,
+    FleetDriverSortKey.customerFairnessDesc,
+    FleetDriverSortKey.customerFairnessAsc,
+    FleetDriverSortKey.customersPerRouteDesc,
+    FleetDriverSortKey.friDesc,
+  ];
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(_onTabChanged);
     _load();
     _maviSearch.addListener(() => setState(() {}));
   }
 
+  void _onTabChanged() {
+    if (_tabs.indexIsChanging) return;
+    setState(() {});
+    if (_tabs.index == 0) _load();
+  }
+
   @override
   void dispose() {
+    _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
     _maviSearch.dispose();
     super.dispose();
@@ -71,12 +95,18 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
         to: now,
       );
       final shifts = await PartnerService.fetchFleetShifts(cid);
+      final assignments = await PartnerService.fetchMaviDayAssignments(
+        companyId: cid,
+        from: from,
+        to: now,
+      );
       if (mounted) {
         setState(() {
           _fleet = PartnerService.filterMaviFleetOnly(fleet);
           _shares = shares;
           _snaps = snaps;
           _shifts = shifts;
+          _dayAssignments = assignments;
           _loading = false;
         });
       }
@@ -96,6 +126,7 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
         snapshots: _snaps,
         fleet: _fleet,
         shifts: _shifts,
+        dayAssignments: _dayAssignments,
       );
 
   Set<String> get _activeVehicleIds => _fleet.map((r) => r.vehicle.id).toSet();
@@ -126,7 +157,7 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
   }
 
   List<FleetRegionStat> get _visibleRegions =>
-      FleetDriverStatsBundle.sortedRegions(_bundle.regions, _regionSort);
+      FleetDriverStatsBundle.sortedRegions(_bundle.regions, FleetRegionSortKey.routesDesc);
 
   @override
   Widget build(BuildContext context) {
@@ -142,12 +173,9 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
         title: const Text('MAVI rute-statistikk'),
         bottom: TabBar(
           controller: _tabs,
-          isScrollable: true,
-          tabAlignment: TabAlignment.start,
           tabs: const [
-            Tab(text: 'Sjåfører'),
-            Tab(text: 'Områder'),
-            Tab(text: 'Rettferdighet'),
+            Tab(text: 'Rettferdig fordeling'),
+            Tab(text: 'Ruteoversikt'),
           ],
         ),
         actions: [
@@ -164,14 +192,13 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
               ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!)))
               : Column(
                   children: [
-                    _headerPanel(),
+                    if (_tabs.index == 0) _headerPanel(),
                     Expanded(
                       child: TabBarView(
                         controller: _tabs,
                         children: [
-                          _driversTab(),
-                          _regionsTab(),
                           _fairnessTab(),
+                          FleetRouteOverviewTab(onDataChanged: _load),
                         ],
                       ),
                     ),
@@ -184,15 +211,26 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
     final b = _bundle;
     return Material(
       color: PartnerModernUi.surface(context),
-      elevation: 0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Text(
-              'Fordeling per MAVI · ${b.period.periodDescription(DateTime.now())}',
-              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: PartnerModernUi.textPrimary(context)),
+              'Rettferdig fordeling · ${b.period.periodDescription(DateTime.now())}',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+                color: PartnerModernUi.textPrimary(context),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: Text(
+              'Data fra ruteoversikt og rutefordeling (SAP, masse, manuell). '
+              'Én registrering per MAVI og dag — siste endring gjelder.',
+              style: TextStyle(fontSize: 11, height: 1.35, color: PartnerModernUi.muted(context)),
             ),
           ),
           Padding(
@@ -205,12 +243,19 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
                 _kpiChip('Kunder', '${b.totalCustomers}', Icons.people_outline),
                 _kpiChip('Snitt ruter', b.avgRoutesPerMavi.toStringAsFixed(1), Icons.trending_flat),
                 _kpiChip('Snitt kunder', b.avgCustomersPerMavi.toStringAsFixed(1), Icons.person_outline),
-                if (b.mostActiveRegion != null)
+                if (b.mostRoutes != null)
                   _kpiChip(
-                    'Mest kjørt',
-                    b.mostActiveRegion!.region,
-                    Icons.map_outlined,
-                    subtitle: '${b.mostActiveRegion!.routeCount} ruter',
+                    'Flest ruter',
+                    b.mostRoutes!.displayMavi,
+                    Icons.emoji_events_outlined,
+                    subtitle: '${b.mostRoutes!.routeCount} ruter · ${b.mostRoutes!.customerCount} knd',
+                  ),
+                if (b.mostCustomers != null && b.mostCustomers!.vehicleId != b.mostRoutes?.vehicleId)
+                  _kpiChip(
+                    'Flest kunder',
+                    b.mostCustomers!.displayMavi,
+                    Icons.people_alt_outlined,
+                    subtitle: '${b.mostCustomers!.customerCount} kunder',
                   ),
               ],
             ),
@@ -250,7 +295,14 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(label, style: TextStyle(fontSize: 9, color: PartnerModernUi.muted(context))),
-              Text(value, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: PartnerModernUi.textPrimary(context))),
+              Text(
+                value,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  color: PartnerModernUi.textPrimary(context),
+                ),
+              ),
               if (subtitle != null)
                 Text(subtitle, style: TextStyle(fontSize: 9, color: PartnerModernUi.muted(context))),
             ],
@@ -260,13 +312,88 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
     );
   }
 
-  Widget _filterBar({required bool showRegionFilter, required List<Widget> sortChips}) {
+  Widget _fairnessTab() {
+    final b = _bundle;
+    final visible = _visibleDrivers;
+    final regions = _visibleRegions;
+
+    return ListView(
+      children: [
+        _filterBar(),
+        _extremesPanel(b),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(
+            children: [
+              Text(
+                'Sjåfører',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 15,
+                  color: PartnerModernUi.textPrimary(context),
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${visible.length} MAVI · ${_driverSort.label}',
+                style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+              ),
+            ],
+          ),
+        ),
+        if (visible.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Ingen treff i perioden.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: PartnerModernUi.muted(context)),
+            ),
+          )
+        else
+          ...visible.asMap().entries.map((e) => _driverCard(e.key, e.value, b)),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+          child: Text(
+            'Områder',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              color: PartnerModernUi.textPrimary(context),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Hvor det er kjørt mest — uten å gjenta sjåførlisten over.',
+            style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (regions.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Ingen områdedata i perioden.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: PartnerModernUi.muted(context)),
+            ),
+          )
+        else
+          ...regions.map(_regionCard),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _filterBar() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         PartnerModernSearchBar(
           controller: _maviSearch,
-          hint: 'Søk MAVI, sjåfør, partner eller område…',
+          hint: 'Søk MAVI, sjåfør eller partner…',
           onChanged: (_) => setState(() {}),
           onClear: _maviSearch.text.isEmpty
               ? null
@@ -311,14 +438,14 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
               onChanged: (v) => setState(() => _partnerFilter = v),
             ),
           ),
-        if (showRegionFilter && _regionNames.isNotEmpty)
+        if (_regionNames.isNotEmpty)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
             child: DropdownButtonFormField<String?>(
               initialValue: _regionFilter,
               isExpanded: true,
               decoration: InputDecoration(
-                labelText: 'Område / skiftregion',
+                labelText: 'Filtrer på område',
                 isDense: true,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
               ),
@@ -331,178 +458,32 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
           ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-          child: Text('Sortering', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context))),
+          child: Text(
+            'Sorter',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context)),
+          ),
         ),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-          child: Row(children: sortChips),
-        ),
-      ],
-    );
-  }
-
-  Widget _driversTab() {
-    final visible = _visibleDrivers;
-    return ListView(
-      children: [
-        _filterBar(
-          showRegionFilter: true,
-          sortChips: FleetDriverSortKey.values
-              .map(
-                (s) => Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(s.label, style: const TextStyle(fontSize: 10)),
-                    selected: _driverSort == s,
-                    onSelected: (_) => setState(() => _driverSort = s),
-                    visualDensity: VisualDensity.compact,
+          child: Row(
+            children: _fairnessSortKeys
+                .map(
+                  (s) => Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text(s.label, style: const TextStyle(fontSize: 10)),
+                      selected: _driverSort == s,
+                      onSelected: (_) => setState(() => _driverSort = s),
+                      visualDensity: VisualDensity.compact,
+                      selectedColor: DriftProTheme.primaryGreen.withValues(alpha: 0.25),
+                    ),
                   ),
-                ),
-              )
-              .toList(),
-        ),
-        _extremesPanel(_bundle),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Text(
-            '${visible.length} sjåfører · sortert: ${_driverSort.label}',
-            style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)),
+                )
+                .toList(),
           ),
         ),
-        if (visible.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text('Ingen treff.', textAlign: TextAlign.center, style: TextStyle(color: PartnerModernUi.muted(context))),
-          )
-        else
-          ...visible.asMap().entries.map((e) => _driverCard(e.key, e.value, _bundle)),
-        const SizedBox(height: 24),
       ],
-    );
-  }
-
-  Widget _regionsTab() {
-    final visible = _visibleRegions;
-    return ListView(
-      children: [
-        _filterBar(
-          showRegionFilter: false,
-          sortChips: FleetRegionSortKey.values
-              .map(
-                (s) => Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(s.label, style: const TextStyle(fontSize: 10)),
-                    selected: _regionSort == s,
-                    onSelected: (_) => setState(() => _regionSort = s),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                ),
-              )
-              .toList(),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Text(
-            'Hvem har kjørt mest hvor — ${visible.length} områder',
-            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context)),
-          ),
-        ),
-        if (visible.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              'Ingen områdedata i perioden (trenger skift på rutene).',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: PartnerModernUi.muted(context)),
-            ),
-          )
-        else
-          ...visible.map(_regionCard),
-        const SizedBox(height: 24),
-      ],
-    );
-  }
-
-  Widget _fairnessTab() {
-    final b = _bundle;
-    final withRoutes = b.drivers.where((d) => d.routeCount > 0).toList();
-    final spread = FleetDriverStatsBundle.sorted(withRoutes, FleetDriverSortKey.fairnessDesc);
-    final under = FleetDriverStatsBundle.sorted(withRoutes, FleetDriverSortKey.fairnessAsc);
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text(
-          'Rettferdig fordeling',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: PartnerModernUi.textPrimary(context)),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Snitt ${b.avgRoutesPerMavi.toStringAsFixed(1)} ruter og ${b.avgCustomersPerMavi.toStringAsFixed(1)} kunder per sjåfør med rute i perioden.',
-          style: TextStyle(fontSize: 12, height: 1.4, color: PartnerModernUi.muted(context)),
-        ),
-        const SizedBox(height: 16),
-        _fairnessSection('Mest over snitt (ruter)', spread.take(8).toList(), positive: true),
-        const SizedBox(height: 12),
-        _fairnessSection('Mest under snitt (ruter)', under.take(8).toList(), positive: false),
-        const SizedBox(height: 16),
-        _fairnessSection(
-          'Mest over snitt (kunder)',
-          FleetDriverStatsBundle.sorted(withRoutes, FleetDriverSortKey.customerFairnessDesc).take(8).toList(),
-          positive: true,
-          useCustomers: true,
-        ),
-        const SizedBox(height: 12),
-        _fairnessSection(
-          'Mest under snitt (kunder)',
-          FleetDriverStatsBundle.sorted(withRoutes, FleetDriverSortKey.customerFairnessAsc).take(8).toList(),
-          positive: false,
-          useCustomers: true,
-        ),
-        const SizedBox(height: 24),
-      ],
-    );
-  }
-
-  Widget _fairnessSection(String title, List<FleetDriverStat> list, {required bool positive, bool useCustomers = false}) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: PartnerModernUi.surface(context),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: PartnerModernUi.border(context)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: PartnerModernUi.textPrimary(context))),
-          const SizedBox(height: 8),
-          if (list.isEmpty)
-            Text('Ingen data', style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)))
-          else
-            ...list.map((d) {
-              final delta = useCustomers ? d.customerVsAvg : d.routeVsAvg;
-              final label = delta > 0
-                  ? '+${delta.toStringAsFixed(1)}'
-                  : delta.toStringAsFixed(1);
-              return ListTile(
-                dense: true,
-                contentPadding: EdgeInsets.zero,
-                title: Text(d.displayMavi, style: const TextStyle(fontWeight: FontWeight.w700, fontFamily: 'monospace')),
-                subtitle: Text('${d.routeCount} ruter · ${d.customerCount} kunder · ${d.topRegion ?? "—"}'),
-                trailing: Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: positive ? Colors.orange.shade800 : Colors.green.shade800,
-                  ),
-                ),
-              );
-            }),
-        ],
-      ),
     );
   }
 
@@ -523,12 +504,22 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
             Row(
               children: [
                 Expanded(
-                  child: Text(r.region, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: PartnerModernUi.textPrimary(context))),
+                  child: Text(
+                    r.region,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      color: PartnerModernUi.textPrimary(context),
+                    ),
+                  ),
                 ),
-                Text('${pctRoutes.toStringAsFixed(0)}%', style: TextStyle(fontWeight: FontWeight.w700, color: PartnerModernUi.muted(context))),
+                Text(
+                  '${pctRoutes.toStringAsFixed(0)}% av ruter',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 11, color: PartnerModernUi.muted(context)),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Wrap(
               spacing: 8,
               runSpacing: 4,
@@ -539,39 +530,21 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
               ],
             ),
             if (r.topDriverMavi != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 'Mest her: ${r.topDriverMavi}${r.topDriverName != null ? " (${r.topDriverName})" : ""} · ${r.topDriverRoutes} ruter',
                 style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
               ),
             ],
-            const SizedBox(height: 8),
-            ..._driversInRegion(r.region).take(5).map(
-                  (d) => Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Row(
-                      children: [
-                        Expanded(child: Text(d.displayMavi, style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))),
-                        Text('${d.routesByRegion[r.region] ?? 0} r · ${d.customersByRegion[r.region] ?? 0} k', style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context))),
-                      ],
-                    ),
-                  ),
-                ),
           ],
         ),
       ),
     );
   }
 
-  List<FleetDriverStat> _driversInRegion(String region) {
-    final list = _bundle.drivers.where((d) => (d.routesByRegion[region] ?? 0) > 0).toList()
-      ..sort((a, b) => (b.routesByRegion[region] ?? 0).compareTo(a.routesByRegion[region] ?? 0));
-    return list;
-  }
-
   Widget _extremesPanel(FleetDriverStatsBundle b) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
@@ -582,7 +555,15 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Ekstremer', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: PartnerModernUi.textPrimary(context))),
+            Text(
+              'Sammenligning mot snitt',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: PartnerModernUi.textPrimary(context)),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Snitt ${b.avgRoutesPerMavi.toStringAsFixed(1)} ruter og ${b.avgCustomersPerMavi.toStringAsFixed(1)} kunder per sjåfør med rute.',
+              style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+            ),
             const SizedBox(height: 10),
             Row(
               children: [
@@ -622,8 +603,14 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
         children: [
           Text('Mest kjørt område', style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context))),
           const SizedBox(height: 4),
-          Text(r.region, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: PartnerModernUi.textPrimary(context))),
-          Text('${r.routeCount} ruter · ${r.customerCount} kunder · topp ${r.topDriverMavi ?? "—"}', style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context))),
+          Text(
+            r.region,
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: PartnerModernUi.textPrimary(context)),
+          ),
+          Text(
+            '${r.routeCount} ruter · ${r.customerCount} kunder',
+            style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context)),
+          ),
         ],
       ),
     );
@@ -640,6 +627,8 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
         child: Text(label, style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context))),
       );
     }
+    final routeDelta = d.routeVsAvg;
+    final custDelta = d.customerVsAvg;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -651,20 +640,40 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
         children: [
           Text(label, style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context))),
           const SizedBox(height: 4),
-          Text(d.displayMavi, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, fontFamily: 'monospace', color: PartnerModernUi.textPrimary(context))),
-          Text('${d.routeCount} ruter · ${d.customerCount} kunder', style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context))),
+          Text(
+            d.displayMavi,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              fontFamily: 'monospace',
+              color: PartnerModernUi.textPrimary(context),
+            ),
+          ),
+          Text(
+            '${d.routeCount} r · ${d.customerCount} k',
+            style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context)),
+          ),
+          if (d.topRegion != null)
+            Text(d.topRegion!, style: TextStyle(fontSize: 9, color: PartnerModernUi.muted(context))),
+          Text(
+            '${routeDelta >= 0 ? "+" : ""}${routeDelta.toStringAsFixed(1)} ruter · ${custDelta >= 0 ? "+" : ""}${custDelta.toStringAsFixed(1)} kunder vs snitt',
+            style: TextStyle(fontSize: 9, color: PartnerModernUi.muted(context)),
+          ),
         ],
       ),
     );
   }
 
   Widget _driverCard(int index, FleetDriverStat d, FleetDriverStatsBundle b) {
-    final vsAvg = d.routeVsAvg;
-    final fairnessLabel = vsAvg > 0.4
-        ? '+${vsAvg.toStringAsFixed(1)} ruter over snitt'
-        : vsAvg < -0.4
-            ? '${vsAvg.toStringAsFixed(1)} ruter under snitt'
-            : 'Nær snitt (ruter)';
+    final routeDelta = d.routeVsAvg;
+    final custDelta = d.customerVsAvg;
+    final overRoutes = routeDelta > 0.4;
+    final underRoutes = routeDelta < -0.4;
+    final fairnessColor = overRoutes
+        ? Colors.orange.shade800
+        : underRoutes
+            ? Colors.green.shade800
+            : PartnerModernUi.muted(context);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
@@ -683,14 +692,26 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
               children: [
                 SizedBox(
                   width: 28,
-                  child: Text('${index + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context))),
+                  child: Text(
+                    '${index + 1}',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context)),
+                  ),
                 ),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(d.displayMavi, style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15, fontFamily: 'monospace', color: PartnerModernUi.textPrimary(context))),
-                      if (d.displayDriver != null) Text(d.displayDriver!, style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context))),
+                      Text(
+                        d.displayMavi,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                          fontFamily: 'monospace',
+                          color: PartnerModernUi.textPrimary(context),
+                        ),
+                      ),
+                      if (d.displayDriver != null)
+                        Text(d.displayDriver!, style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context))),
                       Text(d.partnerName, style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context))),
                     ],
                   ),
@@ -698,38 +719,66 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('${d.routeCount}', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 20, color: PartnerModernUi.textPrimary(context))),
+                    Text(
+                      '${d.routeCount}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 20,
+                        color: PartnerModernUi.textPrimary(context),
+                      ),
+                    ),
                     Text('ruter', style: TextStyle(fontSize: 9, color: PartnerModernUi.muted(context))),
-                    Text('${d.customerCount} kunder', style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context))),
+                    Text(
+                      '${d.customerCount} kunder',
+                      style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context)),
+                    ),
                   ],
                 ),
               ],
             ),
             const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${routeDelta >= 0 ? "+" : ""}${routeDelta.toStringAsFixed(1)} ruter · '
+                    '${custDelta >= 0 ? "+" : ""}${custDelta.toStringAsFixed(1)} kunder vs snitt',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fairnessColor),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
             Wrap(
               spacing: 6,
               runSpacing: 4,
               children: [
-                _miniStat(fairnessLabel),
-                if (d.topRegion != null) _miniStat('Topp: ${d.topRegion}'),
+                if (d.topRegion != null) _miniStat('Hovedområde: ${d.topRegion}'),
                 if (d.friDays > 0) _miniStat('${d.friDays} fri'),
                 _miniStat('${d.customersPerRoute.toStringAsFixed(1)} knd/rute'),
+                if (d.regionCount > 1) _miniStat('${d.regionCount} områder'),
               ],
             ),
-            if (d.routesByRegion.isNotEmpty) ...[
+            if (d.routesByRegion.length > 1) ...[
               const SizedBox(height: 8),
-              Text('Områder', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: PartnerModernUi.muted(context))),
-              const SizedBox(height: 4),
               ...() {
                 final entries = d.routesByRegion.entries.toList()
                   ..sort((a, b) => b.value.compareTo(a.value));
-                return entries.take(6).map(
+                return entries.take(4).map(
                   (e) => Padding(
                     padding: const EdgeInsets.only(bottom: 2),
                     child: Row(
                       children: [
-                        Expanded(child: Text(e.key, style: TextStyle(fontSize: 11, color: PartnerModernUi.textPrimary(context)))),
-                        Text('${e.value} r · ${d.customersByRegion[e.key] ?? 0} k', style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context))),
+                        Expanded(
+                          child: Text(
+                            e.key,
+                            style: TextStyle(fontSize: 11, color: PartnerModernUi.textPrimary(context)),
+                          ),
+                        ),
+                        Text(
+                          '${e.value} r · ${d.customersByRegion[e.key] ?? 0} k',
+                          style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context)),
+                        ),
                       ],
                     ),
                   ),
