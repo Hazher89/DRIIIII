@@ -6,7 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_icons.dart';
 import '../../models/user_profile.dart';
 import 'employee_change_password_sheet.dart';
-import 'profile_sms_tab.dart';
+import 'profile_notifications_tab.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -85,7 +85,7 @@ class _ProfileScreenState extends State<ProfileScreen>
               controller: _tabs,
               children: [
                 _buildProfileBody(isDark),
-                const ProfileSmsTab(),
+                const ProfileNotificationsTab(),
               ],
             )
           : _buildProfileBody(isDark),

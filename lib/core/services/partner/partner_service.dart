@@ -24,6 +24,29 @@ import 'route_pdf_auto_assign.dart';
 import 'route_shift_resolver.dart';
 import 'fleet_mavi_day_sync.dart';
 
+class PartnerLifecycleReport {
+  final int vehicles;
+  final int portals;
+  final int profiles;
+
+  const PartnerLifecycleReport({
+    this.vehicles = 0,
+    this.portals = 0,
+    this.profiles = 0,
+  });
+
+  factory PartnerLifecycleReport.fromJson(dynamic raw) {
+    if (raw is! Map) return const PartnerLifecycleReport();
+    final m = Map<String, dynamic>.from(raw);
+    int n(String a, String b) => (m[a] as num?)?.toInt() ?? (m[b] as num?)?.toInt() ?? 0;
+    return PartnerLifecycleReport(
+      vehicles: n('deactivated_vehicles', 'activated_vehicles'),
+      portals: n('deactivated_portals', 'activated_portals'),
+      profiles: n('deactivated_profiles', 'activated_profiles'),
+    );
+  }
+}
+
 class PartnerService {
   static SupabaseClient get _client => Supabase.instance.client;
 
@@ -47,10 +70,27 @@ class PartnerService {
     required bool isActive,
   }) async {
     if (!_ok) return;
-    await _client.from('partners').update({
-      'is_active': isActive,
-      'updated_at': DateTime.now().toUtc().toIso8601String(),
-    }).eq('id', partnerId);
+    if (isActive) {
+      await activatePartnerCompany(partnerId);
+    } else {
+      await deactivatePartnerCompany(partnerId);
+    }
+  }
+
+  static Future<PartnerLifecycleReport> deactivatePartnerCompany(String partnerId) async {
+    if (!_ok) return const PartnerLifecycleReport();
+    final raw = await _client.rpc('deactivate_partner_company', params: {
+      'p_partner_id': partnerId,
+    });
+    return PartnerLifecycleReport.fromJson(raw);
+  }
+
+  static Future<PartnerLifecycleReport> activatePartnerCompany(String partnerId) async {
+    if (!_ok) return const PartnerLifecycleReport();
+    final raw = await _client.rpc('activate_partner_company', params: {
+      'p_partner_id': partnerId,
+    });
+    return PartnerLifecycleReport.fromJson(raw);
   }
 
   static Future<void> setVehicleActive({
@@ -785,15 +825,17 @@ class PartnerService {
       return const PartnerSmsQueueResult(success: false, error: 'Meldingen er tom');
     }
     try {
-      final result = await _client.rpc('queue_sms', params: {
+      final result = await _client.rpc('queue_sms_if_allowed', params: {
         'p_company_id': companyId,
-        'p_to_phone': normalized,
+        'p_user_id': null,
+        'p_phone': normalized,
         'p_message': message.trim(),
         'p_category': 'partner_compose',
         'p_reference_type': 'partners',
         'p_reference_id': null,
-        'p_to_user_id': null,
-        'p_triggered_by_user_id': null,
+        'p_setting_key': 'partner_compose',
+        'p_description': 'Manuell SMS fra hub',
+        'p_partner_scope': true,
       });
       // Eldre queue_sms returnerer void → null selv ved suksess.
       if (result == null) {
@@ -812,18 +854,26 @@ class PartnerService {
     }
   }
 
-  /// Trigger Sveve-worker som sender pending rader i sms_outbox.
+  /// Trigger Sveve-worker (SMS) og Domeneshop-worker (e-post).
   static Future<Map<String, dynamic>?> flushSmsOutbox() async {
     if (!_ok) return null;
     try {
       final res = await _client.functions.invoke('send-sms-outbox');
       final data = res.data;
+      // E-post feiler stille — SMS-svar skal ikke blokkeres.
+      await _flushEmailOutboxQuiet();
       if (data is Map<String, dynamic>) return data;
       if (data is Map) return Map<String, dynamic>.from(data);
       return {'processed': 0, 'sent': 0, 'failed': 0};
     } catch (e) {
       return {'error': e.toString(), 'processed': 0, 'sent': 0, 'failed': 0};
     }
+  }
+
+  static Future<void> _flushEmailOutboxQuiet() async {
+    try {
+      await _client.functions.invoke('send-email-outbox');
+    } catch (_) {}
   }
 
   static String? _smsFlushErrorMessage(Map<String, dynamic> flush) {

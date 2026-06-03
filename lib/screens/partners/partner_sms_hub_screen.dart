@@ -4,6 +4,9 @@ import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import 'partner_sms_compose_screen.dart';
 import 'widgets/partner_modern_ui.dart';
+import 'widgets/partner_notification_settings_panel.dart';
+import '../profile/widgets/notification_audit_panel.dart';
+import 'widgets/partner_email_log_panel.dart';
 import 'widgets/partner_sms_log_panel.dart';
 import 'widgets/partner_ui.dart';
 
@@ -30,7 +33,7 @@ class _PartnerSmsHubScreenState extends State<PartnerSmsHubScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabs = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -57,7 +60,8 @@ class _PartnerSmsHubScreenState extends State<PartnerSmsHubScreen>
         AnimatedBuilder(
           animation: _tabs,
           builder: (context, _) {
-            final current = _tabs.index == 0 ? 'Send SMS' : 'SMS-logg';
+            final labels = ['Send SMS', 'SMS-logg', 'E-post-logg', 'Ikke sendt', 'Innstillinger'];
+            final current = labels[_tabs.index.clamp(0, labels.length - 1)];
             return PartnerSmartSectionPicker(
               title: 'Viser',
               currentLabel: current,
@@ -79,6 +83,21 @@ class _PartnerSmsHubScreenState extends State<PartnerSmsHubScreen>
                           title: const Text('SMS-logg'),
                           onTap: () => Navigator.of(ctx).pop(1),
                         ),
+                        ListTile(
+                          leading: const Icon(Icons.email_outlined),
+                          title: const Text('E-post-logg'),
+                          onTap: () => Navigator.of(ctx).pop(2),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.block),
+                          title: const Text('Ikke sendt'),
+                          onTap: () => Navigator.of(ctx).pop(3),
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.tune),
+                          title: const Text('Varselinnstillinger'),
+                          onTap: () => Navigator.of(ctx).pop(4),
+                        ),
                       ],
                     ),
                   ),
@@ -98,9 +117,13 @@ class _PartnerSmsHubScreenState extends State<PartnerSmsHubScreen>
               indicatorColor: DriftProTheme.primaryGreen,
               labelColor: DriftProTheme.primaryGreenDark,
               unselectedLabelColor: PartnerUi.mutedText(context),
+              isScrollable: true,
               tabs: const [
                 Tab(icon: Icon(Icons.edit_note_outlined, size: 20), text: 'Send SMS'),
                 Tab(icon: Icon(Icons.history, size: 20), text: 'SMS-logg'),
+                Tab(icon: Icon(Icons.email_outlined, size: 20), text: 'E-post'),
+                Tab(icon: Icon(Icons.block, size: 20), text: 'Ikke sendt'),
+                Tab(icon: Icon(Icons.tune, size: 20), text: 'Innstillinger'),
               ],
             ),
           ),
@@ -110,6 +133,9 @@ class _PartnerSmsHubScreenState extends State<PartnerSmsHubScreen>
             children: [
               const PartnerSmsComposeScreen(embedded: true),
               PartnerSmsLogPanel(partners: widget.partners),
+              PartnerEmailLogPanel(partners: widget.partners),
+              const NotificationAuditPanel(partnerScopeOnly: true),
+              const PartnerNotificationSettingsPanel(),
             ],
           ),
         ),

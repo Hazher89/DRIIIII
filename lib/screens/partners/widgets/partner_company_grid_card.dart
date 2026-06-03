@@ -19,6 +19,7 @@ class PartnerCompanyGridCard extends StatelessWidget {
     required this.smsPhones,
     required this.onTap,
     this.ownerName,
+    this.onActivate,
   });
 
   final String name;
@@ -33,24 +34,32 @@ class PartnerCompanyGridCard extends StatelessWidget {
   final List<String> smsPhones;
   final VoidCallback onTap;
   final String? ownerName;
+  final VoidCallback? onActivate;
 
   @override
   Widget build(BuildContext context) {
     final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
-    final maviList = PartnerMaviVehicleOverview.filterMavi(maviVehicles);
+    final maviList = PartnerMaviVehicleOverview.filterMavi(
+      maviVehicles,
+      includeInactive: !isActive,
+    );
 
-    return Material(
-      color: PartnerModernUi.surface(context),
-      elevation: 0,
-      shadowColor: Colors.transparent,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
+    return Opacity(
+      opacity: isActive ? 1 : 0.72,
+      child: Material(
+        color: isActive ? PartnerModernUi.surface(context) : PartnerModernUi.border(context).withValues(alpha: 0.25),
+        elevation: 0,
+        shadowColor: Colors.transparent,
         borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: PartnerModernUi.border(context)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isActive ? PartnerModernUi.border(context) : const Color(0xFF9CA3AF),
+              ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.04),
@@ -171,7 +180,19 @@ class PartnerCompanyGridCard extends StatelessWidget {
                   icon: Icons.sms_outlined,
                 ),
                 const SizedBox(height: 10),
-                PartnerMaviVehicleOverview(vehicles: maviList, dense: true),
+                PartnerMaviVehicleOverview(vehicles: maviList, dense: true, muted: !isActive),
+                if (onActivate != null) ...[
+                  const SizedBox(height: 10),
+                  FilledButton.icon(
+                    onPressed: onActivate,
+                    icon: const Icon(Icons.play_circle_outline, size: 18),
+                    label: const Text('Aktiver'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 36),
+                      backgroundColor: const Color(0xFF15803D),
+                    ),
+                  ),
+                ],
                 if (regCount > 0) ...[
                   const SizedBox(height: 6),
                   Text(
@@ -182,6 +203,7 @@ class PartnerCompanyGridCard extends StatelessWidget {
               ],
             ),
           ),
+        ),
         ),
       ),
     );
@@ -195,7 +217,7 @@ class PartnerCompanyGridCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
-        isActive ? 'Aktiv' : 'Inaktiv',
+        isActive ? 'Aktiv' : 'Deaktivert',
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w700,

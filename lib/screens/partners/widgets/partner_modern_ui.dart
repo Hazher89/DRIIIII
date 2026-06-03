@@ -703,16 +703,21 @@ class PartnerMaviVehicleOverview extends StatelessWidget {
     super.key,
     required this.vehicles,
     this.dense = false,
+    this.muted = false,
   });
 
   final List<PartnerVehicle> vehicles;
   final bool dense;
+  final bool muted;
 
-  static List<PartnerVehicle> filterMavi(Iterable<PartnerVehicle> all) {
+  static List<PartnerVehicle> filterMavi(
+    Iterable<PartnerVehicle> all, {
+    bool includeInactive = false,
+  }) {
     final list = all
         .where(
           (v) =>
-              v.isActive &&
+              (includeInactive || v.isActive) &&
               v.vehicleKind != 'registration' &&
               !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode),
         )
@@ -771,6 +776,8 @@ class PartnerMaviVehicleOverview extends StatelessWidget {
 
   Widget _vehicleRow(BuildContext context, PartnerVehicle v) {
     final code = MaviUnitCodes.normalize(v.unitCode);
+    final gray = muted || !v.isActive;
+    final accent = gray ? const Color(0xFF9CA3AF) : const Color(0xFF15803D);
     return Padding(
       padding: EdgeInsets.only(bottom: dense ? 4 : 6),
       child: Row(
@@ -779,9 +786,9 @@ class PartnerMaviVehicleOverview extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
             decoration: BoxDecoration(
-              color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+              color: accent.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.25)),
+              border: Border.all(color: accent.withValues(alpha: 0.25)),
             ),
             child: Text(
               MaviUnitCodes.compactLabel(code),
@@ -789,7 +796,7 @@ class PartnerMaviVehicleOverview extends StatelessWidget {
                 fontSize: dense ? 10 : 11,
                 fontWeight: FontWeight.w800,
                 fontFamily: 'monospace',
-                color: const Color(0xFF15803D),
+                color: accent,
               ),
             ),
           ),

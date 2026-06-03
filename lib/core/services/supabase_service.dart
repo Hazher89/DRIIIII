@@ -1171,6 +1171,8 @@ department:departments!department_id(name)
     bool? isSafetyRepresentative,
     bool? isActive,
     bool? smsOptIn,
+    bool? emailOptIn,
+    String? notifyChannelPreference,
     bool clearBirthDate = false,
   }) async {
     final patch = <String, dynamic>{};
@@ -1208,6 +1210,10 @@ department:departments!department_id(name)
     }
     if (isActive != null) patch['is_active'] = isActive;
     if (smsOptIn != null) patch['sms_opt_in'] = smsOptIn;
+    if (emailOptIn != null) patch['email_opt_in'] = emailOptIn;
+    if (notifyChannelPreference != null) {
+      patch['notify_channel_preference'] = notifyChannelPreference;
+    }
     if (patch.isEmpty) return;
     await client.from('profiles').update(patch).eq('id', profileId);
   }

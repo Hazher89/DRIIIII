@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/permissions/partner_access.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/partner_summary_service.dart';
 import '../../../core/services/partner/partner_search.dart';
 import '../../../models/partner/partner.dart';
@@ -18,22 +19,7 @@ import 'partner_modern_ui.dart';
 import 'partner_summary_dispatch_sheet.dart';
 import 'partner_ui.dart';
 
-enum _BoardFilter { all, active, inactive }
-
 enum _BoardSort { nameAsc, maviDesc, maviAsc }
-
-extension on _BoardFilter {
-  String get label {
-    switch (this) {
-      case _BoardFilter.all:
-        return 'Alle';
-      case _BoardFilter.active:
-        return 'Aktive';
-      case _BoardFilter.inactive:
-        return 'Inaktive';
-    }
-  }
-}
 
 /// Bedrifts-hub: rutenett av kort — trykk for å redigere.
 class PartnerCompaniesBoard extends StatefulWidget {
@@ -58,17 +44,28 @@ class PartnerCompaniesBoard extends StatefulWidget {
   State<PartnerCompaniesBoard> createState() => _PartnerCompaniesBoardState();
 }
 
-class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
+class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
+    with SingleTickerProviderStateMixin {
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
-  _BoardFilter _filter = _BoardFilter.all;
   _BoardSort _sort = _BoardSort.nameAsc;
+  late final TabController _listTabs;
+
+  @override
+  void initState() {
+    super.initState();
+    _listTabs = TabController(length: 2, vsync: this);
+    _listTabs.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
+    _listTabs.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
+
+  bool get _showingDeactivated => _listTabs.index == 1;
 
   bool get _canRegister =>
       widget.profile?.access.canPartnersCreate == true || widget.profile?.access.canPartnersAdmin == true;
@@ -112,17 +109,7 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
       );
 
   List<PartnerSearchHit> get _filtered {
-    var list = [..._hits];
-    list = list.where((h) {
-      switch (_filter) {
-        case _BoardFilter.all:
-          return true;
-        case _BoardFilter.active:
-          return h.partner.isActive;
-        case _BoardFilter.inactive:
-          return !h.partner.isActive;
-      }
-    }).toList();
+    var list = _hits.where((h) => _showingDeactivated ? !h.partner.isActive : h.partner.isActive).toList();
 
     switch (_sort) {
       case _BoardSort.nameAsc:
@@ -220,9 +207,42 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
     );
   }
 
+  Future<void> _activateCompany(Partner partner) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Aktiver bedrift?'),
+        content: Text('«${partner.name}» får tilbake ruter, SMS og portal-tilgang.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Aktiver'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await PartnerService.activatePartnerCompany(partner.id);
+      await widget.onRefresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${partner.name} er aktivert')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kunne ikke aktivere: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   Widget _gridPanel(List<PartnerSearchHit> filtered, int maviTotal, double width) {
-    final activePartners = widget.partners.where((p) => p.isActive).length;
+    final activeCount = widget.partners.where((p) => p.isActive).length;
+    final inactiveCount = widget.partners.length - activeCount;
     final totalSmsPhones = widget.partners
+        .where((p) => p.isActive)
         .map((p) => _smsPhonesForHit(PartnerSearchHit(partner: p, vehicles: widget.vehiclesByPartner[p.id] ?? const [])))
         .fold<int>(0, (sum, list) => sum + list.length);
     return CustomScrollView(
@@ -231,7 +251,9 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
         SliverToBoxAdapter(
           child: PartnerModernPageHeader(
             title: 'Bedrifter',
-            subtitle: '${widget.partners.length} bedrifter · $maviTotal MAVI',
+            subtitle: _showingDeactivated
+                ? '$inactiveCount deaktiverte · $activeCount aktive totalt'
+                : '$activeCount aktive · $maviTotal MAVI',
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -250,15 +272,32 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
         ),
         SliverToBoxAdapter(
           child: PartnerModernKpiGrid(
-            items: [
-              ('Bedrifter', '${widget.partners.length}'),
-              ('Aktive', '$activePartners'),
-              ('MAVI', '$maviTotal'),
-              ('SMS-numre', '$totalSmsPhones'),
-            ],
+            items: _showingDeactivated
+                ? [
+                    ('Deaktiverte', '$inactiveCount'),
+                    ('Aktive', '$activeCount'),
+                  ]
+                : [
+                    ('Aktive', '$activeCount'),
+                    ('MAVI', '$maviTotal'),
+                    ('SMS-numre', '$totalSmsPhones'),
+                  ],
           ),
         ),
-        if (_showSummaryButton)
+        SliverToBoxAdapter(
+          child: Material(
+            color: PartnerModernUi.surface(context),
+            child: TabBar(
+              controller: _listTabs,
+              labelColor: DriftProTheme.primaryGreen,
+              tabs: [
+                Tab(text: 'Aktive bedrifter ($activeCount)'),
+                Tab(text: 'Deaktiverte bedrifter ($inactiveCount)'),
+              ],
+            ),
+          ),
+        ),
+        if (_showSummaryButton && !_showingDeactivated)
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
@@ -287,16 +326,26 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
           ),
         ),
         SliverToBoxAdapter(child: _filterSortBar()),
-        if (widget.partners.isEmpty)
+        if (!_showingDeactivated && widget.partners.where((p) => p.isActive).isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
             child: PartnerEmptyState(
               icon: Icons.domain_outlined,
-              title: 'Ingen bedrifter',
+              title: 'Ingen aktive bedrifter',
               subtitle: 'Opprett første bedrift med Brreg og MAVI.',
               action: _canRegister
                   ? FilledButton.icon(onPressed: _openRegister, icon: const Icon(Icons.add), label: const Text('Kom i gang'))
                   : null,
+            ),
+          )
+        else if (_showingDeactivated && inactiveCount == 0)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Ingen deaktiverte bedrifter'),
+              ),
             ),
           )
         else if (filtered.isEmpty)
@@ -316,10 +365,10 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  if (_canRegister && index == 0) {
+                  if (_canRegister && !_showingDeactivated && index == 0) {
                     return PartnerCompanyAddCard(onTap: _openRegister);
                   }
-                  final i = _canRegister ? index - 1 : index;
+                  final i = (_canRegister && !_showingDeactivated) ? index - 1 : index;
                   final hit = filtered[i];
                   final mavi = _maviCodes(hit);
                   final maviVehicles = hit.vehicles
@@ -348,9 +397,10 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
                         0,
                     smsPhones: _smsPhonesForHit(hit),
                     onTap: () => _openCompany(hit.partner),
+                    onActivate: !hit.partner.isActive ? () => _activateCompany(hit.partner) : null,
                   );
                 },
-                childCount: filtered.length + (_canRegister ? 1 : 0),
+                childCount: filtered.length + ((_canRegister && !_showingDeactivated) ? 1 : 0),
               ),
             ),
           ),
@@ -364,24 +414,14 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: _BoardFilter.values.map((f) {
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: FilterChip(
-                    label: Text(f.label, style: const TextStyle(fontSize: 11)),
-                    selected: _filter == f,
-                    onSelected: (_) => setState(() => _filter = f),
-                    visualDensity: VisualDensity.compact,
-                    showCheckmark: false,
-                  ),
-                );
-              }).toList(),
+          if (_showingDeactivated)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                'Deaktiverte bedrifter får ikke ruter, SMS eller innlogging. Trykk kort for detaljer eller Aktiver.',
+                style: TextStyle(fontSize: 11, height: 1.35, color: PartnerModernUi.muted(context)),
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
           Row(
             children: [
               Text('Sorter:', style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context))),

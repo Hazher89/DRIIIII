@@ -18,6 +18,7 @@ import 'partner_fri_tab.dart';
 import 'partner_modern_ui.dart';
 import 'partner_overview_tab.dart';
 import 'partner_transport_licenses_tab.dart';
+import 'partner_company_lifecycle_panel.dart';
 import 'partner_vehicle_inspection_tab.dart';
 
 /// Åpner arbeidsflate for én bedrift — panel eller full skjerm.
@@ -254,6 +255,12 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(context),
+        PartnerCompanyLifecyclePanel(
+          partner: _p,
+          profile: _profile,
+          onChanged: _reload,
+          onDeleted: () => widget.onClose(true),
+        ),
         _smartStatusStrip(context),
         if (_tabCtrl != null)
           _sectionsToolbar(context),

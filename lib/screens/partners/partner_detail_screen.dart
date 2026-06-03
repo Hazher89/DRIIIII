@@ -24,6 +24,7 @@ import 'widgets/partner_overview_tab.dart';
 import 'widgets/partner_transport_licenses_tab.dart';
 import 'widgets/partner_modern_ui.dart';
 import 'widgets/partner_ui.dart';
+import 'widgets/partner_company_lifecycle_panel.dart';
 import 'widgets/partner_vehicle_inspection_tab.dart';
 
 class PartnerDetailScreen extends StatefulWidget {
@@ -83,63 +84,6 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
         _vehicles = vehicles;
         _portalAccounts = portalAccounts;
       });
-    }
-  }
-
-  Future<void> _confirmDelete() async {
-    if (_profile?.access.canPartnersDelete != true &&
-        _profile?.access.canPartnersAdmin != true) {
-      return;
-    }
-    final confirmCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDlg) => AlertDialog(
-          title: const Text('Slett samarbeidspartner permanent?'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Dette sletter «${_p.name}» permanent fra Supabase og systemet.',
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Alt knyttet til bedriften fjernes: ruter, dokumenter, portaltilganger, kjøretøy, bilutleie og historikk.',
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: confirmCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Skriv SLETT for å bekrefte',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => setDlg(() {}),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-            FilledButton(
-              onPressed: confirmCtrl.text.trim().toUpperCase() == 'SLETT'
-                  ? () => Navigator.pop(ctx, true)
-                  : null,
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text('Slett permanent'),
-            ),
-          ],
-        ),
-      ),
-    );
-    confirmCtrl.dispose();
-    if (ok != true || !mounted) return;
-    await PartnerService.deletePartner(_p.id);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Partner slettet')),
-      );
-      Navigator.pop(context, true);
     }
   }
 
@@ -241,13 +185,6 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
             icon: const Icon(Icons.refresh_rounded),
             onPressed: _reload,
           ),
-          if (_profile?.access.canPartnersDelete == true ||
-              _profile?.access.canPartnersAdmin == true)
-            IconButton(
-              tooltip: 'Slett partner',
-              icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-              onPressed: _confirmDelete,
-            ),
         ],
       ),
       body: Column(
@@ -263,26 +200,14 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
             maviCount: _maviCount,
             regCount: _regCount,
             isActive: _p.isActive,
-            canToggleActive: _profile?.access.canPartnersAdmin == true ||
-                _profile?.access.canPartnersCreate == true,
-            onActiveChanged: (_profile?.access.canPartnersAdmin == true ||
-                    _profile?.access.canPartnersCreate == true)
-                ? (v) async {
-                    await PartnerService.setPartnerActive(partnerId: _p.id, isActive: v);
-                    await _reload();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            v
-                                ? 'Bedriften er aktiv i ruteplanlegger'
-                                : 'Bedriften er deaktivert',
-                          ),
-                        ),
-                      );
-                    }
-                  }
-                : null,
+            canToggleActive: false,
+            onActiveChanged: null,
+          ),
+          PartnerCompanyLifecyclePanel(
+            partner: _p,
+            profile: _profile,
+            onChanged: _reload,
+            onDeleted: () => Navigator.pop(context, true),
           ),
           PartnerSmartActionsPanel(
             title: 'Smart status',

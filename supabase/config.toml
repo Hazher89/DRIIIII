@@ -5,3 +5,10 @@ verify_jwt = false
 # Resend webhook for SAP rute-PDF (ingen JWT).
 [functions.resend-sap-routes-inbound]
 verify_jwt = false
+
+# Kø-workers kalles også fra pg_cron med anon JWT.
+[functions.send-email-outbox]
+verify_jwt = true
+
+[functions.send-sms-outbox]
+verify_jwt = true

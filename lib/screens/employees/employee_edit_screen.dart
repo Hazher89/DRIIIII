@@ -5,7 +5,9 @@ import '../../core/services/supabase_service.dart';
 import '../../core/utils/norwegian_national_id.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
+import '../../models/notification_channel.dart';
 import '../../models/user_profile.dart';
+import '../profile/widgets/notification_channel_picker.dart';
 
 /// Rediger all personinfo for ansatt (superadmin / leder med tilgang).
 class EmployeeEditScreen extends StatefulWidget {
@@ -40,6 +42,8 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
   DateTime? _hireDate;
   bool _safetyRep = false;
   bool _smsOptIn = true;
+  bool _emailOptIn = true;
+  NotificationChannel _notifyChannel = NotificationChannel.both;
   bool _active = true;
   bool _saving = false;
 
@@ -65,7 +69,7 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     _hireDate = e.hireDate;
     _safetyRep = e.isSafetyRepresentative;
     _active = e.isActive;
-    _loadSmsOptIn();
+    _loadNotifyPrefs();
   }
 
   Future<void> _verifyAccess() async {
@@ -79,15 +83,21 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     }
   }
 
-  Future<void> _loadSmsOptIn() async {
+  Future<void> _loadNotifyPrefs() async {
     try {
       final row = await SupabaseService.client
           .from('profiles')
-          .select('sms_opt_in')
+          .select('sms_opt_in, email_opt_in, notify_channel_preference')
           .eq('id', widget.employee.id)
           .single();
       if (mounted) {
-        setState(() => _smsOptIn = row['sms_opt_in'] as bool? ?? true);
+        setState(() {
+          _smsOptIn = row['sms_opt_in'] as bool? ?? true;
+          _emailOptIn = row['email_opt_in'] as bool? ?? true;
+          _notifyChannel = NotificationChannel.fromDb(
+            row['notify_channel_preference'] as String?,
+          );
+        });
       }
     } catch (_) {}
   }
@@ -145,6 +155,8 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
         isSafetyRepresentative: _safetyRep,
         isActive: _active,
         smsOptIn: _smsOptIn,
+        emailOptIn: _emailOptIn,
+        notifyChannelPreference: _notifyChannel.dbValue,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -245,12 +257,21 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
               keyboard: TextInputType.phone),
           _section('Varsler'),
           SwitchListTile(
-            title: const Text('SMS til denne ansatte'),
-            subtitle: const Text(
-              'Fravær godkjent/avvist, avvik m.m. (avhenger av firmainnstillinger)',
-            ),
+            title: const Text('Tillat SMS'),
             value: _smsOptIn,
             onChanged: (v) => setState(() => _smsOptIn = v),
+          ),
+          SwitchListTile(
+            title: const Text('Tillat e-post'),
+            value: _emailOptIn,
+            onChanged: (v) => setState(() => _emailOptIn = v),
+          ),
+          const SizedBox(height: 8),
+          const Text('Foretrukket kanal (når firma sender begge):'),
+          const SizedBox(height: 8),
+          NotificationChannelPicker(
+            value: _notifyChannel,
+            onChanged: (v) => setState(() => _notifyChannel = v),
           ),
         ],
       ),
