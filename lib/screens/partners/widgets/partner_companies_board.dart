@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_theme.dart';
 import '../../../core/permissions/partner_access.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/partner_summary_service.dart';
 import '../../../core/services/partner/partner_search.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -13,6 +15,7 @@ import 'partner_companies_ui.dart';
 import 'partner_company_grid_card.dart';
 import 'partner_company_workspace.dart';
 import 'partner_modern_ui.dart';
+import 'partner_summary_dispatch_sheet.dart';
 import 'partner_ui.dart';
 
 enum _BoardFilter { all, active, inactive }
@@ -70,6 +73,28 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
   bool get _canRegister =>
       widget.profile?.access.canPartnersCreate == true || widget.profile?.access.canPartnersAdmin == true;
 
+  bool get _canSendSummaries => PartnerSummaryService.canManage(widget.profile);
+
+  String? get _companyId =>
+      widget.profile?.companyId ?? widget.partners.firstOrNull?.companyId;
+
+  Future<void> _openSummaryDispatch() async {
+    final companyId = _companyId;
+    if (companyId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fant ikke bedrift for oppsummeringer.')),
+      );
+      return;
+    }
+    final ok = await PartnerSummaryDispatchSheet.show(
+      context,
+      partners: widget.partners,
+      vehiclesByPartner: widget.vehiclesByPartner,
+      companyId: companyId,
+    );
+    if (ok == true) await widget.onRefresh();
+  }
+
   List<PartnerSearchHit> get _hits => PartnerSearch.filterAll(
         partners: widget.partners,
         vehiclesByPartnerId: widget.vehiclesByPartner,
@@ -122,10 +147,10 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
 
   double _childAspectRatio(double width) {
     final cols = _crossAxisCount(width);
-    if (cols >= 4) return 1.35;
-    if (cols >= 3) return 1.28;
-    if (cols >= 2) return 1.22;
-    return 1.15;
+    if (cols >= 4) return 0.78;
+    if (cols >= 3) return 0.75;
+    if (cols >= 2) return 0.72;
+    return 0.68;
   }
 
   Future<void> _openNew() async {
@@ -190,10 +215,6 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
     final totalSmsPhones = widget.partners
         .map((p) => _smsPhonesForHit(PartnerSearchHit(partner: p, vehicles: widget.vehiclesByPartner[p.id] ?? const [])))
         .fold<int>(0, (sum, list) => sum + list.length);
-    final missingOwnerCount = widget.partners.where((p) {
-      final accounts = widget.portalAccountsByPartner[p.id] ?? const <PartnerPortalAccount>[];
-      return !accounts.any((a) => a.isOwner);
-    }).length;
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
@@ -201,16 +222,20 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
           child: PartnerModernPageHeader(
             title: 'Bedrifter',
             subtitle: '${widget.partners.length} bedrifter · $maviTotal MAVI',
-            trailing: _canRegister
-                ? IconButton.filled(
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_canRegister)
+                  IconButton.filled(
                     style: IconButton.styleFrom(
                       backgroundColor: PartnerModernUi.textPrimary(context),
                       foregroundColor: PartnerModernUi.surface(context),
                     ),
                     onPressed: _openRegister,
                     icon: const Icon(Icons.add, size: 20),
-                  )
-                : null,
+                  ),
+              ],
+            ),
           ),
         ),
         SliverToBoxAdapter(
@@ -223,24 +248,21 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
             ],
           ),
         ),
-        SliverToBoxAdapter(
-          child: PartnerSmartActionsPanel(
-            title: 'Anbefalte handlinger',
-            actions: [
-              if (missingOwnerCount > 0)
-                PartnerSmartAction(
-                  label: 'Mangler eierkonto på $missingOwnerCount bedrifter',
-                  hint: 'Åpne bedrift for å opprette portal for bedriftsansvarlig',
-                  icon: Icons.warning_amber_rounded,
+        if (_canSendSummaries)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: FilledButton.icon(
+                onPressed: _openSummaryDispatch,
+                icon: const Icon(Icons.outbox_outlined),
+                label: const Text('Send ut oppsummeringer'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(double.infinity, 48),
+                  backgroundColor: DriftProTheme.primaryGreen,
                 ),
-              PartnerSmartAction(
-                label: 'Åpne SMS-hub for rask utsending',
-                hint: 'Bruk fanen SMS for masseutsending og logg',
-                icon: Icons.sms_outlined,
               ),
-            ],
+            ),
           ),
-        ),
         SliverToBoxAdapter(
           child: PartnerModernSearchBar(
             controller: _searchCtrl,
@@ -290,11 +312,18 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard> {
                   final i = _canRegister ? index - 1 : index;
                   final hit = filtered[i];
                   final mavi = _maviCodes(hit);
+                  final maviVehicles = hit.vehicles
+                      .where(
+                        (v) =>
+                            v.vehicleKind != 'registration' &&
+                            !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode),
+                      )
+                      .toList();
                   return PartnerCompanyGridCard(
                     name: hit.partner.name,
                     orgNumber: hit.partner.orgNumber,
                     ownerName: hit.partner.ownerName,
-                    maviCodes: mavi,
+                    maviVehicles: maviVehicles,
                     maviCount: mavi.length,
                     regCount: _regCount(hit),
                     isActive: hit.partner.isActive,

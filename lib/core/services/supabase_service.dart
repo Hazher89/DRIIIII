@@ -733,6 +733,41 @@ department:departments!department_id(name)
     return (data as List).map((e) => UserProfile.fromJson(e)).toList();
   }
 
+  /// GDPR: ansatt = kun egen profil, leder = egne avdelinger, admin/superadmin = hele bedriften.
+  static Future<List<UserProfile>> fetchScopedProfiles(UserProfile viewer) async {
+    if (!isConfigured) return const [];
+    final companyId = viewer.companyId;
+    if (companyId == null) return [viewer];
+
+    if (viewer.role == UserRole.superadmin || viewer.role == UserRole.admin) {
+      return fetchProfiles(companyId: companyId);
+    }
+
+    if (viewer.role == UserRole.leder) {
+      final ledDeptIds = await fetchDepartmentIdsLedByProfile(viewer.id);
+      final allowedDeptIds = {...ledDeptIds};
+      if (viewer.departmentId != null) {
+        allowedDeptIds.add(viewer.departmentId!);
+      }
+      if (allowedDeptIds.isEmpty) return [viewer];
+
+      final all = await fetchProfiles(companyId: companyId);
+      return all
+          .where(
+            (p) =>
+                p.id == viewer.id ||
+                (p.departmentId != null && allowedDeptIds.contains(p.departmentId)),
+          )
+          .toList();
+    }
+
+    return [viewer];
+  }
+
+  /// Kun superadmin kan administrere ansatte via organisasjonskart / ansattliste.
+  static bool canManageEmployees(UserProfile? viewer) =>
+      viewer?.role == UserRole.superadmin;
+
   /// Nærmeste leder (avdeling) + superadmin — hvem avsender kan velge.
   static Future<TicketAssigneeOptions> fetchTicketAssigneeOptions({
     required String companyId,

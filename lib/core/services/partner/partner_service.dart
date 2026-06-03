@@ -1007,6 +1007,8 @@ class PartnerService {
     required String phone,
     required String partnerName,
     String? orgNumber,
+    String? portalAccountId,
+    String? ownerDisplayName,
   }) {
     return provisionOwnerPortal(
       partnerId: partnerId,
@@ -1014,6 +1016,8 @@ class PartnerService {
       phone: phone,
       partnerName: partnerName,
       orgNumber: orgNumber,
+      portalAccountId: portalAccountId,
+      ownerDisplayName: ownerDisplayName,
       regeneratePassword: true,
     );
   }
@@ -1044,26 +1048,33 @@ class PartnerService {
     required String phone,
     required String partnerName,
     String? orgNumber,
+    String? portalAccountId,
+    String? ownerDisplayName,
     bool regeneratePassword = false,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final normalizedPhone = normalizePhoneNo(phone.trim()) ?? phone.trim();
     final username = PortalCredentials.ownerUsername(
       partnerName: partnerName,
       orgNumber: orgNumber,
       partnerId: partnerId,
+      phone: normalizedPhone,
     );
     final password = PortalCredentials.generatePassword();
     final loginEmail = PortalCredentials.loginEmail(
       partnerId: partnerId,
       isOwner: true,
+      ownerPhone: normalizedPhone,
     );
     return _invokePortalProvision(
       partnerId: partnerId,
       companyId: companyId,
+      portalAccountId: portalAccountId,
       username: username,
       loginEmail: loginEmail,
-      phone: phone,
+      phone: normalizedPhone,
       password: password,
+      driverName: ownerDisplayName,
       accountKind: 'owner',
       sendCredentialsSms: true,
       regeneratePassword: regeneratePassword,
@@ -1074,6 +1085,7 @@ class PartnerService {
     required String partnerId,
     required String companyId,
     String? partnerVehicleId,
+    String? portalAccountId,
     required String username,
     required String loginEmail,
     required String phone,
@@ -1089,6 +1101,7 @@ class PartnerService {
         'partner_id': partnerId,
         'company_id': companyId,
         if (partnerVehicleId != null) 'partner_vehicle_id': partnerVehicleId,
+        if (portalAccountId != null) 'portal_account_id': portalAccountId,
         'username': username,
         'login_email': loginEmail,
         'phone': normalizePhoneNo(phone.trim()) ?? phone.trim(),
@@ -1244,6 +1257,7 @@ class PartnerService {
   static Future<void> deleteOwnerPortal({
     required String partnerId,
     required String companyId,
+    String? portalAccountId,
   }) async {
     if (!_ok) return;
     try {
@@ -1254,14 +1268,19 @@ class PartnerService {
           'company_id': companyId,
           'account_kind': 'owner',
           'delete_account': true,
+          if (portalAccountId != null) 'portal_account_id': portalAccountId,
         },
       );
     } catch (_) {}
-    await _client
+    var query = _client
         .from('partner_portal_accounts')
-        .update({'is_active': false})
+        .update({'is_active': false, 'phone': null})
         .eq('partner_id', partnerId)
         .eq('account_kind', 'owner');
+    if (portalAccountId != null) {
+      query = query.eq('id', portalAccountId);
+    }
+    await query;
   }
 
   static Future<PartnerFriRequest> createFriRequest({

@@ -26,12 +26,18 @@ class PortalCredentials {
   }
 
   /// Bil-eier: kort brukernavn — f.eks. `eierhaz8382` (firma-init + org.siste 4).
+  /// Med [phone] brukes siste 4 siffer for unikt brukernavn per bil-eier.
   static String ownerUsername({
     required String partnerName,
     String? orgNumber,
     String? partnerId,
+    String? phone,
   }) {
     final initials = _partnerInitials(partnerName, maxLen: 3);
+    final phoneDigits = (phone ?? '').replaceAll(RegExp(r'\D'), '');
+    if (phoneDigits.length >= 4) {
+      return 'eier$initials${phoneDigits.substring(phoneDigits.length - 4)}';
+    }
     final org = (orgNumber ?? '').replaceAll(RegExp(r'\D'), '');
     final tail = org.length >= 4
         ? org.substring(org.length - 4)
@@ -49,6 +55,7 @@ class PortalCredentials {
     required String partnerId,
     required bool isOwner,
     String? partnerVehicleId,
+    String? ownerPhone,
   }) {
     final scopeId = isOwner
         ? partnerId
@@ -56,6 +63,13 @@ class PortalCredentials {
     final hex = scopeId.replaceAll('-', '');
     final short = hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
     final prefix = isOwner ? 'o' : 'd';
+    if (isOwner && ownerPhone != null) {
+      final phoneDigits = ownerPhone.replaceAll(RegExp(r'\D'), '');
+      if (phoneDigits.length >= 4) {
+        final phoneTail = phoneDigits.substring(phoneDigits.length - 4);
+        return '$prefix.$short.$phoneTail@$_portalDomain';
+      }
+    }
     return '$prefix.$short@$_portalDomain';
   }
 

@@ -118,26 +118,6 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
               ('Verktøy', 'Klar'),
             ],
           ),
-          PartnerSmartActionsPanel(
-            title: 'Anbefalte handlinger',
-            actions: [
-              const PartnerSmartAction(
-                label: 'Kjør masseplanlegging for dagens ruter',
-                hint: 'Bruk hovedplanleggeren under',
-                icon: Icons.auto_graph_outlined,
-              ),
-              PartnerSmartAction(
-                label: 'Åpne MAVI-statistikk',
-                hint: 'Sjekk belastning og kapasitet',
-                icon: Icons.insights_outlined,
-                onTap: () {
-                  Navigator.of(context).push<void>(
-                    MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
-                  );
-                },
-              ),
-            ],
-          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: PartnerAvailableVehiclesPanel(

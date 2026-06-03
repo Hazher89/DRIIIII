@@ -5,6 +5,7 @@ import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 
 /// Delte, kompakte UI-komponenter for bedriftsliste og registrering.
@@ -235,7 +236,7 @@ class PartnerCompanyCompactTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mavi = _maviVehicles.map((v) => MaviUnitCodes.normalize(v.unitCode)).toList();
+    final maviVehicles = PartnerMaviVehicleOverview.filterMavi(_maviVehicles);
     final active = partner.isActive != false;
 
     return Padding(
@@ -295,7 +296,10 @@ class PartnerCompanyCompactTile extends StatelessWidget {
                         style: TextStyle(fontSize: 11, color: PartnerUi.mutedText(context)),
                       ),
                       const SizedBox(height: 4),
-                      PartnerMaviChipRow(codes: mavi),
+                      PartnerMaviVehicleOverview(
+                        vehicles: PartnerMaviVehicleOverview.filterMavi(_maviVehicles),
+                        dense: true,
+                      ),
                       if (partner.notes != null && partner.notes!.trim().isNotEmpty) ...[
                         const SizedBox(height: 4),
                         Text(
@@ -328,11 +332,11 @@ class PartnerCompanyCompactTile extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      '${mavi.length}',
+                      '${maviVehicles.length}',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 16,
-                        color: mavi.isEmpty ? Colors.grey : DriftProTheme.primaryGreen,
+                        color: maviVehicles.isEmpty ? Colors.grey : DriftProTheme.primaryGreen,
                       ),
                     ),
                     Text('MAVI', style: TextStyle(fontSize: 9, color: PartnerUi.mutedText(context))),

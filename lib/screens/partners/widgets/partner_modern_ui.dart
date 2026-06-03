@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../models/partner/partner_links.dart';
+
 /// Nøytralt, moderne UI for bedrifter — uten sterke gradienter.
 class PartnerModernUi {
   PartnerModernUi._();
@@ -689,6 +692,137 @@ class PartnerModernSegmented<T> extends StatelessWidget {
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+}
+
+/// Viser alle MAVI-biler med kode, skilt, sjåfør og biltype.
+class PartnerMaviVehicleOverview extends StatelessWidget {
+  const PartnerMaviVehicleOverview({
+    super.key,
+    required this.vehicles,
+    this.dense = false,
+  });
+
+  final List<PartnerVehicle> vehicles;
+  final bool dense;
+
+  static List<PartnerVehicle> filterMavi(Iterable<PartnerVehicle> all) {
+    final list = all
+        .where(
+          (v) =>
+              v.isActive &&
+              v.vehicleKind != 'registration' &&
+              !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode),
+        )
+        .toList()
+      ..sort(
+        (a, b) => MaviUnitCodes.normalize(a.unitCode).compareTo(
+              MaviUnitCodes.normalize(b.unitCode),
+            ),
+      );
+    return list;
+  }
+
+  String _subtitle(PartnerVehicle v) {
+    final parts = <String>[];
+    final plate = v.registrationNumber.trim();
+    if (plate.isNotEmpty && plate != MaviUnitCodes.regNrPlaceholder) {
+      parts.add(plate);
+    }
+    final driver = v.driverName?.trim();
+    if (driver != null && driver.isNotEmpty) {
+      parts.add(driver);
+    }
+    final roles = v.fleetRolesLabel;
+    if (roles != 'Uten type') {
+      parts.add(roles);
+    }
+    if (parts.isEmpty) return 'Uten skilt eller sjåfør';
+    return parts.join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (vehicles.isEmpty) {
+      return Text(
+        'Ingen MAVI — trykk for å legge til',
+        style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'MAVI-biler (${vehicles.length})',
+          style: TextStyle(
+            fontSize: dense ? 10 : 11,
+            fontWeight: FontWeight.w700,
+            color: PartnerModernUi.textPrimary(context).withValues(alpha: 0.78),
+          ),
+        ),
+        SizedBox(height: dense ? 4 : 6),
+        ...vehicles.map((v) => _vehicleRow(context, v)),
+      ],
+    );
+  }
+
+  Widget _vehicleRow(BuildContext context, PartnerVehicle v) {
+    final code = MaviUnitCodes.normalize(v.unitCode);
+    return Padding(
+      padding: EdgeInsets.only(bottom: dense ? 4 : 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.25)),
+            ),
+            child: Text(
+              MaviUnitCodes.compactLabel(code),
+              style: TextStyle(
+                fontSize: dense ? 10 : 11,
+                fontWeight: FontWeight.w800,
+                fontFamily: 'monospace',
+                color: const Color(0xFF15803D),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  code,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: dense ? 10 : 11,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'monospace',
+                    color: PartnerModernUi.textPrimary(context),
+                  ),
+                ),
+                Text(
+                  _subtitle(v),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: dense ? 9 : 10,
+                    height: 1.25,
+                    color: PartnerModernUi.muted(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

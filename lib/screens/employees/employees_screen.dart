@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../../core/permissions/user_access.dart';
 import '../../core/services/supabase_service.dart';
-import '../../models/department.dart';
 import '../../models/user_profile.dart';
-import 'employee_edit_screen.dart';
 import 'employee_hub_screen.dart';
 import 'widgets/employee_display.dart';
-import 'widgets/employee_move_department_sheet.dart';
 
-/// Ansatte – superadmin sendes til full tilgangsstyring.
+/// Ansatte – kun superadmin får full administrasjon.
 class EmployeesScreen extends StatefulWidget {
   const EmployeesScreen({super.key});
 
@@ -31,9 +27,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
     final me = await SupabaseService.fetchCurrentUserProfile();
     if (mounted) {
       setState(() {
-        _isSuperAdmin = me?.isSuperAdmin == true ||
-            me?.isAdmin == true ||
-            me?.access.canEditEmployees == true;
+        _isSuperAdmin = SupabaseService.canManageEmployees(me);
         _checking = false;
       });
     }
@@ -49,23 +43,22 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
     if (_isSuperAdmin) {
       return const EmployeeHubScreen();
     }
-    return const _EmployeeReadOnlyList();
+    return const _EmployeeScopedReadOnlyList();
   }
 }
 
-/// Enkel liste for ikke-superadmin med kun lesetilgang.
-class _EmployeeReadOnlyList extends StatefulWidget {
-  const _EmployeeReadOnlyList();
+/// Leder ser kun ansatte i egne avdelinger. Ansatte ser kun seg selv.
+class _EmployeeScopedReadOnlyList extends StatefulWidget {
+  const _EmployeeScopedReadOnlyList();
 
   @override
-  State<_EmployeeReadOnlyList> createState() => _EmployeeReadOnlyListState();
+  State<_EmployeeScopedReadOnlyList> createState() => _EmployeeScopedReadOnlyListState();
 }
 
-class _EmployeeReadOnlyListState extends State<_EmployeeReadOnlyList> {
+class _EmployeeScopedReadOnlyListState extends State<_EmployeeScopedReadOnlyList> {
   var _loading = true;
   List<UserProfile> _profiles = [];
-  List<Department> _departments = [];
-  bool _canEdit = false;
+  UserProfile? _me;
 
   @override
   void initState() {
@@ -75,92 +68,61 @@ class _EmployeeReadOnlyListState extends State<_EmployeeReadOnlyList> {
 
   Future<void> _load() async {
     final me = await SupabaseService.fetchCurrentUserProfile();
-    final companyId = await SupabaseService.getCurrentCompanyId();
-    if (companyId != null) {
-      final list = await SupabaseService.fetchProfiles(companyId: companyId);
-      final depts = await SupabaseService.fetchDepartments(companyId: companyId);
-      if (mounted) {
-        setState(() {
-          _profiles = list.where((p) => !p.isPartnerPortalUser).toList();
-          _departments = depts;
-          _canEdit = me?.access.canEditEmployees == true ||
-              me?.isSuperAdmin == true ||
-              me?.role == UserRole.leder;
-          _loading = false;
-        });
-      }
-    } else if (mounted) {
-      setState(() => _loading = false);
+    if (me == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    final list = await SupabaseService.fetchScopedProfiles(me);
+    if (mounted) {
+      setState(() {
+        _me = me;
+        _profiles = list.where((p) => !p.isPartnerPortalUser).toList();
+        _loading = false;
+      });
     }
   }
 
-  Future<void> _openEdit(UserProfile p) async {
-    final ok = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => EmployeeEditScreen(
-          employee: p,
-          departments: _departments,
-        ),
-      ),
-    );
-    if (ok == true) _load();
+  String get _scopeHint {
+    if (_me == null) return '';
+    if (_me!.role == UserRole.leder) {
+      return 'Du ser kun ansatte i avdelingene du leder.';
+    }
+    return 'Du ser kun din egen profil.';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Ansatte'),
-        actions: [
-          if (_canEdit)
-            const Padding(
-              padding: EdgeInsets.only(right: 12),
-              child: Center(
-                child: Text('Trykk ✏️ for å redigere', style: TextStyle(fontSize: 12)),
-              ),
-            ),
-        ],
-      ),
+      appBar: AppBar(title: const Text('Ansatte')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              itemCount: _profiles.length,
-              itemBuilder: (_, i) {
-                final p = _profiles[i];
-                return ListTile(
-                  leading: CircleAvatar(child: Text(p.initials)),
-                  title: EmployeeDisplay.nameWithNumber(p, emphasizeNumber: true),
-                  subtitle: Text(
-                    '${p.role.name} · ${p.email}${p.phone != null ? " · ${p.phone}" : ""}',
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (_scopeHint.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                    child: Text(
+                      _scopeHint,
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
                   ),
-                  trailing: _canEdit
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.swap_horiz),
-                              tooltip: 'Flytt avdeling',
-                              onPressed: () async {
-                                final ok = await showEmployeeMoveDepartmentSheet(
-                                  context,
-                                  employee: p,
-                                  departments: _departments,
-                                );
-                                if (ok == true) _load();
-                              },
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined),
-                              tooltip: 'Rediger telefon og personinfo',
-                              onPressed: () => _openEdit(p),
-                            ),
-                          ],
-                        )
-                      : null,
-                  onTap: _canEdit ? () => _openEdit(p) : null,
-                );
-              },
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: _profiles.length,
+                    itemBuilder: (_, i) {
+                      final p = _profiles[i];
+                      return ListTile(
+                        leading: CircleAvatar(child: Text(p.initials)),
+                        title: EmployeeDisplay.nameWithNumber(p, emphasizeNumber: true),
+                        subtitle: Text(
+                          '${p.jobTitle ?? p.role.name}${p.id == _me?.id ? ' · deg' : ''}',
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
     );
   }

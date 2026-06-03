@@ -6,6 +6,8 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/partner_summary_meta.dart';
+import '../widgets/partner_summary_overview_card.dart';
 import 'owner_portal_common.dart';
 
 class OwnerPortalDocsPage extends StatefulWidget {
@@ -33,7 +35,7 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
     if (mounted) setState(() { _docs = d; _loading = false; });
   }
 
-  Future<void> _open(PartnerDocument doc) async {
+  Future<void> _openPdf(PartnerDocument doc) async {
     final p = doc.storagePath;
     if (p == null || p.isEmpty) return;
     try {
@@ -43,6 +45,41 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke åpne: $e')));
     }
+  }
+
+  Future<void> _openDocument(PartnerDocument doc) async {
+    if (doc.docCategory != 'summary') {
+      await _openPdf(doc);
+      return;
+    }
+
+    final meta = PartnerSummaryMeta.tryParseFromDescription(doc.description);
+    if (meta == null) {
+      await _openPdf(doc);
+      return;
+    }
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(doc.title),
+        content: SingleChildScrollView(
+          child: PartnerSummaryOverviewCard(meta: meta),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Lukk')),
+          FilledButton.icon(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _openPdf(doc);
+            },
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('Åpne full PDF'),
+          ),
+        ],
+      ),
+    );
   }
 
   List<PartnerDocument> get _filtered {
@@ -96,24 +133,7 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
                             children: [
                               for (final entry in grouped.entries) ...[
                                 OwnerSectionTitle(title: _categoryLabel(entry.key)),
-                                ...entry.value.map(
-                                  (doc) => Card(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    child: ListTile(
-                                      leading: Icon(
-                                        doc.isExpired ? Icons.warning_amber : Icons.description_outlined,
-                                        color: doc.isExpired ? Colors.orange : DriftProTheme.primaryGreen,
-                                      ),
-                                      title: Text(doc.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                      subtitle: Text(
-                                        '${PartnerDocument.documentTypeLabel(doc.documentType)}'
-                                        '${doc.expiresAt != null ? ' · Utløp ${ownerFmtDate(doc.expiresAt!)}' : ''}',
-                                      ),
-                                      trailing: const Icon(Icons.open_in_new),
-                                      onTap: () => _open(doc),
-                                    ),
-                                  ),
-                                ),
+                                ...entry.value.map((doc) => _docTile(doc)),
                               ],
                             ],
                           ),
@@ -121,6 +141,52 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _docTile(PartnerDocument doc) {
+    final meta = doc.docCategory == 'summary'
+        ? PartnerSummaryMeta.tryParseFromDescription(doc.description)
+        : null;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _openDocument(doc),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    doc.isExpired ? Icons.warning_amber : Icons.description_outlined,
+                    color: doc.isExpired ? Colors.orange : DriftProTheme.primaryGreen,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(doc.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+              if (meta != null) ...[
+                const SizedBox(height: 10),
+                PartnerSummaryOverviewCard(meta: meta, compact: true),
+              ] else
+                Padding(
+                  padding: const EdgeInsets.only(top: 6, left: 34),
+                  child: Text(
+                    PartnerDocument.documentTypeLabel(doc.documentType),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

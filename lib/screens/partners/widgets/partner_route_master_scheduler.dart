@@ -334,18 +334,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     );
   }
 
-  String _sapStatusBannerText() {
-    final day = DateFormat('d. MMM', 'nb').format(_focusDay);
-    if (_stagedQueueCount > 0 && _sapInboxPending > 0) {
-      return '$_stagedQueueCount ruter i publiseringskø ($day) · '
-          '$_sapInboxPending nye PDF i SAP-innboks';
-    }
-    if (_stagedQueueCount > 0) {
-      return '$_stagedQueueCount ruter i publiseringskø ($day) — klar til publisering';
-    }
-    return '$_sapInboxPending nye PDF fra SAP — trykk Åpne for å importere';
-  }
-
   Future<void> _openSapRoutes() async {
     final today = DateTime.now();
     final routeDay = (_weekEnd.isBefore(_dayOnly(today)) || _weekStart.isAfter(_dayOnly(today)))
@@ -576,42 +564,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                       if (_busy) const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  if (_sapStatusBannerText().isNotEmpty)
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFFF8E1),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFFFFC107), width: 1.5),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.mark_email_read_rounded, color: Color(0xFFF57F17)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              _sapStatusBannerText(),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
-                                color: Color(0xFF5D4037),
-                              ),
-                            ),
-                          ),
-                          FilledButton(
-                            onPressed: _busy ? null : _openSapRoutes,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF1565C0),
-                              foregroundColor: Colors.white,
-                            ),
-                            child: const Text('Åpne'),
-                          ),
-                        ],
-                      ),
-                    ),
                   Wrap(
                     spacing: 10,
                     runSpacing: 8,

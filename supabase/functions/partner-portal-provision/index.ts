@@ -67,6 +67,7 @@ Deno.serve(async (req) => {
       partner_id,
       company_id,
       partner_vehicle_id,
+      portal_account_id,
       username,
       login_email,
       phone,
@@ -92,8 +93,11 @@ Deno.serve(async (req) => {
       let selectQ = admin
         .from("partner_portal_accounts")
         .select("id, profile_id, phone")
-        .eq("partner_id", partner_id);
-      if (isOwner) {
+        .eq("partner_id", partner_id)
+        .eq("is_active", true);
+      if (portal_account_id) {
+        selectQ = selectQ.eq("id", portal_account_id);
+      } else if (isOwner) {
         selectQ = selectQ.eq("account_kind", "owner");
       } else if (partner_vehicle_id) {
         selectQ = selectQ.eq("partner_vehicle_id", partner_vehicle_id);
@@ -182,8 +186,12 @@ Deno.serve(async (req) => {
       .eq("partner_id", partner_id)
       .eq("is_active", true);
 
-    if (isOwner) {
-      existingQuery = existingQuery.eq("account_kind", "owner");
+    if (portal_account_id) {
+      existingQuery = existingQuery.eq("id", portal_account_id);
+    } else if (isOwner) {
+      existingQuery = existingQuery
+        .eq("account_kind", "owner")
+        .eq("phone", normalizedPhone);
     } else {
       existingQuery = existingQuery.eq("partner_vehicle_id", partner_vehicle_id);
     }

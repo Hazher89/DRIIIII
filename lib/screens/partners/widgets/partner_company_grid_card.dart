@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../models/partner/partner_links.dart';
 import 'partner_modern_ui.dart';
 
 /// Kompakt bedriftskort for rutenett.
@@ -8,7 +9,7 @@ class PartnerCompanyGridCard extends StatelessWidget {
     super.key,
     required this.name,
     required this.orgNumber,
-    required this.maviCodes,
+    required this.maviVehicles,
     required this.maviCount,
     required this.regCount,
     required this.isActive,
@@ -22,7 +23,7 @@ class PartnerCompanyGridCard extends StatelessWidget {
 
   final String name;
   final String? orgNumber;
-  final List<String> maviCodes;
+  final List<PartnerVehicle> maviVehicles;
   final int maviCount;
   final int regCount;
   final bool isActive;
@@ -36,6 +37,7 @@ class PartnerCompanyGridCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
+    final maviList = PartnerMaviVehicleOverview.filterMavi(maviVehicles);
 
     return Material(
       color: PartnerModernUi.surface(context),
@@ -169,29 +171,11 @@ class PartnerCompanyGridCard extends StatelessWidget {
                   icon: Icons.sms_outlined,
                 ),
                 const SizedBox(height: 10),
-                if (maviCodes.isEmpty)
-                  Text(
-                    'Ingen MAVI — trykk for å legge til',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
-                  )
-                else
-                  Text(
-                    maviCodes.take(2).join(' · ') + (maviCodes.length > 2 ? ' · +${maviCodes.length - 2}' : ''),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      fontFamily: 'monospace',
-                      color: PartnerModernUi.textPrimary(context).withValues(alpha: 0.75),
-                    ),
-                  ),
+                PartnerMaviVehicleOverview(vehicles: maviList, dense: true),
                 if (regCount > 0) ...[
                   const SizedBox(height: 6),
                   Text(
-                    '$regCount registrering${regCount == 1 ? '' : 'er'}',
+                    '$regCount registrering${regCount == 1 ? '' : 'er'} (kun skilt)',
                     style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context)),
                   ),
                 ],
@@ -248,7 +232,7 @@ class PartnerCompanyGridCard extends StatelessWidget {
         const SizedBox(width: 6),
         Expanded(
           child: RichText(
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             text: TextSpan(
               style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),

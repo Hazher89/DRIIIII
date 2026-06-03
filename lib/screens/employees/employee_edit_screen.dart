@@ -47,6 +47,7 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
   void initState() {
     super.initState();
     final e = widget.employee;
+    _verifyAccess();
     _name = TextEditingController(text: e.fullName);
     _email = TextEditingController(text: e.email);
     _phone = TextEditingController(text: e.phone ?? '');
@@ -65,6 +66,17 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     _safetyRep = e.isSafetyRepresentative;
     _active = e.isActive;
     _loadSmsOptIn();
+  }
+
+  Future<void> _verifyAccess() async {
+    final me = await SupabaseService.fetchCurrentUserProfile();
+    if (!mounted) return;
+    if (!SupabaseService.canManageEmployees(me)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kun superadmin kan redigere ansattprofiler.')),
+      );
+      Navigator.pop(context);
+    }
   }
 
   Future<void> _loadSmsOptIn() async {
@@ -96,6 +108,15 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
 
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) return;
+    final me = await SupabaseService.fetchCurrentUserProfile();
+    if (!SupabaseService.canManageEmployees(me)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Kun superadmin kan lagre endringer.')),
+        );
+      }
+      return;
+    }
     setState(() => _saving = true);
     try {
       final normalizedFnr = NorwegianNationalId.normalize(_nationalId.text);

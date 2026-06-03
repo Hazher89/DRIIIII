@@ -66,6 +66,17 @@ class MaviUnitCodes {
     return unitCode.trim().toUpperCase().startsWith('REG-');
   }
 
+  /// Kort visning: NO_O_M0044 → M44
+  static String compactLabel(String raw) {
+    final n = normalize(raw);
+    final m = RegExp(r'NO_O_M0*(\d{1,5})').firstMatch(n);
+    if (m != null) {
+      final num = int.tryParse(m.group(1)!);
+      if (num != null) return 'M$num';
+    }
+    return n;
+  }
+
   static String plateFromRegistrationUnit(String unitCode) {
     if (!isRegistrationOnlyUnit(unitCode)) return '';
     return unitCode.trim().toUpperCase().replaceFirst('REG-', '');
