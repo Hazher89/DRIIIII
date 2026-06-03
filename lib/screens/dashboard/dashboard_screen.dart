@@ -32,6 +32,7 @@ import '../../widgets/cards/quick_action_button.dart';
 import '../../widgets/cards/glass_card.dart';
 import '../../widgets/common/section_header.dart';
 import '../profile/profile_screen.dart';
+import '../../widgets/driftpro_notification_bell.dart';
 
 class DashboardScreen extends StatefulWidget {
   final NavigateByAccess? onNavigateByAccess;
@@ -1444,7 +1445,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                         icon: Icon(Icons.display_settings_outlined,
                             color: isDark ? Colors.white : Colors.black87),
                       ),
-                    if (_access?.canNotifications == true)
+                    if (_access?.canNotifications == true) ...[
+                      const DriftproNotificationBell(),
                       IconButton(
                         onPressed: _openNotificationsSheet,
                         icon: Badge(
@@ -1452,10 +1454,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                           backgroundColor: DriftProTheme.error,
                           label: Text('${_notices.length}',
                               style: const TextStyle(fontSize: 9)),
-                          child: Icon(AppIcons.notification,
+                          child: Icon(Icons.dashboard_customize_outlined,
                               color: isDark ? Colors.white : Colors.black87),
                         ),
+                        tooltip: 'Oppgaver på dashboard',
                       ),
+                    ],
                     if (_access?.canProfile != false)
                       GestureDetector(
                       onTap: () => Navigator.of(context).push(

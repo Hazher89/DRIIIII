@@ -18,6 +18,7 @@ import 'partner_sms_hub_screen.dart';
 import 'vehicle_rental_hub_screen.dart';
 import 'widgets/partner_companies_ui.dart';
 import 'widgets/partner_ui.dart';
+import '../../widgets/driftpro_notification_bell.dart';
 
 /// Oversikt over samarbeidspartnere (interne brukere).
 class PartnersDashboardScreen extends StatefulWidget {
@@ -310,6 +311,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
               )
             : null,
         actions: [
+          const DriftproNotificationBell(),
           if (_showSmsTab && !onSmsTab)
             IconButton(
               tooltip: 'SMS til samarbeidspartnere',

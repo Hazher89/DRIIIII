@@ -88,22 +88,29 @@ class _PartnerNotificationSettingsPanelState
               ),
               const SizedBox(height: 16),
               ListTile(
-                title: const Text('Purring rute uten aksept (timer)'),
-                subtitle: Text('Første påminnelse etter ${s.routeAckReminderHours} timer'),
+                title: const Text('Purring rute uten aksept'),
+                subtitle: Text(
+                  'Automatisk påminnelse ${s.routeAckReminderMinutes} min etter utsendelse '
+                  '(SMS/e-post etter valg under).',
+                ),
                 trailing: SizedBox(
-                  width: 80,
+                  width: 88,
                   child: TextFormField(
-                    initialValue: '${s.routeAckReminderHours}',
+                    key: ValueKey(s.routeAckReminderMinutes),
+                    initialValue: '${s.routeAckReminderMinutes}',
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
-                      suffixText: 't',
+                      suffixText: 'min',
                       isDense: true,
                       border: OutlineInputBorder(),
                     ),
                     onChanged: (v) {
-                      final h = int.tryParse(v);
-                      if (h != null && h >= 1 && h <= 168) {
-                        setState(() => _s = s.copyWith(routeAckReminderHours: h));
+                      final m = int.tryParse(v);
+                      if (m != null && m >= 15 && m <= 10080) {
+                        setState(() => _s = s.copyWith(
+                              routeAckReminderMinutes: m,
+                              routeAckReminderHours: (m / 60).ceil(),
+                            ));
                       }
                     },
                   ),
@@ -132,12 +139,6 @@ class _PartnerNotificationSettingsPanelState
                 value: s.chPartnerRouteAccepted,
                 onChanged: (v) =>
                     setState(() => _s = s.copyWith(chPartnerRouteAccepted: v)),
-              ),
-              NotificationChannelTile(
-                title: 'Rute avvist (bekreftelse)',
-                value: s.chPartnerRouteRejected,
-                onChanged: (v) =>
-                    setState(() => _s = s.copyWith(chPartnerRouteRejected: v)),
               ),
               NotificationChannelTile(
                 title: 'MASS / masseutsendelse ruter',

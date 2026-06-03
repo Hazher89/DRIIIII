@@ -6,6 +6,7 @@ import '../../../models/partner/partner_links.dart';
 import '../owner_portal/owner_portal_common.dart';
 import '../owner_portal/owner_portal_route_actions.dart';
 import '../widgets/partner_route_pdf_actions.dart';
+import '../widgets/partner_route_support_contact.dart';
 
 /// Rute-kort for sjåfør — stor starttid, skift, PDF, aksepter / avlys.
 class DriverPortalRouteCard extends StatelessWidget {
@@ -157,25 +158,7 @@ class DriverPortalRouteCard extends StatelessWidget {
                   label: const Text('Aksepter rute', style: TextStyle(fontWeight: FontWeight.w800)),
                 ),
               if (!compactActions) const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () => ownerPortalSetRouteAck(
-                  context,
-                  route,
-                  accepted: false,
-                  onDone: onReload,
-                  onBehalfOfDriver: false,
-                ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red.shade700,
-                  side: BorderSide(color: Colors.red.shade400, width: 1.5),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                icon: const Icon(Icons.cancel_outlined),
-                label: const Text(
-                  'Ikke aksepter (med kommentar)',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-              ),
+              const PartnerRouteSupportContactCard(),
             ],
           ],
         ),

@@ -7,6 +7,7 @@ import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import '../widgets/partner_route_pdf_actions.dart';
 import 'owner_portal_common.dart';
+import '../widgets/partner_route_support_contact.dart';
 import 'owner_portal_route_actions.dart';
 
 class OwnerPortalRouteCard extends StatelessWidget {
@@ -125,45 +126,26 @@ class OwnerPortalRouteCard extends StatelessWidget {
             ),
             if (pending) ...[
               const SizedBox(height: 10),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => ownerPortalSetRouteAck(
-                        context,
-                        route,
-                        accepted: true,
-                        onDone: onReload,
-                        onBehalfOfDriver: onBehalfOfDriver,
-                      ),
-                      icon: const Icon(Icons.check_circle_outline),
-                      label: const Text('Godkjenn'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => ownerPortalSetRouteAck(
+                    context,
+                    route,
+                    accepted: true,
+                    onDone: onReload,
+                    onBehalfOfDriver: onBehalfOfDriver,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => ownerPortalSetRouteAck(
-                        context,
-                        route,
-                        accepted: false,
-                        onDone: onReload,
-                        onBehalfOfDriver: onBehalfOfDriver,
-                      ),
-                      icon: const Icon(Icons.cancel_outlined, color: Colors.red),
-                      label: Text(onBehalfOfDriver ? 'Avvis' : 'Avlys'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: const Text('Aksepter rute'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                ],
+                ),
               ),
+              const SizedBox(height: 10),
+              const PartnerRouteSupportContactCard(),
             ],
           ],
         ),

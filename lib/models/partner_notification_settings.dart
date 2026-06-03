@@ -4,6 +4,7 @@ import 'notification_channel.dart';
 class PartnerNotificationSettings {
   final String companyId;
   final int routeAckReminderHours;
+  final int routeAckReminderMinutes;
   final NotificationChannel chPartnerRoute;
   final NotificationChannel chPartnerRouteOwner;
   final NotificationChannel chPartnerMeeting;
@@ -25,6 +26,7 @@ class PartnerNotificationSettings {
   const PartnerNotificationSettings({
     required this.companyId,
     this.routeAckReminderHours = 24,
+    this.routeAckReminderMinutes = 1440,
     this.chPartnerRoute = NotificationChannel.both,
     this.chPartnerRouteOwner = NotificationChannel.both,
     this.chPartnerMeeting = NotificationChannel.both,
@@ -50,6 +52,8 @@ class PartnerNotificationSettings {
     return PartnerNotificationSettings(
       companyId: json['company_id'] as String,
       routeAckReminderHours: json['route_ack_reminder_hours'] as int? ?? 24,
+      routeAckReminderMinutes: json['route_ack_reminder_minutes'] as int? ??
+          ((json['route_ack_reminder_hours'] as int? ?? 24) * 60),
       chPartnerRoute: ch('ch_partner_route'),
       chPartnerRouteOwner: ch('ch_partner_route_owner'),
       chPartnerMeeting: ch('ch_partner_meeting'),
@@ -72,6 +76,7 @@ class PartnerNotificationSettings {
 
   PartnerNotificationSettings copyWith({
     int? routeAckReminderHours,
+    int? routeAckReminderMinutes,
     NotificationChannel? chPartnerRoute,
     NotificationChannel? chPartnerRouteOwner,
     NotificationChannel? chPartnerMeeting,
@@ -93,6 +98,8 @@ class PartnerNotificationSettings {
     return PartnerNotificationSettings(
       companyId: companyId,
       routeAckReminderHours: routeAckReminderHours ?? this.routeAckReminderHours,
+      routeAckReminderMinutes:
+          routeAckReminderMinutes ?? this.routeAckReminderMinutes,
       chPartnerRoute: chPartnerRoute ?? this.chPartnerRoute,
       chPartnerRouteOwner: chPartnerRouteOwner ?? this.chPartnerRouteOwner,
       chPartnerMeeting: chPartnerMeeting ?? this.chPartnerMeeting,

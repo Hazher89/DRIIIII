@@ -11,8 +11,10 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/postal_code_registry.dart';
 import '../../../core/services/partner/route_pdf_auto_assign.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
+import '../../../core/services/notification/publish_action_labels.dart';
 import '../../../core/services/partner/route_time_band.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../models/notification_channel.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_route_workflow_ui.dart';
@@ -71,6 +73,9 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
   TimeOfDay _start = const TimeOfDay(hour: 6, minute: 0);
   bool _busy = false;
   bool _analyzing = false;
+  String _publishLabel = 'Publiser og send varsel';
+  NotificationChannel _publishChannel = NotificationChannel.both;
+  String? _actionError;
 
   Uint8List? _pdfBytes;
   String? _pdfFileName;
@@ -82,6 +87,20 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
     super.initState();
     _day = _dayOnly(widget.initialDay);
     _row = widget.initialRow;
+    _loadPublishLabel();
+  }
+
+  Future<void> _loadPublishLabel() async {
+    try {
+      final label = await PublishActionLabels.singleRoutePublishLabel(widget.companyId);
+      final ch = await PublishActionLabels.singleRouteChannel(widget.companyId);
+      if (mounted) {
+        setState(() {
+          _publishLabel = label;
+          _publishChannel = ch;
+        });
+      }
+    } catch (_) {}
   }
 
   List<FleetPartnerVehicleRow> get _maviFleet =>
@@ -216,7 +235,10 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
       return;
     }
 
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _actionError = null;
+    });
     try {
       final row = _row!;
       final cid = widget.companyId;
@@ -252,30 +274,39 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
         'partner_vehicle_id': row.vehicle.id,
       });
 
+      final notifyDriver =
+          publish && _publishChannel != NotificationChannel.none;
+
       if (publish) {
         await PartnerService.dispatchRouteShares(
           companyId: cid,
           shareIdToShiftId: {shareId: _shiftId!},
           date: _day,
           shareIdToStartAt: {shareId: startAt},
+          notifyDriver: notifyDriver,
         );
       }
 
       widget.onDone();
       if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text(
             publish
-                ? 'Rute publisert til ${MaviUnitCodes.normalize(row.vehicle.unitCode)} '
-                    '(${DateFormat('d.M.y').format(_day)}).'
+                ? PublishActionLabels.successMessage(
+                    routeCount: 1,
+                    channel: _publishChannel,
+                    notifyDriver: notifyDriver,
+                  )
                 : 'PDF lagret som kladd for ${MaviUnitCodes.normalize(row.vehicle.unitCode)}.',
           ),
         ),
       );
     } catch (e) {
       if (mounted) {
+        setState(() => _actionError = e.toString());
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Feilet: $e'), backgroundColor: Colors.red),
         );
@@ -503,6 +534,17 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
       footer: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_actionError != null) ...[
+            Material(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Text(_actionError!, style: TextStyle(color: Colors.red.shade900, fontSize: 12)),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           if (_hasPdf) ...[
             OutlinedButton.icon(
               onPressed: busy ? null : () => _saveRoute(publish: false),
@@ -520,7 +562,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
               icon: _busy
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.rocket_launch_outlined),
-              label: const Text('Publiser og send SMS'),
+              label: Text(_publishLabel),
             ),
           ] else
             Text(

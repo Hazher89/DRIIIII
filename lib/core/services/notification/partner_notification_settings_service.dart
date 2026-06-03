@@ -19,7 +19,8 @@ class PartnerNotificationSettingsService {
         .from('company_partner_notification_settings')
         .upsert({
       'company_id': s.companyId,
-      'route_ack_reminder_hours': s.routeAckReminderHours,
+      'route_ack_reminder_hours': (s.routeAckReminderMinutes / 60).ceil(),
+      'route_ack_reminder_minutes': s.routeAckReminderMinutes,
       'ch_partner_route': s.chPartnerRoute.dbValue,
       'ch_partner_route_owner': s.chPartnerRouteOwner.dbValue,
       'ch_partner_meeting': s.chPartnerMeeting.dbValue,

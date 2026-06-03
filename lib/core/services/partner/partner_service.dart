@@ -14,6 +14,7 @@ import '../../../models/partner/mavi_driver_day_assignment.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import '../../utils/portal_credentials.dart';
 import '../sms/sms_phone_utils.dart';
+import '../supabase_service.dart';
 import 'fleet_shift_filters.dart';
 import 'fleet_shift_seed.dart';
 import 'mavi_unit_codes.dart';
@@ -586,8 +587,16 @@ class PartnerService {
     String shareId,
     Map<String, dynamic> fields,
   ) async {
-    if (!_ok) return;
-    await _client.from('partner_route_shares').update(fields).eq('id', shareId);
+    if (!_ok) throw StateError('Supabase er ikke konfigurert');
+    final row = await _client
+        .from('partner_route_shares')
+        .update(fields)
+        .eq('id', shareId)
+        .select('id')
+        .maybeSingle();
+    if (row == null) {
+      throw StateError('Kunne ikke oppdatere ruten (manglende tilgang eller ukjent id)');
+    }
   }
 
   /// Flytter kladd (staged) til annen MAVI/partner uten SMS.
@@ -946,9 +955,11 @@ class PartnerService {
     Map<String, DateTime?> shareIdToStartAt = const {},
     bool notifyDriver = true,
   }) async {
-    if (!_ok || shareIdToShiftId.isEmpty) return;
+    if (!_ok) throw StateError('Supabase er ikke konfigurert');
+    if (shareIdToShiftId.isEmpty) return;
 
     final status = notifyDriver ? 'sent' : 'registered';
+    final sentAt = DateTime.now().toUtc().toIso8601String();
 
     for (final entry in shareIdToShiftId.entries) {
       final startAt = shareIdToStartAt[entry.key];
@@ -964,7 +975,22 @@ class PartnerService {
       if (startAt != null) {
         patch['route_start_at'] = startAt.toUtc().toIso8601String();
       }
-      await _client.from('partner_route_shares').update(patch).eq('id', entry.key);
+      if (notifyDriver) {
+        patch['sent_at'] = sentAt;
+        patch['ack_status'] = 'pending';
+        patch['ack_at'] = null;
+        patch['ack_by'] = null;
+        patch['ack_comment'] = null;
+      }
+      final updated = await _client
+          .from('partner_route_shares')
+          .update(patch)
+          .eq('id', entry.key)
+          .select('id')
+          .maybeSingle();
+      if (updated == null) {
+        throw StateError('Kunne ikke publisere rute (id ${entry.key})');
+      }
 
       final row = await _client
           .from('partner_route_shares')
@@ -1006,12 +1032,14 @@ class PartnerService {
         notes: 'Ruteplanlegging',
       );
 
-      // SMS sendes kun når dispatch_status = sent (trg_partner_route_sms_on_sent).
+      if (notifyDriver) {
+        await _client.rpc('notify_partner_route_assigned_sms', params: {
+          'p_route_share_id': entry.key,
+        });
+      }
     }
     if (notifyDriver) {
-      try {
-        await flushSmsOutbox();
-      } catch (_) {}
+      await flushSmsOutbox();
     }
   }
 
@@ -1596,7 +1624,15 @@ class PartnerService {
     required bool accepted,
     String? comment,
   }) async {
-    if (!_ok) return;
+    if (!_ok) throw StateError('Supabase er ikke konfigurert');
+    if (!accepted) {
+      final me = await SupabaseService.fetchCurrentUserProfile();
+      if (me?.partnerId != null || me?.isPartnerPortalUser == true) {
+        throw StateError(
+          'Avvisning er ikke tilgjengelig. Ring kjørekontoret dersom noe ikke stemmer.',
+        );
+      }
+    }
     await _client.from('partner_route_shares').update({
       'ack_status': accepted ? 'accepted' : 'rejected',
       'ack_at': DateTime.now().toIso8601String(),

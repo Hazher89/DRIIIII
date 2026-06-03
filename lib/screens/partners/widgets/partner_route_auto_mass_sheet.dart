@@ -15,7 +15,9 @@ import '../../../core/services/partner/route_pdf_text_service.dart';
 import '../../../core/services/partner/route_shift_resolver.dart';
 import '../../../core/services/partner/sap_route_import_service.dart';
 import '../../../core/services/partner/sap_route_inbox_live.dart';
+import '../../../core/services/notification/publish_action_labels.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../models/notification_channel.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
@@ -136,6 +138,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   bool _guideExpanded = false;
   bool _fillingShifts = false;
   bool _initialTabSet = false;
+  String _withNotifyLabel = 'Med varsel';
+  NotificationChannel _massChannel = NotificationChannel.both;
 
   bool get _isSap => widget.source == PartnerRouteMassSource.sap;
 
@@ -221,6 +225,22 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         _refreshSapInboxCounts();
       }
     });
+    _loadPublishLabels();
+  }
+
+  Future<void> _loadPublishLabels() async {
+    final cid = await SupabaseService.getCurrentCompanyId();
+    if (cid == null || !mounted) return;
+    try {
+      final label = await PublishActionLabels.massRoutePublishLabel(cid);
+      final ch = await PublishActionLabels.massRouteChannel(cid);
+      if (mounted) {
+        setState(() {
+          _withNotifyLabel = PublishActionLabels.publishShortLabel(ch);
+          _massChannel = ch;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _bindSapLive() async {
@@ -589,7 +609,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   ? DriftProTheme.primaryGreen
                   : RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
             ),
-            child: Text(notifyDriver ? 'Publiser med SMS' : 'Publiser uten varsel'),
+            child: Text(
+              notifyDriver ? _withNotifyLabel : 'Publiser uten varsel',
+            ),
           ),
         ],
       ),
@@ -638,20 +660,24 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         final day = _routeDayFor(id);
         starts[id] = DateTime(day.year, day.month, day.day, t.hour, t.minute);
       }
+      final sendNotify =
+          notifyDriver && _massChannel != NotificationChannel.none;
       await PartnerService.dispatchRouteShares(
         companyId: cid,
         shareIdToShiftId: map,
         date: routeIds.isNotEmpty ? _routeDayFor(routeIds.first) : _routeDate,
         shareIdToStartAt: starts,
-        notifyDriver: notifyDriver,
+        notifyDriver: sendNotify,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              notifyDriver
-                  ? 'Publisert ${map.length} rute(r). SMS sendt der telefon finnes.'
-                  : 'Registrert ${map.length} rute(r) uten varsel — ingen SMS sendt.',
+              PublishActionLabels.successMessage(
+                routeCount: map.length,
+                channel: _massChannel,
+                notifyDriver: sendNotify,
+              ),
             ),
           ),
         );
@@ -2263,7 +2289,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           icon: _publishing
               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : const Icon(Icons.rocket_launch_outlined, size: 20),
-          label: Text(blocked ? 'Manuell først' : 'Med SMS (${_selected.length})'),
+          label: Text(
+            blocked ? 'Manuell først' : '$_withNotifyLabel (${_selected.length})',
+          ),
           style: FilledButton.styleFrom(
             backgroundColor: ui.accentDark,
             minimumSize: const Size(0, 46),
