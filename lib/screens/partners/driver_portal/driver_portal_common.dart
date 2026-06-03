@@ -1,3 +1,4 @@
+import '../../../core/services/partner/partner_portal_scope.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner.dart';
@@ -39,6 +40,10 @@ class DriverPortalData {
     required Partner partner,
     required String? partnerVehicleId,
   }) async {
+    await PartnerPortalScope.assertAccess(
+      partnerId: partner.id,
+      partnerVehicleId: partnerVehicleId,
+    );
     final vehicles = await PartnerService.fetchVehicles(partner.id);
     PartnerVehicle? vehicle;
     if (partnerVehicleId != null) {

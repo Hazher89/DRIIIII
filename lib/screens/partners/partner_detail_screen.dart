@@ -266,7 +266,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
 }
 
 
-/// Oppsummerings-PDF: egen kategori (doc_category=summary). RLS: kun MAVI i selskapet + denne partneren.
+/// Oppsummerings-PDF: doc_category=summary. Kun MAVI superadmin + bil-eier (egen partner), RLS.
 class _SummaryTab extends StatefulWidget {
   final Partner partner;
   final Future<void> Function() onChanged;

@@ -9,6 +9,7 @@ import '../widgets/partner_route_howto_strip.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_common.dart';
 import 'owner_portal_route_card.dart';
+import 'owner_portal_route_history.dart';
 
 class OwnerPortalRoutesPage extends StatefulWidget {
   final Partner partner;
@@ -88,9 +89,23 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
               children: [
                 _tabBody(_data!.routesToday, 'Ingen ruter i dag.'),
                 _tabBody(_data!.routesUpcoming, 'Ingen kommende ruter.'),
-                _tabBody(_data!.routesPast, 'Ingen tidligere ruter.'),
+                _historyTab(),
               ],
             ),
+    );
+  }
+
+  Widget _historyTab() {
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: OwnerPortalRouteHistoryView(
+        partnerId: widget.partner.id,
+        pastRoutes: _data!.routesPast,
+        vehicles: _vehicles,
+        shifts: _data!.shiftsById,
+        vehicleFilterId: _vehicleFilterId,
+        onVehicleFilter: (id) => setState(() => _vehicleFilterId = id),
+      ),
     );
   }
 

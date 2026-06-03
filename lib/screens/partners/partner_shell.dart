@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/auth/session_sign_out.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
+import '../../core/services/partner/partner_portal_scope.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -25,6 +26,7 @@ import 'owner_portal/owner_portal_overview_page.dart';
 import 'owner_portal/owner_portal_routes_page.dart';
 import 'owner_portal/owner_portal_vehicle_rental_page.dart';
 import 'owner_portal/owner_portal_summary_page.dart';
+import 'widgets/partner_portal_bottom_nav.dart';
 import 'widgets/partner_route_pdf_actions.dart';
 import 'widgets/partner_ui.dart' show PartnerStatusBadge;
 
@@ -54,7 +56,7 @@ List<Widget> _partnerLogoutActions(BuildContext context) => [
 
 /// Begrenset portal for [UserProfile] som er knyttet til en samarbeidspartner.
 /// Versjonsmerke — synlig for bil-eier når ny portal er lastet.
-const kOwnerPortalBuildLabel = 'Bil-eier v4';
+const kOwnerPortalBuildLabel = 'Bil-eier v5';
 const kDriverPortalBuildLabel = 'Sjåfør v4';
 
 class PartnerShell extends StatefulWidget {
@@ -81,15 +83,27 @@ class _PartnerShellState extends State<PartnerShell> {
   Future<void> _load() async {
     final pid = widget.profile.partnerId;
     if (pid == null) {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
       return;
     }
-    final p = await PartnerService.fetchPartner(pid);
-    if (mounted) {
+    try {
+      await PartnerPortalScope.assertAccess(
+        partnerId: pid,
+        partnerVehicleId: widget.profile.partnerVehicleId,
+      );
+      final p = await PartnerService.fetchPartner(pid);
+      if (!mounted) return;
       setState(() {
         _partner = p;
         _loading = false;
       });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke åpne portal: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -171,35 +185,43 @@ class _PartnerShellState extends State<PartnerShell> {
             DriverPortalFriPage(partner: p, profile: widget.profile),
             DriverPortalProfilePage(profile: widget.profile),
           ];
-    final destinations = isOwner
-        ? const [
-            NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
-            NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Oppsummering'),
-            NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
-            NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Alle ruter'),
-            NavigationDestination(icon: Icon(Icons.car_rental_outlined), selectedIcon: Icon(Icons.car_rental), label: 'Utleie'),
-            NavigationDestination(icon: Icon(Icons.event_note_outlined), selectedIcon: Icon(Icons.event_note), label: 'Møter'),
-            NavigationDestination(icon: Icon(Icons.fact_check_outlined), selectedIcon: Icon(Icons.fact_check), label: 'Bilkontroll'),
-            NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
-          ]
-        : const [
-            NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
-            NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Mine ruter'),
-            NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
-            NavigationDestination(icon: Icon(Icons.beach_access_outlined), selectedIcon: Icon(Icons.beach_access), label: 'Fri'),
-            NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
-          ];
+    final ownerNavItems = const [
+      PartnerPortalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
+      PartnerPortalNavItem(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Oppsummering'),
+      PartnerPortalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
+      PartnerPortalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Alle ruter'),
+      PartnerPortalNavItem(icon: Icons.car_rental_outlined, selectedIcon: Icons.car_rental, label: 'Utleie'),
+      PartnerPortalNavItem(icon: Icons.event_note_outlined, selectedIcon: Icons.event_note, label: 'Møter'),
+      PartnerPortalNavItem(icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check, label: 'Bilkontroll'),
+      PartnerPortalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
+    ];
+
+    final driverDestinations = const [
+      NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
+      NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Mine ruter'),
+      NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
+      NavigationDestination(icon: Icon(Icons.beach_access_outlined), selectedIcon: Icon(Icons.beach_access), label: 'Fri'),
+      NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
+    ];
 
     final pageIndex = _index.clamp(0, pages.length - 1);
+    final navIndex = _index.clamp(0, (isOwner ? ownerNavItems.length : driverDestinations.length) - 1);
+
     return Scaffold(
       // IndexedStack + nested Scaffold gir grå tom flate på Flutter web (Safari).
       body: pages[pageIndex],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index.clamp(0, destinations.length - 1),
-        onDestinationSelected: (i) => setState(() => _index = i),
-        labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-        destinations: destinations,
-      ),
+      bottomNavigationBar: isOwner
+          ? PartnerPortalBottomNav(
+              selectedIndex: navIndex,
+              onSelected: (i) => setState(() => _index = i),
+              items: ownerNavItems,
+            )
+          : NavigationBar(
+              selectedIndex: navIndex,
+              onDestinationSelected: (i) => setState(() => _index = i),
+              labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+              destinations: driverDestinations,
+            ),
     );
   }
 }

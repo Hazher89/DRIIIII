@@ -60,7 +60,12 @@ class PartnerAccess {
 
   static List<PartnerDetailTabDef> visibleDetailTabs(UserAccess? access) {
     if (access == null) return const [];
-    return detailTabs.where((t) => access.can(t.accessKey)).toList();
+    return detailTabs.where((t) {
+      if (t.accessKey == AccessKeys.partnersTabOppsummering) {
+        return access.profile.isSuperAdmin;
+      }
+      return access.can(t.accessKey);
+    }).toList();
   }
 
   static bool canOpenPartnerDetail(UserAccess? access) =>

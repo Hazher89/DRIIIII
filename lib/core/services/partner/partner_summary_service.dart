@@ -226,10 +226,6 @@ class PartnerSummaryService {
 
   static bool canManage(UserProfile? profile) {
     if (profile == null) return false;
-    final access = profile.access;
-    return profile.isSuperAdmin ||
-        profile.role == UserRole.admin ||
-        access.canPartnersAdmin ||
-        access.canPartnersTab;
+    return profile.isSuperAdmin;
   }
 }

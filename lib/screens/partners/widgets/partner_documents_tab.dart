@@ -6,7 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/permissions/user_access.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -453,9 +455,124 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
     );
   }
 
+  Future<void> _manageFolderAccess(Map<String, dynamic> folder) async {
+    final folderId = folder['id'] as String?;
+    if (folderId == null) return;
+    final me = await SupabaseService.fetchCurrentUserProfile();
+    if (me == null || !me.isSuperAdmin) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kun superadmin kan gi tilgang til bedriftens mapper')),
+      );
+      return;
+    }
+
+    var grants = await PartnerService.fetchDocumentFolderAccess(folderId);
+    final staff = (await SupabaseService.fetchProfiles(companyId: widget.partner.companyId))
+        .where((p) => p.partnerId == null && p.id != me.id)
+        .toList();
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) {
+          Future<void> reload() async {
+            grants = await PartnerService.fetchDocumentFolderAccess(folderId);
+            setSt(() {});
+          }
+
+          return AlertDialog(
+            title: Text('Tilgang: ${folder['name'] ?? 'Mappe'}'),
+            content: SizedBox(
+              width: 420,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Bedriftens private mappe. Kun superadmin, bedriftsansvarlig og valgte MAVI-ansatte ser innholdet.',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('Har tilgang', style: TextStyle(fontWeight: FontWeight.w700)),
+                    if (grants.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 8),
+                        child: Text('Kun superadmin og bedriftsansvarlig (ingen ekstra ansatte)'),
+                      )
+                    else
+                      ...grants.map((g) {
+                        final prof = g['profiles'] as Map<String, dynamic>?;
+                        final pid = g['profile_id'] as String? ?? prof?['id'] as String?;
+                        final label = prof?['full_name'] as String? ?? prof?['email'] as String? ?? pid ?? '';
+                        return ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(label),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.remove_circle_outline, color: DriftProTheme.error),
+                            onPressed: () async {
+                              if (pid == null) return;
+                              await PartnerService.revokeDocumentFolderAccess(
+                                folderId: folderId,
+                                profileId: pid,
+                              );
+                              await reload();
+                            },
+                          ),
+                        );
+                      }),
+                    const Divider(height: 24),
+                    const Text('Legg til MAVI-ansatt', style: TextStyle(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 8),
+                    ...staff.map((p) {
+                      final has = grants.any((g) => g['profile_id'] == p.id);
+                      return ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(p.fullName.isNotEmpty ? p.fullName : (p.email ?? p.id)),
+                        subtitle: Text(p.role.name),
+                        trailing: has
+                            ? const Icon(Icons.check, color: DriftProTheme.primaryGreen)
+                            : TextButton(
+                                child: const Text('Gi tilgang'),
+                                onPressed: () async {
+                                  await PartnerService.grantDocumentFolderAccess(
+                                    folderId: folderId,
+                                    profileId: p.id,
+                                  );
+                                  await reload();
+                                },
+                              ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Lukk')),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _deleteFolder(Map<String, dynamic> folder) async {
     final id = folder['id'] as String?;
     if (id == null) return;
+    if (folder['owner_managed'] == true) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bedriftens mapper slettes av bedriftsansvarlig i partnerportalen'),
+        ),
+      );
+      return;
+    }
     final name = (folder['name'] as String?) ?? 'Mappe';
     final shared = (folder['visibility'] as String?) == 'shared';
     final count = _docs.where((d) => d.folderId == id).length;
@@ -669,6 +786,9 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
                       setState(() => _activeFolderId = f['id'] as String?);
                     },
                     onDelete: () => _deleteFolder(f),
+                    onManageAccess: f['owner_managed'] == true
+                        ? () => _manageFolderAccess(f)
+                        : null,
                   ),
                 ),
               ],
@@ -723,9 +843,11 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
     required int docCount,
     required VoidCallback onOpen,
     required VoidCallback onDelete,
+    VoidCallback? onManageAccess,
   }) {
     final title = (folder['name'] as String?) ?? 'Mappe';
     final shared = (folder['visibility'] as String?) == 'shared';
+    final ownerManaged = folder['owner_managed'] == true;
 
     return SizedBox(
       width: 150,
@@ -742,16 +864,30 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.folder, color: Color(0xFFF4B400), size: 34),
-                    const Spacer(),
-                    IconButton(
-                      tooltip: 'Slett mappe',
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
-                      onPressed: onDelete,
-                      icon: const Icon(Icons.delete_outline, size: 18, color: DriftProTheme.error),
+                    Icon(
+                      ownerManaged ? Icons.folder_special_outlined : Icons.folder,
+                      color: const Color(0xFFF4B400),
+                      size: 34,
                     ),
+                    const Spacer(),
+                    if (onManageAccess != null)
+                      IconButton(
+                        tooltip: 'Mappe-tilgang',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        onPressed: onManageAccess,
+                        icon: const Icon(Icons.group_outlined, size: 18),
+                      ),
+                    if (!ownerManaged)
+                      IconButton(
+                        tooltip: 'Slett mappe',
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        onPressed: onDelete,
+                        icon: const Icon(Icons.delete_outline, size: 18, color: DriftProTheme.error),
+                      ),
                   ],
                 ),
                 Text(
@@ -765,7 +901,20 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
                     '$docCount ${docCount == 1 ? "fil" : "filer"}',
                     style: TextStyle(fontSize: 10, color: PartnerUi.mutedText(context)),
                   ),
-                if (shared) ...[
+                if (ownerManaged) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF3E0),
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                    child: const Text(
+                      'Bedrift',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFE65100)),
+                    ),
+                  ),
+                ] else if (shared) ...[
                   const SizedBox(height: 4),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

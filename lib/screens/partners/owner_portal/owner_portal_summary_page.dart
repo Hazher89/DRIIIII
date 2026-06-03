@@ -30,7 +30,7 @@ class _OwnerPortalSummaryPageState extends State<OwnerPortalSummaryPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final docs = await PartnerService.fetchOwnerPortalDocuments(widget.partner.id);
+      final docs = await PartnerService.fetchOwnerPortalSummaryDocuments(widget.partner.id);
       if (mounted) {
         setState(() {
           _entries = parseEconomicSummaries(docs);
@@ -93,6 +93,20 @@ class _OwnerPortalSummaryPageState extends State<OwnerPortalSummaryPage> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                       children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            'Kun du og MAVI superadmin ser disse oppsummeringene. '
+                            'Andre bedrifter og sjåfører har ikke tilgang.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.4,
+                              color: PartnerUi.mutedText(context),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                         if (_entries.isNotEmpty) ...[
                           OwnerPortalEconomicSummaryHero(
                             entry: _entries.first,

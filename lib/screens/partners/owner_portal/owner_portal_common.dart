@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/partner/fleet_analytics_service.dart';
+import '../../../core/services/partner/partner_portal_scope.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -109,9 +110,11 @@ class OwnerPortalData {
   });
 
   static Future<OwnerPortalData> load(Partner partner) async {
+    await PartnerPortalScope.assertAccess(partnerId: partner.id);
     final vehicles = await PartnerService.fetchVehicles(partner.id);
     final vidSet = vehicles.map((v) => v.id).toSet();
-    final routes = await PartnerService.fetchRouteShares(partner.id, sentOnly: true);
+    var routes = await PartnerService.fetchRouteShares(partner.id, sentOnly: true);
+    routes = PartnerPortalScope.routesForPartner(routes, partner.id);
     final now = DateTime.now();
     final snapshots = await PartnerService.fetchFleetSnapshotsRange(
       companyId: partner.companyId,
@@ -119,7 +122,12 @@ class OwnerPortalData {
       to: now,
     );
     final partnerSnaps = snapshots.where((s) => vidSet.contains(s.partnerVehicleId)).toList();
-    final docs = await PartnerService.fetchOwnerPortalDocuments(partner.id);
+    List<PartnerDocument> docs = const [];
+    try {
+      docs = await PartnerService.fetchOwnerPortalDocuments(partner.id);
+    } catch (_) {
+      docs = const [];
+    }
     final meetings = await PartnerService.fetchPortalMeetings(partner.id);
     final inspections = await PartnerService.fetchVehicleInspections(partner.id);
     final shiftList = await PartnerService.fetchFleetShifts(partner.companyId);

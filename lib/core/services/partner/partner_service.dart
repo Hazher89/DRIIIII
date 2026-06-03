@@ -21,6 +21,7 @@ import 'fleet_shift_filters.dart';
 import 'fleet_shift_seed.dart';
 import 'mavi_unit_codes.dart';
 import '../storage/company_file_storage.dart';
+import 'partner_portal_scope.dart';
 import 'postal_code_registry.dart';
 import 'route_pdf_text_service.dart';
 import 'route_pdf_auto_assign.dart';
@@ -279,7 +280,7 @@ class PartnerService {
       q = q.inFilter('doc_category', docCategories);
     }
     final data = await q.order('created_at', ascending: false) as List<dynamic>;
-    return data.map((e) {
+    final list = data.map((e) {
       final m = Map<String, dynamic>.from(e as Map<String, dynamic>);
       final folder = m['partner_document_folders'];
       if (folder is Map && folder['name'] != null) {
@@ -287,6 +288,10 @@ class PartnerService {
       }
       return PartnerDocument.fromJson(m);
     }).toList();
+    return PartnerPortalScope.filterDocumentsForViewer(
+      list,
+      partnerId: partnerId,
+    );
   }
 
   static Future<List<Map<String, dynamic>>> fetchDocumentFolders({
@@ -295,11 +300,116 @@ class PartnerService {
     if (!_ok) return const [];
     final data = await _client
             .from('partner_document_folders')
-            .select('id, name, visibility, template_id')
+            .select('id, name, visibility, template_id, owner_managed')
             .eq('partner_id', partnerId)
             .order('name')
         as List<dynamic>;
     return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Mapper opprettet av bedriftsansvarlig (bil-eier portal).
+  static Future<List<Map<String, dynamic>>> fetchOwnerPortalDocumentFolders({
+    required String partnerId,
+  }) async {
+    await PartnerPortalScope.assertAccess(partnerId: partnerId);
+    if (!_ok) return const [];
+    try {
+      final data = await _client
+              .from('partner_document_folders')
+              .select('id, name, visibility, owner_managed, created_at')
+              .eq('partner_id', partnerId)
+              .eq('owner_managed', true)
+              .order('name')
+          as List<dynamic>;
+      return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    } catch (_) {
+      // Før migrasjon 20260604210000 eller ved RLS-feil: hent via RPC-fallback.
+      try {
+        final data = await _client
+                .from('partner_document_folders')
+                .select('id, name, visibility, created_at')
+                .eq('partner_id', partnerId)
+                .eq('visibility', 'private')
+                .order('name')
+            as List<dynamic>;
+        return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      } catch (_) {
+        return const [];
+      }
+    }
+  }
+
+  static Future<String?> createOwnerDocumentFolder({
+    required String partnerId,
+    required String name,
+  }) async {
+    await PartnerPortalScope.assertAccess(partnerId: partnerId);
+    if (!_ok) return null;
+    final id = await _client.rpc('create_owner_partner_document_folder', params: {
+      'p_partner_id': partnerId,
+      'p_name': name,
+    });
+    return id?.toString();
+  }
+
+  static Future<int> deleteOwnerDocumentFolder({
+    required String partnerId,
+    required String folderId,
+  }) async {
+    await PartnerPortalScope.assertAccess(partnerId: partnerId);
+    if (!_ok) return 0;
+    final count = await _client.rpc('delete_owner_partner_document_folder', params: {
+      'p_folder_id': folderId,
+    });
+    return (count as num?)?.toInt() ?? 0;
+  }
+
+  static Future<void> addOwnerPortalDocumentToFolder(
+    PartnerDocument doc, {
+    required String folderId,
+    String? createdBy,
+  }) async {
+    await PartnerPortalScope.assertAccess(partnerId: doc.partnerId);
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final uid = createdBy ?? _client.auth.currentUser?.id;
+    await _client.from('partner_documents').insert(
+      doc.copyForPartner(partnerId: doc.partnerId, folderId: folderId).toInsertJson(createdBy: uid),
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchDocumentFolderAccess(
+    String folderId,
+  ) async {
+    if (!_ok) return const [];
+    final data = await _client
+            .from('partner_document_folder_access')
+            .select('profile_id, created_at, profiles(id, full_name, email, role)')
+            .eq('folder_id', folderId)
+            .order('created_at')
+        as List<dynamic>;
+    return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  static Future<void> grantDocumentFolderAccess({
+    required String folderId,
+    required String profileId,
+  }) async {
+    if (!_ok) return;
+    await _client.rpc('grant_partner_document_folder_access', params: {
+      'p_folder_id': folderId,
+      'p_profile_id': profileId,
+    });
+  }
+
+  static Future<void> revokeDocumentFolderAccess({
+    required String folderId,
+    required String profileId,
+  }) async {
+    if (!_ok) return;
+    await _client.rpc('revoke_partner_document_folder_access', params: {
+      'p_folder_id': folderId,
+      'p_profile_id': profileId,
+    });
   }
 
   static Future<String?> createDocumentFolder({
@@ -617,6 +727,10 @@ class PartnerService {
     bool sentOnly = false,
   }) async {
     if (!_ok) return const [];
+    await PartnerPortalScope.assertAccess(
+      partnerId: partnerId,
+      partnerVehicleId: partnerVehicleId,
+    );
     var query = _client.from('partner_route_shares').select().eq('partner_id', partnerId);
     if (partnerVehicleId != null) {
       query = query.eq('partner_vehicle_id', partnerVehicleId);
@@ -627,7 +741,12 @@ class PartnerService {
       } catch (_) {}
     }
     final data = await query.order('share_date', ascending: false) as List<dynamic>;
-    return data.map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>)).toList();
+    final list = data.map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>)).toList();
+    return PartnerPortalScope.routesForPartner(
+      list,
+      partnerId,
+      partnerVehicleId: partnerVehicleId,
+    );
   }
 
   /// Purring sendt (SMS/e-post) per rute-id — for badge i planlegger.
@@ -1209,13 +1328,73 @@ class PartnerService {
   }
 
   static Future<List<PartnerDocument>> fetchOwnerPortalDocuments(String partnerId) async {
-    final all = await fetchDocuments(partnerId);
-    return all.where((d) => d.ownerVisible).toList();
+    await PartnerPortalScope.assertAccess(partnerId: partnerId);
+    if (!_ok) return const [];
+    try {
+      final data = await _client
+              .from('partner_documents')
+              .select()
+              .eq('partner_id', partnerId)
+              .neq('doc_category', 'summary')
+              .eq('owner_visible', true)
+              .order('created_at', ascending: false)
+          as List<dynamic>;
+      final list = data
+          .map((e) => PartnerDocument.fromJson(e as Map<String, dynamic>))
+          .toList();
+      return PartnerPortalScope.documentsForPartner(list, partnerId);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Økonomisk ukesoppsummering — kun bil-eier (egen partner) og MAVI superadmin (RLS).
+  static Future<List<PartnerDocument>> fetchOwnerPortalSummaryDocuments(
+    String partnerId,
+  ) async {
+    await PartnerPortalScope.assertEconomicSummaryAccess(partnerId: partnerId);
+    if (!_ok) return const [];
+    final data = await _client
+            .from('partner_documents')
+            .select('*, partner_document_folders(name)')
+            .eq('partner_id', partnerId)
+            .eq('doc_category', 'summary')
+            .order('created_at', ascending: false)
+        as List<dynamic>;
+    final list = data.map((e) {
+      final m = Map<String, dynamic>.from(e as Map<String, dynamic>);
+      final folder = m['partner_document_folders'];
+      if (folder is Map && folder['name'] != null) {
+        m['folder_name'] = folder['name'];
+      }
+      return PartnerDocument.fromJson(m);
+    }).toList();
+    return PartnerPortalScope.documentsForPartner(list, partnerId);
   }
 
   static Future<List<PartnerDocument>> fetchDriverPortalDocuments(String partnerId) async {
-    final all = await fetchDocuments(partnerId);
-    return all.where((d) => d.driverVisible).toList();
+    final me = await SupabaseService.fetchCurrentUserProfile();
+    await PartnerPortalScope.assertAccess(
+      partnerId: partnerId,
+      partnerVehicleId: me?.partnerVehicleId,
+    );
+    if (!_ok) return const [];
+    var q = _client
+        .from('partner_documents')
+        .select('*, partner_document_folders(name)')
+        .eq('partner_id', partnerId)
+        .neq('doc_category', 'summary')
+        .eq('driver_visible', true);
+    final data = await q.order('created_at', ascending: false) as List<dynamic>;
+    final list = data.map((e) {
+      final m = Map<String, dynamic>.from(e as Map<String, dynamic>);
+      final folder = m['partner_document_folders'];
+      if (folder is Map && folder['name'] != null) {
+        m['folder_name'] = folder['name'];
+      }
+      return PartnerDocument.fromJson(m);
+    }).toList();
+    return PartnerPortalScope.documentsForPartner(list, partnerId);
   }
 
   static Future<List<SharedPartnerDocument>> fetchSharedPartnerDocuments({
@@ -1410,7 +1589,9 @@ class PartnerService {
   static Future<PartnerPortalSession?> resolvePortalSession() async {
     if (!_ok) return null;
     try {
-      final raw = await _client.rpc('resolve_partner_portal_bootstrap');
+      final raw = await _client
+          .rpc('resolve_partner_portal_bootstrap')
+          .timeout(const Duration(seconds: 12));
       if (raw is Map) {
         return PartnerPortalSession.fromJson(Map<String, dynamic>.from(raw));
       }
@@ -1696,6 +1877,18 @@ class PartnerService {
         );
       }
     }
+    final row = await _client
+        .from('partner_route_shares')
+        .select('partner_id, partner_vehicle_id')
+        .eq('id', routeShareId)
+        .maybeSingle();
+    if (row == null) {
+      throw StateError('Ruten finnes ikke eller du har ikke tilgang.');
+    }
+    await PartnerPortalScope.assertAccess(
+      partnerId: row['partner_id'] as String,
+      partnerVehicleId: row['partner_vehicle_id'] as String?,
+    );
     await _client.from('partner_route_shares').update({
       'ack_status': accepted ? 'accepted' : 'rejected',
       'ack_at': DateTime.now().toIso8601String(),
@@ -1723,10 +1916,25 @@ class PartnerService {
     bool activeOnly = false,
   }) async {
     if (!_ok) return const [];
+    final me = await SupabaseService.fetchCurrentUserProfile();
+    if (me?.partnerId != null || me?.isPartnerPortalUser == true) {
+      await PartnerPortalScope.assertAccess(
+        partnerId: partnerId,
+        partnerVehicleId: me?.partnerVehicleId,
+      );
+    }
     var query = _client.from('partner_vehicles').select().eq('partner_id', partnerId);
     if (activeOnly) query = query.eq('is_active', true);
     final data = await query.order('unit_code', ascending: true) as List<dynamic>;
-    return data.map((e) => PartnerVehicle.fromJson(e as Map<String, dynamic>)).toList();
+    final list = data.map((e) => PartnerVehicle.fromJson(e as Map<String, dynamic>)).toList();
+    if (me?.partnerId != null || me?.isPartnerPortalUser == true) {
+      return PartnerPortalScope.vehiclesForPartner(
+        list,
+        partnerId,
+        partnerVehicleId: me?.partnerVehicleId,
+      );
+    }
+    return list;
   }
 
   static Future<List<PartnerVehicle>> replaceVehicles({

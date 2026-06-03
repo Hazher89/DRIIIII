@@ -21,6 +21,7 @@ class OwnerPortalOverviewPage extends StatefulWidget {
 class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
   OwnerPortalData? _data;
   bool _loading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -29,9 +30,24 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final d = await OwnerPortalData.load(widget.partner);
-    if (mounted) setState(() { _data = d; _loading = false; });
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final d = await OwnerPortalData.load(widget.partner);
+      if (!mounted) return;
+      setState(() {
+        _data = d;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = '$e';
+      });
+    }
   }
 
   @override
@@ -59,7 +75,29 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
+          : _loadError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, size: 48, color: Colors.orange),
+                        const SizedBox(height: 12),
+                        Text(_loadError!, textAlign: TextAlign.center),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _load,
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Prøv igjen'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : _data == null
+                  ? const Center(child: Text('Ingen data'))
+                  : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
@@ -87,6 +125,11 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                           hint: 'Gå til «Alle ruter» → åpne PDF → trykk «Aksepter rute»',
                           icon: Icons.check_circle_outline,
                         ),
+                      PartnerSmartAction(
+                        label: 'Tidligere ruter med PDF og kunder',
+                        hint: 'Alle ruter → Tidligere — filtrer dag/uke/mnd/år og per bil',
+                        icon: Icons.history_edu_outlined,
+                      ),
                       const PartnerSmartAction(
                         label: 'Se siste økonomiske oppsummering',
                         hint: 'Fanen «Oppsummering» — beløp, arkiv og total per måned',
