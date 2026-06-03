@@ -73,7 +73,7 @@ class _OwnerPortalSummaryPageState extends State<OwnerPortalSummaryPage> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.all(24),
                       children: [
-                        Icon(Icons.receipt_long_outlined, size: 56, color: Colors.grey.shade400),
+                        Icon(Icons.summarize_outlined, size: 56, color: Colors.grey.shade400),
                         const SizedBox(height: 16),
                         const Text(
                           'Ingen oppsummering delt ennå',

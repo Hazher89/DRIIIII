@@ -133,7 +133,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                       const PartnerSmartAction(
                         label: 'Se siste økonomiske oppsummering',
                         hint: 'Fanen «Oppsummering» — beløp, arkiv og total per måned',
-                        icon: Icons.receipt_long_outlined,
+                        icon: Icons.summarize_outlined,
                       ),
                       const PartnerSmartAction(
                         label: 'Kontroller dokumenter og avtaler',
@@ -148,9 +148,9 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                       crossAxisCount: MediaQuery.sizeOf(context).width > 520 ? 3 : 2,
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childAspectRatio: 1.15,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                      childAspectRatio: MediaQuery.sizeOf(context).width > 520 ? 2.4 : 2.55,
                       children: [
                         OwnerKpiCard(
                           label: 'Ruter i dag',

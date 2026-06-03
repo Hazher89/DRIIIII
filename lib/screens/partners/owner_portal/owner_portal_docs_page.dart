@@ -500,7 +500,9 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
               child: ListTile(
-                leading: const Icon(Icons.folder, color: Color(0xFFF4B400), size: 36),
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                leading: const Icon(Icons.folder, color: Color(0xFFF4B400), size: 28),
                 title: Text((f['name'] as String?) ?? 'Mappe', style: const TextStyle(fontWeight: FontWeight.w700)),
                 subtitle: Text(count == 0 ? 'Tom mappe' : '$count ${count == 1 ? "fil" : "filer"}'),
                 trailing: PopupMenuButton<String>(
@@ -523,9 +525,12 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
         const SizedBox(height: 16),
         OwnerSectionTitle(title: 'Fra MAVI'),
         Card(
+          margin: EdgeInsets.zero,
           child: ListTile(
-            leading: const Icon(Icons.folder_shared_outlined, color: DriftProTheme.primaryGreen),
-            title: const Text('Dokumenter delt med deg'),
+            dense: true,
+            visualDensity: VisualDensity.compact,
+            leading: const Icon(Icons.folder_shared_outlined, color: DriftProTheme.primaryGreen, size: 26),
+            title: const Text('Dokumenter delt med deg', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
             subtitle: Text(
               _maviSharedDocs.isEmpty
                   ? 'Ingen dokumenter utenfor egne mapper'

@@ -56,7 +56,7 @@ List<Widget> _partnerLogoutActions(BuildContext context) => [
 
 /// Begrenset portal for [UserProfile] som er knyttet til en samarbeidspartner.
 /// Versjonsmerke — synlig for bil-eier når ny portal er lastet.
-const kOwnerPortalBuildLabel = 'Bil-eier v5';
+const kOwnerPortalBuildLabel = 'Bil-eier v6';
 const kDriverPortalBuildLabel = 'Sjåfør v4';
 
 class PartnerShell extends StatefulWidget {
@@ -187,7 +187,7 @@ class _PartnerShellState extends State<PartnerShell> {
           ];
     final ownerNavItems = const [
       PartnerPortalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
-      PartnerPortalNavItem(icon: Icons.receipt_long_outlined, selectedIcon: Icons.receipt_long, label: 'Oppsummering'),
+      PartnerPortalNavItem(icon: Icons.summarize_outlined, selectedIcon: Icons.summarize, label: 'Oppsummering'),
       PartnerPortalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
       PartnerPortalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Alle ruter'),
       PartnerPortalNavItem(icon: Icons.car_rental_outlined, selectedIcon: Icons.car_rental, label: 'Utleie'),

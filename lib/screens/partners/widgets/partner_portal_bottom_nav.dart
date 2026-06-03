@@ -73,7 +73,7 @@ class _PartnerPortalBottomNavState extends State<PartnerPortalBottomNav> {
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 64,
+          height: 68,
           child: ListView.builder(
             controller: _scroll,
             scrollDirection: Axis.horizontal,
