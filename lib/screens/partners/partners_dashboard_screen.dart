@@ -2,9 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/partner_access.dart';
-import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -79,7 +77,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   bool _canManageVehicleRentals(UserAccess? access) {
     if (access == null) return false;
     return access.canPartnersVehicleRental ||
-        access.canFleetRoutes ||
+        access.canPartnerRoutePlanning ||
         access.canPartnersAdmin;
   }
 
@@ -91,7 +89,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   void _syncDashboardTabs(UserProfile? profile) {
     final access = profile?.access;
     final companies = _canCompaniesList(access);
-    final routes = access?.canFleetRoutes == true;
+    final routes = access?.canPartnerRoutePlanning == true;
     final sms = PartnerAccess.canOpenPartnersModule(access);
     final rental = _canManageVehicleRentals(access);
     final length = (companies ? 1 : 0) + (routes ? 1 : 0) + (sms ? 1 : 0) + (rental ? 1 : 0);
@@ -356,14 +354,10 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                     child: _buildPartnersList(),
                   ),
                 if (_showRoutesTab)
-                  PermissionGuard(
-                    profile: _profile,
-                    accessKey: AccessKeys.fleetRuter,
-                    child: PartnerRoutePlannerScreen(
-                      key: _routesKey,
-                      embedded: true,
-                      onDataChanged: _refreshPartnersOnly,
-                    ),
+                  PartnerRoutePlannerScreen(
+                    key: _routesKey,
+                    embedded: true,
+                    onDataChanged: _refreshPartnersOnly,
                   ),
                 if (_showSmsTab)
                   PartnerSmsHubScreen(

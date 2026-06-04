@@ -27,6 +27,11 @@ class PartnerAccess {
       label: 'Oversikt',
     ),
     PartnerDetailTabDef(
+      accessKey: AccessKeys.partnersTabRuter,
+      icon: Icons.route_outlined,
+      label: 'Ruter',
+    ),
+    PartnerDetailTabDef(
       accessKey: AccessKeys.partnersTabBilkontroll,
       icon: Icons.fact_check_outlined,
       label: 'Bilkontroll',
@@ -76,7 +81,7 @@ class PartnerAccess {
     return access.canPartnersTab ||
         access.canPartnersMenu ||
         access.canPartnersAdmin ||
-        access.canFleetRoutes ||
+        access.canPartnerRoutePlanning ||
         canOpenPartnerDetail(access);
   }
 }

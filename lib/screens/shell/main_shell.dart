@@ -16,6 +16,7 @@ import '../../models/user_profile.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/permissions/access_keys.dart';
+import '../../core/permissions/partner_access.dart';
 import '../../core/permissions/user_access.dart';
 
 class MainShell extends StatefulWidget {
@@ -195,6 +196,9 @@ class _MainShellState extends State<MainShell> {
 
   bool _hasAccess(String key) {
     if (_profile == null) return false;
+    if (key == AccessKeys.partners) {
+      return PartnerAccess.canOpenPartnersModule(_profile!.access);
+    }
     return _profile!.access.can(key);
   }
 

@@ -97,7 +97,8 @@ class AccessCatalog {
     AccessSection(
       id: 'partners',
       title: 'Samarbeidspartnere – modul',
-      subtitle: 'Oversikt, oppretting og ruter',
+      subtitle:
+          '«Ruter & planlegging» krever fleet_ruter eller partners_tab_ruter',
       keys: [
         AccessKeys.partnersAdmin,
         AccessKeys.fleetRuter,

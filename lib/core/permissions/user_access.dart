@@ -28,8 +28,14 @@ class UserAccess {
   bool can(String key) {
     if (profile.role == UserRole.superadmin) return true;
     if (!profile.isApproved) return false;
+    if (profile.role == UserRole.ansatt &&
+        (key == AccessKeys.avdelinger || key == AccessKeys.avdelingerRediger)) {
+      return false;
+    }
     return _resolved[key] ?? false;
   }
+
+  bool canAny(Iterable<String> keys) => keys.any(can);
 
   Map<String, dynamic> toSettingsMap() =>
       {for (final e in _resolved.entries) e.key: e.value};
@@ -44,7 +50,8 @@ class UserAccess {
   bool get canMore => can(AccessKeys.more);
 
   // Mer-meny
-  bool get canDepartments => can(AccessKeys.avdelinger);
+  bool get canDepartments =>
+      profile.role != UserRole.ansatt && can(AccessKeys.avdelinger);
   bool get canEmployeesList => can(AccessKeys.ansatte);
   bool get canPersonalFolder => can(AccessKeys.personalmappe);
   bool get canNotifications => can(AccessKeys.varsler);
@@ -70,6 +77,10 @@ class UserAccess {
   bool get canSurveyResults => can(AccessKeys.surveyResultater);
   bool get canPartnersAdmin => can(AccessKeys.partnersAdmin);
   bool get canFleetRoutes => can(AccessKeys.fleetRuter);
+
+  /// Hovedfanen «Ruter & planlegging» + ruter per bedrift.
+  bool get canPartnerRoutePlanning =>
+      canFleetRoutes || canPartnersTabRuter || canPartnersAdmin;
   bool get canPartnersCreate => can(AccessKeys.partnersCreate);
   bool get canPartnersDelete => can(AccessKeys.partnersDelete);
   bool get canPartnersEdit => can(AccessKeys.partnersEdit);

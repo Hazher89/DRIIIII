@@ -56,8 +56,7 @@ class _DispatchAccessGateState extends State<DispatchAccessGate> {
       }
 
       final canPlan = profile.isSuperAdmin ||
-          profile.access.canFleetRoutes ||
-          profile.access.canPartnersAdmin;
+          profile.access.canPartnerRoutePlanning;
 
       if (!canPlan) {
         setState(() {
