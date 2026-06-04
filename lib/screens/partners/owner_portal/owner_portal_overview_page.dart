@@ -12,7 +12,13 @@ import 'owner_portal_common.dart';
 
 class OwnerPortalOverviewPage extends StatefulWidget {
   final Partner partner;
-  const OwnerPortalOverviewPage({super.key, required this.partner});
+  final void Function({int tabIndex, String? vehicleId})? onGoToRoutes;
+
+  const OwnerPortalOverviewPage({
+    super.key,
+    required this.partner,
+    this.onGoToRoutes,
+  });
 
   @override
   State<OwnerPortalOverviewPage> createState() => _OwnerPortalOverviewPageState();
@@ -108,7 +114,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     leading: const Icon(Icons.business_center, color: Colors.white, size: 32),
                   ),
                   if (_data!.pendingAckTotal > 0) ...[
-                    _pendingRoutesBanner(context),
+                    _pendingRoutesBanner(context, onTap: _openPendingRoutes),
                     const SizedBox(height: 12),
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 16),
@@ -122,8 +128,9 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                       if (_data!.pendingAckTotal > 0)
                         PartnerSmartAction(
                           label: '${_data!.pendingAckTotal} rute(r) venter på aksept',
-                          hint: 'Gå til «Alle ruter» → åpne PDF → trykk «Aksepter rute»',
+                          hint: 'Åpner Kommende — vis PDF og aksepter',
                           icon: Icons.check_circle_outline,
+                          onTap: _openPendingRoutes,
                         ),
                       PartnerSmartAction(
                         label: 'Tidligere ruter med PDF og kunder',
@@ -192,7 +199,17 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     title: 'Dine biler — jobb vs. ledig',
                     subtitle: 'Stablet oversikt per MAVI-enhet (siste 90 dager)',
                   ),
-                  ..._data!.vehicleStats.map((s) => OwnerVehicleStackCard(stats: s)),
+                  ..._data!.vehicleStats.map(
+                    (s) => OwnerVehicleStackCard(
+                      stats: s,
+                      onTap: widget.onGoToRoutes == null
+                          ? null
+                          : () => widget.onGoToRoutes!(
+                                tabIndex: 1,
+                                vehicleId: s.vehicle.id,
+                              ),
+                    ),
+                  ),
                   const OwnerSectionTitle(title: 'Bedrift', subtitle: 'Kontakt og revisjon'),
                   _infoCard(context, widget.partner),
                   if (_data!.meetings.isNotEmpty) ...[
@@ -213,14 +230,25 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
     );
   }
 
-  Widget _pendingRoutesBanner(BuildContext context) {
+  void _openPendingRoutes() {
+    final newest = _data?.newestPendingAckRoute;
+    widget.onGoToRoutes?.call(
+      tabIndex: newest != null && ownerRouteIsFuture(newest) ? 1 : 0,
+      vehicleId: newest?.partnerVehicleId,
+    );
+  }
+
+  Widget _pendingRoutesBanner(BuildContext context, {VoidCallback? onTap}) {
     final n = _data!.pendingAckTotal;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Material(
         color: Colors.orange.shade50,
         borderRadius: BorderRadius.circular(16),
-        child: Padding(
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,21 +269,32 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '1. Gå til «Alle ruter»\n'
-                      '2. Trykk «Åpne rute-PDF»\n'
-                      '3. Trykk «Aksepter rute»',
+                      onTap != null
+                          ? 'Trykk her for Kommende.\n1. Åpne rute-PDF\n2. Trykk «Aksepter rute»'
+                          : '1. Gå til «Alle ruter» → Kommende\n2. Åpne rute-PDF\n3. Trykk «Aksepter rute»',
                       style: TextStyle(
                         fontSize: 13,
                         height: 1.45,
                         color: Colors.orange.shade900.withValues(alpha: 0.9),
                       ),
                     ),
+                    if (onTap != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Gå til Kommende →',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: Colors.orange.shade900,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
             ],
           ),
         ),
+      ),
       ),
     );
   }

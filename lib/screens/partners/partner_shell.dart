@@ -24,6 +24,7 @@ import 'owner_portal/owner_portal_inspections_page.dart';
 import 'owner_portal/owner_portal_meetings_page.dart';
 import 'owner_portal/owner_portal_overview_page.dart';
 import 'owner_portal/owner_portal_routes_page.dart';
+import 'owner_portal/owner_portal_routes_focus.dart';
 import 'owner_portal/owner_portal_vehicle_rental_page.dart';
 import 'owner_portal/owner_portal_summary_page.dart';
 import 'widgets/partner_portal_bottom_nav.dart';
@@ -73,6 +74,7 @@ class _PartnerShellState extends State<PartnerShell> {
   int _index = 0;
   Partner? _partner;
   bool _loading = true;
+  OwnerPortalRoutesFocus? _routesFocus;
 
   @override
   void initState() {
@@ -167,12 +169,27 @@ class _PartnerShellState extends State<PartnerShell> {
     final p = _partner!;
     final isOwner = widget.portalAccountKind == 'owner' ||
         (widget.portalAccountKind == null && widget.profile.isPartnerPortalOwner);
+    void goToRoutes({int tabIndex = 1, String? vehicleId}) {
+      setState(() {
+        _index = 3;
+        _routesFocus = OwnerPortalRoutesFocus(tabIndex: tabIndex, vehicleId: vehicleId);
+      });
+    }
+
     final pages = isOwner
         ? [
-            OwnerPortalOverviewPage(partner: p),
+            OwnerPortalOverviewPage(partner: p, onGoToRoutes: goToRoutes),
             OwnerPortalSummaryPage(partner: p),
             OwnerPortalDocsPage(partner: p),
-            OwnerPortalRoutesPage(partner: p),
+            OwnerPortalRoutesPage(
+              partner: p,
+              launchFocus: _routesFocus,
+              onLaunchFocusConsumed: () {
+                if (_routesFocus != null) {
+                  setState(() => _routesFocus = null);
+                }
+              },
+            ),
             OwnerPortalVehicleRentalPage(partner: p),
             OwnerPortalMeetingsPage(partner: p),
             OwnerPortalInspectionsPage(partner: p),

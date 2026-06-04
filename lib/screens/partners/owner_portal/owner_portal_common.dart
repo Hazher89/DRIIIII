@@ -33,6 +33,13 @@ bool ownerRouteIsPast(PartnerRouteShare r) {
   return ownerRouteCalendarDay(r).isBefore(_startOfDay(DateTime.now()));
 }
 
+/// Rute som fortsatt må aksepteres i portalen (i dag eller fremtid — ikke gamle arkivruter).
+bool ownerRouteNeedsPortalAck(PartnerRouteShare r) {
+  if (r.ackStatus != 'pending') return false;
+  if (!r.isSentWithNotify && !r.isRegistered) return false;
+  return !ownerRouteIsPast(r);
+}
+
 bool ownerRouteIsActive(PartnerRouteShare r) {
   if (r.ackStatus == 'pending') return true;
   final now = DateTime.now();
@@ -92,7 +99,14 @@ class OwnerPortalData {
     return past;
   }
 
-  int get pendingAckTotal => routes.where((r) => r.ackStatus == 'pending').length;
+  int get pendingAckTotal => routes.where(ownerRouteNeedsPortalAck).length;
+
+  /// Nyeste rute som venter på aksept (kommende eller i dag).
+  PartnerRouteShare? get newestPendingAckRoute {
+    final pending = routes.where(ownerRouteNeedsPortalAck).toList()
+      ..sort((a, b) => ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b)));
+    return pending.isEmpty ? null : pending.last;
+  }
 
   final Map<String, FleetShiftDefinition> shiftsById;
 
@@ -173,7 +187,7 @@ class OwnerPortalData {
           idleDays: ledig,
           friDays: fri,
           routesToday: vRoutes.where(ownerRouteIsToday).length,
-          pendingAck: vRoutes.where((r) => r.ackStatus == 'pending').length,
+          pendingAck: vRoutes.where(ownerRouteNeedsPortalAck).length,
           totalRoutes: vRoutes.length,
         ),
       );

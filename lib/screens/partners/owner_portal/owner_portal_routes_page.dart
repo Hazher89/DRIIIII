@@ -10,10 +10,19 @@ import '../widgets/partner_ui.dart';
 import 'owner_portal_common.dart';
 import 'owner_portal_route_card.dart';
 import 'owner_portal_route_history.dart';
+import 'owner_portal_routes_focus.dart';
 
 class OwnerPortalRoutesPage extends StatefulWidget {
   final Partner partner;
-  const OwnerPortalRoutesPage({super.key, required this.partner});
+  final OwnerPortalRoutesFocus? launchFocus;
+  final VoidCallback? onLaunchFocusConsumed;
+
+  const OwnerPortalRoutesPage({
+    super.key,
+    required this.partner,
+    this.launchFocus,
+    this.onLaunchFocusConsumed,
+  });
 
   @override
   State<OwnerPortalRoutesPage> createState() => _OwnerPortalRoutesPageState();
@@ -34,6 +43,26 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
   }
 
   @override
+  void didUpdateWidget(covariant OwnerPortalRoutesPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.launchFocus != null &&
+        widget.launchFocus != oldWidget.launchFocus) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _applyLaunchFocus());
+    }
+  }
+
+  void _applyLaunchFocus() {
+    final focus = widget.launchFocus;
+    if (focus == null || _data == null) return;
+    final tab = focus.tabIndex.clamp(0, 2);
+    if (_tab.index != tab) {
+      _tab.animateTo(tab);
+    }
+    setState(() => _vehicleFilterId = focus.vehicleId);
+    widget.onLaunchFocusConsumed?.call();
+  }
+
+  @override
   void dispose() {
     _tab.dispose();
     super.dispose();
@@ -48,6 +77,18 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
         _vehicles = {for (final v in d.vehicles) v.id: v};
         _loading = false;
       });
+      if (widget.launchFocus != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _applyLaunchFocus());
+      }
+    }
+  }
+
+  void _openKommendeForVehicle(String vehicleId) {
+    setState(() {
+      _vehicleFilterId = vehicleId;
+    });
+    if (_tab.index != 1) {
+      _tab.animateTo(1);
     }
   }
 
@@ -203,9 +244,14 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
                   '${s.pendingAck > 0 ? ' · ${s.pendingAck}' : ''}',
                 ),
                 selected: _vehicleFilterId == s.vehicle.id,
-                onSelected: (_) => setState(() {
-                  _vehicleFilterId = _vehicleFilterId == s.vehicle.id ? null : s.vehicle.id;
-                }),
+                onSelected: (_) {
+                  final vid = s.vehicle.id;
+                  if (_vehicleFilterId == vid) {
+                    setState(() => _vehicleFilterId = null);
+                  } else {
+                    _openKommendeForVehicle(vid);
+                  }
+                },
               ),
             ),
         ],
@@ -223,9 +269,13 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
           : Theme.of(context).cardColor,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
-        onTap: () => setState(() {
-          _vehicleFilterId = selected ? null : stats.vehicle.id;
-        }),
+        onTap: () {
+          if (selected) {
+            setState(() => _vehicleFilterId = null);
+          } else {
+            _openKommendeForVehicle(stats.vehicle.id);
+          }
+        },
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: 128,
