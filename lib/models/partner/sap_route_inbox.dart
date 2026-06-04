@@ -9,6 +9,8 @@ class SapRouteInboxItem {
   final String pdfStoragePath;
   final String? detectedMaviCode;
   final String? rejectReason;
+  final String? contentSha256;
+  final String? importedRouteShareId;
   final DateTime receivedAt;
 
   const SapRouteInboxItem({
@@ -22,6 +24,8 @@ class SapRouteInboxItem {
     required this.pdfStoragePath,
     this.detectedMaviCode,
     this.rejectReason,
+    this.contentSha256,
+    this.importedRouteShareId,
     required this.receivedAt,
   });
 
@@ -37,6 +41,8 @@ class SapRouteInboxItem {
       pdfStoragePath: json['pdf_storage_path'] as String,
       detectedMaviCode: json['detected_mavi_code'] as String?,
       rejectReason: json['reject_reason'] as String?,
+      contentSha256: json['content_sha256'] as String?,
+      importedRouteShareId: json['imported_route_share_id'] as String?,
       receivedAt: DateTime.parse(json['received_at'] as String),
     );
   }

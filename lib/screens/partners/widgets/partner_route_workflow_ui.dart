@@ -64,6 +64,7 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
   final Widget tabBody;
   final Widget footer;
   final Widget? topBanner;
+  final bool showTabCaption;
 
   const PartnerRouteWorkflowShell({
     super.key,
@@ -87,6 +88,7 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     required this.tabBody,
     required this.footer,
     this.topBanner,
+    this.showTabCaption = false,
   });
 
   static const _bg = Color(0xFFEEF1F5);
@@ -202,22 +204,26 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
   }
 
   Widget _buildMetricsRow() {
+    if (metrics.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final n = metrics.length;
-          if (n == 0) return const SizedBox.shrink();
-          final cols = constraints.maxWidth >= 600 ? n.clamp(2, 4) : 2;
-          final cellW = (constraints.maxWidth - (cols - 1) * 10) / cols;
-          return Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: metrics
-                .map((m) => SizedBox(width: cellW, child: _StatCard(metric: m, accent: accentDark)))
-                .toList(),
-          );
-        },
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            children: [
+              for (var i = 0; i < metrics.length; i++) ...[
+                if (i > 0) Container(width: 1, height: 28, color: Colors.grey.shade300),
+                Expanded(child: _CompactMetric(metric: metrics[i])),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -240,8 +246,11 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildSidebar(scrollable: false),
-        const SizedBox(height: 10),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 160),
+          child: SingleChildScrollView(child: _buildSidebar(scrollable: false)),
+        ),
+        const SizedBox(height: 8),
         Expanded(child: _buildMainPanel()),
       ],
     );
@@ -287,37 +296,37 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (topBanner != null) ...[
-          topBanner!,
-          const SizedBox(height: 8),
-        ],
         LayoutBuilder(
           builder: (context, constraints) => _buildTabBar(wide: constraints.maxWidth >= _breakpoint),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 6),
-          child: Text(
-            tabCaption,
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.35),
-          ),
-        ),
-        Expanded(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: accent.withValues(alpha: 0.18)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+        if (showTabCaption)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
+            child: Text(
+              tabCaption,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600, height: 1.3),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: tabBody,
+          ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, constraints) => SizedBox(
+              height: constraints.maxHeight,
+              width: constraints.maxWidth,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: accent.withValues(alpha: 0.18)),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: Scrollbar(
+                    thumbVisibility: true,
+                    interactive: true,
+                    child: tabBody,
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -457,62 +466,30 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
   }
 }
 
-class _StatCard extends StatelessWidget {
+class _CompactMetric extends StatelessWidget {
   final RouteWorkflowMetric metric;
-  final Color accent;
 
-  const _StatCard({required this.metric, required this.accent});
+  const _CompactMetric({required this.metric});
 
   @override
   Widget build(BuildContext context) {
-    final c = metric.color ?? accent;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: c.withValues(alpha: 0.22)),
-      ),
-      child: Row(
+    final c = metric.color ?? Colors.blueGrey;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: c.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            alignment: Alignment.center,
-            child: Icon(metric.icon, color: c, size: 22),
+          Text(
+            metric.value,
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: c, height: 1),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  metric.value,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: c,
-                    height: 1.1,
-                  ),
-                ),
-                Text(
-                  metric.label,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600, height: 1.2),
-                ),
-                if (metric.hint != null)
-                  Text(
-                    metric.hint!,
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-              ],
-            ),
+          const SizedBox(height: 2),
+          Text(
+            metric.label,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 10, color: Colors.grey.shade700, height: 1.1),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

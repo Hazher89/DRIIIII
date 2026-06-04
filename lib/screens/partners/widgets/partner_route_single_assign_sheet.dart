@@ -17,6 +17,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/notification_channel.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import 'partner_route_pdf_actions.dart';
 import 'partner_route_workflow_ui.dart';
 
 DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -461,6 +462,21 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
           if (_hasPdf) ...[
             const SizedBox(height: 12),
             _autoSummaryCard(),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: busy
+                  ? null
+                  : () => PartnerRoutePdfActions.openPdfBytes(
+                        context,
+                        bytes: _pdfBytes!,
+                        title: _pdfFileName ?? 'Rute-PDF',
+                      ),
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              label: const Text('Vis PDF — kontroller før publisering'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 44),
+              ),
+            ),
             const SizedBox(height: 14),
             OutlinedButton.icon(
               onPressed: busy ? null : _pickDay,

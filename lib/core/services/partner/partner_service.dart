@@ -2751,17 +2751,24 @@ class PartnerService {
     final staged = await fetchStagedRouteShares(companyId);
     if (staged.isEmpty) return 0;
 
-    final stagedPaths = staged.map((s) => s.pdfStoragePath).toSet();
     var reconciled = 0;
     for (final item in pending) {
+      if (item.importedRouteShareId != null) {
+        final linked = staged.where((s) => s.id == item.importedRouteShareId).firstOrNull;
+        if (linked != null) {
+          await markSapRouteInboxImported(
+            inboxId: item.id,
+            routeShareId: linked.id,
+            detectedMaviCode: item.detectedMaviCode,
+          );
+          reconciled++;
+          continue;
+        }
+      }
+
       PartnerRouteShare? match;
       for (final s in staged) {
-        if (s.pdfStoragePath == item.pdfStoragePath) {
-          match = s;
-          break;
-        }
-        final title = s.title ?? '';
-        if (title.contains(item.fileName)) {
+        if (_sapInboxMatchesStagedShare(item, s)) {
           match = s;
           break;
         }
@@ -2775,6 +2782,34 @@ class PartnerService {
       reconciled++;
     }
     return reconciled;
+  }
+
+  static bool _sapInboxMatchesStagedShare(SapRouteInboxItem item, PartnerRouteShare share) {
+    if (share.pdfStoragePath == item.pdfStoragePath) return true;
+    final title = (share.title ?? '').toLowerCase();
+    final fileName = item.fileName.toLowerCase();
+    if (title.contains(fileName)) return true;
+    if (share.pdfStoragePath.toLowerCase().contains(fileName)) return true;
+    final base = fileName.replaceAll('.pdf', '');
+    if (base.isNotEmpty && title.contains(base)) return true;
+    if (item.contentSha256 != null &&
+        item.contentSha256!.isNotEmpty &&
+        share.pdfStoragePath.toLowerCase().contains(base)) {
+      return true;
+    }
+    return false;
+  }
+
+  static bool stagedShareMatchesSapFile({
+    required PartnerRouteShare share,
+    required String fileName,
+    required String vehicleId,
+  }) {
+    if (share.partnerVehicleId != vehicleId || !share.isStaged) return false;
+    final fn = fileName.toLowerCase();
+    final title = (share.title ?? '').toLowerCase();
+    if (title.contains(fn)) return true;
+    return share.pdfStoragePath.toLowerCase().contains(fn);
   }
 
   static Future<List<SapRouteInboxItem>> fetchSapRouteInboxPending(

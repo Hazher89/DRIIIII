@@ -217,6 +217,22 @@ Deno.serve(async (req) => {
       continue;
     }
 
+    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const { data: hashDup } = await supabase
+      .from("sap_route_inbox")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("content_sha256", hash)
+      .in("status", ["pending", "imported"])
+      .gte("received_at", since)
+      .limit(1)
+      .maybeSingle();
+
+    if (hashDup?.id) {
+      skipped.push(`${att.filename}:content_duplicate`);
+      continue;
+    }
+
     const { error: insErr } = await supabase.from("sap_route_inbox").insert({
       company_id: companyId,
       status: "pending",

@@ -34,6 +34,7 @@ class SapRouteImportService {
     }
 
     final fallbackDay = DateTime(routeDate.year, routeDate.month, routeDate.day);
+    var staged = await PartnerService.fetchStagedRouteShares(companyId);
     final lines = <SapRouteImportLine>[];
     final skippedItems = <SapRouteImportSkippedItem>[];
     var imported = 0;
@@ -41,6 +42,15 @@ class SapRouteImportService {
 
     for (final item in targets) {
       try {
+        if (item.importedRouteShareId != null) {
+          lines.add(SapRouteImportLine(
+            fileName: item.fileName,
+            ok: true,
+            message: 'Allerede importert',
+          ));
+          continue;
+        }
+
         final bytes = await PartnerService.downloadRoutePdfBytes(item.pdfStoragePath);
         if (bytes == null || bytes.isEmpty) {
           await _failItem(
@@ -119,6 +129,28 @@ class SapRouteImportService {
           continue;
         }
 
+        final existing = staged.where(
+          (s) => PartnerService.stagedShareMatchesSapFile(
+            share: s,
+            fileName: item.fileName,
+            vehicleId: vehicle.id,
+          ),
+        ).firstOrNull;
+        if (existing != null) {
+          await PartnerService.markSapRouteInboxImported(
+            inboxId: item.id,
+            routeShareId: existing.id,
+            detectedMaviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+          );
+          lines.add(SapRouteImportLine(
+            fileName: item.fileName,
+            ok: true,
+            maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+            message: 'Allerede i kø',
+          ));
+          continue;
+        }
+
         final bundle = RoutePdfTextService.parseBundle(bytes, fallbackDate: fallbackDay);
         final shareId = await PartnerService.createStagedRouteShareFromPdf(
           companyId: companyId,
@@ -137,6 +169,7 @@ class SapRouteImportService {
         );
 
         imported++;
+        staged = await PartnerService.fetchStagedRouteShares(companyId);
         lines.add(SapRouteImportLine(
           fileName: item.fileName,
           ok: true,
