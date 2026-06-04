@@ -36,8 +36,8 @@ Future<bool> ownerPortalSetRouteAck(
                 const SizedBox(height: 8),
                 Text(
                   onBehalfOfDriver
-                      ? 'Du bekrefter på vegne av sjåfør. MAVI får beskjed med én gang.'
-                      : 'Du bekrefter at du tar ruten. MAVI får beskjed med én gang.',
+                      ? 'Du bekrefter på vegne av sjåfør. MAVI får ikke beskjed ved aksept.'
+                      : 'Du bekrefter at du tar ruten. MAVI får ikke beskjed ved aksept.',
                   style: TextStyle(fontSize: 13, color: Colors.grey.shade700, height: 1.35),
                 ),
                 const SizedBox(height: 12),
@@ -116,10 +116,10 @@ Future<bool> ownerPortalSetRouteAck(
           content: Text(
             onBehalfOfDriver
                 ? (accepted
-                    ? 'Ruten er godkjent. Sjåfør og MAVI er varslet.'
+                    ? 'Ruten er godkjent.'
                     : 'Ruten er avvist med begrunnelse.')
                 : (accepted
-                    ? 'Ruten er akseptert. MAVI er varslet.'
+                    ? 'Ruten er akseptert.'
                     : 'Ruten er avvist. Begrunnelsen er sendt til MAVI.'),
           ),
         ),

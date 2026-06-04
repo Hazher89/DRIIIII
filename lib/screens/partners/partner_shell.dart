@@ -510,7 +510,7 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
           SnackBar(
             content: Text(
               accepted
-                  ? 'Ruten er akseptert. MAVI er varslet.'
+                  ? 'Ruten er akseptert.'
                   : 'Ruten er avlyst. Begrunnelsen er sendt til MAVI.',
             ),
           ),

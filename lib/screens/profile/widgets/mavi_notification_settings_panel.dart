@@ -118,8 +118,8 @@ class _MaviNotificationSettingsPanelState extends State<MaviNotificationSettings
               const Divider(height: 28),
               Text('Intern oversikt — samarbeid', style: DriftProTheme.headingSm),
               NotificationChannelTile(
-                title: 'Partner godkjente/avviste rute',
-                subtitle: 'Til ledere når bedrift svarer på rute',
+                title: 'Partner avviste rute (intern)',
+                subtitle: 'Kun ved avvisning — ikke ved aksept',
                 value: s.chPartnerRouteAckInternal,
                 onChanged: (v) =>
                     setState(() => _s = s.copyWith(chPartnerRouteAckInternal: v)),

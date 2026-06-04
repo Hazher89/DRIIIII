@@ -136,6 +136,7 @@ class _PartnerNotificationSettingsPanelState
               ),
               NotificationChannelTile(
                 title: 'Rute godkjent (bekreftelse)',
+                subtitle: 'Deaktivert — ingen SMS ved aksept i portal',
                 value: s.chPartnerRouteAccepted,
                 onChanged: (v) =>
                     setState(() => _s = s.copyWith(chPartnerRouteAccepted: v)),
