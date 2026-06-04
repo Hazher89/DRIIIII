@@ -122,14 +122,15 @@ class _NotificationAuditPanelState extends State<NotificationAuditPanel> {
                               color: Colors.orange,
                             ),
                             title: Text(
-                              a.description ?? a.category ?? 'Varself',
+                              '${a.channelLabel} — ${a.deliveryStatusLabel}',
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
                             subtitle: Text(
-                              '${a.statusLabel} · ${a.skipReasonLabel}\n'
-                              '${a.recipient} · ${df.format(a.createdAt)}'
-                              '${a.partnerName != null ? '\n${a.partnerName}' : ''}',
+                              '${a.messagePreview ?? a.description ?? a.category ?? 'Varself'}\n'
+                              'Til: ${a.recipient} · ${df.format(a.createdAt)}'
+                              '${a.partnerName != null ? '\nBedrift: ${a.partnerName}' : ''}'
+                              '${a.deliveryStatus == 'skipped' ? '\n${a.skipReasonLabel}' : ''}',
                             ),
                             isThreeLine: true,
                           ),

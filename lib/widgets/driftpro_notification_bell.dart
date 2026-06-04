@@ -36,7 +36,10 @@ class _DriftproNotificationBellState extends State<DriftproNotificationBell> {
       return;
     }
     try {
-      final summary = await NotificationInboxService.load(access: access);
+      final summary = await NotificationInboxService.load(
+        access: access,
+        excludeDismissed: true,
+      );
       if (mounted) {
         setState(() {
           _summary = summary;
@@ -48,10 +51,19 @@ class _DriftproNotificationBellState extends State<DriftproNotificationBell> {
     }
   }
 
+  Future<void> _dismissShown(NotificationInboxSummary? summary) async {
+    if (summary == null || summary.items.isEmpty) return;
+    await NotificationInboxService.dismiss(
+      summary.items.map((i) => i.dismissKey),
+    );
+    await _refresh();
+  }
+
   Future<void> _openSheet() async {
     await _refresh();
     if (!mounted) return;
     final summary = _summary;
+
     await showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -72,12 +84,20 @@ class _DriftproNotificationBellState extends State<DriftproNotificationBell> {
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                       ),
                     ),
+                    if (summary != null && summary.items.isNotEmpty)
+                      TextButton(
+                        onPressed: () async {
+                          await NotificationInboxService.dismissAll();
+                          if (ctx.mounted) Navigator.pop(ctx);
+                        },
+                        child: const Text('Tøm varsler'),
+                      ),
                     TextButton(
                       onPressed: () {
                         Navigator.pop(ctx);
                         context.push('/more');
                       },
-                      child: const Text('Åpne varselsenter'),
+                      child: const Text('Varselsenter'),
                     ),
                   ],
                 ),
@@ -90,7 +110,7 @@ class _DriftproNotificationBellState extends State<DriftproNotificationBell> {
                   const Padding(
                     padding: EdgeInsets.all(20),
                     child: Text(
-                      'Ingen varsler i ditt tilgangsområde akkurat nå.',
+                      'Ingen uleste varsler akkurat nå.',
                       textAlign: TextAlign.center,
                     ),
                   )
@@ -105,20 +125,43 @@ class _DriftproNotificationBellState extends State<DriftproNotificationBell> {
                       separatorBuilder: (_, _) => const Divider(height: 1),
                       itemBuilder: (_, i) {
                         final item = summary.items[i];
-                        final icon = item.kind == 'failed'
-                            ? Icons.error_outline
-                            : item.kind == 'skipped'
-                                ? Icons.block
-                                : Icons.schedule_send_outlined;
-                        final color = item.kind == 'failed'
-                            ? DriftProTheme.error
-                            : item.kind == 'skipped'
-                                ? Colors.orange.shade800
-                                : DriftProTheme.primaryGreen;
+                        final icon = switch (item.kind) {
+                          'failed' => Icons.error_outline,
+                          'skipped' => Icons.block,
+                          'sent' => Icons.check_circle_outline,
+                          _ => Icons.schedule_send_outlined,
+                        };
+                        final color = switch (item.kind) {
+                          'failed' => DriftProTheme.error,
+                          'skipped' => Colors.orange.shade800,
+                          'sent' => DriftProTheme.primaryGreen,
+                          _ => Colors.blue.shade700,
+                        };
                         return ListTile(
+                          contentPadding: const EdgeInsets.symmetric(vertical: 4),
                           leading: Icon(icon, color: color),
-                          title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                          subtitle: Text(item.subtitle, maxLines: 2, overflow: TextOverflow.ellipsis),
+                          title: Text(
+                            item.title,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                item.subtitle,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                item.detailLine,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                              ),
+                            ],
+                          ),
                           trailing: Text(
                             DateFormat('d.M HH:mm').format(item.createdAt.toLocal()),
                             style: const TextStyle(fontSize: 11, color: Colors.grey),
@@ -133,6 +176,8 @@ class _DriftproNotificationBellState extends State<DriftproNotificationBell> {
         );
       },
     );
+
+    await _dismissShown(summary);
   }
 
   @override
@@ -148,7 +193,7 @@ class _DriftproNotificationBellState extends State<DriftproNotificationBell> {
                 !access.profile.isSuperAdmin)) {
           return const SizedBox.shrink();
         }
-        final count = _summary?.totalBadge ?? 0;
+        final count = _summary?.unreadCount ?? 0;
         return IconButton(
           tooltip: 'Varsler',
           onPressed: _openSheet,

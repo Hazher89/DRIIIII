@@ -14,6 +14,7 @@ class NotificationAuditService {
     DateTime? fromDate,
     DateTime? toDate,
     String? search,
+    bool excludeDismissed = false,
   }) async {
     final data = await SupabaseService.client.rpc(
       'list_notification_audit',
@@ -31,6 +32,7 @@ class NotificationAuditService {
                 .toIso8601String()
             : null,
         'p_search': search?.trim().isEmpty == true ? null : search?.trim(),
+        'p_exclude_dismissed': excludeDismissed,
       },
     );
     return (data as List)

@@ -9,6 +9,9 @@ class NotificationAuditEntry {
   final String? skipReason;
   final String? description;
   final String? partnerName;
+  final String deliveryStatus;
+  final bool isDismissed;
+  final String? messagePreview;
 
   const NotificationAuditEntry({
     required this.id,
@@ -21,6 +24,9 @@ class NotificationAuditEntry {
     this.skipReason,
     this.description,
     this.partnerName,
+    this.deliveryStatus = 'queued',
+    this.isDismissed = false,
+    this.messagePreview,
   });
 
   factory NotificationAuditEntry.fromJson(Map<String, dynamic> json) {
@@ -35,10 +41,29 @@ class NotificationAuditEntry {
       skipReason: json['skip_reason'] as String?,
       description: json['description'] as String?,
       partnerName: json['partner_name'] as String?,
+      deliveryStatus: json['delivery_status'] as String? ?? json['status'] as String? ?? 'queued',
+      isDismissed: json['is_dismissed'] as bool? ?? false,
+      messagePreview: json['message_preview'] as String?,
     );
   }
 
-  String get statusLabel => status == 'queued' ? 'Lagt i kø' : 'Ikke sendt';
+  String get channelLabel => eventChannel == 'email' ? 'E-post' : 'SMS';
+
+  String get deliveryStatusLabel {
+    switch (deliveryStatus) {
+      case 'sent':
+        return eventChannel == 'email' ? 'E-post sendt' : 'SMS sendt';
+      case 'failed':
+        return 'Sending feilet';
+      case 'skipped':
+        return 'Ikke sendt';
+      case 'queued':
+      default:
+        return eventChannel == 'email' ? 'E-post i kø' : 'SMS venter sending';
+    }
+  }
+
+  String get statusLabel => deliveryStatusLabel;
 
   String get skipReasonLabel {
     switch (skipReason) {
