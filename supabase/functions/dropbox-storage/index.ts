@@ -34,10 +34,54 @@ function htmlPage(title: string, body: string, status = 200) {
   );
 }
 
-function redirectToApp(query = "dropbox=connected") {
-  const base = Deno.env.get("DRIFTPRO_APP_URL")?.trim() || "https://driftpro.no";
-  const url = `${base.replace(/\/+$/, "")}/?${query}`;
-  return Response.redirect(url, 302);
+const PRODUCTION_APP_URL = "https://driftpro.no";
+
+function normalizeAppBase(raw: string | undefined | null): string {
+  let base = raw?.trim() || Deno.env.get("DRIFTPRO_APP_URL")?.trim() || PRODUCTION_APP_URL;
+  if (base.includes("drifpro.no")) {
+    base = base.replace(/drifpro\.no/g, "driftpro.no");
+  }
+  return base.replace(/\/+$/, "");
+}
+
+function isLocalDevReturnUrl(raw: string): boolean {
+  try {
+    const host = new URL(raw).hostname.toLowerCase();
+    return host === "localhost" || host === "127.0.0.1";
+  } catch {
+    return false;
+  }
+}
+
+function isProductionReturnUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.toLowerCase();
+    return (host === "driftpro.no" || host === "www.driftpro.no") &&
+      u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Live: alltid driftpro.no. Kun localhost brukes under lokal utvikling. */
+function resolveAppReturnUrl(returnUrl?: string): string {
+  if (returnUrl && isLocalDevReturnUrl(returnUrl)) {
+    return returnUrl.replace(/\/+$/, "");
+  }
+  if (returnUrl && isProductionReturnUrl(returnUrl)) {
+    return returnUrl.replace(/\/+$/, "");
+  }
+  return normalizeAppBase(PRODUCTION_APP_URL);
+}
+
+function redirectToApp(query = "dropbox=connected", returnUrl?: string) {
+  const base = resolveAppReturnUrl(returnUrl);
+  return Response.redirect(`${base}/?${query}`, 302);
+}
+
+function appHomeLink(returnUrl?: string): string {
+  return `${resolveAppReturnUrl(returnUrl)}/`;
 }
 
 function requireEnv(name: string): string {
@@ -232,7 +276,7 @@ async function handleOAuthCallback(
     );
   }
 
-  let state: { company_id: string; uid: string };
+  let state: { company_id: string; uid: string; return_url?: string };
   try {
     state = JSON.parse(atob(stateRaw));
   } catch {
@@ -352,7 +396,7 @@ async function handleOAuthCallback(
       return htmlPage("Databasefeil", `<p>${upErr.message}</p>`, 500);
     }
 
-    return redirectToApp("dropbox=connected");
+    return redirectToApp("dropbox=connected", state.return_url);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("oauth_callback", msg);
@@ -406,9 +450,14 @@ Deno.serve(async (req) => {
       }
       const appKey = requireEnv("DROPBOX_APP_KEY");
       const redirectUri = requireEnv("DROPBOX_REDIRECT_URI");
+      const returnUrl = url.searchParams.get("return_url")?.trim();
+      const resolvedReturn = returnUrl
+        ? resolveAppReturnUrl(returnUrl)
+        : resolveAppReturnUrl();
       const state = btoa(JSON.stringify({
         company_id: companyId,
         uid: userData.user.id,
+        return_url: resolvedReturn,
       }));
       const authUrl = new URL("https://www.dropbox.com/oauth2/authorize");
       authUrl.searchParams.set("client_id", appKey);

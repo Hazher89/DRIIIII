@@ -107,11 +107,26 @@ class CompanyFileStorage {
     }
   }
 
-  static Future<String?> getDropboxAuthUrl() async {
+  static const _productionAppUrl = 'https://driftpro.no';
+
+  /// OAuth-retur: driftpro.no i prod, localhost kun ved lokal utvikling.
+  static String _dropboxOAuthReturnUrl() {
+    final host = Uri.base.host.toLowerCase();
+    if (host == 'localhost' || host == '127.0.0.1') {
+      return Uri.base.origin;
+    }
+    return _productionAppUrl;
+  }
+
+  static Future<String?> getDropboxAuthUrl({String? returnUrl}) async {
+    final origin = (returnUrl ?? _dropboxOAuthReturnUrl()).trim();
     final res = await _client.functions.invoke(
       'dropbox-storage',
       method: HttpMethod.get,
-      queryParameters: {'action': 'auth_url'},
+      queryParameters: {
+        'action': 'auth_url',
+        'return_url': origin,
+      },
     );
     final data = res.data;
     if (data is Map && data['auth_url'] is String) {

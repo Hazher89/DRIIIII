@@ -13,7 +13,7 @@ Alle filer lagres i Dropbox-mappen `/DriftPro` når bedriften har koblet OAuth (
    - `DROPBOX_APP_KEY`
    - `DROPBOX_APP_SECRET`
    - `DROPBOX_REDIRECT_URI` = samme URL som over
-   - `DRIFTPRO_APP_URL` = `https://driftpro.no` (valgfritt, for «tilbake til app»-side)
+   - `DRIFTPRO_APP_URL` = `https://driftpro.no` (valgfritt — **ikke** `drifpro.no`)
 4. Kjør migrasjon `20260522120000_dropbox_storage.sql`
 5. Deploy:
    ```bash
@@ -25,7 +25,7 @@ Alle filer lagres i Dropbox-mappen `/DriftPro` når bedriften har koblet OAuth (
 
 **Mer → Dropbox-lagring** → «Koble Dropbox». Du logger inn på Dropboxes side (ikke passord i DriftPro).
 
-Etter godkjenning sender Dropbox til Supabase callback, som lagrer token og **videresender til** `https://driftpro.no/?dropbox=connected`. Du trenger ikke endre Redirect URI til driftpro.no.
+Etter godkjenning lagres token og du sendes tilbake til **https://driftpro.no/?dropbox=connected**.
 
 **App folder:** sett valgfritt secret `DROPBOX_ROOT_FOLDER` = `/` (standard).
 

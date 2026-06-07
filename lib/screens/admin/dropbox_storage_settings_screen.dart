@@ -225,6 +225,11 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                           'via Dropboxes sikre side (OAuth), som bank-ID.',
                           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                         ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Etter godkjenning kommer du tilbake til driftpro.no med bekreftelse.',
+                          style: TextStyle(fontSize: 13, height: 1.4),
+                        ),
                       ],
                     ),
                   ),

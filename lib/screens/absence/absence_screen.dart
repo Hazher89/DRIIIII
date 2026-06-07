@@ -28,8 +28,7 @@ import 'widgets/leave_quick_actions.dart';
 import 'widgets/leave_rules_panel.dart';
 import 'widgets/leave_saldo_panel.dart';
 import 'widgets/leave_team_table.dart';
-import 'widgets/leave_dual_calendar_tab.dart';
-import 'widgets/leave_team_overview_tab.dart';
+import 'widgets/leave_unified_team_view.dart';
 
 enum _MineStatusFilter { alle, ventende, godkjent, avvist }
 
@@ -44,8 +43,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   TabController? _tabController;
   List<Tab> _tabs = [];
   int _godkjennTabIndex = -1;
-  int _oversiktTabIndex = -1;
-  int _calendarTabIndex = 0;
+  int _teamCalendarTabIndex = 0;
   _MineStatusFilter _mineFilter = _MineStatusFilter.alle;
 
   List<Absence> _myAbsences = [];
@@ -91,7 +89,6 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     ];
     idx = 2;
     int godkjennIdx = -1;
-    int oversiktIdx = -1;
     if (isManager) {
       godkjennIdx = idx;
       tabs.add(
@@ -101,15 +98,13 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         ),
       );
       idx++;
-      oversiktIdx = idx;
-      tabs.add(
-        const Tab(icon: Icon(Icons.table_rows_outlined, size: 20), text: 'Oversikt'),
-      );
-      idx++;
     }
-    final calIdx = idx;
+    final teamCalIdx = idx;
     tabs.add(
-      const Tab(icon: Icon(Icons.calendar_month_outlined, size: 20), text: 'Kalender'),
+      const Tab(
+        icon: Icon(Icons.calendar_month_outlined, size: 20),
+        text: 'Team & kalender',
+      ),
     );
     idx++;
     tabs.add(
@@ -130,8 +125,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
     _tabs = tabs;
     _godkjennTabIndex = godkjennIdx;
-    _oversiktTabIndex = oversiktIdx;
-    _calendarTabIndex = calIdx;
+    _teamCalendarTabIndex = teamCalIdx;
   }
 
   void _goToTab(int index) {
@@ -146,8 +140,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       _buildDashboardTab(isDark, isManager),
       _buildMineTab(isDark, isManager),
       if (isManager) _buildHandlingTab(isDark),
-      if (isManager) _buildOverviewTab(isDark),
-      _buildCalendarTab(isDark, isManager),
+      _buildTeamCalendarTab(isDark, isManager),
       if (isManager) _buildTeamTab(isDark, canAdmin) else _buildRulesTab(isDark),
     ];
   }
@@ -673,20 +666,11 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
             const SizedBox(height: 10),
             _actionBanner(
               isDark,
-              icon: Icons.table_rows_outlined,
-              color: DriftProTheme.primaryGreen,
-              title: 'Se alle team-søknader',
-              subtitle: 'Filter på status, type og søk på navn',
-              onTap: () => _goToTab(_oversiktTabIndex),
-            ),
-            const SizedBox(height: 10),
-            _actionBanner(
-              isDark,
               icon: Icons.calendar_month_outlined,
               color: DriftProTheme.absenceVacation,
-              title: 'Ferie- og fraværskalender',
-              subtitle: 'To kalendere med oversikt over alle ansatte',
-              onTap: () => _goToTab(_calendarTabIndex),
+              title: 'Team & kalender',
+              subtitle: 'Saldo, kalender og alle søknader for ansatte',
+              onTap: () => _goToTab(_teamCalendarTabIndex),
             ),
           ],
           const SizedBox(height: 12),
@@ -843,7 +827,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
               const SizedBox(height: 4),
               Text(
                 isManager
-                    ? 'Dette er kun dine egne søknader. Teamets søknader finner du under Oversikt og Godkjenn.'
+                    ? 'Dette er kun dine egne søknader. Teamets oversikt finner du under Team & kalender og Godkjenn.'
                     : 'Full oversikt over alt du har søkt — ventende, godkjent og avvist.',
                 style: DriftProTheme.bodySm,
               ),
@@ -891,21 +875,35 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildOverviewTab(bool isDark) {
-    final teamRequests = _scopedAbsences
-        .where((a) => a.userId != _profile?.id)
-        .toList();
-
-    return LeaveTeamOverviewTab(
-      absences: teamRequests,
-      overlapsByAbsenceId: _teamOverlaps,
+  Widget _buildTeamCalendarTab(bool isDark, bool isManager) {
+    return LeaveUnifiedTeamView(
+      isManager: isManager,
+      initialUserFilter: _calendarUserFilter,
+      month: _calendarMonth,
+      scopedAbsences: _scopedAbsences,
+      teamProfiles: _teamProfiles,
+      teamQuotas: _teamQuotas,
+      companySettings: _companySettings,
+      selectedYear: _selectedYear,
       departmentNames: _departmentNames,
+      overlapsByAbsenceId: _teamOverlaps,
+      profile: _profile,
       colorForType: _colorForType,
       iconForType: _iconForType,
       daysFor: _days,
+      excludeSelfFromList: isManager,
       onRefresh: _loadAllData,
-      onApprove: (a) => _updateStatus(a.id, AbsenceStatus.godkjent),
-      onReject: (a) => _updateStatus(a.id, AbsenceStatus.avvist),
+      onDayTap: isManager ? _onCalendarDayTap : null,
+      onApprove: isManager ? (a) => _updateStatus(a.id, AbsenceStatus.godkjent) : null,
+      onReject: isManager ? (a) => _updateStatus(a.id, AbsenceStatus.avvist) : null,
+      onMonthChanged: (m) {
+        setState(() => _calendarMonth = m);
+        if (m.year != _selectedYear && _profile != null) {
+          _selectedYear = m.year;
+          _loadTeamOverview(_profile!);
+          _loadSaldo(_profile!);
+        }
+      },
     );
   }
 
@@ -966,32 +964,6 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
           (a) => _buildAbsenceCard(a, _days(a), isDark, showActions: true),
         ),
       ],
-    );
-  }
-
-  Widget _buildCalendarTab(bool isDark, bool isManager) {
-    return LeaveDualCalendarTab(
-      isManager: isManager,
-      initialUserFilter: _calendarUserFilter,
-      month: _calendarMonth,
-      scopedAbsences: _scopedAbsences,
-      teamProfiles: _teamProfiles,
-      teamQuotas: _teamQuotas,
-      companySettings: _companySettings,
-      selectedYear: _selectedYear,
-      departmentNames: _departmentNames,
-      profile: _profile,
-      colorForType: _colorForType,
-      onRefresh: _loadAllData,
-      onDayTap: isManager ? _onCalendarDayTap : null,
-      onMonthChanged: (m) {
-        setState(() => _calendarMonth = m);
-        if (m.year != _selectedYear && _profile != null) {
-          _selectedYear = m.year;
-          _loadTeamOverview(_profile!);
-          _loadSaldo(_profile!);
-        }
-      },
     );
   }
 
@@ -1181,7 +1153,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
               onEditQuota: _editTeamQuota,
               onTapEmployee: (u) {
                 setState(() => _calendarUserFilter = u.id);
-                _tabController?.animateTo(_calendarTabIndex);
+                _tabController?.animateTo(_teamCalendarTabIndex);
               },
             ),
           ),
