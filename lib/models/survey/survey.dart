@@ -15,6 +15,8 @@ enum SurveyQuestionType {
   slider,
   time,
   url,
+  matrix,
+  ranking,
 }
 
 extension SurveyQuestionTypeExtension on SurveyQuestionType {
@@ -36,6 +38,8 @@ extension SurveyQuestionTypeExtension on SurveyQuestionType {
       case SurveyQuestionType.slider: return 'slider';
       case SurveyQuestionType.time: return 'time';
       case SurveyQuestionType.url: return 'url';
+      case SurveyQuestionType.matrix: return 'matrix';
+      case SurveyQuestionType.ranking: return 'ranking';
     }
   }
 

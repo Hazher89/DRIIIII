@@ -134,6 +134,7 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
         path: '/s/:surveyId',
         builder: (context, state) => SurveyPlayerScreen(
           surveyId: state.pathParameters['surveyId']!,
+          previewMode: state.uri.queryParameters['preview'] == 'true',
         ),
       ),
       GoRoute(

@@ -377,6 +377,12 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
           ),
           onChanged: (v) => _answers[q.id] = v,
         );
+      case SurveyQuestionType.matrix:
+      case SurveyQuestionType.ranking:
+        return Text(
+          'Spørsmålstypen støttes i den offentlige undersøkelseslenken.',
+          style: TextStyle(color: Colors.grey[600]),
+        );
     }
   }
 }

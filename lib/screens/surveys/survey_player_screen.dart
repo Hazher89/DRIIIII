@@ -3,12 +3,19 @@ import '../../core/theme/app_theme.dart';
 import '../../models/survey/survey.dart';
 import '../../models/survey/survey_advanced.dart';
 import '../../core/services/survey/survey_advanced_service.dart';
+import '../../core/services/survey/survey_question_catalog.dart';
 import '../../core/services/survey/survey_service.dart';
 import '../../core/services/supabase_service.dart';
 
 class SurveyPlayerScreen extends StatefulWidget {
   final String surveyId;
-  const SurveyPlayerScreen({super.key, required this.surveyId});
+  final bool previewMode;
+
+  const SurveyPlayerScreen({
+    super.key,
+    required this.surveyId,
+    this.previewMode = false,
+  });
 
   @override
   State<SurveyPlayerScreen> createState() => _SurveyPlayerScreenState();
@@ -62,6 +69,12 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
   }
 
   Future<void> _submit() async {
+    if (widget.previewMode) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preview-modus — svar lagres ikke')),
+      );
+      return;
+    }
     if (_formKey.currentState!.validate()) {
       setState(() => _isSubmitting = true);
       try {
@@ -142,6 +155,64 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
       return const Scaffold(body: Center(child: Text('Undersøkelsen ble ikke funnet.')));
     }
 
+    if (!widget.previewMode) {
+      if (!_survey!.isActive) {
+        return Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.lock_outline, size: 48, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Denne undersøkelsen er lukket',
+                    style: DriftProTheme.headingMd,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Den tar ikke lenger imot nye svar.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+      final expires = _survey!.expiresAt;
+      if (expires != null && DateTime.now().isAfter(expires)) {
+        return Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.event_busy_outlined, size: 48, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Undersøkelsen har utløpt',
+                    style: DriftProTheme.headingMd,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Utløpsdato: ${expires.day}.${expires.month}.${expires.year}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
     final cfg = _theme ?? SurveyThemeConfig(surveyId: widget.surveyId);
     final primary = _fromHex(cfg.primaryHex, DriftProTheme.primaryGreen);
     final bg = _fromHex(cfg.backgroundHex, const Color(0xFFF7F9F8));
@@ -165,6 +236,29 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
             child: ListView(
               padding: const EdgeInsets.all(24),
               children: [
+                if (widget.previewMode)
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.amber),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.preview_outlined, color: Colors.amber),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Preview-modus — svar lagres ikke',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 if (cfg.showEstimatedTime)
                   Text(
                     'Estimert svartid: ${_estimatedTime()}',
@@ -203,7 +297,10 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
                     ),
                     child: _isSubmitting
                       ? const CircularProgressIndicator(color: Colors.white)
-                      : const Text('SEND INN SVAR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      : Text(
+                          widget.previewMode ? 'FORHÅNDSVIS SVAR' : 'SEND INN SVAR',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
                   ),
                 ),
                 const SizedBox(height: 48),
@@ -487,6 +584,64 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
                   }
                   return null;
                 },
+        );
+      case SurveyQuestionType.matrix:
+        final columns = SurveyQuestionCatalog.matrixColumns(q);
+        _answers[q.id] ??= <String, String>{};
+        final matrixAnswers = _answers[q.id] as Map<String, String>;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columns: [
+              const DataColumn(label: Text('')),
+              ...columns.map((c) => DataColumn(label: Text(c))),
+            ],
+            rows: q.options.map((row) {
+              return DataRow(
+                cells: [
+                  DataCell(Text(row, style: const TextStyle(fontWeight: FontWeight.w600))),
+                  ...columns.map((col) {
+                    return DataCell(
+                      Radio<String>(
+                        value: col,
+                        groupValue: matrixAnswers[row],
+                        activeColor: primary,
+                        onChanged: (val) {
+                          setState(() => matrixAnswers[row] = val ?? '');
+                        },
+                      ),
+                    );
+                  }),
+                ],
+              );
+            }).toList(),
+          ),
+        );
+      case SurveyQuestionType.ranking:
+        _answers[q.id] ??= List<String>.from(q.options);
+        final ranked = List<String>.from(_answers[q.id] as List);
+        return ReorderableListView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          onReorder: (oldIndex, newIndex) {
+            setState(() {
+              if (newIndex > oldIndex) newIndex -= 1;
+              final item = ranked.removeAt(oldIndex);
+              ranked.insert(newIndex, item);
+              _answers[q.id] = ranked;
+            });
+          },
+          children: ranked.asMap().entries.map((entry) {
+            return ListTile(
+              key: ValueKey('${q.id}_${entry.value}'),
+              leading: CircleAvatar(
+                backgroundColor: primary.withValues(alpha: 0.15),
+                child: Text('${entry.key + 1}', style: TextStyle(color: primary, fontWeight: FontWeight.bold)),
+              ),
+              title: Text(entry.value),
+              trailing: const Icon(Icons.drag_handle),
+            );
+          }).toList(),
         );
     }
   }

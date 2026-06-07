@@ -41,17 +41,75 @@ class SurveyService {
     String? title,
     String? description,
     bool? allowAnonymous,
+    bool? isActive,
     String? theme,
+    DateTime? expiresAt,
+    bool clearExpiresAt = false,
   }) async {
     final Map<String, dynamic> data = {};
     if (title != null) data['title'] = title;
     if (description != null) data['description'] = description;
     if (allowAnonymous != null) data['allow_anonymous'] = allowAnonymous;
+    if (isActive != null) data['is_active'] = isActive;
     if (theme != null) data['theme'] = theme;
-    
+    if (clearExpiresAt) {
+      data['expires_at'] = null;
+    } else if (expiresAt != null) {
+      data['expires_at'] = expiresAt.toIso8601String();
+    }
+
     if (data.isNotEmpty) {
       await _supabase.from('surveys').update(data).eq('id', id);
     }
+  }
+
+  static Future<Survey> fetchSurveyById(String id) async {
+    final response = await _supabase
+        .from('surveys')
+        .select('*, survey_responses(id)')
+        .eq('id', id)
+        .single();
+    return Survey.fromJson(response);
+  }
+
+  static Future<Survey> duplicateSurvey({
+    required Survey source,
+    required String createdBy,
+  }) async {
+    final copy = await _supabase
+        .from('surveys')
+        .insert({
+          'company_id': source.companyId,
+          'title': '${source.title} (kopi)',
+          'description': source.description,
+          'created_by': createdBy,
+          'allow_anonymous': source.allowAnonymous,
+          'theme': source.theme,
+          'is_active': false,
+        })
+        .select()
+        .single();
+
+    final newId = copy['id'] as String;
+    final questions = await fetchQuestions(source.id);
+    if (questions.isNotEmpty) {
+      await _supabase.from('survey_questions').insert(
+            questions.map((q) => {
+                  'survey_id': newId,
+                  'question_text': q.questionText,
+                  'question_type': q.type.toIdentifier(),
+                  'is_required': q.isRequired,
+                  'options': q.options,
+                  'order_index': q.orderIndex,
+                  'section_title': q.sectionTitle,
+                  'points': q.points,
+                  'condition_question_id': q.conditionQuestionId,
+                  'condition_operator': q.conditionOperator,
+                  'condition_value': q.conditionValue,
+                }),
+          );
+    }
+    return Survey.fromJson(copy);
   }
 
   static Future<void> deleteSurvey(String id) async {
@@ -104,8 +162,6 @@ class SurveyService {
         .select();
 
     print('saveQuestions UPSERT RESPONSE: $response');
-    
-    // 3. Delete any questions that are no longer in the list
     final remainingIds = List<String>.from(response.map((x) => x['id']));
     if (remainingIds.isEmpty) {
       await _supabase

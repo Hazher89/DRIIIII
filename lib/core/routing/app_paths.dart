@@ -149,7 +149,11 @@ abstract final class AppPaths {
 
     final survey = uri.queryParameters['survey']?.trim() ??
         uri.queryParameters['s']?.trim();
-    if (survey != null && survey.isNotEmpty) return '/s/$survey';
+    if (survey != null && survey.isNotEmpty) {
+      final preview = uri.queryParameters['preview'];
+      if (preview == 'true') return '/s/$survey?preview=true';
+      return '/s/$survey';
+    }
 
     var path = uri.path;
     if (path.isEmpty) path = dashboard;

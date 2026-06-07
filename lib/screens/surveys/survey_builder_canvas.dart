@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/survey/survey.dart';
+import '../../core/services/survey/survey_question_catalog.dart';
 import '../../core/services/survey/survey_service.dart';
 
 class SurveyBuilderCanvas extends StatefulWidget {
@@ -143,21 +144,13 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
 
   void _addQuestionWithType(SurveyQuestionType type) {
     final id = const Uuid().v4();
-    final List<String> options;
-    switch (type) {
-      case SurveyQuestionType.single_choice:
-      case SurveyQuestionType.multiple_choice:
-      case SurveyQuestionType.dropdown:
-        options = ['Alternativ 1', 'Alternativ 2'];
-        break;
-      case SurveyQuestionType.likert:
-        options = ['Helt uenig', 'Uenig', 'Nøytral', 'Enig', 'Helt enig'];
-        break;
-      case SurveyQuestionType.slider:
-        options = ['0', '100'];
-        break;
-      default:
-        options = <String>[];
+    final def = SurveyQuestionCatalog.defFor(type);
+    final options = def?.defaultOptions.isNotEmpty == true
+        ? List<String>.from(def!.defaultOptions)
+        : <String>[];
+    String? conditionValue;
+    if (type == SurveyQuestionType.matrix) {
+      conditionValue = def?.defaultConditionValue ?? 'Dårlig|Middels|Bra|Utmerket';
     }
             
     _questionControllers[id] = TextEditingController(text: 'Nytt spørsmål');
@@ -173,6 +166,7 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         isRequired: false,
         options: options,
         orderIndex: _questions.length,
+        conditionValue: conditionValue,
       ));
     });
     
@@ -741,6 +735,104 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
             ),
           ],
         );
+      case SurveyQuestionType.matrix:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Rader (uttalelser)', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            const SizedBox(height: 8),
+            for (int optIndex = 0; optIndex < controllers.length; optIndex++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.drag_indicator, size: 16, color: Colors.grey),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: controllers[optIndex],
+                        style: const TextStyle(fontSize: 13),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'Rad…',
+                        ),
+                      ),
+                    ),
+                    IconButton(icon: const Icon(Icons.close, size: 14), onPressed: () => _removeOption(index, optIndex)),
+                  ],
+                ),
+              ),
+            TextButton.icon(
+              onPressed: () => _addOption(index),
+              icon: const Icon(Icons.add, size: 14),
+              label: const Text('Legg til rad', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(foregroundColor: themeColor),
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              initialValue: q.conditionValue ?? 'Dårlig|Middels|Bra|Utmerket',
+              style: const TextStyle(fontSize: 13),
+              decoration: const InputDecoration(
+                labelText: 'Kolonner (skill med |)',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onChanged: (v) {
+                setState(() {
+                  _questions[index] = SurveyQuestion(
+                    id: q.id,
+                    surveyId: q.surveyId,
+                    questionText: q.questionText,
+                    type: q.type,
+                    isRequired: q.isRequired,
+                    options: q.options,
+                    orderIndex: q.orderIndex,
+                    sectionTitle: q.sectionTitle,
+                    points: q.points,
+                    conditionQuestionId: q.conditionQuestionId,
+                    conditionOperator: q.conditionOperator,
+                    conditionValue: v.trim(),
+                  );
+                });
+              },
+            ),
+          ],
+        );
+      case SurveyQuestionType.ranking:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Elementer som skal rangeres', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            const SizedBox(height: 8),
+            for (int optIndex = 0; optIndex < controllers.length; optIndex++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Text('${optIndex + 1}.', style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextFormField(
+                        controller: controllers[optIndex],
+                        style: const TextStyle(fontSize: 13),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'Alternativ…',
+                        ),
+                      ),
+                    ),
+                    IconButton(icon: const Icon(Icons.close, size: 14), onPressed: () => _removeOption(index, optIndex)),
+                  ],
+                ),
+              ),
+            TextButton.icon(
+              onPressed: () => _addOption(index),
+              icon: const Icon(Icons.add, size: 14),
+              label: const Text('Legg til element', style: TextStyle(fontSize: 12)),
+              style: TextButton.styleFrom(foregroundColor: themeColor),
+            ),
+          ],
+        );
       default:
         return Container(
           padding: const EdgeInsets.symmetric(vertical: 8),
@@ -753,38 +845,7 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   }
 
   String _previewLabelForType(SurveyQuestionType type) {
-    switch (type) {
-      case SurveyQuestionType.text:
-        return 'Kort tekstfelt';
-      case SurveyQuestionType.paragraph:
-        return 'Langt tekstfelt';
-      case SurveyQuestionType.rating:
-        return '1-5 stjerner';
-      case SurveyQuestionType.date:
-        return 'Dato-velger';
-      case SurveyQuestionType.yes_no:
-        return 'Ja/Nei bryter';
-      case SurveyQuestionType.number:
-        return 'Tallfelt med validering';
-      case SurveyQuestionType.email:
-        return 'E-postfelt med formatkontroll';
-      case SurveyQuestionType.phone:
-        return 'Telefonfelt';
-      case SurveyQuestionType.nps:
-        return 'NPS-skala 0-10';
-      case SurveyQuestionType.single_choice:
-      case SurveyQuestionType.multiple_choice:
-      case SurveyQuestionType.dropdown:
-        return 'Valg med alternativer';
-      case SurveyQuestionType.likert:
-        return 'Likert — rediger skalaetikketter';
-      case SurveyQuestionType.slider:
-        return 'Skyveknapp mellom min og maks';
-      case SurveyQuestionType.time:
-        return 'Velg klokkeslett (tidsvelger)';
-      case SurveyQuestionType.url:
-        return 'Lenke med formatkontroll';
-    }
+    return SurveyQuestionCatalog.labelFor(type);
   }
 
   Widget _buildAdvancedRuleRow(int index, SurveyQuestion q) {
@@ -907,23 +968,44 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
       tooltip: 'Legg til innhold',
       offset: const Offset(0, 40),
       onSelected: (type) => _addQuestionWithType(type),
-      itemBuilder: (context) => [
-        const PopupMenuItem(value: SurveyQuestionType.single_choice, child: Text('Enkeltvalg')),
-        const PopupMenuItem(value: SurveyQuestionType.multiple_choice, child: Text('Flervalg')),
-        const PopupMenuItem(value: SurveyQuestionType.text, child: Text('Kort tekst')),
-        const PopupMenuItem(value: SurveyQuestionType.paragraph, child: Text('Lang tekst')),
-        const PopupMenuItem(value: SurveyQuestionType.rating, child: Text('Rangering')),
-        const PopupMenuItem(value: SurveyQuestionType.date, child: Text('Dato')),
-        const PopupMenuItem(value: SurveyQuestionType.yes_no, child: Text('Ja/Nei')),
-        const PopupMenuItem(value: SurveyQuestionType.number, child: Text('Tall')),
-        const PopupMenuItem(value: SurveyQuestionType.email, child: Text('E-post')),
-        const PopupMenuItem(value: SurveyQuestionType.phone, child: Text('Telefon')),
-        const PopupMenuItem(value: SurveyQuestionType.nps, child: Text('NPS (0-10)')),
-        const PopupMenuItem(value: SurveyQuestionType.likert, child: Text('Likert-skala')),
-        const PopupMenuItem(value: SurveyQuestionType.slider, child: Text('Skyveknapp')),
-        const PopupMenuItem(value: SurveyQuestionType.time, child: Text('Klokkeslett')),
-        const PopupMenuItem(value: SurveyQuestionType.url, child: Text('URL')),
-      ],
+      itemBuilder: (context) {
+        final items = <PopupMenuEntry<SurveyQuestionType>>[];
+        for (final group in SurveyQuestionCatalog.groups) {
+          items.add(PopupMenuItem<SurveyQuestionType>(
+            enabled: false,
+            child: Text(
+              group,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey[600],
+                letterSpacing: 0.5,
+              ),
+            ),
+          ));
+          for (final def in SurveyQuestionCatalog.all.where((d) => d.group == group)) {
+            items.add(PopupMenuItem(
+              value: def.type,
+              child: Row(
+                children: [
+                  Icon(def.icon, size: 18, color: themeColor),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(def.label, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(def.description, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ));
+          }
+        }
+        return items;
+      },
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: themeColor, shape: BoxShape.circle),

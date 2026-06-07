@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../core/theme/app_theme.dart';
+
 import '../../core/services/survey/survey_advanced_service.dart';
+import '../../core/services/survey/survey_service.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/driftpro_theme_context.dart';
+import '../../core/theme/driftpro_colors.dart';
 import '../../models/survey/survey.dart';
 import '../../models/survey/survey_advanced.dart';
-import 'survey_builder_canvas.dart';
-import 'survey_publish_view.dart';
 import 'survey_analyze_view.dart';
+import 'survey_builder_canvas.dart';
+import 'survey_overview_panel.dart';
+import 'survey_publish_view.dart';
+import 'survey_responses_screen.dart';
 
 class SurveyMasterEditor extends StatefulWidget {
   final Survey survey;
@@ -17,31 +23,34 @@ class SurveyMasterEditor extends StatefulWidget {
 }
 
 class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
-  int _currentStep = 1; // 0: Sammendrag, 1: Lag, 2: Publiser, 3: Koble, 4: Analyser
+  int _currentStep = 0;
   bool _isLoading = false;
+  late Survey _survey;
   final GlobalKey<SurveyBuilderCanvasState> _canvasKey = GlobalKey<SurveyBuilderCanvasState>();
   SurveyThemeConfig? _themeConfig;
   List<SurveyAnalyticsSnapshot> _snapshots = const [];
 
   final List<String> _steps = [
-    'Sammendrag',
-    'Lag undersøkelse',
-    'Publiser',
-    'Koble til apper',
-    'Analyser resultater'
+    'Oversikt',
+    'Bygg',
+    'Del',
+    'Svar',
+    'Statistikk',
+    'Tema',
   ];
 
   @override
   void initState() {
     super.initState();
+    _survey = widget.survey;
     _loadAdvancedData();
   }
 
   Future<void> _loadAdvancedData() async {
     setState(() => _isLoading = true);
     try {
-      final theme = await SurveyAdvancedService.fetchTheme(widget.survey.id);
-      final snapshots = await SurveyAdvancedService.fetchSnapshots(widget.survey.id);
+      final theme = await SurveyAdvancedService.fetchTheme(_survey.id);
+      final snapshots = await SurveyAdvancedService.fetchSnapshots(_survey.id);
       if (!mounted) return;
       setState(() {
         _themeConfig = theme;
@@ -50,117 +59,126 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _themeConfig = SurveyThemeConfig(surveyId: widget.survey.id);
+        _themeConfig = SurveyThemeConfig(surveyId: _survey.id);
       });
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _refreshSurvey() async {
+    final fresh = await SurveyService.fetchSurveyById(_survey.id);
+    if (mounted) setState(() => _survey = fresh);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? DriftProTheme.surfaceDark : const Color(0xFFF5F7F8);
+    final drift = context.driftColors;
 
     return Scaffold(
-      backgroundColor: bgColor,
-      appBar: _buildSubHeader(isDark),
+      backgroundColor: drift.scaffold,
+      appBar: _buildSubHeader(drift),
       body: Column(
         children: [
-          _buildStepProgress(isDark),
-          Expanded(
-            child: _buildCurrentView(),
-          ),
+          _buildStepProgress(drift),
+          Expanded(child: _buildCurrentView()),
         ],
       ),
     );
   }
 
-  PreferredSizeWidget _buildSubHeader(bool isDark) {
+  PreferredSizeWidget _buildSubHeader(DriftProColors drift) {
     return AppBar(
       elevation: 0,
-      backgroundColor: isDark ? DriftProTheme.cardDark : Colors.white,
+      backgroundColor: drift.card,
+      surfaceTintColor: Colors.transparent,
       leading: IconButton(
-        icon: const Icon(Icons.chevron_left),
+        icon: Icon(Icons.chevron_left, color: drift.iconPrimary),
         onPressed: () => Navigator.pop(context),
       ),
       title: Row(
         children: [
-          const Icon(Icons.assignment_turned_in_outlined, size: 20, color: DriftProTheme.primaryGreen),
+          Icon(Icons.poll_outlined, size: 20, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 8),
-          Text(
-            widget.survey.title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          Expanded(
+            child: Text(
+              _survey.title,
+              style: DriftProTheme.headingSm.copyWith(color: drift.textPrimary),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           const SizedBox(width: 8),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
+              color: (_survey.isActive ? Colors.green : Colors.orange).withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: const Text('Åpen', style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold)),
+            child: Text(
+              _survey.isActive ? 'Åpen' : 'Lukket',
+              style: TextStyle(
+                color: _survey.isActive ? Colors.green : Colors.orange,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
       actions: [
         if (_currentStep == 1)
           TextButton.icon(
-            onPressed: () {
-              _canvasKey.currentState?.saveChanges();
-            },
-            icon: const Icon(Icons.save_outlined, size: 18, color: DriftProTheme.primaryGreen),
-            label: const Text('Lagre', style: TextStyle(color: DriftProTheme.primaryGreen, fontWeight: FontWeight.bold)),
+            onPressed: () => _canvasKey.currentState?.saveChanges(),
+            icon: Icon(Icons.save_outlined, size: 18, color: Theme.of(context).colorScheme.primary),
+            label: Text(
+              'Lagre',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         const SizedBox(width: 8),
-        IconButton(icon: const Icon(Icons.notifications_none, size: 20), onPressed: () {}),
-        IconButton(icon: const Icon(Icons.help_outline, size: 20), onPressed: () {}),
-        const SizedBox(width: 16),
       ],
     );
   }
 
-  Widget _buildStepProgress(bool isDark) {
+  Widget _buildStepProgress(DriftProColors drift) {
     return Container(
-      height: 50,
+      height: 52,
       decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
-        border: Border(bottom: BorderSide(color: isDark ? Colors.white10 : Colors.grey[200]!)),
+        color: drift.card,
+        border: Border(bottom: BorderSide(color: drift.borderSubtle)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         children: _steps.asMap().entries.map((entry) {
           final index = entry.key;
           final label = entry.value;
           final isSelected = _currentStep == index;
-          
           return GestureDetector(
             onTap: () => setState(() => _currentStep = index),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16),
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 border: Border(
                   bottom: BorderSide(
-                    color: isSelected ? DriftProTheme.primaryGreen : Colors.transparent,
+                    color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent,
                     width: 2,
                   ),
                 ),
               ),
-              child: Row(
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isSelected ? DriftProTheme.primaryGreen : (isDark ? Colors.grey[400] : Colors.grey[600]),
-                    ),
-                  ),
-                  if (index < _steps.length - 1)
-                    Icon(Icons.chevron_right, size: 16, color: isDark ? Colors.white24 : Colors.grey[300]),
-                ],
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+                  color: isSelected
+                      ? Theme.of(context).colorScheme.primary
+                      : drift.textMuted,
+                ),
               ),
             ),
           );
@@ -170,140 +188,114 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
   }
 
   Widget _buildCurrentView() {
-    if (_isLoading) {
+    if (_isLoading && _currentStep == 5) {
       return const Center(child: CircularProgressIndicator());
     }
     switch (_currentStep) {
       case 0:
-        return _buildSummaryView();
+        return SurveyOverviewPanel(
+          survey: _survey,
+          onGoToStep: (s) => setState(() => _currentStep = s),
+        );
       case 1:
         return SurveyBuilderCanvas(
           key: _canvasKey,
-          survey: widget.survey,
+          survey: _survey,
           onAfterSuccessfulSave: () {
             if (!mounted) return;
+            _refreshSurvey();
             setState(() => _currentStep = 2);
           },
         );
       case 2:
-        return SurveyPublishView(survey: widget.survey);
+        return SurveyPublishView(
+          survey: _survey,
+          onSurveyChanged: _refreshSurvey,
+        );
       case 3:
-        return _buildIntegrationsAndArchiveView();
+        return SurveyResponsesScreen(survey: _survey);
       case 4:
-        return _buildAnalyticsView();
+        return SurveyAnalyzeView(survey: _survey);
+      case 5:
+        return _buildThemeAndArchiveView();
       default:
-        return Center(child: Text('Modul for ${_steps[_currentStep]} kommer snart'));
+        return const SizedBox.shrink();
     }
   }
 
-  Widget _buildSummaryView() {
-    final cfg = _themeConfig ?? SurveyThemeConfig(surveyId: widget.survey.id);
+  Widget _buildThemeAndArchiveView() {
+    final cfg = _themeConfig ?? SurveyThemeConfig(surveyId: _survey.id);
+    final drift = context.driftColors;
+
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(24),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Theme Studio', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Text('Font: ${cfg.fontFamily} • Knappestil: ${cfg.buttonStyle}'),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    _colorChip('Primær', cfg.primaryHex),
-                    _colorChip('Bakgrunn', cfg.backgroundHex),
-                    _colorChip('Kort', cfg.cardHex),
-                    _colorChip('Tekst', cfg.textHex),
-                    _colorChip('Accent', cfg.accentHex),
-                  ],
-                ),
-              ],
-            ),
+        Text('Theme Studio', style: DriftProTheme.headingMd.copyWith(color: drift.textPrimary)),
+        const SizedBox(height: 8),
+        Text(
+          'Tilpass hvordan respondentene opplever undersøkelsen.',
+          style: DriftProTheme.bodyMd.copyWith(color: drift.textMuted),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: drift.surfaceDecoration(radius: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Font: ${cfg.fontFamily} • Knapper: ${cfg.buttonStyle}'),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _colorChip('Primær', cfg.primaryHex),
+                  _colorChip('Bakgrunn', cfg.backgroundHex),
+                  _colorChip('Kort', cfg.cardHex),
+                  _colorChip('Tekst', cfg.textHex),
+                ],
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
         SwitchListTile(
           value: cfg.darkModeForRespondent,
-          onChanged: (value) => _saveTheme(cfg.copyWith(darkModeForRespondent: value)),
-          title: const Text('Aktiver dark mode for respondenter'),
+          onChanged: (v) => _saveTheme(cfg.copyWith(darkModeForRespondent: v)),
+          title: const Text('Mørk modus for respondenter'),
         ),
         SwitchListTile(
           value: cfg.showProgressBar,
-          onChanged: (value) => _saveTheme(cfg.copyWith(showProgressBar: value)),
+          onChanged: (v) => _saveTheme(cfg.copyWith(showProgressBar: v)),
           title: const Text('Vis fremdriftslinje'),
         ),
         SwitchListTile(
           value: cfg.showEstimatedTime,
-          onChanged: (value) => _saveTheme(cfg.copyWith(showEstimatedTime: value)),
+          onChanged: (v) => _saveTheme(cfg.copyWith(showEstimatedTime: v)),
           title: const Text('Vis estimert svartid'),
         ),
-      ],
-    );
-  }
-
-  Widget _buildIntegrationsAndArchiveView() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Smart Archive', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const Divider(height: 40),
+        Text('Arkiv', style: DriftProTheme.headingMd.copyWith(color: drift.textPrimary)),
+        const SizedBox(height: 8),
+        const Text(
+          'Arkiver ferdige undersøkelser med snapshot av responsdata for historikk og trendanalyse.',
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton.icon(
+          onPressed: _archiveSurvey,
+          icon: const Icon(Icons.archive_outlined),
+          label: const Text('Arkiver undersøkelse'),
+        ),
+        if (_snapshots.isNotEmpty) ...[
+          const SizedBox(height: 24),
+          Text('Historiske snapshots', style: DriftProTheme.headingSm),
           const SizedBox(height: 8),
-          const Text(
-            'Arkiver ferdige undersøkelser med snapshot av responsdata for historikk, revisjon og trendanalyse.',
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: _archiveSurvey,
-            icon: const Icon(Icons.archive_outlined),
-            label: const Text('Arkiver undersøkelse'),
-          ),
+          ..._snapshots.map((snap) => ListTile(
+                title: Text('${snap.generatedAt.day}.${snap.generatedAt.month}.${snap.generatedAt.year}'),
+                subtitle: Text(
+                  'Completion ${snap.completionRate.toStringAsFixed(0)}% · ${snap.totalResponses} svar',
+                ),
+              )),
         ],
-      ),
-    );
-  }
-
-  Widget _buildAnalyticsView() {
-    return Column(
-      children: [
-        Expanded(child: SurveyAnalyzeView(survey: widget.survey)),
-        if (_snapshots.isNotEmpty)
-          SizedBox(
-            height: 160,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _snapshots.length,
-              itemBuilder: (context, index) {
-                final snap = _snapshots[index];
-                return Container(
-                  width: 260,
-                  margin: const EdgeInsets.only(left: 12, right: 4, bottom: 12),
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${snap.generatedAt.day}.${snap.generatedAt.month}.${snap.generatedAt.year}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(height: 8),
-                          Text('Completion: ${snap.completionRate.toStringAsFixed(1)}%'),
-                          Text('Drop-off: ${snap.dropOffCount}'),
-                          Text('Sentiment: ${snap.sentimentScore.toStringAsFixed(2)}'),
-                        ],
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
       ],
     );
   }
@@ -322,10 +314,11 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
     await SurveyAdvancedService.archiveSurvey(
-      survey: widget.survey,
+      survey: _survey,
       archivedBy: user.id,
       note: 'Archived from SurveyMasterEditor',
     );
+    await _refreshSurvey();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Undersøkelse arkivert')),
