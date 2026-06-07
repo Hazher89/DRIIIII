@@ -1468,6 +1468,12 @@ department:departments!department_id(name)
       }
 
       final profile = await ensureSessionLinkedToCompany();
+
+      try {
+        final rpc = await client.rpc('get_user_company_id').timeout(_rpcTimeout);
+        if (rpc is String && rpc.isNotEmpty) return rpc;
+      } catch (_) {}
+
       if (profile?.companyId != null) return profile!.companyId;
 
       return discoverBootstrapCompanyId();

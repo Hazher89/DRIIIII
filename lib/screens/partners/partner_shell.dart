@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/routing/app_paths.dart';
+import '../../core/routing/route_url_sync.dart';
 import '../../core/auth/session_sign_out.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
 import '../../core/services/partner/partner_portal_scope.dart';
@@ -64,7 +66,14 @@ class PartnerShell extends StatefulWidget {
   final UserProfile profile;
   /// `owner` | `driver` fra [PartnerService.resolvePortalSession].
   final String? portalAccountKind;
-  const PartnerShell({super.key, required this.profile, this.portalAccountKind});
+  final int initialTabIndex;
+
+  const PartnerShell({
+    super.key,
+    required this.profile,
+    this.portalAccountKind,
+    this.initialTabIndex = 0,
+  });
 
   @override
   State<PartnerShell> createState() => _PartnerShellState();
@@ -79,7 +88,27 @@ class _PartnerShellState extends State<PartnerShell> {
   @override
   void initState() {
     super.initState();
+    _index = widget.initialTabIndex;
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
+  }
+
+  void _syncUrl() {
+    if (!mounted) return;
+    final isOwner = widget.portalAccountKind == 'owner' ||
+        (widget.portalAccountKind == null && widget.profile.isPartnerPortalOwner);
+    final slugs = isOwner ? AppPaths.portalOwnerTabs : AppPaths.portalDriverTabs;
+    RouteUrlSync.syncTab(
+      context,
+      basePath: AppPaths.portal,
+      index: _index.clamp(0, slugs.length - 1),
+      slugs: slugs,
+    );
+  }
+
+  void _selectTab(int i) {
+    setState(() => _index = i);
+    _syncUrl();
   }
 
   Future<void> _load() async {
@@ -174,6 +203,7 @@ class _PartnerShellState extends State<PartnerShell> {
         _index = 3;
         _routesFocus = OwnerPortalRoutesFocus(tabIndex: tabIndex, vehicleId: vehicleId);
       });
+      _syncUrl();
     }
 
     final pages = isOwner
@@ -230,12 +260,12 @@ class _PartnerShellState extends State<PartnerShell> {
       bottomNavigationBar: isOwner
           ? PartnerPortalBottomNav(
               selectedIndex: navIndex,
-              onSelected: (i) => setState(() => _index = i),
+              onSelected: _selectTab,
               items: ownerNavItems,
             )
           : NavigationBar(
               selectedIndex: navIndex,
-              onDestinationSelected: (i) => setState(() => _index = i),
+              onDestinationSelected: _selectTab,
               labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
               destinations: driverDestinations,
             ),

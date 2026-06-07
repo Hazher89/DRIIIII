@@ -5,6 +5,7 @@ import '../../../core/services/email/email_log_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/email_log_entry.dart';
 import '../../../models/email_log_filters.dart';
+import 'notification_log_toolbar.dart';
 
 /// Superadmin: utgående e-post (ikkesvar@driftpro.no).
 class EmailOutboxLogPanel extends StatefulWidget {
@@ -95,16 +96,22 @@ class _EmailOutboxLogPanelState extends State<EmailOutboxLogPanel> {
       children: [
         Padding(
           padding: const EdgeInsets.all(12),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('$_total e-poster', style: DriftProTheme.labelMd),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => setState(() => _filtersOpen = !_filtersOpen),
-                icon: const Icon(Icons.tune, size: 18),
-                label: Text(_filtersOpen ? 'Skjul' : 'Filter'),
+              NotificationLogToolbar(
+                totalCount: _total,
+                onRefresh: () => _load(refresh: true),
+                queueFilterActive: _filters.status,
               ),
-              IconButton(onPressed: () => _load(refresh: true), icon: const Icon(Icons.refresh)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _filtersOpen = !_filtersOpen),
+                  icon: const Icon(Icons.tune, size: 18),
+                  label: Text(_filtersOpen ? 'Skjul' : 'Filter'),
+                ),
+              ),
             ],
           ),
         ),

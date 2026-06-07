@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/permissions/access_keys.dart';
 import '../../../core/permissions/partner_access.dart';
 import '../../../core/permissions/permission_gate.dart';
 import '../../../core/permissions/user_access.dart';
+import '../../../core/routing/app_paths.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
-import '../partner_detail_screen.dart';
 import 'partner_assigned_routes_tab.dart';
 import 'partner_compliance_tab.dart';
 import 'partner_documents_tab.dart';
@@ -176,14 +177,9 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
           v.vehicleKind != 'registration' && !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
       .length;
   Future<void> _openFullScreen() async {
-    final deleted = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => PartnerDetailScreen(partner: _p)),
-    );
-    if (deleted == true) {
-      widget.onClose(true);
-    } else {
-      await _reload();
-    }
+    await context.push(AppPaths.partnerDetailPath(_p.id));
+    if (!mounted) return;
+    await _reload();
   }
 
   Future<void> _openSectionPicker() async {

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_icons.dart';
 import '../../../core/hms/hms_templates.dart';
+import '../../../core/routing/app_paths.dart';
+import '../../../core/routing/route_url_sync.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/risk_assessment.dart';
@@ -12,7 +14,9 @@ import 'stakeholder_risk/stakeholder_risk_hub_tab.dart';
 import 'package:intl/intl.dart';
 
 class RiskAssessmentListScreen extends StatefulWidget {
-  const RiskAssessmentListScreen({super.key});
+  const RiskAssessmentListScreen({super.key, this.initialTab});
+
+  final String? initialTab;
 
   @override
   State<RiskAssessmentListScreen> createState() => _RiskAssessmentListScreenState();
@@ -38,15 +42,26 @@ class _RiskAssessmentListScreenState extends State<RiskAssessmentListScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
-    _tabController.addListener(() {
-      if (!_tabController.indexIsChanging) setState(() {});
-    });
+    final idx = RouteUrlSync.indexForSlug(widget.initialTab, AppPaths.riskTabs);
+    _tabController = TabController(length: 2, vsync: this, initialIndex: idx);
+    _tabController.addListener(_onTabChanged);
     _loadData();
+  }
+
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging || !mounted) return;
+    RouteUrlSync.syncTab(
+      context,
+      basePath: AppPaths.hmsRisiko,
+      index: _tabController.index,
+      slugs: AppPaths.riskTabs,
+    );
+    setState(() {});
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     super.dispose();
   }

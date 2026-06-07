@@ -28,6 +28,8 @@ import '../../screens/more/organization_chart_screen.dart';
 import '../../screens/more/privacy_screen.dart';
 import '../../screens/more/whistleblowing_screen.dart';
 import '../../screens/online/online_presence_screen.dart';
+import '../../screens/partners/partner_detail_route.dart';
+import '../../screens/partners/partner_portal_route.dart';
 import '../../screens/partners/partners_dashboard_screen.dart';
 import '../../screens/profile/notifications_hub_screen.dart';
 import '../../screens/profile/profile_screen.dart';
@@ -90,6 +92,26 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
         final returnTo = Uri.encodeComponent(state.uri.toString());
         return '${AppPaths.login}?returnTo=$returnTo';
       }
+
+      final user = Supabase.instance.client.auth.currentUser;
+      final email = user?.email?.trim().toLowerCase() ?? '';
+      final looksLikePortal = email.endsWith('.portal') ||
+          email.endsWith('@portal.driftpro.no');
+
+      if (looksLikePortal &&
+          path != AppPaths.portal &&
+          !path.startsWith('${AppPaths.portal}/') &&
+          path != AppPaths.login &&
+          !AppPaths.isPublicPath(path)) {
+        final tab = state.uri.queryParameters['tab'];
+        return AppPaths.portalPath(tab: tab);
+      }
+
+      if (!looksLikePortal &&
+          (path == AppPaths.portal || path.startsWith('${AppPaths.portal}/'))) {
+        return AppPaths.dashboard;
+      }
+
       if (path == AppPaths.login) {
         final returnTo = state.uri.queryParameters['returnTo'];
         if (returnTo != null && returnTo.isNotEmpty) {
@@ -126,6 +148,12 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
           refreshInterval: infoskjermRefreshInterval(state.uri),
         ),
       ),
+      GoRoute(
+        path: AppPaths.portal,
+        builder: (context, state) => PartnerPortalRoute(
+          initialTab: state.uri.queryParameters['tab'],
+        ),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (context, state, navigationShell) {
           return MainShell(navigationShell: navigationShell);
@@ -156,7 +184,9 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.absence,
-                builder: (context, state) => const AbsenceScreen(),
+                builder: (context, state) => AbsenceScreen(
+                  initialTab: state.uri.queryParameters['tab'],
+                ),
               ),
             ],
           ),
@@ -182,7 +212,9 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   GoRoute(
                     path: 'risiko',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const RiskAssessmentListScreen(),
+                    builder: (context, state) => RiskAssessmentListScreen(
+                      initialTab: state.uri.queryParameters['tab'],
+                    ),
                   ),
                   GoRoute(
                     path: 'risikomatrise',
@@ -202,12 +234,16 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   GoRoute(
                     path: 'utstyr',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const EquipmentHubScreen(),
+                    builder: (context, state) => EquipmentHubScreen(
+                      initialTab: state.uri.queryParameters['tab'],
+                    ),
                   ),
                   GoRoute(
                     path: 'kompetanse',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const CompetenceHubScreen(),
+                    builder: (context, state) => CompetenceHubScreen(
+                      initialTab: state.uri.queryParameters['tab'],
+                    ),
                   ),
                   GoRoute(
                     path: 'dms',
@@ -228,7 +264,19 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.partners,
-                builder: (context, state) => const PartnersDashboardScreen(),
+                builder: (context, state) => PartnersDashboardScreen(
+                  initialTab: state.uri.queryParameters['tab'],
+                ),
+                routes: [
+                  GoRoute(
+                    path: 'bedrift/:partnerId',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => PartnerDetailRoute(
+                      partnerId: state.pathParameters['partnerId']!,
+                      initialTab: state.uri.queryParameters['tab'],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -261,7 +309,9 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   GoRoute(
                     path: 'partnere',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const PartnersDashboardScreen(),
+                    builder: (context, state) => PartnersDashboardScreen(
+                      initialTab: state.uri.queryParameters['tab'],
+                    ),
                   ),
                   GoRoute(
                     path: 'personalmappe',
@@ -271,7 +321,10 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   GoRoute(
                     path: 'varsler',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const NotificationsHubScreen(),
+                    builder: (context, state) => NotificationsHubScreen(
+                      initialTab: state.uri.queryParameters['tab'],
+                      initialSettingsTab: state.uri.queryParameters['settings'],
+                    ),
                   ),
                   GoRoute(
                     path: 'undersokelser',
@@ -286,7 +339,9 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   GoRoute(
                     path: 'brukergodkjenning',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const EmployeeHubScreen(),
+                    builder: (context, state) => EmployeeHubScreen(
+                      initialTab: state.uri.queryParameters['tab'],
+                    ),
                   ),
                   GoRoute(
                     path: 'infoskjerm',

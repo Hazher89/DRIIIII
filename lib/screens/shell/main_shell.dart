@@ -11,7 +11,6 @@ import '../../core/constants/app_strings.dart';
 import '../../core/constants/app_icons.dart';
 import '../auth/onboarding_screen.dart';
 import '../auth/pending_approval_screen.dart';
-import '../partners/partner_shell.dart';
 import '../../models/user_profile.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -204,10 +203,14 @@ class _MainShellState extends State<MainShell> {
     if (_isLoadingAccess) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     if (_profile != null && _profile!.isPartnerPortalUser) {
-      return PartnerShell(
-        profile: _profile!,
-        portalAccountKind: _portalAccountKind,
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final path = GoRouterState.of(context).uri.path;
+        if (path != AppPaths.portal && !path.startsWith('${AppPaths.portal}/')) {
+          context.go(AppPaths.portal);
+        }
+      });
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     // Safety check fallback (Active enforcement)

@@ -1,3 +1,4 @@
+import '../../../models/notification_channel.dart';
 import '../../../models/notification_recipient_row.dart';
 import '../supabase_service.dart';
 
@@ -26,6 +27,7 @@ class EmployeeNotificationRecipientsService {
     required String profileId,
     required String eventId,
     required bool subscribed,
+    NotificationChannel channel = NotificationChannel.both,
   }) async {
     await SupabaseService.client.rpc(
       'set_profile_notification_subscription',
@@ -34,6 +36,7 @@ class EmployeeNotificationRecipientsService {
         'p_profile_id': profileId,
         'p_event_id': eventId,
         'p_subscribed': subscribed,
+        'p_channel': channel.dbValue,
       },
     );
   }

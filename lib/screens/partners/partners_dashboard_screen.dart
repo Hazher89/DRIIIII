@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/permissions/partner_access.dart';
 import '../../core/permissions/user_access.dart';
+import '../../core/routing/app_paths.dart';
+import '../../core/routing/route_url_sync.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -21,7 +23,9 @@ import 'widgets/partner_ui.dart';
 
 /// Oversikt over samarbeidspartnere (interne brukere).
 class PartnersDashboardScreen extends StatefulWidget {
-  const PartnersDashboardScreen({super.key});
+  const PartnersDashboardScreen({super.key, this.initialTab});
+
+  final String? initialTab;
 
   @override
   State<PartnersDashboardScreen> createState() => _PartnersDashboardScreenState();
@@ -44,10 +48,33 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   bool _showRentalTab = true;
   int _savedTabIndex = 0;
   int _currentTabIndex = 0;
+  String? _pendingTabSlug;
+
+  List<String> _visibleTabSlugs() {
+    final slugs = <String>[];
+    if (_showCompaniesTab) slugs.add('bedrifter');
+    if (_showRoutesTab) slugs.add('ruter');
+    if (_showSmsTab) slugs.add('sms');
+    if (_showRentalTab) slugs.add('utleie');
+    return slugs;
+  }
+
+  void _syncUrl() {
+    if (!mounted) return;
+    final slugs = _visibleTabSlugs();
+    if (slugs.isEmpty || _tabs == null) return;
+    RouteUrlSync.syncTab(
+      context,
+      basePath: AppPaths.partners,
+      index: _tabs!.index,
+      slugs: slugs,
+    );
+  }
 
   @override
   void initState() {
     super.initState();
+    _pendingTabSlug = widget.initialTab;
     _load();
   }
 
@@ -63,6 +90,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     if (tabs == null || tabs.indexIsChanging) return;
     _savedTabIndex = tabs.index;
     if (mounted) setState(() => _currentTabIndex = tabs.index);
+    _syncUrl();
   }
 
   bool _canCompaniesList(UserAccess? access) {
@@ -112,6 +140,11 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
 
     _tabs?.removeListener(_onTabChanged);
     _tabs?.dispose();
+    final slugs = _visibleTabSlugs();
+    if (_pendingTabSlug != null && slugs.isNotEmpty) {
+      _savedTabIndex = RouteUrlSync.indexForSlug(_pendingTabSlug, slugs);
+      _pendingTabSlug = null;
+    }
     final safeIndex = _savedTabIndex.clamp(0, length - 1);
     _tabs = TabController(
       length: length,
@@ -120,6 +153,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     )..addListener(_onTabChanged);
     _savedTabIndex = safeIndex;
     _currentTabIndex = safeIndex;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
   }
 
   int _tabIndexCompanies() => _showCompaniesTab ? 0 : -1;

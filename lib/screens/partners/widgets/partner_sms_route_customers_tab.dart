@@ -16,6 +16,9 @@ class PartnerSmsRouteCustomersTab extends StatefulWidget {
   final bool sending;
   final Future<void> Function(List<RoutePdfCustomer> customers) onSend;
   final bool scrollable;
+  final String? selectedVehicleId;
+  final ValueChanged<String?>? onVehicleChanged;
+  final bool hideMaviPicker;
 
   const PartnerSmsRouteCustomersTab({
     super.key,
@@ -25,6 +28,9 @@ class PartnerSmsRouteCustomersTab extends StatefulWidget {
     required this.sending,
     required this.onSend,
     this.scrollable = false,
+    this.selectedVehicleId,
+    this.onVehicleChanged,
+    this.hideMaviPicker = false,
   });
 
   @override
@@ -48,10 +54,18 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
   void initState() {
     super.initState();
     _day = DateTime.now();
-    if (widget.fleet.isNotEmpty) {
-      _vehicleId = widget.fleet.first.vehicle.id;
-    }
+    _vehicleId = widget.selectedVehicleId ??
+        (widget.fleet.isNotEmpty ? widget.fleet.first.vehicle.id : null);
     widget.messageCtrl.addListener(_onMessageChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant PartnerSmsRouteCustomersTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedVehicleId != null &&
+        widget.selectedVehicleId != _vehicleId) {
+      _vehicleId = widget.selectedVehicleId;
+    }
   }
 
   @override
@@ -72,6 +86,13 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
       return (a.vehicle.driverName ?? '').compareTo(b.vehicle.driverName ?? '');
     });
     return copy;
+  }
+
+  String _maviOnlyLabel(FleetPartnerVehicleRow row) {
+    final m = MaviUnitCodes.compactLabel(row.vehicle.unitCode);
+    final driver = row.vehicle.driverName?.trim();
+    if (driver != null && driver.isNotEmpty) return '$m · $driver';
+    return m;
   }
 
   List<RoutePdfCustomer> get _selectedCustomers =>
@@ -108,9 +129,7 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
         setState(() {
           _customers = list;
           _loading = false;
-          _routeTitle = row != null
-              ? '${row.vehicle.unitCode}${row.vehicle.driverName != null && row.vehicle.driverName!.trim().isNotEmpty ? ' · ${row.vehicle.driverName}' : ''}'
-              : null;
+          _routeTitle = row != null ? _maviOnlyLabel(row) : null;
           if (list.isEmpty) {
             _error =
                 'Ingen kunder funnet for ${NbDateFormat.format(_day, 'd. MMM yyyy')}. '
@@ -290,37 +309,39 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: InputDecorator(
-            decoration: const InputDecoration(
-              labelText: 'Sjåfør / MAVI-enhet',
-              border: OutlineInputBorder(),
-              isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _vehicleId,
-                isExpanded: true,
-                items: [
-                  for (final row in _sortedFleet)
-                    DropdownMenuItem(
-                      value: row.vehicle.id,
-                      child: Text(
-                        MaviUnitCodes.fleetDriverLabel(
-                          row.vehicle.unitCode,
-                          row.vehicle.driverName ?? row.partner.name,
+        if (!widget.hideMaviPicker)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: InputDecorator(
+              decoration: const InputDecoration(
+                labelText: 'Velg MAVI-nummer',
+                border: OutlineInputBorder(),
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _vehicleId,
+                  isExpanded: true,
+                  items: [
+                    for (final row in _sortedFleet)
+                      DropdownMenuItem(
+                        value: row.vehicle.id,
+                        child: Text(
+                          _maviOnlyLabel(row),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
                         ),
-                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                ],
-                onChanged: (v) => setState(() => _vehicleId = v),
+                  ],
+                  onChanged: (v) {
+                    setState(() => _vehicleId = v);
+                    widget.onVehicleChanged?.call(v);
+                  },
+                ),
               ),
             ),
           ),
-        ),
         if (_routeTitle != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),

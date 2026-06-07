@@ -1,3 +1,5 @@
+import 'notification_channel.dart';
+
 /// Én rad i matrisen ansatt × varseltype.
 class NotificationRecipientRow {
   final String profileId;
@@ -12,6 +14,7 @@ class NotificationRecipientRow {
   final bool subscribed;
   final bool isExplicit;
   final String defaultRecipientRule;
+  final NotificationChannel channel;
 
   const NotificationRecipientRow({
     required this.profileId,
@@ -26,6 +29,7 @@ class NotificationRecipientRow {
     required this.subscribed,
     required this.isExplicit,
     required this.defaultRecipientRule,
+    required this.channel,
   });
 
   factory NotificationRecipientRow.fromJson(Map<String, dynamic> json) {
@@ -42,10 +46,15 @@ class NotificationRecipientRow {
       subscribed: json['subscribed'] as bool? ?? false,
       isExplicit: json['is_explicit'] as bool? ?? false,
       defaultRecipientRule: json['default_recipient_rule'] as String? ?? 'leaders',
+      channel: NotificationChannel.fromDb(json['channel'] as String?),
     );
   }
 
-  NotificationRecipientRow copyWith({bool? subscribed, bool? isExplicit}) {
+  NotificationRecipientRow copyWith({
+    bool? subscribed,
+    bool? isExplicit,
+    NotificationChannel? channel,
+  }) {
     return NotificationRecipientRow(
       profileId: profileId,
       profileName: profileName,
@@ -59,6 +68,7 @@ class NotificationRecipientRow {
       subscribed: subscribed ?? this.subscribed,
       isExplicit: isExplicit ?? this.isExplicit,
       defaultRecipientRule: defaultRecipientRule,
+      channel: channel ?? this.channel,
     );
   }
 }

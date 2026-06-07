@@ -1,4 +1,5 @@
 import '../permissions/access_keys.dart';
+import 'route_url_sync.dart';
 
 /// Kanoniske URL-stier for DriftPro web (bokmerker, refresh, deling).
 abstract final class AppPaths {
@@ -13,7 +14,66 @@ abstract final class AppPaths {
   static const live = '/live';
   static const portal = '/portal';
 
-  // HMS undermoduler
+  /// Partnerportal — eier
+  static const portalOwnerTabs = [
+    'oversikt',
+    'oppsummering',
+    'dokumenter',
+    'ruter',
+    'utleie',
+    'moteter',
+    'bilkontroll',
+    'profil',
+  ];
+
+  /// Partnerportal — sjåfør
+  static const portalDriverTabs = [
+    'oversikt',
+    'ruter',
+    'dokumenter',
+    'fri',
+    'profil',
+  ];
+
+  static const partnersTabs = ['bedrifter', 'ruter', 'sms', 'utleie'];
+  static const absenceTabs = ['dashboard', 'mine', 'godkjenn', 'team', 'roster'];
+  static const equipmentTabs = ['oversikt', 'alle', 'truck', 'arkiv'];
+  static const competenceTabs = ['kurs', 'dokumenter', 'oversikt'];
+  static const riskTabs = ['risiko', 'interessepart'];
+  static const employeeHubTabs = ['alle', 'venter', 'bursdager'];
+  static const varslerTabs = ['sms', 'epost', 'audit', 'innstillinger'];
+
+  static String withTab(String path, String? tab, {Map<String, String?> extra = const {}}) {
+    return RouteUrlSync.build(path, {
+      ...extra,
+      if (tab != null && tab.isNotEmpty) 'tab': tab,
+    });
+  }
+
+  static String portalPath({String? tab}) => withTab(portal, tab);
+
+  static String partnersPath({String? tab}) => withTab(partners, tab);
+
+  static String absencePath({String? tab}) => withTab(absence, tab);
+
+  static String equipmentPath({String? tab}) => withTab(hmsUtstyr, tab);
+
+  static String competencePath({String? tab}) => withTab(hmsKompetanse, tab);
+
+  static String riskPath({String? tab}) => withTab(hmsRisiko, tab);
+
+  static String employeeHubPath({String? tab}) => withTab(moreBrukergodkjenning, tab);
+
+  static String varslerPath({String? tab, String? settingsTab}) {
+    final extra = <String, String?>{};
+    if (settingsTab != null && settingsTab.isNotEmpty) {
+      extra['settings'] = settingsTab;
+    }
+    return withTab(moreVarsler, tab, extra: extra);
+  }
+
+  static String partnerDetailPath(String partnerId, {String? tab}) =>
+      withTab('$partners/bedrift/$partnerId', tab);
   static const hmsAvvik = '/hms/avvik';
   static const hmsRisiko = '/hms/risiko';
   static const hmsRisikomatrise = '/hms/risikomatrise';
@@ -62,6 +122,7 @@ abstract final class AppPaths {
   static int? branchIndexForPath(String path) {
     final normalized = _normalize(path.split('?').first);
     if (normalized == dashboard) return 0;
+    if (normalized.startsWith('$partners/')) return 5;
     for (var i = 1; i < shellTabs.length; i++) {
       final tabPath = _normalize(shellTabs[i].path);
       if (normalized == tabPath || normalized.startsWith('$tabPath/')) {
@@ -108,6 +169,14 @@ abstract final class AppPaths {
 
     for (final p in [live, '/online', '/infoskjerm', '/wallboard']) {
       if (_normalize(path) == _normalize(p)) return live;
+    }
+
+    if (_normalize(path) == portal || path.startsWith('$portal/')) {
+      return uri.hasQuery ? '$path?${uri.query}' : path;
+    }
+
+    if (path.startsWith('$hms/') || path.startsWith('$more/')) {
+      return uri.hasQuery ? '$path?${uri.query}' : path;
     }
 
     if (branchIndexForPath(path) != null) {

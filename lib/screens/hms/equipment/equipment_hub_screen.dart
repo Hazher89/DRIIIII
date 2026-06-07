@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/routing/app_paths.dart';
+import '../../../core/routing/route_url_sync.dart';
 import '../../../core/permissions/user_access.dart';
 import '../../../core/services/hms/equipment_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -14,7 +16,9 @@ import 'equipment_settings_screen.dart';
 
 /// Smart utstyrssenter — truck, elektronikk, service, arkiv.
 class EquipmentHubScreen extends StatefulWidget {
-  const EquipmentHubScreen({super.key});
+  const EquipmentHubScreen({super.key, this.initialTab});
+
+  final String? initialTab;
 
   @override
   State<EquipmentHubScreen> createState() => _EquipmentHubScreenState();
@@ -34,12 +38,25 @@ class _EquipmentHubScreenState extends State<EquipmentHubScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 4, vsync: this);
+    final idx = RouteUrlSync.indexForSlug(widget.initialTab, AppPaths.equipmentTabs);
+    _tabs = TabController(length: 4, vsync: this, initialIndex: idx);
+    _tabs.addListener(_onTabChanged);
     _load();
+  }
+
+  void _onTabChanged() {
+    if (_tabs.indexIsChanging || !mounted) return;
+    RouteUrlSync.syncTab(
+      context,
+      basePath: AppPaths.hmsUtstyr,
+      index: _tabs.index,
+      slugs: AppPaths.equipmentTabs,
+    );
   }
 
   @override
   void dispose() {
+    _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
     super.dispose();
   }

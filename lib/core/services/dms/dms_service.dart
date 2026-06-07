@@ -45,10 +45,11 @@ class DmsService {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('Ingen innlogget bruker funnet.');
 
+    final effectiveCompanyId = await _companyIdForRls(companyId);
     final payload = <String, dynamic>{
       'name': name,
       'parent_id': parentId,
-      'company_id': companyId,
+      'company_id': effectiveCompanyId,
       'created_by': user.id,
       'is_private': isPrivate,
       'is_shared_mavi': isSharedMavi,
@@ -159,6 +160,29 @@ class DmsService {
     return data.map((e) => DmsFile.fromJson(e as Map<String, dynamic>)).toList();
   }
 
+  /// company_id må matche profiles.company_id for RLS — bruk DB/RPC, aldri «gjettet» bootstrap.
+  static Future<String> _companyIdForRls(String requestedCompanyId) async {
+    await SupabaseService.ensureSessionLinkedToCompany();
+
+    try {
+      final rpc = await client.rpc('get_user_company_id');
+      if (rpc is String && rpc.isNotEmpty) return rpc;
+    } catch (_) {}
+
+    final profileCompanyId =
+        (await SupabaseService.fetchCurrentUserProfile())?.companyId;
+    if (profileCompanyId != null && profileCompanyId.isNotEmpty) {
+      return profileCompanyId;
+    }
+
+    if (requestedCompanyId.isNotEmpty) return requestedCompanyId;
+
+    throw Exception(
+      'Profilen din mangler bedriftstilknytning. Logg ut og inn på nytt, '
+      'eller kontakt administrator.',
+    );
+  }
+
   static Future<DmsFile> createFile({
     required String name,
     required String storagePath,
@@ -170,12 +194,13 @@ class DmsService {
   }) async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('Ingen innlogget bruker funnet.');
-    
+
+    final effectiveCompanyId = await _companyIdForRls(companyId);
     final extension = FileTypeResolver.extensionFromName(name) ??
         FileTypeResolver.extensionFromStoragePath(storagePath);
 
     final data = await client.from('dms_files').insert({
-      'company_id': companyId,
+      'company_id': effectiveCompanyId,
       'folder_id': folderId,
       'name': name,
       'storage_path': storagePath,
@@ -196,8 +221,9 @@ class DmsService {
     String? folderId,
     required String companyId,
   }) async {
+    final effectiveCompanyId = await _companyIdForRls(companyId);
     final storagePath =
-        'company_$companyId/${folderId ?? "root"}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
+        'company_$effectiveCompanyId/${folderId ?? "root"}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
     final stored = await CompanyFileStorage.upload(
       supabaseBucket: 'documents',
@@ -214,7 +240,7 @@ class DmsService {
           : stored.path,
       fileSize: bytes.length,
       folderId: folderId,
-      companyId: companyId,
+      companyId: effectiveCompanyId,
       storageProvider: stored.provider,
       externalUrl: stored.publicOrSignedUrl,
     );

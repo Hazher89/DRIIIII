@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/routing/app_paths.dart';
+import '../../core/routing/route_url_sync.dart';
+
 import '../../core/utils/nb_date_format.dart';
 
 import '../../core/constants/leave_rules.dart';
@@ -33,7 +36,9 @@ import 'widgets/leave_unified_team_view.dart';
 enum _MineStatusFilter { alle, ventende, godkjent, avvist }
 
 class AbsenceScreen extends StatefulWidget {
-  const AbsenceScreen({super.key});
+  const AbsenceScreen({super.key, this.initialTab});
+
+  final String? initialTab;
 
   @override
   State<AbsenceScreen> createState() => _AbsenceScreenState();
@@ -65,17 +70,62 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   List<UserProfile> _teamProfiles = [];
   List<AbsenceQuota> _teamQuotas = [];
   String? _calendarUserFilter;
+  String? _pendingTabSlug;
 
   @override
   void initState() {
     super.initState();
+    _pendingTabSlug = widget.initialTab;
     _loadAllData();
   }
 
   @override
   void dispose() {
+    _tabController?.removeListener(_onAbsenceTabChanged);
     _tabController?.dispose();
     super.dispose();
+  }
+
+  int _indexForSlug(String? slug, int tabCount) {
+    if (slug == null || slug.isEmpty) return 0;
+    switch (slug) {
+      case 'dashboard':
+        return 0;
+      case 'mine':
+        return 1;
+      case 'godkjenn':
+        return _godkjennTabIndex >= 0 ? _godkjennTabIndex : 0;
+      case 'team':
+        return _teamCalendarTabIndex.clamp(0, tabCount - 1);
+      case 'roster':
+        return tabCount - 1;
+      default:
+        return 0;
+    }
+  }
+
+  String _slugForIndex(int index, bool isManager) {
+    if (index == 0) return 'dashboard';
+    if (index == 1) return 'mine';
+    if (isManager && index == _godkjennTabIndex) return 'godkjenn';
+    if (index == _teamCalendarTabIndex) return 'team';
+    return 'roster';
+  }
+
+  void _syncAbsenceUrl(bool isManager) {
+    if (!mounted || _tabController == null) return;
+    RouteUrlSync.goIfChanged(
+      context,
+      AppPaths.absencePath(tab: _slugForIndex(_tabController!.index, isManager)),
+    );
+  }
+
+  void _onAbsenceTabChanged() {
+    if (_tabController == null || _tabController!.indexIsChanging || !mounted) return;
+    final profile = _profile;
+    if (profile == null) return;
+    final isManager = profile.role == UserRole.leder || profile.isAdmin;
+    _syncAbsenceUrl(isManager);
   }
 
   void _rebuildTabs(bool isDark, bool isManager, bool canAdmin) {
@@ -115,12 +165,22 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     );
 
     if (_tabController == null || previousLength != tabs.length) {
+      _tabController?.removeListener(_onAbsenceTabChanged);
       _tabController?.dispose();
+      var initialIndex = previousIndex.clamp(0, tabs.length - 1);
+      if (_pendingTabSlug != null) {
+        initialIndex = _indexForSlug(_pendingTabSlug, tabs.length);
+        _pendingTabSlug = null;
+      }
       _tabController = TabController(
         length: tabs.length,
         vsync: this,
-        initialIndex: previousIndex.clamp(0, tabs.length - 1),
-      );
+        initialIndex: initialIndex,
+      )..addListener(_onAbsenceTabChanged);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _tabController == null) return;
+        _syncAbsenceUrl(isManager);
+      });
     }
 
     _tabs = tabs;

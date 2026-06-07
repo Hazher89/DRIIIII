@@ -1,6 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/routing/app_paths.dart';
+import '../../../core/routing/route_url_sync.dart';
 import '../../../core/permissions/user_access.dart';
 import '../../../core/services/hms/competence_service.dart';
 import '../../../core/services/hms/employee_document_service.dart';
@@ -13,7 +15,9 @@ import 'competence_matrix_screen.dart';
 
 /// Kompetanse: kurskatalog, dokumenter/bevis, matrise.
 class CompetenceHubScreen extends StatefulWidget {
-  const CompetenceHubScreen({super.key});
+  const CompetenceHubScreen({super.key, this.initialTab});
+
+  final String? initialTab;
 
   @override
   State<CompetenceHubScreen> createState() => _CompetenceHubScreenState();
@@ -36,12 +40,25 @@ class _CompetenceHubScreenState extends State<CompetenceHubScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    final idx = RouteUrlSync.indexForSlug(widget.initialTab, AppPaths.competenceTabs);
+    _tabs = TabController(length: 3, vsync: this, initialIndex: idx);
+    _tabs.addListener(_onTabChanged);
     _load();
+  }
+
+  void _onTabChanged() {
+    if (_tabs.indexIsChanging || !mounted) return;
+    RouteUrlSync.syncTab(
+      context,
+      basePath: AppPaths.hmsKompetanse,
+      index: _tabs.index,
+      slugs: AppPaths.competenceTabs,
+    );
   }
 
   @override
   void dispose() {
+    _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
     super.dispose();
   }

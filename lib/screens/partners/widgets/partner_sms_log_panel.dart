@@ -7,6 +7,7 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner_sms_log_entry.dart';
 import '../../../models/partner_sms_log_filters.dart';
 import 'partner_ui.dart';
+import '../../profile/widgets/notification_log_toolbar.dart';
 
 /// SMS-logg kun for samarbeid-modulen (RPC filtrerer bort HMS/fravær/avvik).
 class PartnerSmsLogPanel extends StatefulWidget {
@@ -191,9 +192,11 @@ class _PartnerSmsLogPanelState extends State<PartnerSmsLogPanel> {
                 Row(
                   children: [
                     Expanded(
-                      child: Text(
-                        '$_totalCount SMS (samarbeid)',
-                        style: DriftProTheme.labelMd,
+                      child: NotificationLogToolbar(
+                        totalCount: _totalCount,
+                        onRefresh: () => _load(refresh: true),
+                        partnerScopeOnly: true,
+                        queueFilterActive: _filters.status,
                       ),
                     ),
                     TextButton.icon(
@@ -201,10 +204,6 @@ class _PartnerSmsLogPanelState extends State<PartnerSmsLogPanel> {
                           setState(() => _filtersExpanded = !_filtersExpanded),
                       icon: Icon(_filtersExpanded ? Icons.expand_less : Icons.tune),
                       label: Text(_filtersExpanded ? 'Skjul' : 'Filter'),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      onPressed: () => _load(refresh: true),
                     ),
                   ],
                 ),

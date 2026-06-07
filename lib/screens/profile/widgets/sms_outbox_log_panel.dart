@@ -5,6 +5,7 @@ import '../../../core/services/sms/sms_log_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/sms_log_entry.dart';
 import '../../../models/sms_log_filters.dart';
+import 'notification_log_toolbar.dart';
 
 /// Superadmin: alle utgående SMS med avansert søk.
 class SmsOutboxLogPanel extends StatefulWidget {
@@ -157,29 +158,18 @@ class _SmsOutboxLogPanelState extends State<SmsOutboxLogPanel> {
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
             child: Column(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '$_totalCount SMS i utvalg',
-                        style: DriftProTheme.labelMd,
-                      ),
-                    ),
-                    TextButton.icon(
-                      onPressed: () =>
-                          setState(() => _filtersExpanded = !_filtersExpanded),
-                      icon: Icon(
-                        _filtersExpanded
-                            ? Icons.expand_less
-                            : Icons.tune,
-                      ),
-                      label: Text(_filtersExpanded ? 'Skjul filter' : 'Filter'),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      onPressed: () => _load(refresh: true),
-                    ),
-                  ],
+                NotificationLogToolbar(
+                  totalCount: _totalCount,
+                  onRefresh: () => _load(refresh: true),
+                  queueFilterActive: _filters.status,
+                ),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: () => setState(() => _filtersExpanded = !_filtersExpanded),
+                    icon: Icon(_filtersExpanded ? Icons.expand_less : Icons.tune),
+                    label: Text(_filtersExpanded ? 'Skjul filter' : 'Filter'),
+                  ),
                 ),
                 if (_filtersExpanded) ...[
                   const SizedBox(height: 8),

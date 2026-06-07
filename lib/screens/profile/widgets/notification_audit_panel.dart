@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/notification/notification_audit_service.dart';
+import '../../../core/services/notification/notification_log_admin_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/notification_audit_entry.dart';
 
@@ -57,6 +58,45 @@ class _NotificationAuditPanelState extends State<NotificationAuditPanel> {
     }
   }
 
+  Future<void> _clearAudit() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tøm audit-logg?'),
+        content: const Text(
+          'Sletter alle «Ikke sendt»/audit-rader for bedriften. Kan ikke angres.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('Slett'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      final r = await NotificationLogAdminService.clearLogs(
+        sms: false,
+        email: false,
+        audit: true,
+        partnerScopeOnly: widget.partnerScopeOnly,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Audit-logg tømt (${r.auditDeleted} rader)')),
+      );
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kunne ikke tømme: $e'), backgroundColor: Colors.red),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final df = DateFormat('dd.MM.yyyy HH:mm');
@@ -100,6 +140,11 @@ class _NotificationAuditPanelState extends State<NotificationAuditPanel> {
                 },
               ),
               IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+              IconButton(
+                tooltip: 'Tøm audit-logg',
+                onPressed: _clearAudit,
+                icon: const Icon(Icons.delete_sweep_outlined),
+              ),
             ],
           ),
         ),

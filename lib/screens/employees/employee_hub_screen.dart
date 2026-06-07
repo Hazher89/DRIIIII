@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/permissions/access_catalog.dart';
 import '../../core/permissions/user_access.dart';
+import '../../core/routing/app_paths.dart';
+import '../../core/routing/route_url_sync.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
@@ -16,7 +18,9 @@ import 'widgets/employee_move_department_sheet.dart';
 
 /// Ansattadministrasjon – superadmin styrer alle DriftPro-tilganger per bruker.
 class EmployeeHubScreen extends StatefulWidget {
-  const EmployeeHubScreen({super.key});
+  const EmployeeHubScreen({super.key, this.initialTab});
+
+  final String? initialTab;
 
   @override
   State<EmployeeHubScreen> createState() => _EmployeeHubScreenState();
@@ -35,12 +39,25 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    final idx = RouteUrlSync.indexForSlug(widget.initialTab, AppPaths.employeeHubTabs);
+    _tabs = TabController(length: 3, vsync: this, initialIndex: idx);
+    _tabs.addListener(_onTabChanged);
     _load();
+  }
+
+  void _onTabChanged() {
+    if (_tabs.indexIsChanging || !mounted) return;
+    RouteUrlSync.syncTab(
+      context,
+      basePath: AppPaths.moreBrukergodkjenning,
+      index: _tabs.index,
+      slugs: AppPaths.employeeHubTabs,
+    );
   }
 
   @override
   void dispose() {
+    _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
     super.dispose();
   }

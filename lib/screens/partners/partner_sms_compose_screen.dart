@@ -98,11 +98,16 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
   List<FleetPartnerVehicleRow> _fleet = [];
   bool _sending = false;
   String? _selectedMaviGroup;
+  String? _selectedVehicleId;
+  int _hubTab = 0;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(() {
+      if (!_tabs.indexIsChanging && mounted) setState(() {});
+    });
     _searchCtrl.addListener(() => setState(() {}));
     _messageCtrl.addListener(() => setState(() {}));
     _manualPhonesCtrl.addListener(() => setState(() {}));
@@ -229,6 +234,9 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
           _contacts = contacts;
           _fleet = fleet;
           _loading = false;
+          _selectedVehicleId ??=
+              fleet.isNotEmpty ? fleet.first.vehicle.id : null;
+          _syncMaviFromVehicle();
           _selectedMaviGroup ??= sortedGroups.isNotEmpty ? sortedGroups.first : null;
           if (_selectedMaviGroup != null && !sortedGroups.contains(_selectedMaviGroup)) {
             _selectedMaviGroup = sortedGroups.isNotEmpty ? sortedGroups.first : null;
@@ -293,6 +301,84 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
       }
     }
     return MaviUnitCodes.compactLabel(mavi);
+  }
+
+  String _maviFleetLabel(FleetPartnerVehicleRow row) {
+    final m = MaviUnitCodes.compactLabel(row.vehicle.unitCode);
+    final driver = row.vehicle.driverName?.trim();
+    if (driver != null && driver.isNotEmpty) return '$m · $driver';
+    return m;
+  }
+
+  void _syncMaviFromVehicle() {
+    final vid = _selectedVehicleId;
+    if (vid == null) return;
+    for (final row in _fleet) {
+      if (row.vehicle.id == vid) {
+        _selectedMaviGroup = MaviUnitCodes.normalize(row.vehicle.unitCode);
+        return;
+      }
+    }
+  }
+
+  List<FleetPartnerVehicleRow> get _sortedFleetRows {
+    final copy = [..._fleet];
+    copy.sort((a, b) {
+      final c = a.vehicle.unitCode.compareTo(b.vehicle.unitCode);
+      if (c != 0) return c;
+      return (a.vehicle.driverName ?? '').compareTo(b.vehicle.driverName ?? '');
+    });
+    return copy;
+  }
+
+  Widget _buildSharedMaviPicker({EdgeInsets padding = const EdgeInsets.fromLTRB(16, 0, 16, 8)}) {
+    if (_fleet.isEmpty) {
+      return Padding(
+        padding: padding,
+        child: Text(
+          'Ingen MAVI-enheter i flåten. Registrer bil/sjåfør under Samarbeidspartnere.',
+          style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context)),
+        ),
+      );
+    }
+    final sorted = _sortedFleetRows;
+    final value = _selectedVehicleId != null &&
+            sorted.any((r) => r.vehicle.id == _selectedVehicleId)
+        ? _selectedVehicleId
+        : sorted.first.vehicle.id;
+
+    return Padding(
+      padding: padding,
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          labelText: 'Velg MAVI-nummer',
+          border: OutlineInputBorder(),
+          isDense: true,
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<String>(
+            value: value,
+            isExpanded: true,
+            items: [
+              for (final row in sorted)
+                DropdownMenuItem(
+                  value: row.vehicle.id,
+                  child: Text(
+                    _maviFleetLabel(row),
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+            ],
+            onChanged: (v) => setState(() {
+              _selectedVehicleId = v;
+              _syncMaviFromVehicle();
+            }),
+          ),
+        ),
+      ),
+    );
   }
 
   String _contactRoleLabel(PartnerSmsContact c) {
@@ -519,55 +605,75 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-            child: SegmentedButton<int>(
-              segments: const [
-                ButtonSegment(
-                  value: 0,
-                  label: Text('Kontakter'),
-                  icon: Icon(Icons.contacts_outlined, size: 18),
-                ),
-                ButtonSegment(
-                  value: 1,
-                  label: Text('Rute-kunder'),
-                  icon: Icon(Icons.route_outlined, size: 18),
-                ),
-              ],
-              selected: {_tabs.index},
-              onSelectionChanged: (s) => _tabs.animateTo(s.first),
-            ),
-          ),
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: _tabs.index == 0
-                ? KeyedSubtree(
-                    key: const ValueKey('contacts'),
-                    child: _buildContactsTab(
-                      isDark,
-                      totalRecipients,
-                      manualCount,
-                      selectedCount,
-                      scrollable: true,
-                    ),
-                  )
-                : KeyedSubtree(
-                    key: const ValueKey('route'),
-                    child: _companyId == null
-                        ? const Padding(
-                            padding: EdgeInsets.all(32),
-                            child: Center(child: CircularProgressIndicator()),
-                          )
-                        : PartnerSmsRouteCustomersTab(
-                            companyId: _companyId!,
-                            fleet: _fleet,
-                            messageCtrl: _messageCtrl,
-                            sending: _sending,
-                            onSend: _sendRouteCustomers,
-                            scrollable: true,
-                          ),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen)),
+            )
+          else if (_error != null)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(_error!, textAlign: TextAlign.center),
+            )
+          else ...[
+            _buildSharedMaviPicker(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              child: SegmentedButton<int>(
+                segments: const [
+                  ButtonSegment(
+                    value: 0,
+                    label: Text('Kontakter'),
+                    icon: Icon(Icons.contacts_outlined, size: 18),
                   ),
-          ),
+                  ButtonSegment(
+                    value: 1,
+                    label: Text('Rute-kunder'),
+                    icon: Icon(Icons.route_outlined, size: 18),
+                  ),
+                ],
+                selected: {_hubTab},
+                onSelectionChanged: (s) => setState(() => _hubTab = s.first),
+              ),
+            ),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: _hubTab == 0
+                  ? KeyedSubtree(
+                      key: const ValueKey('contacts'),
+                      child: _buildContactsTab(
+                        isDark,
+                        totalRecipients,
+                        manualCount,
+                        selectedCount,
+                        scrollable: true,
+                        hideMaviPicker: true,
+                      ),
+                    )
+                  : KeyedSubtree(
+                      key: const ValueKey('route'),
+                      child: _companyId == null
+                          ? const Padding(
+                              padding: EdgeInsets.all(32),
+                              child: Center(child: CircularProgressIndicator()),
+                            )
+                          : PartnerSmsRouteCustomersTab(
+                              companyId: _companyId!,
+                              fleet: _fleet,
+                              messageCtrl: _messageCtrl,
+                              sending: _sending,
+                              onSend: _sendRouteCustomers,
+                              scrollable: true,
+                              selectedVehicleId: _selectedVehicleId,
+                              hideMaviPicker: true,
+                              onVehicleChanged: (v) => setState(() {
+                                _selectedVehicleId = v;
+                                _syncMaviFromVehicle();
+                              }),
+                            ),
+                    ),
+            ),
+          ],
         ],
       );
     }
@@ -638,6 +744,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     int manualCount,
     int selectedCount, {
     bool scrollable = false,
+    bool hideMaviPicker = false,
   }) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen));
@@ -663,37 +770,38 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Velg MAVI',
-                border: OutlineInputBorder(),
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: selectedKey != null && maviKeys.contains(selectedKey)
-                      ? selectedKey
-                      : maviKeys.first,
-                  isExpanded: true,
-                  items: [
-                    for (final m in maviKeys)
-                      DropdownMenuItem(
-                        value: m,
-                        child: Text(
-                          _maviGroupLabel(m),
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
+          if (!hideMaviPicker)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Velg MAVI',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: selectedKey != null && maviKeys.contains(selectedKey)
+                        ? selectedKey
+                        : maviKeys.first,
+                    isExpanded: true,
+                    items: [
+                      for (final m in maviKeys)
+                        DropdownMenuItem(
+                          value: m,
+                          child: Text(
+                            _maviGroupLabel(m),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
                         ),
-                      ),
-                  ],
-                  onChanged: (v) => setState(() => _selectedMaviGroup = v),
+                    ],
+                    onChanged: (v) => setState(() => _selectedMaviGroup = v),
+                  ),
                 ),
               ),
             ),
-          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             child: Row(
@@ -788,6 +896,10 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
           isDense: true,
         ),
         onChanged: (_) {
+          if (hideMaviPicker) {
+            setState(() {});
+            return;
+          }
           final keys = _sortedMaviKeys;
           if (keys.isNotEmpty &&
               (_selectedMaviGroup == null || !keys.contains(_selectedMaviGroup))) {
@@ -802,7 +914,19 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           searchRow,
-          maviSelector(),
+          if (groupContacts.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                hideMaviPicker
+                    ? 'Ingen kontakter for valgt MAVI.'
+                    : 'Ingen kontakter matcher søket.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: PartnerUi.mutedText(context)),
+              ),
+            )
+          else
+            maviSelector(),
           Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), child: messageBlock),
         ],
       );

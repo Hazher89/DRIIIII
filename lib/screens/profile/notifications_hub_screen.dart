@@ -7,7 +7,14 @@ import 'profile_notifications_tab.dart';
 
 /// Mer → Varsler: kun superadmin — logg, SMS-innstillinger og mottakere.
 class NotificationsHubScreen extends StatefulWidget {
-  const NotificationsHubScreen({super.key});
+  const NotificationsHubScreen({
+    super.key,
+    this.initialTab,
+    this.initialSettingsTab,
+  });
+
+  final String? initialTab;
+  final String? initialSettingsTab;
 
   @override
   State<NotificationsHubScreen> createState() => _NotificationsHubScreenState();
@@ -61,7 +68,10 @@ class _NotificationsHubScreenState extends State<NotificationsHubScreen> {
         title: const Text('Varsler'),
         centerTitle: true,
       ),
-      body: const ProfileNotificationsTab(),
+      body: ProfileNotificationsTab(
+        initialTab: widget.initialTab,
+        initialSettingsTab: widget.initialSettingsTab,
+      ),
     );
   }
 }

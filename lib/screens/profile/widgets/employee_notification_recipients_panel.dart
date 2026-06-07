@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../../core/services/notification/employee_notification_recipients_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../models/notification_channel.dart';
 import '../../../models/notification_recipient_row.dart';
+import 'notification_channel_picker.dart';
 
 enum _ViewMode { byEmployee, byEvent }
 
@@ -116,20 +118,21 @@ class _EmployeeNotificationRecipientsPanelState
   }
 
   int _activeCountForProfile(String profileId) =>
-      _rows.where((r) => r.profileId == profileId && r.subscribed).length;
+      _rows.where((r) => r.profileId == profileId && r.subscribed && r.channel != NotificationChannel.none).length;
 
   int _activeCountForEvent(String eventId) =>
-      _rows.where((r) => r.eventId == eventId && r.subscribed).length;
+      _rows.where((r) => r.eventId == eventId && r.subscribed && r.channel != NotificationChannel.none).length;
 
-  Future<void> _toggle(NotificationRecipientRow row, bool value) async {
+  Future<void> _setChannel(NotificationRecipientRow row, NotificationChannel channel) async {
     if (_companyId == null) return;
     final key = '${row.profileId}:${row.eventId}';
+    final subscribed = channel != NotificationChannel.none;
     setState(() {
       _savingKey = key;
       _rows = _rows
           .map(
             (r) => r.profileId == row.profileId && r.eventId == row.eventId
-                ? r.copyWith(subscribed: value, isExplicit: true)
+                ? r.copyWith(subscribed: subscribed, channel: channel, isExplicit: true)
                 : r,
           )
           .toList();
@@ -139,14 +142,15 @@ class _EmployeeNotificationRecipientsPanelState
         companyId: _companyId!,
         profileId: row.profileId,
         eventId: row.eventId,
-        subscribed: value,
+        subscribed: subscribed,
+        channel: channel,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              value
-                  ? '${row.profileName} mottar «${row.eventTitle}»'
+              subscribed
+                  ? '${row.profileName}: «${row.eventTitle}» → ${channel.label}'
                   : '${row.profileName} får ikke «${row.eventTitle}»',
             ),
             duration: const Duration(seconds: 2),
@@ -238,8 +242,9 @@ class _EmployeeNotificationRecipientsPanelState
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  'MAVI-ansatte: se hvem som mottar hvilke varsler. Slå av/på '
-                  'per person og varseltype — lagres umiddelbart i Supabase.',
+                  'Velg hvem som får hvilke varsler — og om de skal motta SMS, e-post, '
+                  'begge eller av. Endringer lagres umiddelbart i Supabase og styrer '
+                  'faktisk utsending.',
                   style: TextStyle(fontSize: 13),
                 ),
               ),
@@ -487,48 +492,53 @@ class _EmployeeNotificationRecipientsPanelState
   Widget _subscriptionTile(NotificationRecipientRow row) {
     final key = '${row.profileId}:${row.eventId}';
     final saving = _savingKey == key;
+    final effectiveChannel =
+        row.subscribed && row.channel != NotificationChannel.none ? row.channel : NotificationChannel.none;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: SwitchListTile(
-        title: Text(
-          _viewMode == _ViewMode.byEmployee ? row.eventTitle : row.profileName,
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
-        subtitle: Text(
-          _viewMode == _ViewMode.byEmployee
-              ? (row.isExplicit ? 'Manuelt valg' : 'Standard (${_ruleLabel(row.defaultRecipientRule)})')
-              : '${row.profileRole}${row.departmentName != null ? ' · ${row.departmentName}' : ''}${row.isExplicit ? ' · manuelt' : ''}',
-          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-        ),
-        value: row.subscribed,
-        onChanged: saving ? null : (v) => _toggle(row, v),
-        secondary: saving
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : Icon(
-                row.subscribed ? Icons.notifications_active : Icons.notifications_off,
-                color: row.subscribed ? DriftProTheme.primaryGreen : Colors.grey,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _viewMode == _ViewMode.byEmployee ? row.eventTitle : row.profileName,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              _viewMode == _ViewMode.byEmployee
+                  ? (row.isExplicit
+                      ? 'Manuelt valg'
+                      : 'Standard (${_ruleLabel(row.defaultRecipientRule)})')
+                  : '${row.profileRole}${row.departmentName != null ? ' · ${row.departmentName}' : ''}${row.isExplicit ? ' · manuelt' : ''}',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            if (saving)
+              const LinearProgressIndicator(minHeight: 2)
+            else
+              NotificationChannelPicker(
+                compact: true,
+                value: effectiveChannel,
+                onChanged: (ch) => _setChannel(row, ch),
               ),
+          ],
+        ),
       ),
     );
   }
 
   String _ruleLabel(String rule) {
-    switch (rule) {
-      case 'route_ops':
-        return 'Rute/samarbeid';
-      case 'leaders':
-      case 'admins':
-        return 'Kun admin/superadmin';
-      case 'department_leaders':
-      case 'department_scoped':
-        return 'Egen avdeling';
-      default:
-        return rule;
-    }
+    return switch (rule) {
+      'department_scoped' || 'department_leaders' => 'Egen avdeling',
+      'assignee_default' => 'Saksbehandler (på som standard)',
+      'admins' => 'Kun admin/superadmin',
+      'route_ops' => 'Rute-operasjon',
+      'leaders' => 'Ledere',
+      _ => rule,
+    };
   }
 }
 

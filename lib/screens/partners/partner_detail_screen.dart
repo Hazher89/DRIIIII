@@ -29,7 +29,9 @@ import 'widgets/partner_vehicle_inspection_tab.dart';
 
 class PartnerDetailScreen extends StatefulWidget {
   final Partner partner;
-  const PartnerDetailScreen({super.key, required this.partner});
+  const PartnerDetailScreen({super.key, required this.partner, this.initialTab});
+
+  final String? initialTab;
 
   @override
   State<PartnerDetailScreen> createState() => _PartnerDetailScreenState();
