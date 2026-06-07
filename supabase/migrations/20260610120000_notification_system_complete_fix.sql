@@ -407,8 +407,16 @@ BEGIN
   END IF;
 
   v_id := public.queue_email(
-    p_company_id, v_email, p_subject, p_body, p_category,
-    p_reference_type, p_reference_id, p_user_id, auth.uid()
+    p_company_id,
+    v_email,
+    p_subject,
+    p_body,
+    p_category,
+    p_reference_type,
+    p_reference_id,
+    p_description,
+    p_user_id,
+    auth.uid()
   );
 
   IF v_id IS NOT NULL THEN

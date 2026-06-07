@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { readSmtpConfig, sendViaSmtp } from "../_shared/domeneshop_smtp.ts";
+import { readResendSendConfig, sendViaResend } from "../_shared/resend_send.ts";
 
 type EmailRow = {
   id: string;
@@ -8,6 +9,8 @@ type EmailRow = {
   body: string;
   attempts: number;
 };
+
+type SendResult = { ok: true } | { ok: false; error: string };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -31,8 +34,25 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  const cfg = readSmtpConfig();
-  if ("error" in cfg) return json({ error: cfg.error }, 500);
+  const resendCfg = readResendSendConfig();
+  const smtpCfg = readSmtpConfig();
+  const useResend = !("error" in resendCfg);
+  const useSmtp = !("error" in smtpCfg);
+
+  if (!useResend && !useSmtp) {
+    return json({
+      error:
+        "Mangler RESEND_API_KEY (anbefalt) eller SMTP_USER/SMTP_PASS (fallback)",
+    }, 500);
+  }
+
+  const provider = useResend ? "resend" : "smtp";
+  const testMode = useResend
+    ? resendCfg.test
+    : useSmtp
+    ? smtpCfg.test
+    : false;
+  const from = useResend ? resendCfg.from : useSmtp ? smtpCfg.from : "";
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -75,13 +95,20 @@ Deno.serve(async (req) => {
   let failed = 0;
   const details: Array<{ id: string; ok: boolean; error?: string }> = [];
 
+  async function deliver(
+    to: string,
+    subject: string,
+    body: string,
+  ): Promise<SendResult> {
+    if (useResend) {
+      const r = await sendViaResend(resendCfg, to, subject, body);
+      return r.ok ? { ok: true } : { ok: false, error: r.error };
+    }
+    return await sendViaSmtp(smtpCfg, to, subject, body);
+  }
+
   for (const row of pending) {
-    const result = await sendViaSmtp(
-      cfg,
-      row.to_email,
-      row.subject,
-      row.body,
-    );
+    const result = await deliver(row.to_email, row.subject, row.body);
 
     if (result.ok) {
       await supabase
@@ -106,9 +133,9 @@ Deno.serve(async (req) => {
       details.push({ id: row.id, ok: false, error: result.error });
     }
 
-    // Domeneshop: maks ~1 melding/sek — unngå rate limit
-    if (!cfg.test && pending.length > 1) {
-      await new Promise((r) => setTimeout(r, 1100));
+    // Resend: 5 req/s — SMTP: ~1/s hos Domeneshop
+    if (!testMode && pending.length > 1) {
+      await new Promise((r) => setTimeout(r, useResend ? 220 : 1100));
     }
   }
 
@@ -116,8 +143,9 @@ Deno.serve(async (req) => {
     processed: pending.length,
     sent,
     failed,
-    testMode: cfg.test,
-    from: cfg.from,
+    provider,
+    testMode,
+    from,
     details,
   });
 });
