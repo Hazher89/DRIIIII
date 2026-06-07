@@ -45,7 +45,10 @@ class DmsService {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('Ingen innlogget bruker funnet.');
 
-    final effectiveCompanyId = await _companyIdForRls(companyId);
+    final effectiveCompanyId = await _companyIdForRls(
+      companyId,
+      folderId: parentId,
+    );
     final payload = <String, dynamic>{
       'name': name,
       'parent_id': parentId,
@@ -160,8 +163,25 @@ class DmsService {
     return data.map((e) => DmsFile.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  /// company_id må matche profiles.company_id for RLS — bruk DB/RPC, aldri «gjettet» bootstrap.
-  static Future<String> _companyIdForRls(String requestedCompanyId) async {
+  /// company_id for RLS — ved mappe-opplasting brukes mappens company_id.
+  static Future<String> _companyIdForRls(
+    String requestedCompanyId, {
+    String? folderId,
+  }) async {
+    if (folderId != null && folderId.isNotEmpty) {
+      try {
+        final row = await client
+            .from('dms_folders')
+            .select('company_id')
+            .eq('id', folderId)
+            .maybeSingle();
+        final folderCompany = row?['company_id'] as String?;
+        if (folderCompany != null && folderCompany.isNotEmpty) {
+          return folderCompany;
+        }
+      } catch (_) {}
+    }
+
     await SupabaseService.ensureSessionLinkedToCompany();
 
     try {
@@ -195,7 +215,10 @@ class DmsService {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('Ingen innlogget bruker funnet.');
 
-    final effectiveCompanyId = await _companyIdForRls(companyId);
+    final effectiveCompanyId = await _companyIdForRls(
+      companyId,
+      folderId: folderId,
+    );
     final extension = FileTypeResolver.extensionFromName(name) ??
         FileTypeResolver.extensionFromStoragePath(storagePath);
 
@@ -221,7 +244,10 @@ class DmsService {
     String? folderId,
     required String companyId,
   }) async {
-    final effectiveCompanyId = await _companyIdForRls(companyId);
+    final effectiveCompanyId = await _companyIdForRls(
+      companyId,
+      folderId: folderId,
+    );
     final storagePath =
         'company_$effectiveCompanyId/${folderId ?? "root"}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
 
