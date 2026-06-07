@@ -9,7 +9,7 @@ import '../../core/services/survey/survey_theme_presets.dart';
 
 class SurveyBuilderCanvas extends StatefulWidget {
   final Survey survey;
-  /// Kalles etter vellykket lagring når brukeren trykker «Ferdig» (f.eks. gå til Publiser).
+  /// Kalles etter vellykket lagring når brukeren trykker «Ferdig» (går til Tema).
   final VoidCallback? onAfterSuccessfulSave;
 
   const SurveyBuilderCanvas({
@@ -1142,7 +1142,7 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
           child: Column(
             children: [
               Text(
-                'Neste steg: publiser og del lenke med respondenter',
+                'Neste steg: velg tema for respondentene',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
@@ -1169,7 +1169,7 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
                           ),
                         )
                       : const Text(
-                          'Ferdig — gå til Publiser',
+                          'Ferdig — gå til Tema',
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,

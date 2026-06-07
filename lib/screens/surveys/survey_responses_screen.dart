@@ -9,9 +9,10 @@ import '../../models/survey/survey.dart';
 
 /// Innboks med alle innsendte svar — filtrer og drill-down.
 class SurveyResponsesScreen extends StatefulWidget {
-  const SurveyResponsesScreen({super.key, required this.survey});
+  const SurveyResponsesScreen({super.key, required this.survey, this.embedded = false});
 
   final Survey survey;
+  final bool embedded;
 
   @override
   State<SurveyResponsesScreen> createState() => _SurveyResponsesScreenState();
@@ -78,45 +79,64 @@ class _SurveyResponsesScreenState extends State<SurveyResponsesScreen> {
 
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
-          decoration: BoxDecoration(
-            color: drift.card,
-            border: Border(bottom: BorderSide(color: drift.borderSubtle)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: 'Søk i svar (dato, ID…)',
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    isDense: true,
-                    filled: true,
-                    fillColor: drift.surfaceMuted,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
+        if (!widget.embedded)
+          Container(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+            decoration: BoxDecoration(
+              color: drift.card,
+              border: Border(bottom: BorderSide(color: drift.borderSubtle)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Søk i svar (dato, ID…)',
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      isDense: true,
+                      filled: true,
+                      fillColor: drift.surfaceMuted,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
+                    onChanged: (v) => setState(() => _search = v),
                   ),
-                  onChanged: (v) => setState(() => _search = v),
                 ),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: _exportCsv,
-                icon: const Icon(Icons.download_outlined, size: 18),
-                label: const Text('Eksporter CSV'),
-              ),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: 'Oppdater',
-                onPressed: _load,
-                icon: const Icon(Icons.refresh),
-              ),
-            ],
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: _exportCsv,
+                  icon: const Icon(Icons.download_outlined, size: 18),
+                  label: const Text('Eksporter CSV'),
+                ),
+                const SizedBox(width: 8),
+                IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
+              ],
+            ),
           ),
-        ),
+        if (widget.embedded)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Søk svar…',
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      isDense: true,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onChanged: (v) => setState(() => _search = v),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(onPressed: _exportCsv, icon: const Icon(Icons.download_outlined), tooltip: 'CSV'),
+                IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Oppdater'),
+              ],
+            ),
+          ),
         Expanded(
           child: _filtered.isEmpty
               ? Center(

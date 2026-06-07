@@ -1,5 +1,25 @@
 import '../../../models/survey/survey_advanced.dart';
 
+enum SurveyVisualStyle {
+  classic,
+  glass,
+  gradient,
+  minimal,
+  bold,
+  neon,
+}
+
+extension SurveyVisualStyleLabel on SurveyVisualStyle {
+  String get label => switch (this) {
+        SurveyVisualStyle.classic => 'Klassisk',
+        SurveyVisualStyle.glass => 'Glass',
+        SurveyVisualStyle.gradient => 'Gradient',
+        SurveyVisualStyle.minimal => 'Minimal',
+        SurveyVisualStyle.bold => 'Bold',
+        SurveyVisualStyle.neon => 'Neon',
+      };
+}
+
 /// Ett komplett respondent-tema — endrer bakgrunn, kort, knapper og tekst.
 class SurveyThemePreset {
   const SurveyThemePreset({
@@ -13,6 +33,7 @@ class SurveyThemePreset {
     required this.accentHex,
     this.darkMode = false,
     this.buttonStyle = 'rounded',
+    this.visualStyle = SurveyVisualStyle.classic,
   });
 
   final String id;
@@ -25,6 +46,9 @@ class SurveyThemePreset {
   final String accentHex;
   final bool darkMode;
   final String buttonStyle;
+  final SurveyVisualStyle visualStyle;
+
+  String get visualStyleLabel => visualStyle.label;
 
   SurveyThemeConfig toConfig(String surveyId) => SurveyThemeConfig(
         surveyId: surveyId,
@@ -76,12 +100,12 @@ class SurveyThemePresets {
 
     // DriftPro signatur + klassikere
     const classics = [
-      ('driftpro-green', 'DriftPro Grønn', 'Signatur', '#1B5E20', '#F7F9F8', '#FFFFFF', '#0F172A', '#0D47A1', false),
-      ('nordic-light', 'Nordisk Lys', 'Signatur', '#37474F', '#ECEFF1', '#FFFFFF', '#263238', '#546E7A', false),
-      ('midnight-pro', 'Midnight Pro', 'Signatur', '#64B5F6', '#0D1117', '#161B22', '#E6EDF3', '#238636', true),
-      ('corporate-blue', 'Corporate Blå', 'Business', '#1565C0', '#E3F2FD', '#FFFFFF', '#0D47A1', '#0277BD', false),
-      ('executive-slate', 'Executive Skifer', 'Business', '#455A64', '#ECEFF1', '#FFFFFF', '#263238', '#78909C', false),
-      ('gold-premium', 'Premium Gull', 'Business', '#F9A825', '#FFF8E1', '#FFFFFF', '#4E342E', '#FF8F00', false),
+      ('driftpro-green', 'DriftPro Grønn', 'Signatur', '#1B5E20', '#F7F9F8', '#FFFFFF', '#0F172A', '#0D47A1', false, SurveyVisualStyle.classic),
+      ('nordic-light', 'Nordisk Lys', 'Signatur', '#37474F', '#ECEFF1', '#FFFFFF', '#263238', '#546E7A', false, SurveyVisualStyle.minimal),
+      ('midnight-pro', 'Midnight Pro', 'Signatur', '#64B5F6', '#0D1117', '#161B22', '#E6EDF3', '#238636', true, SurveyVisualStyle.glass),
+      ('corporate-blue', 'Corporate Blå', 'Business', '#1565C0', '#E3F2FD', '#FFFFFF', '#0D47A1', '#0277BD', false, SurveyVisualStyle.bold),
+      ('executive-slate', 'Executive Skifer', 'Business', '#455A64', '#ECEFF1', '#FFFFFF', '#263238', '#78909C', false, SurveyVisualStyle.minimal),
+      ('gold-premium', 'Premium Gull', 'Business', '#F9A825', '#FFF8E1', '#FFFFFF', '#4E342E', '#FF8F00', false, SurveyVisualStyle.gradient),
     ];
     for (final c in classics) {
       add(SurveyThemePreset(
@@ -94,15 +118,16 @@ class SurveyThemePresets {
         textHex: c.$7,
         accentHex: c.$8,
         darkMode: c.$9,
+        visualStyle: c.$10,
       ));
     }
 
     // HSL-genererte paletter — 24 nyanser × 4 varianter = 96 tema
     const variantDefs = [
-      ('Lys', false, 0.96, 0.45, 1.0),
-      ('Pastell', false, 0.94, 0.35, 0.85),
-      ('Kraftig', false, 0.92, 0.55, 1.0),
-      ('Mørk', true, 0.12, 0.65, 0.95),
+      ('Lys', false, 0.96, 0.45, 1.0, SurveyVisualStyle.classic),
+      ('Pastell', false, 0.94, 0.35, 0.85, SurveyVisualStyle.gradient),
+      ('Kraftig', false, 0.92, 0.55, 1.0, SurveyVisualStyle.bold),
+      ('Mørk', true, 0.12, 0.65, 0.95, SurveyVisualStyle.glass),
     ];
 
     for (var h = 0; h < 360; h += 15) {
@@ -123,6 +148,7 @@ class SurveyThemePresets {
           accentHex: accent,
           darkMode: v.$2,
           buttonStyle: h % 30 == 0 ? 'pill' : 'rounded',
+          visualStyle: v.$6,
         ));
       }
     }
@@ -143,6 +169,7 @@ class SurveyThemePresets {
     for (final n in nature) {
       for (var i = 0; i < 4; i++) {
         final dark = i == 3;
+        final styles = [SurveyVisualStyle.classic, SurveyVisualStyle.gradient, SurveyVisualStyle.glass, SurveyVisualStyle.glass];
         add(SurveyThemePreset(
           id: '${n.$1.toLowerCase()}_$i',
           name: '${n.$1}${dark ? ' Mørk' : i == 0 ? '' : ' ${i + 1}'}',
@@ -154,6 +181,7 @@ class SurveyThemePresets {
           accentHex: n.$6,
           darkMode: dark,
           buttonStyle: i == 1 ? 'pill' : 'rounded',
+          visualStyle: styles[i],
         ));
       }
     }
@@ -180,6 +208,7 @@ class SurveyThemePresets {
           accentHex: n.$2,
           darkMode: true,
           buttonStyle: i % 2 == 0 ? 'pill' : 'rounded',
+          visualStyle: SurveyVisualStyle.neon,
         ));
       }
     }
@@ -202,6 +231,7 @@ class SurveyThemePresets {
         accentHex: primary,
         darkMode: l <= 0.5,
         buttonStyle: g % 3 == 0 ? 'square' : 'rounded',
+        visualStyle: SurveyVisualStyle.minimal,
       ));
     }
 
@@ -222,6 +252,7 @@ class SurveyThemePresets {
         textHex: '#111827',
         accentHex: _hslHex((h + 40) % 360, 0.6, 0.5),
         buttonStyle: i % 2 == 0 ? 'pill' : 'rounded',
+        visualStyle: SurveyVisualStyle.gradient,
       ));
       add(SurveyThemePreset(
         id: 'premium_dark_$i',
@@ -234,6 +265,7 @@ class SurveyThemePresets {
         accentHex: _hslHex((h + 40) % 360, 0.75, 0.6),
         darkMode: true,
         buttonStyle: 'rounded',
+        visualStyle: SurveyVisualStyle.glass,
       ));
     }
 

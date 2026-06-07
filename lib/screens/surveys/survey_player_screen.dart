@@ -214,7 +214,8 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
       }
     }
 
-    final cfg = _theme ?? SurveyThemePresets.byNameOrDefault(_survey?.theme ?? 'DriftPro Grønn').toConfig(widget.surveyId);
+    final preset = SurveyThemePresets.byNameOrDefault(_survey?.theme ?? 'DriftPro Grønn');
+    final cfg = _theme ?? preset.toConfig(widget.surveyId);
     final primary = _fromHex(cfg.primaryHex, DriftProTheme.primaryGreen);
     final bg = _fromHex(cfg.backgroundHex, const Color(0xFFF7F9F8));
     final card = _fromHex(cfg.cardHex, Colors.white);
@@ -232,11 +233,14 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        title: Text(_survey!.title, style: TextStyle(color: text)),
-        backgroundColor: bg,
+        title: Text(_survey!.title, style: TextStyle(color: text, fontWeight: FontWeight.w700)),
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        flexibleSpace: Container(decoration: _playerBackground(preset, bg, primary, accent)),
       ),
-      body: Center(
+      body: Container(
+        decoration: _playerBackground(preset, bg, primary, accent),
+        child: Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 800),
           child: Form(
@@ -293,7 +297,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
                       style: TextStyle(fontSize: 16, color: text.withValues(alpha: 0.7)),
                     ),
                   ),
-                ..._questions.where(_isVisible).map((q) => _buildQuestionWidget(q, primary, text, card, accent, cfg.compactMode)),
+                ..._questions.where(_isVisible).map((q) => _buildQuestionWidget(q, primary, text, card, accent, preset, cfg.compactMode)),
                 const SizedBox(height: 48),
                 SizedBox(
                   height: 56,
@@ -319,7 +323,38 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
           ),
         ),
       ),
+      ),
     );
+  }
+
+  BoxDecoration _playerBackground(SurveyThemePreset preset, Color bg, Color primary, Color accent) {
+    switch (preset.visualStyle) {
+      case SurveyVisualStyle.gradient:
+        return BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [primary.withValues(alpha: 0.18), bg, accent.withValues(alpha: 0.12)],
+          ),
+        );
+      case SurveyVisualStyle.glass:
+        return BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [primary.withValues(alpha: 0.25), bg],
+          ),
+        );
+      case SurveyVisualStyle.neon:
+        return BoxDecoration(color: bg);
+      case SurveyVisualStyle.bold:
+        return BoxDecoration(
+          color: bg,
+          border: Border(left: BorderSide(color: primary, width: 4)),
+        );
+      default:
+        return BoxDecoration(color: bg);
+    }
   }
 
   Widget _buildQuestionWidget(
@@ -328,17 +363,23 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
     Color textColor,
     Color cardColor,
     Color accent,
+    SurveyThemePreset preset,
     bool compact,
   ) {
+    final isGlass = preset.visualStyle == SurveyVisualStyle.glass;
     return Container(
       margin: EdgeInsets.only(bottom: compact ? 18 : 24),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cardColor,
+        color: isGlass ? cardColor.withValues(alpha: 0.72) : cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: primary.withValues(alpha: 0.12)),
+        border: Border.all(color: primary.withValues(alpha: 0.15)),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+          BoxShadow(
+            color: primary.withValues(alpha: preset.visualStyle == SurveyVisualStyle.bold ? 0.15 : 0.06),
+            blurRadius: preset.visualStyle == SurveyVisualStyle.bold ? 12 : 6,
+            offset: const Offset(0, 3),
+          ),
         ],
       ),
       child: Column(

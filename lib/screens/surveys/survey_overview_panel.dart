@@ -190,10 +190,9 @@ class _SurveyOverviewPanelState extends State<SurveyOverviewPanel> {
           runSpacing: 12,
           children: [
             _action(context, Icons.edit_note, 'Bygg spørsmål', 1),
-            _action(context, Icons.share_outlined, 'Del lenke', 2),
-            _action(context, Icons.inbox_outlined, 'Se alle svar', 3),
-            _action(context, Icons.bar_chart, 'Statistikk', 4),
-            _action(context, Icons.palette_outlined, 'Tema & arkiv', 5),
+            _action(context, Icons.palette_outlined, 'Velg tema', 2),
+            _action(context, Icons.insights_outlined, 'Se resultater', 3),
+            _action(context, Icons.share_outlined, 'Del lenke', 4),
           ],
         ),
       ],

@@ -10,7 +10,9 @@ import '../../models/survey/survey.dart';
 
 class SurveyAnalyzeView extends StatefulWidget {
   final Survey survey;
-  const SurveyAnalyzeView({super.key, required this.survey});
+  final bool embedded;
+
+  const SurveyAnalyzeView({super.key, required this.survey, this.embedded = false});
 
   @override
   State<SurveyAnalyzeView> createState() => _SurveyAnalyzeViewState();
@@ -70,12 +72,27 @@ class _SurveyAnalyzeViewState extends State<SurveyAnalyzeView> {
       : SingleChildScrollView(
           child: Column(
             children: [
-              _buildAnalyzeHeader(drift),
+              if (!widget.embedded) _buildAnalyzeHeader(drift),
               Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (widget.embedded)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Row(
+                          children: [
+                            Text('Nøkkeltall', style: DriftProTheme.headingSm.copyWith(color: drift.textPrimary)),
+                            const Spacer(),
+                            TextButton.icon(
+                              onPressed: _exportCsv,
+                              icon: const Icon(Icons.download_outlined, size: 18),
+                              label: const Text('Eksporter CSV'),
+                            ),
+                          ],
+                        ),
+                      ),
                     _buildSummaryCards(m, drift),
                     if (m?.npsScore != null) ...[
                       const SizedBox(height: 20),
