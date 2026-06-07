@@ -39,9 +39,6 @@ class NotificationInboxScope {
 
   static bool canSeeFailedOutbox(UserAccess access, {required bool isPartnerScope}) {
     if (access.profile.isSuperAdmin) return true;
-    if (isPartnerScope) {
-      return access.canPartnersMenu || access.canPartnersAdmin || access.canNotifications;
-    }
     return access.canNotifications;
   }
 

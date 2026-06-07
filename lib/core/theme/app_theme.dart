@@ -31,12 +31,12 @@ class DriftProTheme {
   static const Color severityHigh = Color(0xFFFF7043);
   static const Color severityCritical = Color(0xFFE53935);
 
-  // ── Absence Type Colors ──
-  static const Color absenceVacation = Color(0xFF42A5F5);
-  static const Color absenceSickSelf = Color(0xFFEF5350);
-  static const Color absenceSickChild = Color(0xFFFF7043);
-  static const Color absenceLeave = Color(0xFF7E57C2);
-  static const Color absenceSickNote = Color(0xFFE53935);
+  // ── Absence Type Colors (harmonisk indigo/slate-palett) ──
+  static const Color absenceVacation = Color(0xFF6366F1);
+  static const Color absenceSickSelf = Color(0xFF8B5CF6);
+  static const Color absenceSickChild = Color(0xFF0EA5E9);
+  static const Color absenceLeave = Color(0xFFA78BFA);
+  static const Color absenceSickNote = Color(0xFFEC4899);
 
   // ── Neutral Colors ──
   static const Color surfaceLight = Color(0xFFF8FAF9);

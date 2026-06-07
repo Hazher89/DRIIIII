@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -14,6 +15,7 @@ class PartnerSmsRouteCustomersTab extends StatefulWidget {
   final TextEditingController messageCtrl;
   final bool sending;
   final Future<void> Function(List<RoutePdfCustomer> customers) onSend;
+  final bool scrollable;
 
   const PartnerSmsRouteCustomersTab({
     super.key,
@@ -22,6 +24,7 @@ class PartnerSmsRouteCustomersTab extends StatefulWidget {
     required this.messageCtrl,
     required this.sending,
     required this.onSend,
+    this.scrollable = false,
   });
 
   @override
@@ -111,7 +114,7 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
           if (list.isEmpty) {
             _error =
                 'Ingen kunder funnet for ${NbDateFormat.format(_day, 'd. MMM yyyy')}. '
-                'Sjekk at ruten er sendt til sjåfør og at PDF er lastet opp.';
+                'Sjekk at ruten har PDF lastet opp for valgt dag og MAVI.';
           }
         });
       }
@@ -305,8 +308,10 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
                     DropdownMenuItem(
                       value: row.vehicle.id,
                       child: Text(
-                        '${row.vehicle.unitCode}'
-                        '${row.vehicle.driverName != null && row.vehicle.driverName!.trim().isNotEmpty ? ' · ${row.vehicle.driverName}' : ''}',
+                        MaviUnitCodes.fleetDriverLabel(
+                          row.vehicle.unitCode,
+                          row.vehicle.driverName ?? row.partner.name,
+                        ),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -355,49 +360,25 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
             ],
           ),
         ),
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen))
-              : _customers.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'Trykk «Hent kunder» for å lese telefonnummer fra rute-PDF.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: PartnerUi.mutedText(context)),
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                      itemCount: _customers.length,
-                      itemBuilder: (_, i) {
-                        final c = _customers[i];
-                        final selected = _selectedKeys.contains(c.phoneNormalizedKey);
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 6),
-                          child: ListTile(
-                            leading: Checkbox(
-                              value: selected,
-                              activeColor: DriftProTheme.primaryGreen,
-                              onChanged: (v) => _toggleOne(c, v == true),
-                            ),
-                            title: Text(
-                              '${c.sequence}. ${c.name}',
-                              style: const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                            subtitle: _customerSubtitle(c),
-                            isThreeLine: c.deliveryWindow != null,
-                            onTap: () => _toggleOne(c, !selected),
-                          ),
-                        );
-                      },
-                    ),
-        ),
-        SafeArea(
-          top: false,
-          child: Padding(
+        _buildCustomerList(context, isDark),
+        if (!widget.scrollable)
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: FilledButton.icon(
+                onPressed: selectedCount == 0 ? null : _goToCompose,
+                style: FilledButton.styleFrom(
+                  backgroundColor: DriftProTheme.primaryGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                icon: const Icon(Icons.arrow_forward),
+                label: Text('Gå videre til melding ($selectedCount)'),
+              ),
+            ),
+          )
+        else
+          Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
             child: FilledButton.icon(
               onPressed: selectedCount == 0 ? null : _goToCompose,
@@ -409,8 +390,77 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
               label: Text('Gå videre til melding ($selectedCount)'),
             ),
           ),
-        ),
       ],
+    );
+  }
+
+  Widget _buildCustomerList(BuildContext context, bool isDark) {
+    if (widget.scrollable) {
+      if (_loading) {
+        return const Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen)),
+        );
+      }
+      if (_customers.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Trykk «Hent kunder» for å lese telefonnummer fra rute-PDF.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: PartnerUi.mutedText(context)),
+          ),
+        );
+      }
+      return ListView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+        itemCount: _customers.length,
+        itemBuilder: (_, i) => _customerTile(_customers[i]),
+      );
+    }
+
+    return Expanded(
+      child: _loading
+          ? const Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen))
+          : _customers.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      'Trykk «Hent kunder» for å lese telefonnummer fra rute-PDF.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: PartnerUi.mutedText(context)),
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  itemCount: _customers.length,
+                  itemBuilder: (_, i) => _customerTile(_customers[i]),
+                ),
+    );
+  }
+
+  Widget _customerTile(RoutePdfCustomer c) {
+    final selected = _selectedKeys.contains(c.phoneNormalizedKey);
+    return Card(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: ListTile(
+        leading: Checkbox(
+          value: selected,
+          activeColor: DriftProTheme.primaryGreen,
+          onChanged: (v) => _toggleOne(c, v == true),
+        ),
+        title: Text(
+          '${c.sequence}. ${c.name}',
+          style: const TextStyle(fontWeight: FontWeight.w800),
+        ),
+        subtitle: _customerSubtitle(c),
+        isThreeLine: c.deliveryWindow != null,
+        onTap: () => _toggleOne(c, !selected),
+      ),
     );
   }
 
@@ -468,8 +518,10 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
             ],
           ),
         ),
-        Expanded(
-          child: ListView(
+        if (widget.scrollable)
+          ListView(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             children: [
               Card(
@@ -499,11 +551,43 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
                 onChanged: () => setState(() {}),
               ),
             ],
+          )
+        else
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Mottakere', style: TextStyle(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 8),
+                        ...selected.map(
+                          (c) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text(
+                              '${c.sequence}. ${c.name} · ${c.phoneDisplay}',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                PartnerSmsMessageSection(
+                  messageCtrl: widget.messageCtrl,
+                  onChanged: () => setState(() {}),
+                ),
+              ],
+            ),
           ),
-        ),
-        SafeArea(
-          top: false,
-          child: Padding(
+        if (widget.scrollable)
+          Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -531,8 +615,40 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
                 ),
               ],
             ),
+          )
+        else
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: widget.sending ? null : () => setState(() => _step = _stepSelect),
+                    icon: const Icon(Icons.people_outline),
+                    label: const Text('Endre kundevalg'),
+                  ),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(
+                    onPressed: widget.sending || msgEmpty ? null : _confirmAndSend,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DriftProTheme.primaryGreen,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    icon: widget.sending
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.send),
+                    label: Text('Send SMS og bekreft (${selected.length})'),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
       ],
     );
   }

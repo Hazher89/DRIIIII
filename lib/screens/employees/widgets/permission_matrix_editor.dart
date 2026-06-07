@@ -23,6 +23,7 @@ class PermissionMatrixEditor extends StatefulWidget {
 
 class _PermissionMatrixEditorState extends State<PermissionMatrixEditor> {
   final Set<String> _expanded = {};
+  int _viewTab = 0;
 
   void _set(String key, bool value) {
     final next = Map<String, dynamic>.from(widget.settings);
@@ -41,6 +42,19 @@ class _PermissionMatrixEditorState extends State<PermissionMatrixEditor> {
   void _setAll(bool value) {
     widget.onChanged({for (final k in AccessKeys.allKeys) k: value, AccessKeys.more: true});
   }
+
+  List<AccessSection> get _visibleSections {
+    if (_viewTab == 1) {
+      return AccessCatalog.sections
+          .where((s) => s.id == AccessCatalog.varslerSectionId)
+          .toList();
+    }
+    return AccessCatalog.sections
+        .where((s) => s.id != AccessCatalog.varslerSectionId)
+        .toList();
+  }
+
+  bool get _varslerEnabled => widget.settings[AccessKeys.varsler] == true;
 
   @override
   Widget build(BuildContext context) {
@@ -89,7 +103,48 @@ class _PermissionMatrixEditorState extends State<PermissionMatrixEditor> {
           ),
         ),
         const SizedBox(height: 12),
-        ...AccessCatalog.sections.map(_sectionCard),
+        SegmentedButton<int>(
+          segments: const [
+            ButtonSegment(
+              value: 0,
+              icon: Icon(Icons.grid_view_outlined, size: 18),
+              label: Text('Moduler'),
+            ),
+            ButtonSegment(
+              value: 1,
+              icon: Icon(Icons.notifications_outlined, size: 18),
+              label: Text('Varsel'),
+            ),
+          ],
+          selected: {_viewTab},
+          onSelectionChanged: (s) => setState(() {
+            _viewTab = s.first;
+            if (_viewTab == 1) {
+              _expanded.add(AccessCatalog.varslerSectionId);
+            }
+          }),
+        ),
+        if (_viewTab == 1) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blueGrey.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.18)),
+            ),
+            child: Text(
+              _varslerEnabled
+                  ? 'Brukeren får varselsenter under Mer og kan endre varselinnstillinger '
+                      '(inkl. i Samarbeid → SMS).'
+                  : 'Uten denne tilgangen skjules varselsenteret og varselinnstillinger, '
+                      'selv om brukeren har tilgang til Samarbeidspartnere.',
+              style: DriftProTheme.caption,
+            ),
+          ),
+        ],
+        const SizedBox(height: 12),
+        ..._visibleSections.map(_sectionCard),
       ],
     );
   }

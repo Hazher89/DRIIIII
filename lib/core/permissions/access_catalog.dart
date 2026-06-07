@@ -44,7 +44,6 @@ class AccessCatalog {
         AccessKeys.avdelinger,
         AccessKeys.ansatte,
         AccessKeys.personalmappe,
-        AccessKeys.varsler,
         AccessKeys.undersokelser,
         AccessKeys.whistleblowing,
         AccessKeys.kiosk,
@@ -121,7 +120,16 @@ class AccessCatalog {
       title: 'Administrasjon',
       keys: [AccessKeys.ansatteRediger, AccessKeys.avdelingerRediger],
     ),
+    AccessSection(
+      id: 'varsler',
+      title: 'Varsler & varselinnstillinger',
+      subtitle:
+          'Varselsenter (Mer-meny), SMS/e-post-oppsett og varselinnstillinger i Samarbeid-SMS',
+      keys: [AccessKeys.varsler],
+    ),
   ];
+
+  static const varslerSectionId = 'varsler';
 
   static Map<String, dynamic> normalize(
     Map<String, dynamic>? raw,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/leave_rules.dart';
+import '../../core/services/absence/employee_leave_stats.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/absence.dart';
@@ -11,8 +12,8 @@ import 'widgets/department_absence_stats.dart';
 import '../more/organization_chart_screen.dart';
 import 'department_details_screen.dart';
 import 'widgets/department_grid_card.dart';
-import 'widgets/department_overview_header.dart';
 import 'widgets/department_ui_helpers.dart';
+import '../absence/widgets/leave_absence_rate_widgets.dart';
 import 'widgets/unassigned_employees_banner.dart';
 
 enum _DepartmentFilter { all, needsLeader, hasMembers, empty }
@@ -33,6 +34,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
   Map<String, List<UserProfile>> _membersByDept = {};
   Map<String, DepartmentAbsenceOverview> _absenceByDept = {};
   List<Absence> _absences = [];
+  CompanyLeaveSettings _companySettings = const CompanyLeaveSettings();
   bool _isLoading = true;
   String? _error;
   String _search = '';
@@ -89,6 +91,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
         _membersByDept = membersByDept;
         _absences = absences;
         _absenceByDept = absenceByDept;
+        _companySettings = companySettings;
         _isLoading = false;
       });
     } catch (e) {
@@ -103,33 +106,14 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
       _profiles.where((p) => p.departmentId == null || p.departmentId!.isEmpty).toList()
         ..sort((a, b) => a.fullName.compareTo(b.fullName));
 
-  DepartmentOverviewStats get _stats {
-    final assigned = _profiles.where((p) => p.departmentId != null && p.departmentId!.isNotEmpty).length;
-    var away = 0;
-    var vacation = 0;
-    var pending = 0;
-    var present = 0;
-    var members = 0;
-    for (final o in _absenceByDept.values) {
-      away += o.awayToday;
-      vacation += o.onVacationToday;
-      pending += o.pendingCount;
-      present += o.presentCount;
-      members += o.memberCount;
-    }
-    final presentPercent =
-        members > 0 ? ((present / members) * 100).round().clamp(0, 100) : 100;
-    return DepartmentOverviewStats(
-      departmentCount: _departments.length,
-      totalMembers: assigned,
-      withoutLeader: _departments.where((d) => d.leaderIds.isEmpty).length,
-      unassignedEmployees: _unassigned.length,
-      awayToday: away,
-      onVacationToday: vacation,
-      pendingAbsence: pending,
-      presentPercent: presentPercent,
-    );
-  }
+  List<UserProfile> get _assignedProfiles =>
+      _profiles.where((p) => p.departmentId != null && p.departmentId!.isNotEmpty).toList();
+
+  TeamLeaveSummary get _companyLeaveSummary => TeamLeaveSummary.compute(
+        employees: _assignedProfiles,
+        allAbsences: _absences,
+        company: _companySettings,
+      );
 
   List<Department> get _visibleDepartments {
     var list = List<Department>.from(_departments);
@@ -236,23 +220,33 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                         title: const Text('Avdelinger'),
                         actions: [
                           IconButton(
+                            icon: const Icon(Icons.account_tree_rounded),
+                            tooltip: 'Organisasjonskart',
+                            onPressed: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const OrganizationChartScreen(),
+                              ),
+                            ),
+                          ),
+                          IconButton(
                             icon: const Icon(Icons.refresh_rounded),
                             tooltip: 'Oppdater',
                             onPressed: _loadData,
                           ),
                         ],
                       ),
-                      SliverToBoxAdapter(
-                        child: DepartmentOverviewHeader(
-                          stats: _stats,
-                          onOrgChart: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const OrganizationChartScreen(),
+                      if (_companyLeaveSummary.employeeCount > 0)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                            child: LeaveAbsenceSummaryBar(
+                              summary: _companyLeaveSummary,
+                              title: 'Fravær snitt bedriften',
+                              subtitle: '${_assignedProfiles.length} ansatte med avdeling',
                             ),
                           ),
                         ),
-                      ),
                       SliverToBoxAdapter(child: _buildToolbar(isDark)),
                       SliverToBoxAdapter(
                         child: UnassignedEmployeesBanner(

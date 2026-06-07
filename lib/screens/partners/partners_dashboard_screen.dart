@@ -18,7 +18,6 @@ import 'partner_sms_hub_screen.dart';
 import 'vehicle_rental_hub_screen.dart';
 import 'widgets/partner_companies_ui.dart';
 import 'widgets/partner_ui.dart';
-import '../../widgets/driftpro_notification_bell.dart';
 
 /// Oversikt over samarbeidspartnere (interne brukere).
 class PartnersDashboardScreen extends StatefulWidget {
@@ -304,61 +303,10 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
 
     return Scaffold(
       backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-      appBar: AppBar(
-        title: Text('Samarbeidspartnere', style: DriftProTheme.headingSm),
-        bottom: _tabs != null
-            ? TabBar(
-                controller: _tabs,
-                indicatorColor: DriftProTheme.primaryGreen,
-                labelColor: DriftProTheme.primaryGreenDark,
-                unselectedLabelColor: PartnerUi.mutedText(context),
-                tabs: [
-                  if (_showCompaniesTab)
-                    const Tab(icon: Icon(Icons.apartment_outlined, size: 18), text: 'Bedrifter'),
-                  if (_showRoutesTab)
-                    const Tab(
-                      icon: Icon(Icons.route_outlined, size: 18),
-                      text: 'Ruter & planlegging',
-                    ),
-                  if (_showSmsTab)
-                    const Tab(
-                      icon: Icon(Icons.sms_outlined, size: 18),
-                      text: 'SMS',
-                    ),
-                  if (_showRentalTab)
-                    const Tab(
-                      icon: Icon(Icons.car_rental_outlined, size: 18),
-                      text: 'Utleie av bil',
-                    ),
-                ],
-              )
-            : null,
-        actions: [
-          const DriftproNotificationBell(),
-          if (_showSmsTab && !onSmsTab)
-            IconButton(
-              tooltip: 'SMS til samarbeidspartnere',
-              icon: const Icon(Icons.sms_outlined),
-              onPressed: _goToSmsTab,
-            ),
-          if (onRoutesTab)
-            IconButton(
-              tooltip: 'Oppdater ruteoversikt',
-              icon: const Icon(Icons.refresh_rounded),
-              onPressed: () => _routesKey.currentState?.reload(),
-            ),
-          if (showPartnerRegister)
-            IconButton(
-              tooltip: 'Ny / masseimport',
-              icon: const Icon(Icons.add_circle_outline),
-              onPressed: _openRegisterMenu,
-            ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-          : _tabs == null
-              ? Center(
+      body: _tabs == null
+          ? (_loading
+              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+              : Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),
                     child: Text(
@@ -369,40 +317,106 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                       textAlign: TextAlign.center,
                     ),
                   ),
-                )
-              : TabBarView(
-              controller: _tabs,
-              children: [
-                if (_showCompaniesTab)
-                  RefreshIndicator(
-                    onRefresh: _load,
-                    color: DriftProTheme.primaryGreen,
-                    child: _buildPartnersList(),
+                ))
+          : NestedScrollView(
+              headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                SliverOverlapAbsorber(
+                  handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+                  sliver: SliverAppBar(
+                    pinned: false,
+                    floating: false,
+                    snap: false,
+                    forceElevated: innerBoxIsScrolled,
+                    title: Text('Samarbeidspartnere', style: DriftProTheme.headingSm),
+                    bottom: TabBar(
+                      controller: _tabs,
+                      indicatorColor: DriftProTheme.primaryGreen,
+                      labelColor: DriftProTheme.primaryGreenDark,
+                      unselectedLabelColor: PartnerUi.mutedText(context),
+                      tabs: [
+                        if (_showCompaniesTab)
+                          const Tab(icon: Icon(Icons.apartment_outlined, size: 18), text: 'Bedrifter'),
+                        if (_showRoutesTab)
+                          const Tab(
+                            icon: Icon(Icons.route_outlined, size: 18),
+                            text: 'Ruter & planlegging',
+                          ),
+                        if (_showSmsTab)
+                          const Tab(
+                            icon: Icon(Icons.sms_outlined, size: 18),
+                            text: 'SMS',
+                          ),
+                        if (_showRentalTab)
+                          const Tab(
+                            icon: Icon(Icons.car_rental_outlined, size: 18),
+                            text: 'Utleie av bil',
+                          ),
+                      ],
+                    ),
+                    actions: [
+                      if (_showSmsTab && !onSmsTab)
+                        IconButton(
+                          tooltip: 'SMS til samarbeidspartnere',
+                          icon: const Icon(Icons.sms_outlined),
+                          onPressed: _goToSmsTab,
+                        ),
+                      if (onRoutesTab)
+                        IconButton(
+                          tooltip: 'Oppdater ruteoversikt',
+                          icon: const Icon(Icons.refresh_rounded),
+                          onPressed: () => _routesKey.currentState?.reload(),
+                        ),
+                      if (showPartnerRegister)
+                        IconButton(
+                          tooltip: 'Ny / masseimport',
+                          icon: const Icon(Icons.add_circle_outline),
+                          onPressed: _openRegisterMenu,
+                        ),
+                    ],
                   ),
-                if (_showRoutesTab)
-                  PartnerRoutePlannerScreen(
-                    key: _routesKey,
-                    embedded: true,
-                    onDataChanged: _refreshPartnersOnly,
-                  ),
-                if (_showSmsTab)
-                  PartnerSmsHubScreen(
-                    embedded: true,
-                    partners: _partners,
-                  ),
-                if (_showRentalTab)
-                  VehicleRentalHubScreen(
-                    embedded: true,
-                    partners: _partners,
-                    canApproveRentals: _canApproveVehicleRentals(_profile?.access),
-                    canForceDeleteRentals: _profile?.role == UserRole.superadmin,
-                  ),
+                ),
               ],
+              body: _loading
+                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                  : TabBarView(
+                      controller: _tabs,
+                      children: [
+                        if (_showCompaniesTab)
+                          RefreshIndicator(
+                            onRefresh: _load,
+                            color: DriftProTheme.primaryGreen,
+                            child: _buildPartnersList(nestedScroll: true),
+                          ),
+                        if (_showRoutesTab)
+                          PartnerRoutePlannerScreen(
+                            key: _routesKey,
+                            embedded: true,
+                            nestedScroll: true,
+                            onDataChanged: _refreshPartnersOnly,
+                          ),
+                        if (_showSmsTab)
+                          PartnerSmsHubScreen(
+                            embedded: true,
+                            nestedScroll: true,
+                            partners: _partners,
+                            canManageNotifications:
+                                _profile?.access.canNotifications == true,
+                          ),
+                        if (_showRentalTab)
+                          VehicleRentalHubScreen(
+                            embedded: true,
+                            nestedScroll: true,
+                            partners: _partners,
+                            canApproveRentals: _canApproveVehicleRentals(_profile?.access),
+                            canForceDeleteRentals: _profile?.role == UserRole.superadmin,
+                          ),
+                      ],
+                    ),
             ),
     );
   }
 
-  Widget _buildPartnersList() {
+  Widget _buildPartnersList({bool nestedScroll = false}) {
     if (_loading) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2));
     }
@@ -430,6 +444,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       profile: _profile,
       onRefresh: _load,
       onRegister: _openRegisterMenu,
+      nestedScroll: nestedScroll,
     );
   }
 }

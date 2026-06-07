@@ -101,8 +101,8 @@ class Absence {
       companyId: json['company_id'] as String,
       departmentId: json['department_id'] as String?,
       type: AbsenceType.fromDb(json['type'] as String),
-      startDate: DateTime.parse(json['start_date'] as String),
-      endDate: DateTime.parse(json['end_date'] as String),
+      startDate: _parseCalendarDate(json['start_date'] as String),
+      endDate: _parseCalendarDate(json['end_date'] as String),
       status: AbsenceStatus.values.firstWhere(
         (e) => e.name == json['status'],
         orElse: () => AbsenceStatus.ventende,
@@ -149,8 +149,24 @@ class Absence {
 
   bool get isActive {
     final now = DateTime.now();
-    return now.isAfter(startDate.subtract(const Duration(days: 1))) &&
-        now.isBefore(endDate.add(const Duration(days: 1)));
+    final today = DateTime(now.year, now.month, now.day);
+    final s = DateTime(startDate.year, startDate.month, startDate.day);
+    final e = DateTime(endDate.year, endDate.month, endDate.day);
+    return !today.isBefore(s) && !today.isAfter(e);
+  }
+
+  /// Kalenderdato uten tidssone-forskyvning (viktig for «fravær i dag»).
+  static DateTime _parseCalendarDate(String raw) {
+    final datePart = raw.split('T').first;
+    final parts = datePart.split('-');
+    if (parts.length == 3) {
+      return DateTime(
+        int.parse(parts[0]),
+        int.parse(parts[1]),
+        int.parse(parts[2]),
+      );
+    }
+    return DateTime.parse(raw);
   }
 }
 

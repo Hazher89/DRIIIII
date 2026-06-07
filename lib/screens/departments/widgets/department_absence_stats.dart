@@ -31,27 +31,6 @@ class DepartmentMemberAbsenceRank {
   }
 }
 
-/// Månedlig fravær (godkjente dager) for sparkline.
-class DepartmentMonthlyAbsencePoint {
-  final int year;
-  final int month;
-  final int days;
-
-  const DepartmentMonthlyAbsencePoint({
-    required this.year,
-    required this.month,
-    required this.days,
-  });
-
-  String get shortLabel {
-    const names = [
-      'jan', 'feb', 'mar', 'apr', 'mai', 'jun',
-      'jul', 'aug', 'sep', 'okt', 'nov', 'des',
-    ];
-    return names[month - 1];
-  }
-}
-
 /// Fraværsoversikt per avdeling — samme saldo som Team & kalender.
 class DepartmentAbsenceOverview {
   final int memberCount;
@@ -64,9 +43,13 @@ class DepartmentAbsenceOverview {
   final int ytdYear;
   /// Sum egenmelding + sykt barn (alle ansattes registrerte saldo).
   final int totalDaysYtd;
+  final int registeredEgenDays;
+  final int registeredSyktDays;
+  final int registeredFerieDays;
   final Map<AbsenceType, int> typeBreakdownYtd;
   final List<DepartmentMemberAbsenceRank> topByAbsence;
-  final List<DepartmentMonthlyAbsencePoint> monthlyTrend;
+  final double averageAbsencePercent;
+  final int totalEgenTilfeller;
 
   const DepartmentAbsenceOverview({
     required this.memberCount,
@@ -78,9 +61,13 @@ class DepartmentAbsenceOverview {
     this.presentCount = 0,
     this.ytdYear = 0,
     this.totalDaysYtd = 0,
+    this.registeredEgenDays = 0,
+    this.registeredSyktDays = 0,
+    this.registeredFerieDays = 0,
     this.typeBreakdownYtd = const {},
     this.topByAbsence = const [],
-    this.monthlyTrend = const [],
+    this.averageAbsencePercent = 0,
+    this.totalEgenTilfeller = 0,
   });
 
   static const empty = DepartmentAbsenceOverview(memberCount: 0);
@@ -95,15 +82,12 @@ class DepartmentAbsenceOverview {
 
   bool get hasYtdInsights =>
       totalDaysYtd > 0 || topByAbsence.isNotEmpty || typeBreakdownYtd.isNotEmpty;
+
+  int get averageAbsencePercentRounded => averageAbsencePercent.round();
 }
 
 class DepartmentAbsenceStats {
   DepartmentAbsenceStats._();
-
-  static const _fravaerTypes = {
-    AbsenceType.egenmelding,
-    AbsenceType.syktBarn,
-  };
 
   static bool _isActiveOn(Absence a, DateTime day) {
     if (a.status != AbsenceStatus.godkjent) return false;
@@ -120,9 +104,14 @@ class DepartmentAbsenceStats {
     return !e.isBefore(start) && !s.isAfter(end);
   }
 
-  static int _approvedDaysInRange(Absence a, DateTime rangeStart, DateTime rangeEnd) {
+  static int _approvedDaysInRangeForType(
+    Absence a,
+    DateTime rangeStart,
+    DateTime rangeEnd,
+    Set<AbsenceType> types,
+  ) {
     if (a.status != AbsenceStatus.godkjent) return 0;
-    if (!_fravaerTypes.contains(a.type)) return 0;
+    if (!types.contains(a.type)) return 0;
     final s = DateTime(a.startDate.year, a.startDate.month, a.startDate.day);
     final e = DateTime(a.endDate.year, a.endDate.month, a.endDate.day);
     final from = s.isBefore(rangeStart) ? rangeStart : s;
@@ -209,28 +198,22 @@ class DepartmentAbsenceStats {
     return ranks.take(limit).toList();
   }
 
-  static List<DepartmentMonthlyAbsencePoint> _monthlyFravaerTrend({
+  static int _registeredFerieDays({
     required Iterable<Absence> pool,
-    required DateTime referenceDate,
-    int months = 6,
+    required int year,
   }) {
-    final anchor = DateTime(referenceDate.year, referenceDate.month, 1);
-    final fravaerPool = pool.where(
-      (a) => _fravaerTypes.contains(a.type) && a.status == AbsenceStatus.godkjent,
-    );
-    final points = <DepartmentMonthlyAbsencePoint>[];
-    for (var i = months - 1; i >= 0; i--) {
-      final m = DateTime(anchor.year, anchor.month - i, 1);
-      final monthEnd = DateTime(m.year, m.month + 1, 0);
-      var days = 0;
-      for (final a in fravaerPool) {
-        days += _approvedDaysInRange(a, m, monthEnd);
-      }
-      points.add(
-        DepartmentMonthlyAbsencePoint(year: m.year, month: m.month, days: days),
+    final from = DateTime(year, 1, 1);
+    final to = DateTime(year, 12, 31);
+    var total = 0;
+    for (final a in pool) {
+      total += _approvedDaysInRangeForType(
+        a,
+        from,
+        to,
+        const {AbsenceType.ferie},
       );
     }
-    return points;
+    return total;
   }
 
   static DepartmentAbsenceOverview forDepartment({
@@ -256,9 +239,23 @@ class DepartmentAbsenceStats {
       company: company,
     );
     final typeBreakdown = _fravaerBreakdownFromSnapshots(snapshots.values);
+    final registeredEgen = typeBreakdown[AbsenceType.egenmelding] ?? 0;
+    final registeredSykt = typeBreakdown[AbsenceType.syktBarn] ?? 0;
+    final registeredFerie = _registeredFerieDays(pool: approved, year: day.year);
     final totalFravaer = snapshots.values.fold<int>(
       0,
       (sum, s) => sum + s.totalFravaerDager,
+    );
+    final leaveSummary = TeamLeaveSummary.compute(
+      employees: members,
+      allAbsences: pool,
+      company: company,
+      referenceDate: day,
+    );
+    final avgPercent = leaveSummary.averageAbsencePercent;
+    final totalTilfeller = snapshots.values.fold<int>(
+      0,
+      (sum, s) => sum + s.egenTilfeller,
     );
 
     final awayTodayIds = <String>{};
@@ -297,12 +294,16 @@ class DepartmentAbsenceStats {
       presentCount: memberCount > 0 ? (memberCount - away).clamp(0, memberCount) : 0,
       ytdYear: day.year,
       totalDaysYtd: totalFravaer,
+      registeredEgenDays: registeredEgen,
+      registeredSyktDays: registeredSykt,
+      registeredFerieDays: registeredFerie,
       typeBreakdownYtd: typeBreakdown,
       topByAbsence: _topMembersFromSnapshots(
         members: members,
         snapshots: snapshots,
       ),
-      monthlyTrend: _monthlyFravaerTrend(pool: approved, referenceDate: day),
+      averageAbsencePercent: avgPercent,
+      totalEgenTilfeller: totalTilfeller,
     );
   }
 

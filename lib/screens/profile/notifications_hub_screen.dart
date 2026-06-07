@@ -40,14 +40,15 @@ class _NotificationsHubScreenState extends State<NotificationsHubScreen> {
       );
     }
 
-    if (_profile?.isSuperAdmin != true) {
+    if (_profile?.access.canNotifications != true) {
       return Scaffold(
         appBar: AppBar(title: const Text('Varsler'), centerTitle: true),
         body: const Center(
           child: Padding(
             padding: EdgeInsets.all(32),
             child: Text(
-              'Kun superadmin har tilgang til varselsenteret.',
+              'Du har ikke tilgang til varselsenteret.\n'
+              'Be superadmin om «Varsler & varselinnstillinger» under Tilgang.',
               textAlign: TextAlign.center,
             ),
           ),

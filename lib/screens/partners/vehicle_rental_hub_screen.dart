@@ -15,6 +15,7 @@ import 'widgets/vehicle_rental_ui.dart';
 /// MAVI: opprett utleie, godkjenn, retur, søk i arkiv.
 class VehicleRentalHubScreen extends StatefulWidget {
   final bool embedded;
+  final bool nestedScroll;
   final List<Partner> partners;
   final bool canApproveRentals;
   final bool canForceDeleteRentals;
@@ -22,6 +23,7 @@ class VehicleRentalHubScreen extends StatefulWidget {
   const VehicleRentalHubScreen({
     super.key,
     this.embedded = false,
+    this.nestedScroll = false,
     required this.partners,
     this.canApproveRentals = false,
     this.canForceDeleteRentals = false,
@@ -832,7 +834,7 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
+    final content = Stack(
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -981,6 +983,20 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
         ),
       ],
     );
+
+    if (widget.nestedScroll) {
+      return CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverOverlapInjector(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+          ),
+          SliverFillRemaining(hasScrollBody: false, child: content),
+        ],
+      );
+    }
+
+    return content;
   }
 
   Widget? _buildCardAction(VehicleRental r) {

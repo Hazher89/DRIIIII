@@ -2,152 +2,149 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
-import 'partner_sms_compose_screen.dart';
-import 'widgets/partner_modern_ui.dart';
-import '../profile/widgets/notification_settings_split_tab.dart';
 import '../profile/widgets/notification_audit_panel.dart';
+import '../profile/widgets/notification_settings_split_tab.dart';
+import 'partner_sms_compose_screen.dart';
 import 'widgets/partner_email_log_panel.dart';
+import 'widgets/partner_sms_hub_ui.dart';
 import 'widgets/partner_sms_log_panel.dart';
-import 'widgets/partner_ui.dart';
 
-/// Samarbeid: send SMS + logg (kun partner-scope).
+/// SMS-hub: én scrollbar side — send er hovedinnhold, logg åpnes på egne sider.
 class PartnerSmsHubScreen extends StatefulWidget {
   final List<Partner> partners;
   final bool embedded;
+  final bool nestedScroll;
+  final bool canManageNotifications;
 
   const PartnerSmsHubScreen({
     super.key,
     required this.partners,
     this.embedded = true,
+    this.nestedScroll = false,
+    this.canManageNotifications = false,
   });
 
   @override
   State<PartnerSmsHubScreen> createState() => _PartnerSmsHubScreenState();
 }
 
-class _PartnerSmsHubScreenState extends State<PartnerSmsHubScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
-  bool _showAllSections = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabs = TabController(length: 5, vsync: this);
+class _PartnerSmsHubScreenState extends State<PartnerSmsHubScreen> {
+  void _openPage({
+    required String title,
+    required Widget body,
+  }) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          backgroundColor: Theme.of(ctx).brightness == Brightness.dark
+              ? DriftProTheme.surfaceDark
+              : DriftProTheme.surfaceLight,
+          appBar: AppBar(title: Text(title)),
+          body: body,
+        ),
+      ),
+    );
   }
 
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
+  void _openSmsLog() {
+    _openPage(
+      title: 'SMS-logg',
+      body: PartnerSmsLogPanel(partners: widget.partners),
+    );
+  }
+
+  void _openEmailLog() {
+    _openPage(
+      title: 'E-post-logg',
+      body: PartnerEmailLogPanel(partners: widget.partners),
+    );
+  }
+
+  void _openFailed() {
+    _openPage(
+      title: 'Ikke sendt',
+      body: const NotificationAuditPanel(partnerScopeOnly: true),
+    );
+  }
+
+  void _openSettings() {
+    _openPage(
+      title: 'Varselinnstillinger',
+      body: const NotificationSettingsSplitTab(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final active = widget.partners.where((p) => p.isActive).length;
 
-    final body = Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        PartnerModernKpiGrid(
-          items: [
-            ('Bedrifter', '${widget.partners.length}'),
-            ('Kan sende', '${widget.partners.where((p) => p.isActive).length}'),
-            ('Hub', 'SMS'),
-            ('Status', 'Klar'),
-          ],
+    final slivers = <Widget>[
+      if (widget.nestedScroll)
+        SliverOverlapInjector(
+          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
         ),
-        AnimatedBuilder(
-          animation: _tabs,
-          builder: (context, _) {
-            final labels = ['Send SMS', 'SMS-logg', 'E-post-logg', 'Ikke sendt', 'Innstillinger'];
-            final current = labels[_tabs.index.clamp(0, labels.length - 1)];
-            return PartnerSmartSectionPicker(
-              title: 'Viser',
-              currentLabel: current,
-              onPick: () async {
-                final selected = await showModalBottomSheet<int>(
-                  context: context,
-                  showDragHandle: true,
-                  builder: (ctx) => SafeArea(
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
-                        ListTile(
-                          leading: const Icon(Icons.edit_note_outlined),
-                          title: const Text('Send SMS'),
-                          onTap: () => Navigator.of(ctx).pop(0),
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.history),
-                          title: const Text('SMS-logg'),
-                          onTap: () => Navigator.of(ctx).pop(1),
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.email_outlined),
-                          title: const Text('E-post-logg'),
-                          onTap: () => Navigator.of(ctx).pop(2),
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.block),
-                          title: const Text('Ikke sendt'),
-                          onTap: () => Navigator.of(ctx).pop(3),
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.tune),
-                          title: const Text('Varselinnstillinger'),
-                          onTap: () => Navigator.of(ctx).pop(4),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-                if (selected != null && mounted) _tabs.animateTo(selected);
-              },
-              onToggleAll: () => setState(() => _showAllSections = !_showAllSections),
-              showAll: _showAllSections,
-            );
-          },
+      SliverToBoxAdapter(
+        child: PartnerSmsHubHero(
+          partnerCount: widget.partners.length,
+          activePartners: active,
+          onOpenLog: _openSmsLog,
+          onOpenSettings: widget.canManageNotifications ? _openSettings : null,
         ),
-        if (_showAllSections)
-          Material(
+      ),
+      SliverToBoxAdapter(
+        child: PartnerSmsHubActionGrid(
+          onSmsLog: _openSmsLog,
+          onEmailLog: widget.canManageNotifications ? _openEmailLog : null,
+          onFailed: widget.canManageNotifications ? _openFailed : null,
+          onSettings: widget.canManageNotifications ? _openSettings : null,
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: PartnerSmsHubSectionTitle(
+          title: 'Send SMS',
+          subtitle: 'Velg kontakter eller hent kunder fra rute-PDF',
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          decoration: BoxDecoration(
             color: isDark ? DriftProTheme.cardDark : Colors.white,
-            child: TabBar(
-              controller: _tabs,
-              indicatorColor: DriftProTheme.primaryGreen,
-              labelColor: DriftProTheme.primaryGreenDark,
-              unselectedLabelColor: PartnerUi.mutedText(context),
-              isScrollable: true,
-              tabs: const [
-                Tab(icon: Icon(Icons.edit_note_outlined, size: 20), text: 'Send SMS'),
-                Tab(icon: Icon(Icons.history, size: 20), text: 'SMS-logg'),
-                Tab(icon: Icon(Icons.email_outlined, size: 20), text: 'E-post'),
-                Tab(icon: Icon(Icons.block, size: 20), text: 'Ikke sendt'),
-                Tab(icon: Icon(Icons.tune, size: 20), text: 'Innstillinger'),
-              ],
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark ? DriftProTheme.dividerDark : const Color(0xFFE5E7EB),
             ),
+            boxShadow: isDark
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
           ),
-        Expanded(
-          child: TabBarView(
-            controller: _tabs,
-            children: [
-              const PartnerSmsComposeScreen(embedded: true),
-              PartnerSmsLogPanel(partners: widget.partners),
-              PartnerEmailLogPanel(partners: widget.partners),
-              const NotificationAuditPanel(partnerScopeOnly: true),
-              const NotificationSettingsSplitTab(),
-            ],
+          clipBehavior: Clip.antiAlias,
+          child: const PartnerSmsComposeScreen(
+            embedded: true,
+            hubEmbedded: true,
           ),
         ),
-      ],
+      ),
+    ];
+
+    final scroll = CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: slivers,
     );
 
-    if (widget.embedded) return body;
+    if (widget.embedded) return scroll;
 
     return Scaffold(
       backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       appBar: AppBar(title: const Text('Samarbeid — SMS')),
-      body: body,
+      body: scroll,
     );
   }
 }

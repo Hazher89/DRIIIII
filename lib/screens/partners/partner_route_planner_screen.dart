@@ -14,11 +14,13 @@ import 'widgets/partner_ui.dart';
 /// Ruteplanlegging: én arbeidsflate for fordeling + publisering.
 class PartnerRoutePlannerScreen extends StatefulWidget {
   final bool embedded;
+  final bool nestedScroll;
   final VoidCallback? onDataChanged;
 
   const PartnerRoutePlannerScreen({
     super.key,
     this.embedded = false,
+    this.nestedScroll = false,
     this.onDataChanged,
   });
 
@@ -88,64 +90,76 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
     final today = DateTime.now();
     final day = DateTime(today.year, today.month, today.day);
 
+    final slivers = <Widget>[
+      if (widget.nestedScroll)
+        SliverOverlapInjector(
+          handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+        ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: PartnerAvailableVehiclesPanel(
+            fleet: _fleet,
+            sharesToday: _sharesToday,
+            day: day,
+          ),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(context).push<void>(
+                      MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
+                    );
+                  },
+                  icon: const Icon(Icons.insights_outlined, size: 18),
+                  label: const Text('MAVI-statistikk'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              TextButton.icon(
+                onPressed: _openShiftAdmin,
+                icon: const Icon(Icons.schedule_outlined, size: 18),
+                label: const Text('Skiftplan'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: PartnerRouteMasterScheduler(
+            fleet: _fleet,
+            onChanged: () => reload(notifyParent: true, silent: true),
+          ),
+        ),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: _ToolSection(
+            icon: Icons.manage_search_outlined,
+            iconColor: const Color(0xFF1565C0),
+            title: 'Søk i rute-PDF',
+            subtitle: 'Finn adresse, kunde eller MAVI i tidligere ruter',
+            child: PartnerRoutePdfSearchPanel(fleet: _fleet, searchController: _pdfSearchCtrl),
+          ),
+        ),
+      ),
+    ];
+
     final body = RefreshIndicator(
       onRefresh: reload,
       color: DriftProTheme.primaryGreen,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(0, 0, 0, 24),
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: PartnerAvailableVehiclesPanel(
-              fleet: _fleet,
-              sharesToday: _sharesToday,
-              day: day,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.of(context).push<void>(
-                        MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
-                      );
-                    },
-                    icon: const Icon(Icons.insights_outlined, size: 18),
-                    label: const Text('MAVI-statistikk'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                TextButton.icon(
-                  onPressed: _openShiftAdmin,
-                  icon: const Icon(Icons.schedule_outlined, size: 18),
-                  label: const Text('Skiftplan'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: PartnerRouteMasterScheduler(
-              fleet: _fleet,
-              onChanged: () => reload(notifyParent: true, silent: true),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _ToolSection(
-              icon: Icons.manage_search_outlined,
-              iconColor: const Color(0xFF1565C0),
-              title: 'Søk i rute-PDF',
-              subtitle: 'Finn adresse, kunde eller MAVI i tidligere ruter',
-              child: PartnerRoutePdfSearchPanel(fleet: _fleet, searchController: _pdfSearchCtrl),
-            ),
-          ),
-        ],
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: slivers,
       ),
     );
 

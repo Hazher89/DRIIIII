@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
+import '../theme/absence_palette.dart';
 
 enum LeaveUsageLevel { ok, warning, critical }
 
@@ -35,8 +35,8 @@ abstract final class LeaveUsageColors {
   static Color colorFor(LeaveUsageLevel level, Color base) {
     return switch (level) {
       LeaveUsageLevel.ok => base,
-      LeaveUsageLevel.warning => Colors.orange.shade700,
-      LeaveUsageLevel.critical => DriftProTheme.error,
+      LeaveUsageLevel.warning => AbsencePalette.usageWarning,
+      LeaveUsageLevel.critical => AbsencePalette.usageCritical,
     };
   }
 }

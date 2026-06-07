@@ -56,12 +56,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   DateTime _weekStart = _monday(DateTime.now());
   DateTime _focusDay = _dayOnly(DateTime.now());
   late final TextEditingController _searchCtrl;
-  final ScrollController _leftVert = ScrollController();
-  final ScrollController _rightVert = ScrollController();
-  final ScrollController _headerH = ScrollController();
   final ScrollController _bodyH = ScrollController();
-  bool _syncVertical = false;
-  bool _syncHorizontal = false;
 
   List<FleetShiftDefinition> _shifts = [];
   List<PartnerRouteShare> _shares = [];
@@ -85,10 +80,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _searchCtrl = TextEditingController()..addListener(() => setState(() {}));
-    _leftVert.addListener(_mirrorLeftVert);
-    _rightVert.addListener(_mirrorRightVert);
-    _headerH.addListener(_mirrorHeaderHoriz);
-    _bodyH.addListener(_mirrorBodyHoriz);
     _reload();
     _sapPollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _refreshSapPendingCount();
@@ -119,13 +110,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     _sapPollTimer?.cancel();
     SapRouteInboxLive.unsubscribe(_sapLiveChannel);
     _searchCtrl.dispose();
-    _leftVert.removeListener(_mirrorLeftVert);
-    _rightVert.removeListener(_mirrorRightVert);
-    _headerH.removeListener(_mirrorHeaderHoriz);
-    _bodyH.removeListener(_mirrorBodyHoriz);
-    _leftVert.dispose();
-    _rightVert.dispose();
-    _headerH.dispose();
     _bodyH.dispose();
     super.dispose();
   }
@@ -134,40 +118,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   void didUpdateWidget(covariant PartnerRouteMasterScheduler oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.fleet != oldWidget.fleet) _reload();
-  }
-
-  void _mirrorLeftVert() {
-    if (_syncVertical || !_rightVert.hasClients || !_leftVert.hasClients) return;
-    final d = (_leftVert.offset - _rightVert.offset).abs();
-    if (d < 1) return;
-    _syncVertical = true;
-    _rightVert.jumpTo(_leftVert.offset);
-    _syncVertical = false;
-  }
-
-  void _mirrorRightVert() {
-    if (_syncVertical || !_rightVert.hasClients || !_leftVert.hasClients) return;
-    final d = (_leftVert.offset - _rightVert.offset).abs();
-    if (d < 1) return;
-    _syncVertical = true;
-    _leftVert.jumpTo(_rightVert.offset);
-    _syncVertical = false;
-  }
-
-  void _mirrorHeaderHoriz() {
-    if (_syncHorizontal || !_bodyH.hasClients || !_headerH.hasClients) return;
-    if ((_headerH.offset - _bodyH.offset).abs() < 1) return;
-    _syncHorizontal = true;
-    _bodyH.jumpTo(_headerH.offset);
-    _syncHorizontal = false;
-  }
-
-  void _mirrorBodyHoriz() {
-    if (_syncHorizontal || !_bodyH.hasClients || !_headerH.hasClients) return;
-    if ((_bodyH.offset - _headerH.offset).abs() < 1) return;
-    _syncHorizontal = true;
-    _headerH.jumpTo(_bodyH.offset);
-    _syncHorizontal = false;
   }
 
   Future<void> _reload({bool light = false}) async {
@@ -745,10 +695,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
           Divider(height: 1, thickness: 1, color: borderCol),
 
-          // Master grid row
-          SizedBox(
-            height: 560,
-            child: Row(
+          // Master grid row — følger sidens vertikale scroll (ingen fast høyde)
+          Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Sidebar (MAVI)
@@ -781,335 +729,322 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                           style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
                         ),
                       ),
-                      Expanded(
-                        child: ListView.builder(
-                          controller: _leftVert,
-                          itemExtent: _rowHeight,
-                          itemCount: _filteredFleet.length,
-                          itemBuilder: (_, i) {
-                            final row = _filteredFleet[i];
-                            final initials =
-                                '${row.partner.name.isNotEmpty ? row.partner.name[0] : '?'}{row.vehicle.unitCode.hashCode.abs() % 9}';
-                            final ackDot = _vehicleAckDotColor(row.vehicle.id);
-
-                            return Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: _busy ? null : () => _openSingleAssign(row: row),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  child: Row(
-                                    children: [
-                                      Stack(
-                                        clipBehavior: Clip.none,
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 18,
-                                            backgroundColor: Colors.teal.withValues(alpha: 0.3),
-                                            child: Text(
-                                              initials.substring(0, initials.length.clamp(0, 2)),
-                                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
-                                            ),
-                                          ),
-                                          if (ackDot != null)
-                                            Positioned(
-                                              right: -1,
-                                              top: -1,
-                                              child: Container(
-                                                width: 11,
-                                                height: 11,
-                                                decoration: BoxDecoration(
-                                                  color: ackDot,
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(color: Colors.white, width: 2),
-                                                ),
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              MaviUnitCodes.normalize(row.vehicle.unitCode),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
-                                            ),
-                                            Text(
-                                              row.partner.name,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(fontSize: 10, height: 1.1, color: Colors.grey[700]),
-                                            ),
-                                            Text(
-                                              row.vehicle.fleetRolesLabel,
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(fontSize: 9, height: 1.1, color: Colors.grey[600]),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
+                      const SizedBox(height: 97),
+                      for (final row in _filteredFleet)
+                        SizedBox(
+                          height: _rowHeight,
+                          child: _buildSidebarRow(row, borderCol),
                         ),
-                      ),
                     ],
                   ),
                 ),
 
-                // Calendar body
+                // Calendar body — horisontal scroll, rader følger sidescroll
                 Expanded(
-                  child: Column(
-                    children: [
-                      // Day headers (horizontal scroll)
-                      SizedBox(
-                        height: 96,
-                        child: SingleChildScrollView(
-                          controller: _headerH,
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width: gridWidth,
-                            child: Row(
-                              children: _days.map((d) {
-                                final now = _dayOnly(DateTime.now());
-                                final isToday = _dayOnly(d) == now;
-                                final n = _weekRouteCount(d);
-                                return Container(
-                                  width: _dayColW,
-                                  decoration: BoxDecoration(
-                                    color: isToday ? Colors.lightBlue.withValues(alpha: 0.12) : null,
-                                    border: Border(right: BorderSide(color: borderCol)),
-                                  ),
-                                  padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
-                                  alignment: Alignment.topLeft,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                                    mainAxisAlignment: MainAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text(
-                                        DateFormat.E('nb_NO').format(d),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 11,
-                                          color: isToday ? DriftProTheme.accentBlue : null,
-                                        ),
-                                      ),
-                                      Text(
-                                        DateFormat('d/M', 'nb_NO').format(d),
-                                        maxLines: 1,
-                                        style: const TextStyle(fontSize: 10, height: 1.1),
-                                      ),
-                                      Text(
-                                        '$n ruter',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(fontSize: 9, height: 1.2, color: Colors.grey[700]),
-                                      ),
-                                      if (n > 0) ...[
-                                        const SizedBox(height: 3),
-                                        Material(
-                                          color: Colors.red.shade50,
-                                          borderRadius: BorderRadius.circular(6),
-                                          child: InkWell(
-                                            onTap: _busy ? null : () => _clearAllRoutesForDay(d),
-                                            borderRadius: BorderRadius.circular(6),
-                                            child: Padding(
-                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-                                              child: Row(
-                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                children: [
-                                                  Icon(Icons.delete_sweep_outlined, size: 13, color: Colors.red.shade800),
-                                                  const SizedBox(width: 3),
-                                                  Flexible(
-                                                    child: Text(
-                                                      'Tøm',
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                      style: TextStyle(
-                                                        fontSize: 10,
-                                                        fontWeight: FontWeight.w800,
-                                                        color: Colors.red.shade800,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
+                  child: SingleChildScrollView(
+                    controller: _bodyH,
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: gridWidth,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildDayHeaderRow(borderCol),
+                          Divider(height: 1, color: borderCol),
+                          for (final row in _filteredFleet)
+                            SizedBox(
+                              height: _rowHeight,
+                              child: _buildFleetGridRow(context, row, isDark, borderCol),
                             ),
-                          ),
-                        ),
+                        ],
                       ),
-                      Divider(height: 1, color: borderCol),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          controller: _bodyH,
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width: gridWidth,
-                            child: ListView.builder(
-                              controller: _rightVert,
-                              itemExtent: _rowHeight,
-                              itemCount: _filteredFleet.length,
-                              itemBuilder: (_, i) {
-                                final row = _filteredFleet[i];
-                                return Row(
-                                  children: _days.map((day) {
-                                    final list = _sharesCell(row.vehicle.id, day);
-                                    final isFocusDay = _dayOnly(day) == _dayOnly(_focusDay);
-                                    return InkWell(
-                                      onTap: () {
-                                        setState(() => _focusDay = _dayOnly(day));
-                                        _refreshSapPendingCount();
-                                        if (list.isEmpty) {
-                                          _openRouteEditor(row, day);
-                                        } else {
-                                          _openRouteManageMenu(row, day, list);
-                                        }
-                                      },
-                                      child: Container(
-                                        width: _dayColW,
-                                        height: _rowHeight,
-                                        decoration: BoxDecoration(
-                                          border: Border(
-                                            right: BorderSide(color: borderCol),
-                                            bottom: BorderSide(color: borderCol),
-                                          ),
-                                          color: isFocusDay
-                                              ? DriftProTheme.primaryGreen.withValues(alpha: isDark ? 0.08 : 0.04)
-                                              : Colors.transparent,
-                                        ),
-                                        padding: const EdgeInsets.all(4),
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Expanded(
-                                              child: list.isEmpty
-                                                  ? Align(
-                                                      alignment: Alignment.topLeft,
-                                                      child: Icon(
-                                                        Icons.add_circle_outline,
-                                                        size: 20,
-                                                        color: Colors.grey[400],
-                                                      ),
-                                                    )
-                                                  : ListView(
-                                                      padding: EdgeInsets.zero,
-                                                      children: [
-                                                        for (final s in list.take(2))
-                                                          Padding(
-                                                            padding: const EdgeInsets.only(bottom: 4),
-                                                            child: ClipRRect(
-                                                              borderRadius: BorderRadius.circular(6),
-                                                              child: Material(
-                                                                color: RouteDispatchStatus.cellFill(
-                                                                  s.dispatchStatus,
-                                                                  isDark: isDark,
-                                                                ),
-                                                                child: Container(
-                                                                  decoration: BoxDecoration(
-                                                                    border: Border(
-                                                                      left: BorderSide(
-                                                                        color: _shiftColor(s.shiftId),
-                                                                        width: 4,
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                  child: Padding(
-                                                                  padding: const EdgeInsets.symmetric(
-                                                                    horizontal: 6,
-                                                                    vertical: 5,
-                                                                  ),
-                                                                  child: Column(
-                                                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                                                    children: [
-                                                                      Row(
-                                                                        children: [
-                                                                          PartnerRoutePdfActions.ackDot(s, size: 8),
-                                                                          const SizedBox(width: 4),
-                                                                          Expanded(
-                                                                            child: Text(
-                                                                              TimeOfDay.fromDateTime(s.routeStartAt?.toLocal() ??
-                                                                                      DateTime(day.year, day.month, day.day, 6))
-                                                                                  .format(context),
-                                                                              style: const TextStyle(
-                                                                                fontWeight: FontWeight.w900,
-                                                                                fontSize: 10,
-                                                                              ),
-                                                                            ),
-                                                                          ),
-                                                                        ],
-                                                                      ),
-                                                                      Text(
-                                                                        s.title?.split('—').first ?? 'Rute',
-                                                                        maxLines: 1,
-                                                                        overflow: TextOverflow.ellipsis,
-                                                                        style: const TextStyle(fontSize: 10),
-                                                                      ),
-                                                                      Text(
-                                                                        '${_dispatchShort(s.dispatchStatus)} · ${_ackShort(s.ackStatus)}',
-                                                                        style: TextStyle(
-                                                                          fontSize: 8,
-                                                                          color: Colors.grey[850],
-                                                                        ),
-                                                                      ),
-                                                                      RouteReminderBadge(
-                                                                        share: s,
-                                                                        flag: _reminderFlags[s.id],
-                                                                        compact: true,
-                                                                      ),
-                                                                    ],
-                                                                  ),
-                                                                ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          ),
-                                                        if (list.length > 2)
-                                                          Text('+${list.length - 2}', style: TextStyle(fontSize: 10, color: Colors.grey[600])),
-                                                      ],
-                                                    ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
         ],
       ),
     );
   }
+
+  Widget _buildSidebarRow(FleetPartnerVehicleRow row, Color borderCol) {
+    final initials =
+        '${row.partner.name.isNotEmpty ? row.partner.name[0] : '?'}${row.vehicle.unitCode.hashCode.abs() % 9}';
+    final ackDot = _vehicleAckDotColor(row.vehicle.id);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _busy ? null : () => _openSingleAssign(row: row),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.teal.withValues(alpha: 0.3),
+                    child: Text(
+                      initials.substring(0, initials.length.clamp(0, 2)),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  if (ackDot != null)
+                    Positioned(
+                      right: -1,
+                      top: -1,
+                      child: Container(
+                        width: 11,
+                        height: 11,
+                        decoration: BoxDecoration(
+                          color: ackDot,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      MaviUnitCodes.normalize(row.vehicle.unitCode),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                    ),
+                    Text(
+                      row.partner.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, height: 1.1, color: Colors.grey[700]),
+                    ),
+                    Text(
+                      row.vehicle.fleetRolesLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 9, height: 1.1, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDayHeaderRow(Color borderCol) {
+    return SizedBox(
+      height: 96,
+      child: Row(
+        children: _days.map((d) {
+          final now = _dayOnly(DateTime.now());
+          final isToday = _dayOnly(d) == now;
+          final n = _weekRouteCount(d);
+          return Container(
+            width: _dayColW,
+            decoration: BoxDecoration(
+              color: isToday ? Colors.lightBlue.withValues(alpha: 0.12) : null,
+              border: Border(right: BorderSide(color: borderCol)),
+            ),
+            padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
+            alignment: Alignment.topLeft,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisAlignment: MainAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  DateFormat.E('nb_NO').format(d),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    color: isToday ? DriftProTheme.accentBlue : null,
+                  ),
+                ),
+                Text(
+                  DateFormat('d/M', 'nb_NO').format(d),
+                  maxLines: 1,
+                  style: const TextStyle(fontSize: 10, height: 1.1),
+                ),
+                Text(
+                  '$n ruter',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 9, height: 1.2, color: Colors.grey[700]),
+                ),
+                if (n > 0) ...[
+                  const SizedBox(height: 3),
+                  Material(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(6),
+                    child: InkWell(
+                      onTap: _busy ? null : () => _clearAllRoutesForDay(d),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.delete_sweep_outlined, size: 13, color: Colors.red.shade800),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(
+                                'Tøm',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.red.shade800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildFleetGridRow(
+    BuildContext context,
+    FleetPartnerVehicleRow row,
+    bool isDark,
+    Color borderCol,
+  ) {
+    return Row(
+      children: _days.map((day) {
+        final list = _sharesCell(row.vehicle.id, day);
+        final isFocusDay = _dayOnly(day) == _dayOnly(_focusDay);
+        return InkWell(
+          onTap: () {
+            setState(() => _focusDay = _dayOnly(day));
+            _refreshSapPendingCount();
+            if (list.isEmpty) {
+              _openRouteEditor(row, day);
+            } else {
+              _openRouteManageMenu(row, day, list);
+            }
+          },
+          child: Container(
+            width: _dayColW,
+            height: _rowHeight,
+            decoration: BoxDecoration(
+              border: Border(
+                right: BorderSide(color: borderCol),
+                bottom: BorderSide(color: borderCol),
+              ),
+              color: isFocusDay
+                  ? DriftProTheme.primaryGreen.withValues(alpha: isDark ? 0.08 : 0.04)
+                  : Colors.transparent,
+            ),
+            padding: const EdgeInsets.all(4),
+            child: _buildDayCell(context, row, day, list, isDark),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildDayCell(
+    BuildContext context,
+    FleetPartnerVehicleRow row,
+    DateTime day,
+    List<PartnerRouteShare> list,
+    bool isDark,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: list.isEmpty
+              ? Align(
+                  alignment: Alignment.topLeft,
+                  child: Icon(Icons.add_circle_outline, size: 20, color: Colors.grey[400]),
+                )
+              : ListView(
+                  padding: EdgeInsets.zero,
+                  physics: const NeverScrollableScrollPhysics(),
+                  shrinkWrap: true,
+                  children: [
+                    for (final s in list.take(2))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: Material(
+                            color: RouteDispatchStatus.cellFill(s.dispatchStatus, isDark: isDark),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  left: BorderSide(color: _shiftColor(s.shiftId), width: 4),
+                                ),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        PartnerRoutePdfActions.ackDot(s, size: 8),
+                                        const SizedBox(width: 4),
+                                        Expanded(
+                                          child: Text(
+                                            TimeOfDay.fromDateTime(
+                                              s.routeStartAt?.toLocal() ??
+                                                  DateTime(day.year, day.month, day.day, 6),
+                                            ).format(context),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w900,
+                                              fontSize: 10,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Text(
+                                      s.title?.split('—').first ?? 'Rute',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 9, height: 1.15),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (list.length > 2)
+                      Text('+${list.length - 2}', style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
+
 }
 
 /// Kompakt meny: flytt rute, slett, varsle sjåfør på nytt (åpnes fra kalendercelle).

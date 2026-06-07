@@ -120,9 +120,9 @@ class LeaveEmployeeKpiRow extends StatelessWidget {
             child: LeaveEmployeeKpiCard(
               icon: Icons.beach_access,
               label: 'Ferie $selectedYear',
-              value: '${stats.ferieRemaining}',
+              value: '${stats.ferieRemaining} d',
               unit: 'dager igjen',
-              sub: '${stats.ferieUsed} av ${stats.ferieTotal} brukt',
+              sub: '${stats.ferieUsed} d brukt av ${stats.ferieTotal}',
               baseColor: DriftProTheme.absenceVacation,
               level: stats.ferieLevel,
               progress: stats.ferieProgress,
@@ -133,10 +133,9 @@ class LeaveEmployeeKpiRow extends StatelessWidget {
             child: LeaveEmployeeKpiCard(
               icon: Icons.sick_outlined,
               label: 'Egenmelding',
-              value: '${stats.egenDaysTotal}',
-              unit: 'av ${stats.egenMax} dager',
-              sub:
-                  '${stats.egenTilfeller}/${stats.egenTilfellerMax} tilfeller',
+              value: '${stats.egenDaysTotal} d',
+              unit: '${stats.egenTilfeller} tilfeller',
+              sub: 'av ${stats.egenMax} dager · max ${stats.egenTilfellerMax} tilf.',
               baseColor: DriftProTheme.absenceSickSelf,
               level: stats.egenLevel,
               progress: stats.egenProgress,
@@ -147,7 +146,7 @@ class LeaveEmployeeKpiRow extends StatelessWidget {
             child: LeaveEmployeeKpiCard(
               icon: Icons.child_care_outlined,
               label: 'Sykt barn',
-              value: '${stats.syktDays}',
+              value: '${stats.syktDays} d',
               unit: 'av ${stats.syktMax} dager',
               sub: stats.periodUsage.window.formatRange(),
               baseColor: DriftProTheme.absenceSickChild,

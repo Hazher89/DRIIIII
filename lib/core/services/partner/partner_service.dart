@@ -2206,7 +2206,6 @@ class PartnerService {
         .where(
           (r) =>
               r.partnerVehicleId == partnerVehicleId &&
-              r.dispatchStatus == 'sent' &&
               r.pdfStoragePath.trim().isNotEmpty,
         )
         .toList();

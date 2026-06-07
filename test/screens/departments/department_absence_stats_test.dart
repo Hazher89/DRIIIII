@@ -114,8 +114,9 @@ void main() {
     expect(stats.topByAbsence.last.fullName, 'Anna Nord');
     expect(stats.topByAbsence.last.syktDays, 1);
     expect(stats.totalDaysYtd, 5);
+    expect(stats.registeredEgenDays, 4);
+    expect(stats.registeredSyktDays, 1);
     expect(stats.typeBreakdownYtd[AbsenceType.egenmelding], 4);
     expect(stats.typeBreakdownYtd[AbsenceType.syktBarn], 1);
-    expect(stats.monthlyTrend.length, 6);
   });
 }

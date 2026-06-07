@@ -44,12 +44,29 @@ class PartnerEmailLogService {
         .toList();
   }
 
+  static Map<String, dynamic> _countParams(EmailLogFilters f) {
+    return {
+      'p_search': f.search?.trim().isEmpty == true ? null : f.search?.trim(),
+      'p_category': f.category,
+      'p_status': f.status,
+      'p_from_date': f.fromDate?.toUtc().toIso8601String(),
+      'p_to_date': f.toDate != null
+          ? DateTime(f.toDate!.year, f.toDate!.month, f.toDate!.day, 23, 59, 59)
+              .toUtc()
+              .toIso8601String()
+          : null,
+      'p_recipient':
+          f.recipient?.trim().isEmpty == true ? null : f.recipient?.trim(),
+      'p_partner_id': f.partnerId,
+    };
+  }
+
   static Future<int> countLog({
     EmailLogFilters filters = const EmailLogFilters(),
   }) async {
     final c = await SupabaseService.client.rpc(
       'count_partner_email_log',
-      params: _params(filters),
+      params: _countParams(filters),
     );
     return (c as num).toInt();
   }

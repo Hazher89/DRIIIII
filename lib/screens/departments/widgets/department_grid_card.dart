@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../absence/widgets/leave_absence_rate_widgets.dart';
+import '../../../core/theme/absence_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/department.dart';
 import '../../../models/user_profile.dart';
@@ -120,10 +122,19 @@ class DepartmentGridCard extends StatelessWidget {
                             style: DriftProTheme.labelMd,
                           ),
                         ),
+                        if (absenceStats.memberCount > 0 && absenceStats.totalDaysYtd > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: AbsenceRateBadge(
+                              percent: absenceStats.averageAbsencePercent,
+                              compact: true,
+                            ),
+                          ),
                         if (needsLeader)
-                          _badge('Mangler leder', DriftProTheme.warning)
+                          _badge('Mangler leder', AbsencePalette.indigo.withValues(alpha: 0.12),
+                              textColor: AbsencePalette.indigo)
                         else
-                          _badge('OK', DriftProTheme.success.withValues(alpha: 0.15), textColor: DriftProTheme.success),
+                          _badge('OK', color.withValues(alpha: 0.12), textColor: color),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -142,7 +153,7 @@ class DepartmentGridCard extends StatelessWidget {
                           Icon(
                             needsLeader ? Icons.warning_amber_rounded : Icons.verified_user_outlined,
                             size: 16,
-                            color: needsLeader ? DriftProTheme.warning : DriftProTheme.primaryGreen,
+                            color: needsLeader ? AbsencePalette.indigo : color,
                           ),
                           const SizedBox(width: 8),
                           Expanded(

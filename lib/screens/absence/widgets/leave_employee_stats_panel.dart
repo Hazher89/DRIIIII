@@ -6,7 +6,15 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/leave_usage_colors.dart';
 import '../../../models/absence.dart';
 import '../../../models/user_profile.dart';
+import 'leave_absence_rate_widgets.dart';
 import 'leave_employee_kpi_widgets.dart';
+
+DateTime _leaveStatsReferenceDate(int selectedYear) {
+  final now = DateTime.now();
+  if (selectedYear < now.year) return DateTime(selectedYear, 12, 31);
+  if (selectedYear > now.year) return DateTime(selectedYear, 1, 1);
+  return now;
+}
 
 /// Én-linje KPI-stripe — trykk for full saldo.
 class LeaveEmployeeStatsCompactBar extends StatelessWidget {
@@ -30,11 +38,13 @@ class LeaveEmployeeStatsCompactBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final refDate = _leaveStatsReferenceDate(selectedYear);
     final stats = EmployeeLeaveSnapshot.compute(
       employee: employee,
       employeeAbsences: employeeAbsences,
       quota: quota,
       company: company,
+      referenceDate: refDate,
     );
     final pending = employeeAbsences
         .where((a) => a.status == AbsenceStatus.ventende)
@@ -50,26 +60,32 @@ class LeaveEmployeeStatsCompactBar extends StatelessWidget {
             children: [
               LeaveEmployeeCompactStat(
                 icon: Icons.beach_access,
-                value: '${stats.ferieRemaining}',
-                label: 'ferie',
+                value: '${stats.ferieRemaining} d',
+                label: 'ferie igjen',
                 baseColor: DriftProTheme.absenceVacation,
                 level: stats.ferieLevel,
               ),
               _divider(isDark),
               LeaveEmployeeCompactStat(
                 icon: Icons.sick_outlined,
-                value: '${stats.egenDaysTotal}/${stats.egenMax}',
-                label: 'egen',
+                value: '${stats.egenDaysTotal} d',
+                label: '${stats.egenTilfeller} tilf.',
                 baseColor: DriftProTheme.absenceSickSelf,
                 level: stats.egenLevel,
               ),
               _divider(isDark),
               LeaveEmployeeCompactStat(
                 icon: Icons.child_care_outlined,
-                value: '${stats.syktDays}/${stats.syktMax}',
-                label: 'sykt',
+                value: '${stats.syktDays} d',
+                label: 'av ${stats.syktMax} d',
                 baseColor: DriftProTheme.absenceSickChild,
                 level: stats.syktLevel,
+              ),
+              _divider(isDark),
+              AbsenceRateBadge(
+                percent: stats.absenceRatePercent(refDate),
+                level: stats.absenceRateLevel(refDate),
+                compact: true,
               ),
               const Spacer(),
               if (pending > 0)
@@ -170,11 +186,13 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final refDate = _leaveStatsReferenceDate(selectedYear);
     final stats = EmployeeLeaveSnapshot.compute(
       employee: employee,
       employeeAbsences: employeeAbsences,
       quota: quota,
       company: company,
+      referenceDate: refDate,
     );
     final dept = employee.departmentId != null
         ? departmentNames[employee.departmentId!]
@@ -257,8 +275,11 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
         const SizedBox(height: 10),
         Text(
           'Totalt ${stats.totalFravaerDager} fraværsdager '
-          '(${stats.egenDaysTotal} egenmelding + ${stats.syktDays} sykt barn). '
-          'Oransje = nær grense · rød = max nådd.',
+          '(${stats.egenDaysTotal} d egen · ${stats.egenTilfeller} tilf. · '
+          '${stats.syktDays} d sykt barn). '
+          'Egen kvote: ${stats.egenQuotaPercent.round()}% · '
+          'Sykt barn: ${stats.syktQuotaPercent.round()}% · '
+          'Fravær YTD: ${stats.absenceRatePercent(refDate).round()}% av virkedager.',
           style: DriftProTheme.caption.copyWith(
             color: isDark ? Colors.white54 : Colors.grey.shade600,
             fontSize: 11,

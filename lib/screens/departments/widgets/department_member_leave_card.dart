@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/leave_rules.dart';
 import '../../../core/services/absence/employee_leave_stats.dart';
+import '../../../core/theme/absence_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/leave_usage_colors.dart';
 import '../../../models/absence.dart';
@@ -48,9 +49,9 @@ class DepartmentMemberLeaveCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: worst == LeaveUsageLevel.critical
-              ? DriftProTheme.error.withValues(alpha: 0.4)
+              ? AbsencePalette.usageCritical.withValues(alpha: 0.35)
               : worst == LeaveUsageLevel.warning
-                  ? Colors.orange.withValues(alpha: 0.35)
+                  ? AbsencePalette.usageWarning.withValues(alpha: 0.3)
                   : (isDark ? DriftProTheme.dividerDark : Colors.grey.shade100),
           width: worst == LeaveUsageLevel.ok ? 1 : 1.5,
         ),
@@ -63,12 +64,12 @@ class DepartmentMemberLeaveCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 18,
-                backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                backgroundColor: AbsencePalette.indigo.withValues(alpha: 0.12),
                 child: Text(
                   member.initials,
                   style: const TextStyle(
                     fontSize: 12,
-                    color: DriftProTheme.primaryGreen,
+                    color: AbsencePalette.indigo,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -91,9 +92,9 @@ class DepartmentMemberLeaveCard extends StatelessWidget {
                 ),
               ),
               if (onLeaveToday)
-                _statusChip('Borte i dag', DriftProTheme.warning)
+                _statusChip('Borte i dag', AbsencePalette.indigo)
               else if (pending > 0)
-                _statusChip('$pending venter', DriftProTheme.warning)
+                _statusChip('$pending venter', AbsencePalette.violet)
               else if (onEditQuota != null)
                 IconButton(
                   tooltip: 'Endre feriekvote',

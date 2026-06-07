@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/absence_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/absence.dart';
 import 'department_absence_stats.dart';
@@ -21,19 +22,15 @@ Color absenceTypeColor(AbsenceType type) {
   }
 }
 
-/// Segmentert stolpe for fraværstyper hittil i år.
+/// Segmentert stolpe for fraværstyper — én linje med prosent.
 class AbsenceTypeBreakdownBar extends StatelessWidget {
   final Map<AbsenceType, int> breakdown;
   final int totalDays;
-  final Color accent;
-  final int year;
 
   const AbsenceTypeBreakdownBar({
     super.key,
     required this.breakdown,
     required this.totalDays,
-    required this.accent,
-    required this.year,
   });
 
   @override
@@ -47,31 +44,12 @@ class AbsenceTypeBreakdownBar extends StatelessWidget {
       ..sort((a, b) => b.value.compareTo(a.value));
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            Icon(Icons.pie_chart_outline_rounded, size: 14, color: accent),
-            const SizedBox(width: 6),
-            Text(
-              'Fravær totalt',
-              style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const Spacer(),
-            Text(
-              '$totalDays dager',
-              style: DriftProTheme.caption.copyWith(
-                fontWeight: FontWeight.w700,
-                color: accent,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
         ClipRRect(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(8),
           child: SizedBox(
-            height: 10,
+            height: 12,
             child: Row(
               children: [
                 for (final seg in segments)
@@ -85,149 +63,57 @@ class AbsenceTypeBreakdownBar extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Wrap(
-          spacing: 8,
-          runSpacing: 4,
+          spacing: 10,
+          runSpacing: 6,
           children: [
-            for (final seg in segments.take(4))
-              _legendChip(seg.key, seg.value, isDark),
+            for (final seg in segments)
+              _legendChip(seg.key, seg.value, totalDays, isDark),
           ],
         ),
       ],
     );
   }
 
-  Widget _legendChip(AbsenceType type, int days, bool isDark) {
+  Widget _legendChip(AbsenceType type, int days, int total, bool isDark) {
     final color = absenceTypeColor(type);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 4),
-        Text(
-          '${type.label} $days',
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.grey[400] : Colors.grey[700],
+    final pct = total > 0 ? ((days / total) * 100).round() : 0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.15 : 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-/// Mini sparkline — siste 6 måneder.
-class AbsenceMonthlySparkline extends StatelessWidget {
-  final List<DepartmentMonthlyAbsencePoint> points;
-  final Color accent;
-
-  const AbsenceMonthlySparkline({
-    super.key,
-    required this.points,
-    required this.accent,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    if (points.isEmpty) return const SizedBox.shrink();
-
-    final maxDays = points.map((p) => p.days).fold<int>(0, math.max).clamp(1, 999);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.show_chart_rounded, size: 14, color: accent),
-            const SizedBox(width: 6),
-            Text(
-              'Trend 6 mnd',
-              style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w800),
+          const SizedBox(width: 5),
+          Text(
+            '${type.label}  $days d  ($pct%)',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              color: isDark ? Colors.grey[300] : Colors.grey[800],
             ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 44,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              for (final p in points)
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        if (p.days > 0)
-                          Text(
-                            '${p.days}',
-                            style: TextStyle(
-                              fontSize: 8,
-                              fontWeight: FontWeight.w700,
-                              color: accent,
-                              height: 1,
-                            ),
-                          )
-                        else
-                          const SizedBox(height: 10),
-                        const SizedBox(height: 2),
-                        Flexible(
-                          child: FractionallySizedBox(
-                            heightFactor: (p.days / maxDays).clamp(0.08, 1.0),
-                            child: Container(
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.bottomCenter,
-                                  end: Alignment.topCenter,
-                                  colors: [
-                                    accent.withValues(alpha: 0.35),
-                                    accent,
-                                  ],
-                                ),
-                                borderRadius: const BorderRadius.vertical(
-                                  top: Radius.circular(4),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          p.shortLabel,
-                          style: TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? Colors.grey[500] : Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
 
-/// Topp ansatte med mest godkjent fravær — navn + stolpe.
+/// Topp ansatte med mest registrert fravær.
 class AbsenceLeaderboard extends StatelessWidget {
   final List<DepartmentMemberAbsenceRank> entries;
-  final Color accent;
 
   const AbsenceLeaderboard({
     super.key,
     required this.entries,
-    required this.accent,
   });
 
   @override
@@ -235,25 +121,30 @@ class AbsenceLeaderboard extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     if (entries.isEmpty) return const SizedBox.shrink();
 
-    final maxDays = entries.first.totalDaysYtd.clamp(1, 999);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.leaderboard_outlined, size: 14, color: accent),
-            const SizedBox(width: 6),
             Text(
-              'Mest fravær',
+              'Topp ${entries.length}',
               style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const Spacer(),
+            Text(
+              'Dager totalt',
+              style: TextStyle(
+                fontSize: 8,
+                fontWeight: FontWeight.w600,
+                color: AbsencePalette.slate,
+              ),
             ),
           ],
         ),
         const SizedBox(height: 8),
         for (var i = 0; i < entries.length; i++) ...[
           if (i > 0) const SizedBox(height: 6),
-          _leaderRow(entries[i], i + 1, maxDays, isDark),
+          _leaderRow(entries[i], i + 1, isDark),
         ],
       ],
     );
@@ -262,30 +153,22 @@ class AbsenceLeaderboard extends StatelessWidget {
   Widget _leaderRow(
     DepartmentMemberAbsenceRank entry,
     int rank,
-    int maxDays,
     bool isDark,
   ) {
-    final type = entry.dominantType;
-    final typeColor = type != null ? absenceTypeColor(type) : accent;
-    final ratio = (entry.totalDaysYtd / maxDays).clamp(0.0, 1.0);
-
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _rankBadge(rank, isDark),
-        const SizedBox(width: 8),
-        CircleAvatar(
-          radius: 13,
-          backgroundColor: typeColor.withValues(alpha: 0.18),
+        SizedBox(
+          width: 16,
           child: Text(
-            entry.initials,
+            '$rank.',
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 9,
               fontWeight: FontWeight.w800,
-              color: typeColor,
+              color: AbsencePalette.rankColor(rank, isDark),
             ),
           ),
         ),
-        const SizedBox(width: 8),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -297,46 +180,51 @@ class AbsenceLeaderboard extends StatelessWidget {
                       entry.fullName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: DriftProTheme.caption.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w700),
                     ),
                   ),
                   Text(
                     '${entry.totalDaysYtd} d',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
-                      color: typeColor,
+                      color: AbsencePalette.slateDark,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 4),
               ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: ratio,
-                  minHeight: 5,
-                  backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
-                  valueColor: AlwaysStoppedAnimation(typeColor),
-                ),
-              ),
-              if (type != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  entry.egenDays > 0 && entry.syktDays > 0
-                      ? '${entry.egenDays} egen · ${entry.syktDays} sykt'
-                      : entry.egenDays > 0
-                          ? '${entry.egenDays} egen · ${entry.egenTilfeller} tilf.'
-                          : '${entry.syktDays} sykt barn',
-                  style: TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.grey[500] : Colors.grey[600],
+                borderRadius: BorderRadius.circular(3),
+                child: SizedBox(
+                  height: 6,
+                  child: Row(
+                    children: [
+                      if (entry.egenDays > 0)
+                        Expanded(
+                          flex: entry.egenDays,
+                          child: ColoredBox(color: DriftProTheme.absenceSickSelf),
+                        ),
+                      if (entry.syktDays > 0)
+                        Expanded(
+                          flex: entry.syktDays,
+                          child: ColoredBox(color: DriftProTheme.absenceSickChild),
+                        ),
+                      if (entry.totalDaysYtd <= 0)
+                        Expanded(child: ColoredBox(color: Colors.grey.shade200)),
+                    ],
                   ),
                 ),
-              ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                _detailLabel(entry),
+                style: TextStyle(
+                  fontSize: 8,
+                  fontWeight: FontWeight.w500,
+                  color: isDark ? Colors.grey[500] : Colors.grey[600],
+                ),
+              ),
             ],
           ),
         ),
@@ -344,26 +232,16 @@ class AbsenceLeaderboard extends StatelessWidget {
     );
   }
 
-  Widget _rankBadge(int rank, bool isDark) {
-    final medals = [DriftProTheme.warning, Colors.grey.shade400, const Color(0xFFCD7F32)];
-    final color = rank <= 3 ? medals[rank - 1] : (isDark ? Colors.grey[600]! : Colors.grey[400]!);
-    return Container(
-      width: 18,
-      height: 18,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: rank <= 3 ? 0.2 : 0.12),
-        shape: BoxShape.circle,
-      ),
-      child: Text(
-        '$rank',
-        style: TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w900,
-          color: color,
-        ),
-      ),
-    );
+  String _detailLabel(DepartmentMemberAbsenceRank entry) {
+    final parts = <String>[];
+    if (entry.egenDays > 0) {
+      parts.add('${entry.egenDays} d egen');
+      if (entry.egenTilfeller > 0) {
+        parts.add('${entry.egenTilfeller} tilf.');
+      }
+    }
+    if (entry.syktDays > 0) parts.add('${entry.syktDays} d sykt barn');
+    return parts.isEmpty ? 'Ingen registrert' : parts.join(' · ');
   }
 }
 
@@ -402,10 +280,10 @@ class AbsenceTypeDonut extends StatelessWidget {
             children: [
               Text(
                 '$totalDays',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w900,
-                  color: accent,
+                  color: AbsencePalette.slateDark,
                   height: 1,
                 ),
               ),
@@ -414,7 +292,7 @@ class AbsenceTypeDonut extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 7,
                   fontWeight: FontWeight.w600,
-                  color: accent.withValues(alpha: 0.8),
+                  color: AbsencePalette.slate.withValues(alpha: 0.9),
                   height: 1,
                 ),
               ),

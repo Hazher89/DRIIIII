@@ -31,6 +31,7 @@ class PartnerCompaniesBoard extends StatefulWidget {
     required this.profile,
     required this.onRefresh,
     this.onRegister,
+    this.nestedScroll = false,
   });
 
   final List<Partner> partners;
@@ -39,6 +40,7 @@ class PartnerCompaniesBoard extends StatefulWidget {
   final UserProfile? profile;
   final Future<void> Function() onRefresh;
   final VoidCallback? onRegister;
+  final bool nestedScroll;
 
   @override
   State<PartnerCompaniesBoard> createState() => _PartnerCompaniesBoardState();
@@ -248,6 +250,10 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
+        if (widget.nestedScroll)
+          SliverOverlapInjector(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+          ),
         SliverToBoxAdapter(
           child: PartnerModernPageHeader(
             title: 'Bedrifter',

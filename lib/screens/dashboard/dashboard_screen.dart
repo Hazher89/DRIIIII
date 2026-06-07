@@ -10,6 +10,7 @@ import '../../core/constants/app_strings.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
+import '../../core/services/absence/employee_leave_stats.dart';
 import '../../core/services/supabase_service.dart';
 import '../employees/employee_hub_screen.dart';
 import '../../core/theme/app_theme.dart';
@@ -29,13 +30,11 @@ import '../online/online_presence_screen.dart';
 import '../admin/kiosk_settings_screen.dart';
 import '../../widgets/cards/stat_card.dart';
 import '../../widgets/cards/quick_action_button.dart';
-import '../../widgets/cards/glass_card.dart';
 import '../../widgets/common/section_header.dart';
 import '../profile/profile_screen.dart';
 import '../../widgets/driftpro_notification_bell.dart';
-import 'widgets/dashboard_command_palette.dart';
 import 'widgets/dashboard_personal_panel.dart';
-import 'widgets/dashboard_search_bar.dart';
+import 'widgets/strategic_goals_overview.dart';
 import 'dashboard_search_catalog.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -57,7 +56,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<EmployeeAttendance> _onDutyEmployees = [];
   EmployeeAttendance? _myAttendance;
   bool _isLoading = false;
-  int _activeTabIndex = 0;
   _OpsWindow _opsWindow = _OpsWindow.week;
   List<_DashboardNotice> _notices = const [];
   KioskSettings _kiosk = KioskSettings.defaults;
@@ -70,6 +68,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   int? _vacationDaysLeft;
   int _myPendingAbsences = 0;
   int _myOpenTickets = 0;
+  TeamLeaveSummary _leaveSummary = TeamLeaveSummary.empty;
+  int _goalCriticalTickets = 0;
+  int _goalUpcomingSafetyRounds = 0;
   Timer? _clockTimer;
   Timer? _presenceTimer;
 
@@ -202,6 +203,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           ? await SupabaseService.fetchSafetyRounds(companyId: companyId)
           : <SafetyRound>[];
 
+      final companySettings = await SupabaseService.fetchCompanyLeaveSettings(companyId);
+
       List<UserProfile> scopeProfiles = const [];
       if (profile != null) {
         if (profile.isAdmin) {
@@ -330,6 +333,22 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
       ];
 
+      final leaveSummary = profile != null
+          ? TeamLeaveSummary.compute(
+              employees: await SupabaseService.fetchProfiles(companyId: companyId),
+              allAbsences: await SupabaseService.fetchAbsences(companyId: companyId),
+              company: companySettings,
+            )
+          : TeamLeaveSummary.empty;
+
+      final goalTickets = await SupabaseService.fetchTickets(companyId: companyId);
+      final goalCriticalTickets = goalTickets
+          .where((t) => t.severity == TicketSeverity.kritisk && t.isOpen)
+          .length;
+      final goalRounds = await SupabaseService.fetchSafetyRounds(companyId: companyId);
+      final goalUpcomingRounds =
+          goalRounds.where((r) => r.overallStatus == 'planlagt').length;
+
       setState(() {
         _profile = profile;
         _kiosk = meta.kiosk;
@@ -352,6 +371,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         _vacationDaysLeft = vacationDaysLeft;
         _myPendingAbsences = myPendingAbsences;
         _myOpenTickets = myOpenTickets;
+        _leaveSummary = leaveSummary;
+        _goalCriticalTickets = goalCriticalTickets;
+        _goalUpcomingSafetyRounds = goalUpcomingRounds;
         _stats = DashboardStats(
           todayAbsences: todayAbsences,
           openTickets: openTickets,
@@ -520,18 +542,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       departmentName: _departmentName,
       dataScopeLabel: _dataScopeLabel,
       roleLabel: _roleLabel,
-    );
-  }
-
-  void _openCommandPalette() {
-    final p = _profile;
-    if (p == null) return;
-    DashboardCommandPalette.show(
-      context,
-      profile: p,
-      scopedTickets: _scopedTickets,
-      scopedAbsences: _scopedAbsences,
-      onNavigateByAccess: widget.onNavigateByAccess,
     );
   }
 
@@ -1378,121 +1388,21 @@ class _DashboardScreenState extends State<DashboardScreen>
     return cards;
   }
 
-  List<Widget> _buildActivityAttendanceSlivers(bool isDark) {
-    final showActivity = _contentKiosk.showActivityFeed;
-    // Full oversikt ligger på infoskjerm-kortet — unngå lang «På jobb»-liste her.
-    final showAttendanceList = !_contentKiosk.showLiveTeamBoard &&
-        _contentKiosk.showAttendanceSummary &&
-        !_anonymizeSharedScreen &&
-        (_access?.canFravaer == true || _access?.canEmployeesList == true);
+  StrategicGoalLiveMetrics get _goalLiveMetrics => StrategicGoalLiveMetrics(
+        absenceRatePercent: _leaveSummary.employeeCount > 0
+            ? _leaveSummary.averageAbsencePercent
+            : null,
+        criticalTickets: _goalCriticalTickets,
+        plannedSafetyRounds: _goalUpcomingSafetyRounds,
+      );
 
-    if (!showActivity && !showAttendanceList) {
-      return const [];
-    }
-
-    if (showActivity && !showAttendanceList) {
-      return [
-        const SliverToBoxAdapter(
-          child: SectionHeader(title: 'Siste aktivitet'),
-        ),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              if (_recentActivity.isEmpty) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Text('Ingen nylig aktivitet'),
-                  ),
-                );
-              }
-              final item = _recentActivity[index];
-              return _buildActivityTile(item, isDark);
-            },
-            childCount: _recentActivity.isEmpty ? 1 : _recentActivity.length,
-          ),
-        ),
-      ];
-    }
-
-    if (!showActivity && showAttendanceList) {
-      return [
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: SectionHeader(title: 'På jobb nå'),
-          ),
-        ),
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              if (_onDutyEmployees.isEmpty) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Text('Ingen ansatte er på jobb akkurat nå.'),
-                  ),
-                );
-              }
-              final emp = _onDutyEmployees[index];
-              return _buildAttendanceTile(emp, isDark);
-            },
-            childCount: _onDutyEmployees.isEmpty ? 1 : _onDutyEmployees.length,
-          ),
-        ),
-      ];
-    }
-
-    return [
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              _buildTabButton(0, 'Aktivitet', isDark),
-              const SizedBox(width: 12),
-              _buildTabButton(1, 'På jobb (${_onDutyEmployees.length})', isDark),
-            ],
-          ),
-        ),
-      ),
-      if (_activeTabIndex == 0)
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              if (_recentActivity.isEmpty) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Text('Ingen nylig aktivitet'),
-                  ),
-                );
-              }
-              final item = _recentActivity[index];
-              return _buildActivityTile(item, isDark);
-            },
-            childCount: _recentActivity.isEmpty ? 1 : _recentActivity.length,
-          ),
-        )
-      else
-        SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, index) {
-              if (_onDutyEmployees.isEmpty) {
-                return const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(40),
-                    child: Text('Ingen ansatte er på jobb akkurat nå.'),
-                  ),
-                );
-              }
-              final emp = _onDutyEmployees[index];
-              return _buildAttendanceTile(emp, isDark);
-            },
-            childCount: _onDutyEmployees.isEmpty ? 1 : _onDutyEmployees.length,
-          ),
-        ),
-    ];
+  String? get _greetingFirstName {
+    final parts = _profile?.fullName
+        .split(' ')
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (parts == null || parts.isEmpty) return null;
+    return parts.first;
   }
 
   Future<void> _refreshDashboard() async {
@@ -1503,16 +1413,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final miniStats = _buildMiniStatChildren();
 
-    return CallbackShortcuts(
-      bindings: {
-        const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _openCommandPalette,
-        const SingleActivator(LogicalKeyboardKey.keyK, control: true): _openCommandPalette,
-      },
-      child: Focus(
-        autofocus: true,
-        child: Scaffold(
+    return Scaffold(
       backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       body: FadeTransition(
         opacity: _fadeAnimation,
@@ -1527,41 +1429,31 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
             child: CustomScrollView(
               physics: const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics()),
+                parent: AlwaysScrollableScrollPhysics(),
+              ),
               slivers: [
                 SliverAppBar(
+                  pinned: true,
                   floating: true,
-                  snap: true,
                   elevation: 0,
                   backgroundColor:
                       isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
                   title: Row(
                     children: [
                       Container(
-                        width: 32,
-                        height: 32,
+                        padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
-                          gradient: DriftProTheme.primaryGradient,
+                          color: DriftProTheme.primaryGreen,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Center(
-                          child: Text('M',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.bold)),
-                        ),
+                        child: const Icon(Icons.dashboard_rounded,
+                            color: Colors.white, size: 18),
                       ),
                       const SizedBox(width: 8),
-                      Text(CompanyDisplay.defaultName),
+                      Text(_companyName ?? CompanyDisplay.defaultName),
                     ],
                   ),
                   actions: [
-                    IconButton(
-                      tooltip: 'Søk (⌘K)',
-                      onPressed: _openCommandPalette,
-                      icon: Icon(Icons.search_rounded,
-                          color: isDark ? Colors.white : Colors.black87),
-                    ),
                     if (_access?.canKiosk == true)
                       IconButton(
                         tooltip: 'Infoskjerm',
@@ -1593,37 +1485,36 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                     if (_access?.canProfile != false)
                       GestureDetector(
-                      onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (_) => const ProfileScreen())),
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 16, left: 8),
-                        child: CircleAvatar(
-                          radius: 16,
-                          backgroundColor:
-                              DriftProTheme.primaryGreen.withOpacity(0.1),
-                          backgroundImage: _profile?.avatarUrl != null
-                              ? NetworkImage(_profile!.avatarUrl!)
-                              : null,
-                          child: _profile?.avatarUrl == null
-                              ? Text(_profile?.initials ?? '?',
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
-                                      color: DriftProTheme.primaryGreen))
-                              : null,
+                        onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) => const ProfileScreen())),
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 16, left: 8),
+                          child: CircleAvatar(
+                            radius: 16,
+                            backgroundColor:
+                                DriftProTheme.primaryGreen.withOpacity(0.1),
+                            backgroundImage: _profile?.avatarUrl != null
+                                ? NetworkImage(_profile!.avatarUrl!)
+                                : null,
+                            child: _profile?.avatarUrl == null
+                                ? Text(_profile?.initials ?? '?',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: DriftProTheme.primaryGreen))
+                                : null,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
 
                 SliverToBoxAdapter(
-                  child: DashboardSearchBar(
-                    profile: _profile,
-                    scopedTickets: _scopedTickets,
-                    scopedAbsences: _scopedAbsences,
-                    onNavigateByAccess: widget.onNavigateByAccess,
+                  child: StrategicGoalsOverview(
+                    live: _goalLiveMetrics,
+                    greetingName: _greetingFirstName,
+                    referenceDate: _nbDatesReady ? DateTime.now() : null,
                   ),
                 ),
 
@@ -1652,7 +1543,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const SliverToBoxAdapter(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
-                      child: SectionHeader(title: 'Dine moduler'),
+                      child: SectionHeader(title: 'Snarveier'),
                     ),
                   ),
                   SliverToBoxAdapter(
@@ -1667,98 +1558,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 ],
 
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: GlassCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      _heroTitleLine(),
-                                      style: DriftProTheme.headingLg
-                                          .copyWith(color: Colors.white),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _getDateString(),
-                                      style: DriftProTheme.bodyMd
-                                          .copyWith(color: Colors.white70),
-                                    ),
-                                    if (_getClockString() != null) ...[
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        _getClockString()!,
-                                        style: DriftProTheme.headingSm.copyWith(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                          letterSpacing: 1.2,
-                                        ),
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              _buildAttendanceToggle(isDark),
-                            ],
-                          ),
-                          if (_kiosk.showCustomMessage &&
-                              (_kiosk.customMessageTitle.isNotEmpty ||
-                                  _kiosk.customMessageBody.isNotEmpty)) ...[
-                            const SizedBox(height: 16),
-                            Divider(color: Colors.white.withValues(alpha: 0.2)),
-                            const SizedBox(height: 8),
-                            if (_kiosk.customMessageTitle.isNotEmpty)
-                              Text(
-                                _kiosk.customMessageTitle,
-                                style: DriftProTheme.labelLg
-                                    .copyWith(color: Colors.white),
-                              ),
-                            if (_kiosk.customMessageBody.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Text(
-                                _kiosk.customMessageBody,
-                                style: DriftProTheme.bodyMd
-                                    .copyWith(color: Colors.white70),
-                              ),
-                            ],
-                          ],
-                          if (_contentKiosk.showMiniStatsRow && miniStats.isNotEmpty) ...[
-                            const SizedBox(height: 20),
-                            Row(children: miniStats),
-                          ],
-                          if (_anonymizeSharedScreen) ...[
-                            const SizedBox(height: 12),
-                            Text(
-                              'Personvern: felles skjerm viser ikke navn. Admin kan endre dette under Infoskjerm.',
-                              style: DriftProTheme.bodySm
-                                  .copyWith(color: Colors.white54),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                if (_access?.canFravaer == true || _access?.canAvvik == true) ...[
-                  SliverToBoxAdapter(child: _buildOperationsHub(isDark)),
-                ],
-
                 if (_contentKiosk.showLiveTeamBoard) ...[
                   SliverToBoxAdapter(child: _buildLiveTeamBoardCard(isDark)),
-                ],
-
-                if (_contentKiosk.showAbsenceAggregate) ...[
-                  SliverToBoxAdapter(child: _buildAbsenceAggregateSection(isDark)),
                 ],
 
                 if (_contentKiosk.showQuickActions && _buildQuickActionButtons().isNotEmpty) ...[
@@ -1775,58 +1576,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 ],
 
-                if (_buildOverviewStatCards().isNotEmpty) ...[
-                  const SliverToBoxAdapter(child: SectionHeader(title: 'Oversikt')),
-                  SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    sliver: SliverGrid(
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 1.35,
-                      ),
-                      delegate: SliverChildListDelegate(_buildOverviewStatCards()),
-                    ),
-                  ),
-                ],
-
-                if (_anonymizeSharedScreen && _contentKiosk.showAttendanceSummary) ...[
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      child: GlassCard(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              Icon(Icons.work_outline,
-                                  color: Colors.white.withValues(alpha: 0.9)),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  '${_onDutyEmployees.length} personer er innstemplt nå (navn skjult på felles skjerm).',
-                                  style: DriftProTheme.bodyMd
-                                      .copyWith(color: Colors.white70),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-
-                ..._buildActivityAttendanceSlivers(isDark),
-
                 const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
             ),
           ),
-        ),
-      ),
         ),
       ),
     );
@@ -1894,27 +1647,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             const SizedBox(width: 12),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: DriftProTheme.labelLg), Text(subtitle, style: DriftProTheme.bodySm.copyWith(color: Colors.grey))])),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTabButton(int index, String label, bool isDark) {
-    final isActive = _activeTabIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _activeTabIndex = index),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        decoration: BoxDecoration(
-          color: isActive ? DriftProTheme.primaryGreen : (isDark ? Colors.white10 : Colors.grey.shade100),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isActive ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
-            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-          ),
         ),
       ),
     );

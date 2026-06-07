@@ -3,12 +3,14 @@ import 'package:intl/intl.dart';
 
 import '../../../core/constants/leave_rules.dart';
 import '../../../core/services/absence/department_leave_conflict_service.dart';
+import '../../../core/services/absence/employee_leave_stats.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/absence.dart';
 import '../../../models/user_profile.dart';
 import 'department_leave_tip_card.dart';
 import 'leave_calendar_month_digest.dart';
 import 'leave_calendar_rules_section.dart';
+import 'leave_absence_rate_widgets.dart';
 import 'leave_employee_stats_panel.dart';
 import 'leave_public_holidays_panel.dart';
 import 'leave_employee_timeline.dart';
@@ -220,6 +222,15 @@ class _LeaveUnifiedTeamViewState extends State<LeaveUnifiedTeamView> {
     return selected.fullName;
   }
 
+  TeamLeaveSummary _summaryFor(UserProfile? selected) {
+    final employees = selected != null ? [selected] : _employees;
+    return TeamLeaveSummary.compute(
+      employees: employees,
+      allAbsences: widget.scopedAbsences,
+      company: widget.companySettings,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -237,6 +248,15 @@ class _LeaveUnifiedTeamViewState extends State<LeaveUnifiedTeamView> {
     return Column(
       children: [
         _buildCommandBar(isDark, showPicker, pending, list.length),
+        LeaveAbsenceSummaryBar(
+          summary: _summaryFor(selected),
+          title: selected != null
+              ? 'Fravær ${selected.fullName}'
+              : 'Fravær snitt teamet',
+          subtitle: selected != null
+              ? 'Dager og tilfeller for valgt ansatt'
+              : '${_employees.length} ansatte · fravær % av virkedager YTD',
+        ),
         if (selected != null)
           LeaveEmployeeStatsCompactBar(
             employee: selected,
@@ -254,8 +274,8 @@ class _LeaveUnifiedTeamViewState extends State<LeaveUnifiedTeamView> {
               departmentNames: widget.departmentNames,
             ),
           )
-        else if (widget.isManager)
-          _teamHintBar(isDark, pending),
+        else if (widget.isManager && (pending > 0 || _overlapPendingCount > 0))
+          _teamAlertsBar(isDark, pending),
         Expanded(
           child: _viewMode == _ViewMode.kalender
               ? RefreshIndicator(
@@ -490,50 +510,36 @@ class _LeaveUnifiedTeamViewState extends State<LeaveUnifiedTeamView> {
     );
   }
 
-  Widget _teamHintBar(bool isDark, int pending) {
-    final overlap = widget.scopedAbsences.where((a) {
-      final o = widget.overlapsByAbsenceId[a.id] ?? [];
-      return o.isNotEmpty && a.status == AbsenceStatus.ventende;
-    }).length;
+  int get _overlapPendingCount => widget.scopedAbsences.where((a) {
+        final o = widget.overlapsByAbsenceId[a.id] ?? [];
+        return o.isNotEmpty && a.status == AbsenceStatus.ventende;
+      }).length;
 
+  Widget _teamAlertsBar(bool isDark, int pending) {
     return Material(
-      color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF4FAF5),
+      color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFFFF8E1),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         child: Row(
           children: [
-            Text(
-              '${widget.teamProfiles.length} ansatte',
-              style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w600),
-            ),
-            if (pending > 0) ...[
-              Text(' · ', style: DriftProTheme.caption),
+            if (pending > 0)
               Text(
-                '$pending ventende',
+                '$pending ventende godkjenning',
                 style: DriftProTheme.caption.copyWith(
                   color: DriftProTheme.warning,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ],
-            if (overlap > 0) ...[
+            if (pending > 0 && _overlapPendingCount > 0)
               Text(' · ', style: DriftProTheme.caption),
+            if (_overlapPendingCount > 0)
               Text(
-                '$overlap overlapp',
+                '$_overlapPendingCount overlapp i avdeling',
                 style: DriftProTheme.caption.copyWith(
                   color: Colors.orange.shade800,
                   fontWeight: FontWeight.w600,
                 ),
               ),
-            ],
-            const Spacer(),
-            Text(
-              'Trykk ansatt for saldo',
-              style: DriftProTheme.caption.copyWith(
-                color: isDark ? Colors.white38 : Colors.grey.shade500,
-                fontSize: 10,
-              ),
-            ),
           ],
         ),
       ),

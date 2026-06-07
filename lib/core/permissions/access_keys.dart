@@ -158,7 +158,7 @@ class AccessKeys {
     avdelinger: 'Avdelinger',
     ansatte: 'Ansatte',
     personalmappe: 'Personalmappe / DMS',
-    varsler: 'Varsler',
+    varsler: 'Varsler & varselinnstillinger',
     undersokelser: 'Undersøkelser (meny)',
     whistleblowing: 'Anonym anmeldelse',
     kiosk: 'Infoskjerm',
@@ -216,5 +216,8 @@ class AccessKeys {
     ferieAdmin: 'Tildele feriedager for hele bedriften',
     ansatteRediger: 'Endre roller og tilganger for andre',
     brukergodkjenning: 'Kun superadmin bør ha denne',
+    varsler:
+        'Varselsenter under Mer, varselinnstillinger og feilede varsler. '
+        'Uavhengig av tilgang til Samarbeidspartnere.',
   };
 }

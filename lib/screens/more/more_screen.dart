@@ -138,7 +138,7 @@ class _MoreScreenState extends State<MoreScreen> {
               ),
             if (_profile!.access.canPersonalFolder)
               _buildMenuItem(context, AppIcons.folder, 'Personalmappe', isDark),
-            if (_profile!.isSuperAdmin)
+            if (_profile!.access.canNotifications)
               _buildMenuItem(
                 context,
                 AppIcons.notification,
