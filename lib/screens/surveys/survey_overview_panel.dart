@@ -191,8 +191,8 @@ class _SurveyOverviewPanelState extends State<SurveyOverviewPanel> {
           children: [
             _action(context, Icons.edit_note, 'Bygg spørsmål', 1),
             _action(context, Icons.palette_outlined, 'Velg tema', 2),
-            _action(context, Icons.insights_outlined, 'Se resultater', 3),
-            _action(context, Icons.share_outlined, 'Del lenke', 4),
+            _action(context, Icons.share_outlined, 'Del lenke', 3),
+            _action(context, Icons.insights_outlined, 'Se resultater', 4),
           ],
         ),
       ],

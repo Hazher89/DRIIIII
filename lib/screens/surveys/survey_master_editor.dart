@@ -30,13 +30,13 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
   SurveyThemeConfig? _themeConfig;
   List<SurveyAnalyticsSnapshot> _snapshots = const [];
 
-  /// Rekkefølge: Oversikt → Bygg → Tema → Resultater → Del (sist)
+  /// Rekkefølge: Oversikt → Bygg → Tema → Del → Resultater (sist)
   static const _steps = [
     ('Oversikt', Icons.dashboard_outlined),
     ('Bygg', Icons.edit_note_outlined),
     ('Tema', Icons.palette_outlined),
-    ('Resultater', Icons.insights_outlined),
     ('Del', Icons.share_outlined),
+    ('Resultater', Icons.insights_outlined),
   ];
 
   @override
@@ -228,11 +228,12 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
           snapshots: _snapshots,
           onSurveyRefresh: _refreshSurvey,
           onThemeSaved: _saveTheme,
+          onContinueToDel: () => setState(() => _currentStep = 3),
         );
       case 3:
-        return SurveyResultsHub(survey: _survey);
-      case 4:
         return SurveyPublishView(survey: _survey, onSurveyChanged: _refreshSurvey);
+      case 4:
+        return SurveyResultsHub(survey: _survey);
       default:
         return const SizedBox.shrink();
     }

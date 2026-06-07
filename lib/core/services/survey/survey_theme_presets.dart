@@ -20,7 +20,7 @@ extension SurveyVisualStyleLabel on SurveyVisualStyle {
       };
 }
 
-/// Ett komplett respondent-tema — endrer bakgrunn, kort, knapper og tekst.
+/// Ett komplett respondent-tema — bakgrunn, kort, knapper, tekst og visuell stil.
 class SurveyThemePreset {
   const SurveyThemePreset({
     required this.id,
@@ -62,7 +62,7 @@ class SurveyThemePreset {
       );
 }
 
-/// 200+ ferdige tema — generert + håndplukkede profiler.
+/// Kuraterte premium-tema — inspirert av Typeform, SurveyMonkey, Linear, Stripe m.fl.
 class SurveyThemePresets {
   SurveyThemePresets._();
 
@@ -90,211 +90,118 @@ class SurveyThemePresets {
     return all.first;
   }
 
-  static String _hex(int r, int g, int b) =>
-      '#${r.toRadixString(16).padLeft(2, '0')}${g.toRadixString(16).padLeft(2, '0')}${b.toRadixString(16).padLeft(2, '0')}';
-
   static List<SurveyThemePreset> _buildAll() {
     final out = <SurveyThemePreset>[];
-
-    void add(SurveyThemePreset p) => out.add(p);
-
-    // DriftPro signatur + klassikere
-    const classics = [
-      ('driftpro-green', 'DriftPro Grønn', 'Signatur', '#1B5E20', '#F7F9F8', '#FFFFFF', '#0F172A', '#0D47A1', false, SurveyVisualStyle.classic),
-      ('nordic-light', 'Nordisk Lys', 'Signatur', '#37474F', '#ECEFF1', '#FFFFFF', '#263238', '#546E7A', false, SurveyVisualStyle.minimal),
-      ('midnight-pro', 'Midnight Pro', 'Signatur', '#64B5F6', '#0D1117', '#161B22', '#E6EDF3', '#238636', true, SurveyVisualStyle.glass),
-      ('corporate-blue', 'Corporate Blå', 'Business', '#1565C0', '#E3F2FD', '#FFFFFF', '#0D47A1', '#0277BD', false, SurveyVisualStyle.bold),
-      ('executive-slate', 'Executive Skifer', 'Business', '#455A64', '#ECEFF1', '#FFFFFF', '#263238', '#78909C', false, SurveyVisualStyle.minimal),
-      ('gold-premium', 'Premium Gull', 'Business', '#F9A825', '#FFF8E1', '#FFFFFF', '#4E342E', '#FF8F00', false, SurveyVisualStyle.gradient),
-    ];
-    for (final c in classics) {
-      add(SurveyThemePreset(
-        id: c.$1,
-        name: c.$2,
-        category: c.$3,
-        primaryHex: c.$4,
-        backgroundHex: c.$5,
-        cardHex: c.$6,
-        textHex: c.$7,
-        accentHex: c.$8,
-        darkMode: c.$9,
-        visualStyle: c.$10,
-      ));
-    }
-
-    // HSL-genererte paletter — 24 nyanser × 4 varianter = 96 tema
-    const variantDefs = [
-      ('Lys', false, 0.96, 0.45, 1.0, SurveyVisualStyle.classic),
-      ('Pastell', false, 0.94, 0.35, 0.85, SurveyVisualStyle.gradient),
-      ('Kraftig', false, 0.92, 0.55, 1.0, SurveyVisualStyle.bold),
-      ('Mørk', true, 0.12, 0.65, 0.95, SurveyVisualStyle.glass),
-    ];
-
-    for (var h = 0; h < 360; h += 15) {
-      for (final v in variantDefs) {
-        final primary = _hslHex(h.toDouble(), v.$4, v.$5);
-        final bg = v.$3 > 0.5 ? _hslHex(h.toDouble(), 0.08, v.$3) : _hslHex(h.toDouble(), 0.15, v.$3);
-        final card = v.$3 > 0.5 ? '#FFFFFF' : _hslHex(h.toDouble(), 0.12, 0.18);
-        final text = v.$2 ? '#F1F5F9' : '#0F172A';
-        final accent = _hslHex((h + 30) % 360, v.$4, v.$5);
-        add(SurveyThemePreset(
-          id: 'h${h}_${v.$1.toLowerCase()}',
-          name: 'Hue $h ${v.$1}',
-          category: v.$2 ? 'Mørk' : 'Farger',
-          primaryHex: primary,
-          backgroundHex: bg,
-          cardHex: card,
-          textHex: text,
-          accentHex: accent,
-          darkMode: v.$2,
-          buttonStyle: h % 30 == 0 ? 'pill' : 'rounded',
-          visualStyle: v.$6,
-        ));
-      }
-    }
-
-    // Natur-inspirerte (40)
-    const nature = [
-      ('Skog', '#2E7D32', '#E8F5E9', '#FFFFFF', '#1B5E20', '#558B2F'),
-      ('Fjord', '#00897B', '#E0F2F1', '#FFFFFF', '#004D40', '#26A69A'),
-      ('Hav', '#0277BD', '#E1F5FE', '#FFFFFF', '#01579B', '#0288D1'),
-      ('Sand', '#8D6E63', '#EFEBE9', '#FFFFFF', '#4E342E', '#A1887F'),
-      ('Lavendel', '#7E57C2', '#EDE7F6', '#FFFFFF', '#4527A0', '#9575CD'),
-      ('Soloppgang', '#FF7043', '#FBE9E7', '#FFFFFF', '#BF360C', '#FF5722'),
-      ('Isbre', '#4FC3F7', '#E1F5FE', '#FFFFFF', '#0277BD', '#81D4FA'),
-      ('Mynte', '#26A69A', '#E0F2F1', '#FFFFFF', '#00695C', '#4DB6AC'),
-      ('Bær', '#EC407A', '#FCE4EC', '#FFFFFF', '#880E4F', '#F06292'),
-      ('Oliven', '#9E9D24', '#F0F4C3', '#FFFFFF', '#827717', '#C0CA33'),
-    ];
-    for (final n in nature) {
-      for (var i = 0; i < 4; i++) {
-        final dark = i == 3;
-        final styles = [SurveyVisualStyle.classic, SurveyVisualStyle.gradient, SurveyVisualStyle.glass, SurveyVisualStyle.glass];
-        add(SurveyThemePreset(
-          id: '${n.$1.toLowerCase()}_$i',
-          name: '${n.$1}${dark ? ' Mørk' : i == 0 ? '' : ' ${i + 1}'}',
-          category: 'Natur',
-          primaryHex: n.$2,
-          backgroundHex: dark ? '#1A1A1A' : n.$3,
-          cardHex: dark ? '#2D2D2D' : n.$4,
-          textHex: dark ? '#ECEFF1' : n.$5,
-          accentHex: n.$6,
-          darkMode: dark,
-          buttonStyle: i == 1 ? 'pill' : 'rounded',
-          visualStyle: styles[i],
-        ));
-      }
-    }
-
-    // Neon / moderne (30)
-    const neonBases = [
-      ('Neon Lime', '#76FF03', '#212121'),
-      ('Electric Blue', '#2979FF', '#0A0A0A'),
-      ('Hot Pink', '#FF4081', '#1A1A2E'),
-      ('Cyber Purple', '#E040FB', '#0F0F23'),
-      ('Amber Glow', '#FFAB00', '#1C1C1C'),
-      ('Turquoise', '#00E5FF', '#0D1117'),
-    ];
-    for (final n in neonBases) {
-      for (var i = 0; i < 5; i++) {
-        add(SurveyThemePreset(
-          id: 'neon_${n.$1.toLowerCase().replaceAll(' ', '_')}_$i',
-          name: '${n.$1} ${i + 1}',
-          category: 'Neon',
-          primaryHex: n.$2,
-          backgroundHex: n.$3,
-          cardHex: '#1E1E2E',
-          textHex: '#F8FAFC',
-          accentHex: n.$2,
-          darkMode: true,
-          buttonStyle: i % 2 == 0 ? 'pill' : 'rounded',
-          visualStyle: SurveyVisualStyle.neon,
-        ));
-      }
-    }
-
-    // Minimal / monokrom (20)
-    for (var g = 0; g < 20; g++) {
-      final l = 0.15 + g * 0.04;
-      final bg = _hslHex(0, 0, l > 0.5 ? 0.97 : 0.08);
-      final card = _hslHex(0, 0, l > 0.5 ? 1.0 : 0.14);
-      final text = l > 0.5 ? '#111827' : '#F9FAFB';
-      final primary = _hslHex(0, 0, l > 0.5 ? 0.25 : 0.75);
-      add(SurveyThemePreset(
-        id: 'mono_$g',
-        name: 'Monokrom ${g + 1}',
-        category: 'Minimal',
+    void c(
+      String id,
+      String name,
+      String category,
+      String primary,
+      String bg,
+      String card,
+      String text,
+      String accent, {
+      bool dark = false,
+      String button = 'rounded',
+      SurveyVisualStyle style = SurveyVisualStyle.classic,
+    }) {
+      out.add(SurveyThemePreset(
+        id: id,
+        name: name,
+        category: category,
         primaryHex: primary,
         backgroundHex: bg,
         cardHex: card,
         textHex: text,
-        accentHex: primary,
-        darkMode: l <= 0.5,
-        buttonStyle: g % 3 == 0 ? 'square' : 'rounded',
-        visualStyle: SurveyVisualStyle.minimal,
+        accentHex: accent,
+        darkMode: dark,
+        buttonStyle: button,
+        visualStyle: style,
       ));
     }
 
-    // Ekstra premium-varianter (24) → totalt 200+
-    const premiumNames = [
-      'Aurora', 'Glacier', 'Ember', 'Citrus', 'Plum', 'Oceanic',
-      'Sage', 'Crimson', 'Slate Pro', 'Cloud', 'Espresso', 'Mist',
-    ];
-    for (var i = 0; i < premiumNames.length; i++) {
-      final h = (i * 27) % 360;
-      add(SurveyThemePreset(
-        id: 'premium_$i',
-        name: premiumNames[i],
-        category: 'Premium',
-        primaryHex: _hslHex(h.toDouble(), 0.55, 0.45),
-        backgroundHex: _hslHex(h.toDouble(), 0.12, 0.96),
-        cardHex: '#FFFFFF',
-        textHex: '#111827',
-        accentHex: _hslHex((h + 40) % 360, 0.6, 0.5),
-        buttonStyle: i % 2 == 0 ? 'pill' : 'rounded',
-        visualStyle: SurveyVisualStyle.gradient,
-      ));
-      add(SurveyThemePreset(
-        id: 'premium_dark_$i',
-        name: '${premiumNames[i]} Dark',
-        category: 'Premium',
-        primaryHex: _hslHex(h.toDouble(), 0.7, 0.65),
-        backgroundHex: _hslHex(h.toDouble(), 0.2, 0.08),
-        cardHex: _hslHex(h.toDouble(), 0.15, 0.14),
-        textHex: '#F8FAFC',
-        accentHex: _hslHex((h + 40) % 360, 0.75, 0.6),
-        darkMode: true,
-        buttonStyle: 'rounded',
-        visualStyle: SurveyVisualStyle.glass,
-      ));
-    }
+    // —— Typeform-inspirert (myke, inviterende) ——
+    c('typeform-coral', 'Typeform Coral', 'Typeform', '#EE6C4D', '#FFF8F6', '#FFFFFF', '#2D3142', '#F4978E', style: SurveyVisualStyle.gradient, button: 'pill');
+    c('typeform-indigo', 'Typeform Indigo', 'Typeform', '#3D5AFE', '#F5F7FF', '#FFFFFF', '#1A237E', '#536DFE', style: SurveyVisualStyle.gradient, button: 'pill');
+    c('typeform-mint', 'Typeform Mint', 'Typeform', '#00B894', '#F0FDF9', '#FFFFFF', '#0F172A', '#55EFC4', style: SurveyVisualStyle.minimal, button: 'pill');
+    c('typeform-slate', 'Typeform Slate', 'Typeform', '#475569', '#F8FAFC', '#FFFFFF', '#0F172A', '#64748B', style: SurveyVisualStyle.minimal);
+    c('typeform-dark', 'Typeform Dark', 'Typeform', '#818CF8', '#0F172A', '#1E293B', '#F1F5F9', '#A5B4FC', dark: true, style: SurveyVisualStyle.glass, button: 'pill');
+
+    // —— SurveyMonkey Professional ——
+    c('sm-pro-green', 'SurveyMonkey Pro', 'SurveyMonkey', '#00BF6F', '#F0FDF4', '#FFFFFF', '#14532D', '#059669', style: SurveyVisualStyle.classic);
+    c('sm-enterprise', 'Enterprise Blue', 'SurveyMonkey', '#0052CC', '#EFF6FF', '#FFFFFF', '#1E3A5F', '#2684FF', style: SurveyVisualStyle.bold);
+    c('sm-warm', 'Warm Feedback', 'SurveyMonkey', '#E87722', '#FFF7ED', '#FFFFFF', '#7C2D12', '#FB923C', style: SurveyVisualStyle.gradient);
+    c('sm-trust', 'Trust Teal', 'SurveyMonkey', '#0D9488', '#F0FDFA', '#FFFFFF', '#134E4A', '#2DD4BF', style: SurveyVisualStyle.classic);
+
+    // —— Linear / Stripe SaaS ——
+    c('linear-purple', 'Linear Purple', 'SaaS Premium', '#5E6AD2', '#FAFAFA', '#FFFFFF', '#171717', '#8B5CF6', style: SurveyVisualStyle.minimal);
+    c('stripe-blurple', 'Stripe Blurple', 'SaaS Premium', '#635BFF', '#F6F9FC', '#FFFFFF', '#0A2540', '#0073E6', style: SurveyVisualStyle.minimal, button: 'pill');
+    c('notion-warm', 'Notion Warm', 'SaaS Premium', '#37352F', '#FBFBFA', '#FFFFFF', '#37352F', '#787774', style: SurveyVisualStyle.minimal);
+    c('vercel-mono', 'Vercel Mono', 'SaaS Premium', '#000000', '#FAFAFA', '#FFFFFF', '#171717', '#666666', style: SurveyVisualStyle.minimal, button: 'square');
+    c('vercel-dark', 'Vercel Dark', 'SaaS Premium', '#FFFFFF', '#000000', '#111111', '#EDEDED', '#888888', dark: true, style: SurveyVisualStyle.minimal, button: 'square');
+
+    // —— DriftPro signatur ——
+    c('driftpro-green', 'DriftPro Grønn', 'Signatur', '#1B5E20', '#F7F9F8', '#FFFFFF', '#0F172A', '#2E7D32', style: SurveyVisualStyle.classic);
+    c('driftpro-nordic', 'Nordisk Lys', 'Signatur', '#37474F', '#ECEFF1', '#FFFFFF', '#263238', '#78909C', style: SurveyVisualStyle.minimal);
+    c('driftpro-forest', 'Skog Premium', 'Signatur', '#2E7D32', '#E8F5E9', '#FFFFFF', '#1B5E20', '#66BB6A', style: SurveyVisualStyle.gradient);
+
+    // —— Glass & gradient (moderne) ——
+    c('aurora-glass', 'Aurora Glass', 'Glass', '#6366F1', '#EEF2FF', '#FFFFFF', '#312E81', '#818CF8', style: SurveyVisualStyle.glass, button: 'pill');
+    c('sunset-glass', 'Sunset Glass', 'Glass', '#F97316', '#FFF7ED', '#FFFFFF', '#9A3412', '#FB923C', style: SurveyVisualStyle.glass, button: 'pill');
+    c('ocean-glass', 'Ocean Glass', 'Glass', '#0EA5E9', '#F0F9FF', '#FFFFFF', '#0C4A6E', '#38BDF8', style: SurveyVisualStyle.glass);
+    c('midnight-glass', 'Midnight Glass', 'Glass', '#60A5FA', '#0D1117', '#161B22', '#E6EDF3', '#3B82F6', dark: true, style: SurveyVisualStyle.glass, button: 'pill');
+    c('rose-glass', 'Rose Glass', 'Glass', '#EC4899', '#FDF2F8', '#FFFFFF', '#831843', '#F472B6', style: SurveyVisualStyle.glass, button: 'pill');
+
+    // —— Business & corporate ——
+    c('mckinsey-blue', 'Consulting Blue', 'Business', '#003366', '#F0F4F8', '#FFFFFF', '#1A202C', '#0066CC', style: SurveyVisualStyle.bold);
+    c('gold-executive', 'Executive Gold', 'Business', '#B8860B', '#FFFBEB', '#FFFFFF', '#422006', '#D97706', style: SurveyVisualStyle.gradient);
+    c('slate-corporate', 'Corporate Slate', 'Business', '#334155', '#F1F5F9', '#FFFFFF', '#0F172A', '#64748B', style: SurveyVisualStyle.minimal);
+    c('navy-trust', 'Navy Trust', 'Business', '#1E3A5F', '#EFF6FF', '#FFFFFF', '#0F172A', '#3B82F6', style: SurveyVisualStyle.classic);
+
+    // —— Healthcare & offentlig ——
+    c('health-teal', 'Helse Teal', 'Helse & Offentlig', '#0D9488', '#F0FDFA', '#FFFFFF', '#134E4A', '#5EEAD4', style: SurveyVisualStyle.classic);
+    c('health-calm', 'Calm Blue', 'Helse & Offentlig', '#0284C7', '#F0F9FF', '#FFFFFF', '#0C4A6E', '#38BDF8', style: SurveyVisualStyle.minimal);
+    c('gov-nordic', 'Nordisk Offentlig', 'Helse & Offentlig', '#1E40AF', '#EFF6FF', '#FFFFFF', '#1E3A8A', '#60A5FA', style: SurveyVisualStyle.bold);
+
+    // —— Kreativ & events ——
+    c('creative-violet', 'Creative Violet', 'Kreativ', '#7C3AED', '#F5F3FF', '#FFFFFF', '#4C1D95', '#A78BFA', style: SurveyVisualStyle.gradient, button: 'pill');
+    c('creative-coral', 'Creative Coral', 'Kreativ', '#FF6B6B', '#FFF5F5', '#FFFFFF', '#991B1B', '#FCA5A5', style: SurveyVisualStyle.gradient, button: 'pill');
+    c('festival-neon', 'Festival Neon', 'Kreativ', '#A855F7', '#0F0A1A', '#1A1225', '#F3E8FF', '#C084FC', dark: true, style: SurveyVisualStyle.neon, button: 'pill');
+    c('studio-amber', 'Studio Amber', 'Kreativ', '#F59E0B', '#FFFBEB', '#FFFFFF', '#78350F', '#FBBF24', style: SurveyVisualStyle.bold);
+
+    // —— Utdanning ——
+    c('edu-blue', 'Campus Blue', 'Utdanning', '#2563EB', '#EFF6FF', '#FFFFFF', '#1E40AF', '#60A5FA', style: SurveyVisualStyle.classic);
+    c('edu-sage', 'Campus Sage', 'Utdanning', '#65A30D', '#F7FEE7', '#FFFFFF', '#365314', '#A3E635', style: SurveyVisualStyle.minimal);
+
+    // —— Mørk premium ——
+    c('dark-linear', 'Dark Linear', 'Mørk Premium', '#818CF8', '#09090B', '#18181B', '#FAFAFA', '#6366F1', dark: true, style: SurveyVisualStyle.glass, button: 'pill');
+    c('dark-emerald', 'Dark Emerald', 'Mørk Premium', '#34D399', '#022C22', '#064E3B', '#ECFDF5', '#10B981', dark: true, style: SurveyVisualStyle.glass);
+    c('dark-rose', 'Dark Rose', 'Mørk Premium', '#FB7185', '#1A0A0F', '#2D1520', '#FFF1F2', '#F43F5E', dark: true, style: SurveyVisualStyle.glass, button: 'pill');
+    c('dark-ocean', 'Dark Ocean', 'Mørk Premium', '#22D3EE', '#042F2E', '#0F3D3E', '#ECFEFF', '#06B6D4', dark: true, style: SurveyVisualStyle.neon);
+
+    // —— Natur (håndplukket) ——
+    c('nature-forest', 'Skog', 'Natur', '#2E7D32', '#E8F5E9', '#FFFFFF', '#1B5E20', '#81C784', style: SurveyVisualStyle.gradient);
+    c('nature-fjord', 'Fjord', 'Natur', '#00897B', '#E0F2F1', '#FFFFFF', '#004D40', '#4DB6AC', style: SurveyVisualStyle.classic);
+    c('nature-arctic', 'Arktisk', 'Natur', '#0288D1', '#E1F5FE', '#FFFFFF', '#01579B', '#4FC3F7', style: SurveyVisualStyle.minimal);
+    c('nature-sand', 'Sand & Stein', 'Natur', '#8D6E63', '#EFEBE9', '#FFFFFF', '#4E342E', '#BCAAA4', style: SurveyVisualStyle.minimal);
+    c('nature-lavender', 'Lavendel', 'Natur', '#7E57C2', '#EDE7F6', '#FFFFFF', '#4527A0', '#B39DDB', style: SurveyVisualStyle.gradient, button: 'pill');
+
+    // —— Neon (kontrollert, ikke generisk) ——
+    c('neon-cyber', 'Cyber Blue', 'Neon', '#00D4FF', '#0A0E17', '#12182B', '#E0F7FF', '#0099CC', dark: true, style: SurveyVisualStyle.neon, button: 'pill');
+    c('neon-magenta', 'Neon Magenta', 'Neon', '#FF006E', '#120008', '#1F0012', '#FFE0F0', '#FF4D94', dark: true, style: SurveyVisualStyle.neon, button: 'pill');
+    c('neon-lime', 'Neon Lime', 'Neon', '#CCFF00', '#0A0F00', '#141F00', '#F0FFD6', '#99CC00', dark: true, style: SurveyVisualStyle.neon, button: 'pill');
+
+    // —— Minimal monokrom ——
+    c('mono-light', 'Ren Hvit', 'Minimal', '#18181B', '#FFFFFF', '#FFFFFF', '#18181B', '#71717A', style: SurveyVisualStyle.minimal);
+    c('mono-soft', 'Soft Gray', 'Minimal', '#52525B', '#FAFAFA', '#FFFFFF', '#27272A', '#A1A1AA', style: SurveyVisualStyle.minimal);
+    c('mono-dark', 'Ren Mørk', 'Minimal', '#FAFAFA', '#09090B', '#18181B', '#FAFAFA', '#A1A1AA', dark: true, style: SurveyVisualStyle.minimal, button: 'square');
+
+    // —— Sesong & kampanje ——
+    c('season-spring', 'Vårgrønn', 'Sesong', '#16A34A', '#F0FDF4', '#FFFFFF', '#14532D', '#4ADE80', style: SurveyVisualStyle.gradient, button: 'pill');
+    c('season-summer', 'Sommergul', 'Sesong', '#CA8A04', '#FEFCE8', '#FFFFFF', '#713F12', '#FACC15', style: SurveyVisualStyle.gradient);
+    c('season-autumn', 'Høst', 'Sesong', '#EA580C', '#FFF7ED', '#FFFFFF', '#7C2D12', '#FB923C', style: SurveyVisualStyle.gradient);
+    c('season-winter', 'Vinter', 'Sesong', '#0369A1', '#F0F9FF', '#FFFFFF', '#0C4A6E', '#7DD3FC', style: SurveyVisualStyle.minimal);
 
     return out;
-  }
-
-  static String _hslHex(double h, double s, double l) {
-    h = h % 360;
-    final c = (1 - (2 * l - 1).abs()) * s;
-    final x = c * (1 - ((h / 60) % 2 - 1).abs());
-    final m = l - c / 2;
-    double r, g, b;
-    if (h < 60) {
-      r = c; g = x; b = 0;
-    } else if (h < 120) {
-      r = x; g = c; b = 0;
-    } else if (h < 180) {
-      r = 0; g = c; b = x;
-    } else if (h < 240) {
-      r = 0; g = x; b = c;
-    } else if (h < 300) {
-      r = x; g = 0; b = c;
-    } else {
-      r = c; g = 0; b = x;
-    }
-    return _hex(
-      ((r + m) * 255).round().clamp(0, 255),
-      ((g + m) * 255).round().clamp(0, 255),
-      ((b + m) * 255).round().clamp(0, 255),
-    );
   }
 }

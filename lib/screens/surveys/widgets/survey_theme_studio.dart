@@ -18,6 +18,7 @@ class SurveyThemeStudio extends StatefulWidget {
     required this.snapshots,
     required this.onSurveyRefresh,
     required this.onThemeSaved,
+    this.onContinueToDel,
   });
 
   final Survey survey;
@@ -25,6 +26,7 @@ class SurveyThemeStudio extends StatefulWidget {
   final List<SurveyAnalyticsSnapshot> snapshots;
   final Future<void> Function() onSurveyRefresh;
   final Future<void> Function(SurveyThemeConfig) onThemeSaved;
+  final VoidCallback? onContinueToDel;
 
   @override
   State<SurveyThemeStudio> createState() => _SurveyThemeStudioState();
@@ -57,9 +59,19 @@ class _SurveyThemeStudioState extends State<SurveyThemeStudio> {
         Text('Tema', style: DriftProTheme.headingLg.copyWith(color: drift.textPrimary)),
         const SizedBox(height: 6),
         Text(
-          'Velg et ferdig design — gradient, glass, neon og mer. Respondentene ser hele opplevelsen endres.',
+          'Premium-tema inspirert av Typeform, SurveyMonkey og moderne SaaS-design.',
           style: DriftProTheme.bodyMd.copyWith(color: drift.textMuted),
         ),
+        const SizedBox(height: 16),
+        if (widget.onContinueToDel != null)
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: widget.onContinueToDel,
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('Neste: Del undersøkelsen'),
+            ),
+          ),
         const SizedBox(height: 20),
         SurveyThemePreviewCard(
           preset: active,
@@ -101,7 +113,7 @@ class _SurveyThemeStudioState extends State<SurveyThemeStudio> {
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
               ),
-              itemCount: _filtered.length.clamp(0, 48),
+              itemCount: _filtered.length,
               itemBuilder: (context, i) {
                 final preset = _filtered[i];
                 return SurveyThemePreviewCard(
@@ -114,11 +126,16 @@ class _SurveyThemeStudioState extends State<SurveyThemeStudio> {
             );
           },
         ),
+        if (_filtered.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('Ingen tema matcher søket.', style: DriftProTheme.bodySm.copyWith(color: drift.textMuted)),
+          ),
         if (_filtered.length > 48)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              'Viser 48 av ${_filtered.length} — bruk søk eller filter.',
+              'Viser alle ${_filtered.length} tema.',
               style: DriftProTheme.bodySm.copyWith(color: drift.textMuted),
             ),
           ),

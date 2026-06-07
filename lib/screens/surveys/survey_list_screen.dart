@@ -95,7 +95,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Survey Studio v5 — Rekkefølge: Oversikt → Bygg → Tema → Resultater → Del',
+                    'Survey Studio v6 — Bygg → Tema → Del → Resultater',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
@@ -104,7 +104,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '216 tema med gradient/glass/neon · Statistikk + svar i én fane · ${BuildInfo.clientTag}',
+                    'Premium-tema (Typeform, SurveyMonkey, SaaS) · Statistikk + svar · ${BuildInfo.clientTag}',
                     style: TextStyle(
                       fontSize: 11,
                       height: 1.35,
