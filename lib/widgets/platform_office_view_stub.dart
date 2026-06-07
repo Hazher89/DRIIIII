@@ -1,7 +1,20 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-Widget buildPlatformOfficeView(String url) {
+import '../screens/dms/preview/docx_native_preview.dart';
+
+Widget buildPlatformOfficeView(
+  String url, {
+  Uint8List? bytes,
+  String? extension,
+}) {
+  final ext = extension?.toLowerCase();
+  if (ext == 'docx' && bytes != null) {
+    return buildDocxNativePreview(bytes);
+  }
+
   return Center(
     child: Column(
       mainAxisSize: MainAxisSize.min,

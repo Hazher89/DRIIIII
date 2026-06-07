@@ -14,6 +14,7 @@ import '../../core/utils/office_file_type.dart';
 import '../../models/dms/dms_file.dart';
 import 'preview/document_text_editor.dart';
 import 'preview/excel_sheet_editor.dart';
+import 'preview/office_document_preview.dart';
 import '../../widgets/platform_embedded_view.dart';
 import '../../widgets/platform_media_view.dart';
 import '../../widgets/platform_pdf_view.dart';
@@ -45,13 +46,22 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
   String? _contentType;
   String? _resolvedExt;
   OfficeFileType _officeType = OfficeFileType.unknown;
+  bool _wordEditMode = false;
+
+  bool get _isWordDoc =>
+      _officeType == OfficeFileType.word &&
+      (_resolvedExt == 'docx' || _resolvedExt == 'doc');
+
+  bool get _showFormattedOffice =>
+      !_wordEditMode &&
+      (_isWordDoc || _officeType == OfficeFileType.powerpoint);
 
   bool get _canEdit =>
-      _kind == FilePreviewKind.office ||
-      _kind == FilePreviewKind.text ||
+      (_wordEditMode && _isWordDoc) ||
+      (_kind == FilePreviewKind.office && !_showFormattedOffice) ||
+      (_kind == FilePreviewKind.text && !_showFormattedOffice) ||
       _officeType == OfficeFileType.excel ||
-      _officeType == OfficeFileType.word ||
-      _officeType == OfficeFileType.csv;
+      (_officeType == OfficeFileType.csv && !_showFormattedOffice);
 
   bool get _isExcel =>
       _officeType == OfficeFileType.excel ||
@@ -193,6 +203,10 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
           sheets: _excelKey.currentState!.exportSheets(),
           title: name,
         );
+        return;
+      }
+      if (_showFormattedOffice && _url != null) {
+        await launchUrl(Uri.parse(_url!), mode: LaunchMode.externalApplication);
         return;
       }
       if (_isWordOrText && _textKey.currentState != null) {
@@ -377,6 +391,17 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
               tooltip: 'Skriv ut / PDF-utskrift',
               onPressed: _isLoading ? null : _print,
             ),
+            if (_isWordDoc)
+              IconButton(
+                icon: Icon(_wordEditMode ? Icons.visibility : Icons.edit_note),
+                tooltip: _wordEditMode ? 'Vis dokument' : 'Rediger tekst',
+                onPressed: _isLoading
+                    ? null
+                    : () => setState(() {
+                          _wordEditMode = !_wordEditMode;
+                          _dirty = false;
+                        }),
+              ),
             if (_canEdit)
               IconButton(
                 icon: Icon(_dirty ? Icons.save : Icons.save_outlined),
@@ -475,6 +500,14 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
 
   Widget _buildPreview(FilePreviewKind kind, String url) {
     final bytes = Uint8List.fromList(_bytes!);
+
+    if (_showFormattedOffice) {
+      return OfficeDocumentPreview(
+        url: url,
+        bytes: bytes,
+        extension: _resolvedExt,
+      );
+    }
 
     if (_isExcel) {
       return ExcelSheetEditor(

@@ -225,6 +225,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.0"
+  docx_file_viewer:
+    dependency: "direct main"
+    description:
+      name: docx_file_viewer
+      sha256: "690bf2b6558f055916c60c94227d6c130d522d32d24954fac0cdabe430123dfd"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.0.7"
   ed25519_edwards:
     dependency: transitive
     description:

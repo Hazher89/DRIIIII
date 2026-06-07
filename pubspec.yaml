@@ -46,6 +46,7 @@ dependencies:
   connectivity_plus: ^6.1.4
   hive_flutter: ^1.1.0
   signature: ^5.5.0
+  docx_file_viewer: ^0.0.7
 
 dev_dependencies:
   flutter_test:

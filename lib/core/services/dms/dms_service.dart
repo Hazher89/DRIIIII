@@ -240,8 +240,7 @@ class DmsService {
         return DmsFile.fromJson(Map<String, dynamic>.from(raw));
       }
     } catch (e) {
-      // Fallback til direkte insert hvis RPC ikke er deployet ennå
-      debugPrint('insert_dms_file RPC: $e');
+      debugPrint('insert_dms_file RPC feilet, prøver direkte insert: $e');
     }
 
     final data = await client.from('dms_files').insert({
