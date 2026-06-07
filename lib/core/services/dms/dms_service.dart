@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../models/dms/dms_folder.dart';
@@ -221,6 +222,27 @@ class DmsService {
     );
     final extension = FileTypeResolver.extensionFromName(name) ??
         FileTypeResolver.extensionFromStoragePath(storagePath);
+
+    try {
+      final raw = await client.rpc(
+        'insert_dms_file',
+        params: {
+          'p_folder_id': folderId,
+          'p_name': name,
+          'p_storage_path': storagePath,
+          'p_file_size': fileSize,
+          'p_extension': extension,
+          'p_storage_provider': storageProvider,
+          'p_external_url': externalUrl,
+        },
+      );
+      if (raw is Map) {
+        return DmsFile.fromJson(Map<String, dynamic>.from(raw));
+      }
+    } catch (e) {
+      // Fallback til direkte insert hvis RPC ikke er deployet ennå
+      debugPrint('insert_dms_file RPC: $e');
+    }
 
     final data = await client.from('dms_files').insert({
       'company_id': effectiveCompanyId,
