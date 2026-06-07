@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/survey/survey.dart';
+import '../../core/services/survey/survey_advanced_service.dart';
 import '../../core/services/survey/survey_question_catalog.dart';
 import '../../core/services/survey/survey_service.dart';
+import '../../core/services/survey/survey_theme_presets.dart';
 
 class SurveyBuilderCanvas extends StatefulWidget {
   final Survey survey;
@@ -24,12 +26,15 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   bool _isLoading = true;
   bool _isSaving = false;
   List<SurveyQuestion> _questions = [];
-  int _activeSideTab = 0; // 0 for Settings/Questions, 1 for Themes
-  String _selectedTheme = 'Original';
+  int _activeSideTab = 0;
+  String _selectedTheme = 'DriftPro Grønn';
+  String _themeSearch = '';
+  final Set<String> _advancedOpen = {};
   
   // Controllers for survey header
   late TextEditingController _titleController;
   late TextEditingController _descriptionController;
+  late TextEditingController _notesController;
   
   // Map to store controllers for questions and focus nodes
   final Map<String, TextEditingController> _questionControllers = {};
@@ -40,65 +45,28 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   late bool _requireLogin;
   DateTime? _expiresAt;
 
-  /// Svært stort temautvalg (visuelt «studio») — hvert navn er et ferdig fargetema.
-  static final Map<String, Color> _themeColors = {
-    'Original': DriftProTheme.primaryGreen,
-    'Enkelt': Colors.blueGrey,
-    'Helfarget': Colors.indigo,
-    'Skyskråper': Colors.blue,
-    'Duggdråpe': Colors.teal,
-    'Pastell': Colors.purpleAccent,
-    'Midnatt': const Color(0xFF1A237E),
-    'Skog': const Color(0xFF1B5E20),
-    'Hav': const Color(0xFF006064),
-    'Lava': const Color(0xFFBF360C),
-    'Soloppgang': const Color(0xFFE65100),
-    'Lavendel': const Color(0xFF6A1B9A),
-    'Bær': const Color(0xFF880E4F),
-    'Stål': const Color(0xFF455A64),
-    'Isbre': const Color(0xFF4FC3F7),
-    'Korall': const Color(0xFFFF7043),
-    'Oliven': const Color(0xFF827717),
-    'Monokrom': const Color(0xFF212121),
-    'Sand': const Color(0xFFBCAAA4),
-    'Neon lime': const Color(0xFF76FF03),
-    'Magenta': const Color(0xFFC51162),
-    'Turkis dyp': const Color(0xFF00838F),
-    'Sapphire': const Color(0xFF0D47A1),
-    'Amber': const Color(0xFFFFA000),
-    'Jord': const Color(0xFF5D4037),
-    'Granitt': const Color(0xFF37474F),
-    'Petroleum': const Color(0xFF004D40),
-    'Rose': const Color(0xFFAD1457),
-    'Elektrisk blå': const Color(0xFF2962FF),
-    'Vårgrønn': const Color(0xFF558B2F),
-    'Twilight': const Color(0xFF4527A0),
-    'Kobber': const Color(0xFFA1887F),
-    'Arktisk blå': const Color(0xFF0277BD),
-    'Rav': const Color(0xFFFF6F00),
-    'Skifer': const Color(0xFF546E7A),
-    'Drue': const Color(0xFF4A148C),
-    'Mynte': const Color(0xFF00BFA5),
-    'Rød alarm': const Color(0xFFC62828),
-    'Profesjonell': const Color(0xFF263238),
-    'Lys Nordic': const Color(0xFF90A4AE),
-    'Emblem gull': const Color(0xFFF9A825),
-    'Fjord': const Color(0xFF00897B),
-    'Orchid': const Color(0xFFAB47BC),
-    'Aske': const Color(0xFF757575),
-    'Brand blå': const Color(0xFF1565C0),
-    'Safety orange': const Color(0xFFE65100),
-  };
+  SurveyThemePreset get _activePreset => SurveyThemePresets.byNameOrDefault(_selectedTheme);
+
+  Color _colorFromHex(String hex, [Color fallback = DriftProTheme.primaryGreen]) {
+    final cleaned = hex.replaceAll('#', '').trim();
+    if (cleaned.length != 6) return fallback;
+    final value = int.tryParse('FF$cleaned', radix: 16);
+    return value != null ? Color(value) : fallback;
+  }
+
+  void _patchQuestion(int index, SurveyQuestion Function(SurveyQuestion q) patch) {
+    setState(() => _questions[index] = patch(_questions[index]));
+  }
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.survey.title);
     _descriptionController = TextEditingController(text: widget.survey.description);
+    _notesController = TextEditingController(text: widget.survey.adminNotes ?? '');
     _allowAnonymous = widget.survey.allowAnonymous;
     _requireLogin = !widget.survey.allowAnonymous;
-    _selectedTheme = widget.survey.theme;
-    if (!_themeColors.containsKey(_selectedTheme)) _selectedTheme = 'Original';
+    _selectedTheme = SurveyThemePresets.byNameOrDefault(widget.survey.theme).name;
     _expiresAt = widget.survey.expiresAt;
     _loadQuestions();
   }
@@ -107,6 +75,7 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
+    _notesController.dispose();
     for (var c in _questionControllers.values) {
       c.dispose();
     }
@@ -173,6 +142,34 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
     // Auto-focus the new question
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _questionFocusNodes[id]?.requestFocus();
+    });
+  }
+
+  void _changeQuestionType(int index, SurveyQuestionType type) {
+    final old = _questions[index];
+    final def = SurveyQuestionCatalog.defFor(type);
+    final options = def?.defaultOptions.isNotEmpty == true
+        ? List<String>.from(def!.defaultOptions)
+        : <String>[];
+    _optionControllers[old.id]?.forEach((c) => c.dispose());
+    _optionControllers[old.id] = options.map((o) => TextEditingController(text: o)).toList();
+    setState(() {
+      _questions[index] = SurveyQuestion(
+        id: old.id,
+        surveyId: old.surveyId,
+        questionText: old.questionText,
+        type: type,
+        isRequired: old.isRequired,
+        options: options,
+        orderIndex: old.orderIndex,
+        sectionTitle: old.sectionTitle,
+        points: old.points,
+        conditionQuestionId: old.conditionQuestionId,
+        conditionOperator: old.conditionOperator,
+        conditionValue: type == SurveyQuestionType.matrix
+            ? (def?.defaultConditionValue ?? 'Dårlig|Middels|Bra|Utmerket')
+            : old.conditionValue,
+      );
     });
   }
 
@@ -252,7 +249,11 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         title: _titleController.text,
         description: _descriptionController.text,
         allowAnonymous: _allowAnonymous,
-        theme: _selectedTheme,
+        theme: _activePreset.name,
+        adminNotes: _notesController.text.trim(),
+      );
+      await SurveyAdvancedService.upsertTheme(
+        _activePreset.toConfig(widget.survey.id),
       );
 
       // 2. Prepare questions with values from controllers
@@ -308,7 +309,7 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: const Text('Endringer lagret!'),
-            backgroundColor: _themeColors[_selectedTheme],
+            backgroundColor: _colorFromHex(_activePreset.primaryHex),
             duration: const Duration(seconds: 2),
             action: SnackBarAction(label: 'OK', textColor: Colors.white, onPressed: () {}),
           ),
@@ -336,23 +337,30 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final themeColor = _themeColors[_selectedTheme]!;
+    final preset = _activePreset;
+    final themeColor = _colorFromHex(preset.primaryHex);
+    final canvasBg = _colorFromHex(preset.backgroundHex);
+    final cardBg = _colorFromHex(preset.cardHex);
 
     return Row(
       children: [
         _buildSidebar(isDark, themeColor),
         Expanded(
           child: Container(
-            color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF5F7F8),
+            color: canvasBg,
             child: Center(
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 800),
                 margin: const EdgeInsets.all(40),
                 decoration: BoxDecoration(
-                  color: isDark ? DriftProTheme.cardDark : Colors.white,
+                  color: cardBg,
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: preset.darkMode ? 0.4 : 0.08),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
                   ],
                 ),
                 child: _isLoading 
@@ -434,29 +442,23 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
 
   Widget _buildSettingsContent(bool isDark, Color themeColor) {
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       children: [
-        const Text('SPØRSMÅL-TYPER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-        const SizedBox(height: 12),
-        _buildQuestionTypeItem(Icons.radio_button_checked, 'Enkeltvalg', SurveyQuestionType.single_choice, themeColor),
-        _buildQuestionTypeItem(Icons.check_box_outlined, 'Flervalg', SurveyQuestionType.multiple_choice, themeColor),
-        _buildQuestionTypeItem(Icons.short_text, 'Kort tekst', SurveyQuestionType.text, themeColor),
-        _buildQuestionTypeItem(Icons.notes, 'Lang tekst', SurveyQuestionType.paragraph, themeColor),
-        _buildQuestionTypeItem(Icons.star_outline, 'Rangering', SurveyQuestionType.rating, themeColor),
-        _buildQuestionTypeItem(Icons.calendar_today_outlined, 'Dato', SurveyQuestionType.date, themeColor),
-        _buildQuestionTypeItem(Icons.arrow_drop_down_circle_outlined, 'Nedtrekk', SurveyQuestionType.dropdown, themeColor),
-        _buildQuestionTypeItem(Icons.toggle_on_outlined, 'Ja/Nei', SurveyQuestionType.yes_no, themeColor),
-        _buildQuestionTypeItem(Icons.pin_outlined, 'Tall', SurveyQuestionType.number, themeColor),
-        _buildQuestionTypeItem(Icons.email_outlined, 'E-post', SurveyQuestionType.email, themeColor),
-        _buildQuestionTypeItem(Icons.phone_outlined, 'Telefon', SurveyQuestionType.phone, themeColor),
-        _buildQuestionTypeItem(Icons.insights_outlined, 'NPS (0-10)', SurveyQuestionType.nps, themeColor),
-        _buildQuestionTypeItem(Icons.view_column_outlined, 'Likert-skala', SurveyQuestionType.likert, themeColor),
-        _buildQuestionTypeItem(Icons.tune_outlined, 'Skyveknapp (tall)', SurveyQuestionType.slider, themeColor),
-        _buildQuestionTypeItem(Icons.schedule_outlined, 'Klokkeslett', SurveyQuestionType.time, themeColor),
-        _buildQuestionTypeItem(Icons.link_outlined, 'URL / lenke', SurveyQuestionType.url, themeColor),
-        const SizedBox(height: 32),
-        const Text('INNSTILLINGER', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey)),
-        const SizedBox(height: 12),
+        for (final group in SurveyQuestionCatalog.groups) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 6),
+            child: Text(
+              group.toUpperCase(),
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey[600], letterSpacing: 0.6),
+            ),
+          ),
+          ...SurveyQuestionCatalog.all.where((d) => d.group == group).map(
+                (def) => _buildQuestionTypeItem(def.icon, def.label, def.type, themeColor, def.description),
+              ),
+        ],
+        const SizedBox(height: 20),
+        const Text('INNSTILLINGER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)),
+        const SizedBox(height: 8),
         _buildSidebarToggle('Anonyme svar', _allowAnonymous, themeColor, (v) => setState(() {
           _allowAnonymous = v;
           if (v) _requireLogin = false;
@@ -482,90 +484,160 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
   }
 
   Widget _buildThemesContent(bool isDark, Color themeColor) {
-    return ListView(
-      padding: const EdgeInsets.all(20),
-      children: _themeColors.keys.map((name) {
-        final color = _themeColors[name]!;
-        final selected = _selectedTheme == name;
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: InkWell(
-            onTap: () => setState(() => _selectedTheme = name),
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                border: Border.all(color: selected ? color : Colors.grey[200]!, width: selected ? 2 : 1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Container(width: 40, height: 24, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4))),
-                  const SizedBox(width: 12),
-                  Text(name, style: const TextStyle(fontSize: 13)),
-                  const Spacer(),
-                  if (selected) Icon(Icons.check, size: 16, color: color),
-                ],
-              ),
+    final q = _themeSearch.trim().toLowerCase();
+    final filtered = SurveyThemePresets.all.where((t) {
+      if (q.isEmpty) return true;
+      return t.name.toLowerCase().contains(q) || t.category.toLowerCase().contains(q);
+    }).toList();
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: 'Søk blant ${SurveyThemePresets.all.length} tema…',
+              prefixIcon: const Icon(Icons.search, size: 18),
+              isDense: true,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
             ),
+            onChanged: (v) => setState(() => _themeSearch = v),
           ),
-        );
-      }).toList(),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Text(
+            '${filtered.length} tema — endrer bakgrunn, kort, knapper og tekst for respondenter',
+            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: filtered.length,
+            itemBuilder: (context, i) {
+              final preset = filtered[i];
+              final selected = _selectedTheme == preset.name;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InkWell(
+                  onTap: () => setState(() => _selectedTheme = preset.name),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: selected ? themeColor : Colors.grey[300]!,
+                        width: selected ? 2 : 1,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      color: _colorFromHex(preset.backgroundHex),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 48,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(6),
+                            color: _colorFromHex(preset.cardHex),
+                            border: Border.all(color: _colorFromHex(preset.primaryHex), width: 2),
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 20,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: _colorFromHex(preset.primaryHex),
+                                borderRadius: BorderRadius.circular(preset.buttonStyle == 'pill' ? 8 : 2),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(preset.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                              Text(preset.category, style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+                            ],
+                          ),
+                        ),
+                        if (selected) Icon(Icons.check_circle, size: 18, color: themeColor),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildQuestionTypeItem(IconData icon, String label, SurveyQuestionType type, Color themeColor) {
+  Widget _buildQuestionTypeItem(
+    IconData icon,
+    String label,
+    SurveyQuestionType type,
+    Color themeColor, [
+    String? subtitle,
+  ]) {
     return ListTile(
       leading: Icon(icon, size: 20, color: themeColor),
-      title: Text(label, style: const TextStyle(fontSize: 13)),
+      title: Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+      subtitle: subtitle != null ? Text(subtitle, style: TextStyle(fontSize: 10, color: Colors.grey[600])) : null,
       onTap: () => _addQuestionWithType(type),
-      contentPadding: EdgeInsets.zero,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
       dense: true,
-      hoverColor: themeColor.withOpacity(0.05),
+      hoverColor: themeColor.withValues(alpha: 0.06),
     );
   }
 
   Widget _buildCanvasHeader(Color themeColor) {
+    final preset = _activePreset;
     return Container(
-      padding: const EdgeInsets.all(40),
+      padding: const EdgeInsets.all(32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: themeColor.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text(
-              'Survey Builder V3 · fea1039',
-              style: TextStyle(
-                color: themeColor,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.3,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
           Row(
             children: [
-              Icon(Icons.business, color: themeColor, size: 40),
+              Icon(Icons.business, color: themeColor, size: 36),
               const SizedBox(width: 12),
-              Text('DIN LOGO HER', style: TextStyle(color: Colors.grey[400], fontSize: 13, letterSpacing: 1.2)),
+              Text('LOGO', style: TextStyle(color: Colors.grey[400], fontSize: 12, letterSpacing: 1.2)),
             ],
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           TextFormField(
             controller: _titleController,
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: themeColor),
-            decoration: const InputDecoration(border: InputBorder.none, hintText: 'Tittel på undersøkelse'),
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: themeColor),
+            decoration: const InputDecoration(border: InputBorder.none, hintText: 'Tittel på undersøkelsen'),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           TextFormField(
             controller: _descriptionController,
-            style: const TextStyle(fontSize: 16, color: Colors.grey),
-            decoration: const InputDecoration(border: InputBorder.none, hintText: 'Beskrivelse (valgfritt)'),
+            style: TextStyle(fontSize: 15, color: _colorFromHex(preset.textHex).withValues(alpha: 0.7)),
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              hintText: 'Beskrivelse til respondentene (valgfritt)',
+            ),
             maxLines: null,
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _notesController,
+            style: TextStyle(fontSize: 13, color: Colors.grey[600], fontStyle: FontStyle.italic),
+            decoration: InputDecoration(
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              hintText: 'Interne notater (kun for deg — vises ikke for respondenter)',
+              prefixIcon: Icon(Icons.sticky_note_2_outlined, size: 18, color: Colors.grey[500]),
+              isDense: true,
+              filled: true,
+              fillColor: Colors.amber.withValues(alpha: 0.06),
+            ),
+            maxLines: 2,
           ),
         ],
       ),
@@ -586,68 +658,100 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
     final q = _questions[index];
     final controller = _questionControllers[q.id];
     final focusNode = _questionFocusNodes[q.id];
+    final typeDef = SurveyQuestionCatalog.defFor(q.type);
+    final advancedOpen = _advancedOpen.contains(q.id);
 
     return Container(
-      padding: const EdgeInsets.all(32),
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withOpacity(0.02) : Colors.white,
-        border: Border(bottom: BorderSide(color: isDark ? Colors.white10 : Colors.grey[100]!)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
+        borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Text('${index + 1}. ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              Expanded(
-                child: TextFormField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  style: const TextStyle(fontSize: 16),
-                  decoration: const InputDecoration(border: InputBorder.none, hintText: 'Skriv spørsmålet ditt her...'),
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: themeColor.withValues(alpha: 0.12),
+                child: Text('${index + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: themeColor)),
+              ),
+              const SizedBox(width: 10),
+              PopupMenuButton<SurveyQuestionType>(
+                tooltip: 'Endre type',
+                onSelected: (type) => _changeQuestionType(index, type),
+                itemBuilder: (_) => SurveyQuestionCatalog.all
+                    .map((d) => PopupMenuItem(value: d.type, child: Text(d.label)))
+                    .toList(),
+                child: Chip(
+                  avatar: Icon(typeDef?.icon ?? Icons.help_outline, size: 16, color: themeColor),
+                  label: Text(typeDef?.label ?? q.type.name, style: const TextStyle(fontSize: 12)),
+                  visualDensity: VisualDensity.compact,
                 ),
               ),
+              const Spacer(),
               IconButton(
-                icon: const Icon(Icons.edit, size: 18, color: Colors.grey),
-                onPressed: () => focusNode?.requestFocus(),
-              )
+                icon: const Icon(Icons.delete_outline, size: 20, color: Colors.red),
+                tooltip: 'Slett spørsmål',
+                onPressed: () => _removeQuestion(index),
+              ),
             ],
           ),
-          const SizedBox(height: 12),
-          _buildAdvancedRuleRow(index, q),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: controller,
+            focusNode: focusNode,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            decoration: const InputDecoration(
+              border: InputBorder.none,
+              hintText: 'Skriv spørsmålet her…',
+            ),
+          ),
+          const SizedBox(height: 8),
           _buildQuestionBody(index, q, themeColor),
+          const SizedBox(height: 8),
           Row(
-            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              const Text('Påkrevd', style: TextStyle(fontSize: 12)),
               Switch.adaptive(
                 value: q.isRequired,
-                activeColor: themeColor,
-                onChanged: (v) {
-                  setState(() {
-                    _questions[index] = SurveyQuestion(
-                      id: q.id,
-                      surveyId: q.surveyId,
-                      questionText: q.questionText,
-                      type: q.type,
-                      isRequired: v,
-                      options: q.options,
-                      orderIndex: q.orderIndex,
-                      sectionTitle: q.sectionTitle,
-                      points: q.points,
-                      conditionQuestionId: q.conditionQuestionId,
-                      conditionOperator: q.conditionOperator,
-                      conditionValue: q.conditionValue,
-                    );
-                  });
-                },
+                activeTrackColor: themeColor.withValues(alpha: 0.4),
+                activeThumbColor: themeColor,
+                onChanged: (v) => _patchQuestion(index, (old) => SurveyQuestion(
+                  id: old.id,
+                  surveyId: old.surveyId,
+                  questionText: old.questionText,
+                  type: old.type,
+                  isRequired: v,
+                  options: old.options,
+                  orderIndex: old.orderIndex,
+                  sectionTitle: old.sectionTitle,
+                  points: old.points,
+                  conditionQuestionId: old.conditionQuestionId,
+                  conditionOperator: old.conditionOperator,
+                  conditionValue: old.conditionValue,
+                )),
               ),
+              const Text('Påkrevd', style: TextStyle(fontSize: 12)),
               const Spacer(),
-              IconButton(onPressed: () => _removeQuestion(index), icon: const Icon(Icons.delete_outline, size: 16, color: Colors.red)),
+              TextButton.icon(
+                onPressed: () => setState(() {
+                  if (advancedOpen) {
+                    _advancedOpen.remove(q.id);
+                  } else {
+                    _advancedOpen.add(q.id);
+                  }
+                }),
+                icon: Icon(advancedOpen ? Icons.expand_less : Icons.tune, size: 16),
+                label: Text(advancedOpen ? 'Skjul avansert' : 'Avansert (valgfritt)', style: const TextStyle(fontSize: 12)),
+              ),
             ],
-          )
+          ),
+          if (advancedOpen) ...[
+            const Divider(height: 16),
+            _buildAdvancedSection(index, q, themeColor),
+          ],
         ],
       ),
     );
@@ -834,130 +938,145 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
           ],
         );
       default:
+        return _buildTypePreview(q, themeColor);
+    }
+  }
+
+  Widget _buildTypePreview(SurveyQuestion q, Color themeColor) {
+    switch (q.type) {
+      case SurveyQuestionType.rating:
+        return Row(
+          children: List.generate(5, (i) => Icon(Icons.star, color: themeColor.withValues(alpha: 0.35 + i * 0.1), size: 28)),
+        );
+      case SurveyQuestionType.yes_no:
+        return Row(
+          children: [
+            _previewChip('Ja', themeColor),
+            const SizedBox(width: 8),
+            _previewChip('Nei', themeColor, filled: false),
+          ],
+        );
+      case SurveyQuestionType.nps:
+        return Wrap(
+          spacing: 4,
+          children: List.generate(11, (i) => _previewChip('$i', themeColor, small: true)),
+        );
+      case SurveyQuestionType.date:
+        return _previewChip('📅 Velg dato', themeColor, filled: false);
+      case SurveyQuestionType.time:
+        return _previewChip('🕐 Velg klokkeslett', themeColor, filled: false);
+      case SurveyQuestionType.text:
         return Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text(
-            _previewLabelForType(q.type),
-            style: TextStyle(color: Colors.grey[500], fontSize: 12),
-          ),
+          height: 40,
+          decoration: BoxDecoration(border: Border.all(color: Colors.grey[300]!), borderRadius: BorderRadius.circular(8)),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text('Kort tekstsvar…', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+        );
+      case SurveyQuestionType.paragraph:
+        return Container(
+          height: 80,
+          decoration: BoxDecoration(border: Border.all(color: Colors.grey[300]!), borderRadius: BorderRadius.circular(8)),
+          alignment: Alignment.topLeft,
+          padding: const EdgeInsets.all(12),
+          child: Text('Langt svar / kommentar…', style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+        );
+      case SurveyQuestionType.number:
+      case SurveyQuestionType.email:
+      case SurveyQuestionType.phone:
+      case SurveyQuestionType.url:
+        return Container(
+          height: 40,
+          decoration: BoxDecoration(border: Border.all(color: Colors.grey[300]!), borderRadius: BorderRadius.circular(8)),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Text(SurveyQuestionCatalog.labelFor(q.type), style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+        );
+      default:
+        return Text(
+          SurveyQuestionCatalog.labelFor(q.type),
+          style: TextStyle(color: Colors.grey[500], fontSize: 12),
         );
     }
   }
 
-  String _previewLabelForType(SurveyQuestionType type) {
-    return SurveyQuestionCatalog.labelFor(type);
+  Widget _previewChip(String label, Color color, {bool filled = true, bool small = false}) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: small ? 8 : 14, vertical: small ? 4 : 8),
+      decoration: BoxDecoration(
+        color: filled ? color.withValues(alpha: 0.15) : Colors.transparent,
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(small ? 6 : 20),
+      ),
+      child: Text(label, style: TextStyle(fontSize: small ? 11 : 13, color: color, fontWeight: FontWeight.w600)),
+    );
   }
 
-  Widget _buildAdvancedRuleRow(int index, SurveyQuestion q) {
-    final candidates =
-        _questions.where((item) => item.orderIndex < q.orderIndex).toList();
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+  Widget _buildAdvancedSection(int index, SurveyQuestion q, Color themeColor) {
+    final candidates = _questions.where((item) => item.orderIndex < q.orderIndex).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 140,
-          child: TextFormField(
-            initialValue: q.sectionTitle ?? '',
-            decoration: const InputDecoration(
-              isDense: true,
-              labelText: 'Seksjon',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (v) {
-              setState(() {
-                _questions[index] = SurveyQuestion(
-                  id: q.id,
-                  surveyId: q.surveyId,
-                  questionText: q.questionText,
-                  type: q.type,
-                  isRequired: q.isRequired,
-                  options: q.options,
-                  orderIndex: q.orderIndex,
-                  sectionTitle: v.trim().isEmpty ? null : v.trim(),
-                  points: q.points,
-                  conditionQuestionId: q.conditionQuestionId,
-                  conditionOperator: q.conditionOperator,
-                  conditionValue: q.conditionValue,
-                );
-              });
-            },
-          ),
+        Text(
+          'Avanserte innstillinger — de fleste trenger ikke disse.',
+          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
         ),
-        SizedBox(
-          width: 90,
-          child: TextFormField(
-            initialValue: q.points.toString(),
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              isDense: true,
-              labelText: 'Poeng',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (v) {
-              setState(() {
-                _questions[index] = SurveyQuestion(
-                  id: q.id,
-                  surveyId: q.surveyId,
-                  questionText: q.questionText,
-                  type: q.type,
-                  isRequired: q.isRequired,
-                  options: q.options,
-                  orderIndex: q.orderIndex,
-                  sectionTitle: q.sectionTitle,
-                  points: (int.tryParse(v) ?? 0).clamp(0, 9999),
-                  conditionQuestionId: q.conditionQuestionId,
-                  conditionOperator: q.conditionOperator,
-                  conditionValue: q.conditionValue,
-                );
-              });
-            },
-          ),
-        ),
-        SizedBox(
-          width: 220,
-          child: DropdownButtonFormField<String?>(
-            value: q.conditionQuestionId,
+        const SizedBox(height: 12),
+        TextFormField(
+          initialValue: q.sectionTitle ?? '',
+          decoration: const InputDecoration(
+            labelText: 'Seksjon / overskrift',
+            helperText: 'Grupper spørsmål under en felles overskrift (f.eks. «Om deg», «Tilfredshet»)',
+            border: OutlineInputBorder(),
             isDense: true,
-            decoration: const InputDecoration(
-              labelText: 'Synlig hvis spørsmål',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('Ingen betingelse'),
-              ),
-              ...candidates.map(
-                (item) => DropdownMenuItem<String?>(
-                  value: item.id,
-                  child: Text(
-                    item.questionText,
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
-                ),
-              ),
-            ],
-            onChanged: (value) {
-              setState(() {
-                _questions[index] = SurveyQuestion(
-                  id: q.id,
-                  surveyId: q.surveyId,
-                  questionText: q.questionText,
-                  type: q.type,
-                  isRequired: q.isRequired,
-                  options: q.options,
-                  orderIndex: q.orderIndex,
-                  sectionTitle: q.sectionTitle,
-                  points: q.points,
-                  conditionQuestionId: value,
-                  conditionOperator: value == null ? null : (q.conditionOperator ?? 'equals'),
-                  conditionValue: value == null ? null : q.conditionValue,
-                );
-              });
-            },
           ),
+          onChanged: (v) => _patchQuestion(index, (old) => SurveyQuestion(
+            id: old.id,
+            surveyId: old.surveyId,
+            questionText: old.questionText,
+            type: old.type,
+            isRequired: old.isRequired,
+            options: old.options,
+            orderIndex: old.orderIndex,
+            sectionTitle: v.trim().isEmpty ? null : v.trim(),
+            points: old.points,
+            conditionQuestionId: old.conditionQuestionId,
+            conditionOperator: old.conditionOperator,
+            conditionValue: old.conditionValue,
+          )),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String?>(
+          initialValue: q.conditionQuestionId,
+          decoration: const InputDecoration(
+            labelText: 'Vis bare hvis…',
+            helperText: 'Spørsmålet vises kun når et tidligere spørsmål har bestemt svar',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          items: [
+            const DropdownMenuItem(value: null, child: Text('Alltid synlig')),
+            ...candidates.map(
+              (item) => DropdownMenuItem(
+                value: item.id,
+                child: Text(item.questionText, overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ],
+          onChanged: (value) => _patchQuestion(index, (old) => SurveyQuestion(
+            id: old.id,
+            surveyId: old.surveyId,
+            questionText: old.questionText,
+            type: old.type,
+            isRequired: old.isRequired,
+            options: old.options,
+            orderIndex: old.orderIndex,
+            sectionTitle: old.sectionTitle,
+            points: old.points,
+            conditionQuestionId: value,
+            conditionOperator: value == null ? null : (old.conditionOperator ?? 'equals'),
+            conditionValue: value == null ? null : old.conditionValue,
+          )),
         ),
       ],
     );

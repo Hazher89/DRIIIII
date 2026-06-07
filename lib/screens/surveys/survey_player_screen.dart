@@ -5,6 +5,7 @@ import '../../models/survey/survey_advanced.dart';
 import '../../core/services/survey/survey_advanced_service.dart';
 import '../../core/services/survey/survey_question_catalog.dart';
 import '../../core/services/survey/survey_service.dart';
+import '../../core/services/survey/survey_theme_presets.dart';
 import '../../core/services/supabase_service.dart';
 
 class SurveyPlayerScreen extends StatefulWidget {
@@ -213,10 +214,17 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
       }
     }
 
-    final cfg = _theme ?? SurveyThemeConfig(surveyId: widget.surveyId);
+    final cfg = _theme ?? SurveyThemePresets.byNameOrDefault(_survey?.theme ?? 'DriftPro Grønn').toConfig(widget.surveyId);
     final primary = _fromHex(cfg.primaryHex, DriftProTheme.primaryGreen);
     final bg = _fromHex(cfg.backgroundHex, const Color(0xFFF7F9F8));
+    final card = _fromHex(cfg.cardHex, Colors.white);
     final text = _fromHex(cfg.textHex, const Color(0xFF0F172A));
+    final accent = _fromHex(cfg.accentHex, primary);
+    final btnRadius = switch (cfg.buttonStyle) {
+      'pill' => 28.0,
+      'square' => 4.0,
+      _ => 12.0,
+    };
     final progress = _questions.isEmpty
         ? 0.0
         : _answers.length / _questions.where(_isVisible).length.clamp(1, 9999);
@@ -285,7 +293,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
                       style: TextStyle(fontSize: 16, color: text.withValues(alpha: 0.7)),
                     ),
                   ),
-                ..._questions.where(_isVisible).map((q) => _buildQuestionWidget(q, primary, text, cfg.compactMode)),
+                ..._questions.where(_isVisible).map((q) => _buildQuestionWidget(q, primary, text, card, accent, cfg.compactMode)),
                 const SizedBox(height: 48),
                 SizedBox(
                   height: 56,
@@ -293,7 +301,9 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
                     onPressed: _isSubmitting ? null : _submit,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: primary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(btnRadius)),
+                      elevation: cfg.darkModeForRespondent ? 0 : 2,
                     ),
                     child: _isSubmitting
                       ? const CircularProgressIndicator(color: Colors.white)
@@ -316,10 +326,21 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
     SurveyQuestion q,
     Color primary,
     Color textColor,
+    Color cardColor,
+    Color accent,
     bool compact,
   ) {
     return Container(
-      margin: EdgeInsets.only(bottom: compact ? 18 : 32),
+      margin: EdgeInsets.only(bottom: compact ? 18 : 24),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: primary.withValues(alpha: 0.12)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -328,10 +349,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
                 q.sectionTitle!,
-                style: TextStyle(
-                  color: primary,
-                  fontWeight: FontWeight.w700,
-                ),
+                style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 13),
               ),
             ),
           Row(
@@ -343,17 +361,17 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
                 ),
               ),
               if (q.isRequired)
-                const Text(' *', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                Text(' *', style: TextStyle(color: primary, fontWeight: FontWeight.bold)),
             ],
           ),
           SizedBox(height: compact ? 8 : 16),
-          _buildAnswerInput(q, primary, textColor),
+          _buildAnswerInput(q, primary, textColor, accent),
         ],
       ),
     );
   }
 
-  Widget _buildAnswerInput(SurveyQuestion q, Color primary, Color textColor) {
+  Widget _buildAnswerInput(SurveyQuestion q, Color primary, Color textColor, Color accent) {
     switch (q.type) {
       case SurveyQuestionType.single_choice:
         return Column(

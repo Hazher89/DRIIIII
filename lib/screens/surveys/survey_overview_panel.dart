@@ -156,6 +156,30 @@ class _SurveyOverviewPanelState extends State<SurveyOverviewPanel> {
           },
         ),
         const SizedBox(height: 24),
+        if (widget.survey.adminNotes != null && widget.survey.adminNotes!.trim().isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.only(bottom: 20),
+            decoration: BoxDecoration(
+              color: Colors.amber.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.sticky_note_2_outlined, size: 18, color: Colors.amber[800]),
+                    const SizedBox(width: 8),
+                    Text('Interne notater', style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(widget.survey.adminNotes!, style: DriftProTheme.bodyMd.copyWith(color: drift.textSecondary)),
+              ],
+            ),
+          ),
         Text(
           'Hurtighandlinger',
           style: DriftProTheme.headingSm.copyWith(color: drift.textPrimary),

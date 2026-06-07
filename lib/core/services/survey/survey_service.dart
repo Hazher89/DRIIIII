@@ -45,6 +45,7 @@ class SurveyService {
     String? theme,
     DateTime? expiresAt,
     bool clearExpiresAt = false,
+    String? adminNotes,
   }) async {
     final Map<String, dynamic> data = {};
     if (title != null) data['title'] = title;
@@ -52,6 +53,7 @@ class SurveyService {
     if (allowAnonymous != null) data['allow_anonymous'] = allowAnonymous;
     if (isActive != null) data['is_active'] = isActive;
     if (theme != null) data['theme'] = theme;
+    if (adminNotes != null) data['admin_notes'] = adminNotes;
     if (clearExpiresAt) {
       data['expires_at'] = null;
     } else if (expiresAt != null) {

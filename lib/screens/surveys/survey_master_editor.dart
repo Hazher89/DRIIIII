@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/services/survey/survey_advanced_service.dart';
 import '../../core/services/survey/survey_service.dart';
+import '../../core/services/survey/survey_theme_presets.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/driftpro_theme_context.dart';
 import '../../core/theme/driftpro_colors.dart';
@@ -29,6 +30,7 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
   final GlobalKey<SurveyBuilderCanvasState> _canvasKey = GlobalKey<SurveyBuilderCanvasState>();
   SurveyThemeConfig? _themeConfig;
   List<SurveyAnalyticsSnapshot> _snapshots = const [];
+  String _themeSearch = '';
 
   final List<String> _steps = [
     'Oversikt',
@@ -224,26 +226,111 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
   }
 
   Widget _buildThemeAndArchiveView() {
-    final cfg = _themeConfig ?? SurveyThemeConfig(surveyId: _survey.id);
+    final cfg = _themeConfig ?? SurveyThemePresets.byNameOrDefault(_survey.theme).toConfig(_survey.id);
     final drift = context.driftColors;
+    final q = _themeSearch.trim().toLowerCase();
+    final presets = SurveyThemePresets.all.where((t) {
+      if (q.isEmpty) return true;
+      return t.name.toLowerCase().contains(q) || t.category.toLowerCase().contains(q);
+    }).toList();
+
+    Color hex(String h) {
+      final c = h.replaceAll('#', '');
+      final v = int.tryParse('FF$c', radix: 16);
+      return v != null ? Color(v) : Colors.grey;
+    }
 
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        Text('Theme Studio', style: DriftProTheme.headingMd.copyWith(color: drift.textPrimary)),
+        Text('Tema Studio', style: DriftProTheme.headingMd.copyWith(color: drift.textPrimary)),
         const SizedBox(height: 8),
         Text(
-          'Tilpass hvordan respondentene opplever undersøkelsen.',
+          '${SurveyThemePresets.all.length} ferdige tema — endrer bakgrunn, kort, knapper og tekst for respondenter.',
           style: DriftProTheme.bodyMd.copyWith(color: drift.textMuted),
         ),
         const SizedBox(height: 16),
+        TextField(
+          decoration: InputDecoration(
+            hintText: 'Søk tema…',
+            prefixIcon: const Icon(Icons.search),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+          onChanged: (v) => setState(() => _themeSearch = v),
+        ),
+        const SizedBox(height: 16),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 3,
+            childAspectRatio: 1.6,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+          ),
+          itemCount: presets.length.clamp(0, 60),
+          itemBuilder: (context, i) {
+            final preset = presets[i];
+            final selected = _survey.theme == preset.name;
+            return InkWell(
+              onTap: () async {
+                await SurveyService.updateSurvey(id: _survey.id, theme: preset.name);
+                await _saveTheme(preset.toConfig(_survey.id));
+                await _refreshSurvey();
+              },
+              borderRadius: BorderRadius.circular(10),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: hex(preset.backgroundHex),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: selected ? hex(preset.primaryHex) : drift.borderSubtle, width: selected ? 2 : 1),
+                ),
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: hex(preset.cardHex),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: hex(preset.primaryHex)),
+                      ),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(left: 6),
+                          width: 36,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: hex(preset.primaryHex),
+                            borderRadius: BorderRadius.circular(preset.buttonStyle == 'pill' ? 6 : 2),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(preset.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: hex(preset.textHex))),
+                    Text(preset.category, style: TextStyle(fontSize: 9, color: hex(preset.textHex).withValues(alpha: 0.6))),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+        if (presets.length > 60)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text('Viser 60 av ${presets.length} — bruk søk for å finne flere.', style: DriftProTheme.bodySm.copyWith(color: drift.textMuted)),
+          ),
+        const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.all(16),
           decoration: drift.surfaceDecoration(radius: 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Font: ${cfg.fontFamily} • Knapper: ${cfg.buttonStyle}'),
+              Text('Aktivt tema: ${_survey.theme}', style: DriftProTheme.headingSm),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
