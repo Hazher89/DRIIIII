@@ -397,7 +397,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
-                      'Du får SMS når saken er behandlet.',
+                      'Du får SMS når saken settes under arbeid og når den er ferdig behandlet.',
                       style: DriftProTheme.bodySm.copyWith(
                         color: Colors.grey.shade600,
                         fontSize: 12,

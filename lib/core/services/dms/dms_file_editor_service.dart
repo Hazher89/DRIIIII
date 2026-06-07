@@ -1,10 +1,10 @@
 import 'dart:typed_data';
 
 import 'package:excel/excel.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../models/dms/dms_file.dart';
 import '../../utils/file_type_resolver.dart';
+import '../storage/company_file_storage.dart';
 import 'dms_service.dart';
 
 /// Lagre redigerte dokumenter (erstatt eller ny fil).
@@ -16,15 +16,26 @@ class DmsFileEditorService {
     required Uint8List bytes,
     String? newFileName,
   }) async {
-    await DmsService.client.storage.from('documents').uploadBinary(
-          file.storagePath,
-          bytes,
-          fileOptions: const FileOptions(upsert: true),
-        );
+    final name = (newFileName != null && newFileName.isNotEmpty)
+        ? newFileName
+        : file.name;
+    final storagePath =
+        'company_${file.companyId}/dms/${file.folderId ?? "root"}/${DateTime.now().millisecondsSinceEpoch}_$name';
+    final stored = await CompanyFileStorage.upload(
+      supabaseBucket: 'documents',
+      storagePath: storagePath,
+      bytes: bytes,
+      category: 'dms',
+      fileName: name,
+    );
 
-    final ext = FileTypeResolver.extensionFromName(newFileName ?? file.name);
+    final ext = FileTypeResolver.extensionFromName(name);
     final patch = <String, dynamic>{
+      'storage_path': CompanyFileStorage.toStorageReference(stored),
+      'storage_provider': stored.provider,
+      'external_url': stored.publicOrSignedUrl,
       'file_size': bytes.length,
+      'file_size_bytes': bytes.length,
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     };
     if (newFileName != null && newFileName.isNotEmpty) {

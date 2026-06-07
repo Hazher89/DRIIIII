@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../partners/widgets/partner_notification_settings_panel.dart';
-import '../profile/widgets/mavi_notification_settings_panel.dart';
+import '../profile/widgets/notification_settings_split_tab.dart';
 
-/// Varselinnstillinger (full skjerm – MAVI + samarbeid).
+/// Varselinnstillinger (MAVI-ansatte + samarbeid).
 class CompanySmsSettingsScreen extends StatelessWidget {
   const CompanySmsSettingsScreen({super.key});
 
@@ -11,27 +10,7 @@ class CompanySmsSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Varselinnstillinger')),
-      body: const DefaultTabController(
-        length: 2,
-        child: Column(
-          children: [
-            TabBar(
-              tabs: [
-                Tab(text: 'MAVI-ansatte'),
-                Tab(text: 'Samarbeid'),
-              ],
-            ),
-            Expanded(
-              child: TabBarView(
-                children: [
-                  MaviNotificationSettingsPanel(),
-                  PartnerNotificationSettingsPanel(),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
+      body: const NotificationSettingsSplitTab(),
     );
   }
 }

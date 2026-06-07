@@ -4,10 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../../core/permissions/user_access.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/storage/storage_file_actions.dart';
+import '../../../core/utils/storage_path_sanitizer.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
@@ -226,9 +226,10 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
         continue;
       }
 
-      final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-      final storagePath =
-          'company_${widget.partner.companyId}/partner_docs/${widget.partner.id}/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+      final storagePath = StoragePathSanitizer.storagePath(
+        'company_${widget.partner.companyId}/partner_docs/${widget.partner.id}/'
+        '${DateTime.now().millisecondsSinceEpoch}_${StoragePathSanitizer.segment(file.name)}',
+      );
 
       try {
         final storedPath = await PartnerService.uploadPartnerDocumentFile(
@@ -468,8 +469,10 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
     }
 
     var grants = await PartnerService.fetchDocumentFolderAccess(folderId);
-    final staff = (await SupabaseService.fetchProfiles(companyId: widget.partner.companyId))
-        .where((p) => p.partnerId == null && p.id != me.id)
+    final staff = (await SupabaseService.fetchMaviEmployees(
+          companyId: widget.partner.companyId,
+        ))
+        .where((p) => p.id != me.id)
         .toList();
 
     if (!mounted) return;
@@ -532,7 +535,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
                       return ListTile(
                         dense: true,
                         contentPadding: EdgeInsets.zero,
-                        title: Text(p.fullName.isNotEmpty ? p.fullName : (p.email ?? p.id)),
+                        title: Text(p.fullName.isNotEmpty ? p.fullName : (p.email.isNotEmpty ? p.email : p.id)),
                         subtitle: Text(p.role.name),
                         trailing: has
                             ? const Icon(Icons.check, color: DriftProTheme.primaryGreen)
@@ -623,14 +626,12 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
   Future<void> _open(PartnerDocument d) async {
     final p = d.storagePath;
     if (p == null || p.isEmpty) return;
-    try {
-      final url = await PartnerService.getDocumentPdfSignedUrl(p);
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke åpne: $e')));
-      }
-    }
+    await StorageFileActions.open(
+      context,
+      storagePath: p,
+      title: d.title,
+      companyId: widget.partner.companyId,
+    );
   }
 
   @override

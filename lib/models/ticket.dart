@@ -1,3 +1,5 @@
+import 'hms/hms_ticket_template.dart';
+
 enum TicketSeverity {
   lav,
   middels,
@@ -88,6 +90,12 @@ class Ticket {
   final List<Map<String, dynamic>> actionPlan;
   /// Kun synlig for koordinatorer i detaljvisning (lagres i DB).
   final String? internalNotes;
+  final HmsDomain hmsDomain;
+  final List<String> videoUrls;
+  final DateTime? observedAt;
+  final bool hasPersonalInjury;
+  final String? completedMeasures;
+  final String? escalationReason;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -124,6 +132,12 @@ class Ticket {
     this.rootCause,
     this.actionPlan = const [],
     this.internalNotes,
+    this.hmsDomain = HmsDomain.hms,
+    this.videoUrls = const [],
+    this.observedAt,
+    this.hasPersonalInjury = false,
+    this.completedMeasures,
+    this.escalationReason,
     this.createdAt,
     this.updatedAt,
     this.reporterName,
@@ -170,6 +184,17 @@ class Ticket {
       rootCause: json['root_cause'] as String?,
       actionPlan: (json['action_plan'] as List<dynamic>?)?.map((e) => e as Map<String, dynamic>).toList() ?? [],
       internalNotes: json['internal_notes'] as String?,
+      hmsDomain: HmsDomainDb.fromDb(json['hms_domain'] as String?),
+      videoUrls: (json['video_urls'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
+      observedAt: json['observed_at'] != null
+          ? DateTime.parse(json['observed_at'] as String)
+          : null,
+      hasPersonalInjury: json['has_personal_injury'] as bool? ?? false,
+      completedMeasures: json['completed_measures'] as String?,
+      escalationReason: json['escalation_reason'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -213,6 +238,11 @@ class Ticket {
     'root_cause': rootCause,
     'action_plan': actionPlan,
     'internal_notes': internalNotes,
+    'hms_domain': hmsDomain.dbValue,
+    'video_urls': videoUrls,
+    if (observedAt != null) 'observed_at': observedAt!.toIso8601String(),
+    'has_personal_injury': hasPersonalInjury,
+    if (completedMeasures != null) 'completed_measures': completedMeasures,
   };
 
   bool get isOpen => status == TicketStatus.aapen || status == TicketStatus.underBehandling;

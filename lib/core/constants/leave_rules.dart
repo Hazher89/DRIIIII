@@ -15,6 +15,12 @@ class LeaveRules {
   static const int syktBarnDaysTwoOrMoreChildren = 15;
   static const int syktBarnMaxAgeStandard = 12;
 
+  /// Sykt-barn-dager per 12-måneders periode ut fra registrerte barn under 12.
+  static int syktBarnDaysLimit(int childrenUnder12) =>
+      childrenUnder12 >= 2
+          ? syktBarnDaysTwoOrMoreChildren
+          : syktBarnDaysPerChildUnder12;
+
   // ── Ferie (ferieloven) ─────────────────────────────────────────────────
   static const int ferieLegalMinimumDays = 25;
   static const int ferieMainHolidayDays = 18;
@@ -23,15 +29,16 @@ class LeaveRules {
   static const String lovdataEgenmeldingTitle = 'Egenmelding';
   static const String lovdataEgenmeldingBody =
       'Arbeidstaker kan melde egen sykdom uten sykmelding i inntil 3 kalenderdager '
-      'om gangen (tariff/HR-avtale kan gi mer). Maks 4 egenmeldingsperioder per '
-      'kalenderår. Ved lengre fravær kreves sykmelding fra lege. '
+      'om gangen (tariff/HR-avtale kan gi mer). Maks 4 egenmeldingsperioder og '
+      '24 dager i en 12-måneders periode fra ansettelsesdato (nullstilles ikke 1. januar). '
+      'Ved lengre fravær kreves sykmelding fra lege. '
       'Kilde: arbeidsmiljøloven § 4-3, praksis under folketrygdloven.';
 
   static const String lovdataSyktBarnTitle = 'Omsorgspenger / sykt barn';
   static const String lovdataSyktBarnBody =
-      'Foreldre har rett til inntil 10 dager omsorgspenger per kalenderår per barn '
-      'under 12 år (15 dager ved 2+ barn). For barn 12–18 år gjelder 10 dager ved '
-      'kronisk/langvarig sykdom eller funksjonshemning. '
+      'Foreldre har rett til inntil 10 dager omsorgspenger per 12-måneders periode '
+      'fra ansettelsesdato per barn under 12 år (15 dager ved 2+ barn). '
+      'For barn 12–18 år gjelder 10 dager ved kronisk/langvarig sykdom eller funksjonshemning. '
       'Kilde: folketrygdloven kap. 5 (Lovdata).';
 
   static const String lovdataFerieTitle = 'Ferieloven';
@@ -219,9 +226,7 @@ class CompanyLeaveSettings {
     );
   }
 
-  /// Maks sykt-barn-dager per år (forenklet modell: 10, 15 ved flere barn i HR-notat).
-  int syktBarnDaysLimit({int childrenCount = 1}) =>
-      childrenCount >= 2
-          ? LeaveRules.syktBarnDaysTwoOrMoreChildren
-          : LeaveRules.syktBarnDaysPerChildUnder12;
+  /// Maks sykt-barn-dager per periode (10 dager / 15 ved 2+ barn under 12).
+  int syktBarnDaysLimit({int childrenUnder12 = 0}) =>
+      LeaveRules.syktBarnDaysLimit(childrenUnder12);
 }

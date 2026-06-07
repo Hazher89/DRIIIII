@@ -160,6 +160,7 @@ class SapRouteImportService {
           bytes: bytes,
           routeDate: bundle.schedule.routeDate,
           parsed: bundle,
+          stagedImportSource: PartnerService.stagedImportSap,
         );
 
         await PartnerService.markSapRouteInboxImported(

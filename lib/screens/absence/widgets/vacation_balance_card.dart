@@ -127,6 +127,7 @@ class QuotaMiniRow extends StatelessWidget {
   final int used;
   final int total;
   final Color color;
+  final String? subtitle;
 
   const QuotaMiniRow({
     super.key,
@@ -134,6 +135,7 @@ class QuotaMiniRow extends StatelessWidget {
     required this.used,
     required this.total,
     required this.color,
+    this.subtitle,
   });
 
   @override
@@ -157,6 +159,13 @@ class QuotaMiniRow extends StatelessWidget {
               Text('$used / $total dager', style: DriftProTheme.caption),
             ],
           ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(subtitle!, style: DriftProTheme.caption),
+            ),
+          ],
           const SizedBox(height: 8),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),

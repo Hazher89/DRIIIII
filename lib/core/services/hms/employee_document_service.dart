@@ -120,4 +120,88 @@ class EmployeeDocumentService {
   static Future<void> deleteDocument(String documentId) async {
     await SupabaseService.client.from('documents').delete().eq('id', documentId);
   }
+
+  /// Ansatt laster opp til egen personalmappe.
+  static Future<HmsDocument> uploadOwn({
+    required HmsDocumentType type,
+    required String title,
+    required String fileUrl,
+    String? fileName,
+    int? fileSize,
+    String? description,
+    DateTime? expiresAt,
+    List<String> tags = const [],
+  }) async {
+    final id = await SupabaseService.client.rpc(
+      'upload_own_personal_document',
+      params: {
+        'p_document_type': type.name,
+        'p_title': title,
+        'p_file_url': fileUrl,
+        'p_file_name': fileName,
+        'p_file_size': fileSize,
+        'p_description': description,
+        'p_expires_at': expiresAt?.toIso8601String().split('T').first,
+        'p_tags': tags,
+      },
+    );
+    final row = await SupabaseService.client
+        .from('documents')
+        .select()
+        .eq('id', id)
+        .single();
+    return HmsDocument.fromJson(row);
+  }
+
+  static Future<HmsDocument> updateDocument({
+    required String documentId,
+    String? title,
+    String? description,
+    HmsDocumentType? type,
+    DateTime? expiresAt,
+    String? fileUrl,
+    String? fileName,
+    int? fileSize,
+    List<String>? tags,
+  }) async {
+    await SupabaseService.client.rpc(
+      'update_personal_document',
+      params: {
+        'p_id': documentId,
+        if (title != null) 'p_title': title,
+        if (description != null) 'p_description': description,
+        if (type != null) 'p_document_type': type.name,
+        if (expiresAt != null)
+          'p_expires_at': expiresAt.toIso8601String().split('T').first,
+        if (fileUrl != null) 'p_file_url': fileUrl,
+        if (fileName != null) 'p_file_name': fileName,
+        if (fileSize != null) 'p_file_size': fileSize,
+        if (tags != null) 'p_tags': tags,
+      },
+    );
+    final row = await SupabaseService.client
+        .from('documents')
+        .select()
+        .eq('id', documentId)
+        .single();
+    return HmsDocument.fromJson(row);
+  }
+
+  static Map<String, int> statsFor(List<HmsDocument> docs) {
+    final now = DateTime.now();
+    final soon = now.add(const Duration(days: 60));
+    return {
+      'total': docs.length,
+      'kurs': docs
+          .where((d) =>
+              d.documentType == HmsDocumentType.kursbevis ||
+              d.documentType == HmsDocumentType.sertifikat)
+          .length,
+      'expired': docs.where((d) => d.isExpired).length,
+      'expires_soon': docs.where((d) {
+        final e = d.expiresAt;
+        return e != null && !e.isBefore(now) && e.isBefore(soon);
+      }).length,
+    };
+  }
 }

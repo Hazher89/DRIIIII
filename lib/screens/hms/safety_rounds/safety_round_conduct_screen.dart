@@ -81,15 +81,16 @@ class _SafetyRoundConductScreenState extends State<SafetyRoundConductScreen> {
       if (mounted) setState(() => _profile = p);
       return;
     }
-    final users = await SupabaseService.fetchProfiles(companyId: companyId);
+    final users = await SupabaseService.fetchMaviEmployees(companyId: companyId);
     final depts = await SupabaseService.fetchDepartments(companyId: companyId);
     if (!mounted) return;
     setState(() {
       _profile = p;
-      _employees = users.where((u) => u.isApproved && u.isActive).toList();
+      _employees = users;
       _departments = depts;
       _roundDepartmentId ??= p?.departmentId;
-      if (_participantIds.isEmpty && p != null) {
+      _participantIds.removeWhere((id) => !_employees.any((e) => e.id == id));
+      if (_participantIds.isEmpty && p != null && p.isMaviEmployee) {
         _participantIds.add(p.id);
       }
     });
@@ -514,7 +515,7 @@ class _SafetyRoundConductScreenState extends State<SafetyRoundConductScreen> {
           Text('Deltakere i vernerunden', style: DriftProTheme.headingSm),
           const SizedBox(height: 4),
           Text(
-            'Velg hvem som er med (verneombud, leder, ansatte).',
+            'Velg MAVI-ansatte som deltar (verneombud, leder, ansatte).',
             style: DriftProTheme.caption,
           ),
           const SizedBox(height: 8),

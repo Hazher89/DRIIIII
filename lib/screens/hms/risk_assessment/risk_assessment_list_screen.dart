@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/risk_assessment.dart';
 import '../widgets/hms_template_picker_sheet.dart';
 import 'new_risk_assessment_screen.dart';
+import 'risk_assessment_detail_screen.dart';
 import 'package:intl/intl.dart';
 
 class RiskAssessmentListScreen extends StatefulWidget {
@@ -17,7 +18,9 @@ class RiskAssessmentListScreen extends StatefulWidget {
 
 class _RiskAssessmentListScreenState extends State<RiskAssessmentListScreen> {
   List<RiskAssessment> _assessments = [];
+  Map<String, String> _profileNames = {};
   bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -26,21 +29,32 @@ class _RiskAssessmentListScreenState extends State<RiskAssessmentListScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final companyId = await SupabaseService.getCurrentCompanyId();
       if (companyId != null) {
         final data = await SupabaseService.fetchRiskAssessments(companyId: companyId);
-        setState(() => _assessments = data);
+        final profiles = await SupabaseService.fetchProfiles(companyId: companyId);
+        final names = {for (final p in profiles) p.id: p.fullName};
+        setState(() {
+          _assessments = data;
+          _profileNames = names;
+        });
       } else {
         setState(() => _assessments = []);
       }
-    } catch (_) {
-      // Handle error
+    } catch (e) {
+      setState(() => _loadError = 'Kunne ikke hente risikoanalyser: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  String _name(String? id) =>
+      id == null ? 'Ikke angitt' : (_profileNames[id] ?? 'Ukjent');
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +73,21 @@ class _RiskAssessmentListScreenState extends State<RiskAssessmentListScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
+          : _loadError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(_loadError!, textAlign: TextAlign.center),
+                        const SizedBox(height: 12),
+                        ElevatedButton(onPressed: _loadData, child: const Text('Prøv igjen')),
+                      ],
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
               onRefresh: _loadData,
               child: _assessments.isEmpty
                   ? _buildEmptyState()
@@ -115,7 +143,8 @@ class _RiskAssessmentListScreenState extends State<RiskAssessmentListScreen> {
           children: [
             const SizedBox(height: 4),
             Text('Område: ${ra.area ?? "Ikke angitt"}', style: DriftProTheme.bodySm),
-            Text('Opprettet av: ${ra.creatorName ?? "Ukjent"}', style: DriftProTheme.bodySm),
+            Text('Ansvarlig: ${_name(ra.responsiblePerson)}', style: DriftProTheme.bodySm),
+            Text('Opprettet av: ${_name(ra.createdBy)}', style: DriftProTheme.bodySm),
             Text('Dato: ${DateFormat('dd.MM.yyyy').format(ra.createdAt ?? DateTime.now())}', style: DriftProTheme.bodySm),
           ],
         ),
@@ -127,7 +156,12 @@ class _RiskAssessmentListScreenState extends State<RiskAssessmentListScreen> {
           ),
         ),
         onTap: () {
-          // View details
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => RiskAssessmentDetailScreen(assessment: ra),
+            ),
+          ).then((_) => _loadData());
         },
       ),
     );

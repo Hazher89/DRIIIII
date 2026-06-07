@@ -106,6 +106,11 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
         children: [
           _buildHeader(context),
           _buildMetricsRow(),
+          if (topBanner != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+              child: topBanner!,
+            ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),

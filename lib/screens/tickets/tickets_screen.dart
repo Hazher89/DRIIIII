@@ -23,6 +23,7 @@ class TicketsScreen extends StatefulWidget {
 
 class _TicketsScreenState extends State<TicketsScreen> {
   TicketStatus? _filterStatus;
+  final _searchController = TextEditingController();
 
   List<Ticket> _tickets = const [];
   bool _isLoading = true;
@@ -33,6 +34,30 @@ class _TicketsScreenState extends State<TicketsScreen> {
   void initState() {
     super.initState();
     _loadProfileAndTickets();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  bool _matchesSearch(Ticket t) {
+    final q = _searchController.text.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    final digits = q.replaceAll('#', '');
+    if (digits.isNotEmpty &&
+        int.tryParse(digits) != null &&
+        t.ticketNumber != null &&
+        t.ticketNumber.toString().contains(digits)) {
+      return true;
+    }
+    if (t.title.toLowerCase().contains(q)) return true;
+    if (t.description.toLowerCase().contains(q)) return true;
+    if ((t.reporterName ?? '').toLowerCase().contains(q)) return true;
+    if ((t.assigneeName ?? '').toLowerCase().contains(q)) return true;
+    if ((t.category ?? '').toLowerCase().contains(q)) return true;
+    return false;
   }
 
   Future<void> _loadProfileAndTickets() async {
@@ -174,6 +199,32 @@ class _TicketsScreenState extends State<TicketsScreen> {
             ),
             SliverToBoxAdapter(
               child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Søk på avvik-ID (#123), tittel eller beskrivelse…',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded),
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {});
+                            },
+                          )
+                        : null,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    isDense: true,
+                  ),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text(
@@ -236,9 +287,10 @@ class _TicketsScreenState extends State<TicketsScreen> {
     bool isDark,
     bool coord,
   ) {
-    final filtered = _filterStatus == null
-        ? _tickets
-        : _tickets.where((t) => t.status == _filterStatus).toList();
+    final filtered = _tickets
+        .where((t) => _filterStatus == null || t.status == _filterStatus)
+        .where(_matchesSearch)
+        .toList();
 
     if (filtered.isEmpty) {
       return [
@@ -396,7 +448,9 @@ class _TicketsScreenState extends State<TicketsScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Ingen avvik i denne filtervisningen',
+            _searchController.text.trim().isNotEmpty
+                ? 'Ingen treff på søket'
+                : 'Ingen avvik i denne filtervisningen',
             style: DriftProTheme.headingSm.copyWith(
               color: isDark ? Colors.white : Colors.grey[900],
             ),
@@ -404,9 +458,11 @@ class _TicketsScreenState extends State<TicketsScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            s.total == 0
-                ? 'Start ved å melde en observasjon med tekst og bilder. Saken får automatisk status og havner i køen til leder.'
-                : 'Prøv et annet filter, eller opprett et nytt avvik.',
+            _searchController.text.trim().isNotEmpty
+                ? 'Prøv avvik-ID (f.eks. #42), tittel eller beskrivelse.'
+                : s.total == 0
+                    ? 'Start ved å melde en observasjon med tekst og bilder. Saken får automatisk avvik-ID og havner hos valgt leder.'
+                    : 'Prøv et annet filter, eller opprett et nytt avvik.',
             style: DriftProTheme.bodyMd.copyWith(
               color: isDark ? Colors.grey[400] : Colors.grey[700],
               height: 1.4,

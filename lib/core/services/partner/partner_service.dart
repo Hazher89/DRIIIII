@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -15,16 +16,19 @@ import '../../../models/partner/mavi_driver_day_assignment.dart';
 import '../../../models/partner/route_reminder_flag.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import '../../utils/portal_credentials.dart';
+import '../../utils/storage_path_sanitizer.dart';
 import '../sms/sms_phone_utils.dart';
 import '../supabase_service.dart';
 import 'fleet_shift_filters.dart';
 import 'fleet_shift_seed.dart';
 import 'mavi_unit_codes.dart';
 import '../storage/company_file_storage.dart';
+import '../storage/storage_file_access.dart';
 import 'partner_portal_scope.dart';
 import 'postal_code_registry.dart';
 import 'route_pdf_text_service.dart';
 import 'route_pdf_auto_assign.dart';
+import 'route_pdf_bytes_cache.dart';
 import 'route_shift_resolver.dart';
 import 'fleet_mavi_day_sync.dart';
 
@@ -264,7 +268,7 @@ class PartnerService {
       category: 'partners',
       fileName: fileName,
     );
-    return stored.path;
+    return CompanyFileStorage.toStorageReference(stored);
   }
 
   static Future<List<PartnerDocument>> fetchDocuments(
@@ -711,14 +715,15 @@ class PartnerService {
     String? mimeType,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final safePath = StoragePathSanitizer.storagePath(storagePath);
     final stored = await CompanyFileStorage.upload(
       supabaseBucket: 'documents',
-      storagePath: storagePath,
+      storagePath: safePath,
       bytes: bytes,
       category: 'partners',
       fileName: storagePath.split('/').last,
     );
-    return stored.path;
+    return CompanyFileStorage.toStorageReference(stored);
   }
 
   static Future<List<PartnerRouteShare>> fetchRouteShares(
@@ -1103,19 +1108,39 @@ class PartnerService {
 
   static DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
+  static const String stagedImportManual = 'manual';
+  static const String stagedImportSap = 'sap';
+
+  static List<PartnerRouteShare> _filterStagedByImportSource(
+    List<PartnerRouteShare> list,
+    String? importSource,
+  ) {
+    if (importSource == null) return list;
+    return list
+        .where((s) => (s.stagedImportSource ?? stagedImportManual) == importSource)
+        .toList();
+  }
+
   static Future<List<PartnerRouteShare>> fetchStagedRouteShares(
     String companyId, {
     DateTime? routeDay,
+    String? importSource,
   }) async {
     if (!_ok) return const [];
     try {
-      final data = await _client
+      var query = _client
           .from('partner_route_shares')
           .select()
           .eq('company_id', companyId)
-          .eq('dispatch_status', 'staged')
-          .order('created_at', ascending: false) as List<dynamic>;
+          .eq('dispatch_status', 'staged');
+      if (importSource != null) {
+        query = query.eq('staged_import_source', importSource);
+      }
+      final data = await query.order('created_at', ascending: false) as List<dynamic>;
       var list = data.map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>)).toList();
+      if (importSource != null) {
+        list = _filterStagedByImportSource(list, importSource);
+      }
       if (routeDay != null) {
         final dn = _dayOnly(routeDay);
         list = list.where((s) {
@@ -1126,24 +1151,37 @@ class PartnerService {
       }
       return list;
     } catch (_) {
-      final all = await fetchRouteSharesForCompany(companyId, limit: 500);
-      var list = all.where((s) => s.shiftId == null && s.ackStatus == 'pending').toList();
-      if (routeDay != null) {
-        final dn = _dayOnly(routeDay);
-        list = list.where((s) {
-          final sd = _dayOnly(s.shareDate);
-          return sd == dn;
-        }).toList();
+      // Fallback: filtrer staged client-side (ikke shift_id — staged kan ha skift).
+      try {
+        final all = await fetchRouteSharesForCompany(companyId, limit: 500);
+        var list = all.where((s) => s.isStaged).toList();
+        list = _filterStagedByImportSource(list, importSource);
+        if (routeDay != null) {
+          final dn = _dayOnly(routeDay);
+          list = list.where((s) {
+            final sd = _dayOnly(s.shareDate);
+            final rs =
+                s.routeStartAt != null ? _dayOnly(s.routeStartAt!.toLocal()) : null;
+            return sd == dn || rs == dn;
+          }).toList();
+        }
+        return list;
+      } catch (_) {
+        return const [];
       }
-      return list;
     }
   }
 
   static Future<int> countStagedRouteShares(
     String companyId, {
     DateTime? routeDay,
+    String? importSource,
   }) async {
-    final list = await fetchStagedRouteShares(companyId, routeDay: routeDay);
+    final list = await fetchStagedRouteShares(
+      companyId,
+      routeDay: routeDay,
+      importSource: importSource,
+    );
     return list.length;
   }
 
@@ -2143,18 +2181,12 @@ class PartnerService {
       category: 'routes',
       fileName: storagePath.split('/').last,
     );
-    return result.path;
+    return CompanyFileStorage.toStorageReference(result);
   }
 
   static Future<String> getRoutePdfSignedUrl(String storagePath) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
-    final raw = storagePath.trim();
-    if (raw.isEmpty) throw ArgumentError('PDF-sti mangler');
-    if (CompanyFileStorage.isDropboxPath(raw)) {
-      return CompanyFileStorage.getDropboxTemporaryLink(raw);
-    }
-    final path = raw.replaceFirst(RegExp(r'^/'), '');
-    return _client.storage.from('documents').createSignedUrl(path, 3600);
+    return StorageFileAccess.resolveViewUrl(storagePath);
   }
 
   /// Leser kunder (navn + telefon) fra rute-PDF for sjåfør på valgt dag.
@@ -2223,16 +2255,7 @@ class PartnerService {
 
   /// Visnings-URL for lagret filsti (Supabase eller Dropbox).
   static Future<String> resolveStorageUrl(String storagePathOrUrl) async {
-    final u = storagePathOrUrl.trim();
-    if (u.startsWith('http://') || u.startsWith('https://')) {
-      return u;
-    }
-    if (CompanyFileStorage.isDropboxReference(storagePathOrUrl)) {
-      return CompanyFileStorage.resolveDisplayUrl(storagePathOrUrl);
-    }
-    final raw = storagePathOrUrl.trim().replaceFirst(RegExp(r'^/'), '');
-    if (raw.isEmpty) throw ArgumentError('Sti mangler');
-    return _client.storage.from('documents').createSignedUrl(raw, 3600);
+    return StorageFileAccess.resolveViewUrl(storagePathOrUrl);
   }
 
   // ── Flåte / skift / sporingsdashboard ─────────────────────────────────
@@ -2785,18 +2808,17 @@ class PartnerService {
   }
 
   static bool _sapInboxMatchesStagedShare(SapRouteInboxItem item, PartnerRouteShare share) {
-    if (share.pdfStoragePath == item.pdfStoragePath) return true;
+    if ((share.stagedImportSource ?? stagedImportManual) == stagedImportManual) {
+      return false;
+    }
+    if (share.pdfStoragePath.trim() == item.pdfStoragePath.trim()) return true;
+    if (share.stagedImportSource != stagedImportSap) return false;
     final title = (share.title ?? '').toLowerCase();
     final fileName = item.fileName.toLowerCase();
     if (title.contains(fileName)) return true;
     if (share.pdfStoragePath.toLowerCase().contains(fileName)) return true;
     final base = fileName.replaceAll('.pdf', '');
     if (base.isNotEmpty && title.contains(base)) return true;
-    if (item.contentSha256 != null &&
-        item.contentSha256!.isNotEmpty &&
-        share.pdfStoragePath.toLowerCase().contains(base)) {
-      return true;
-    }
     return false;
   }
 
@@ -2806,6 +2828,9 @@ class PartnerService {
     required String vehicleId,
   }) {
     if (share.partnerVehicleId != vehicleId || !share.isStaged) return false;
+    if ((share.stagedImportSource ?? stagedImportManual) != stagedImportSap) {
+      return false;
+    }
     final fn = fileName.toLowerCase();
     final title = (share.title ?? '').toLowerCase();
     if (title.contains(fn)) return true;
@@ -2868,15 +2893,40 @@ class PartnerService {
     }).eq('id', inboxId);
   }
 
+  static String? _supabaseDocumentsPath(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return null;
+    if (CompanyFileStorage.isDropboxReference(t)) return null;
+
+    if (t.startsWith('http://') || t.startsWith('https://')) {
+      final uri = Uri.tryParse(t);
+      if (uri == null) return null;
+      final segments = uri.pathSegments;
+      final idx = segments.indexOf('documents');
+      if (idx >= 0 && idx + 1 < segments.length) {
+        return Uri.decodeComponent(segments.sublist(idx + 1).join('/'));
+      }
+      return null;
+    }
+
+    if (t.startsWith('dropbox://')) return null;
+    if (CompanyFileStorage.isDropboxPath(t)) return null;
+    return t.replaceFirst(RegExp(r'^/'), '');
+  }
+
   static Future<Uint8List?> downloadRoutePdfBytes(String storagePath) async {
     if (!_ok) return null;
-    try {
-      final url = await getRoutePdfSignedUrl(storagePath);
-      final res = await http.get(Uri.parse(url));
-      if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
-        return res.bodyBytes;
-      }
-    } catch (_) {}
+    final raw = storagePath.trim();
+    if (raw.isEmpty) return null;
+
+    final cached = RoutePdfBytesCache.forShare(null, raw);
+    if (cached != null) return cached;
+
+    final bytes = await StorageFileAccess.downloadBytes(raw);
+    if (bytes != null && bytes.isNotEmpty) {
+      RoutePdfBytesCache.putPath(raw, bytes);
+      return bytes;
+    }
     return null;
   }
 
@@ -2890,10 +2940,13 @@ class PartnerService {
     required DateTime routeDate,
     String? notes,
     RoutePdfParseBundle? parsed,
+    String stagedImportSource = stagedImportManual,
   }) async {
-    final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-    final path =
-        'company_$companyId/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${vehicle.unitCode}_$safeName';
+    final safeName = StoragePathSanitizer.fileName(fileName);
+    final safeUnit = StoragePathSanitizer.segment(vehicle.unitCode, fallback: 'mavi');
+    final path = StoragePathSanitizer.storagePath(
+      'company_$companyId/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${safeUnit}_$safeName',
+    );
     final storedPath =
         await uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
     await PostalCodeRegistry.ensureLoaded();
@@ -2926,11 +2979,14 @@ class PartnerService {
         isDailyShare: true,
         createdAt: DateTime.now(),
         dispatchStatus: 'staged',
+        stagedImportSource: stagedImportSource,
         pdfSearchText: pdfText.isEmpty ? null : pdfText,
         partnerVehicleId: vehicle.id,
         notes: composedNotes.isEmpty ? null : composedNotes,
       ),
     );
+    RoutePdfBytesCache.putShare(share.id, bytes);
+    RoutePdfBytesCache.putPath(storedPath, bytes);
     if (pdfText.isNotEmpty) {
       await saveRoutePdfSearchText(share.id, pdfText);
     }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/services/storage/company_file_storage.dart';
+import '../../core/services/storage/supabase_dropbox_migration_service.dart';
 import '../../core/services/storage/dropbox_storage_modules.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -18,9 +19,8 @@ class DropboxStorageSettingsScreen extends StatefulWidget {
 class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScreen> {
   bool _loading = true;
   bool _busy = false;
+  int _pendingMigration = 0;
   Map<String, dynamic>? _status;
-  Map<String, bool> _modules = DropboxStorageModule.defaultsEnabled();
-
   @override
   void initState() {
     super.initState();
@@ -36,7 +36,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
       await _load();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Dropbox er koblet! Store filer lagres nå i Dropbox.'),
+          content: Text('Dropbox er koblet! Nye filer lagres nå i Dropbox.'),
           duration: Duration(seconds: 6),
         ),
       );
@@ -47,10 +47,11 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
     setState(() => _loading = true);
     try {
       final s = await CompanyFileStorage.dropboxStatus();
+      final pending = await SupabaseDropboxMigrationService.countPendingMigration();
       if (mounted) {
         setState(() {
           _status = s;
-          _modules = DropboxStorageModule.fromStatusJson(s);
+          _pendingMigration = pending;
           _loading = false;
         });
       }
@@ -102,25 +103,28 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
     }
   }
 
-  Future<void> _toggleModule(DropboxStorageModule mod, bool value) async {
-    setState(() {
-      _modules = Map.from(_modules)..[mod.key] = value;
-      _busy = true;
-    });
+  Future<void> _migrateBatch() async {
+    setState(() => _busy = true);
     try {
-      final updated = await CompanyFileStorage.updateStorageModules(_modules);
-      if (mounted) {
-        setState(() => _modules = updated);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${mod.label}: ${value ? "Dropbox" : "kun Supabase"}')),
-        );
-      }
+      final result = await SupabaseDropboxMigrationService.migrateBatch(limit: 25);
+      await _load();
+      if (!mounted) return;
+      final detail = result.errors.isEmpty
+          ? ''
+          : '\n${result.errors.join('\n')}';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Migrert: ${result.migrated} · feilet: ${result.failed} · hoppet over: ${result.skipped}$detail',
+          ),
+          duration: const Duration(seconds: 8),
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke lagre: $e')),
+          SnackBar(content: Text('Migrering feilet: $e'), backgroundColor: Colors.red),
         );
-        await _load();
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -208,9 +212,9 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Supabase har begrenset plass (f.eks. 500 MB). DriftPro lagrer '
-                          'små filer i Supabase og filer over 1 MB i mappen '
-                          'DriftPro på din Dropbox — organisert per bedrift.',
+                          'Supabase har begrenset plass. Når Dropbox er koblet lagrer '
+                          'DriftPro alle filer i Dropbox — automatisk sortert i mapper '
+                          'per funksjon (ruter, HMS, dokumenter, osv.) per bedrift.',
                           style: DriftProTheme.bodyMd.copyWith(
                             color: isDark ? Colors.white70 : Colors.grey[700],
                           ),
@@ -241,7 +245,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                             title: Text(_status?['account_email']?.toString() ?? 'Tilkoblet'),
                             subtitle: Text(
                               'Mappe: ${_status?['root_folder'] ?? '/DriftPro'}\n'
-                              'Grense Supabase: ${((_status?['large_file_threshold_bytes'] as int?) ?? 1048576) / 1048576} MB',
+                              'Lagring: ${((_status?['large_file_threshold_bytes'] as int?) ?? 0) == 0 ? 'Alltid Dropbox' : 'Supabase under ${((_status?['large_file_threshold_bytes'] as int?) ?? 0) / 1048576} MB'}',
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -256,7 +260,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                             leading: Icon(Icons.cloud_off_outlined),
                             title: Text('Ikke koblet'),
                             subtitle: Text(
-                              'Koble Dropbox for å lagre PDF-ruter, avviksbilder og dokumenter utover 1 MB.',
+                              'Koble Dropbox for å lagre alle filer utenfor Supabase-kvoten.',
                             ),
                           ),
                           FilledButton.icon(
@@ -276,6 +280,42 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                   ),
                 ),
                 if (connected) ...[
+                  if (_pendingMigration > 0) ...[
+                    const SizedBox(height: 16),
+                    Card(
+                      color: const Color(0xFFFFF8E1),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'Migrer gamle filer fra Supabase',
+                              style: DriftProTheme.headingSm,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '$_pendingMigration fil(er) ligger fortsatt i Supabase med gamle stier. '
+                              'Kjør migrering én gang — deretter lagres alt nytt direkte i Dropbox.',
+                              style: DriftProTheme.bodySm,
+                            ),
+                            const SizedBox(height: 10),
+                            FilledButton.icon(
+                              onPressed: _busy ? null : _migrateBatch,
+                              icon: _busy
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : const Icon(Icons.cloud_upload_outlined),
+                              label: Text('Migrer neste batch (max 25)'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Card(
                     child: Padding(
@@ -283,24 +323,22 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Moduler som bruker Dropbox', style: DriftProTheme.headingSm),
+                          Text('Automatiske mapper', style: DriftProTheme.headingSm),
                           const SizedBox(height: 4),
                           Text(
-                            'Filer over 1 MB i påslåtte moduler lagres i Dropbox. '
-                            'Avslåtte moduler bruker alltid Supabase.',
+                            'Alle opplastinger (ruter, avvik, dokumenter, bilder m.m.) '
+                            'lagres automatisk i riktig mappe under Dropbox.',
                             style: DriftProTheme.bodySm.copyWith(
                               color: isDark ? Colors.white60 : Colors.grey[600],
                             ),
                           ),
                           const SizedBox(height: 8),
                           ...DropboxStorageModule.values.map(
-                            (m) => SwitchListTile(
+                            (m) => ListTile(
                               contentPadding: EdgeInsets.zero,
+                              dense: true,
+                              leading: const Icon(Icons.folder_outlined, size: 20),
                               title: Text(m.label, style: DriftProTheme.bodyMd),
-                              value: _modules[m.key] ?? true,
-                              onChanged: _busy
-                                  ? null
-                                  : (v) => _toggleModule(m, v),
                             ),
                           ),
                         ],
@@ -324,11 +362,14 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                   child: const Text(
                     '/DriftPro/\n'
                     '  company_<din-bedrift-id>/\n'
-                    '    routes/          ← rute-PDF\n'
+                    '    routes/          ← rute-PDF (tildelt)\n'
+                    '    sap_inbox/       ← rute-PDF fra e-post\n'
                     '    tickets/         ← avvik-bilder\n'
                     '    dms/             ← dokumenter\n'
                     '    partners/        ← partner-filer\n'
-                    '    employees/       ← ansattfiler',
+                    '    employees/       ← ansattfiler\n'
+                    '    hms/             ← HMS, SJA, utstyr\n'
+                    '    whistleblowing/  ← varsling',
                     style: TextStyle(fontFamily: 'monospace', fontSize: 12),
                   ),
                 ),

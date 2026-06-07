@@ -7,6 +7,7 @@ class DmsFolder {
   final String? description;
   final String? passwordHash;
   final bool isPrivate;
+  final bool isSharedMavi;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -19,6 +20,7 @@ class DmsFolder {
     this.description,
     this.passwordHash,
     this.isPrivate = false,
+    this.isSharedMavi = false,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -44,6 +46,7 @@ class DmsFolder {
   Map<String, dynamic> toInsertJson({
     String? passwordHash,
     bool? isPrivate,
+    bool? isSharedMavi,
     String? description,
   }) =>
       {
@@ -54,5 +57,6 @@ class DmsFolder {
         if (passwordHash != null && passwordHash.isNotEmpty)
           'password_hash': passwordHash,
         if (isPrivate != null) 'is_private': isPrivate,
+        if (isSharedMavi != null) 'is_shared_mavi': isSharedMavi,
       };
 }

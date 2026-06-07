@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/constants/vacation_year_window.dart';
 import '../../../core/services/absence/absence_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/business_days.dart';
+import '../../../core/utils/norwegian_holidays.dart';
 import '../../../models/absence.dart';
 import '../../../models/user_profile.dart';
 
@@ -17,6 +20,8 @@ class TeamLeaveCalendar extends StatefulWidget {
   final ValueChanged<DateTime> onMonthChanged;
   final void Function(DateTime date, List<Absence> dayAbsences)? onDayTap;
   final Color Function(AbsenceType) colorForType;
+  final Set<AbsenceType>? typesFilter;
+  final bool includePending;
 
   const TeamLeaveCalendar({
     super.key,
@@ -27,6 +32,8 @@ class TeamLeaveCalendar extends StatefulWidget {
     required this.colorForType,
     this.filterUserId,
     this.onDayTap,
+    this.typesFilter,
+    this.includePending = false,
   });
 
   @override
@@ -35,7 +42,7 @@ class TeamLeaveCalendar extends StatefulWidget {
 
 class _TeamLeaveCalendarState extends State<TeamLeaveCalendar> {
   static const _weekdays = ['Ma', 'Ti', 'On', 'To', 'Fr', 'Lø', 'Sø'];
-  static const double _monthCellH = 66;
+  static const double _monthCellH = 78;
 
   late LeaveCalendarScale _scale;
   late DateTime _focus;
@@ -57,9 +64,18 @@ class _TeamLeaveCalendarState extends State<TeamLeaveCalendar> {
   }
 
   List<Absence> get _filtered {
-    final base = widget.absences.where((a) => a.status == AbsenceStatus.godkjent);
-    if (widget.filterUserId == null) return base.toList();
-    return base.where((a) => a.userId == widget.filterUserId).toList();
+    var base = widget.absences.where((a) {
+      if (a.status == AbsenceStatus.avvist) return false;
+      if (a.status == AbsenceStatus.godkjent) return true;
+      return widget.includePending && a.status == AbsenceStatus.ventende;
+    });
+    if (widget.typesFilter != null) {
+      base = base.where((a) => widget.typesFilter!.contains(a.type));
+    }
+    if (widget.filterUserId != null) {
+      base = base.where((a) => a.userId == widget.filterUserId);
+    }
+    return base.toList();
   }
 
   void _notifyParent() {
@@ -153,7 +169,16 @@ class _TeamLeaveCalendarState extends State<TeamLeaveCalendar> {
                 ),
               ),
               const SizedBox(height: 8),
-              _Legend(colorForType: widget.colorForType),
+              _MonthStats(
+                focus: _focus,
+                absences: _filtered,
+                scale: _scale,
+              ),
+              const SizedBox(height: 4),
+              _Legend(
+                colorForType: widget.colorForType,
+                typesFilter: widget.typesFilter,
+              ),
             ],
           ),
           ),
@@ -242,13 +267,14 @@ class _TeamLeaveCalendarState extends State<TeamLeaveCalendar> {
                         ),
                       _miniDropdown<int>(
                         value: _focus.year,
-                        items: List.generate(
-                          11,
-                          (i) => DropdownMenuItem(
-                            value: DateTime.now().year - 5 + i,
-                            child: Text('${DateTime.now().year - 5 + i}'),
-                          ),
-                        ),
+                        items: VacationYearWindow.years
+                            .map(
+                              (y) => DropdownMenuItem(
+                                value: y,
+                                child: Text('$y'),
+                              ),
+                            )
+                            .toList(),
                         onChanged: (y) {
                           if (y == null) return;
                           setState(() {
@@ -459,12 +485,28 @@ class _TeamLeaveCalendarState extends State<TeamLeaveCalendar> {
   Widget _dayCell(DateTime date, int dayNum, bool isDark, {required bool compact}) {
     final dayAbsences = _onDate(date);
     final isToday = DateUtils.isSameDay(date, DateTime.now());
+    final isWeekend = date.weekday >= 6;
+    final isRedDay = NorwegianHolidays.isRedDay(date);
+    final holidayName = BusinessDays.holidayName(date);
     final hasFerie = dayAbsences.any((a) => a.type == AbsenceType.ferie);
     final primaryColor = dayAbsences.isEmpty
         ? null
         : (hasFerie
             ? widget.colorForType(AbsenceType.ferie)
             : widget.colorForType(dayAbsences.first.type));
+
+    Color? bg;
+    if (primaryColor != null) {
+      bg = primaryColor.withValues(alpha: isDark ? 0.28 : 0.18);
+    } else if (isRedDay) {
+      bg = Colors.red.withValues(alpha: isDark ? 0.22 : 0.1);
+    } else if (isWeekend) {
+      bg = isDark
+          ? Colors.white.withValues(alpha: 0.04)
+          : Colors.grey.shade100.withValues(alpha: 0.7);
+    } else if (isToday) {
+      bg = DriftProTheme.primaryGreen.withValues(alpha: 0.1);
+    }
 
     return Material(
       color: Colors.transparent,
@@ -473,40 +515,70 @@ class _TeamLeaveCalendarState extends State<TeamLeaveCalendar> {
         onTap: widget.onDayTap != null
             ? () => widget.onDayTap!(date, dayAbsences)
             : null,
-        child: Container(
+        child: Tooltip(
+          message: holidayName ?? (dayAbsences.isNotEmpty
+              ? dayAbsences.map((a) => '${a.userName ?? "?"}: ${a.type.label}').join('\n')
+              : ''),
+          child: Container(
           margin: const EdgeInsets.all(1.5),
           padding: EdgeInsets.symmetric(
             horizontal: compact ? 2 : 4,
             vertical: compact ? 2 : 6,
           ),
           decoration: BoxDecoration(
-            color: primaryColor != null
-                ? primaryColor.withValues(alpha: isDark ? 0.28 : 0.18)
-                : (isToday
-                    ? DriftProTheme.primaryGreen.withValues(alpha: 0.1)
-                    : null),
+            color: bg,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: isToday
                   ? DriftProTheme.primaryGreen
-                  : (primaryColor != null
-                      ? primaryColor.withValues(alpha: 0.5)
-                      : (isDark ? DriftProTheme.dividerDark : Colors.grey.shade200)),
-              width: isToday ? 1.5 : 1,
+                  : (isRedDay
+                      ? Colors.red.shade400
+                      : (primaryColor != null
+                          ? primaryColor.withValues(alpha: 0.5)
+                          : (isDark ? DriftProTheme.dividerDark : Colors.grey.shade200))),
+              width: isToday ? 1.5 : (isRedDay ? 1.2 : 1),
             ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                '$dayNum',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: compact ? 12 : 13,
-                  fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (isRedDay)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 2),
+                      child: Icon(
+                        Icons.circle,
+                        size: 5,
+                        color: Colors.red.shade700,
+                      ),
+                    ),
+                  Text(
+                    '$dayNum',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: compact ? 12 : 13,
+                      fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
+                      color: isRedDay
+                          ? Colors.red.shade800
+                          : (isDark ? Colors.white : Colors.black87),
+                    ),
+                  ),
+                ],
               ),
+              if (isRedDay && compact && holidayName != null)
+                Text(
+                  holidayName.split(' ').first,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 7,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.red.shade700,
+                  ),
+                ),
               if (dayAbsences.isNotEmpty) ...[
                 const SizedBox(height: 2),
                 if (compact)
@@ -561,19 +633,73 @@ class _TeamLeaveCalendarState extends State<TeamLeaveCalendar> {
             ],
           ),
         ),
+        ),
       ),
+    );
+  }
+}
+
+class _MonthStats extends StatelessWidget {
+  final DateTime focus;
+  final List<Absence> absences;
+  final LeaveCalendarScale scale;
+
+  const _MonthStats({
+    required this.focus,
+    required this.absences,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (scale != LeaveCalendarScale.month) return const SizedBox.shrink();
+
+    final redCount = NorwegianHolidays.forMonth(focus.year, focus.month).length;
+    final people = absences.map((a) => a.userId).toSet().length;
+    final pending = absences.where((a) => a.status == AbsenceStatus.ventende).length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: Colors.grey.shade200),
+        ),
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 12,
+        runSpacing: 4,
+        children: [
+          _stat(Icons.people_outline, '$people ansatte', DriftProTheme.primaryGreen),
+          _stat(Icons.hourglass_top, '$pending venter', DriftProTheme.warning),
+          _stat(Icons.event_busy, '$redCount røde dager', Colors.red.shade700),
+        ],
+      ),
+    );
+  }
+
+  Widget _stat(IconData icon, String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600)),
+      ],
     );
   }
 }
 
 class _Legend extends StatelessWidget {
   final Color Function(AbsenceType) colorForType;
+  final Set<AbsenceType>? typesFilter;
 
-  const _Legend({required this.colorForType});
+  const _Legend({required this.colorForType, this.typesFilter});
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final types = typesFilter ?? AbsenceType.values.toSet();
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
       decoration: BoxDecoration(
@@ -587,23 +713,55 @@ class _Legend extends StatelessWidget {
         alignment: WrapAlignment.center,
         spacing: 10,
         runSpacing: 4,
-        children: AbsenceType.values.map((t) {
-          return Row(
+        children: [
+          ...types.map((t) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: colorForType(t),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(t.label, style: const TextStyle(fontSize: 10)),
+              ],
+            );
+          }),
+          Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: colorForType(t),
+                  color: Colors.red.shade600,
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
               const SizedBox(width: 4),
-              Text(t.label, style: const TextStyle(fontSize: 10)),
+              const Text('Rød dag', style: TextStyle(fontSize: 10)),
             ],
-          );
-        }).toList(),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.orange.shade700),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Text('Venter', style: TextStyle(fontSize: 10)),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -18,12 +18,6 @@ type Conn = {
   storage_modules?: Record<string, boolean>;
 };
 
-function isCategoryEnabled(conn: Conn, category: string): boolean {
-  const m = conn.storage_modules;
-  if (!m || typeof m !== "object") return true;
-  return m[category] !== false;
-}
-
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -129,16 +123,40 @@ async function ensureFolder(token: string, folderPath: string) {
   if (err.includes("folder/conflict")) return;
 }
 
+async function ensureFolderPath(token: string, fullPath: string) {
+  const normalized = fullPath.replace(/\/+$/, "") || "/";
+  const parts = normalized.split("/").filter((p) => p.length > 0);
+  let current = "";
+  for (const part of parts) {
+    if (part === "." || part === "..") continue;
+    current += `/${sanitizeSegment(part, "mappe")}`;
+    await ensureFolder(token, current);
+  }
+}
+
+function sanitizeSegment(raw: string, fallback = "fil"): string {
+  let s = (raw ?? "").trim();
+  if (!s) return fallback;
+  s = s.replace(/\.\./g, "_");
+  s = s.replace(/[/\\]/g, "_");
+  s = s.replace(/[^a-zA-Z0-9._-]/g, "_");
+  s = s.replace(/_+/g, "_");
+  s = s.replace(/^\.+/, "");
+  s = s.replace(/\.+$/, "");
+  return s || fallback;
+}
+
 function buildStoragePath(
   root: string,
   companyId: string,
   category: string,
   fileName: string,
 ): string {
-  const safeCat = category.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const safeCat = sanitizeSegment(category, "filer");
+  const safeName = sanitizeSegment(fileName, "fil.pdf");
+  const safeCompany = sanitizeSegment(companyId, "bedrift");
   const date = new Date().toISOString().slice(0, 10);
-  return `${root}/company_${companyId}/${safeCat}/${date}/${Date.now()}_${safeName}`;
+  return `${root}/company_${safeCompany}/${safeCat}/${date}/${Date.now()}_${safeName}`;
 }
 
 async function companyExists(
@@ -431,27 +449,9 @@ Deno.serve(async (req) => {
       }
 
       const bytes = Uint8Array.from(atob(body.bytes_base64), (c) => c.charCodeAt(0));
-      const threshold = conn.large_file_threshold_bytes ?? 1_048_576;
-
-      if (!isCategoryEnabled(conn, body.category)) {
-        return json({
-          use_supabase: true,
-          reason: `Modul «${body.category}» er av for Dropbox`,
-          size: bytes.length,
-        });
-      }
-
-      if (bytes.length <= threshold) {
-        return json({
-          use_supabase: true,
-          reason: `Fil under ${threshold} bytes — bruk Supabase Storage`,
-          size: bytes.length,
-        });
-      }
-
       const dropboxPath = buildStoragePath(root, companyId, body.category, body.file_name);
       const folder = dropboxPath.substring(0, dropboxPath.lastIndexOf("/"));
-      await ensureFolder(token, folder);
+      await ensureFolderPath(token, folder);
 
       const upRes = await dropboxApi(token, "content", "/files/upload", {
         method: "POST",
@@ -481,6 +481,32 @@ Deno.serve(async (req) => {
         dropbox_id: meta.id,
         size: bytes.length,
         temporary_link: linkJson.link,
+      });
+    }
+
+    if (action === "download_bytes" && req.method === "POST") {
+      const { path } = await req.json() as { path: string };
+      if (!path?.startsWith("/")) return json({ error: "path må starte med /" }, 400);
+
+      const dlRes = await dropboxApi(token, "content", "/files/download", {
+        method: "POST",
+        dropboxArg: { path },
+      });
+      if (!dlRes.ok) {
+        const err = await dlRes.text();
+        return json({ error: err.slice(0, 300) }, 500);
+      }
+      const buf = await dlRes.arrayBuffer();
+      const bin = new Uint8Array(buf);
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < bin.length; i += chunk) {
+        binary += String.fromCharCode(...bin.subarray(i, i + chunk));
+      }
+      return json({
+        ok: true,
+        bytes_base64: btoa(binary),
+        size: bin.length,
       });
     }
 

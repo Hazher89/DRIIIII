@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/services/dms/dms_file_editor_service.dart';
 import '../../core/services/dms/dms_print_service.dart';
 import '../../core/services/dms/dms_service.dart';
+import '../../core/services/storage/storage_file_access.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/file_type_resolver.dart';
 import '../../core/utils/office_file_type.dart';
@@ -16,6 +17,9 @@ import 'preview/excel_sheet_editor.dart';
 import '../../widgets/platform_embedded_view.dart';
 import '../../widgets/platform_media_view.dart';
 import '../../widgets/platform_pdf_view.dart';
+import '../partners/widgets/partner_route_pdf_bytes_url_stub.dart'
+    if (dart.library.io) '../partners/widgets/partner_route_pdf_bytes_url_io.dart'
+    if (dart.library.html) '../partners/widgets/partner_route_pdf_bytes_url_web.dart' as pdf_bytes_url;
 
 class FileViewerScreen extends StatefulWidget {
   final DmsFile file;
@@ -73,22 +77,38 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
 
       _officeType = OfficeFileTypeHelper.fromExtension(_resolvedExt);
 
-      final url = await DmsService.getDownloadUrl(
-        widget.file.storagePath,
-        storageProvider: widget.file.storageProvider,
-      );
-      var response = await http.get(
-        Uri.parse(url),
-        headers: const {'Range': 'bytes=0-8191'},
-      );
-      if (response.statusCode != 206 && response.statusCode != 200) {
-        response = await http.get(Uri.parse(url));
+      String? url;
+      Uint8List? directBytes;
+      try {
+        url = await DmsService.getDownloadUrl(
+          widget.file.storagePath,
+          storageProvider: widget.file.storageProvider,
+        );
+      } on StorageBytesReady catch (e) {
+        directBytes = e.bytes;
       }
 
-      var sample = response.bodyBytes;
+      late List<int> sampleList;
+      String? contentType;
+      if (directBytes != null) {
+        sampleList = directBytes.length > 8192
+            ? directBytes.sublist(0, 8192)
+            : directBytes;
+      } else {
+        var response = await http.get(
+          Uri.parse(url!),
+          headers: const {'Range': 'bytes=0-8191'},
+        );
+        if (response.statusCode != 206 && response.statusCode != 200) {
+          response = await http.get(Uri.parse(url));
+        }
+        sampleList = response.bodyBytes;
+        contentType = response.headers['content-type'];
+      }
+
+      var sample = sampleList;
       if (sample.length > 8192) sample = sample.sublist(0, 8192);
 
-      final contentType = response.headers['content-type'];
       var kind = FileTypeResolver.resolve(
         fileName: widget.file.name,
         storagePath: widget.file.storagePath,
@@ -105,9 +125,13 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
 
       List<int>? fullBytes;
       if (needsFullBytes) {
-        fullBytes = response.bodyBytes.length >= 8192
-            ? (await http.get(Uri.parse(url))).bodyBytes
-            : List<int>.from(response.bodyBytes);
+        if (directBytes != null) {
+          fullBytes = directBytes;
+        } else {
+          fullBytes = sampleList.length >= 8192
+              ? (await http.get(Uri.parse(url!))).bodyBytes
+              : List<int>.from(sampleList);
+        }
         if (fullBytes.length > _maxBytes) {
           throw Exception(
             'Filen er for stor (${(fullBytes.length / 1024 / 1024).toStringAsFixed(1)} MB). '
@@ -119,6 +143,10 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
       if (_officeType != OfficeFileType.unknown ||
           kind == FilePreviewKind.office) {
         kind = FilePreviewKind.office;
+      }
+
+      if (directBytes != null && (url == null || url.isEmpty) && fullBytes != null) {
+        url = await pdf_bytes_url.pdfBytesToViewUrl(Uint8List.fromList(fullBytes));
       }
 
       if (!mounted) return;

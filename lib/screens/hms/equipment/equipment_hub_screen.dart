@@ -52,7 +52,7 @@ class _EquipmentHubScreenState extends State<EquipmentHubScreen>
       if (companyId == null) return;
 
       final profiles =
-          await SupabaseService.fetchProfiles(companyId: companyId);
+          await SupabaseService.fetchMaviEmployees(companyId: companyId);
       _profileNames = {for (final p in profiles) p.id: p.fullName};
 
       _all = await EquipmentService.fetchAll(

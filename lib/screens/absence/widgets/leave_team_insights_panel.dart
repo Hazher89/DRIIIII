@@ -21,7 +21,8 @@ class LeaveTeamInsightsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final topEgen = snapshot.topEgenmeldingUsers;
-    final exhausted = snapshot.egenmeldingExhausted;
+    final exhausted =
+        snapshot.egenmeldingExhausted(companySettings.egenmeldingDaysPerYear);
     final typeEntries = snapshot.daysByTypeYtd.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -240,7 +241,8 @@ class LeaveTeamInsightsPanel extends StatelessWidget {
                 barRods: [
                   BarChartRodData(
                     toY: rows[i].egenmeldingUsed.toDouble(),
-                    color: rows[i].egenmeldingExhausted
+                    color: rows[i].egenmeldingExhaustedFor(
+                            companySettings.egenmeldingDaysPerYear)
                         ? DriftProTheme.error
                         : DriftProTheme.absenceSickSelf,
                     width: 16,
@@ -389,7 +391,8 @@ class LeaveTeamInsightsPanel extends StatelessWidget {
           ),
           const Divider(height: 1),
           ...snapshot.employees.map((e) {
-            final egenColor = e.egenmeldingExhausted
+            final egenColor = e.egenmeldingExhaustedFor(
+                    companySettings.egenmeldingDaysPerYear)
                 ? DriftProTheme.error
                 : e.egenmeldingUsed >= companySettings.egenmeldingDaysPerYear - 3
                     ? DriftProTheme.warning

@@ -34,7 +34,7 @@ class _CompetenceMatrixScreenState extends State<CompetenceMatrixScreen> {
       if (companyId == null) return;
 
       await CompetenceService.seedDefaults(companyId);
-      final profiles = await SupabaseService.fetchProfiles(companyId: companyId);
+      final profiles = await SupabaseService.fetchMaviEmployees(companyId: companyId);
       final docs = await CompetenceService.fetchCompetenceDocuments(
         companyId: companyId,
       );

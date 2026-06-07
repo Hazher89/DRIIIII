@@ -5,8 +5,15 @@ import '../../../models/absence.dart';
 
 class LeaveQuickActions extends StatelessWidget {
   final void Function(AbsenceType type) onTypeSelected;
+  final bool egenmeldingBlocked;
+  final VoidCallback? onEgenmeldingBlocked;
 
-  const LeaveQuickActions({super.key, required this.onTypeSelected});
+  const LeaveQuickActions({
+    super.key,
+    required this.onTypeSelected,
+    this.egenmeldingBlocked = false,
+    this.onEgenmeldingBlocked,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +40,10 @@ class LeaveQuickActions extends StatelessWidget {
               icon: Icons.sick_outlined,
               color: DriftProTheme.absenceSickSelf,
               isDark: isDark,
-              onTap: () => onTypeSelected(AbsenceType.egenmelding),
+              disabled: egenmeldingBlocked,
+              onTap: egenmeldingBlocked
+                  ? (onEgenmeldingBlocked ?? () {})
+                  : () => onTypeSelected(AbsenceType.egenmelding),
             ),
             _ActionChip(
               label: 'Sykt barn',
@@ -69,6 +79,7 @@ class _ActionChip extends StatelessWidget {
   final Color color;
   final bool isDark;
   final VoidCallback onTap;
+  final bool disabled;
 
   const _ActionChip({
     required this.label,
@@ -76,10 +87,12 @@ class _ActionChip extends StatelessWidget {
     required this.color,
     required this.isDark,
     required this.onTap,
+    this.disabled = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final chipColor = disabled ? Colors.grey : color;
     return Material(
       color: isDark ? DriftProTheme.cardDark : Colors.white,
       borderRadius: BorderRadius.circular(14),
@@ -90,14 +103,25 @@ class _ActionChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withValues(alpha: 0.35)),
+            border: Border.all(
+              color: chipColor.withValues(alpha: disabled ? 0.2 : 0.35),
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: color, size: 20),
+              Icon(
+                disabled ? Icons.block : icon,
+                color: chipColor,
+                size: 20,
+              ),
               const SizedBox(width: 8),
-              Text(label, style: DriftProTheme.labelMd),
+              Text(
+                disabled ? '$label (oppbrukt)' : label,
+                style: DriftProTheme.labelMd.copyWith(
+                  color: disabled ? Colors.grey : null,
+                ),
+              ),
             ],
           ),
         ),

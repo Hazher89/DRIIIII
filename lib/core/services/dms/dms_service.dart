@@ -1,10 +1,14 @@
 import 'dart:typed_data';
+
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../models/dms/dms_folder.dart';
 import '../../../models/dms/dms_file.dart';
 import '../../../models/dms/dms_permission.dart';
 import '../../utils/file_type_resolver.dart';
 import '../storage/company_file_storage.dart';
+import '../storage/storage_file_access.dart';
+import '../supabase_service.dart';
 
 class DmsService {
   static SupabaseClient get client => Supabase.instance.client;
@@ -36,6 +40,7 @@ class DmsService {
     String? description,
     String? passwordHash,
     bool isPrivate = false,
+    bool isSharedMavi = false,
   }) async {
     final user = client.auth.currentUser;
     if (user == null) throw Exception('Ingen innlogget bruker funnet.');
@@ -46,6 +51,7 @@ class DmsService {
       'company_id': companyId,
       'created_by': user.id,
       'is_private': isPrivate,
+      'is_shared_mavi': isSharedMavi,
     };
     if (description != null && description.isNotEmpty) {
       payload['description'] = description;
@@ -60,6 +66,7 @@ class DmsService {
     } catch (e) {
       payload.remove('password_hash');
       payload.remove('is_private');
+      payload.remove('is_shared_mavi');
       payload.remove('description');
       data = await client.from('dms_folders').insert({
         'name': name,
@@ -80,6 +87,7 @@ class DmsService {
     String? description,
     String? passwordHash,
     bool isPrivate = false,
+    bool isSharedMavi = false,
     List<String> shareUserIds = const [],
     List<String> shareDepartmentIds = const [],
   }) async {
@@ -90,7 +98,14 @@ class DmsService {
       description: description,
       passwordHash: passwordHash,
       isPrivate: isPrivate,
+      isSharedMavi: isSharedMavi,
     );
+    if (isSharedMavi) {
+      await grantPermissionToAllMaviEmployees(
+        folderId: folder.id,
+        companyId: companyId,
+      );
+    }
     for (final uid in shareUserIds) {
       await grantPermission(
         folderId: folder.id,
@@ -202,7 +217,7 @@ class DmsService {
 
     return createFile(
       name: fileName,
-      storagePath: stored.path,
+      storagePath: CompanyFileStorage.toStorageReference(stored),
       fileSize: bytes.length,
       folderId: folderId,
       companyId: companyId,
@@ -243,6 +258,46 @@ class DmsService {
 
   // ── Advanced Features ──
 
+  static Future<List<DmsFolder>> fetchSharedMaviFolders(String companyId) async {
+    final data = await client
+        .from('dms_folders')
+        .select()
+        .eq('company_id', companyId)
+        .eq('is_shared_mavi', true)
+        .order('name', ascending: true) as List<dynamic>;
+    return data.map((e) => DmsFolder.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  static Future<List<DmsFolder>> fetchAllFolders(String companyId) async {
+    final data = await client
+        .from('dms_folders')
+        .select()
+        .eq('company_id', companyId)
+        .order('name', ascending: true) as List<dynamic>;
+    return data.map((e) => DmsFolder.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  static Future<List<DmsFile>> fetchStarredFiles(String companyId) async {
+    final data = await client
+        .from('dms_files')
+        .select()
+        .eq('company_id', companyId)
+        .eq('is_starred', true)
+        .order('updated_at', ascending: false)
+        .limit(100) as List<dynamic>;
+    return data.map((e) => DmsFile.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  static Future<List<DmsFile>> fetchRecentFiles(String companyId, {int limit = 50}) async {
+    final data = await client
+        .from('dms_files')
+        .select()
+        .eq('company_id', companyId)
+        .order('updated_at', ascending: false)
+        .limit(limit) as List<dynamic>;
+    return data.map((e) => DmsFile.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
   static Future<List<DmsFile>> searchAllFiles(String query, String companyId) async {
     final response = await client
         .from('dms_files')
@@ -281,11 +336,11 @@ class DmsService {
     String storagePath, {
     String? storageProvider,
   }) async {
-    if (storageProvider == 'dropbox' || CompanyFileStorage.isDropboxPath(storagePath)) {
-      return CompanyFileStorage.getDropboxTemporaryLink(storagePath);
+    if (storageProvider == 'dropbox' ||
+        CompanyFileStorage.isDropboxReference(storagePath)) {
+      return CompanyFileStorage.resolveDisplayUrl(storagePath);
     }
-    final path = storagePath.replaceFirst(RegExp(r'^/'), '');
-    return client.storage.from('documents').createSignedUrl(path, 3600);
+    return StorageFileAccess.resolveViewUrl(storagePath);
   }
 
   // ── Permissions ──────────────────────────────────────────────────────────
@@ -323,26 +378,52 @@ class DmsService {
     required String companyId,
     DmsPermissionType type = DmsPermissionType.read,
   }) async {
-    final profiles = await client
-        .from('profiles')
-        .select('id')
-        .eq('company_id', companyId)
-        .eq('department_id', departmentId);
-    var count = 0;
-    for (final row in profiles as List) {
+    final employees = (await SupabaseService.fetchMaviEmployees(companyId: companyId))
+        .where((p) => p.departmentId == departmentId)
+        .toList();
+    for (final p in employees) {
       await grantPermission(
         folderId: folderId,
         fileId: fileId,
-        userId: row['id'] as String,
+        userId: p.id,
         type: type,
       );
-      count++;
     }
-    return count;
+    return employees.length;
   }
 
-  static Future<Uint8List> downloadFileBytes(String storagePath) async {
-    return client.storage.from('documents').download(storagePath);
+  /// Felles mappe — gi lesetilgang til alle interne MAVI-ansatte.
+  static Future<int> grantPermissionToAllMaviEmployees({
+    required String folderId,
+    required String companyId,
+    DmsPermissionType type = DmsPermissionType.read,
+  }) async {
+    final employees = await SupabaseService.fetchMaviEmployees(companyId: companyId);
+    for (final p in employees) {
+      await grantPermission(
+        folderId: folderId,
+        userId: p.id,
+        type: type,
+      );
+    }
+    return employees.length;
+  }
+
+  static Future<Uint8List> downloadFileBytes(
+    String storagePath, {
+    String? storageProvider,
+  }) async {
+    if (storageProvider == 'dropbox' ||
+        CompanyFileStorage.isDropboxReference(storagePath)) {
+      final url = await CompanyFileStorage.resolveDisplayUrl(storagePath);
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode != 200 || res.bodyBytes.isEmpty) {
+        throw StateError('Kunne ikke hente fil fra Dropbox');
+      }
+      return res.bodyBytes;
+    }
+    final path = storagePath.replaceFirst(RegExp(r'^/'), '');
+    return client.storage.from('documents').download(path);
   }
 
   static Future<List<DmsPermission>> fetchPermissions({String? folderId, String? fileId}) async {

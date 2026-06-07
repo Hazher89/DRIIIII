@@ -13,6 +13,7 @@ class UserProfile {
   final String? address;
   final String? jobTitle;
   final DateTime? hireDate;
+  final int childrenUnder12Count;
   final DateTime? birthDate;
   /// Norsk fødselsnummer (11 siffer).
   final String? nationalIdNumber;
@@ -44,6 +45,7 @@ class UserProfile {
     this.address,
     this.jobTitle,
     this.hireDate,
+    this.childrenUnder12Count = 0,
     this.birthDate,
     this.nationalIdNumber,
     this.emergencyContactName,
@@ -106,6 +108,8 @@ class UserProfile {
       hireDate: json['hire_date'] != null
           ? DateTime.parse(json['hire_date'] as String)
           : null,
+      childrenUnder12Count:
+          json['children_under_12_count'] as int? ?? 0,
       birthDate: json['birth_date'] != null
           ? DateTime.parse(json['birth_date'] as String)
           : null,
@@ -139,6 +143,7 @@ class UserProfile {
     'address': address,
     'job_title': jobTitle,
     'hire_date': hireDate?.toIso8601String(),
+    'children_under_12_count': childrenUnder12Count,
     'birth_date': birthDate?.toIso8601String(),
     'emergency_contact_name': emergencyContactName,
     'emergency_contact_phone': emergencyContactPhone,
@@ -176,6 +181,7 @@ class UserProfile {
       address: address,
       jobTitle: jobTitle,
       hireDate: hireDate,
+      childrenUnder12Count: childrenUnder12Count,
       birthDate: birthDate,
       nationalIdNumber: nationalIdNumber,
       emergencyContactName: emergencyContactName,
@@ -194,6 +200,9 @@ class UserProfile {
 
   bool get isPartnerPortalUser =>
       partnerId != null || role == UserRole.samarbeidspartner;
+
+  /// Intern MAVI-ansatt (ikke sjåfør, bil-eier eller annen samarbeidspartner).
+  bool get isMaviEmployee => !isPartnerPortalUser;
 
   /// Bil-eier-portal (hele bedriften); sjåfør har [partnerVehicleId] satt.
   bool get isPartnerPortalOwner =>

@@ -6,6 +6,10 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/risk_assessment.dart';
 import 'package:uuid/uuid.dart';
 
+import '../widgets/hms_responsible_picker.dart';
+import '../widgets/interactive_risk_matrix.dart';
+import '../../../models/ticket_assignee_options.dart';
+
 class NewRiskAssessmentScreen extends StatefulWidget {
   final HmsRiskTemplate? template;
   final int? initialProbability;
@@ -31,7 +35,12 @@ class _NewRiskAssessmentScreenState extends State<NewRiskAssessmentScreen> {
   
   late int _probability;
   late int _consequence;
+  late int _residualProbability;
+  late int _residualConsequence;
   bool _isSubmitting = false;
+  bool _loadingResponsible = true;
+  String? _responsibleId;
+  TicketAssigneeOptions _assignees = const TicketAssigneeOptions();
 
   @override
   void initState() {
@@ -39,12 +48,30 @@ class _NewRiskAssessmentScreenState extends State<NewRiskAssessmentScreen> {
     final t = widget.template;
     _probability = widget.initialProbability ?? t?.probability ?? 1;
     _consequence = widget.initialConsequence ?? t?.consequence ?? 1;
+    _residualProbability = _probability > 1 ? _probability - 1 : 1;
+    _residualConsequence = _consequence;
     if (t != null) {
       _titleController.text = t.title;
       _areaController.text = t.area;
       _descController.text = t.description;
       _existingMeasuresController.text = t.existingMeasures;
       _measuresController.text = t.proposedMeasures;
+    }
+    _loadResponsibleOptions();
+  }
+
+  Future<void> _loadResponsibleOptions() async {
+    setState(() => _loadingResponsible = true);
+    try {
+      final options = await HmsResponsiblePicker.loadOptions();
+      if (!mounted) return;
+      setState(() {
+        _assignees = options;
+        _responsibleId ??= options.defaultAssigneeId;
+        _loadingResponsible = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingResponsible = false);
     }
   }
 
@@ -64,14 +91,30 @@ class _NewRiskAssessmentScreenState extends State<NewRiskAssessmentScreen> {
           children: [
             _buildInput('Tittel', _titleController, hint: 'Hva skal vurderes?', isDark: isDark),
             const SizedBox(height: 16),
-            _buildInput('Område/Sted', _areaController, hint: 'F.eks. Byggeplass A eller Verksted', isDark: isDark),
+            _buildInput('Område/Sted', _areaController, hint: 'F.eks. Lagerhall A eller Terminal', isDark: isDark),
+            const SizedBox(height: 20),
+            HmsResponsiblePicker(
+              selectedId: _responsibleId,
+              onChanged: (v) => setState(() => _responsibleId = v),
+              options: _assignees,
+              loading: _loadingResponsible,
+            ),
             const SizedBox(height: 24),
             
-            Text('Risikovurdering (5×5 Matrise)'.toUpperCase(), style: DriftProTheme.labelSm),
+            Text('Risikovurdering (initial vs rest)'.toUpperCase(),
+                style: DriftProTheme.labelSm),
             const SizedBox(height: 16),
-            _buildMatrixSelector(isDark),
-            const SizedBox(height: 24),
-            
+            DualRiskMatrixPanel(
+              initialP: _probability,
+              initialC: _consequence,
+              residualP: _residualProbability,
+              residualC: _residualConsequence,
+              onInitialP: (v) => setState(() => _probability = v),
+              onInitialC: (v) => setState(() => _consequence = v),
+              onResidualP: (v) => setState(() => _residualProbability = v),
+              onResidualC: (v) => setState(() => _residualConsequence = v),
+            ),
+            const SizedBox(height: 16),
             _buildScoreBadge(score, isDark),
             const SizedBox(height: 24),
 
@@ -197,6 +240,12 @@ class _NewRiskAssessmentScreenState extends State<NewRiskAssessmentScreen> {
 
   Future<void> _save() async {
     if (_titleController.text.isEmpty) return;
+    if (_responsibleId == null || _responsibleId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Velg hvem som er ansvarlig for vurderingen')),
+      );
+      return;
+    }
     setState(() => _isSubmitting = true);
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
@@ -216,10 +265,22 @@ class _NewRiskAssessmentScreenState extends State<NewRiskAssessmentScreen> {
         proposedMeasures: _measuresController.text,
         probability: _probability,
         consequence: _consequence,
+        initialProbability: _probability,
+        initialConsequence: _consequence,
+        residualProbability: _residualProbability,
+        residualConsequence: _residualConsequence,
+        responsiblePerson: _responsibleId,
       );
       
       await SupabaseService.createRiskAssessment(ra);
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Risikoanalyse lagret. Ansvarlig får e-post om å vurdere.'),
+          ),
+        );
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Feil: $e')));
     } finally {

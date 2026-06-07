@@ -10,6 +10,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
 import '../dms/dms_screen.dart';
+import '../tickets/tickets_screen.dart';
 import 'competence/competence_hub_screen.dart';
 import 'equipment/equipment_hub_screen.dart';
 import 'risk_assessment/risk_assessment_list_screen.dart';
@@ -60,6 +61,23 @@ class _HmsScreenState extends State<HmsScreen> {
     final a = _profile?.access;
     final modules = <Widget>[];
 
+    if (a?.canAvvik == true) {
+      modules.add(_buildModuleCard(
+        context,
+        icon: Icons.report_problem_outlined,
+        title: 'Avvik',
+        subtitle: 'Hurtigmaler, GPS, media og lederoppfølging',
+        color: DriftProTheme.error,
+        isDark: isDark,
+        onTap: () => Navigator.of(context).push(
+          guardedMaterialRoute(
+            profile: _profile,
+            accessKey: AccessKeys.avvik,
+            child: const TicketsScreen(),
+          ),
+        ),
+      ));
+    }
     if (a?.canHmsRisk == true) {
       modules.add(_buildModuleCard(
         context,

@@ -355,6 +355,8 @@ class PartnerRouteShare {
   final DateTime? routeStartAt;
   /// staged = fordelt internt; sent = sendt til sjåfør/partner
   final String dispatchStatus;
+  /// manual = AUTO MASS; sap = Ruter fra SAP (kun når staged)
+  final String? stagedImportSource;
   final String? pdfSearchText;
   final int? customerCount;
   final DateTime createdAt;
@@ -376,6 +378,7 @@ class PartnerRouteShare {
     this.partnerVehicleId,
     this.routeStartAt,
     this.dispatchStatus = 'sent',
+    this.stagedImportSource,
     this.pdfSearchText,
     this.customerCount,
     required this.createdAt,
@@ -401,6 +404,7 @@ class PartnerRouteShare {
           ? DateTime.parse(json['route_start_at'] as String)
           : null,
       dispatchStatus: (json['dispatch_status'] as String?) ?? 'sent',
+      stagedImportSource: json['staged_import_source'] as String?,
       pdfSearchText: json['pdf_search_text'] as String?,
       customerCount: json['customer_count'] as int?,
       createdAt: DateTime.parse(json['created_at'] as String),
@@ -427,6 +431,7 @@ class PartnerRouteShare {
       'ack_by': ackBy,
       'ack_comment': ackComment,
       'dispatch_status': dispatchStatus,
+      if (stagedImportSource != null) 'staged_import_source': stagedImportSource,
       if (pdfSearchText != null && pdfSearchText!.isNotEmpty) 'pdf_search_text': pdfSearchText,
       if (shiftId != null) 'shift_id': shiftId,
       if (partnerVehicleId != null) 'partner_vehicle_id': partnerVehicleId,

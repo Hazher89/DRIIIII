@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { tryUploadToDropbox } from "../_shared/dropbox_company_upload.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -190,17 +191,32 @@ Deno.serve(async (req) => {
 
     const hash = await sha256Hex(bytes);
     const safeName = att.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const storagePath =
+    let storagePath =
       `company_${companyId}/sap_inbox/${Date.now()}_${safeName}`;
 
-    const { error: upErr } = await supabase.storage
-      .from("documents")
-      .upload(storagePath, bytes, {
-        contentType: "application/pdf",
-        upsert: false,
+    try {
+      const dropbox = await tryUploadToDropbox(supabase, companyId, {
+        fileName: safeName,
+        category: "sap_inbox",
+        bytes,
       });
-    if (upErr) {
-      console.error("Storage upload failed", upErr);
+      if (dropbox) {
+        storagePath = dropbox.path;
+      } else {
+        const { error: upErr } = await supabase.storage
+          .from("documents")
+          .upload(storagePath, bytes, {
+            contentType: "application/pdf",
+            upsert: false,
+          });
+        if (upErr) {
+          console.error("Storage upload failed", upErr);
+          skipped.push(`${att.filename}:storage`);
+          continue;
+        }
+      }
+    } catch (e) {
+      console.error("Dropbox/SAP upload failed", e);
       skipped.push(`${att.filename}:storage`);
       continue;
     }

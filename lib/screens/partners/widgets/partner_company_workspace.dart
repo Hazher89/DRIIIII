@@ -18,7 +18,6 @@ import 'partner_fri_tab.dart';
 import 'partner_modern_ui.dart';
 import 'partner_overview_tab.dart';
 import 'partner_transport_licenses_tab.dart';
-import 'partner_company_lifecycle_panel.dart';
 import 'partner_vehicle_inspection_tab.dart';
 
 /// Åpner arbeidsflate for én bedrift — panel eller full skjerm.
@@ -116,12 +115,10 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
     with SingleTickerProviderStateMixin {
   late Partner _p;
   List<PartnerVehicle> _vehicles = [];
-  List<PartnerPortalAccount> _portalAccounts = [];
   UserProfile? _profile;
   List<PartnerDetailTabDef> _tabs = [];
   TabController? _tabCtrl;
   bool _loading = true;
-  bool _showAllSections = false;
 
   @override
   void initState() {
@@ -165,12 +162,10 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
   Future<void> _reload() async {
     final fresh = await PartnerService.fetchPartner(_p.id);
     final vehicles = await PartnerService.fetchVehicles(_p.id);
-    final portalAccounts = await PartnerService.fetchPortalAccounts(_p.id);
     if (fresh != null && mounted) {
       setState(() {
         _p = fresh;
         _vehicles = vehicles;
-        _portalAccounts = portalAccounts;
       });
       widget.onDataChanged();
     }
@@ -180,29 +175,6 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
       .where((v) =>
           v.vehicleKind != 'registration' && !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
       .length;
-  int get _ownerCount => _portalAccounts.where((a) => a.isOwner && a.isActive).length;
-  int get _driverCount => _portalAccounts.where((a) => a.isDriver && a.isActive).length;
-  Set<String> get _smsPhones {
-    final out = <String>{};
-    void addPhone(String? p) {
-      if (p == null) return;
-      final v = p.trim();
-      if (v.isNotEmpty) out.add(v);
-    }
-
-    addPhone(_p.phone);
-    for (final a in _portalAccounts.where((a) => a.isActive)) {
-      addPhone(a.phone);
-    }
-    for (final v in _vehicles.where((v) => v.isActive)) {
-      addPhone(v.phone);
-    }
-    return out;
-  }
-  bool get _needsOwnerAccount => _ownerCount == 0;
-  bool get _needsSmsPhone => _smsPhones.isEmpty;
-  bool get _hasNoMavi => _maviCount == 0;
-
   Future<void> _openFullScreen() async {
     final deleted = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => PartnerDetailScreen(partner: _p)),
@@ -255,170 +227,87 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(context),
-        PartnerCompanyLifecyclePanel(
-          partner: _p,
-          profile: _profile,
-          onChanged: _reload,
-          onDeleted: () => widget.onClose(true),
-        ),
-        _smartStatusStrip(context),
-        if (_tabCtrl != null)
-          _sectionsToolbar(context),
-        if (_tabCtrl != null && _showAllSections)
-          Material(
-            color: PartnerModernUi.surface(context),
-            child: TabBar(
-              controller: _tabCtrl,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              dividerHeight: 1,
-              labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              unselectedLabelStyle: const TextStyle(fontSize: 12),
-              tabs: _tabs.map((t) => Tab(icon: Icon(t.icon, size: 18), text: t.label)).toList(),
-            ),
-          ),
         Expanded(
           child: _tabCtrl == null
               ? const Center(child: Text('Ingen tilgang til detaljer'))
-              : TabBarView(
-                  controller: _tabCtrl,
-                  children: _tabs.map(_tabChild).toList(),
+              : NestedScrollView(
+                  controller: widget.scrollController,
+                  headerSliverBuilder: (context, _) => [
+                    SliverToBoxAdapter(
+                      child: AnimatedBuilder(
+                        animation: _tabCtrl!,
+                        builder: (context, _) => _sectionPickerBar(context),
+                      ),
+                    ),
+                  ],
+                  body: TabBarView(
+                    controller: _tabCtrl,
+                    children: _tabs.map(_tabChild).toList(),
+                  ),
                 ),
         ),
       ],
     );
   }
 
-  Widget _sectionsToolbar(BuildContext context) {
+  Widget _sectionPickerBar(BuildContext context) {
     final ctrl = _tabCtrl!;
-    return AnimatedBuilder(
-      animation: ctrl,
-      builder: (context, _) {
-        final tab = _tabs[ctrl.index];
-        final quick = _preferredQuickTabs();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            PartnerSmartSectionPicker(
-              title: 'Viser',
-              currentLabel: tab.label,
-              onPick: _openSectionPicker,
-              onToggleAll: () => setState(() => _showAllSections = !_showAllSections),
-              showAll: _showAllSections,
-            ),
-            if (quick.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: quick.map((t) {
-                    final i = _tabs.indexOf(t);
-                    final selected = ctrl.index == i;
-                    return ChoiceChip(
-                      label: Text(t.label, style: const TextStyle(fontSize: 11)),
-                      selected: selected,
-                      onSelected: (_) => ctrl.animateTo(i),
-                      avatar: Icon(t.icon, size: 14),
-                    );
-                  }).toList(),
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
+    final tab = _tabs[ctrl.index];
+    final shortcuts = _preferredQuickTabs()
+        .where((t) => _tabs.indexOf(t) != ctrl.index)
+        .take(2)
+        .toList();
 
-  Widget _smartStatusStrip(BuildContext context) {
-    final issues = <String>[
-      if (_needsOwnerAccount) 'Mangler bedriftsansvarlig-konto',
-      if (_needsSmsPhone) 'Ingen SMS-nummer',
-      if (_hasNoMavi) 'Ingen MAVI registrert',
-    ];
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: PartnerModernUi.surface(context),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: PartnerModernUi.border(context)),
-        borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Row(
-            children: [
-              Icon(
-                issues.isEmpty ? Icons.verified_outlined : Icons.warning_amber_rounded,
-                size: 16,
-                color: issues.isEmpty ? const Color(0xFF15803D) : const Color(0xFFD97706),
+          Icon(tab.icon, size: 18, color: PartnerModernUi.textPrimary(context)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              tab.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: PartnerModernUi.textPrimary(context),
               ),
-              const SizedBox(width: 6),
-              Text(
-                issues.isEmpty ? 'Datakvalitet: God' : 'Datakvalitet: Trenger oppfølging',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: PartnerModernUi.textPrimary(context),
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '${_smsPhones.length} SMS-nummer',
-                style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _kpiChip(context, 'Bedriftsansvarlig', '$_ownerCount'),
-              _kpiChip(context, 'Sjåfører', '$_driverCount'),
-              _kpiChip(context, 'MAVI', '$_maviCount'),
-              _kpiChip(context, 'Reg.nr', '${_vehicles.length - _maviCount}'),
-            ],
-          ),
-          if (issues.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: issues
-                  .map(
-                    (i) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF59E0B).withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(i, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-                    ),
-                  )
-                  .toList(),
+          for (final shortcut in shortcuts) ...[
+            const SizedBox(width: 4),
+            OutlinedButton(
+              onPressed: () => ctrl.animateTo(_tabs.indexOf(shortcut)),
+              style: OutlinedButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                minimumSize: const Size(0, 32),
+                textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+              ),
+              child: Text(shortcut.label),
             ),
           ],
+          const SizedBox(width: 4),
+          FilledButton.icon(
+            onPressed: _openSectionPicker,
+            icon: const Icon(Icons.grid_view_rounded, size: 16),
+            label: const Text('Bytt'),
+            style: FilledButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              minimumSize: const Size(0, 32),
+              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+            ),
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _kpiChip(BuildContext context, String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: PartnerModernUi.border(context).withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        '$label: $value',
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: PartnerModernUi.textPrimary(context),
-        ),
       ),
     );
   }

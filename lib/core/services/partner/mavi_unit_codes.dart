@@ -77,6 +77,14 @@ class MaviUnitCodes {
     return n;
   }
 
+  /// M17 · Sjåførnavn — brukes i lister og nedtrekksmenyer.
+  static String fleetDriverLabel(String unitCode, String partnerName) {
+    final m = compactLabel(unitCode);
+    final name = partnerName.trim();
+    if (name.isEmpty) return m;
+    return '$m · $name';
+  }
+
   static String plateFromRegistrationUnit(String unitCode) {
     if (!isRegistrationOnlyUnit(unitCode)) return '';
     return unitCode.trim().toUpperCase().replaceFirst('REG-', '');

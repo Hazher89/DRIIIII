@@ -24,35 +24,51 @@ class NorwegianNationalId {
     return '${n.substring(0, 6)} *****';
   }
 
-  /// Parser fødselsdato fra de seks første sifrene + individsiffer (standard regler).
+  /// Parser fødselsdato fra de seks første sifrene + individnummer (3 siffer).
+  ///
+  /// Individnummer (siffer 7–9) bestemmer århundre (Folkeregisteret):
+  /// 000–499 → 1900–1999, 500–749 → 1854–1899 eller 2000–2039,
+  /// 750–899 → 2000–2039, 900–999 → 1940–1999.
   static DateTime? birthDateFrom(String? raw) {
     final n = normalize(raw);
     if (n == null) return null;
 
-    final day = int.tryParse(n.substring(0, 2));
-    final month = int.tryParse(n.substring(2, 4));
+    var day = int.tryParse(n.substring(0, 2));
+    var month = int.tryParse(n.substring(2, 4));
     final yearPart = int.tryParse(n.substring(4, 6));
-    if (day == null || month == null || yearPart == null) return null;
-
-    final ind = int.tryParse(n[6]);
-    if (ind == null) return null;
-
-    int year;
-    if (ind >= 0 && ind <= 3) {
-      year = 1900 + yearPart;
-    } else if (ind >= 4 && ind <= 5) {
-      year = yearPart >= 40 ? 1900 + yearPart : 2000 + yearPart;
-    } else if (ind >= 6 && ind <= 7) {
-      year = 2000 + yearPart;
-    } else {
-      year = 1800 + yearPart;
+    final individ = int.tryParse(n.substring(6, 9));
+    if (day == null || month == null || yearPart == null || individ == null) {
+      return null;
     }
+
+    // D-nummer: dag/måned kan ha +40.
+    if (day > 40) day -= 40;
+    if (month > 40) month -= 40;
+
+    final year = _birthYearFromIndivid(yearPart, individ);
+    if (year == null) return null;
 
     try {
       return DateTime(year, month, day);
     } catch (_) {
       return null;
     }
+  }
+
+  static int? _birthYearFromIndivid(int yearPart, int individ) {
+    if (individ >= 0 && individ <= 499) {
+      return 1900 + yearPart;
+    }
+    if (individ >= 500 && individ <= 749) {
+      return yearPart >= 54 ? 1800 + yearPart : 2000 + yearPart;
+    }
+    if (individ >= 750 && individ <= 899) {
+      return 2000 + yearPart;
+    }
+    if (individ >= 900 && individ <= 999) {
+      return 1900 + yearPart;
+    }
+    return null;
   }
 
   /// Dager til neste bursdag (0 = i dag).

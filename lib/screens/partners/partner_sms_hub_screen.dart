@@ -4,7 +4,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import 'partner_sms_compose_screen.dart';
 import 'widgets/partner_modern_ui.dart';
-import 'widgets/partner_notification_settings_panel.dart';
+import '../profile/widgets/notification_settings_split_tab.dart';
 import '../profile/widgets/notification_audit_panel.dart';
 import 'widgets/partner_email_log_panel.dart';
 import 'widgets/partner_sms_log_panel.dart';
@@ -135,7 +135,7 @@ class _PartnerSmsHubScreenState extends State<PartnerSmsHubScreen>
               PartnerSmsLogPanel(partners: widget.partners),
               PartnerEmailLogPanel(partners: widget.partners),
               const NotificationAuditPanel(partnerScopeOnly: true),
-              const PartnerNotificationSettingsPanel(),
+              const NotificationSettingsSplitTab(),
             ],
           ),
         ),

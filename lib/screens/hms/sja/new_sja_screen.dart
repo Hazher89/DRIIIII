@@ -4,6 +4,8 @@ import '../../../core/hms/hms_templates.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/sja_form.dart';
+import '../../../models/ticket_assignee_options.dart';
+import '../widgets/hms_responsible_picker.dart';
 import 'package:uuid/uuid.dart';
 
 class NewSjaScreen extends StatefulWidget {
@@ -26,18 +28,40 @@ class _NewSjaScreenState extends State<NewSjaScreen> {
   late List<String> _selectedPpe;
   
   bool _isSubmitting = false;
+  bool _loadingResponsible = true;
+  String? _responsibleId;
+  TicketAssigneeOptions _assignees = const TicketAssigneeOptions();
 
   @override
   void initState() {
     super.initState();
     final t = widget.template;
-    _hazards = List.from(t?.hazards ?? []);
+    _hazards = (t?.hazards ?? []).map((h) => {
+      'hazard': h['hazard'] ?? h['title'] ?? '',
+      'measure': h['measure'] ?? h['control'] ?? '',
+    }).where((h) => (h['hazard'] as String).isNotEmpty).toList();
     _measures = List.from(t?.measures ?? []);
     _selectedPpe = List.from(t?.ppe ?? []);
     if (t != null) {
       _titleController.text = t.title;
       _workDescController.text = t.workDescription;
       _locationController.text = t.location;
+    }
+    _loadResponsibleOptions();
+  }
+
+  Future<void> _loadResponsibleOptions() async {
+    setState(() => _loadingResponsible = true);
+    try {
+      final options = await HmsResponsiblePicker.loadOptions();
+      if (!mounted) return;
+      setState(() {
+        _assignees = options;
+        _responsibleId ??= options.defaultAssigneeId;
+        _loadingResponsible = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingResponsible = false);
     }
   }
 
@@ -62,7 +86,14 @@ class _NewSjaScreenState extends State<NewSjaScreen> {
             const SizedBox(height: 16),
             _buildInput('Arbeidsbeskrivelse', _workDescController, maxLines: 3, hint: 'Beskriv arbeidet som skal utføres...', isDark: isDark),
             const SizedBox(height: 16),
-            _buildInput('Lokasjon', _locationController, hint: 'F.eks. Hovedinngang eller Prosjekt X', isDark: isDark),
+            _buildInput('Lokasjon', _locationController, hint: 'F.eks. Lagerhall 3 eller Terminal B', isDark: isDark),
+            const SizedBox(height: 20),
+            HmsResponsiblePicker(
+              selectedId: _responsibleId,
+              onChanged: (v) => setState(() => _responsibleId = v),
+              options: _assignees,
+              loading: _loadingResponsible,
+            ),
             const SizedBox(height: 24),
             
             Text('Dato for arbeid'.toUpperCase(), style: DriftProTheme.labelSm),
@@ -210,6 +241,12 @@ class _NewSjaScreenState extends State<NewSjaScreen> {
 
   Future<void> _save() async {
     if (_titleController.text.isEmpty) return;
+    if (_responsibleId == null || _responsibleId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Velg hvem som er ansvarlig for SJA-en')),
+      );
+      return;
+    }
     setState(() => _isSubmitting = true);
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
@@ -228,10 +265,18 @@ class _NewSjaScreenState extends State<NewSjaScreen> {
         hazards: _hazards,
         measures: _measures,
         requiredPpe: _selectedPpe,
+        responsiblePerson: _responsibleId,
       );
       
       await SupabaseService.createSjaForm(sja);
-      if (mounted) Navigator.pop(context, true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('SJA opprettet. Ansvarlig får e-post om å vurdere.'),
+          ),
+        );
+        Navigator.pop(context, true);
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Feil: $e')));
     } finally {

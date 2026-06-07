@@ -21,22 +21,90 @@ class BusinessDays {
     return false;
   }
 
-  /// Påske (Gregorian) — Good Friday + Easter Monday for året.
+  /// Påske (Gregorian) — bevegelige helligdager for året.
   static bool isEasterRelatedHoliday(DateTime d) {
     final y = d.year;
-    final easter = _easterSunday(y);
-    final goodFriday = easter.subtract(const Duration(days: 2));
-    final easterMonday = easter.add(const Duration(days: 1));
+    final easter = easterSunday(y);
     final a = dayOnly(d);
-    return a == dayOnly(goodFriday) || a == dayOnly(easterMonday);
+    final movable = [
+      easter.subtract(const Duration(days: 2)), // langfredag
+      easter.add(const Duration(days: 1)), // 2. påskedag
+      easter.add(const Duration(days: 39)), // kristi himmelfartsdag
+      easter.add(const Duration(days: 50)), // 2. pinsedag
+    ];
+    return movable.any((m) => a == dayOnly(m));
   }
 
   static bool isNorwegianPublicHoliday(DateTime d) {
     return isFixedHoliday(d) || isEasterRelatedHoliday(d);
   }
 
+  static DateTime easterSunday(int year) => _easterSunday(year);
+
+  /// Norsk navn på rød dag, eller null.
+  static String? holidayName(DateTime d) {
+    final a = dayOnly(d);
+    if (a.month == 1 && a.day == 1) return 'Nyttårsdag';
+    if (a.month == 5 && a.day == 1) return '1. mai';
+    if (a.month == 5 && a.day == 17) return '17. mai';
+    if (a.month == 12 && a.day == 25) return '1. juledag';
+    if (a.month == 12 && a.day == 26) return '2. juledag';
+    final easter = easterSunday(a.year);
+    if (a == dayOnly(easter.subtract(const Duration(days: 2)))) return 'Langfredag';
+    if (a == dayOnly(easter.add(const Duration(days: 1)))) return '2. påskedag';
+    if (a == dayOnly(easter.add(const Duration(days: 39)))) {
+      return 'Kristi himmelfartsdag';
+    }
+    if (a == dayOnly(easter.add(const Duration(days: 50)))) return '2. pinsedag';
+    return null;
+  }
+
   static bool isBusinessDay(DateTime d) {
     return !isWeekend(d) && !isNorwegianPublicHoliday(d);
+  }
+
+  /// Antall virkedager i perioden (inkl. start og slutt) — brukes for ferie.
+  static int countInRange(DateTime start, DateTime end) {
+    var from = dayOnly(start);
+    final to = dayOnly(end);
+    if (to.isBefore(from)) return 0;
+    var count = 0;
+    while (!from.isAfter(to)) {
+      if (isBusinessDay(from)) count++;
+      from = from.add(const Duration(days: 1));
+    }
+    return count;
+  }
+
+  /// Virkedager i perioden som faller i [year] (for ferie over årsskifte).
+  static int countInRangeForYear(DateTime start, DateTime end, int year) {
+    final yearStart = DateTime(year, 1, 1);
+    final yearEnd = DateTime(year, 12, 31);
+    final from = dayOnly(start).isBefore(yearStart) ? yearStart : dayOnly(start);
+    final to = dayOnly(end).isAfter(yearEnd) ? yearEnd : dayOnly(end);
+    if (to.isBefore(from)) return 0;
+    return countInRange(from, to);
+  }
+
+  /// Alle kalenderår perioden berører.
+  static List<int> yearsSpanned(DateTime start, DateTime end) {
+    final from = dayOnly(start);
+    final to = dayOnly(end);
+    if (to.isBefore(from)) return const [];
+    final years = <int>[];
+    for (var y = from.year; y <= to.year; y++) {
+      if (countInRangeForYear(from, to, y) > 0) years.add(y);
+    }
+    return years;
+  }
+
+  /// Fordeling av feriedager per år.
+  static Map<int, int> daysByYear(DateTime start, DateTime end) {
+    final map = <int, int>{};
+    for (final y in yearsSpanned(start, end)) {
+      map[y] = countInRangeForYear(start, end, y);
+    }
+    return map;
   }
 
   /// Tidligste dato sjåfør kan søke fri: minst [minBusinessDays] virkedager frem i tid.

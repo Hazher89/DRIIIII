@@ -92,7 +92,8 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     final routes = access?.canPartnerRoutePlanning == true;
     final sms = PartnerAccess.canOpenPartnersModule(access);
     final rental = _canManageVehicleRentals(access);
-    final length = (companies ? 1 : 0) + (routes ? 1 : 0) + (sms ? 1 : 0) + (rental ? 1 : 0);
+    final length =
+        (companies ? 1 : 0) + (routes ? 1 : 0) + (sms ? 1 : 0) + (rental ? 1 : 0);
 
     _showCompaniesTab = companies;
     _showRoutesTab = routes;
@@ -143,6 +144,24 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     _tabs!.animateTo(i);
   }
 
+  void _applyPartnerData({
+    required List<Partner> list,
+    required List<FleetPartnerVehicleRow> fleet,
+    required List<PartnerPortalAccount> portalAccounts,
+  }) {
+    final byPartner = <String, List<PartnerVehicle>>{};
+    for (final row in fleet) {
+      byPartner.putIfAbsent(row.partner.id, () => []).add(row.vehicle);
+    }
+    final accountsByPartner = <String, List<PartnerPortalAccount>>{};
+    for (final account in portalAccounts) {
+      accountsByPartner.putIfAbsent(account.partnerId, () => []).add(account);
+    }
+    _partners = list;
+    _vehiclesByPartner = byPartner;
+    _portalAccountsByPartner = accountsByPartner;
+  }
+
   Future<void> _load() async {
     _savedTabIndex = _tabs?.index ?? _savedTabIndex;
     setState(() {
@@ -152,34 +171,41 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       final profile = await SupabaseService.fetchCurrentUserProfile();
+      if (!mounted) return;
+
+      setState(() {
+        _profile = profile;
+        _syncDashboardTabs(profile);
+      });
+
       if (cid == null) {
         setState(() {
-          _profile = profile;
-          _syncDashboardTabs(profile);
           _loading = false;
           _error = 'Fant ikke bedrift for brukeren.';
         });
         return;
       }
-      final list = await PartnerService.fetchPartners(companyId: cid);
+
+      if (!PartnerAccess.canOpenPartnersModule(profile?.access)) {
+        setState(() => _loading = false);
+        return;
+      }
+
       unawaited(PartnerService.syncPartnerNotificationEmails(cid));
-      final fleet = await PartnerService.fetchCompanyFleet(cid);
-      final portalAccounts = await PartnerService.fetchCompanyPortalAccounts(cid);
-      final byPartner = <String, List<PartnerVehicle>>{};
-      for (final row in fleet) {
-        byPartner.putIfAbsent(row.partner.id, () => []).add(row.vehicle);
-      }
-      final accountsByPartner = <String, List<PartnerPortalAccount>>{};
-      for (final account in portalAccounts) {
-        accountsByPartner.putIfAbsent(account.partnerId, () => []).add(account);
-      }
+
+      final results = await Future.wait([
+        PartnerService.fetchPartners(companyId: cid),
+        PartnerService.fetchCompanyFleet(cid),
+        PartnerService.fetchCompanyPortalAccounts(cid),
+      ]);
+
       if (mounted) {
         setState(() {
-          _profile = profile;
-          _syncDashboardTabs(profile);
-          _partners = list;
-          _vehiclesByPartner = byPartner;
-          _portalAccountsByPartner = accountsByPartner;
+          _applyPartnerData(
+            list: results[0] as List<Partner>,
+            fleet: results[1] as List<FleetPartnerVehicleRow>,
+            portalAccounts: results[2] as List<PartnerPortalAccount>,
+          );
           _loading = false;
         });
       }
@@ -198,22 +224,18 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null || !mounted) return;
-      final list = await PartnerService.fetchPartners(companyId: cid);
-      final fleet = await PartnerService.fetchCompanyFleet(cid);
-      final portalAccounts = await PartnerService.fetchCompanyPortalAccounts(cid);
-      final byPartner = <String, List<PartnerVehicle>>{};
-      for (final row in fleet) {
-        byPartner.putIfAbsent(row.partner.id, () => []).add(row.vehicle);
-      }
-      final accountsByPartner = <String, List<PartnerPortalAccount>>{};
-      for (final account in portalAccounts) {
-        accountsByPartner.putIfAbsent(account.partnerId, () => []).add(account);
-      }
+      final results = await Future.wait([
+        PartnerService.fetchPartners(companyId: cid),
+        PartnerService.fetchCompanyFleet(cid),
+        PartnerService.fetchCompanyPortalAccounts(cid),
+      ]);
       if (mounted) {
         setState(() {
-          _partners = list;
-          _vehiclesByPartner = byPartner;
-          _portalAccountsByPartner = accountsByPartner;
+          _applyPartnerData(
+            list: results[0] as List<Partner>,
+            fleet: results[1] as List<FleetPartnerVehicleRow>,
+            portalAccounts: results[2] as List<PartnerPortalAccount>,
+          );
         });
       }
     } catch (_) {}
@@ -333,18 +355,22 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
             ),
         ],
       ),
-      body: _tabs == null
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Du har ikke tilgang til noen faner i Samarbeidspartnere.\n'
-                  'Kontakt superadmin.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            )
-          : TabBarView(
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          : _tabs == null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Text(
+                      _error ??
+                          'Du har ikke tilgang til noen faner i Samarbeidspartnere.\n'
+                              'Be superadmin om «Ruter & planlegging» (fleet_ruter) '
+                              'eller andre partner-faner.',
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                )
+              : TabBarView(
               controller: _tabs,
               children: [
                 if (_showCompaniesTab)

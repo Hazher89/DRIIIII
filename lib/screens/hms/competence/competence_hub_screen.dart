@@ -61,7 +61,7 @@ class _CompetenceHubScreenState extends State<CompetenceHubScreen>
       _documents = await CompetenceService.fetchCompetenceDocuments(
         companyId: companyId,
       );
-      _profiles = await SupabaseService.fetchProfiles(companyId: companyId);
+      _profiles = await SupabaseService.fetchMaviEmployees(companyId: companyId);
     } finally {
       if (mounted) setState(() => _loading = false);
     }

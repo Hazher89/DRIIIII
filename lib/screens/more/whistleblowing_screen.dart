@@ -51,7 +51,7 @@ class _WhistleblowingScreenState extends State<WhistleblowingScreen> {
           supabaseBucket: 'tickets',
           storagePath: path,
           bytes: bytes,
-          category: 'tickets',
+          category: 'whistleblowing',
           fileName: fileName,
         );
         imageUrls.add(CompanyFileStorage.toStorageReference(stored));

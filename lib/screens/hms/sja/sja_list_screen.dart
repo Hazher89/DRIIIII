@@ -7,6 +7,7 @@ import '../../../models/sja_form.dart';
 import 'package:intl/intl.dart';
 import '../widgets/hms_template_picker_sheet.dart';
 import 'new_sja_screen.dart';
+import 'sja_detail_screen.dart';
 
 class SjaListScreen extends StatefulWidget {
   const SjaListScreen({super.key});
@@ -17,7 +18,9 @@ class SjaListScreen extends StatefulWidget {
 
 class _SjaListScreenState extends State<SjaListScreen> {
   List<SjaForm> _forms = [];
+  Map<String, String> _profileNames = {};
   bool _isLoading = true;
+  String? _loadError;
 
   @override
   void initState() {
@@ -26,21 +29,32 @@ class _SjaListScreenState extends State<SjaListScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
     try {
       final companyId = await SupabaseService.getCurrentCompanyId();
       if (companyId != null) {
         final data = await SupabaseService.fetchSjaForms(companyId: companyId);
-        setState(() => _forms = data);
+        final profiles = await SupabaseService.fetchProfiles(companyId: companyId);
+        final names = {for (final p in profiles) p.id: p.fullName};
+        setState(() {
+          _forms = data;
+          _profileNames = names;
+        });
       } else {
         setState(() => _forms = []);
       }
-    } catch (_) {
-      // Handle error
+    } catch (e) {
+      setState(() => _loadError = 'Kunne ikke hente SJA: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  String _name(String? id) =>
+      id == null ? 'Ikke angitt' : (_profileNames[id] ?? 'Ukjent');
 
   @override
   Widget build(BuildContext context) {
@@ -56,7 +70,21 @@ class _SjaListScreenState extends State<SjaListScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
+          : _loadError != null
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(_loadError!, textAlign: TextAlign.center),
+                        const SizedBox(height: 12),
+                        ElevatedButton(onPressed: _loadData, child: const Text('Prøv igjen')),
+                      ],
+                    ),
+                  ),
+                )
+              : RefreshIndicator(
               onRefresh: _loadData,
               child: _forms.isEmpty
                   ? _buildEmptyState()
@@ -108,6 +136,8 @@ class _SjaListScreenState extends State<SjaListScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Sted: ${f.location ?? "Ikke angitt"}', style: DriftProTheme.bodySm),
+            Text('Ansvarlig: ${_name(f.responsiblePerson)}', style: DriftProTheme.bodySm),
+            Text('Opprettet av: ${_name(f.createdBy)}', style: DriftProTheme.bodySm),
             Text('Planlagt: ${DateFormat('dd.MM.yyyy').format(f.plannedDate)}', style: DriftProTheme.bodySm),
           ],
         ),
@@ -117,7 +147,10 @@ class _SjaListScreenState extends State<SjaListScreen> {
           child: Text(f.status.label, style: TextStyle(color: f.status.color, fontSize: 10, fontWeight: FontWeight.bold)),
         ),
         onTap: () {
-          // View/edit detail
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => SjaDetailScreen(form: f)),
+          ).then((_) => _loadData());
         },
       ),
     );

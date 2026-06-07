@@ -6,7 +6,7 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../partner_shell.dart';
 import '../widgets/partner_modern_ui.dart';
-import '../widgets/partner_route_howto_strip.dart';
+import '../widgets/partner_portal_route_detail_page.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_common.dart';
 
@@ -115,11 +115,6 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                   ),
                   if (_data!.pendingAckTotal > 0) ...[
                     _pendingRoutesBanner(context, onTap: _openPendingRoutes),
-                    const SizedBox(height: 12),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: PartnerRouteHowToStrip(),
-                    ),
                     const SizedBox(height: 12),
                   ],
                   PartnerSmartActionsPanel(
@@ -232,10 +227,17 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
 
   void _openPendingRoutes() {
     final newest = _data?.newestPendingAckRoute;
-    widget.onGoToRoutes?.call(
-      tabIndex: newest != null && ownerRouteIsFuture(newest) ? 1 : 0,
-      vehicleId: newest?.partnerVehicleId,
-    );
+    if (newest != null && _data != null) {
+      PartnerPortalRouteDetailPage.open(
+        context,
+        route: newest,
+        shifts: _data!.shiftsById,
+        onReload: _load,
+        onBehalfOfDriver: true,
+      );
+      return;
+    }
+    widget.onGoToRoutes?.call(tabIndex: 1);
   }
 
   Widget _pendingRoutesBanner(BuildContext context, {VoidCallback? onTap}) {
@@ -260,7 +262,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '$n ny${n == 1 ? '' : 'e'} rute${n == 1 ? '' : 'r'}',
+                      '$n NYE RUTER — TRYKK HER',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         fontSize: 16,

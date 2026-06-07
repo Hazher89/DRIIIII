@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import 'partner_route_pdf_bytes_url_stub.dart'
@@ -47,14 +46,8 @@ class PartnerRoutePdfActions {
       messenger?.hideCurrentSnackBar();
       if (!context.mounted) return;
 
-      final opened = await openExternalUrl(url);
-      if (!opened && context.mounted) {
-        if (kIsWeb) {
-          await _showPdfViewer(context, url, share.title ?? 'Rute-PDF');
-        } else {
-          _snack(context, 'Kunne ikke åpne PDF. Prøv igjen.', isError: true);
-        }
-      }
+      // Alltid in-app visning først — enklest for sjåfør og bil-eier.
+      await _showPdfViewer(context, url, share.title ?? 'Rute-PDF');
     } catch (e) {
       messenger?.hideCurrentSnackBar();
       if (context.mounted) {

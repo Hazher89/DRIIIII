@@ -4,6 +4,9 @@ import 'dart:ui';
 import '../../core/auth/employee_oauth_sign_in.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_strings.dart';
+import '../more/help_support_screen.dart';
+import '../more/privacy_screen.dart';
+import '../more/about_driftpro_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -291,13 +294,32 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Widget _buildFooterLink(String text) {
-    return Text(
-      text,
-      style: DriftProTheme.caption.copyWith(
-        color: Colors.grey[500],
-        fontWeight: FontWeight.w600,
+    return GestureDetector(
+      onTap: () => _openHelpSection(text),
+      child: Text(
+        text,
+        style: DriftProTheme.caption.copyWith(
+          color: Colors.grey[500],
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
+  }
+
+  void _openHelpSection(String label) {
+    Widget page;
+    switch (label) {
+      case 'Personvern':
+      case 'Vilkår':
+        page = const PrivacyScreen();
+        break;
+      case 'Om DriftPro':
+        page = const AboutDriftProScreen();
+        break;
+      default:
+        page = const HelpSupportScreen();
+    }
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
   }
 
   Widget _buildFooterDot() {

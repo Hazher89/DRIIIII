@@ -3,12 +3,18 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/leave_rules.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/absence.dart';
+import '../../../models/leave_period_usage.dart';
+import 'leave_egenmelding_blocked_sheet.dart';
 import 'vacation_balance_card.dart';
 
 /// Viser ferie-, egenmeldings- og sykt-barn-saldo — aldri evig «laster».
 class LeaveSaldoPanel extends StatelessWidget {
   final AbsenceQuota? quota;
+  final LeavePeriodUsage? periodUsage;
+  final int childrenUnder12;
+  final int selectedYear;
   final CompanyLeaveSettings company;
+  final void Function(AbsenceType type)? onChooseAlternative;
   final bool isLoading;
   final String? error;
   final VoidCallback? onRetry;
@@ -17,7 +23,11 @@ class LeaveSaldoPanel extends StatelessWidget {
   const LeaveSaldoPanel({
     super.key,
     required this.quota,
+    this.periodUsage,
+    this.childrenUnder12 = 0,
+    required this.selectedYear,
     required this.company,
+    this.onChooseAlternative,
     this.isLoading = false,
     this.error,
     this.onRetry,
@@ -87,7 +97,7 @@ class LeaveSaldoPanel extends StatelessWidget {
               Text('Ingen feriedager tildelt ennå', style: DriftProTheme.headingSm),
               const SizedBox(height: 8),
               Text(
-                'Admin må dele ut feriedager for ${DateTime.now().year} før du kan søke ferie. '
+                'Admin må dele ut feriedager for $selectedYear før du kan søke ferie det året. '
                 'Egenmelding og sykt barn kan likevel registreres når saldo er opprettet.',
                 style: DriftProTheme.bodySm,
               ),
@@ -104,27 +114,101 @@ class LeaveSaldoPanel extends StatelessWidget {
       );
     }
 
+    final syktBarnMax = company.syktBarnDaysLimit(childrenUnder12: childrenUnder12);
+    final egenExhausted = periodUsage != null &&
+        periodUsage!.isEgenmeldingExhausted(company.egenmeldingDaysPerYear);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (egenExhausted) ...[
+          _card(
+            isDark,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded,
+                          color: DriftProTheme.warning),
+                      const SizedBox(width: 10),
+                      Text('Egenmelding brukt opp',
+                          style: DriftProTheme.labelLg),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Du kan ikke søke ny egenmelding i ${periodUsage!.window.formatRange()}. '
+                    'Bruk sykmelding eller kontakt leder for manuell registrering.',
+                    style: DriftProTheme.bodySm,
+                  ),
+                  const SizedBox(height: 10),
+                  TextButton(
+                    onPressed: () => showLeaveEgenmeldingBlockedSheet(
+                      context,
+                      periodUsage: periodUsage!,
+                      maxDays: company.egenmeldingDaysPerYear,
+                      onChooseAlternative: onChooseAlternative,
+                    ),
+                    child: const Text('Se alternativer og Lovdata-info'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         VacationBalanceCard(
           quota: quota!,
           company: company,
           plannedNextYearDays: quota!.vacationDaysTotal,
         ),
         const SizedBox(height: 12),
+        if (periodUsage != null) ...[
+          _card(
+            isDark,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.date_range_outlined,
+                      size: 18, color: DriftProTheme.primaryGreen),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Egenmelding/sykt barn: periode ${periodUsage!.window.formatRange()} '
+                      '(12 mnd fra ansettelsesdato, nullstilles ikke 1. januar).',
+                      style: DriftProTheme.caption,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
         QuotaMiniRow(
           label: 'Egenmelding',
-          used: quota!.egenmeldingDaysUsed,
+          used: periodUsage?.egenmeldingDaysUsed ?? quota!.egenmeldingDaysUsed,
           total: company.egenmeldingDaysPerYear,
           color: DriftProTheme.absenceSickSelf,
+          subtitle: periodUsage != null
+              ? '${periodUsage!.egenmeldingPeriodsUsed}/${LeaveRules.egenmeldingMaxPeriodsPerYear} tilfeller'
+              : null,
         ),
         const SizedBox(height: 8),
         QuotaMiniRow(
           label: 'Sykt barn',
-          used: quota!.syktBarnDaysUsed,
-          total: company.syktBarnDaysLimit(),
+          used: periodUsage?.syktBarnDaysUsed ?? quota!.syktBarnDaysUsed,
+          total: syktBarnMax,
           color: DriftProTheme.absenceSickChild,
+          subtitle: childrenUnder12 >= 2
+              ? '$childrenUnder12 barn under 12 → ${LeaveRules.syktBarnDaysTwoOrMoreChildren} dager'
+              : childrenUnder12 == 1
+                  ? '1 barn under 12 → ${LeaveRules.syktBarnDaysPerChildUnder12} dager'
+                  : 'Registrer barn i Min profil for riktig kvote',
         ),
         const SizedBox(height: 8),
         _card(
@@ -137,7 +221,8 @@ class LeaveSaldoPanel extends StatelessWidget {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    '«Saldo» = hvor mange dager du har igjen av ferie, egenmelding og sykt barn i ${quota!.year}.',
+                    'Ferie telles per kalenderår ($selectedYear). '
+                    'Egenmelding og sykt barn telles løpende i 12-månedersperioden over.',
                     style: DriftProTheme.caption,
                   ),
                 ),

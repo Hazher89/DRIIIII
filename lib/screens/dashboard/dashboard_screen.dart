@@ -33,6 +33,10 @@ import '../../widgets/cards/glass_card.dart';
 import '../../widgets/common/section_header.dart';
 import '../profile/profile_screen.dart';
 import '../../widgets/driftpro_notification_bell.dart';
+import 'widgets/dashboard_command_palette.dart';
+import 'widgets/dashboard_personal_panel.dart';
+import 'widgets/dashboard_search_bar.dart';
+import 'dashboard_search_catalog.dart';
 
 class DashboardScreen extends StatefulWidget {
   final NavigateByAccess? onNavigateByAccess;
@@ -62,6 +66,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<Ticket> _scopedTickets = const [];
   TidsbankenSyncState? _tidsbankenSync;
   bool _nbDatesReady = false;
+  String? _departmentName;
+  int? _vacationDaysLeft;
+  int _myPendingAbsences = 0;
+  int _myOpenTickets = 0;
   Timer? _clockTimer;
   Timer? _presenceTimer;
 
@@ -104,6 +112,19 @@ class _DashboardScreenState extends State<DashboardScreen>
       _kiosk.infoscreenLayoutEnabled && !_kiosk.revealNamesOnInfoscreen;
 
   double get _kioskFontFactor => _kiosk.infoscreenLayoutEnabled ? 1.14 : 1.0;
+
+  /// Infoskjerm-toggles (skjul hurtigvalg osv.) gjelder kun TV-modus — ikke privat app.
+  KioskSettings get _contentKiosk {
+    if (_kiosk.infoscreenLayoutEnabled) return _kiosk;
+    return KioskSettings.defaults.copyWith(
+      showLiveTeamBoard: _kiosk.showLiveTeamBoard,
+      showTidsbankenPresence: _kiosk.showTidsbankenPresence,
+      showClock: _kiosk.showClock,
+    );
+  }
+
+  bool get _usePersonalGreeting =>
+      !_kiosk.infoscreenLayoutEnabled || _kiosk.showPersonalGreeting;
 
   UserAccess? get _access => _profile?.access;
 
@@ -247,6 +268,33 @@ class _DashboardScreenState extends State<DashboardScreen>
               .where((u) => !u.isApproved && !u.isPartnerPortalUser)
               .length
           : 0;
+      String? departmentName;
+      int? vacationDaysLeft;
+      if (profile != null) {
+        if (profile.departmentId != null) {
+          final depts = await SupabaseService.fetchDepartments(companyId: companyId);
+          departmentName = depts
+              .where((d) => d.id == profile.departmentId)
+              .map((d) => d.name)
+              .firstOrNull;
+        }
+        if (canFravaer) {
+          final quota = await SupabaseService.fetchAbsenceQuota(userId: profile.id);
+          vacationDaysLeft = quota?.vacationDaysRemaining;
+        }
+      }
+      final myPendingAbsences = profile == null
+          ? 0
+          : scopedAbsences
+              .where((a) =>
+                  a.userId == profile.id && a.status == AbsenceStatus.ventende)
+              .length;
+      final myOpenTickets = profile == null
+          ? 0
+          : scopedTickets
+              .where((t) => t.reportedBy == profile.id && t.isOpen)
+              .length;
+
       final notices = <_DashboardNotice>[
         if (pendingUsers > 0 && profile?.isSuperAdmin == true)
           _DashboardNotice(
@@ -300,6 +348,10 @@ class _DashboardScreenState extends State<DashboardScreen>
           canSja: access?.canHmsSja == true,
         );
         _notices = notices;
+        _departmentName = departmentName;
+        _vacationDaysLeft = vacationDaysLeft;
+        _myPendingAbsences = myPendingAbsences;
+        _myOpenTickets = myOpenTickets;
         _stats = DashboardStats(
           todayAbsences: todayAbsences,
           openTickets: openTickets,
@@ -444,6 +496,70 @@ class _DashboardScreenState extends State<DashboardScreen>
     return 'Kun dine registreringer';
   }
 
+  String get _roleLabel {
+    final p = _profile;
+    if (p == null) return '';
+    if (p.jobTitle != null && p.jobTitle!.trim().isNotEmpty) return p.jobTitle!.trim();
+    return switch (p.role) {
+      UserRole.superadmin => 'Superadmin',
+      UserRole.admin => 'Administrator',
+      UserRole.leder => 'Avdelingsleder',
+      UserRole.ansatt => 'Ansatt',
+      UserRole.samarbeidspartner => 'Samarbeidspartner',
+    };
+  }
+
+  DashboardPersonalSnapshot? get _personalSnapshot {
+    final p = _profile;
+    final access = _access;
+    if (p == null || access == null) return null;
+    return DashboardPersonalSnapshot(
+      myPendingAbsences: _myPendingAbsences,
+      myOpenTickets: _myOpenTickets,
+      vacationDaysLeft: _vacationDaysLeft,
+      departmentName: _departmentName,
+      dataScopeLabel: _dataScopeLabel,
+      roleLabel: _roleLabel,
+    );
+  }
+
+  void _openCommandPalette() {
+    final p = _profile;
+    if (p == null) return;
+    DashboardCommandPalette.show(
+      context,
+      profile: p,
+      scopedTickets: _scopedTickets,
+      scopedAbsences: _scopedAbsences,
+      onNavigateByAccess: widget.onNavigateByAccess,
+    );
+  }
+
+  List<Widget> _buildAccessibleModuleChips(bool isDark) {
+    final p = _profile;
+    final access = _access;
+    if (p == null || access == null) return const [];
+
+    final items = DashboardSearchCatalog.modulesAndActions(
+      profile: p,
+      access: access,
+    ).where((i) => i.kind == DashboardSearchKind.module).take(8);
+
+    return items
+        .map(
+          (item) => ActionChip(
+            avatar: Icon(item.icon, size: 16, color: DriftProTheme.primaryGreen),
+            label: Text(item.title),
+            onPressed: () => item.navigate(context, widget.onNavigateByAccess),
+            backgroundColor: isDark ? DriftProTheme.cardDark : Colors.white,
+            side: BorderSide(
+              color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
+            ),
+          ),
+        )
+        .toList();
+  }
+
   bool get _canShowColleagueNames =>
       !_anonymizeSharedScreen &&
       (_profile?.isAdmin == true || _profile?.role == UserRole.leder);
@@ -522,7 +638,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             .toList() ??
         [];
     final first = nameParts.isNotEmpty ? nameParts.first : '';
-    if (_kiosk.showPersonalGreeting && first.isNotEmpty) {
+    if (_usePersonalGreeting && first.isNotEmpty) {
       return '${_getGreeting()}, $first 👋';
     }
     return CompanyDisplay.resolve(_companyName);
@@ -542,25 +658,25 @@ class _DashboardScreenState extends State<DashboardScreen>
       '${_vacationToday.length}',
       'På ferie',
       Icons.beach_access_outlined,
-      _kiosk.showAbsenceAggregate && (_access?.canFravaer ?? false),
+      _contentKiosk.showAbsenceAggregate && (_access?.canFravaer ?? false),
     );
     add(
       '${_otherAbsenceToday.length}',
       'Fravær i dag',
       AppIcons.absence,
-      _kiosk.showAbsenceAggregate && (_access?.canFravaer ?? false),
+      _contentKiosk.showAbsenceAggregate && (_access?.canFravaer ?? false),
     );
     add(
       '${_stats.openTickets}',
       'Åpne avvik',
       AppIcons.ticket,
-      _kiosk.showTicketStats && (_access?.canAvvik ?? false),
+      _contentKiosk.showTicketStats && (_access?.canAvvik ?? false),
     );
     add(
       '${_onDutyEmployees.length}',
       'På jobb nå',
       Icons.work_outline,
-      _kiosk.showAttendanceSummary && (_access?.canFravaer ?? false),
+      _contentKiosk.showAttendanceSummary && (_access?.canFravaer ?? false),
     );
     return parts;
   }
@@ -1198,7 +1314,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   List<Widget> _buildOverviewStatCards() {
     final cards = <Widget>[];
-    if (_kiosk.showTicketStats && _access?.canAvvik == true) {
+    if (_contentKiosk.showTicketStats && _access?.canAvvik == true) {
       cards.add(StatCard(
         title: 'Åpne avvik',
         value: '${_stats.openTickets}',
@@ -1209,7 +1325,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () => _go(AccessKeys.avvik),
       ));
     }
-    if (_kiosk.showTicketStats && _access?.canFravaer == true) {
+    if (_contentKiosk.showTicketStats && _access?.canFravaer == true) {
       cards.add(StatCard(
         title: 'Fravær i dag',
         value: '${_stats.todayAbsences}',
@@ -1218,7 +1334,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () => _go(AccessKeys.fravaer),
       ));
     }
-    if (_kiosk.showHmsHighlights && _access?.canHmsRisk == true) {
+    if (_contentKiosk.showHmsHighlights && _access?.canHmsRisk == true) {
       cards.add(StatCard(
         title: 'Høy risiko',
         value: '${_stats.highRiskCount}',
@@ -1227,7 +1343,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () => _go(AccessKeys.hms),
       ));
     }
-    if (_kiosk.showHmsHighlights && _access?.canHmsSja == true) {
+    if (_contentKiosk.showHmsHighlights && _access?.canHmsSja == true) {
       cards.add(StatCard(
         title: 'SJA (åpne)',
         value: '${_stats.pendingSja}',
@@ -1236,7 +1352,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () => _go(AccessKeys.hms),
       ));
     }
-    if (_kiosk.showHmsHighlights && _access?.canHmsSafetyRound == true) {
+    if (_contentKiosk.showHmsHighlights && _access?.canHmsSafetyRound == true) {
       cards.add(StatCard(
         title: 'Vernerunder',
         value: '${_stats.upcomingSafetyRounds}',
@@ -1246,7 +1362,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () => _go(AccessKeys.hms),
       ));
     }
-    if (_kiosk.showHmsHighlights &&
+    if (_contentKiosk.showHmsHighlights &&
         _access?.canFravaer == true &&
         (_profile?.isAdmin == true || _profile?.role == UserRole.leder)) {
       cards.add(StatCard(
@@ -1263,11 +1379,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   List<Widget> _buildActivityAttendanceSlivers(bool isDark) {
-    final showActivity =
-        _kiosk.showActivityFeed && _recentActivity.isNotEmpty;
+    final showActivity = _contentKiosk.showActivityFeed;
     // Full oversikt ligger på infoskjerm-kortet — unngå lang «På jobb»-liste her.
-    final showAttendanceList = !_kiosk.showLiveTeamBoard &&
-        _kiosk.showAttendanceSummary &&
+    final showAttendanceList = !_contentKiosk.showLiveTeamBoard &&
+        _contentKiosk.showAttendanceSummary &&
         !_anonymizeSharedScreen &&
         (_access?.canFravaer == true || _access?.canEmployeesList == true);
 
@@ -1277,6 +1392,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     if (showActivity && !showAttendanceList) {
       return [
+        const SliverToBoxAdapter(
+          child: SectionHeader(title: 'Siste aktivitet'),
+        ),
         SliverList(
           delegate: SliverChildBuilderDelegate(
             (context, index) {
@@ -1387,7 +1505,14 @@ class _DashboardScreenState extends State<DashboardScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final miniStats = _buildMiniStatChildren();
 
-    return Scaffold(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.keyK, meta: true): _openCommandPalette,
+        const SingleActivator(LogicalKeyboardKey.keyK, control: true): _openCommandPalette,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
       backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       body: FadeTransition(
         opacity: _fadeAnimation,
@@ -1431,6 +1556,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                   actions: [
+                    IconButton(
+                      tooltip: 'Søk (⌘K)',
+                      onPressed: _openCommandPalette,
+                      icon: Icon(Icons.search_rounded,
+                          color: isDark ? Colors.white : Colors.black87),
+                    ),
                     if (_access?.canKiosk == true)
                       IconButton(
                         tooltip: 'Infoskjerm',
@@ -1486,6 +1617,55 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                   ],
                 ),
+
+                SliverToBoxAdapter(
+                  child: DashboardSearchBar(
+                    profile: _profile,
+                    scopedTickets: _scopedTickets,
+                    scopedAbsences: _scopedAbsences,
+                    onNavigateByAccess: widget.onNavigateByAccess,
+                  ),
+                ),
+
+                if (_personalSnapshot != null && _access != null)
+                  SliverToBoxAdapter(
+                    child: DashboardPersonalPanel(
+                      profile: _profile!,
+                      access: _access!,
+                      snapshot: _personalSnapshot!,
+                      onOpenFravaer: _access!.canFravaer
+                          ? () => _go(AccessKeys.fravaer)
+                          : null,
+                      onOpenAvvik:
+                          _access!.canAvvik ? () => _go(AccessKeys.avvik) : null,
+                      onOpenProfile: _access!.canProfile
+                          ? () => Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const ProfileScreen(),
+                                ),
+                              )
+                          : null,
+                    ),
+                  ),
+
+                if (_buildAccessibleModuleChips(isDark).isNotEmpty) ...[
+                  const SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(16, 4, 16, 4),
+                      child: SectionHeader(title: 'Dine moduler'),
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _buildAccessibleModuleChips(isDark),
+                      ),
+                    ),
+                  ),
+                ],
 
                 SliverToBoxAdapter(
                   child: Padding(
@@ -1551,7 +1731,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                               ),
                             ],
                           ],
-                          if (_kiosk.showMiniStatsRow && miniStats.isNotEmpty) ...[
+                          if (_contentKiosk.showMiniStatsRow && miniStats.isNotEmpty) ...[
                             const SizedBox(height: 20),
                             Row(children: miniStats),
                           ],
@@ -1569,20 +1749,19 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 ),
 
-                if ((_access?.canFravaer == true || _access?.canAvvik == true) &&
-                    !_isLoading) ...[
+                if (_access?.canFravaer == true || _access?.canAvvik == true) ...[
                   SliverToBoxAdapter(child: _buildOperationsHub(isDark)),
                 ],
 
-                if (_kiosk.showLiveTeamBoard) ...[
+                if (_contentKiosk.showLiveTeamBoard) ...[
                   SliverToBoxAdapter(child: _buildLiveTeamBoardCard(isDark)),
                 ],
 
-                if (_kiosk.showAbsenceAggregate) ...[
+                if (_contentKiosk.showAbsenceAggregate) ...[
                   SliverToBoxAdapter(child: _buildAbsenceAggregateSection(isDark)),
                 ],
 
-                if (_kiosk.showQuickActions && _buildQuickActionButtons().isNotEmpty) ...[
+                if (_contentKiosk.showQuickActions && _buildQuickActionButtons().isNotEmpty) ...[
                   const SliverToBoxAdapter(child: SectionHeader(title: 'Hurtigvalg')),
                   SliverToBoxAdapter(
                     child: SizedBox(
@@ -1613,7 +1792,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 ],
 
-                if (_anonymizeSharedScreen && _kiosk.showAttendanceSummary) ...[
+                if (_anonymizeSharedScreen && _contentKiosk.showAttendanceSummary) ...[
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -1646,6 +1825,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               ],
             ),
           ),
+        ),
+      ),
         ),
       ),
     );

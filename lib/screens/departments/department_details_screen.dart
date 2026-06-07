@@ -6,8 +6,11 @@ import '../../models/department.dart';
 import '../../models/user_profile.dart';
 import '../../models/ticket.dart';
 import '../../models/absence.dart';
+import '../../core/services/absence/leave_period_usage_service.dart';
+import '../../core/constants/leave_rules.dart';
 import '../employees/widgets/employee_display.dart';
 import '../employees/widgets/employee_move_department_sheet.dart';
+import 'widgets/department_ui_helpers.dart';
 
 class DepartmentDetailsScreen extends StatefulWidget {
   final Department department;
@@ -59,7 +62,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
     setState(() => _isLoading = true);
     try {
       final companyId = _currentDept.companyId;
-      _allProfiles = await SupabaseService.fetchProfiles(companyId: companyId);
+      _allProfiles = await SupabaseService.fetchMaviEmployees(companyId: companyId);
 
       final depts = await SupabaseService.fetchDepartments(companyId: companyId);
       final refreshed = depts.where((d) => d.id == _currentDept.id).firstOrNull;
@@ -74,7 +77,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
       }
 
       if (!widget.isNew) {
-        _members = await SupabaseService.fetchProfiles(
+        _members = await SupabaseService.fetchMaviEmployees(
           companyId: companyId,
           departmentId: _currentDept.id,
         );
@@ -143,20 +146,139 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
   }
 
   Widget _buildOverviewTab(bool isDark) {
-    if (widget.isNew) return const Center(child: Text('Lagre avdelingen først'));
+    if (widget.isNew) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Fyll inn navn og lagre avdelingen for å se oversikt, ansatte og ledere.',
+            textAlign: TextAlign.center,
+            style: DriftProTheme.bodyMd.copyWith(color: Colors.grey[600]),
+          ),
+        ),
+      );
+    }
+
+    final color = DepartmentUiHelpers.parseColor(_currentDept.colorCode);
+    final openTickets =
+        _tickets.where((t) => t.status != TicketStatus.lukket).length;
+    final awayToday = _absences.where((a) => a.isActive).length;
+    final leaders = _allProfiles.where((p) => _selectedLeaderIds.contains(p.id)).toList();
+
     return ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                color,
+                Color.lerp(color, DriftProTheme.accentBlue, 0.35) ?? color,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: DriftProTheme.cardShadow,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(
+                      DepartmentUiHelpers.iconForName(_currentDept.iconName),
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _currentDept.name,
+                          style: DriftProTheme.headingMd.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        if (_currentDept.description != null &&
+                            _currentDept.description!.trim().isNotEmpty)
+                          Text(
+                            _currentDept.description!.trim(),
+                            style: DriftProTheme.bodySm.copyWith(
+                              color: Colors.white.withValues(alpha: 0.9),
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _heroChip(Icons.people_alt_rounded, '${_members.length} ansatte'),
+                  _heroChip(Icons.report_problem_outlined, '$openTickets åpne avvik'),
+                  _heroChip(Icons.event_busy_rounded, '$awayToday fravær i dag'),
+                  _heroChip(
+                    leaders.isEmpty ? Icons.warning_amber_rounded : Icons.verified_user_outlined,
+                    leaders.isEmpty
+                        ? 'Mangler leder'
+                        : '${leaders.length} leder${leaders.length == 1 ? '' : 'e'}',
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
         Row(
           children: [
-            Expanded(child: _buildStatCard('Medlemmer', _members.length.toString(), Icons.people_outline, Colors.blue, isDark)),
+            Expanded(
+              child: _buildStatCard(
+                'Medlemmer',
+                _members.length.toString(),
+                Icons.people_outline,
+                Colors.blue,
+                isDark,
+              ),
+            ),
             const SizedBox(width: 12),
-            Expanded(child: _buildStatCard('Åpne Avvik', _tickets.where((t) => t.status != TicketStatus.lukket).length.toString(), AppIcons.error, Colors.orange, isDark)),
+            Expanded(
+              child: _buildStatCard(
+                'Åpne avvik',
+                openTickets.toString(),
+                AppIcons.error,
+                Colors.orange,
+                isDark,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 12),
-        _buildStatCard('Fravær i dag', _absences.where((a) => a.isActive).length.toString(), AppIcons.absence, Colors.teal, isDark),
-        const SizedBox(height: 24),
+        _buildStatCard(
+          'Fravær i dag',
+          awayToday.toString(),
+          AppIcons.absence,
+          Colors.teal,
+          isDark,
+        ),
+        const SizedBox(height: 20),
         Row(
           children: [
             Expanded(child: Text('Ansatte i avdelingen', style: DriftProTheme.headingMd)),
@@ -174,16 +296,21 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
               color: isDark ? DriftProTheme.cardDark : Colors.grey.shade100,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text('Ingen ansatte i denne avdelingen ennå. Legg til under fanen Ansatte.'),
+            child: const Text(
+              'Ingen ansatte i denne avdelingen ennå. Legg til under fanen Ansatte.',
+            ),
           )
         else
           ..._members.take(8).map((m) => _memberCard(m, isDark, compact: true)),
         if (_members.length > 8)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text('+ ${_members.length - 8} flere under Ansatte', style: DriftProTheme.caption),
+            child: Text(
+              '+ ${_members.length - 8} flere under Ansatte',
+              style: DriftProTheme.caption,
+            ),
           ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 20),
         Row(
           children: [
             Expanded(child: Text('Avdelingsledere', style: DriftProTheme.headingMd)),
@@ -196,6 +323,31 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
         const SizedBox(height: 8),
         _buildLeaderProfile(isDark),
       ],
+    );
+  }
+
+  Widget _heroChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -452,6 +604,10 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
       itemBuilder: (context, index) {
         final m = _members[index];
         final q = _memberQuotas[m.id];
+        final periodUsage = LeavePeriodUsageService.compute(
+          absences: _absences.where((a) => a.userId == m.id).toList(),
+          hireDate: m.hireDate,
+        );
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
@@ -472,8 +628,15 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
                   children: [
                     _miniQuota('Ferie', '${q.vacationDaysUsed}/${q.totalVacationDays}'),
-                    _miniQuota('Egenm.', '${q.egenmeldingDaysUsed}/24'),
-                    _miniQuota('Sykt barn', '${q.syktBarnDaysUsed}/10'),
+                    _miniQuota(
+                      'Egenm.',
+                      '${periodUsage.egenmeldingDaysUsed}/${LeaveRules.egenmeldingMaxDaysPerYear}',
+                    ),
+                    _miniQuota(
+                      'Sykt barn',
+                      '${periodUsage.syktBarnDaysUsed}/'
+                      '${LeaveRules.syktBarnDaysLimit(m.childrenUnder12Count)}',
+                    ),
                   ],
                 ),
               ] else 
@@ -536,9 +699,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
   }
 
   Widget _buildLeaderMultiSelect(bool isDark) {
-    final candidates = _allProfiles
-        .where((p) => p.role != UserRole.samarbeidspartner && p.isApproved)
-        .toList()
+    final candidates = _allProfiles.where((p) => p.isApproved).toList()
       ..sort((a, b) => a.fullName.compareTo(b.fullName));
 
     return Wrap(

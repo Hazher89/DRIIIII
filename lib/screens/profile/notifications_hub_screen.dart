@@ -2,13 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/permissions/user_access.dart';
 import '../../core/services/supabase_service.dart';
-import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
-import '../partners/widgets/partner_notification_settings_panel.dart';
 import 'profile_notifications_tab.dart';
-import 'widgets/mavi_notification_settings_panel.dart';
 
-/// Mer → Varsler: logg + innstillinger (superadmin) eller kun innstillinger.
+/// Mer → Varsler: kun superadmin — logg, SMS-innstillinger og mottakere.
 class NotificationsHubScreen extends StatefulWidget {
   const NotificationsHubScreen({super.key});
 
@@ -43,51 +40,27 @@ class _NotificationsHubScreenState extends State<NotificationsHubScreen> {
       );
     }
 
-    final isSuperAdmin = _profile?.isSuperAdmin == true;
+    if (_profile?.isSuperAdmin != true) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Varsler'), centerTitle: true),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Text(
+              'Kun superadmin har tilgang til varselsenteret.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Varsler'),
         centerTitle: true,
       ),
-      body: isSuperAdmin
-          ? const ProfileNotificationsTab()
-          : const _NotificationSettingsOnlyBody(),
-    );
-  }
-}
-
-class _NotificationSettingsOnlyBody extends StatelessWidget {
-  const _NotificationSettingsOnlyBody();
-
-  @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        children: [
-          Material(
-            color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-            child: const TabBar(
-              labelColor: DriftProTheme.primaryGreen,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: DriftProTheme.primaryGreen,
-              tabs: [
-                Tab(text: 'MAVI-ansatte'),
-                Tab(text: 'Samarbeid'),
-              ],
-            ),
-          ),
-          const Expanded(
-            child: TabBarView(
-              children: [
-                MaviNotificationSettingsPanel(),
-                PartnerNotificationSettingsPanel(),
-              ],
-            ),
-          ),
-        ],
-      ),
+      body: const ProfileNotificationsTab(),
     );
   }
 }

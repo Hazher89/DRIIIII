@@ -248,7 +248,6 @@ class _MainShellState extends State<MainShell> {
       },
       {'icon': AppIcons.survey, 'label': AppStrings.navSurveys, 'access': AccessKeys.surveys},
       {'icon': AppIcons.absence, 'label': AppStrings.navAbsence, 'access': AccessKeys.fravaer},
-      {'icon': AppIcons.ticket, 'label': AppStrings.navTickets, 'access': AccessKeys.avvik},
       {'icon': AppIcons.hms, 'label': AppStrings.navHMS, 'access': AccessKeys.hms},
       {'icon': Icons.handshake_outlined, 'label': AppStrings.navPartners, 'access': AccessKeys.partners},
       {'icon': AppIcons.more, 'label': AppStrings.navMore, 'access': AccessKeys.more},

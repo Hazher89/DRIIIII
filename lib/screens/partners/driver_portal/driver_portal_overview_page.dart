@@ -8,10 +8,10 @@ import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
 import '../owner_portal/owner_portal_common.dart';
 import '../partner_shell.dart';
-import '../widgets/partner_modern_ui.dart';
 import '../widgets/partner_ui.dart';
 import 'driver_portal_common.dart';
-import 'driver_portal_route_card.dart';
+import '../widgets/partner_portal_route_detail_page.dart';
+import '../widgets/partner_portal_route_list_tile.dart';
 
 class DriverPortalOverviewPage extends StatefulWidget {
   final Partner partner;
@@ -106,22 +106,34 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                         : 'Dine tildelte ruter',
                     leading: const Icon(Icons.local_shipping_outlined, color: Colors.white, size: 32),
                   ),
-                  PartnerSmartActionsPanel(
-                    title: 'Anbefalte handlinger',
-                    actions: [
-                      if (_data!.pendingAck > 0)
-                        PartnerSmartAction(
-                          label: '${_data!.pendingAck} rute(r) venter på deg',
-                          hint: 'Mine ruter → Åpne PDF → Aksepter rute',
-                          icon: Icons.mark_email_unread_outlined,
+                  if (_data!.pendingAck > 0)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          final first = _data!.routes
+                              .where((r) => r.ackStatus == 'pending')
+                              .firstOrNull;
+                          if (first != null) {
+                            PartnerPortalRouteDetailPage.open(
+                              context,
+                              route: first,
+                              shifts: _data!.shiftsById,
+                              onReload: _load,
+                            );
+                          }
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.orange.shade800,
+                          padding: const EdgeInsets.symmetric(vertical: 18),
                         ),
-                      const PartnerSmartAction(
-                        label: 'Åpne rute-PDF før du kjører',
-                        hint: 'Kundeliste og detaljer ligger i PDF-en',
-                        icon: Icons.picture_as_pdf_outlined,
+                        icon: const Icon(Icons.mark_email_unread, size: 28),
+                        label: Text(
+                          '${_data!.pendingAck} NYE RUTER — TRYKK HER',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                        ),
                       ),
-                    ],
-                  ),
+                    ),
                   if (_highlightRoutes.isNotEmpty) ...[
                     const OwnerSectionTitle(
                       title: 'Nye og dagens ruter',
@@ -130,7 +142,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                     ..._highlightRoutes.map(
                       (r) => Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: DriverPortalRouteCard(
+                        child: PartnerPortalRouteListTile(
                           route: r,
                           shifts: _data!.shiftsById,
                           onReload: _load,

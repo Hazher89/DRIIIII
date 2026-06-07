@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
-import '../partners/widgets/partner_notification_settings_panel.dart';
 import 'widgets/email_outbox_log_panel.dart';
-import 'widgets/mavi_notification_settings_panel.dart';
 import 'widgets/notification_audit_panel.dart';
+import 'widgets/notification_settings_split_tab.dart';
 import 'widgets/sms_outbox_log_panel.dart';
 
 /// Superadmin: logg + innstillinger (MAVI og samarbeid adskilt).
@@ -38,42 +37,7 @@ class ProfileNotificationsTab extends StatelessWidget {
                 SmsOutboxLogPanel(),
                 EmailOutboxLogPanel(),
                 NotificationAuditPanel(),
-                _SettingsSplitTab(),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SettingsSplitTab extends StatelessWidget {
-  const _SettingsSplitTab();
-
-  @override
-  Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        children: [
-          Material(
-            color: Colors.grey.shade100,
-            child: TabBar(
-              labelColor: DriftProTheme.primaryGreen,
-              unselectedLabelColor: Colors.grey,
-              indicatorColor: DriftProTheme.primaryGreen,
-              tabs: const [
-                Tab(text: 'MAVI-ansatte'),
-                Tab(text: 'Samarbeid'),
-              ],
-            ),
-          ),
-          const Expanded(
-            child: TabBarView(
-              children: [
-                MaviNotificationSettingsPanel(),
-                PartnerNotificationSettingsPanel(),
+                NotificationSettingsSplitTab(),
               ],
             ),
           ),

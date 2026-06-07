@@ -7,7 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/department.dart';
 import '../../../models/user_profile.dart';
 
-/// Smart opprettelse av mappe: navn, passord, deling.
+/// Smart opprettelse av mappe: navn, passord, felles/privat, deling.
 class DmsCreateFolderSheet extends StatefulWidget {
   final String companyId;
   final String? parentFolderId;
@@ -49,6 +49,7 @@ class _DmsCreateFolderSheetState extends State<DmsCreateFolderSheet> {
   final _passwordConfirm = TextEditingController();
   bool _usePassword = false;
   bool _isPrivate = false;
+  bool _isSharedMavi = false;
   bool _saving = false;
   List<UserProfile> _users = [];
   List<Department> _depts = [];
@@ -62,11 +63,11 @@ class _DmsCreateFolderSheetState extends State<DmsCreateFolderSheet> {
   }
 
   Future<void> _load() async {
-    final users = await SupabaseService.fetchProfiles(companyId: widget.companyId);
+    final users = await SupabaseService.fetchMaviEmployees(companyId: widget.companyId);
     final depts = await SupabaseService.fetchDepartments(companyId: widget.companyId);
     if (mounted) {
       setState(() {
-        _users = users.where((u) => u.isApproved && !u.isPartnerPortalUser).toList();
+        _users = users;
         _depts = depts;
       });
     }
@@ -109,8 +110,9 @@ class _DmsCreateFolderSheetState extends State<DmsCreateFolderSheet> {
         description: _desc.text.trim().isEmpty ? null : _desc.text.trim(),
         passwordHash: _usePassword ? DmsPassword.hash(_password.text) : null,
         isPrivate: _isPrivate,
-        shareUserIds: _selectedUsers.toList(),
-        shareDepartmentIds: _selectedDepts.toList(),
+        isSharedMavi: _isSharedMavi,
+        shareUserIds: _isSharedMavi ? const [] : _selectedUsers.toList(),
+        shareDepartmentIds: _isSharedMavi ? const [] : _selectedDepts.toList(),
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -128,6 +130,7 @@ class _DmsCreateFolderSheetState extends State<DmsCreateFolderSheet> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
     final parent = widget.parentFolderName;
+    final manualShare = !_isSharedMavi;
 
     return Padding(
       padding: EdgeInsets.only(bottom: bottom),
@@ -199,6 +202,28 @@ class _DmsCreateFolderSheetState extends State<DmsCreateFolderSheet> {
                       ),
                     ),
                     const SizedBox(height: 16),
+                    Card(
+                      color: const Color(0xFFE8F5E9),
+                      child: SwitchListTile(
+                        title: const Text(
+                          'Felles',
+                          style: TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: const Text(
+                          'Alle MAVI-ansatte kan se mappen. Samarbeidspartnere og sjåfører får ikke tilgang.',
+                        ),
+                        value: _isSharedMavi,
+                        activeThumbColor: DriftProTheme.primaryGreen,
+                        onChanged: (v) => setState(() {
+                          _isSharedMavi = v;
+                          if (v) {
+                            _isPrivate = false;
+                            _selectedUsers.clear();
+                            _selectedDepts.clear();
+                          }
+                        }),
+                      ),
+                    ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: const Text('Passordbeskyttet mappe'),
@@ -232,51 +257,62 @@ class _DmsCreateFolderSheetState extends State<DmsCreateFolderSheet> {
                         'Kun deg og de du deler med får tilgang',
                       ),
                       value: _isPrivate,
-                      onChanged: (v) => setState(() => _isPrivate = v),
+                      onChanged: _isSharedMavi
+                          ? null
+                          : (v) => setState(() => _isPrivate = v),
                     ),
-                    const Divider(height: 32),
-                    Text('Del med ansatte', style: DriftProTheme.headingSm),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: _users.map((u) {
-                        final sel = _selectedUsers.contains(u.id);
-                        return FilterChip(
-                          label: Text(u.fullName),
-                          selected: sel,
-                          onSelected: (v) {
+                    if (manualShare) ...[
+                      const Divider(height: 32),
+                      Text('Del med ansatte', style: DriftProTheme.headingSm),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: _users.map((u) {
+                          final sel = _selectedUsers.contains(u.id);
+                          return FilterChip(
+                            label: Text(u.fullName),
+                            selected: sel,
+                            onSelected: (v) {
+                              setState(() {
+                                if (v) {
+                                  _selectedUsers.add(u.id);
+                                } else {
+                                  _selectedUsers.remove(u.id);
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 16),
+                      Text('Del med avdelinger', style: DriftProTheme.headingSm),
+                      const SizedBox(height: 8),
+                      ..._depts.map((d) {
+                        final sel = _selectedDepts.contains(d.id);
+                        return CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(d.name),
+                          value: sel,
+                          onChanged: (v) {
                             setState(() {
-                              if (v) {
-                                _selectedUsers.add(u.id);
+                              if (v == true) {
+                                _selectedDepts.add(d.id);
                               } else {
-                                _selectedUsers.remove(u.id);
+                                _selectedDepts.remove(d.id);
                               }
                             });
                           },
                         );
-                      }).toList(),
-                    ),
-                    const SizedBox(height: 16),
-                    Text('Del med avdelinger', style: DriftProTheme.headingSm),
-                    const SizedBox(height: 8),
-                    ..._depts.map((d) {
-                      final sel = _selectedDepts.contains(d.id);
-                      return CheckboxListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(d.name),
-                        value: sel,
-                        onChanged: (v) {
-                          setState(() {
-                            if (v == true) {
-                              _selectedDepts.add(d.id);
-                            } else {
-                              _selectedDepts.remove(d.id);
-                            }
-                          });
-                        },
-                      );
-                    }),
+                      }),
+                    ] else
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Felles mapper deles automatisk med alle ${_users.length} MAVI-ansatte.',
+                          style: DriftProTheme.caption,
+                        ),
+                      ),
                     const SizedBox(height: 20),
                     FilledButton.icon(
                       onPressed: _saving ? null : _submit,
@@ -287,7 +323,7 @@ class _DmsCreateFolderSheetState extends State<DmsCreateFolderSheet> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.create_new_folder),
-                      label: const Text('Opprett mappe'),
+                      label: Text(_isSharedMavi ? 'Opprett felles mappe' : 'Opprett mappe'),
                       style: FilledButton.styleFrom(
                         backgroundColor: DriftProTheme.primaryGreen,
                         minimumSize: const Size(double.infinity, 48),

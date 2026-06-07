@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../utils/storage_path_sanitizer.dart';
 import '../supabase_service.dart';
 import 'dropbox_storage_modules.dart';
 
@@ -23,9 +24,10 @@ class StoredFileResult {
   bool get isDropbox => provider == 'dropbox';
 }
 
-/// Velger lagring: Supabase under 1 MB, Dropbox over (når koblet).
+/// All filopplasting går til Dropbox når bedriften er koblet.
+/// Supabase brukes kun når Dropbox ikke er satt opp ennå.
 class CompanyFileStorage {
-  static const int defaultThresholdBytes = 1048576; // 1 MB
+  static const int defaultThresholdBytes = 0;
 
   static SupabaseClient get _client => Supabase.instance.client;
 
@@ -84,6 +86,17 @@ class CompanyFileStorage {
     return RegExp(r'^/company_[0-9a-f-]{36}/').hasMatch(p);
   }
 
+  /// Tilgjengelig for alle innloggede (ikke bare admin).
+  static Future<bool> isDropboxConnected() async {
+    try {
+      final res = await _client.rpc('is_company_dropbox_connected');
+      return res == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Full status — kun administrator (innstillinger-skjerm).
   static Future<Map<String, dynamic>?> dropboxStatus() async {
     try {
       final res = await _client.rpc('get_company_dropbox_status');
@@ -114,7 +127,7 @@ class CompanyFileStorage {
     await _client.rpc('disconnect_company_dropbox');
   }
 
-  /// Lagre fil — automatisk valg av backend.
+  /// Lagre fil — Dropbox når koblet, ellers Supabase.
   static Future<StoredFileResult> upload({
     required String supabaseBucket,
     required String storagePath,
@@ -122,25 +135,27 @@ class CompanyFileStorage {
     required String category,
     String? fileName,
   }) async {
-    final status = await dropboxStatus();
-    final connected = status?['connected'] == true;
-    final name = fileName ?? storagePath.split('/').last;
+    final connected = await isDropboxConnected();
+    final safePath = StoragePathSanitizer.storagePath(storagePath);
+    final name = fileName ?? safePath.split('/').last;
 
-    if (connected && isModuleEnabled(status, category)) {
-      final b64 = base64Encode(bytes);
+    if (!connected) {
+      return _uploadSupabase(supabaseBucket, storagePath, bytes);
+    }
+
+    final safeName = StoragePathSanitizer.fileName(name);
+    final b64 = base64Encode(bytes);
+    try {
       final res = await _client.functions.invoke(
         'dropbox-storage',
         body: {
-          'file_name': name,
+          'file_name': safeName,
           'category': category,
           'bytes_base64': b64,
         },
         queryParameters: {'action': 'upload'},
       );
       final data = res.data;
-      if (data is Map && data['use_supabase'] == true) {
-        return _uploadSupabase(supabaseBucket, storagePath, bytes);
-      }
       if (data is Map && data['ok'] == true) {
         return StoredFileResult(
           provider: 'dropbox',
@@ -149,13 +164,20 @@ class CompanyFileStorage {
           sizeBytes: bytes.length,
         );
       }
-      if (data is Map && data['error'] != null) {
-        throw Exception(data['error'].toString());
+
+      final reason = data is Map
+          ? (data['error'] ?? data['reason'] ?? 'ukjent feil').toString()
+          : 'Dropbox-opplasting feilet';
+      if (kDebugMode) {
+        debugPrint('Dropbox upload feilet ($reason) — faller tilbake til Supabase.');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Dropbox upload exception ($e) — faller tilbake til Supabase.');
       }
     }
 
-    // Fallback hvis Dropbox ikke er koblet, modul er av, eller Dropbox svarer "use_supabase".
-    return _uploadSupabase(supabaseBucket, storagePath, bytes);
+    return _uploadSupabase(supabaseBucket, safePath, bytes);
   }
 
   static Future<StoredFileResult> _uploadSupabase(
@@ -163,10 +185,11 @@ class CompanyFileStorage {
     String path,
     Uint8List bytes,
   ) async {
-    final url = await SupabaseService.uploadFile(bucket, path, bytes);
+    final safePath = StoragePathSanitizer.storagePath(path);
+    final url = await SupabaseService.uploadFile(bucket, safePath, bytes);
     return StoredFileResult(
       provider: 'supabase',
-      path: path,
+      path: safePath,
       publicOrSignedUrl: url,
       sizeBytes: bytes.length,
     );

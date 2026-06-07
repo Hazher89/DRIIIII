@@ -149,7 +149,7 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
 
       final bundle = await TidsbankenPresenceService.loadForCurrentCompany(trySync: false);
       final absences = await SupabaseService.fetchAbsences(companyId: companyId);
-      final profiles = await SupabaseService.fetchProfiles(companyId: companyId);
+      final profiles = await SupabaseService.fetchMaviEmployees(companyId: companyId);
 
       if (!mounted) return;
       setState(() {
@@ -157,7 +157,7 @@ class _OnlinePresenceScreenState extends State<OnlinePresenceScreen> {
         _presence = bundle.rows;
         _sync = bundle.sync;
         _absences = absences;
-        _profiles = profiles.where((p) => p.isActive).toList();
+        _profiles = profiles;
         _loading = false;
         _syncing = false;
       });

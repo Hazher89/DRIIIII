@@ -7,7 +7,6 @@ import '../../core/theme/app_theme.dart';
 import 'fleet_route_driver_stats_screen.dart';
 import 'fleet_shift_admin_screen.dart';
 import 'widgets/partner_available_vehicles_bar.dart';
-import 'widgets/partner_modern_ui.dart';
 import 'widgets/partner_route_master_scheduler.dart';
 import 'widgets/partner_route_pdf_search_panel.dart';
 import 'widgets/partner_ui.dart';
@@ -88,7 +87,6 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
 
     final today = DateTime.now();
     final day = DateTime(today.year, today.month, today.day);
-    final pendingAck = _sharesToday.where((s) => s.ackStatus == 'pending').length;
 
     final body = RefreshIndicator(
       onRefresh: reload,
@@ -96,28 +94,6 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
       child: ListView(
         padding: const EdgeInsets.fromLTRB(0, 0, 0, 24),
         children: [
-          PartnerHeroBanner(
-            compact: true,
-            title: 'Ruter & planlegging',
-            subtitle:
-                'Oppdatert visning · ledige biler med type · Registrer bedrifter kun under fanen Bedrifter.',
-            leading: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.alt_route_rounded, color: Colors.white, size: 26),
-            ),
-          ),
-          PartnerModernKpiGrid(
-            items: [
-              ('MAVI i plan', '${_fleet.length}'),
-              ('Ruter i dag', '${_sharesToday.length}'),
-              ('Venter svar', '$pendingAck'),
-              ('Verktøy', 'Klar'),
-            ],
-          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: PartnerAvailableVehiclesPanel(

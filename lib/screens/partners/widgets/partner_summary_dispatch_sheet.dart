@@ -2,19 +2,29 @@ import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/partner/partner_summary_service.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
-import '../../../models/partner/partner_summary_meta.dart';
-import 'partner_modern_ui.dart';
-import 'partner_route_pdf_bytes_url_stub.dart'
-    if (dart.library.io) 'partner_route_pdf_bytes_url_io.dart'
-    if (dart.library.html) 'partner_route_pdf_bytes_url_web.dart' as pdf_bytes_url;
+import 'partner_route_pdf_actions.dart';
+import 'partner_route_workflow_ui.dart';
+import 'partner_summary_queue_card.dart';
 
-/// Superadmin: last opp flere oppsummerings-PDF-er, kontroller matching, send til riktig bedrift.
+const _summaryCardGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
+  maxCrossAxisExtent: 280,
+  childAspectRatio: 0.54,
+  crossAxisSpacing: 10,
+  mainAxisSpacing: 10,
+);
+
+const _summaryAccent = Color(0xFF00695C);
+const _summaryAccentDark = Color(0xFF004D40);
+
+enum _SummaryTab { all, needsReview, selected }
+
+enum _SummaryQueueFilter { all, needsReview, selected, ready }
+
+/// Superadmin: last opp oppsummerings-PDF-er — samme layout som AUTO MASS / SAP.
 class PartnerSummaryDispatchSheet extends StatefulWidget {
   const PartnerSummaryDispatchSheet({
     super.key,
@@ -33,12 +43,9 @@ class PartnerSummaryDispatchSheet extends StatefulWidget {
     required Map<String, List<PartnerVehicle>> vehiclesByPartner,
     required String companyId,
   }) {
-    return showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: PartnerModernUi.surface(context),
-      builder: (_) => PartnerSummaryDispatchSheet(
+    return showPartnerRouteWorkflowDialog<bool>(
+      context,
+      child: PartnerSummaryDispatchSheet(
         partners: partners,
         vehiclesByPartner: vehiclesByPartner,
         companyId: companyId,
@@ -54,54 +61,168 @@ class _PartnerSummaryDispatchSheetState extends State<PartnerSummaryDispatchShee
   List<SummaryDispatchDraft> _drafts = [];
   bool _sendSms = true;
   bool _sending = false;
+  bool _busyUpload = false;
+  bool _guideExpanded = false;
+  _SummaryTab _tab = _SummaryTab.all;
+  _SummaryQueueFilter _filter = _SummaryQueueFilter.all;
 
   int get _selectedCount => _drafts.where((d) => d.selected).length;
 
-  Future<void> _pickPdfs() async {
-    final picked = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf'],
-      allowMultiple: true,
-      withData: true,
-    );
-    if (picked == null || picked.files.isEmpty) return;
+  int get _needsReviewCount => _drafts.where((d) => d.needsReview).length;
 
-    final files = <({String name, Uint8List bytes})>[];
-    for (final f in picked.files) {
-      final bytes = f.bytes;
-      if (bytes == null || bytes.isEmpty) continue;
-      files.add((name: f.name, bytes: bytes));
+  int get _readyCount =>
+      _drafts.where((d) => d.selected && d.partnerId != null && !d.needsReview).length;
+
+  List<SummaryDispatchDraft> get _visibleDrafts {
+    Iterable<SummaryDispatchDraft> list = _drafts;
+    switch (_tab) {
+      case _SummaryTab.all:
+        break;
+      case _SummaryTab.needsReview:
+        list = list.where((d) => d.needsReview);
+      case _SummaryTab.selected:
+        list = list.where((d) => d.selected);
     }
-    if (files.isEmpty) return;
+    switch (_filter) {
+      case _SummaryQueueFilter.all:
+        return list.toList();
+      case _SummaryQueueFilter.needsReview:
+        return list.where((d) => d.needsReview).toList();
+      case _SummaryQueueFilter.selected:
+        return list.where((d) => d.selected).toList();
+      case _SummaryQueueFilter.ready:
+        return list.where((d) => d.selected && d.partnerId != null && !d.needsReview).toList();
+    }
+  }
 
+  int get _tabIndex {
+    switch (_tab) {
+      case _SummaryTab.all:
+        return 0;
+      case _SummaryTab.needsReview:
+        return 1;
+      case _SummaryTab.selected:
+        return 2;
+    }
+  }
+
+  void _setTabIndex(int i) {
     setState(() {
-      _drafts = PartnerSummaryService.buildDrafts(
-        files: files,
-        partners: widget.partners,
-        vehiclesByPartner: widget.vehiclesByPartner,
-      );
+      _tab = switch (i) {
+        1 => _SummaryTab.needsReview,
+        2 => _SummaryTab.selected,
+        _ => _SummaryTab.all,
+      };
+      if (_tab == _SummaryTab.needsReview) {
+        _filter = _SummaryQueueFilter.needsReview;
+      } else if (_tab == _SummaryTab.selected) {
+        _filter = _SummaryQueueFilter.selected;
+      } else {
+        _filter = _SummaryQueueFilter.all;
+      }
     });
   }
 
-  Future<void> _previewPdf(Uint8List bytes) async {
-    final url = await pdf_bytes_url.pdfBytesToViewUrl(bytes);
-    if (url != null) {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-      return;
+  Future<void> _pickPdfs() async {
+    setState(() => _busyUpload = true);
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['pdf'],
+        allowMultiple: true,
+        withData: true,
+      );
+      if (picked == null || picked.files.isEmpty) return;
+
+      final files = <({String name, Uint8List bytes})>[];
+      for (final f in picked.files) {
+        final bytes = f.bytes;
+        if (bytes == null || bytes.isEmpty) continue;
+        files.add((name: f.name, bytes: bytes));
+      }
+      if (files.isEmpty) return;
+
+      setState(() {
+        _drafts = PartnerSummaryService.buildDrafts(
+          files: files,
+          partners: widget.partners,
+          vehiclesByPartner: widget.vehiclesByPartner,
+        );
+      });
+    } finally {
+      if (mounted) setState(() => _busyUpload = false);
     }
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Forhåndsvisning støttes best i nettleser.')),
-    );
   }
 
-  Future<void> _send() async {
+  void _clearQueue() {
+    setState(() => _drafts = []);
+  }
+
+  void _removeDraft(SummaryDispatchDraft draft) {
+    setState(() => _drafts.removeWhere((d) => d.localId == draft.localId));
+  }
+
+  Partner? _partnerFor(SummaryDispatchDraft draft) {
+    if (draft.partnerId == null) return null;
+    return widget.partners.where((p) => p.id == draft.partnerId).firstOrNull;
+  }
+
+  Future<void> _showEditSheet(SummaryDispatchDraft draft) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.viewInsetsOf(ctx).bottom + 16,
+          ),
+          child: SingleChildScrollView(
+            child: PartnerSummaryQueueCard.buildDetailsForm(
+              context: ctx,
+              draft: draft,
+              partners: widget.partners,
+              accentDark: _summaryAccentDark,
+              needsReview: draft.needsReview,
+              onPartnerChanged: (v) {
+                setSheet(() {
+                  draft.partnerId = v;
+                  draft.matchReason = 'Manuelt valgt';
+                });
+                setState(() {});
+              },
+              onWeekChanged: (v) => draft.weekLabel = v.trim(),
+              onPreview: () => PartnerRoutePdfActions.openPdfBytes(
+                ctx,
+                bytes: draft.bytes,
+                title: draft.fileName,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _send({required bool withSms}) async {
     if (_selectedCount == 0) return;
     final unassigned = _drafts.where((d) => d.selected && d.partnerId == null).toList();
     if (unassigned.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${unassigned.length} valgte PDF-er mangler bedrift.')),
       );
+      setState(() {
+        _tab = _SummaryTab.needsReview;
+        _filter = _SummaryQueueFilter.needsReview;
+      });
       return;
     }
 
@@ -133,7 +254,7 @@ class _PartnerSummaryDispatchSheetState extends State<PartnerSummaryDispatchShee
       companyId: widget.companyId,
       drafts: _drafts,
       partners: widget.partners,
-      sendSms: _sendSms,
+      sendSms: withSms,
     );
     if (!mounted) return;
     setState(() => _sending = false);
@@ -146,280 +267,383 @@ class _PartnerSummaryDispatchSheetState extends State<PartnerSummaryDispatchShee
     if (result.sent > 0) Navigator.pop(context, true);
   }
 
+  String _tabHint() {
+    switch (_tab) {
+      case _SummaryTab.all:
+        return 'Se PDF-forside på hvert kort før du sender. Trykk kort for detaljer og bedriftsvalg.';
+      case _SummaryTab.needsReview:
+        return 'PDF-er som mangler sikker matching — velg riktig bedrift før sending.';
+      case _SummaryTab.selected:
+        return 'Kun valgte oppsummeringer sendes til bil-eier-portalen.';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.92,
-      minChildSize: 0.5,
-      maxChildSize: 0.98,
-      builder: (context, scrollCtrl) {
-        return Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Send ut oppsummeringer',
-                          style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-                        ),
-                        Text(
-                          'Kun superadmin · hver bedrift får kun sin egen PDF',
-                          style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                children: [
-                  FilledButton.icon(
-                    onPressed: _sending ? null : _pickPdfs,
-                    icon: const Icon(Icons.upload_file),
-                    label: const Text('Velg PDF-er'),
-                  ),
-                  const SizedBox(width: 8),
-                  if (_drafts.isNotEmpty) ...[
-                    TextButton(
-                      onPressed: () => setState(() {
-                        for (final d in _drafts) {
-                          d.selected = true;
-                        }
-                      }),
-                      child: const Text('Huk på alle'),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() {
-                        for (final d in _drafts) {
-                          d.selected = false;
-                        }
-                      }),
-                      child: const Text('Huk av alle'),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (_drafts.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  children: [
-                    Switch(
-                      value: _sendSms,
-                      onChanged: _sending ? null : (v) => setState(() => _sendSms = v),
-                    ),
-                    Expanded(
-                      child: Text(
-                        _sendSms ? 'Send med SMS-varsel til bedrift' : 'Send uten SMS-varsel',
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                    ),
-                    Text('$_selectedCount / ${_drafts.length} valgt'),
-                  ],
-                ),
-              ),
-            Expanded(
-              child: _drafts.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Text(
-                          'Last opp én eller flere oppsummerings-PDF-er.\n'
-                          'Systemet leser uke, bedrift, datoer og beløp automatisk.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: PartnerModernUi.muted(context)),
-                        ),
-                      ),
-                    )
-                  : ListView.builder(
-                      controller: scrollCtrl,
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
-                      itemCount: _drafts.length,
-                      itemBuilder: (_, i) => _draftCard(_drafts[i]),
-                    ),
-            ),
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _sending || _selectedCount == 0 ? null : _send,
-                    icon: _sending
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.send),
-                    label: Text(_sending ? 'Sender…' : 'Send valgte oppsummeringer'),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+    final canSend = _drafts.isNotEmpty &&
+        _selectedCount > 0 &&
+        !_drafts.any((d) => d.selected && d.partnerId == null);
+
+    return PartnerRouteWorkflowShell(
+      accent: _summaryAccent,
+      accentDark: _summaryAccentDark,
+      icon: Icons.summarize_outlined,
+      title: 'Send ut oppsummeringer',
+      subtitle: 'Kun superadmin · hver bedrift får kun sin egen PDF · sjekk forsiden før sending',
+      badge: 'ØKONOMI',
+      metrics: [
+        RouteWorkflowMetric(
+          label: 'PDF-er',
+          value: '${_drafts.length}',
+          icon: Icons.description_outlined,
+          color: _summaryAccentDark,
+        ),
+        RouteWorkflowMetric(
+          label: 'Valgt',
+          value: '$_selectedCount',
+          icon: Icons.check_box_outlined,
+          color: Colors.blueGrey.shade700,
+        ),
+        RouteWorkflowMetric(
+          label: 'Klare',
+          value: '$_readyCount',
+          icon: Icons.check_circle_outline,
+          color: Colors.green.shade700,
+        ),
+        if (_needsReviewCount > 0)
+          RouteWorkflowMetric(
+            label: 'Trenger deg',
+            value: '$_needsReviewCount',
+            icon: Icons.warning_amber_rounded,
+            color: Colors.orange.shade800,
+          ),
+      ],
+      sidebar: _buildSidebar(),
+      guidePanel: _buildGuide(),
+      guideExpanded: _guideExpanded,
+      onGuideToggle: () => setState(() => _guideExpanded = !_guideExpanded),
+      tabLabels: const ['Alle', 'Trenger deg', 'Valgt'],
+      tabBadges: [
+        _drafts.isNotEmpty ? _drafts.length : null,
+        _needsReviewCount > 0 ? _needsReviewCount : null,
+        _selectedCount > 0 ? _selectedCount : null,
+      ],
+      tabBadgeColors: [
+        _summaryAccentDark,
+        Colors.orange.shade800,
+        Colors.green.shade700,
+      ],
+      selectedTabIndex: _tabIndex,
+      onTabSelected: _setTabIndex,
+      tabCaption: _tabHint(),
+      showTabCaption: true,
+      tabBody: _buildTabBody(),
+      footer: _buildFooter(canSend),
+      topBanner: _needsReviewCount > 0 && _tab != _SummaryTab.needsReview
+          ? routeManualAttentionBanner(
+              count: _needsReviewCount,
+              onOpenManual: () => _setTabIndex(1),
+            )
+          : null,
     );
   }
 
-  Widget _draftCard(SummaryDispatchDraft draft) {
-    final meta = draft.effectiveMeta;
-    final partner = widget.partners.where((p) => p.id == draft.partnerId).firstOrNull;
+  Widget _buildSidebar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FilledButton.icon(
+          onPressed: _busyUpload || _sending ? null : _pickPdfs,
+          style: FilledButton.styleFrom(
+            backgroundColor: _summaryAccentDark,
+            minimumSize: const Size(double.infinity, 50),
+          ),
+          icon: _busyUpload
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.upload_file),
+          label: Text(_drafts.isEmpty ? 'Velg PDF-er' : 'Last opp flere PDF-er'),
+        ),
+        if (_drafts.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: _sending ? null : _clearQueue,
+            icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+            label: Text('Tøm kø (${_drafts.length})'),
+            style: TextButton.styleFrom(foregroundColor: Colors.grey.shade700),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _sending
+                      ? null
+                      : () => setState(() {
+                            for (final d in _drafts) {
+                              d.selected = true;
+                            }
+                          }),
+                  child: const Text('Huk på alle'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _sending
+                      ? null
+                      : () => setState(() {
+                            for (final d in _drafts) {
+                              d.selected = false;
+                            }
+                          }),
+                  child: const Text('Huk av alle'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('SMS-varsel', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            subtitle: Text(
+              _sendSms ? 'Bedrift får SMS når oppsummering er klar' : 'Kun portal — uten SMS',
+              style: const TextStyle(fontSize: 11),
+            ),
+            value: _sendSms,
+            activeThumbColor: _summaryAccent,
+            onChanged: _sending ? null : (v) => setState(() => _sendSms = v),
+          ),
+        ],
+      ],
+    );
+  }
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+  Widget _buildGuide() {
+    const steps = [
+      'Last opp én eller flere oppsummerings-PDF-er.',
+      'Systemet leser uke, bedrift, beløp og matcher mot DriftPro.',
+      'Sjekk PDF-forsiden på kortene — trykk for å åpne eller redigere.',
+      'Velg riktig bedrift der matching er usikker.',
+      'Send med eller uten SMS-varsel til bil-eier.',
+    ];
+    return Material(
+      color: _summaryAccent.withValues(alpha: 0.06),
+      borderRadius: BorderRadius.circular(12),
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Checkbox(
-                  value: draft.selected,
-                  onChanged: _sending
-                      ? null
-                      : (v) => setState(() => draft.selected = v ?? false),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        draft.fileName,
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                      ),
-                      Text(
-                        meta.companyNameRaw,
-                        style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Forhåndsvis PDF',
-                  onPressed: () => _previewPdf(draft.bytes),
-                  icon: const Icon(Icons.picture_as_pdf_outlined),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: [
-                _chip('Uke ${meta.weekLabel}'),
-                _chip('Faktura ${PartnerSummaryMeta.formatDate(meta.invoiceDate)}'),
-                _chip('Betaling ${PartnerSummaryMeta.formatDate(meta.paymentDate)}'),
-                _chip(
-                  'Transport ${PartnerSummaryMeta.formatAmount(meta.transportTotalExVat)} kr eks mva',
-                  highlight: true,
-                ),
-              ],
-            ),
-            if (meta.hasMultipleVehicles) ...[
-              const SizedBox(height: 8),
-              Text('Per bil:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: PartnerModernUi.muted(context))),
-              const SizedBox(height: 4),
-              ...meta.vehicles.map(
-                (v) => Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
-                  child: Text(
-                    '${v.compactLabel} (${v.unitCode}): ${PartnerSummaryMeta.formatAmount(v.transportExVat)} kr',
-                    style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
-                  ),
-                ),
-              ),
-            ],
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              value: draft.partnerId,
-              decoration: InputDecoration(
-                labelText: 'Bedrift i DriftPro',
-                border: const OutlineInputBorder(),
-                isDense: true,
-                errorText: draft.partnerId == null ? 'Velg bedrift' : null,
-              ),
-              items: widget.partners
-                  .map(
-                    (p) => DropdownMenuItem(
-                      value: p.id,
-                      child: Text(p.name, overflow: TextOverflow.ellipsis),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: steps.asMap().entries.map((e) {
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CircleAvatar(
+                    radius: 11,
+                    backgroundColor: _summaryAccent,
+                    child: Text(
+                      '${e.key + 1}',
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.white),
                     ),
-                  )
-                  .toList(),
-              onChanged: _sending
-                  ? null
-                  : (v) => setState(() {
-                        draft.partnerId = v;
-                        draft.matchReason = 'Manuelt valgt';
-                      }),
-            ),
-            if (draft.matchReason != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                'Matching: ${draft.matchReason} (${draft.matchScore} poeng)',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: draft.needsReview ? Colors.orange.shade800 : Colors.green.shade800,
-                ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(e.value, style: const TextStyle(fontSize: 12, height: 1.35))),
+                ],
               ),
-            ],
-            const SizedBox(height: 8),
-            TextFormField(
-              key: ValueKey('week_${draft.localId}_${draft.weekLabel}'),
-              initialValue: draft.weekLabel,
-              decoration: const InputDecoration(
-                labelText: 'Uke (kan endres)',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
-              onChanged: _sending ? null : (v) => draft.weekLabel = v.trim(),
-            ),
-            if (partner != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Text(
-                  'Sendes kun til: ${partner.name}',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: DriftProTheme.primaryGreenDark),
-                ),
-              ),
-          ],
+            );
+          }).toList(),
         ),
       ),
     );
   }
 
-  Widget _chip(String label, {bool highlight = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: highlight
-            ? DriftProTheme.primaryGreen.withValues(alpha: 0.12)
-            : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: highlight ? DriftProTheme.primaryGreenDark : Colors.black87,
+  Widget _buildFilterBar() {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        ChoiceChip(
+          label: Text('Alle (${_drafts.length})'),
+          selected: _filter == _SummaryQueueFilter.all,
+          onSelected: (_) => setState(() => _filter = _SummaryQueueFilter.all),
         ),
+        ChoiceChip(
+          label: Text('Trenger deg ($_needsReviewCount)'),
+          selected: _filter == _SummaryQueueFilter.needsReview,
+          onSelected: (_) => setState(() => _filter = _SummaryQueueFilter.needsReview),
+        ),
+        ChoiceChip(
+          label: Text('Valgt ($_selectedCount)'),
+          selected: _filter == _SummaryQueueFilter.selected,
+          onSelected: (_) => setState(() => _filter = _SummaryQueueFilter.selected),
+        ),
+        ChoiceChip(
+          label: Text('Klare ($_readyCount)'),
+          selected: _filter == _SummaryQueueFilter.ready,
+          onSelected: (_) => setState(() => _filter = _SummaryQueueFilter.ready),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTabBody() {
+    if (_drafts.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.summarize_outlined, size: 64, color: Colors.grey.shade400),
+              const SizedBox(height: 16),
+              Text(
+                'Last opp oppsummerings-PDF-er',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Colors.grey.shade800),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Samme arbeidsflyt som AUTO MASS og SAP:\n'
+                'se alle PDF-er som kort, kontroller matching, send når alt stemmer.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade600, height: 1.45),
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: _busyUpload ? null : _pickPdfs,
+                style: FilledButton.styleFrom(backgroundColor: _summaryAccentDark),
+                icon: const Icon(Icons.upload_file),
+                label: const Text('Velg PDF-er'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final visible = _visibleDrafts;
+
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            child: _buildFilterBar(),
+          ),
+        ),
+        if (visible.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Text(
+                'Ingen PDF-er matcher filteret.',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
+            sliver: SliverGrid(
+              gridDelegate: _summaryCardGridDelegate,
+              delegate: SliverChildBuilderDelegate(
+                (context, i) {
+                  final draft = visible[i];
+                  return PartnerSummaryQueueCard(
+                    draft: draft,
+                    partner: _partnerFor(draft),
+                    accent: _summaryAccent,
+                    accentDark: _summaryAccentDark,
+                    checked: draft.selected,
+                    needsReview: draft.needsReview,
+                    busy: _sending,
+                    onChecked: (v) => setState(() => draft.selected = v ?? false),
+                    onRemove: () => _removeDraft(draft),
+                    onOpenDetails: () => _showEditSheet(draft),
+                  );
+                },
+                childCount: visible.length,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildFooter(bool canSend) {
+    final unassigned = _drafts.where((d) => d.selected && d.partnerId == null).length;
+    final statusText = _drafts.isEmpty
+        ? 'Ingen PDF-er i kø'
+        : unassigned > 0
+            ? '$unassigned valgte PDF-er mangler bedrift'
+            : canSend
+                ? 'Sjekk PDF-forside på kortene før sending · $_selectedCount valgt'
+                : 'Velg PDF-er og bedrift før sending';
+
+    final btnNoSms = FilledButton.icon(
+      onPressed: _sending || !canSend ? null : () => _send(withSms: false),
+      icon: _sending
+          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          : const Icon(Icons.inventory_2_outlined, size: 20),
+      label: Text('Uten SMS ($_selectedCount)'),
+      style: FilledButton.styleFrom(
+        backgroundColor: Colors.blueGrey.shade600,
+        minimumSize: const Size(0, 46),
       ),
+    );
+
+    final btnSms = FilledButton.icon(
+      onPressed: _sending || !canSend ? null : () => _send(withSms: true),
+      icon: _sending
+          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          : const Icon(Icons.rocket_launch_outlined, size: 20),
+      label: Text('Med SMS ($_selectedCount)'),
+      style: FilledButton.styleFrom(
+        backgroundColor: _summaryAccentDark,
+        minimumSize: const Size(0, 46),
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 640;
+        final status = Text(
+          statusText,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: unassigned > 0 ? Colors.orange.shade900 : Colors.grey.shade800,
+          ),
+        );
+
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              status,
+              const SizedBox(height: 10),
+              btnNoSms,
+              const SizedBox(height: 8),
+              btnSms,
+            ],
+          );
+        }
+
+        return Row(
+          children: [
+            Expanded(child: status),
+            const SizedBox(width: 12),
+            btnNoSms,
+            const SizedBox(width: 8),
+            btnSms,
+          ],
+        );
+      },
     );
   }
 }

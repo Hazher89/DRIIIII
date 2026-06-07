@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_icons.dart';
 import '../../models/user_profile.dart';
 import 'employee_change_password_sheet.dart';
+import 'widgets/profile_children_under_12_card.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,14 +17,32 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   UserProfile? _profile;
+  String? _departmentName;
   bool _isLoading = true;
 
   Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
+      String? departmentName;
+      if (profile?.departmentId != null) {
+        final companyId =
+            profile!.companyId ?? await SupabaseService.discoverBootstrapCompanyId();
+        if (companyId != null) {
+          final depts = await SupabaseService.fetchDepartments(companyId: companyId);
+          for (final d in depts) {
+            if (d.id == profile.departmentId) {
+              departmentName = d.name;
+              break;
+            }
+          }
+        }
+      }
       if (!mounted) return;
-      setState(() => _profile = profile);
+      setState(() {
+        _profile = profile;
+        _departmentName = departmentName;
+      });
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -102,6 +121,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 24),
+          if (_profile!.partnerId == null)
+            ProfileChildrenUnder12Card(
+              profile: _profile!,
+              onSaved: _loadProfile,
+            ),
           const SizedBox(height: 32),
           _buildInfoSection(isDark, [
             _buildInfoTile(
@@ -125,7 +150,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildInfoTile(
               AppIcons.department,
               'Avdeling',
-              _profile!.departmentId ?? 'Ingen avdeling',
+              _departmentName ?? (_profile!.departmentId != null ? 'Ukjent avdeling' : 'Ingen avdeling'),
               isDark,
             ),
           ]),

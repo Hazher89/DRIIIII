@@ -5,10 +5,9 @@ import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
-import '../widgets/partner_route_howto_strip.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_common.dart';
-import 'owner_portal_route_card.dart';
+import '../widgets/partner_portal_route_list_tile.dart';
 import 'owner_portal_route_history.dart';
 import 'owner_portal_routes_focus.dart';
 
@@ -97,6 +96,16 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
     return routes.where((r) => r.partnerVehicleId == _vehicleFilterId).toList();
   }
 
+  List<PartnerRouteShare> _sortedPendingFirst(List<PartnerRouteShare> routes) {
+    final copy = List<PartnerRouteShare>.from(routes);
+    copy.sort((a, b) {
+      if (a.ackStatus == 'pending' && b.ackStatus != 'pending') return -1;
+      if (b.ackStatus == 'pending' && a.ackStatus != 'pending') return 1;
+      return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
+    });
+    return copy;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -151,17 +160,34 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
   }
 
   Widget _tabBody(List<PartnerRouteShare> routes, String empty) {
-    final filtered = _filtered(routes);
+    final filtered = _sortedPendingFirst(_filtered(routes));
     return RefreshIndicator(
       onRefresh: _load,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           if (_data!.pendingAckTotal > 0)
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(12, 8, 12, 0),
-                child: PartnerRouteHowToStrip(compact: true),
+            SliverToBoxAdapter(
+              child: Material(
+                color: Colors.orange.shade100,
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Row(
+                    children: [
+                      Icon(Icons.mark_email_unread, color: Colors.orange.shade900, size: 28),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          '${_data!.pendingAckTotal} rute(r) venter — trykk ruten, åpne PDF, aksepter',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           SliverToBoxAdapter(child: _vehicleFilters()),
@@ -207,12 +233,20 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
-                  (context, i) => OwnerPortalRouteCard(
-                    route: filtered[i],
-                    vehicle: _vehicles[filtered[i].partnerVehicleId],
-                    shifts: _data!.shiftsById,
-                    onReload: _load,
-                  ),
+                  (context, i) {
+                    final route = filtered[i];
+                    final vehicle = _vehicles[route.partnerVehicleId];
+                    final vehicleLabel = vehicle != null
+                        ? '${MaviUnitCodes.normalize(vehicle.unitCode)} · ${vehicle.registrationNumber}'
+                        : null;
+                    return PartnerPortalRouteListTile(
+                      route: route,
+                      shifts: _data!.shiftsById,
+                      onReload: _load,
+                      onBehalfOfDriver: true,
+                      vehicleLabel: vehicleLabel,
+                    );
+                  },
                   childCount: filtered.length,
                 ),
               ),

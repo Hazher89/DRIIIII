@@ -1,14 +1,14 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:uuid/uuid.dart';
-
 import '../../core/constants/app_strings.dart';
-import '../../core/services/storage/company_file_storage.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/services/hms/hms_ecosystem_service.dart';
+import '../../models/hms/hms_ticket_template.dart';
 import '../../models/ticket.dart';
 import '../../models/ticket_assignee_options.dart';
 import '../../models/user_profile.dart';
@@ -34,6 +34,12 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   String? _category;
   String? _selectedHandlerId;
   TicketAssigneeOptions _assignees = const TicketAssigneeOptions();
+  List<HmsTicketTemplate> _templates = [];
+  bool _capturingGps = false;
+  double? _gpsLat;
+  double? _gpsLng;
+  HmsDomain _domain = HmsDomain.hms;
+  bool _hasPersonalInjury = false;
 
   static const _categories = [
     'Helse og sikkerhet',
@@ -50,6 +56,52 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   void initState() {
     super.initState();
     _loadHandlers();
+    _loadTemplates();
+    _captureGps();
+  }
+
+  Future<void> _loadTemplates() async {
+    try {
+      final companyId = await SupabaseService.getCurrentCompanyId();
+      final templates =
+          await HmsEcosystemService.fetchTicketTemplates(companyId: companyId);
+      if (mounted) setState(() => _templates = templates);
+    } catch (_) {}
+  }
+
+  Future<void> _captureGps() async {
+    setState(() => _capturingGps = true);
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        await Geolocator.requestPermission();
+      }
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 8),
+        ),
+      );
+      if (mounted) {
+        setState(() {
+          _gpsLat = pos.latitude;
+          _gpsLng = pos.longitude;
+        });
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _capturingGps = false);
+    }
+  }
+
+  void _applyTemplate(HmsTicketTemplate t) {
+    setState(() {
+      _titleController.text = t.title;
+      _descriptionController.text = t.descriptionTemplate;
+      _category = t.category;
+      _severity = TicketSeverity.fromDb(t.severityDb);
+      _domain = t.domain;
+    });
   }
 
   @override
@@ -141,16 +193,11 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
       int failedUploads = 0;
       for (var i = 0; i < _images.length; i++) {
         try {
-          final fileName = '${const Uuid().v4()}.jpg';
-          final path = '$companyId/${const Uuid().v4()}_$fileName';
-          final stored = await CompanyFileStorage.upload(
-            supabaseBucket: 'tickets',
-            storagePath: path,
+          final url = await HmsEcosystemService.uploadAvvikMedia(
+            companyId: companyId,
             bytes: _images[i].bytes,
-            category: 'tickets',
-            fileName: fileName,
           );
-          imageUrls.add(CompanyFileStorage.toStorageReference(stored));
+          imageUrls.add(url);
         } catch (_) {
           failedUploads++;
         }
@@ -169,24 +216,33 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         isAnonymous: _isAnonymous,
         imageUrls: imageUrls,
         status: TicketStatus.aapen,
+        gpsLatitude: _gpsLat,
+        gpsLongitude: _gpsLng,
+        hmsDomain: _domain,
+        hasPersonalInjury: _hasPersonalInjury,
+        observedAt: DateTime.now(),
       );
 
-      await SupabaseService.createTicket(ticket);
+      final created = await SupabaseService.createTicket(ticket);
       if (!mounted) return;
+      final avvikId = created.ticketNumber != null
+          ? 'Avvik #${created.ticketNumber}'
+          : 'Avvik registrert';
       if (failedUploads > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Avvik sendt. SMS er sendt til valgt saksbehandler. '
+              '$avvikId sendt. Saksbehandler får varsel. '
               '$failedUploads bilde(r) kunne ikke lastes opp.',
             ),
           ),
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Avvik sendt. Valgt saksbehandler får SMS med beskjed om å behandle saken.',
+              '$avvikId er registrert. Saksbehandler får varsel nå, '
+              'og du får SMS ved statusendringer (under arbeid og ferdig).',
             ),
           ),
         );
@@ -214,13 +270,50 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
       );
     }
 
+    final defaultId = _assignees.defaultAssigneeId;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('Velg saksbehandler', style: DriftProTheme.labelLg),
-        const SizedBox(height: 8),
-        ..._assignees.nearestLeaders.map(_assigneeTile),
-        ..._assignees.superadmins.map(_assigneeTile),
+        const SizedBox(height: 4),
+        Text(
+          'Systemet velger din leder automatisk. Du kan bytte til en annen leder eller superadmin.',
+          style: DriftProTheme.bodySm.copyWith(color: Colors.grey[600]),
+        ),
+        const SizedBox(height: 12),
+        if (_assignees.nearestLeaders.isNotEmpty) ...[
+          _assigneeSectionLabel('Din leder (anbefalt)', Icons.star_outline_rounded),
+          const SizedBox(height: 6),
+          ..._assignees.nearestLeaders.map(
+            (p) => _assigneeTile(p, recommended: p.id == defaultId),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (_assignees.otherLeaders.isNotEmpty) ...[
+          _assigneeSectionLabel('Andre ledere', Icons.groups_outlined),
+          const SizedBox(height: 6),
+          ..._assignees.otherLeaders.map((p) => _assigneeTile(p)),
+          const SizedBox(height: 8),
+        ],
+        if (_assignees.superadmins.isNotEmpty) ...[
+          _assigneeSectionLabel('Superadmin', Icons.admin_panel_settings_outlined),
+          const SizedBox(height: 6),
+          ..._assignees.superadmins.map((p) => _assigneeTile(p)),
+        ],
+      ],
+    );
+  }
+
+  Widget _assigneeSectionLabel(String label, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: DriftProTheme.primaryGreen),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.w800),
+        ),
       ],
     );
   }
@@ -240,8 +333,14 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
     return name.isEmpty ? p.fullName : name;
   }
 
-  Widget _assigneeTile(UserProfile p) {
+  Widget _assigneeTile(UserProfile p, {bool recommended = false}) {
     final selected = _selectedHandlerId == p.id;
+    final roleLabel = switch (p.role) {
+      UserRole.superadmin => 'Superadmin',
+      UserRole.admin => 'Administrator',
+      UserRole.leder => 'Leder',
+      _ => 'Saksbehandler',
+    };
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
@@ -258,15 +357,37 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         value: p.id,
         groupValue: _selectedHandlerId,
         onChanged: (v) => setState(() => _selectedHandlerId = v),
-        title: Text(
-          _displayName(p),
-          style: TextStyle(
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-          ),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _displayName(p),
+                style: TextStyle(
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
+              ),
+            ),
+            if (recommended)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Anbefalt',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+                ),
+              ),
+          ],
         ),
-        subtitle: const Text(
-          'Får SMS når du sender avviket',
-          style: TextStyle(fontSize: 11),
+        subtitle: Text(
+          '$roleLabel · får varsel når du sender',
+          style: const TextStyle(fontSize: 11),
         ),
         activeColor: DriftProTheme.primaryGreen,
       ),
@@ -309,6 +430,71 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
               ),
             ),
             const SizedBox(height: 20),
+            if (_templates.isNotEmpty) ...[
+              Text('Hurtigmaler', style: DriftProTheme.labelLg),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 42,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _templates.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) {
+                    final t = _templates[i];
+                    return ActionChip(
+                      avatar: Icon(
+                        t.domain == HmsDomain.logistikk
+                            ? Icons.local_shipping_outlined
+                            : Icons.report_outlined,
+                        size: 18,
+                      ),
+                      label: Text(t.title),
+                      onPressed: () => _applyTemplate(t),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Område', style: DriftProTheme.labelLg),
+                ),
+                if (_capturingGps)
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else if (_gpsLat != null)
+                  Text(
+                    'GPS OK',
+                    style: TextStyle(
+                      color: DriftProTheme.success,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                IconButton(
+                  icon: const Icon(Icons.my_location_outlined, size: 20),
+                  onPressed: _captureGps,
+                  tooltip: 'Oppdater posisjon',
+                ),
+              ],
+            ),
+            Wrap(
+              spacing: 8,
+              children: HmsDomain.values.map((d) {
+                final sel = _domain == d;
+                return FilterChip(
+                  label: Text(d.label),
+                  selected: sel,
+                  onSelected: (_) => setState(() => _domain = d),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
             if (_loadingHandlers)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
@@ -369,6 +555,15 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
               }).toList(),
             ),
             const SizedBox(height: 14),
+            SwitchListTile.adaptive(
+              value: _hasPersonalInjury,
+              onChanged: (v) => setState(() => _hasPersonalInjury = v),
+              title: const Text('Personskade / sensitive opplysninger'),
+              subtitle: const Text(
+                'Navn på skadde lagres kryptert og kun synlig for leder/HR.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
             SwitchListTile.adaptive(
               value: _isAnonymous,
               onChanged: (v) => setState(() => _isAnonymous = v),

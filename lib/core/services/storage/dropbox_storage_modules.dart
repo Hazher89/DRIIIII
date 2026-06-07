@@ -1,11 +1,13 @@
 /// Moduler som kan bruke Dropbox for store filer.
 enum DropboxStorageModule {
   routes('routes', 'Rute-PDF (partnere)'),
+  sapInbox('sap_inbox', 'SAP e-post innboks (rute-PDF)'),
   tickets('tickets', 'Avvik — bilder og vedlegg'),
   dms('dms', 'Dokumenter (DMS)'),
   partners('partners', 'Partner — bilder og filer'),
   employees('employees', 'Ansattfiler / personalmappe'),
-  hms('hms', 'HMS — utstyr og kompetanse');
+  hms('hms', 'HMS — avvik, SJA, utstyr og kompetanse'),
+  whistleblowing('whistleblowing', 'Varsling (anonym)');
 
   const DropboxStorageModule(this.key, this.label);
   final String key;
@@ -15,6 +17,8 @@ enum DropboxStorageModule {
     switch (category) {
       case 'routes':
         return routes;
+      case 'sap_inbox':
+        return sapInbox;
       case 'tickets':
         return tickets;
       case 'dms':
@@ -25,6 +29,8 @@ enum DropboxStorageModule {
         return employees;
       case 'hms':
         return hms;
+      case 'whistleblowing':
+        return whistleblowing;
       default:
         return null;
     }

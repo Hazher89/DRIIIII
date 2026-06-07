@@ -12,7 +12,10 @@ import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
 import '../employees/employee_hub_screen.dart';
-import '../common/placeholder_screen.dart';
+import 'driftpro_platform_catalog.dart';
+import 'help_support_screen.dart';
+import 'privacy_screen.dart';
+import 'about_driftpro_screen.dart';
 import '../departments/departments_screen.dart';
 import '../employees/employees_screen.dart';
 import '../employees/employee_personal_folder_screen.dart';
@@ -153,7 +156,7 @@ class _MoreScreenState extends State<MoreScreen> {
               ),
             if (_profile!.access.canPersonalFolder)
               _buildMenuItem(context, AppIcons.folder, 'Personalmappe', isDark),
-            if (_profile!.access.canNotifications)
+            if (_profile!.isSuperAdmin)
               _buildMenuItem(
                 context,
                 AppIcons.notification,
@@ -210,14 +213,10 @@ class _MoreScreenState extends State<MoreScreen> {
               isDark,
             ),
           _buildThemeToggle(context, isDark),
-          if (_profile?.access.canAppSettings ?? false)
-            _buildMenuItem(
-              context,
-              AppIcons.settings,
-              'Appinnstillinger',
-              isDark,
-            ),
-          if (_profile?.isAdmin == true || _profile?.isSuperAdmin == true)
+          if (DriftProPlatformCatalog.canAccessDropboxSettings(
+            email: _profile?.email,
+            employeeNumber: _profile?.employeeNumber,
+          ))
             _buildMenuItem(
               context,
               Icons.cloud_outlined,
@@ -263,7 +262,7 @@ class _MoreScreenState extends State<MoreScreen> {
         a.canEditEmployees ||
         a.canPartnersMenu ||
         a.canPersonalFolder ||
-        a.canNotifications ||
+        p.isSuperAdmin ||
         a.canSurveysMenu ||
         a.canAccessControl ||
         p.isSuperAdmin ||
@@ -465,14 +464,24 @@ class _MoreScreenState extends State<MoreScreen> {
             );
             return;
           }
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => PlaceholderScreen(
-                title: title,
-                description: '$title-modulen kommer snart med Supabase-data.',
-              ),
-            ),
-          );
+          if (title == 'Hjelp & støtte') {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HelpSupportScreen()),
+            );
+            return;
+          }
+          if (title == 'Personvern') {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const PrivacyScreen()),
+            );
+            return;
+          }
+          if (title == 'Om DriftPro') {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AboutDriftProScreen()),
+            );
+            return;
+          }
         },
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DriftProTheme.radiusMd)),
       ),

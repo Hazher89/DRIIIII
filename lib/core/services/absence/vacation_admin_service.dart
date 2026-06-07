@@ -1,25 +1,10 @@
+import '../../../core/constants/vacation_year_window.dart';
 import '../../../models/absence.dart';
 import '../../../models/user_profile.dart';
 import '../supabase_service.dart';
 import 'absence_service.dart';
 
-/// År-vindu: 5 år tilbake og 5 år frem (11 år totalt).
-class VacationYearWindow {
-  VacationYearWindow._();
-
-  static const int yearsBack = 5;
-  static const int yearsForward = 5;
-
-  static int get currentYear => DateTime.now().year;
-
-  static List<int> get years => List.generate(
-        yearsBack + yearsForward + 1,
-        (i) => currentYear - yearsBack + i,
-      );
-
-  static int get fromYear => currentYear - yearsBack;
-  static int get toYear => currentYear + yearsForward;
-}
+export '../../../core/constants/vacation_year_window.dart';
 
 class EmployeeVacationOverview {
   final UserProfile employee;

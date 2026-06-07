@@ -1,6 +1,6 @@
 # Dropbox-lagring for DriftPro
 
-Filer over **1 MB** lagres i Dropbox-mappen `/DriftPro` når bedriften har koblet OAuth.
+Alle filer lagres i Dropbox-mappen `/DriftPro` når bedriften har koblet OAuth (standard: ingen størrelsesgrense — Supabase brukes kun som reserve).
 
 ## Oppsett (én gang)
 

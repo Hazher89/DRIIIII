@@ -1,6 +1,7 @@
 import '../../constants/leave_rules.dart';
 import '../../../models/absence.dart';
 import '../../../models/user_profile.dart';
+import 'leave_period_usage_service.dart';
 
 class EmployeeLeaveInsight {
   final UserProfile profile;
@@ -25,7 +26,9 @@ class EmployeeLeaveInsight {
     required this.absencesYtdDays,
   });
 
-  bool get egenmeldingExhausted => egenmeldingRemaining <= 0;
+  bool egenmeldingExhaustedFor(int maxDays) =>
+      egenmeldingRemaining <= 0 ||
+      egenmeldingPeriodsUsed >= LeaveRules.egenmeldingMaxPeriodsPerYear;
 }
 
 class TeamLeaveInsightsSnapshot {
@@ -55,8 +58,8 @@ class TeamLeaveInsightsSnapshot {
     return copy.where((e) => e.egenmeldingUsed > 0).take(8).toList();
   }
 
-  List<EmployeeLeaveInsight> get egenmeldingExhausted =>
-      employees.where((e) => e.egenmeldingExhausted).toList();
+  List<EmployeeLeaveInsight> egenmeldingExhausted(int maxDays) =>
+      employees.where((e) => e.egenmeldingExhaustedFor(maxDays)).toList();
 }
 
 class LeaveTeamInsightsService {
@@ -97,19 +100,28 @@ class LeaveTeamInsightsService {
       }
     }
 
+    final absencesByUser = <String, List<Absence>>{};
+    for (final a in absences) {
+      absencesByUser.putIfAbsent(a.userId, () => []).add(a);
+    }
+
     final insights = <EmployeeLeaveInsight>[];
     for (final p in profiles) {
       if (!p.isActive || p.isPartnerPortalUser) continue;
       final q = quotaByUser[p.id];
-      final used = q?.egenmeldingDaysUsed ?? 0;
+      final periodUsage = LeavePeriodUsageService.compute(
+        absences: absencesByUser[p.id] ?? const [],
+        hireDate: p.hireDate,
+      );
+      final used = periodUsage.egenmeldingDaysUsed;
       final cap = company.egenmeldingDaysPerYear;
       insights.add(
         EmployeeLeaveInsight(
           profile: p,
           quota: q,
           egenmeldingUsed: used,
-          egenmeldingRemaining: (cap - used).clamp(0, cap),
-          egenmeldingPeriodsUsed: q?.egenmeldingPeriodsUsed ?? 0,
+          egenmeldingRemaining: periodUsage.egenmeldingDaysRemaining(cap),
+          egenmeldingPeriodsUsed: periodUsage.egenmeldingPeriodsUsed,
           vacationRemaining: q?.vacationDaysRemaining ?? 0,
           vacationUsed: q?.vacationDaysUsed ?? 0,
           vacationTotal: q?.vacationDaysTotal ?? 0,
@@ -138,8 +150,9 @@ class LeaveTeamInsightsService {
       employees: insights,
       daysByTypeYtd: daysByType,
       onVacationToday: onVacationToday,
-      egenmeldingExhaustedCount:
-          insights.where((e) => e.egenmeldingExhausted).length,
+      egenmeldingExhaustedCount: insights
+          .where((e) => e.egenmeldingExhaustedFor(company.egenmeldingDaysPerYear))
+          .length,
       pendingCount: pending,
     );
   }

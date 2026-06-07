@@ -229,7 +229,10 @@ department:departments!department_id(name)
                   t.departmentId == profile.departmentId))
           .toList();
     }
-    return all.where((t) => t.reportedBy == profile.id).toList();
+    return all.where((t) =>
+        t.reportedBy == profile.id ||
+        (profile.departmentId != null &&
+            t.departmentId == profile.departmentId)).toList();
   }
 
   static Future<Ticket?> fetchTicketById(String id) async {
@@ -360,7 +363,14 @@ department:departments!department_id(name)
                   a.departmentId == profile.departmentId))
           .toList();
     }
-    return all.where((a) => a.userId == profile.id).toList();
+    // Ansatt: egne søknader + kollegaers godkjente/ventende fravær i avdelingen (planlegging).
+    return all
+        .where((a) =>
+            a.userId == profile.id ||
+            (profile.departmentId != null &&
+                a.departmentId == profile.departmentId &&
+                a.status != AbsenceStatus.avvist))
+        .toList();
   }
 
   static Future<Absence> createAbsence(Absence absence, {String? approverId}) async {
@@ -550,10 +560,29 @@ department:departments!department_id(name)
 
   static Future<List<RiskAssessment>> fetchRiskAssessments({String? companyId}) async {
     if (!isConfigured) return const [];
-    final query = client.from('risk_assessments').select('*, profiles(full_name)');
-    if (companyId != null) query.eq('company_id', companyId);
-    final data = await query.order('created_at', ascending: false) as List<dynamic>;
-    return data.map((e) => RiskAssessment.fromJson(e as Map<String, dynamic>)).toList();
+    try {
+      var query = client.from('risk_assessments').select();
+      if (companyId != null) query = query.eq('company_id', companyId);
+      final data =
+          await query.order('created_at', ascending: false) as List<dynamic>;
+      return data
+          .map((e) => RiskAssessment.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('fetchRiskAssessments: $e');
+      return const [];
+    }
+  }
+
+  static Future<RiskAssessment?> fetchRiskAssessmentById(String id) async {
+    if (!isConfigured) return null;
+    final row = await client
+        .from('risk_assessments')
+        .select()
+        .eq('id', id)
+        .maybeSingle();
+    if (row == null) return null;
+    return RiskAssessment.fromJson(row);
   }
 
   static Future<RiskAssessment> createRiskAssessment(RiskAssessment ra) async {
@@ -587,10 +616,26 @@ department:departments!department_id(name)
 
   static Future<List<SjaForm>> fetchSjaForms({String? companyId}) async {
     if (!isConfigured) return const [];
-    final query = client.from('sja_forms').select('*, profiles(full_name)');
-    if (companyId != null) query.eq('company_id', companyId);
-    final data = await query.order('created_at', ascending: false) as List<dynamic>;
-    return data.map((e) => SjaForm.fromJson(e as Map<String, dynamic>)).toList();
+    try {
+      var query = client.from('sja_forms').select();
+      if (companyId != null) query = query.eq('company_id', companyId);
+      final data =
+          await query.order('created_at', ascending: false) as List<dynamic>;
+      return data
+          .map((e) => SjaForm.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      debugPrint('fetchSjaForms: $e');
+      return const [];
+    }
+  }
+
+  static Future<SjaForm?> fetchSjaFormById(String id) async {
+    if (!isConfigured) return null;
+    final row =
+        await client.from('sja_forms').select().eq('id', id).maybeSingle();
+    if (row == null) return null;
+    return SjaForm.fromJson(row);
   }
 
   static Future<SjaForm> createSjaForm(SjaForm sja) async {
@@ -599,7 +644,7 @@ department:departments!department_id(name)
   }
 
   static Future<void> updateSjaStatus(String id, SjaStatus status) async {
-    await client.from('sja_forms').update({'status': status.name}).eq('id', id);
+    await client.from('sja_forms').update({'status': status.dbValue}).eq('id', id);
   }
 
   // ── Vernerunder (Safety Rounds) ──────────────────────────────────────────
@@ -733,6 +778,39 @@ department:departments!department_id(name)
     return (data as List).map((e) => UserProfile.fromJson(e)).toList();
   }
 
+  static List<UserProfile> filterMaviEmployees(
+    Iterable<UserProfile> profiles, {
+    bool requireActive = false,
+    bool requireApproved = false,
+  }) {
+    return profiles
+        .where((p) {
+          if (!p.isMaviEmployee) return false;
+          if (requireActive && !p.isActive) return false;
+          if (requireApproved && !p.isApproved) return false;
+          return true;
+        })
+        .toList();
+  }
+
+  /// Kun interne MAVI-ansatte — bruk ved deltaker-/ansattvalg (HMS, fravær, osv.).
+  static Future<List<UserProfile>> fetchMaviEmployees({
+    String? companyId,
+    String? departmentId,
+    bool requireActive = true,
+    bool requireApproved = true,
+  }) async {
+    final profiles = await fetchProfiles(
+      companyId: companyId,
+      departmentId: departmentId,
+    );
+    return filterMaviEmployees(
+      profiles,
+      requireActive: requireActive,
+      requireApproved: requireApproved,
+    );
+  }
+
   /// GDPR: ansatt = kun egen profil, leder = egne avdelinger, admin/superadmin = hele bedriften.
   static Future<List<UserProfile>> fetchScopedProfiles(UserProfile viewer) async {
     if (!isConfigured) return const [];
@@ -777,10 +855,10 @@ department:departments!department_id(name)
       return const TicketAssigneeOptions();
     }
 
-    final leaderIds = <String>[];
-    void addLeaderId(String? id) {
+    final deptLeaderIds = <String>[];
+    void addDeptLeaderId(String? id) {
       if (id == null || id.isEmpty) return;
-      if (!leaderIds.contains(id)) leaderIds.add(id);
+      if (!deptLeaderIds.contains(id)) deptLeaderIds.add(id);
     }
 
     if (departmentId != null && departmentId.isNotEmpty) {
@@ -790,11 +868,11 @@ department:departments!department_id(name)
             .select('leader_id')
             .eq('id', departmentId)
             .maybeSingle();
-        addLeaderId(deptRow?['leader_id'] as String?);
+        addDeptLeaderId(deptRow?['leader_id'] as String?);
       } catch (_) {}
       final map = await fetchDepartmentLeaderIdsByDepartment([departmentId]);
       for (final id in map[departmentId] ?? []) {
-        addLeaderId(id);
+        addDeptLeaderId(id);
       }
     }
 
@@ -803,7 +881,7 @@ department:departments!department_id(name)
         p.isActive && p.isApproved && !p.isPartnerPortalUser;
 
     final nearest = <UserProfile>[];
-    for (final id in leaderIds) {
+    for (final id in deptLeaderIds) {
       final p = companyProfiles.where((x) => x.id == id).firstOrNull;
       if (p != null && eligible(p)) {
         nearest.add(p);
@@ -820,21 +898,80 @@ department:departments!department_id(name)
     }
     nearest.sort((a, b) => a.fullName.compareTo(b.fullName));
 
+    final allDepts = await fetchDepartments(companyId: companyId);
+    final leaderMap = await fetchDepartmentLeaderIdsByDepartment(
+      allDepts.map((d) => d.id).toList(),
+    );
+    final allLeaderIds = <String>{};
+    for (final d in allDepts) {
+      if (d.leaderId != null && d.leaderId!.isNotEmpty) {
+        allLeaderIds.add(d.leaderId!);
+      }
+      for (final id in leaderMap[d.id] ?? []) {
+        allLeaderIds.add(id);
+      }
+    }
+    for (final p in companyProfiles) {
+      if (eligible(p) &&
+          (p.role == UserRole.leder || p.role == UserRole.admin)) {
+        allLeaderIds.add(p.id);
+      }
+    }
+
     final nearestIds = nearest.map((p) => p.id).toSet();
+    final otherLeaders = <UserProfile>[];
+    for (final id in allLeaderIds) {
+      if (nearestIds.contains(id)) continue;
+      final p = companyProfiles.where((x) => x.id == id).firstOrNull;
+      if (p != null && eligible(p)) otherLeaders.add(p);
+    }
+    otherLeaders.sort((a, b) => a.fullName.compareTo(b.fullName));
+
+    final usedIds = {
+      ...nearestIds,
+      ...otherLeaders.map((p) => p.id),
+    };
     final superadmins = companyProfiles
         .where(
           (p) =>
               eligible(p) &&
               p.role == UserRole.superadmin &&
-              !nearestIds.contains(p.id),
+              !usedIds.contains(p.id),
         )
         .toList()
       ..sort((a, b) => a.fullName.compareTo(b.fullName));
 
     return TicketAssigneeOptions(
       nearestLeaders: nearest,
+      otherLeaders: otherLeaders,
       superadmins: superadmins,
     );
+  }
+
+  static Future<Ticket?> fetchTicketByNumber({
+    required String companyId,
+    required int ticketNumber,
+  }) async {
+    if (!isConfigured) return null;
+    try {
+      final row = await client
+          .from('tickets')
+          .select(ticketSelectEmbed)
+          .eq('company_id', companyId)
+          .eq('ticket_number', ticketNumber)
+          .maybeSingle();
+      if (row == null) return null;
+      return Ticket.fromJson(row);
+    } catch (_) {
+      final row = await client
+          .from('tickets')
+          .select()
+          .eq('company_id', companyId)
+          .eq('ticket_number', ticketNumber)
+          .maybeSingle();
+      if (row == null) return null;
+      return Ticket.fromJson(row);
+    }
   }
 
   static Future<Department> createDepartment(Department dept) async {
@@ -1166,6 +1303,7 @@ department:departments!department_id(name)
     DateTime? birthDate,
     String? nationalIdNumber,
     DateTime? hireDate,
+    int? childrenUnder12Count,
     String? emergencyContactName,
     String? emergencyContactPhone,
     bool? isSafetyRepresentative,
@@ -1197,6 +1335,10 @@ department:departments!department_id(name)
     if (hireDate != null) {
       patch['hire_date'] = hireDate.toIso8601String().split('T').first;
     }
+    if (childrenUnder12Count != null) {
+      patch['children_under_12_count'] =
+          childrenUnder12Count.clamp(0, 12);
+    }
     if (emergencyContactName != null) {
       patch['emergency_contact_name'] =
           emergencyContactName.trim().isEmpty ? null : emergencyContactName.trim();
@@ -1216,6 +1358,51 @@ department:departments!department_id(name)
     }
     if (patch.isEmpty) return;
     await client.from('profiles').update(patch).eq('id', profileId);
+  }
+
+  /// Ansatt oppdaterer antall barn under 12 på egen profil.
+  static Future<void> updateProfileChildrenUnder12({
+    required String profileId,
+    required int count,
+  }) async {
+    final user = client.auth.currentUser;
+    if (user == null || user.id != profileId) {
+      throw StateError('Kan bare oppdatere egen profil');
+    }
+    await client.from('profiles').update({
+      'children_under_12_count': count.clamp(0, 12),
+    }).eq('id', profileId);
+  }
+
+  /// Endrer innloggings- og varsel-e-post (kun superadmin via Edge Function).
+  static Future<String> updateEmployeeEmail({
+    required String profileId,
+    required String newEmail,
+  }) async {
+    final token = client.auth.currentSession?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw StateError('Økten er utløpt. Logg inn på nytt.');
+    }
+    final normalized = newEmail.trim().toLowerCase();
+    final res = await client.functions.invoke(
+      'update-employee-email',
+      body: {
+        'profile_id': profileId,
+        'new_email': normalized,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final data = res.data;
+    if (data is Map && data['error'] != null) {
+      throw Exception('${data['error']}');
+    }
+    if (res.status >= 400) {
+      throw Exception('Kunne ikke oppdatere e-post (${res.status})');
+    }
+    if (data is Map && data['email'] is String) {
+      return data['email'] as String;
+    }
+    return normalized;
   }
 
   /// Oppretter intern ansatt via Edge Function (auth.users + profiles + feriekvote).

@@ -274,7 +274,7 @@ class VehicleRentalService {
       category: 'vehicle_rentals',
       fileName: '$prefix$slotKey.jpg',
     );
-    return stored.path;
+    return CompanyFileStorage.toStorageReference(stored);
   }
 
   static Future<VehicleRental> updatePhotos(

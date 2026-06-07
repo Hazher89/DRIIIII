@@ -26,6 +26,9 @@ class UserAccess {
   }
 
   bool can(String key) {
+    if (key == AccessKeys.varsler) {
+      return profile.role == UserRole.superadmin;
+    }
     if (profile.role == UserRole.superadmin) return true;
     if (!profile.isApproved) return false;
     if (profile.role == UserRole.ansatt &&

@@ -269,7 +269,7 @@ class _InternalShareSheetState extends State<_InternalShareSheet> {
   Future<void> _load() async {
     final companyId = await SupabaseService.getCurrentCompanyId();
     if (companyId != null) {
-      final users = await SupabaseService.fetchProfiles(companyId: companyId);
+      final users = await SupabaseService.fetchMaviEmployees(companyId: companyId);
       if (mounted) {
         setState(() {
           _allUsers = users;

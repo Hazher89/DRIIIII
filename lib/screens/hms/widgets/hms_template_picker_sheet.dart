@@ -60,6 +60,8 @@ class HmsTemplatePickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final maxHeight = MediaQuery.of(context).size.height * 0.75;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
       child: Column(
@@ -80,7 +82,7 @@ class HmsTemplatePickerSheet extends StatelessWidget {
           Text(_title, style: DriftProTheme.headingSm),
           const SizedBox(height: 8),
           Text(
-            'Malene er klare til utfylling — som i Landax. Du kan redigere alt før lagring.',
+            'Malene er klare til utfylling. Du kan redigere alt før lagring.',
             style: DriftProTheme.caption,
           ),
           const SizedBox(height: 16),
@@ -94,32 +96,39 @@ class HmsTemplatePickerSheet extends StatelessWidget {
               label: const Text('Start blankt skjema'),
             ),
           const SizedBox(height: 12),
-          ..._templates.map((t) {
-            final title = t is HmsRiskTemplate
-                ? t.title
-                : t is HmsSjaTemplate
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxHeight - 180),
+            child: ListView(
+              shrinkWrap: true,
+              children: _templates.map((t) {
+                final title = t is HmsRiskTemplate
                     ? t.title
-                    : (t as HmsSafetyRoundTemplate).title;
-            final subtitle = t is HmsRiskTemplate
-                ? t.area
-                : t is HmsSjaTemplate
-                    ? t.location
-                    : '${(t as HmsSafetyRoundTemplate).checklist.length} sjekkpunkter';
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: const Icon(Icons.description_outlined,
-                    color: DriftProTheme.primaryGreen),
-                title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: Text(subtitle),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () {
-                  Navigator.pop(context);
-                  onSelected(t);
-                },
-              ),
-            );
-          }),
+                    : t is HmsSjaTemplate
+                        ? t.title
+                        : (t as HmsSafetyRoundTemplate).title;
+                final subtitle = t is HmsRiskTemplate
+                    ? t.area
+                    : t is HmsSjaTemplate
+                        ? t.location
+                        : '${(t as HmsSafetyRoundTemplate).checklist.length} sjekkpunkter';
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: const Icon(Icons.description_outlined,
+                        color: DriftProTheme.primaryGreen),
+                    title: Text(title,
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
+                    subtitle: Text(subtitle),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.pop(context);
+                      onSelected(t);
+                    },
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
         ],
       ),
     );

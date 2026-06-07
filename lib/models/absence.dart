@@ -63,6 +63,7 @@ class Absence {
   final String? comment;
   final int? quotaYear;
   final int? totalDays;
+  final int? vacationDayCount;
   final String? approvedBy;
   final DateTime? approvedAt;
   final List<String> attachmentUrls;
@@ -84,6 +85,7 @@ class Absence {
     this.comment,
     this.quotaYear,
     this.totalDays,
+    this.vacationDayCount,
     this.approvedBy,
     this.approvedAt,
     this.attachmentUrls = const [],
@@ -108,6 +110,7 @@ class Absence {
       comment: json['comment'] as String?,
       quotaYear: json['quota_year'] as int?,
       totalDays: json['total_days'] as int?,
+      vacationDayCount: json['vacation_day_count'] as int?,
       approvedBy: json['approved_by'] as String?,
       approvedAt: json['approved_at'] != null
           ? DateTime.parse(json['approved_at'] as String)

@@ -67,7 +67,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   List<PartnerRouteShare> _shares = [];
   Map<String, RouteReminderFlag> _reminderFlags = {};
   int _sapInboxPending = 0;
-  int _stagedQueueCount = 0;
+  int _manualStagedCount = 0;
+  int _sapStagedCount = 0;
   Timer? _sapPollTimer;
   RealtimeChannel? _sapLiveChannel;
 
@@ -183,7 +184,14 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       );
       if (!light) await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final sapInbox = await PartnerService.countSapRouteInboxPending(cid);
-      final stagedQueue = await PartnerService.countStagedRouteShares(cid);
+      final manualStaged = await PartnerService.countStagedRouteShares(
+        cid,
+        importSource: PartnerService.stagedImportManual,
+      );
+      final sapStaged = await PartnerService.countStagedRouteShares(
+        cid,
+        importSource: PartnerService.stagedImportSap,
+      );
       final reminders = await PartnerService.fetchRouteReminderFlags(
         shares.map((s) => s.id),
       );
@@ -192,7 +200,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         _shares = shares;
         _reminderFlags = reminders;
         _sapInboxPending = sapInbox;
-        _stagedQueueCount = stagedQueue;
+        _manualStagedCount = manualStaged;
+        _sapStagedCount = sapStaged;
         _busy = false;
       });
     } catch (_) {
@@ -207,11 +216,22 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       if (cid == null) return;
       await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final inbox = await PartnerService.countSapRouteInboxPending(cid);
-      final staged = await PartnerService.countStagedRouteShares(cid);
-      if (mounted && (inbox != _sapInboxPending || staged != _stagedQueueCount)) {
+      final manualStaged = await PartnerService.countStagedRouteShares(
+        cid,
+        importSource: PartnerService.stagedImportManual,
+      );
+      final sapStaged = await PartnerService.countStagedRouteShares(
+        cid,
+        importSource: PartnerService.stagedImportSap,
+      );
+      if (mounted &&
+          (inbox != _sapInboxPending ||
+              manualStaged != _manualStagedCount ||
+              sapStaged != _sapStagedCount)) {
         setState(() {
           _sapInboxPending = inbox;
-          _stagedQueueCount = staged;
+          _manualStagedCount = manualStaged;
+          _sapStagedCount = sapStaged;
         });
       }
     } catch (_) {}
@@ -361,7 +381,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   }
 
   Widget _sapInboxButton() {
-    final hasQueue = _stagedQueueCount > 0;
+    final hasQueue = _sapStagedCount > 0;
     final hasInbox = _sapInboxPending > 0;
     final active = hasQueue || hasInbox;
     return Badge(
@@ -407,7 +427,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           ),
           label: Text(
             hasQueue
-                ? 'Ruter fra SAP ($_stagedQueueCount)'
+                ? 'Ruter fra SAP ($_sapStagedCount)'
                 : hasInbox
                     ? 'Ruter fra SAP ($_sapInboxPending nye)'
                     : 'Ruter fra SAP',
@@ -676,7 +696,9 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         ),
                         icon: const Icon(Icons.auto_awesome),
                         label: Text(
-                          _pendingStaged > 0 ? 'AUTO MASS ($_pendingStaged)' : 'AUTO MASS',
+                          _manualStagedCount > 0
+                              ? 'AUTO MASS ($_manualStagedCount)'
+                              : 'AUTO MASS',
                         ),
                       ),
                       OutlinedButton.icon(
