@@ -54,7 +54,7 @@ class AbsenceTypeBreakdownBar extends StatelessWidget {
             Icon(Icons.pie_chart_outline_rounded, size: 14, color: accent),
             const SizedBox(width: 6),
             Text(
-              'Fravær i $year',
+              'Fravær totalt',
               style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w800),
             ),
             const Spacer(),
@@ -245,7 +245,7 @@ class AbsenceLeaderboard extends StatelessWidget {
             Icon(Icons.leaderboard_outlined, size: 14, color: accent),
             const SizedBox(width: 6),
             Text(
-              'Mest fravær i år',
+              'Mest fravær',
               style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w800),
             ),
           ],
@@ -325,7 +325,11 @@ class AbsenceLeaderboard extends StatelessWidget {
               if (type != null) ...[
                 const SizedBox(height: 2),
                 Text(
-                  'Mest ${type.label.toLowerCase()}',
+                  entry.egenDays > 0 && entry.syktDays > 0
+                      ? '${entry.egenDays} egen · ${entry.syktDays} sykt'
+                      : entry.egenDays > 0
+                          ? '${entry.egenDays} egen · ${entry.egenTilfeller} tilf.'
+                          : '${entry.syktDays} sykt barn',
                   style: TextStyle(
                     fontSize: 8,
                     fontWeight: FontWeight.w600,

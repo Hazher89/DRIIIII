@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_icons.dart';
+import '../../core/constants/leave_rules.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/absence.dart';
@@ -62,6 +63,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
       final absences = profile != null
           ? await SupabaseService.fetchScopedAbsences(profile: profile)
           : await SupabaseService.fetchAbsences(companyId: companyId);
+      final companySettings = await SupabaseService.fetchCompanyLeaveSettings(companyId);
 
       final membersByDept = <String, List<UserProfile>>{};
       for (final p in profiles) {
@@ -77,6 +79,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
         departmentIds: departments.map((d) => d.id),
         membersByDept: membersByDept,
         allAbsences: absences,
+        company: companySettings,
       );
 
       setState(() {

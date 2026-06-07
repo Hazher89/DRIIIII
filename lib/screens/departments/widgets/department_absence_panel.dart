@@ -210,7 +210,7 @@ class DepartmentAbsencePanel extends StatelessWidget {
         Icon(Icons.calendar_month_outlined, size: 14, color: accent),
         const SizedBox(width: 6),
         Text(
-          'Hittil ${stats.ytdYear}',
+          'Registrert fravær',
           style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w800),
         ),
       ],

@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+
 import '../../core/constants/app_icons.dart';
+import '../../core/constants/leave_rules.dart';
+import '../../core/services/absence/employee_leave_stats.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
 import '../../models/user_profile.dart';
 import '../../models/ticket.dart';
 import '../../models/absence.dart';
-import '../../core/services/absence/leave_period_usage_service.dart';
-import '../../core/constants/leave_rules.dart';
 import '../employees/widgets/employee_display.dart';
 import '../employees/widgets/employee_move_department_sheet.dart';
+import 'widgets/department_absence_panel.dart';
+import 'widgets/department_absence_stats.dart';
+import 'widgets/department_member_leave_card.dart';
 import 'widgets/department_ui_helpers.dart';
 
 class DepartmentDetailsScreen extends StatefulWidget {
@@ -35,6 +39,8 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
   List<Ticket> _tickets = [];
   List<Absence> _absences = [];
   Map<String, AbsenceQuota> _memberQuotas = {};
+  CompanyLeaveSettings _companySettings = const CompanyLeaveSettings();
+  int _selectedYear = DateTime.now().year;
   bool _isLoading = true;
   
   // Controllers for editing
@@ -88,6 +94,8 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
         final absences = await SupabaseService.fetchAbsences(companyId: companyId);
         _absences = absences.where((a) => _members.any((m) => m.id == a.userId)).toList();
 
+        _companySettings = await SupabaseService.fetchCompanyLeaveSettings(companyId);
+
         // Fetch quotas for members
         for (var member in _members) {
           final q = await SupabaseService.fetchAbsenceQuota(userId: member.id);
@@ -123,7 +131,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
             Tab(text: 'Oversikt'),
             Tab(text: 'Ansatte'),
             Tab(text: 'Ledere'),
-            Tab(text: 'Kvoter'),
+            Tab(text: 'Fravær'),
             Tab(text: 'Aktivitet'),
             Tab(text: 'Innstillinger'),
           ],
@@ -137,7 +145,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
                 _buildOverviewTab(isDark),
                 _buildMembersTab(isDark),
                 _buildLeadersTab(isDark),
-                _buildQuotasTab(isDark),
+                _buildLeaveTab(isDark),
                 _buildActivityTab(isDark),
                 _buildSettingsTab(isDark),
               ],
@@ -162,7 +170,12 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
     final color = DepartmentUiHelpers.parseColor(_currentDept.colorCode);
     final openTickets =
         _tickets.where((t) => t.status != TicketStatus.lukket).length;
-    final awayToday = _absences.where((a) => a.isActive).length;
+    final absenceStats = DepartmentAbsenceStats.forDepartment(
+      departmentId: _currentDept.id,
+      members: _members,
+      allAbsences: _absences,
+      company: _companySettings,
+    );
     final leaders = _allProfiles.where((p) => _selectedLeaderIds.contains(p.id)).toList();
 
     return ListView(
@@ -234,7 +247,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
                 children: [
                   _heroChip(Icons.people_alt_rounded, '${_members.length} ansatte'),
                   _heroChip(Icons.report_problem_outlined, '$openTickets åpne avvik'),
-                  _heroChip(Icons.event_busy_rounded, '$awayToday fravær i dag'),
+                  _heroChip(Icons.event_busy_rounded, '${absenceStats.awayToday} fravær i dag'),
                   _heroChip(
                     leaders.isEmpty ? Icons.warning_amber_rounded : Icons.verified_user_outlined,
                     leaders.isEmpty
@@ -246,6 +259,8 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
             ],
           ),
         ),
+        const SizedBox(height: 16),
+        DepartmentAbsencePanel(stats: absenceStats, accent: color),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -273,12 +288,21 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
         const SizedBox(height: 12),
         _buildStatCard(
           'Fravær i dag',
-          awayToday.toString(),
+          absenceStats.awayToday.toString(),
           AppIcons.absence,
-          Colors.teal,
+          absenceStats.awayToday > 0 ? Colors.orange.shade700 : Colors.teal,
           isDark,
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () => _tabController.animateTo(3),
+            icon: const Icon(Icons.analytics_outlined, size: 18),
+            label: const Text('Se fravær per ansatt'),
+          ),
+        ),
+        const SizedBox(height: 8),
         Row(
           children: [
             Expanded(child: Text('Ansatte i avdelingen', style: DriftProTheme.headingMd)),
@@ -597,60 +621,71 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
     }
   }
 
-  Widget _buildQuotasTab(bool isDark) {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _members.length,
-      itemBuilder: (context, index) {
-        final m = _members[index];
-        final q = _memberQuotas[m.id];
-        final periodUsage = LeavePeriodUsageService.compute(
-          absences: _absences.where((a) => a.userId == m.id).toList(),
-          hireDate: m.hireDate,
+  Widget _buildLeaveTab(bool isDark) {
+    if (_members.isEmpty) {
+      return Center(
+        child: Text(
+          'Ingen ansatte i avdelingen — ingen fraværsdata.',
+          style: DriftProTheme.bodyMd.copyWith(color: Colors.grey),
+        ),
+      );
+    }
+
+    final sorted = [..._members]
+      ..sort((a, b) {
+        final sa = EmployeeLeaveSnapshot.compute(
+          employee: a,
+          employeeAbsences: _absencesFor(a.id),
+          quota: _memberQuotas[a.id],
+          company: _companySettings,
         );
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: isDark ? DriftProTheme.cardDark : Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100)),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(radius: 16, child: Text(m.initials, style: const TextStyle(fontSize: 10))),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text(m.fullName, style: DriftProTheme.labelLg)),
-                  IconButton(icon: const Icon(Icons.edit_note_rounded), onPressed: () => _editQuota(m)),
-                ],
-              ),
-              const Divider(),
-              if (q != null) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _miniQuota('Ferie', '${q.vacationDaysUsed}/${q.totalVacationDays}'),
-                    _miniQuota(
-                      'Egenm.',
-                      '${periodUsage.egenmeldingDaysUsed}/${LeaveRules.egenmeldingMaxDaysPerYear}',
-                    ),
-                    _miniQuota(
-                      'Sykt barn',
-                      '${periodUsage.syktBarnDaysUsed}/'
-                      '${LeaveRules.syktBarnDaysLimit(m.childrenUnder12Count)}',
-                    ),
-                  ],
-                ),
-              ] else 
-                const Text('Ingen kvote satt opp', style: TextStyle(fontSize: 12, color: Colors.grey)),
-            ],
+        final sb = EmployeeLeaveSnapshot.compute(
+          employee: b,
+          employeeAbsences: _absencesFor(b.id),
+          quota: _memberQuotas[b.id],
+          company: _companySettings,
+        );
+        return sb.totalFravaerDager.compareTo(sa.totalFravaerDager);
+      });
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF4FAF5),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.2)),
           ),
-        );
-      },
+          child: Text(
+            'Samme saldo som i Fravær → Team & kalender. '
+            'Oransje = nær max · rød = grense nådd.',
+            style: DriftProTheme.caption.copyWith(height: 1.35),
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...sorted.map((m) {
+          final stats = EmployeeLeaveSnapshot.compute(
+            employee: m,
+            employeeAbsences: _absencesFor(m.id),
+            quota: _memberQuotas[m.id],
+            company: _companySettings,
+          );
+          return DepartmentMemberLeaveCard(
+            member: m,
+            stats: stats,
+            selectedYear: _selectedYear,
+            recentAbsences: _absencesFor(m.id),
+            onEditQuota: () => _editQuota(m),
+          );
+        }),
+      ],
     );
   }
 
-  Widget _miniQuota(String label, String value) {
-    return Column(children: [Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)), Text(value, style: const TextStyle(fontWeight: FontWeight.bold))]);
-  }
+  List<Absence> _absencesFor(String userId) =>
+      _absences.where((a) => a.userId == userId).toList();
 
   Widget _buildActivityTab(bool isDark) {
     final items = [..._tickets, ..._absences];

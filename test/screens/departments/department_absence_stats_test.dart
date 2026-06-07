@@ -1,3 +1,4 @@
+import 'package:driftpro/core/constants/leave_rules.dart';
 import 'package:driftpro/models/absence.dart';
 import 'package:driftpro/models/user_profile.dart';
 import 'package:driftpro/screens/departments/widgets/department_absence_stats.dart';
@@ -48,11 +49,21 @@ void main() {
     expect(stats.presentPercent, 50);
   });
 
-  test('rangerer ansatte med mest fravær hittil i år', () {
+  test('rangerer ansatte med samme saldo som Team & kalender', () {
     final members = [
-      const UserProfile(id: 'u1', email: 'a@test.no', fullName: 'Anna Nord', departmentId: 'd1'),
-      const UserProfile(id: 'u2', email: 'b@test.no', fullName: 'Bjørn Sol', departmentId: 'd1'),
-      const UserProfile(id: 'u3', email: 'c@test.no', fullName: 'Cecilie Berg', departmentId: 'd1'),
+      UserProfile(
+        id: 'u1',
+        email: 'a@test.no',
+        fullName: 'Anna Nord',
+        departmentId: 'd1',
+        hireDate: DateTime(2026, 1, 12),
+      ),
+      const UserProfile(
+        id: 'u2',
+        email: 'b@test.no',
+        fullName: 'Bjørn Sol',
+        departmentId: 'd1',
+      ),
     ];
     final ref = DateTime(2026, 6, 10);
     final absences = [
@@ -61,9 +72,9 @@ void main() {
         userId: 'u1',
         companyId: 'c',
         departmentId: 'd1',
-        type: AbsenceType.ferie,
-        startDate: DateTime(2026, 3, 2),
-        endDate: DateTime(2026, 3, 6),
+        type: AbsenceType.syktBarn,
+        startDate: DateTime(2026, 1, 12),
+        endDate: DateTime(2026, 1, 12),
         status: AbsenceStatus.godkjent,
       ),
       Absence(
@@ -72,18 +83,18 @@ void main() {
         companyId: 'c',
         departmentId: 'd1',
         type: AbsenceType.egenmelding,
-        startDate: DateTime(2026, 5, 1),
-        endDate: DateTime(2026, 5, 10),
+        startDate: DateTime(2025, 6, 16),
+        endDate: DateTime(2025, 6, 18),
         status: AbsenceStatus.godkjent,
       ),
       Absence(
         id: '3',
-        userId: 'u3',
+        userId: 'u2',
         companyId: 'c',
         departmentId: 'd1',
-        type: AbsenceType.syktBarn,
-        startDate: DateTime(2026, 6, 9),
-        endDate: DateTime(2026, 6, 9),
+        type: AbsenceType.egenmelding,
+        startDate: DateTime(2026, 2, 20),
+        endDate: DateTime(2026, 2, 20),
         status: AbsenceStatus.godkjent,
       ),
     ];
@@ -93,15 +104,18 @@ void main() {
       members: members,
       allAbsences: absences,
       referenceDate: ref,
+      company: const CompanyLeaveSettings(),
     );
 
-    expect(stats.topByAbsence.length, 3);
+    expect(stats.topByAbsence.length, 2);
     expect(stats.topByAbsence.first.fullName, 'Bjørn Sol');
-    expect(stats.topByAbsence.first.totalDaysYtd, 10);
-    expect(stats.topByAbsence[1].fullName, 'Anna Nord');
-    expect(stats.topByAbsence.last.fullName, 'Cecilie Berg');
-    expect(stats.totalDaysYtd, greaterThan(10));
-    expect(stats.typeBreakdownYtd[AbsenceType.egenmelding], 10);
+    expect(stats.topByAbsence.first.totalDaysYtd, 4);
+    expect(stats.topByAbsence.first.egenDays, 4);
+    expect(stats.topByAbsence.last.fullName, 'Anna Nord');
+    expect(stats.topByAbsence.last.syktDays, 1);
+    expect(stats.totalDaysYtd, 5);
+    expect(stats.typeBreakdownYtd[AbsenceType.egenmelding], 4);
+    expect(stats.typeBreakdownYtd[AbsenceType.syktBarn], 1);
     expect(stats.monthlyTrend.length, 6);
   });
 }

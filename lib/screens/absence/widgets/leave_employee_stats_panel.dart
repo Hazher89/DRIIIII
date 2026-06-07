@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/constants/leave_rules.dart';
-import '../../../core/services/absence/absence_service.dart';
-import '../../../core/services/absence/leave_period_usage_service.dart';
+import '../../../core/services/absence/employee_leave_stats.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/leave_usage_colors.dart';
 import '../../../models/absence.dart';
 import '../../../models/user_profile.dart';
+import 'leave_employee_kpi_widgets.dart';
 
 /// Én-linje KPI-stripe — trykk for full saldo.
 class LeaveEmployeeStatsCompactBar extends StatelessWidget {
@@ -29,26 +30,12 @@ class LeaveEmployeeStatsCompactBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final periodUsage = LeavePeriodUsageService.compute(
-      absences: employeeAbsences,
-      hireDate: employee.hireDate,
+    final stats = EmployeeLeaveSnapshot.compute(
+      employee: employee,
+      employeeAbsences: employeeAbsences,
+      quota: quota,
+      company: company,
     );
-    final approved = employeeAbsences
-        .where((a) => a.status == AbsenceStatus.godkjent)
-        .toList();
-    final egenDays = approved
-        .where((a) => a.type == AbsenceType.egenmelding)
-        .fold<int>(
-          0,
-          (s, a) =>
-              s + (a.totalDays ?? AbsenceService.dayCount(a.startDate, a.endDate)),
-        );
-    final syktDays = periodUsage.syktBarnDaysUsed;
-    final syktMax = company.syktBarnDaysLimit(
-      childrenUnder12: employee.childrenUnder12Count,
-    );
-    final ferieIgjen = quota?.vacationDaysRemaining ?? 0;
-    final egenMax = company.egenmeldingDaysPerYear;
     final pending = employeeAbsences
         .where((a) => a.status == AbsenceStatus.ventende)
         .length;
@@ -61,25 +48,28 @@ class LeaveEmployeeStatsCompactBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
-              _miniStat(
-                Icons.beach_access,
-                '$ferieIgjen',
-                'ferie',
-                DriftProTheme.absenceVacation,
+              LeaveEmployeeCompactStat(
+                icon: Icons.beach_access,
+                value: '${stats.ferieRemaining}',
+                label: 'ferie',
+                baseColor: DriftProTheme.absenceVacation,
+                level: stats.ferieLevel,
               ),
               _divider(isDark),
-              _miniStat(
-                Icons.sick_outlined,
-                '$egenDays/$egenMax',
-                'egen',
-                DriftProTheme.absenceSickSelf,
+              LeaveEmployeeCompactStat(
+                icon: Icons.sick_outlined,
+                value: '${stats.egenDaysTotal}/${stats.egenMax}',
+                label: 'egen',
+                baseColor: DriftProTheme.absenceSickSelf,
+                level: stats.egenLevel,
               ),
               _divider(isDark),
-              _miniStat(
-                Icons.child_care_outlined,
-                '$syktDays/$syktMax',
-                'sykt',
-                DriftProTheme.absenceSickChild,
+              LeaveEmployeeCompactStat(
+                icon: Icons.child_care_outlined,
+                value: '${stats.syktDays}/${stats.syktMax}',
+                label: 'sykt',
+                baseColor: DriftProTheme.absenceSickChild,
+                level: stats.syktLevel,
               ),
               const Spacer(),
               if (pending > 0)
@@ -117,32 +107,6 @@ class LeaveEmployeeStatsCompactBar extends StatelessWidget {
       height: 28,
       margin: const EdgeInsets.symmetric(horizontal: 10),
       color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
-    );
-  }
-
-  Widget _miniStat(IconData icon, String value, String label, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: color),
-        const SizedBox(width: 4),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: color,
-                height: 1.1,
-              ),
-            ),
-            Text(label, style: DriftProTheme.caption.copyWith(fontSize: 9)),
-          ],
-        ),
-      ],
     );
   }
 }
@@ -206,34 +170,15 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final periodUsage = LeavePeriodUsageService.compute(
-      absences: employeeAbsences,
-      hireDate: employee.hireDate,
+    final stats = EmployeeLeaveSnapshot.compute(
+      employee: employee,
+      employeeAbsences: employeeAbsences,
+      quota: quota,
+      company: company,
     );
-    final approved = employeeAbsences
-        .where((a) => a.status == AbsenceStatus.godkjent)
-        .toList();
-    final egenRecords =
-        approved.where((a) => a.type == AbsenceType.egenmelding).toList();
-    final egenDaysTotal = egenRecords.fold<int>(
-      0,
-      (sum, a) =>
-          sum + (a.totalDays ?? AbsenceService.dayCount(a.startDate, a.endDate)),
-    );
-    final egenTilfeller = egenRecords.length;
-    final syktDays = periodUsage.syktBarnDaysUsed;
-    final totalFravaerDager = egenDaysTotal + syktDays;
-    final syktMax = company.syktBarnDaysLimit(
-      childrenUnder12: employee.childrenUnder12Count,
-    );
-    final egenMax = company.egenmeldingDaysPerYear;
     final dept = employee.departmentId != null
         ? departmentNames[employee.departmentId!]
         : null;
-
-    final ferieIgjen = quota?.vacationDaysRemaining ?? 0;
-    final ferieTotal = quota?.totalVacationDays ?? 25;
-    final ferieBrukt = quota?.vacationDaysUsed ?? 0;
 
     final pending = employeeAbsences
         .where((a) => a.status == AbsenceStatus.ventende)
@@ -295,61 +240,25 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
             else if (pending > 0)
               _badge('$pending venter', DriftProTheme.warning)
             else
-              _badge('$totalFravaerDager dager fravær', DriftProTheme.primaryGreen),
+              _badge(
+                '${stats.totalFravaerDager} dager fravær',
+                stats.egenLevel == LeaveUsageLevel.critical ||
+                        stats.syktLevel == LeaveUsageLevel.critical
+                    ? DriftProTheme.error
+                    : stats.egenLevel == LeaveUsageLevel.warning ||
+                            stats.syktLevel == LeaveUsageLevel.warning
+                        ? Colors.orange.shade700
+                        : DriftProTheme.primaryGreen,
+              ),
           ],
         ),
         const SizedBox(height: 14),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: _kpiCard(
-                  isDark,
-                  icon: Icons.beach_access,
-                  label: 'Ferie $selectedYear',
-                  value: '$ferieIgjen',
-                  unit: 'dager igjen',
-                  sub: '$ferieBrukt av $ferieTotal brukt',
-                  color: DriftProTheme.absenceVacation,
-                  progress: ferieTotal > 0 ? ferieBrukt / ferieTotal : 0,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _kpiCard(
-                  isDark,
-                  icon: Icons.sick_outlined,
-                  label: 'Egenmelding',
-                  value: '$egenDaysTotal',
-                  unit: 'av $egenMax dager',
-                  sub:
-                      '$egenTilfeller/${LeaveRules.egenmeldingMaxPeriodsPerYear} tilfeller',
-                  color: DriftProTheme.absenceSickSelf,
-                  progress: egenMax > 0 ? egenDaysTotal / egenMax : 0,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _kpiCard(
-                  isDark,
-                  icon: Icons.child_care_outlined,
-                  label: 'Sykt barn',
-                  value: '$syktDays',
-                  unit: 'av $syktMax dager',
-                  sub: periodUsage.window.formatRange(),
-                  color: DriftProTheme.absenceSickChild,
-                  progress: syktMax > 0 ? syktDays / syktMax : 0,
-                ),
-              ),
-            ],
-          ),
-        ),
+        LeaveEmployeeKpiRow(stats: stats, selectedYear: selectedYear),
         const SizedBox(height: 10),
         Text(
-          'Totalt $totalFravaerDager fraværsdager ($egenDaysTotal egenmelding + '
-          '$syktDays sykt barn). Sykt barn telles i perioden '
-          '${periodUsage.window.formatRange()}.',
+          'Totalt ${stats.totalFravaerDager} fraværsdager '
+          '(${stats.egenDaysTotal} egenmelding + ${stats.syktDays} sykt barn). '
+          'Oransje = nær grense · rød = max nådd.',
           style: DriftProTheme.caption.copyWith(
             color: isDark ? Colors.white54 : Colors.grey.shade600,
             fontSize: 11,
@@ -369,73 +278,6 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
       child: Text(
         text,
         style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700),
-      ),
-    );
-  }
-
-  Widget _kpiCard(
-    bool isDark, {
-    required IconData icon,
-    required String label,
-    required String value,
-    required String unit,
-    required String sub,
-    required Color color,
-    required double progress,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.surfaceDark : color.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  label,
-                  style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w600),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              color: color,
-              height: 1,
-            ),
-          ),
-          Text(unit, style: DriftProTheme.caption.copyWith(fontSize: 10)),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              minHeight: 3,
-              backgroundColor: color.withValues(alpha: 0.12),
-              valueColor: AlwaysStoppedAnimation(color),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            sub,
-            style: DriftProTheme.caption.copyWith(fontSize: 8),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
       ),
     );
   }

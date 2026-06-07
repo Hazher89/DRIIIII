@@ -1,13 +1,17 @@
-import '../../../core/utils/business_days.dart';
+import '../../../core/constants/leave_rules.dart';
 import '../../../models/absence.dart';
 import '../../../models/user_profile.dart';
+import '../../../core/services/absence/employee_leave_stats.dart';
 
-/// Én ansatt rangert etter godkjent fravær hittil i år.
+/// Én ansatt rangert etter registrert fravær (egenmelding + sykt barn).
 class DepartmentMemberAbsenceRank {
   final String userId;
   final String fullName;
   final String initials;
   final int totalDaysYtd;
+  final int egenDays;
+  final int syktDays;
+  final int egenTilfeller;
   final Map<AbsenceType, int> daysByType;
 
   const DepartmentMemberAbsenceRank({
@@ -15,6 +19,9 @@ class DepartmentMemberAbsenceRank {
     required this.fullName,
     required this.initials,
     required this.totalDaysYtd,
+    this.egenDays = 0,
+    this.syktDays = 0,
+    this.egenTilfeller = 0,
     this.daysByType = const {},
   });
 
@@ -37,12 +44,15 @@ class DepartmentMonthlyAbsencePoint {
   });
 
   String get shortLabel {
-    const names = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des'];
+    const names = [
+      'jan', 'feb', 'mar', 'apr', 'mai', 'jun',
+      'jul', 'aug', 'sep', 'okt', 'nov', 'des',
+    ];
     return names[month - 1];
   }
 }
 
-/// Fraværsoversikt per avdeling — beregnet fra godkjente/ventende perioder.
+/// Fraværsoversikt per avdeling — samme saldo som Team & kalender.
 class DepartmentAbsenceOverview {
   final int memberCount;
   final int awayToday;
@@ -52,6 +62,7 @@ class DepartmentAbsenceOverview {
   final int upcomingWeek;
   final int presentCount;
   final int ytdYear;
+  /// Sum egenmelding + sykt barn (alle ansattes registrerte saldo).
   final int totalDaysYtd;
   final Map<AbsenceType, int> typeBreakdownYtd;
   final List<DepartmentMemberAbsenceRank> topByAbsence;
@@ -89,6 +100,11 @@ class DepartmentAbsenceOverview {
 class DepartmentAbsenceStats {
   DepartmentAbsenceStats._();
 
+  static const _fravaerTypes = {
+    AbsenceType.egenmelding,
+    AbsenceType.syktBarn,
+  };
+
   static bool _isActiveOn(Absence a, DateTime day) {
     if (a.status != AbsenceStatus.godkjent) return false;
     final d = DateTime(day.year, day.month, day.day);
@@ -106,14 +122,12 @@ class DepartmentAbsenceStats {
 
   static int _approvedDaysInRange(Absence a, DateTime rangeStart, DateTime rangeEnd) {
     if (a.status != AbsenceStatus.godkjent) return 0;
+    if (!_fravaerTypes.contains(a.type)) return 0;
     final s = DateTime(a.startDate.year, a.startDate.month, a.startDate.day);
     final e = DateTime(a.endDate.year, a.endDate.month, a.endDate.day);
     final from = s.isBefore(rangeStart) ? rangeStart : s;
     final to = e.isAfter(rangeEnd) ? rangeEnd : e;
     if (to.isBefore(from)) return 0;
-    if (a.type == AbsenceType.ferie) {
-      return BusinessDays.countInRange(from, to);
-    }
     return to.difference(from).inDays + 1;
   }
 
@@ -129,52 +143,65 @@ class DepartmentAbsenceStats {
     }).toList();
   }
 
-  static Map<AbsenceType, int> _typeBreakdown(
-    Iterable<Absence> pool,
-    DateTime rangeStart,
-    DateTime rangeEnd,
+  static List<Absence> _absencesForUser(List<Absence> pool, String userId) =>
+      pool.where((a) => a.userId == userId).toList();
+
+  static Map<String, EmployeeLeaveSnapshot> _snapshotsForMembers({
+    required List<UserProfile> members,
+    required List<Absence> pool,
+    CompanyLeaveSettings company = const CompanyLeaveSettings(),
+  }) {
+    return {
+      for (final m in members)
+        m.id: EmployeeLeaveSnapshot.compute(
+          employee: m,
+          employeeAbsences: _absencesForUser(pool, m.id),
+          company: company,
+        ),
+    };
+  }
+
+  static Map<AbsenceType, int> _fravaerBreakdownFromSnapshots(
+    Iterable<EmployeeLeaveSnapshot> snapshots,
   ) {
-    final map = <AbsenceType, int>{};
-    for (final a in pool) {
-      final days = _approvedDaysInRange(a, rangeStart, rangeEnd);
-      if (days <= 0) continue;
-      map[a.type] = (map[a.type] ?? 0) + days;
+    var egen = 0;
+    var sykt = 0;
+    for (final s in snapshots) {
+      egen += s.egenDaysTotal;
+      sykt += s.syktDays;
     }
+    final map = <AbsenceType, int>{};
+    if (egen > 0) map[AbsenceType.egenmelding] = egen;
+    if (sykt > 0) map[AbsenceType.syktBarn] = sykt;
     return map;
   }
 
-  static List<DepartmentMemberAbsenceRank> _topMembers({
+  static List<DepartmentMemberAbsenceRank> _topMembersFromSnapshots({
     required List<UserProfile> members,
-    required Iterable<Absence> pool,
-    required DateTime rangeStart,
-    required DateTime rangeEnd,
+    required Map<String, EmployeeLeaveSnapshot> snapshots,
     int limit = 3,
   }) {
-    final byUser = <String, Map<AbsenceType, int>>{};
-    final nameFromAbsence = <String, String>{};
-    for (final a in pool) {
-      final days = _approvedDaysInRange(a, rangeStart, rangeEnd);
-      if (days <= 0) continue;
-      final bucket = byUser.putIfAbsent(a.userId, () => {});
-      bucket[a.type] = (bucket[a.type] ?? 0) + days;
-      if (a.userName != null && a.userName!.trim().isNotEmpty) {
-        nameFromAbsence.putIfAbsent(a.userId, () => a.userName!.trim());
-      }
-    }
-
-    final nameById = {for (final m in members) m.id: m};
     final ranks = <DepartmentMemberAbsenceRank>[];
-    for (final entry in byUser.entries) {
-      final profile = nameById[entry.key];
-      final name = profile?.fullName ?? nameFromAbsence[entry.key] ?? 'Ansatt';
-      final total = entry.value.values.fold<int>(0, (sum, n) => sum + n);
+    for (final m in members) {
+      final snap = snapshots[m.id];
+      if (snap == null || snap.totalFravaerDager <= 0) continue;
+      final byType = <AbsenceType, int>{};
+      if (snap.egenDaysTotal > 0) {
+        byType[AbsenceType.egenmelding] = snap.egenDaysTotal;
+      }
+      if (snap.syktDays > 0) {
+        byType[AbsenceType.syktBarn] = snap.syktDays;
+      }
       ranks.add(
         DepartmentMemberAbsenceRank(
-          userId: entry.key,
-          fullName: name,
-          initials: profile?.initials ?? _initialsFromName(name),
-          totalDaysYtd: total,
-          daysByType: Map.unmodifiable(entry.value),
+          userId: m.id,
+          fullName: m.fullName,
+          initials: m.initials,
+          totalDaysYtd: snap.totalFravaerDager,
+          egenDays: snap.egenDaysTotal,
+          syktDays: snap.syktDays,
+          egenTilfeller: snap.egenTilfeller,
+          daysByType: Map.unmodifiable(byType),
         ),
       );
     }
@@ -182,29 +209,26 @@ class DepartmentAbsenceStats {
     return ranks.take(limit).toList();
   }
 
-  static String _initialsFromName(String name) {
-    final parts = name.trim().split(RegExp(r'\s+'));
-    if (parts.length >= 2) {
-      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
-    }
-    return name.isNotEmpty ? name[0].toUpperCase() : '?';
-  }
-
-  static List<DepartmentMonthlyAbsencePoint> _monthlyTrend({
+  static List<DepartmentMonthlyAbsencePoint> _monthlyFravaerTrend({
     required Iterable<Absence> pool,
     required DateTime referenceDate,
     int months = 6,
   }) {
     final anchor = DateTime(referenceDate.year, referenceDate.month, 1);
+    final fravaerPool = pool.where(
+      (a) => _fravaerTypes.contains(a.type) && a.status == AbsenceStatus.godkjent,
+    );
     final points = <DepartmentMonthlyAbsencePoint>[];
     for (var i = months - 1; i >= 0; i--) {
       final m = DateTime(anchor.year, anchor.month - i, 1);
       final monthEnd = DateTime(m.year, m.month + 1, 0);
       var days = 0;
-      for (final a in pool) {
+      for (final a in fravaerPool) {
         days += _approvedDaysInRange(a, m, monthEnd);
       }
-      points.add(DepartmentMonthlyAbsencePoint(year: m.year, month: m.month, days: days));
+      points.add(
+        DepartmentMonthlyAbsencePoint(year: m.year, month: m.month, days: days),
+      );
     }
     return points;
   }
@@ -214,17 +238,28 @@ class DepartmentAbsenceStats {
     required List<UserProfile> members,
     required List<Absence> allAbsences,
     DateTime? referenceDate,
+    CompanyLeaveSettings company = const CompanyLeaveSettings(),
   }) {
     final today = referenceDate ?? DateTime.now();
     final day = DateTime(today.year, today.month, today.day);
     final weekEnd = day.add(const Duration(days: 6));
-    final ytdStart = DateTime(day.year, 1, 1);
     final pool = _forDepartment(
       departmentId: departmentId,
       members: members,
       allAbsences: allAbsences,
     );
     final approved = pool.where((a) => a.status == AbsenceStatus.godkjent);
+
+    final snapshots = _snapshotsForMembers(
+      members: members,
+      pool: pool,
+      company: company,
+    );
+    final typeBreakdown = _fravaerBreakdownFromSnapshots(snapshots.values);
+    final totalFravaer = snapshots.values.fold<int>(
+      0,
+      (sum, s) => sum + s.totalFravaerDager,
+    );
 
     final awayTodayIds = <String>{};
     final vacationIds = <String>{};
@@ -252,9 +287,6 @@ class DepartmentAbsenceStats {
     final memberCount = members.length;
     final away = awayTodayIds.length;
 
-    final typeBreakdown = _typeBreakdown(approved, ytdStart, day);
-    final totalYtd = typeBreakdown.values.fold<int>(0, (sum, n) => sum + n);
-
     return DepartmentAbsenceOverview(
       memberCount: memberCount,
       awayToday: away,
@@ -264,15 +296,13 @@ class DepartmentAbsenceStats {
       upcomingWeek: upcoming,
       presentCount: memberCount > 0 ? (memberCount - away).clamp(0, memberCount) : 0,
       ytdYear: day.year,
-      totalDaysYtd: totalYtd,
+      totalDaysYtd: totalFravaer,
       typeBreakdownYtd: typeBreakdown,
-      topByAbsence: _topMembers(
+      topByAbsence: _topMembersFromSnapshots(
         members: members,
-        pool: approved,
-        rangeStart: ytdStart,
-        rangeEnd: day,
+        snapshots: snapshots,
       ),
-      monthlyTrend: _monthlyTrend(pool: approved, referenceDate: day),
+      monthlyTrend: _monthlyFravaerTrend(pool: approved, referenceDate: day),
     );
   }
 
@@ -280,6 +310,7 @@ class DepartmentAbsenceStats {
     required Iterable<String> departmentIds,
     required Map<String, List<UserProfile>> membersByDept,
     required List<Absence> allAbsences,
+    CompanyLeaveSettings company = const CompanyLeaveSettings(),
   }) {
     return {
       for (final id in departmentIds)
@@ -287,6 +318,7 @@ class DepartmentAbsenceStats {
           departmentId: id,
           members: membersByDept[id] ?? const [],
           allAbsences: allAbsences,
+          company: company,
         ),
     };
   }
