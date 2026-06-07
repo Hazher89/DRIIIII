@@ -91,13 +91,27 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
             Icon(Icons.new_releases_outlined, size: 20, color: DriftProTheme.primaryGreen),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                'Nytt i byggeren: Likert, skyveknapp, klokkeslett, URL · «Ferdig — gå til Publiser» nederst i redigering · ${BuildInfo.clientTag}',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  height: 1.35,
-                  color: isDark ? Colors.white70 : Colors.black87,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Survey Studio v5 — Rekkefølge: Oversikt → Bygg → Tema → Resultater → Del',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '216 tema med gradient/glass/neon · Statistikk + svar i én fane · ${BuildInfo.clientTag}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.35,
+                      color: isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
