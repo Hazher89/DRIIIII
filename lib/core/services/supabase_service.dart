@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
+import 'notification/notification_outbox_service.dart';
 import '../utils/norwegian_national_id.dart';
 import '../../models/ticket.dart';
 import '../../models/ticket_assignee_options.dart';
@@ -265,7 +266,9 @@ department:departments!department_id(name)
         .insert(ticket.toInsertJson())
         .select()
         .single() as Map<String, dynamic>;
-    return Ticket.fromJson(inserted);
+    final created = Ticket.fromJson(inserted);
+    unawaited(NotificationOutboxService.flushAll());
+    return created;
   }
 
   static Future<List<TicketComment>> fetchTicketComments(String ticketId) async {

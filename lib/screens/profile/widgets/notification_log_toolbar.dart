@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/notification/notification_log_admin_service.dart';
-import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/notification/notification_outbox_service.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// Felles verktøylinje for varsel-logg: tøm logg + send kø.
@@ -78,13 +78,17 @@ class NotificationLogToolbar extends StatelessWidget {
 
   Future<void> _flushQueue(BuildContext context) async {
     try {
-      final res = await PartnerService.flushSmsOutbox();
+      final res = await NotificationOutboxService.flushAll();
       if (!context.mounted) return;
-      final sent = res?['sent'] ?? res?['processed'];
+      final sms = res['sms'];
+      final email = res['email'];
+      final smsSent = sms is Map ? sms['sent'] : null;
+      final emailSent = email is Map ? email['sent'] : null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            sent != null ? 'Sendingskø kjørt ($sent behandlet)' : 'Sendingskø kjørt',
+            'Kø kjørt — SMS: ${smsSent ?? '?'} sendt, '
+            'e-post: ${emailSent ?? '?'} sendt',
           ),
         ),
       );
@@ -108,7 +112,7 @@ class NotificationLogToolbar extends StatelessWidget {
               child: Text('$totalCount i utvalg', style: DriftProTheme.labelMd),
             ),
             IconButton(
-              tooltip: 'Send kø nå (Sveve)',
+              tooltip: 'Send kø nå (SMS + e-post)',
               icon: const Icon(Icons.play_arrow_rounded),
               onPressed: () => _flushQueue(context),
             ),
