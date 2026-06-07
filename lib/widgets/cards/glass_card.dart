@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/driftpro_theme_context.dart';
 
 /// A glass-morphism-inspired card used for premium hero sections.
 class GlassCard extends StatelessWidget {
@@ -20,15 +21,16 @@ class GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final drift = context.driftColors;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: height,
         margin: const EdgeInsets.symmetric(horizontal: 20),
         decoration: BoxDecoration(
-          gradient: gradient ?? DriftProTheme.primaryGradient,
+          gradient: gradient ?? drift.heroGradient,
           borderRadius: BorderRadius.circular(DriftProTheme.radiusXl),
-          boxShadow: DriftProTheme.elevatedShadow,
+          boxShadow: drift.elevatedShadow,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(DriftProTheme.radiusXl),

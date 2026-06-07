@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/driftpro_theme_context.dart';
+
 /// Nesten fullskjerm dialog for rute-arbeidsflyt (SAP, AUTO MASS, Ny rute).
 Future<T?> showPartnerRouteWorkflowDialog<T>(
   BuildContext context, {
@@ -91,21 +93,21 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     this.showTabCaption = false,
   });
 
-  static const _bg = Color(0xFFEEF1F5);
   static const _railWidth = 340.0;
   static const _breakpoint = 980.0;
 
   @override
   Widget build(BuildContext context) {
+    final drift = context.driftColors;
     final wide = MediaQuery.sizeOf(context).width >= _breakpoint;
 
     return Material(
-      color: _bg,
+      color: drift.surfaceMuted,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildHeader(context),
-          _buildMetricsRow(),
+          _buildMetricsRow(context),
           if (topBanner != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
@@ -114,10 +116,10 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-              child: wide ? _buildWideBody() : _buildNarrowBody(),
+              child: wide ? _buildWideBody(context) : _buildNarrowBody(context),
             ),
           ),
-          _buildFooterArea(),
+          _buildFooterArea(context),
         ],
       ),
     );
@@ -208,22 +210,23 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     );
   }
 
-  Widget _buildMetricsRow() {
+  Widget _buildMetricsRow(BuildContext context) {
+    final drift = context.driftColors;
     if (metrics.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: drift.card,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200),
+          border: Border.all(color: drift.borderSubtle),
         ),
         child: IntrinsicHeight(
           child: Row(
             children: [
               for (var i = 0; i < metrics.length; i++) ...[
-                if (i > 0) Container(width: 1, height: 28, color: Colors.grey.shade300),
+                if (i > 0) Container(width: 1, height: 28, color: drift.divider),
                 Expanded(child: _CompactMetric(metric: metrics[i])),
               ],
             ],
@@ -233,47 +236,48 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     );
   }
 
-  Widget _buildWideBody() {
+  Widget _buildWideBody(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
           width: _railWidth,
-          child: _buildSidebar(scrollable: true),
+          child: _buildSidebar(context, scrollable: true),
         ),
         const SizedBox(width: 12),
-        Expanded(child: _buildMainPanel()),
+        Expanded(child: _buildMainPanel(context)),
       ],
     );
   }
 
-  Widget _buildNarrowBody() {
+  Widget _buildNarrowBody(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         ConstrainedBox(
           constraints: const BoxConstraints(maxHeight: 160),
-          child: SingleChildScrollView(child: _buildSidebar(scrollable: false)),
+          child: SingleChildScrollView(child: _buildSidebar(context, scrollable: false)),
         ),
         const SizedBox(height: 8),
-        Expanded(child: _buildMainPanel()),
+        Expanded(child: _buildMainPanel(context)),
       ],
     );
   }
 
-  Widget _buildSidebar({required bool scrollable}) {
+  Widget _buildSidebar(BuildContext context, {required bool scrollable}) {
+    final drift = context.driftColors;
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         Material(
-          color: Colors.white,
+          color: drift.card,
           borderRadius: BorderRadius.circular(14),
           elevation: 0,
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.grey.shade200),
+              border: Border.all(color: drift.borderSubtle),
             ),
             padding: const EdgeInsets.all(14),
             child: sidebar,
@@ -281,7 +285,7 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
         ),
         if (onGuideToggle != null) ...[
           const SizedBox(height: 10),
-          _buildGuideToggle(),
+          _buildGuideToggle(context),
         ],
         if (guideExpanded && guidePanel != null) ...[
           const SizedBox(height: 8),
@@ -297,19 +301,20 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     );
   }
 
-  Widget _buildMainPanel() {
+  Widget _buildMainPanel(BuildContext context) {
+    final drift = context.driftColors;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LayoutBuilder(
-          builder: (context, constraints) => _buildTabBar(wide: constraints.maxWidth >= _breakpoint),
+          builder: (context, constraints) => _buildTabBar(context, wide: constraints.maxWidth >= _breakpoint),
         ),
         if (showTabCaption)
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
             child: Text(
               tabCaption,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600, height: 1.3),
+              style: TextStyle(fontSize: 11, color: drift.textMuted, height: 1.3),
             ),
           ),
         Expanded(
@@ -319,7 +324,7 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
               width: constraints.maxWidth,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: drift.card,
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: accent.withValues(alpha: 0.18)),
                 ),
@@ -339,7 +344,8 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     );
   }
 
-  Widget _buildTabBar({required bool wide}) {
+  Widget _buildTabBar(BuildContext context, {required bool wide}) {
+    final drift = context.driftColors;
     Widget tabChip(int i) {
       final selected = i == selectedTabIndex;
       final badge = i < tabBadges.length ? tabBadges[i] : null;
@@ -366,7 +372,7 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                      color: selected ? accentDark : Colors.grey.shade700,
+                      color: selected ? accentDark : drift.textSecondary,
                     ),
                   ),
                   if (badge != null && badge > 0) ...[
@@ -397,9 +403,9 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: drift.card,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: drift.border),
       ),
       child: wide
           ? SizedBox(
@@ -421,9 +427,10 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     );
   }
 
-  Widget _buildGuideToggle() {
+  Widget _buildGuideToggle(BuildContext context) {
+    final drift = context.driftColors;
     return Material(
-      color: Colors.white,
+      color: drift.card,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -432,19 +439,23 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: drift.borderSubtle),
           ),
           child: Row(
             children: [
               Icon(Icons.lightbulb_outline, size: 20, color: accentDark),
               const SizedBox(width: 10),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Slik fungerer det',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: drift.textPrimary,
+                  ),
                 ),
               ),
-              Icon(guideExpanded ? Icons.expand_less : Icons.expand_more),
+              Icon(guideExpanded ? Icons.expand_less : Icons.expand_more, color: drift.iconMuted),
             ],
           ),
         ),
@@ -452,19 +463,14 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     );
   }
 
-  Widget _buildFooterArea() {
+  Widget _buildFooterArea(BuildContext context) {
+    final drift = context.driftColors;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.grey.shade200)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, -4),
-          ),
-        ],
+        color: drift.cardElevated,
+        border: Border(top: BorderSide(color: drift.borderSubtle)),
+        boxShadow: drift.cardShadow,
       ),
       child: footer,
     );
@@ -492,7 +498,7 @@ class _CompactMetric extends StatelessWidget {
           Text(
             metric.label,
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 10, color: Colors.grey.shade700, height: 1.1),
+            style: TextStyle(fontSize: 10, color: context.driftColors.textMuted, height: 1.1),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
@@ -590,12 +596,17 @@ Widget routeManualAttentionBanner({
 }
 
 Widget routeInfoChip(String label, {VoidCallback? onTap, Color? color}) {
-  return ActionChip(
-    visualDensity: VisualDensity.compact,
-    label: Text(label, style: const TextStyle(fontSize: 11)),
-    onPressed: onTap,
-    backgroundColor: Colors.grey.shade50,
-    side: BorderSide(color: color ?? Colors.grey.shade400),
-    labelStyle: TextStyle(color: color ?? Colors.grey.shade800),
+  return Builder(
+    builder: (context) {
+      final drift = context.driftColors;
+      return ActionChip(
+        visualDensity: VisualDensity.compact,
+        label: Text(label, style: const TextStyle(fontSize: 11)),
+        onPressed: onTap,
+        backgroundColor: drift.surfaceMuted,
+        side: BorderSide(color: color ?? drift.border),
+        labelStyle: TextStyle(color: color ?? drift.textSecondary),
+      );
+    },
   );
 }

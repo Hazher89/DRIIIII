@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/auth/session_sign_out.dart';
 import '../../core/routing/app_paths.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/driftpro_theme_context.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/constants/app_icons.dart';
 import '../auth/onboarding_screen.dart';
@@ -238,7 +238,7 @@ class _MainShellState extends State<MainShell> {
       );
     }
 
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final drift = context.driftColors;
 
     final allScreens = [
       {
@@ -261,14 +261,9 @@ class _MainShellState extends State<MainShell> {
       body: widget.navigationShell,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: isDark ? DriftProTheme.cardDark : Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(isDark ? 0.3 : 0.06),
-              blurRadius: 20,
-              offset: const Offset(0, -4),
-            ),
-          ],
+          color: drift.navBar,
+          border: Border(top: BorderSide(color: drift.borderSubtle)),
+          boxShadow: drift.cardShadow,
         ),
         child: SafeArea(
           child: Padding(
@@ -279,10 +274,10 @@ class _MainShellState extends State<MainShell> {
                 final i = entry.key;
                 final s = entry.value;
                 return _buildNavItem(
+                  context,
                   i,
                   s['icon'] as IconData,
                   s['label'] as String,
-                  isDark,
                   navIndex: navIndex,
                   visibleScreens: visibleScreens,
                 );
@@ -295,14 +290,16 @@ class _MainShellState extends State<MainShell> {
   }
 
   Widget _buildNavItem(
+    BuildContext context,
     int index,
     IconData icon,
-    String label,
-    bool isDark, {
+    String label, {
     required int navIndex,
     required List<Map<String, dynamic>> visibleScreens,
     int? badge,
   }) {
+    final drift = context.driftColors;
+    final scheme = Theme.of(context).colorScheme;
     final isSelected = navIndex == index;
     return GestureDetector(
       onTap: () => _onNavigate(index, visibleScreens),
@@ -311,8 +308,8 @@ class _MainShellState extends State<MainShell> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
-          color: isSelected ? DriftProTheme.primaryGreen.withOpacity(0.1) : Colors.transparent,
-          borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+          color: isSelected ? scheme.primary.withValues(alpha: 0.12) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -320,11 +317,10 @@ class _MainShellState extends State<MainShell> {
             Badge(
               isLabelVisible: badge != null && badge > 0,
               label: badge != null ? Text('$badge', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700)) : null,
-              backgroundColor: DriftProTheme.error,
               child: Icon(
                 icon,
                 size: 24,
-                color: isSelected ? DriftProTheme.primaryGreen : (isDark ? Colors.grey[600] : Colors.grey[450]),
+                color: isSelected ? drift.navSelected : drift.navUnselected,
               ),
             ),
             const SizedBox(height: 3),
@@ -339,7 +335,7 @@ class _MainShellState extends State<MainShell> {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected ? DriftProTheme.primaryGreen : (isDark ? Colors.grey[600] : Colors.grey[450]),
+                    color: isSelected ? drift.navSelected : drift.navUnselected,
                   ),
                 ),
               ),

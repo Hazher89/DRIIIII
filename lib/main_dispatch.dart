@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/config/driftpro_client.dart';
 import 'core/config/supabase_config.dart';
+import 'core/theme/system_ui_sync.dart';
 import 'core/theme/theme_notifier.dart';
 import 'dispatch/dispatch_app.dart';
 
@@ -16,9 +17,12 @@ void main() async {
   await _initDateLocales();
   await _initSupabase();
 
+  final themeNotifier = ThemeNotifier();
+  await themeNotifier.load();
+
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeNotifier(),
+    ChangeNotifierProvider.value(
+      value: themeNotifier,
       child: const DispatchApp(),
     ),
   );

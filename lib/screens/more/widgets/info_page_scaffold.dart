@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/driftpro_theme_context.dart';
 import '../../../core/utils/open_external_url.dart';
 
 Future<void> launchInfoEmail(String email, {String subject = 'DriftPro'}) async {
@@ -32,11 +33,10 @@ class InfoPageScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final drift = context.driftColors;
 
     return Scaffold(
-      backgroundColor:
-          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+      backgroundColor: drift.scaffold,
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
@@ -53,9 +53,7 @@ class InfoPageScaffold extends StatelessWidget {
                 ),
               ),
               background: Container(
-                decoration: const BoxDecoration(
-                  gradient: DriftProTheme.primaryGradient,
-                ),
+                decoration: BoxDecoration(gradient: drift.heroGradient),
                 child: SafeArea(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(20, 56, 20, 48),
@@ -111,17 +109,15 @@ class InfoSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final drift = context.driftColors;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        color: drift.card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
-        ),
+        border: Border.all(color: drift.borderSubtle),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -129,11 +125,14 @@ class InfoSection extends StatelessWidget {
           Row(
             children: [
               if (icon != null) ...[
-                Icon(icon, size: 20, color: DriftProTheme.primaryGreen),
+                Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
                 const SizedBox(width: 8),
               ],
               Expanded(
-                child: Text(title, style: DriftProTheme.headingSm),
+                child: Text(
+                  title,
+                  style: DriftProTheme.headingSm.copyWith(color: drift.textPrimary),
+                ),
               ),
             ],
           ),
@@ -141,13 +140,19 @@ class InfoSection extends StatelessWidget {
             const SizedBox(height: 10),
             Text(
               lead!,
-              style: DriftProTheme.bodyMd.copyWith(fontWeight: FontWeight.w600),
+              style: DriftProTheme.bodyMd.copyWith(
+                fontWeight: FontWeight.w600,
+                color: drift.textSecondary,
+              ),
             ),
           ],
           ...paragraphs.map(
             (p) => Padding(
               padding: const EdgeInsets.only(top: 10),
-              child: Text(p, style: DriftProTheme.bodyMd),
+              child: Text(
+                p,
+                style: DriftProTheme.bodyMd.copyWith(color: drift.textSecondary),
+              ),
             ),
           ),
           ...bullets.map(
@@ -156,12 +161,21 @@ class InfoSection extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 7),
-                    child: Icon(Icons.circle, size: 6, color: DriftProTheme.primaryGreen),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 7),
+                    child: Icon(
+                      Icons.circle,
+                      size: 6,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
                   ),
                   const SizedBox(width: 10),
-                  Expanded(child: Text(b, style: DriftProTheme.bodyMd)),
+                  Expanded(
+                    child: Text(
+                      b,
+                      style: DriftProTheme.bodyMd.copyWith(color: drift.textSecondary),
+                    ),
+                  ),
                 ],
               ),
             ),

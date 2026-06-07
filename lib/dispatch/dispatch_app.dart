@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/config/driftpro_client.dart';
 import '../core/theme/app_theme.dart';
+import '../core/theme/system_ui_sync.dart';
 import '../core/theme/theme_notifier.dart';
 import 'dispatch_access_gate.dart';
 import 'dispatch_auth_screen.dart';
@@ -16,22 +17,24 @@ class DispatchApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final themeNotifier = context.watch<ThemeNotifier>();
 
-    return MaterialApp(
-      title: DriftProClient.displayName,
-      debugShowCheckedModeBanner: false,
-      theme: DriftProTheme.lightTheme,
-      darkTheme: DriftProTheme.darkTheme,
-      themeMode: themeNotifier.themeMode,
-      home: StreamBuilder<AuthState>(
-        stream: Supabase.instance.client.auth.onAuthStateChange,
-        builder: (context, snapshot) {
-          final session =
-              snapshot.data?.session ?? Supabase.instance.client.auth.currentSession;
-          if (session != null) {
-            return const DispatchAccessGate();
-          }
-          return const DispatchAuthScreen();
-        },
+    return SystemUiSync(
+      child: MaterialApp(
+        title: DriftProClient.displayName,
+        debugShowCheckedModeBanner: false,
+        theme: DriftProTheme.lightTheme,
+        darkTheme: DriftProTheme.darkTheme,
+        themeMode: themeNotifier.themeMode,
+        home: StreamBuilder<AuthState>(
+          stream: Supabase.instance.client.auth.onAuthStateChange,
+          builder: (context, snapshot) {
+            final session =
+                snapshot.data?.session ?? Supabase.instance.client.auth.currentSession;
+            if (session != null) {
+              return const DispatchAccessGate();
+            }
+            return const DispatchAuthScreen();
+          },
+        ),
       ),
     );
   }

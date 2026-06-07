@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
 
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/theme/theme_notifier.dart';
+import '../../core/theme/driftpro_theme_context.dart';
+import '../../widgets/common/theme_appearance_picker.dart';
 import '../../core/auth/session_sign_out.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
@@ -56,7 +56,7 @@ class _MoreScreenState extends State<MoreScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+      backgroundColor: context.driftColors.scaffold,
       appBar: AppBar(title: const Text(AppStrings.navMore)),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -122,7 +122,7 @@ class _MoreScreenState extends State<MoreScreen> {
           const SizedBox(height: 24),
 
           if (_profile != null && _hasAnyAdminMenu) ...[
-            _buildSectionLabel('Administrasjon', isDark),
+            _buildSectionLabel(context, 'Administrasjon'),
             if (_profile!.access.canDepartments)
               _buildMenuItem(context, AppIcons.department, 'Avdelinger', isDark),
             if (_profile!.isSuperAdmin || _profile!.access.canEmployeesList)
@@ -186,7 +186,7 @@ class _MoreScreenState extends State<MoreScreen> {
           ],
 
           const SizedBox(height: 20),
-          _buildSectionLabel('Innstillinger', isDark),
+          _buildSectionLabel(context, 'Innstillinger'),
           if (_profile?.access.canProfile ?? true)
             _buildMenuItem(
               context,
@@ -194,7 +194,7 @@ class _MoreScreenState extends State<MoreScreen> {
               'Min profil',
               isDark,
             ),
-          _buildThemeToggle(context, isDark),
+          const ThemeAppearancePicker(),
           if (DriftProPlatformCatalog.canAccessDropboxSettings(
             email: _profile?.email,
             employeeNumber: _profile?.employeeNumber,
@@ -207,7 +207,7 @@ class _MoreScreenState extends State<MoreScreen> {
             ),
 
           const SizedBox(height: 20),
-          _buildSectionLabel('Info', isDark),
+          _buildSectionLabel(context, 'Info'),
           _buildMenuItem(
             context,
             Icons.help_outline_rounded,
@@ -252,13 +252,13 @@ class _MoreScreenState extends State<MoreScreen> {
         a.canWhistleblowing;
   }
 
-  Widget _buildSectionLabel(String label, bool isDark) {
+  Widget _buildSectionLabel(BuildContext context, String label) {
     return Padding(
       padding: const EdgeInsets.only(left: 4, bottom: 8),
       child: Text(
         label.toUpperCase(),
         style: DriftProTheme.labelSm.copyWith(
-          color: isDark ? Colors.grey[500] : Colors.grey[400],
+          color: context.driftColors.textMuted,
           letterSpacing: 1,
           fontSize: 11,
         ),
@@ -273,22 +273,19 @@ class _MoreScreenState extends State<MoreScreen> {
     bool isDark, {
     String? badge,
   }) {
+    final drift = context.driftColors;
     return Container(
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        color: drift.card,
         borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
-        border: Border.all(
-          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100,
-        ),
+        border: Border.all(color: drift.borderSubtle),
       ),
       child: ListTile(
-        leading: Icon(icon, color: isDark ? Colors.grey[400] : Colors.grey[600]),
+        leading: Icon(icon, color: drift.iconMuted),
         title: Text(
           title,
-          style: DriftProTheme.bodyMd.copyWith(
-            color: isDark ? Colors.white : Colors.grey[900],
-          ),
+          style: DriftProTheme.bodyMd.copyWith(color: drift.textPrimary),
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -313,7 +310,7 @@ class _MoreScreenState extends State<MoreScreen> {
             Icon(
               Icons.arrow_forward_ios_rounded,
               size: 14,
-              color: isDark ? Colors.grey[600] : Colors.grey[400],
+              color: drift.textMuted,
             ),
           ],
         ),
@@ -339,38 +336,6 @@ class _MoreScreenState extends State<MoreScreen> {
           };
           if (path != null) context.push(path);
         },
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DriftProTheme.radiusMd)),
-      ),
-    );
-  }
-
-  Widget _buildThemeToggle(BuildContext context, bool isDark) {
-    final themeNotifier = context.read<ThemeNotifier>();
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
-        border: Border.all(
-          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100,
-        ),
-      ),
-      child: ListTile(
-        leading: Icon(
-          isDark ? AppIcons.darkMode : AppIcons.lightMode,
-          color: isDark ? Colors.grey[400] : Colors.grey[600],
-        ),
-        title: Text(
-          'Mørk modus',
-          style: DriftProTheme.bodyMd.copyWith(
-            color: isDark ? Colors.white : Colors.grey[900],
-          ),
-        ),
-        trailing: Switch.adaptive(
-          value: isDark,
-          activeColor: DriftProTheme.primaryGreen,
-          onChanged: (_) => themeNotifier.toggleTheme(),
-        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DriftProTheme.radiusMd)),
       ),
     );

@@ -12,6 +12,7 @@ import 'core/routing/auth_refresh_listenable.dart';
 import 'core/theme/app_theme.dart';
 import 'core/config/driftpro_client.dart';
 import 'core/config/supabase_config.dart';
+import 'core/theme/system_ui_sync.dart';
 import 'core/theme/theme_notifier.dart';
 
 void main() async {
@@ -30,21 +31,18 @@ void main() async {
   }
 
   if (!DriftProClient.isDesktop) {
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-        systemNavigationBarColor: Colors.white,
-      ),
-    );
+    // SystemUiSync oppdaterer status-/nav-linje etter valgt tema.
   }
 
   await _initSupabase();
   await _initDateLocales();
 
+  final themeNotifier = ThemeNotifier();
+  await themeNotifier.load();
+
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeNotifier(),
+    ChangeNotifierProvider.value(
+      value: themeNotifier,
       child: const DriftProApp(),
     ),
   );
@@ -89,13 +87,15 @@ class _DriftProAppState extends State<DriftProApp> {
   Widget build(BuildContext context) {
     final themeNotifier = context.watch<ThemeNotifier>();
 
-    return MaterialApp.router(
-      title: DriftProClient.displayName,
-      debugShowCheckedModeBanner: false,
-      theme: DriftProTheme.lightTheme,
-      darkTheme: DriftProTheme.darkTheme,
-      themeMode: themeNotifier.themeMode,
-      routerConfig: _router,
+    return SystemUiSync(
+      child: MaterialApp.router(
+        title: DriftProClient.displayName,
+        debugShowCheckedModeBanner: false,
+        theme: DriftProTheme.lightTheme,
+        darkTheme: DriftProTheme.darkTheme,
+        themeMode: themeNotifier.themeMode,
+        routerConfig: _router,
+      ),
     );
   }
 }

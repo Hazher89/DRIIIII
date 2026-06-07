@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/driftpro_theme_context.dart';
 
 /// Section header with optional action button.
 class SectionHeader extends StatelessWidget {
@@ -18,7 +19,7 @@ class SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final drift = context.driftColors;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -26,9 +27,7 @@ class SectionHeader extends StatelessWidget {
         children: [
           Text(
             title,
-            style: DriftProTheme.headingSm.copyWith(
-              color: isDark ? Colors.white : Colors.grey[900],
-            ),
+            style: DriftProTheme.headingSm.copyWith(color: drift.textPrimary),
           ),
           const Spacer(),
           if (actionLabel != null || actionIcon != null)
@@ -41,7 +40,7 @@ class SectionHeader extends StatelessWidget {
                     Text(
                       actionLabel!,
                       style: DriftProTheme.bodySm.copyWith(
-                        color: DriftProTheme.primaryGreen,
+                        color: Theme.of(context).colorScheme.primary,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -50,7 +49,7 @@ class SectionHeader extends StatelessWidget {
                     Icon(
                       actionIcon,
                       size: 16,
-                      color: DriftProTheme.primaryGreen,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
                   ],
                 ],

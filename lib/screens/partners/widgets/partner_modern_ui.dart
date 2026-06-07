@@ -1,28 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/theme/driftpro_theme_context.dart';
 import '../../../models/partner/partner_links.dart';
 
 /// Nøytralt, moderne UI for bedrifter — uten sterke gradienter.
 class PartnerModernUi {
   PartnerModernUi._();
 
-  static Color border(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark
-          ? const Color(0xFF2D3748)
-          : const Color(0xFFE5E7EB);
+  static Color border(BuildContext context) => context.driftColors.border;
 
-  static Color surface(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? const Color(0xFF1A202C) : Colors.white;
+  static Color surface(BuildContext context) => context.driftColors.card;
 
-  static Color muted(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? const Color(0xFFA0AEC0) : const Color(0xFF6B7280);
+  static Color muted(BuildContext context) => context.driftColors.textMuted;
 
-  static Color textPrimary(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? const Color(0xFFF7FAFC) : const Color(0xFF111827);
+  static Color textPrimary(BuildContext context) => context.driftColors.textPrimary;
 
   static Color accent(BuildContext context) =>
-      Theme.of(context).brightness == Brightness.dark ? const Color(0xFF90CDF4) : const Color(0xFF374151);
+      context.isDarkMode ? const Color(0xFF90CDF4) : const Color(0xFF374151);
 }
 
 class PartnerModernPageHeader extends StatelessWidget {
