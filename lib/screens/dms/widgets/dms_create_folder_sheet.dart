@@ -12,12 +12,14 @@ class DmsCreateFolderSheet extends StatefulWidget {
   final String companyId;
   final String? parentFolderId;
   final String? parentFolderName;
+  final bool defaultSharedMavi;
 
   const DmsCreateFolderSheet({
     super.key,
     required this.companyId,
     this.parentFolderId,
     this.parentFolderName,
+    this.defaultSharedMavi = false,
   });
 
   static Future<bool?> show(
@@ -25,6 +27,7 @@ class DmsCreateFolderSheet extends StatefulWidget {
     required String companyId,
     String? parentFolderId,
     String? parentFolderName,
+    bool defaultSharedMavi = false,
   }) {
     return showModalBottomSheet<bool>(
       context: context,
@@ -34,6 +37,7 @@ class DmsCreateFolderSheet extends StatefulWidget {
         companyId: companyId,
         parentFolderId: parentFolderId,
         parentFolderName: parentFolderName,
+        defaultSharedMavi: defaultSharedMavi,
       ),
     );
   }
@@ -49,7 +53,7 @@ class _DmsCreateFolderSheetState extends State<DmsCreateFolderSheet> {
   final _passwordConfirm = TextEditingController();
   bool _usePassword = false;
   bool _isPrivate = false;
-  bool _isSharedMavi = false;
+  late bool _isSharedMavi;
   bool _saving = false;
   List<UserProfile> _users = [];
   List<Department> _depts = [];
@@ -59,6 +63,7 @@ class _DmsCreateFolderSheetState extends State<DmsCreateFolderSheet> {
   @override
   void initState() {
     super.initState();
+    _isSharedMavi = widget.defaultSharedMavi;
     _load();
   }
 

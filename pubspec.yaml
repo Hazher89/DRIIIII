@@ -56,3 +56,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/data/norway_postal_codes.json
+    - assets/hms/stakeholder_risk_template.json

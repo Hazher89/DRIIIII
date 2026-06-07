@@ -63,6 +63,24 @@ class HmsEcosystemService {
     return CompanyFileStorage.toStorageReference(stored);
   }
 
+  static Future<String> uploadRiskAssessmentFile({
+    required String companyId,
+    required Uint8List bytes,
+    required String fileName,
+  }) async {
+    final safeName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+    final path =
+        '$companyId/ros/${DateTime.now().year}/${const Uuid().v4()}_$safeName';
+    final stored = await CompanyFileStorage.upload(
+      supabaseBucket: 'risk-assessments',
+      storagePath: path,
+      bytes: bytes,
+      category: 'risk',
+      fileName: fileName,
+    );
+    return CompanyFileStorage.toStorageReference(stored);
+  }
+
   static Future<List<HmsTicketLeaderAction>> fetchLeaderActions(
     String ticketId,
   ) async {

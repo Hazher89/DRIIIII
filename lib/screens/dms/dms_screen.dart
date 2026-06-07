@@ -1,8 +1,13 @@
+import 'dart:typed_data';
+
 import 'package:cross_file/cross_file.dart';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+import '../../core/routing/app_paths.dart';
 
 import '../../core/services/dms/dms_password.dart';
 import '../../core/services/dms/dms_service.dart';
@@ -19,8 +24,14 @@ import 'widgets/dms_permissions_sheet.dart';
 class DmsScreen extends StatefulWidget {
   final String? initialFolderId;
   final String? initialFolderName;
+  final DmsExplorerSection? initialSection;
 
-  const DmsScreen({super.key, this.initialFolderId, this.initialFolderName});
+  const DmsScreen({
+    super.key,
+    this.initialFolderId,
+    this.initialFolderName,
+    this.initialSection,
+  });
 
   @override
   State<DmsScreen> createState() => _DmsScreenState();
@@ -50,14 +61,31 @@ class _DmsScreenState extends State<DmsScreen> {
   int _starredCount = 0;
   bool _selectMode = false;
   final Set<String> _selectedFileIds = {};
+  bool _uploading = false;
 
   bool get _canGoBack =>
-      _section == DmsExplorerSection.home && _breadcrumb.length > 1;
+      (_section == DmsExplorerSection.home && _breadcrumb.length > 1) ||
+      (_section == DmsExplorerSection.shared && _currentFolderId != null);
 
   bool get _browsingHome => _section == DmsExplorerSection.home;
 
+  /// Opplasting er tillatt i hovedarkiv og inne i åpne mapper (inkl. felles).
+  bool get _canUploadFiles =>
+      (_section == DmsExplorerSection.home ||
+          (_section == DmsExplorerSection.shared && _currentFolderId != null)) &&
+      !_uploading;
+
+  bool get _showFab =>
+      _section == DmsExplorerSection.home ||
+      _section == DmsExplorerSection.shared;
+
   String get _currentTitle {
-    if (_section == DmsExplorerSection.shared) return 'Felles mapper';
+    if (_section == DmsExplorerSection.shared && _currentFolderId == null) {
+      return 'Felles mapper';
+    }
+    if (_section == DmsExplorerSection.shared && _currentFolder != null) {
+      return _currentFolder!.name;
+    }
     if (_section == DmsExplorerSection.starred) return 'Stjernemerkede';
     if (_section == DmsExplorerSection.recent) return 'Nylige filer';
     if (_breadcrumb.isEmpty) return 'Dokumentarkiv';
@@ -67,15 +95,46 @@ class _DmsScreenState extends State<DmsScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialSection != null) {
+      _section = widget.initialSection!;
+    }
     _currentFolderId = widget.initialFolderId;
-    _breadcrumb.add({'id': null, 'name': 'Hovedarkiv'});
-    if (widget.initialFolderId != null) {
-      _breadcrumb.add({
-        'id': widget.initialFolderId,
-        'name': widget.initialFolderName ?? 'Mappe',
-      });
+    if (_section == DmsExplorerSection.shared && widget.initialFolderId != null) {
+      _breadcrumb
+        ..clear()
+        ..add({'id': null, 'name': 'Felles mapper'})
+        ..add({
+          'id': widget.initialFolderId,
+          'name': widget.initialFolderName ?? 'Mappe',
+        });
+    } else {
+      _breadcrumb.add({'id': null, 'name': 'Hovedarkiv'});
+      if (widget.initialFolderId != null) {
+        _breadcrumb.add({
+          'id': widget.initialFolderId,
+          'name': widget.initialFolderName ?? 'Mappe',
+        });
+      } else if (_section == DmsExplorerSection.shared) {
+        _breadcrumb
+          ..clear()
+          ..add({'id': null, 'name': 'Hovedarkiv'});
+      }
     }
     _loadData();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
+  }
+
+  void _syncUrl() {
+    if (!mounted) return;
+    final path = AppPaths.dmsPath(
+      section: _section == DmsExplorerSection.home ? null : _section.name,
+      folderId: _currentFolderId,
+      folderName: _breadcrumb.length > 1 ? _breadcrumb.last['name'] : null,
+    );
+    final router = GoRouter.of(context);
+    if (router.state.uri.toString() != path) {
+      router.go(path);
+    }
   }
 
   Future<void> _loadData() async {
@@ -84,7 +143,7 @@ class _DmsScreenState extends State<DmsScreen> {
       _companyId ??= await SupabaseService.getCurrentCompanyId();
       if (_companyId == null) return;
 
-      if (_browsingHome && _currentFolderId != null) {
+      if (_currentFolderId != null) {
         _currentFolder = await DmsService.fetchFolder(_currentFolderId!);
       } else {
         _currentFolder = null;
@@ -113,8 +172,23 @@ class _DmsScreenState extends State<DmsScreen> {
           folders = results[0] as List<DmsFolder>;
           files = results[1] as List<DmsFile>;
         case DmsExplorerSection.shared:
-          folders = await sharedFuture;
-          files = const [];
+          if (_currentFolderId == null) {
+            folders = await sharedFuture;
+            files = const [];
+          } else {
+            final results = await Future.wait([
+              DmsService.fetchFolders(
+                parentId: _currentFolderId,
+                companyId: _companyId!,
+              ),
+              DmsService.fetchFiles(
+                folderId: _currentFolderId,
+                companyId: _companyId!,
+              ),
+            ]);
+            folders = results[0] as List<DmsFolder>;
+            files = results[1] as List<DmsFile>;
+          }
         case DmsExplorerSection.starred:
           folders = const [];
           files = await starredFuture;
@@ -193,6 +267,17 @@ class _DmsScreenState extends State<DmsScreen> {
 
   void _goBack() {
     if (!_canGoBack) return;
+    if (_section == DmsExplorerSection.shared && _currentFolderId != null) {
+      setState(() {
+        _currentFolderId = null;
+        _breadcrumb
+          ..clear()
+          ..add({'id': null, 'name': 'Hovedarkiv'});
+      });
+      _loadData();
+      _syncUrl();
+      return;
+    }
     final parent = _breadcrumb[_breadcrumb.length - 2];
     _navigateToFolder(parent['id'], parent['name'] ?? 'Hovedarkiv', skipLockCheck: true);
   }
@@ -210,6 +295,7 @@ class _DmsScreenState extends State<DmsScreen> {
       }
     });
     _loadData();
+    _syncUrl();
   }
 
   void _toggleSelectMode() {
@@ -239,7 +325,19 @@ class _DmsScreenState extends State<DmsScreen> {
     for (final id in _selectedFileIds) {
       final file = _files.where((f) => f.id == id).firstOrNull;
       if (file != null) {
-        await DmsService.deleteFile(file.id, file.storagePath);
+        try {
+          await DmsService.deleteFile(
+            file.id,
+            file.storagePath,
+            storageProvider: file.storageProvider,
+          );
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Kunne ikke slette ${file.name}: $e')),
+            );
+          }
+        }
       }
     }
     setState(() {
@@ -273,6 +371,18 @@ class _DmsScreenState extends State<DmsScreen> {
       final ok = await _promptFolderPassword(folder);
       if (!ok) return;
       _unlockedFolderIds.add(folder.id);
+    }
+    if (_section == DmsExplorerSection.shared) {
+      setState(() {
+        _currentFolderId = folder.id;
+        _breadcrumb
+          ..clear()
+          ..add({'id': null, 'name': 'Felles mapper'})
+          ..add({'id': folder.id, 'name': folder.name});
+      });
+      _loadData();
+      _syncUrl();
+      return;
     }
     if (_section != DmsExplorerSection.home) {
       setState(() => _section = DmsExplorerSection.home);
@@ -339,6 +449,7 @@ class _DmsScreenState extends State<DmsScreen> {
       }
     });
     _loadData();
+    _syncUrl();
   }
 
   List<dynamic> get _filteredItems {
@@ -433,10 +544,16 @@ class _DmsScreenState extends State<DmsScreen> {
             ListTile(
               leading: const Icon(Icons.upload_file),
               title: const Text('Last opp fil(er)'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _uploadFile();
-              },
+              subtitle: _canUploadFiles
+                  ? null
+                  : const Text('Åpne en mappe først'),
+              enabled: _canUploadFiles,
+              onTap: _canUploadFiles
+                  ? () {
+                      Navigator.pop(ctx);
+                      _uploadFile();
+                    }
+                  : null,
             ),
             ListTile(
               leading: const Icon(Icons.sort),
@@ -459,37 +576,116 @@ class _DmsScreenState extends State<DmsScreen> {
       companyId: _companyId!,
       parentFolderId: _currentFolderId,
       parentFolderName: _currentTitle,
+      defaultSharedMavi: _section == DmsExplorerSection.shared ||
+          _currentFolder?.isSharedMavi == true,
     );
     if (ok == true) _loadData();
   }
 
-  Future<void> _uploadFile() async {
-    final result = await FilePicker.platform.pickFiles(withData: true);
-    if (result == null || _companyId == null) return;
-    for (final f in result.files) {
-      if (f.bytes == null) continue;
-      await DmsService.uploadFile(
-        bytes: f.bytes!,
-        fileName: f.name,
-        folderId: _currentFolderId,
-        companyId: _companyId!,
-      );
+  Future<Uint8List?> _readPickerBytes(PlatformFile file) async {
+    if (file.bytes != null) return file.bytes;
+    final path = file.path;
+    if (path != null) {
+      try {
+        return await XFile(path).readAsBytes();
+      } catch (_) {}
     }
-    _loadData();
+    return null;
+  }
+
+  Future<void> _uploadFile() async {
+    if (!_canUploadFiles || _companyId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Åpne mappen du vil laste opp til først'),
+          ),
+        );
+      }
+      return;
+    }
+    final result = await FilePicker.platform.pickFiles(withData: true);
+    if (result == null) return;
+    await _uploadPickedFiles(result.files);
+  }
+
+  Future<void> _uploadPickedFiles(List<PlatformFile> files) async {
+    if (_companyId == null || files.isEmpty) return;
+    setState(() => _uploading = true);
+    var ok = 0;
+    var failed = 0;
+    try {
+      for (final f in files) {
+        try {
+          final bytes = await _readPickerBytes(f);
+          if (bytes == null || bytes.isEmpty) {
+            failed++;
+            continue;
+          }
+          await DmsService.uploadFile(
+            bytes: bytes,
+            fileName: f.name,
+            folderId: _currentFolderId,
+            companyId: _companyId!,
+          );
+          ok++;
+        } catch (e) {
+          failed++;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Opplasting feilet (${f.name}): $e')),
+            );
+          }
+        }
+      }
+      if (mounted && ok > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$ok fil(er) lastet opp')),
+        );
+      }
+      if (mounted && failed > 0 && ok == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ingen filer ble lastet opp')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+      _loadData();
+    }
   }
 
   Future<void> _onFilesDropped(List<XFile> files) async {
-    if (_companyId == null) return;
-    for (final file in files) {
-      final bytes = await file.readAsBytes();
-      await DmsService.uploadFile(
-        bytes: bytes,
-        fileName: file.name,
-        folderId: _currentFolderId,
-        companyId: _companyId!,
-      );
+    if (!_canUploadFiles || _companyId == null) return;
+    setState(() => _uploading = true);
+    var ok = 0;
+    try {
+      for (final file in files) {
+        try {
+          final bytes = await file.readAsBytes();
+          await DmsService.uploadFile(
+            bytes: bytes,
+            fileName: file.name,
+            folderId: _currentFolderId,
+            companyId: _companyId!,
+          );
+          ok++;
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Opplasting feilet (${file.name}): $e')),
+            );
+          }
+        }
+      }
+      if (mounted && ok > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$ok fil(er) lastet opp')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+      _loadData();
     }
-    _loadData();
   }
 
   Future<void> _downloadFile(DmsFile file) async {
@@ -536,8 +732,16 @@ class _DmsScreenState extends State<DmsScreen> {
       ),
     );
     if (name == null || name.isEmpty) return;
-    await DmsService.renameFolder(folder.id, name);
-    _loadData();
+    try {
+      await DmsService.renameFolder(folder.id, name);
+      _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke gi nytt navn: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _renameFile(DmsFile file) async {
@@ -561,8 +765,16 @@ class _DmsScreenState extends State<DmsScreen> {
       ),
     );
     if (name == null || name.isEmpty) return;
-    await DmsService.renameFile(file.id, name);
-    _loadData();
+    try {
+      await DmsService.renameFile(file.id, name);
+      _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke gi nytt navn: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _deleteFolder(DmsFolder folder) async {
@@ -583,8 +795,16 @@ class _DmsScreenState extends State<DmsScreen> {
       ),
     );
     if (ok != true) return;
-    await DmsService.deleteFolder(folder.id);
-    _loadData();
+    try {
+      await DmsService.deleteFolder(folder.id);
+      _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke slette mappe: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _deleteFile(DmsFile file) async {
@@ -603,8 +823,20 @@ class _DmsScreenState extends State<DmsScreen> {
       ),
     );
     if (ok != true) return;
-    await DmsService.deleteFile(file.id, file.storagePath);
-    _loadData();
+    try {
+      await DmsService.deleteFile(
+        file.id,
+        file.storagePath,
+        storageProvider: file.storageProvider,
+      );
+      _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke slette fil: $e')),
+        );
+      }
+    }
   }
 
   void _showItemMenu({DmsFolder? folder, DmsFile? file}) {
@@ -780,25 +1012,39 @@ class _DmsScreenState extends State<DmsScreen> {
           final useSidebar = constraints.maxWidth >= 900;
           final explorer = Column(
             children: [
-              if (_browsingHome) _buildBreadcrumb(isDark),
+              if (_browsingHome ||
+                  (_section == DmsExplorerSection.shared &&
+                      _currentFolderId != null))
+                _buildBreadcrumb(isDark),
               _buildSearchAndStats(isDark),
               Expanded(
                 child: DropTarget(
                   onDragDone: (d) {
-                    if (_browsingHome) _onFilesDropped(d.files);
+                    if (_canUploadFiles) _onFilesDropped(d.files);
                   },
                   onDragEntered: (_) {
-                    if (_browsingHome) setState(() => _isDragging = true);
+                    if (_canUploadFiles) setState(() => _isDragging = true);
                   },
                   onDragExited: (_) {
-                    if (_browsingHome) setState(() => _isDragging = false);
+                    if (_canUploadFiles) setState(() => _isDragging = false);
                   },
                   child: Stack(
                     children: [
-                      _isLoading
-                          ? const Center(child: CircularProgressIndicator())
+                      _isLoading || _uploading
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const CircularProgressIndicator(),
+                                  if (_uploading) ...[
+                                    const SizedBox(height: 12),
+                                    const Text('Laster opp…'),
+                                  ],
+                                ],
+                              ),
+                            )
                           : _buildMainContent(isDark),
-                      if (_isDragging && _browsingHome)
+                      if (_isDragging && _canUploadFiles)
                         Container(
                           color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
                           child: Center(
@@ -857,11 +1103,23 @@ class _DmsScreenState extends State<DmsScreen> {
           );
         },
       ),
-      floatingActionButton: _browsingHome
+      floatingActionButton: _showFab
           ? FloatingActionButton.extended(
-              onPressed: _showActionsMenu,
-              icon: const Icon(Icons.add),
-              label: Text(_currentFolderId == null ? 'Ny / Last opp' : 'Legg til'),
+              onPressed: _uploading ? null : _showActionsMenu,
+              icon: _uploading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.add),
+              label: Text(
+                _section == DmsExplorerSection.shared && _currentFolderId == null
+                    ? 'Ny mappe'
+                    : _currentFolderId == null
+                        ? 'Ny / Last opp'
+                        : 'Legg til',
+              ),
               backgroundColor: DriftProTheme.primaryGreen,
             )
           : null,
@@ -886,11 +1144,23 @@ class _DmsScreenState extends State<DmsScreen> {
               child: InkWell(
                 onTap: isLast
                     ? null
-                    : () => _navigateToFolder(
+                    : () {
+                        if (_section == DmsExplorerSection.shared &&
+                            item['id'] == null) {
+                          setState(() {
+                            _currentFolderId = null;
+                            _breadcrumb.removeRange(1, _breadcrumb.length);
+                          });
+                          _loadData();
+                          _syncUrl();
+                          return;
+                        }
+                        _navigateToFolder(
                           item['id'],
                           item['name'] ?? 'Hovedarkiv',
                           skipLockCheck: true,
-                        ),
+                        );
+                      },
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   child: Row(
@@ -973,6 +1243,8 @@ class _DmsScreenState extends State<DmsScreen> {
   Widget _buildMainContent(bool isDark) {
     final items = _filteredItems;
     if (items.isEmpty) {
+      final inSharedList =
+          _section == DmsExplorerSection.shared && _currentFolderId == null;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -982,9 +1254,20 @@ class _DmsScreenState extends State<DmsScreen> {
             Text(
               _searchQuery.isNotEmpty
                   ? 'Ingen treff'
-                  : 'Tom mappe – opprett eller last opp',
+                  : inSharedList
+                      ? 'Ingen felles mapper ennå'
+                      : 'Tom mappe – opprett eller last opp',
               style: DriftProTheme.bodyMd.copyWith(color: Colors.grey),
             ),
+            if (inSharedList)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Trykk på en mappe for å åpne og laste opp filer',
+                  style: DriftProTheme.caption,
+                  textAlign: TextAlign.center,
+                ),
+              ),
             const SizedBox(height: 20),
             Wrap(
               spacing: 12,
@@ -993,16 +1276,17 @@ class _DmsScreenState extends State<DmsScreen> {
                 OutlinedButton.icon(
                   onPressed: _createFolderSmart,
                   icon: const Icon(Icons.create_new_folder),
-                  label: const Text('Ny mappe'),
+                  label: Text(inSharedList ? 'Ny felles mappe' : 'Ny mappe'),
                 ),
-                FilledButton.icon(
-                  onPressed: _uploadFile,
-                  icon: const Icon(Icons.upload_file),
-                  label: const Text('Last opp'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: DriftProTheme.primaryGreen,
+                if (_canUploadFiles)
+                  FilledButton.icon(
+                    onPressed: _uploadFile,
+                    icon: const Icon(Icons.upload_file),
+                    label: const Text('Last opp'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DriftProTheme.primaryGreen,
+                    ),
                   ),
-                ),
               ],
             ),
           ],
@@ -1086,11 +1370,21 @@ class _DmsScreenState extends State<DmsScreen> {
               ? 'Felles · alle MAVI-ansatte'
               : folder.description != null && folder.description!.isNotEmpty
                   ? folder.description!
-                  : 'Dobbelttrykk for meny · trykk for å åpne',
+                  : 'Trykk for å åpne · ⋮ for meny',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'Meny',
+              onPressed: () => _showItemMenu(folder: folder),
+            ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
         onTap: () => _enterFolder(folder),
         onLongPress: () => _showItemMenu(folder: folder),
       ),
@@ -1158,10 +1452,28 @@ class _DmsScreenState extends State<DmsScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Stack(
-                alignment: Alignment.topRight,
+                clipBehavior: Clip.none,
                 children: [
-                  Icon(Icons.folder, size: 48, color: Colors.amber.shade700),
-                  _folderBadges(folder),
+                  Align(
+                    alignment: Alignment.center,
+                    child: Stack(
+                      alignment: Alignment.topRight,
+                      children: [
+                        Icon(Icons.folder, size: 48, color: Colors.amber.shade700),
+                        _folderBadges(folder),
+                      ],
+                    ),
+                  ),
+                  Positioned(
+                    top: -8,
+                    right: -8,
+                    child: IconButton(
+                      icon: const Icon(Icons.more_vert, size: 18),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                      onPressed: () => _showItemMenu(folder: folder),
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -1183,7 +1495,25 @@ class _DmsScreenState extends State<DmsScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.insert_drive_file, size: 44, color: DriftProTheme.primaryGreen),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Align(
+                    alignment: Alignment.center,
+                    child: Icon(Icons.insert_drive_file, size: 44, color: DriftProTheme.primaryGreen),
+                  ),
+                  Positioned(
+                    top: -8,
+                    right: -8,
+                    child: IconButton(
+                      icon: const Icon(Icons.more_vert, size: 18),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                      onPressed: () => _showItemMenu(file: file),
+                    ),
+                  ),
+                ],
+              ),
               const SizedBox(height: 8),
               Text(file.name, maxLines: 2, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis),
             ],

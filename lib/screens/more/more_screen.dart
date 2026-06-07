@@ -1,33 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/routing/app_paths.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/theme_notifier.dart';
 import '../../core/auth/session_sign_out.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
-import '../../core/permissions/access_keys.dart';
-import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
-import '../employees/employee_hub_screen.dart';
 import 'driftpro_platform_catalog.dart';
-import 'help_support_screen.dart';
-import 'privacy_screen.dart';
-import 'about_driftpro_screen.dart';
-import '../departments/departments_screen.dart';
-import '../employees/employees_screen.dart';
-import '../employees/employee_personal_folder_screen.dart';
-import '../profile/profile_screen.dart';
-import '../profile/notifications_hub_screen.dart';
-import '../admin/access_control_screen.dart';
-import '../admin/kiosk_settings_screen.dart';
-import '../admin/dropbox_storage_settings_screen.dart';
-import '../surveys/survey_list_screen.dart';
-import '../partners/partners_dashboard_screen.dart';
-import 'organization_chart_screen.dart';
-import 'whistleblowing_screen.dart';
 
 class MoreScreen extends StatefulWidget {
   const MoreScreen({super.key});
@@ -80,9 +64,7 @@ class _MoreScreenState extends State<MoreScreen> {
         children: [
           // Profil-kort
           GestureDetector(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ProfileScreen()),
-            ),
+            onTap: () => context.push(AppPaths.moreProfil),
             child: Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -336,152 +318,26 @@ class _MoreScreenState extends State<MoreScreen> {
           ],
         ),
         onTap: () {
-          if (title == 'Samarbeidspartnere') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.samarbeidspartnere,
-                child: const PartnersDashboardScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Avdelinger') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.avdelinger,
-                child: const DepartmentsScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Ansatte') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.ansatte,
-                child: const EmployeesScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Organisasjonskart') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.ansatte,
-                child: const OrganizationChartScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Tilgangskontroll') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.tilgangskontroll,
-                child: const AccessControlScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Undersøkelser') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.undersokelser,
-                child: const SurveyListScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Anonym anmeldelse') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.whistleblowing,
-                child: const WhistleblowingScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Brukergodkjenning') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.brukergodkjenning,
-                child: const EmployeeHubScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Infoskjerm') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.kiosk,
-                child: const KioskSettingsScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Dropbox-lagring') {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const DropboxStorageSettingsScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Min profil') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.profil,
-                child: const ProfileScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Personalmappe') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.personalmappe,
-                child: const EmployeePersonalFolderScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Varsler') {
-            Navigator.of(context).push(
-              guardedMaterialRoute(
-                profile: _profile,
-                accessKey: AccessKeys.varsler,
-                child: const NotificationsHubScreen(),
-              ),
-            );
-            return;
-          }
-          if (title == 'Hjelp & støtte') {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const HelpSupportScreen()),
-            );
-            return;
-          }
-          if (title == 'Personvern') {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const PrivacyScreen()),
-            );
-            return;
-          }
-          if (title == 'Om DriftPro') {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AboutDriftProScreen()),
-            );
-            return;
-          }
+          final path = switch (title) {
+            'Samarbeidspartnere' => AppPaths.morePartnere,
+            'Avdelinger' => AppPaths.moreAvdelinger,
+            'Ansatte' => AppPaths.moreAnsatte,
+            'Organisasjonskart' => AppPaths.moreOrganisasjonskart,
+            'Tilgangskontroll' => AppPaths.moreTilgangskontroll,
+            'Undersøkelser' => AppPaths.moreUndersokelser,
+            'Anonym anmeldelse' => AppPaths.moreWhistleblowing,
+            'Brukergodkjenning' => AppPaths.moreBrukergodkjenning,
+            'Infoskjerm' => AppPaths.moreInfoskjerm,
+            'Dropbox-lagring' => AppPaths.moreDropbox,
+            'Min profil' => AppPaths.moreProfil,
+            'Personalmappe' => AppPaths.morePersonalmappe,
+            'Varsler' => AppPaths.moreVarsler,
+            'Hjelp & støtte' => AppPaths.moreHjelp,
+            'Personvern' => AppPaths.morePersonvern,
+            'Om DriftPro' => AppPaths.moreOm,
+            _ => null,
+          };
+          if (path != null) context.push(path);
         },
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DriftProTheme.radiusMd)),
       ),

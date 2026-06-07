@@ -1,24 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
+import '../../core/routing/app_paths.dart';
 import '../../core/services/hms/hms_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
-import '../dms/dms_screen.dart';
-import '../tickets/tickets_screen.dart';
-import 'competence/competence_hub_screen.dart';
-import 'equipment/equipment_hub_screen.dart';
-import 'risk_assessment/risk_assessment_list_screen.dart';
-import 'risk_assessment/risk_matrix_screen.dart';
-import 'safety_rounds/safety_round_list_screen.dart';
-import 'sja/sja_list_screen.dart';
 
-/// HMS-hub — 7 moduler + risikomatrise (Landax-inspirert).
+/// HMS-hub — moduler for avvik, risiko, SJA, vernerunde m.m.
 class HmsScreen extends StatefulWidget {
   const HmsScreen({super.key});
 
@@ -69,13 +63,7 @@ class _HmsScreenState extends State<HmsScreen> {
         subtitle: 'Hurtigmaler, GPS, media og lederoppfølging',
         color: DriftProTheme.error,
         isDark: isDark,
-        onTap: () => Navigator.of(context).push(
-          guardedMaterialRoute(
-            profile: _profile,
-            accessKey: AccessKeys.avvik,
-            child: const TicketsScreen(),
-          ),
-        ),
+        onTap: () => context.push(AppPaths.hmsAvvik),
       ));
     }
     if (a?.canHmsRisk == true) {
@@ -83,37 +71,12 @@ class _HmsScreenState extends State<HmsScreen> {
         context,
         icon: AppIcons.riskAssessment,
         title: AppStrings.riskAssessment,
-        subtitle: 'Risikoanalyser med 5×5 matrise og maler',
+        subtitle: 'ROS med ISO-felter, behandling og vedlegg',
         color: DriftProTheme.riskHigh,
         isDark: isDark,
         badge: _statsLoading ? null : '${_stats.riskCount}',
         badgeColor: _stats.highRiskCount > 0 ? DriftProTheme.error : null,
-        onTap: () => Navigator.of(context).push(
-          guardedMaterialRoute(
-            profile: _profile,
-            accessKey: AccessKeys.hmsRisikovurdering,
-            child: const RiskAssessmentListScreen(),
-          ),
-        ),
-      ));
-    }
-    if (a?.canHmsRiskMatrix == true) {
-      modules.add(_buildModuleCard(
-        context,
-        icon: AppIcons.riskMatrix,
-        title: AppStrings.riskMatrix,
-        subtitle: 'Interaktiv heatmap fra Supabase',
-        color: DriftProTheme.warning,
-        isDark: isDark,
-        badge: _statsLoading ? null : '${_stats.highRiskCount} høy',
-        badgeColor: DriftProTheme.riskHigh,
-        onTap: () => Navigator.of(context).push(
-          guardedMaterialRoute(
-            profile: _profile,
-            accessKey: AccessKeys.hmsRisikomatrise,
-            child: const RiskMatrixScreen(),
-          ),
-        ),
+        onTap: () => context.push(AppPaths.hmsRisiko),
       ));
     }
     if (a?.canHmsSja == true) {
@@ -125,13 +88,7 @@ class _HmsScreenState extends State<HmsScreen> {
         color: DriftProTheme.accentBlue,
         isDark: isDark,
         badge: _statsLoading ? null : '${_stats.sjaOpen} åpne',
-        onTap: () => Navigator.of(context).push(
-          guardedMaterialRoute(
-            profile: _profile,
-            accessKey: AccessKeys.hmsSja,
-            child: const SjaListScreen(),
-          ),
-        ),
+        onTap: () => context.push(AppPaths.hmsSja),
       ));
     }
     if (a?.canHmsSafetyRound == true) {
@@ -143,13 +100,7 @@ class _HmsScreenState extends State<HmsScreen> {
         color: DriftProTheme.success,
         isDark: isDark,
         badge: _statsLoading ? null : '${_stats.safetyPlanned} planlagt',
-        onTap: () => Navigator.of(context).push(
-          guardedMaterialRoute(
-            profile: _profile,
-            accessKey: AccessKeys.hmsSikkerhetsrunde,
-            child: const SafetyRoundListScreen(),
-          ),
-        ),
+        onTap: () => context.push(AppPaths.hmsVernerunde),
       ));
     }
     if (a?.canHmsEquipment == true) {
@@ -164,13 +115,7 @@ class _HmsScreenState extends State<HmsScreen> {
             ? '${_stats.equipmentNeedsService} service'
             : null,
         badgeColor: DriftProTheme.warning,
-        onTap: () => Navigator.of(context).push(
-          guardedMaterialRoute(
-            profile: _profile,
-            accessKey: AccessKeys.hmsUtstyr,
-            child: const EquipmentHubScreen(),
-          ),
-        ),
+        onTap: () => context.push(AppPaths.hmsUtstyr),
       ));
     }
     if (a?.canHmsCompetence == true) {
@@ -185,13 +130,7 @@ class _HmsScreenState extends State<HmsScreen> {
             ? '${_stats.expiringCertificates} utløper'
             : null,
         badgeColor: DriftProTheme.warning,
-        onTap: () => Navigator.of(context).push(
-          guardedMaterialRoute(
-            profile: _profile,
-            accessKey: AccessKeys.hmsKompetanse,
-            child: const CompetenceHubScreen(),
-          ),
-        ),
+        onTap: () => context.push(AppPaths.hmsKompetanse),
       ));
     }
     if (a?.canHmsDocuments == true) {
@@ -202,13 +141,7 @@ class _HmsScreenState extends State<HmsScreen> {
         subtitle: 'HMS-håndbok og styrende dokumenter (DMS)',
         color: DriftProTheme.info,
         isDark: isDark,
-        onTap: () => Navigator.of(context).push(
-          guardedMaterialRoute(
-            profile: _profile,
-            accessKey: AccessKeys.hmsDokumenter,
-            child: const DmsScreen(),
-          ),
-        ),
+        onTap: () => context.push(AppPaths.hmsDms),
       ));
     }
 
@@ -269,7 +202,6 @@ class _HmsScreenState extends State<HmsScreen> {
     );
   }
 
-  /// Synlig markør — bekreft at ny HMS-hub er lastet (ikke gammel cache).
   Widget _buildVersionBanner(bool isDark) {
     return Container(
       width: double.infinity,
@@ -296,17 +228,10 @@ class _HmsScreenState extends State<HmsScreen> {
                   style: DriftProTheme.labelMd.copyWith(color: Colors.white),
                 ),
                 Text(
-                  'KPI · maler · risikomatrise · Supabase',
+                  'KPI · maler · ROS · Supabase',
                   style: DriftProTheme.caption.copyWith(color: Colors.white70),
                 ),
               ],
-            ),
-          ),
-          Text(
-            '18.05.26',
-            style: DriftProTheme.caption.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
             ),
           ),
         ],

@@ -167,10 +167,7 @@ class _MainShellState extends State<MainShell> {
     HapticFeedback.selectionClick();
     final access = visibleScreens[visibleIndex]['access'] as String;
     final path = AppPaths.pathForAccess(access) ?? AppPaths.dashboard;
-    final branch = AppPaths.branchIndexForPath(path);
-    if (branch != null) {
-      widget.navigationShell.goBranch(branch);
-    }
+    context.go(path);
   }
 
   int _visibleIndexForCurrentBranch(List<Map<String, dynamic>> visibleScreens) {

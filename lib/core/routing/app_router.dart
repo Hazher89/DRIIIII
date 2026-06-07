@@ -3,12 +3,34 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../screens/absence/absence_screen.dart';
+import '../../screens/admin/access_control_screen.dart';
+import '../../screens/admin/dropbox_storage_settings_screen.dart';
+import '../../screens/admin/kiosk_settings_screen.dart';
 import '../../screens/auth/auth_gate_screen.dart';
 import '../../screens/dashboard/dashboard_screen.dart';
+import '../../screens/departments/departments_screen.dart';
+import '../../screens/dms/dms_screen.dart';
+import '../../screens/dms/widgets/dms_explorer_sidebar.dart';
+import '../../screens/employees/employee_hub_screen.dart';
+import '../../screens/employees/employee_personal_folder_screen.dart';
+import '../../screens/employees/employees_screen.dart';
+import '../../screens/hms/competence/competence_hub_screen.dart';
+import '../../screens/hms/equipment/equipment_hub_screen.dart';
 import '../../screens/hms/hms_screen.dart';
+import '../../screens/hms/risk_assessment/risk_assessment_list_screen.dart';
+import '../../screens/hms/risk_assessment/risk_matrix_screen.dart';
+import '../../screens/hms/safety_rounds/safety_round_list_screen.dart';
+import '../../screens/hms/sja/sja_list_screen.dart';
+import '../../screens/more/about_driftpro_screen.dart';
+import '../../screens/more/help_support_screen.dart';
 import '../../screens/more/more_screen.dart';
+import '../../screens/more/organization_chart_screen.dart';
+import '../../screens/more/privacy_screen.dart';
+import '../../screens/more/whistleblowing_screen.dart';
 import '../../screens/online/online_presence_screen.dart';
 import '../../screens/partners/partners_dashboard_screen.dart';
+import '../../screens/profile/notifications_hub_screen.dart';
+import '../../screens/profile/profile_screen.dart';
 import '../../screens/public/public_tracking_screen.dart';
 import '../../screens/shell/main_shell.dart';
 import '../../screens/surveys/survey_list_screen.dart';
@@ -16,6 +38,21 @@ import '../../screens/surveys/survey_player_screen.dart';
 import '../../screens/tickets/tickets_screen.dart';
 import 'app_paths.dart';
 import 'auth_refresh_listenable.dart';
+
+DmsExplorerSection? _dmsSectionFromQuery(String? value) {
+  switch (value) {
+    case 'shared':
+      return DmsExplorerSection.shared;
+    case 'starred':
+      return DmsExplorerSection.starred;
+    case 'recent':
+      return DmsExplorerSection.recent;
+    case 'home':
+      return DmsExplorerSection.home;
+    default:
+      return null;
+  }
+}
 
 GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
   final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
@@ -50,9 +87,16 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
       final session = Supabase.instance.client.auth.currentSession;
       if (session == null) {
         if (path == AppPaths.login) return null;
-        return AppPaths.login;
+        final returnTo = Uri.encodeComponent(state.uri.toString());
+        return '${AppPaths.login}?returnTo=$returnTo';
       }
-      if (path == AppPaths.login) return AppPaths.dashboard;
+      if (path == AppPaths.login) {
+        final returnTo = state.uri.queryParameters['returnTo'];
+        if (returnTo != null && returnTo.isNotEmpty) {
+          return Uri.decodeComponent(returnTo);
+        }
+        return AppPaths.dashboard;
+      }
       return null;
     },
     routes: [
@@ -125,6 +169,54 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
               GoRoute(
                 path: AppPaths.hms,
                 builder: (context, state) => const HmsScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'avvik',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const TicketsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'risiko',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const RiskAssessmentListScreen(),
+                  ),
+                  GoRoute(
+                    path: 'risikomatrise',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const RiskMatrixScreen(),
+                  ),
+                  GoRoute(
+                    path: 'sja',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const SjaListScreen(),
+                  ),
+                  GoRoute(
+                    path: 'vernerunde',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const SafetyRoundListScreen(),
+                  ),
+                  GoRoute(
+                    path: 'utstyr',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const EquipmentHubScreen(),
+                  ),
+                  GoRoute(
+                    path: 'kompetanse',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const CompetenceHubScreen(),
+                  ),
+                  GoRoute(
+                    path: 'dms',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => DmsScreen(
+                      initialSection: _dmsSectionFromQuery(
+                        state.uri.queryParameters['section'],
+                      ),
+                      initialFolderId: state.uri.queryParameters['folder'],
+                      initialFolderName: state.uri.queryParameters['folderName'],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -141,6 +233,88 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
               GoRoute(
                 path: AppPaths.more,
                 builder: (context, state) => const MoreScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'profil',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const ProfileScreen(),
+                  ),
+                  GoRoute(
+                    path: 'avdelinger',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const DepartmentsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'ansatte',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const EmployeesScreen(),
+                  ),
+                  GoRoute(
+                    path: 'organisasjonskart',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const OrganizationChartScreen(),
+                  ),
+                  GoRoute(
+                    path: 'partnere',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const PartnersDashboardScreen(),
+                  ),
+                  GoRoute(
+                    path: 'personalmappe',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const EmployeePersonalFolderScreen(),
+                  ),
+                  GoRoute(
+                    path: 'varsler',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const NotificationsHubScreen(),
+                  ),
+                  GoRoute(
+                    path: 'undersokelser',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const SurveyListScreen(),
+                  ),
+                  GoRoute(
+                    path: 'tilgangskontroll',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const AccessControlScreen(),
+                  ),
+                  GoRoute(
+                    path: 'brukergodkjenning',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const EmployeeHubScreen(),
+                  ),
+                  GoRoute(
+                    path: 'infoskjerm',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const KioskSettingsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'whistleblowing',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const WhistleblowingScreen(),
+                  ),
+                  GoRoute(
+                    path: 'dropbox',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const DropboxStorageSettingsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'hjelp',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const HelpSupportScreen(),
+                  ),
+                  GoRoute(
+                    path: 'personvern',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const PrivacyScreen(),
+                  ),
+                  GoRoute(
+                    path: 'om',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const AboutDriftProScreen(),
+                  ),
+                ],
               ),
             ],
           ),

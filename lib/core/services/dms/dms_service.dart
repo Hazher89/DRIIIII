@@ -60,23 +60,15 @@ class DmsService {
       payload['password_hash'] = passwordHash;
     }
 
-    Map<String, dynamic> data;
-    try {
-      data = await client.from('dms_folders').insert(payload).select().single();
-    } catch (e) {
-      payload.remove('password_hash');
-      payload.remove('is_private');
-      payload.remove('is_shared_mavi');
-      payload.remove('description');
-      data = await client.from('dms_folders').insert({
-        'name': name,
-        'parent_id': parentId,
-        'company_id': companyId,
-        'created_by': user.id,
-      }).select().single();
-    }
+    final data = await client.from('dms_folders').insert(payload).select().single();
 
-    return DmsFolder.fromJson(data);
+    final folder = DmsFolder.fromJson(data);
+    if (isSharedMavi && !folder.isSharedMavi) {
+      throw Exception(
+        'Mappen ble opprettet uten felles MAVI-flagg. Kontakt administrator.',
+      );
+    }
+    return folder;
   }
 
   /// Opprett mappe + deling til ansatte/avdelinger i én operasjon.
@@ -217,7 +209,9 @@ class DmsService {
 
     return createFile(
       name: fileName,
-      storagePath: CompanyFileStorage.toStorageReference(stored),
+      storagePath: stored.isDropbox
+          ? CompanyFileStorage.toStorageReference(stored)
+          : stored.path,
       fileSize: bytes.length,
       folderId: folderId,
       companyId: companyId,
@@ -227,7 +221,12 @@ class DmsService {
   }
 
   static Future<void> renameFile(String id, String newName) async {
-    await client.from('dms_files').update({'name': newName}).eq('id', id);
+    final ext = FileTypeResolver.extensionFromName(newName);
+    await client.from('dms_files').update({
+      'name': newName,
+      if (ext != null) 'extension': ext,
+      'updated_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', id);
   }
 
   static Future<void> moveFile(String fileId, String? targetFolderId) async {
@@ -251,9 +250,25 @@ class DmsService {
     return (sub as List).length + (files as List).length;
   }
 
-  static Future<void> deleteFile(String fileId, String storagePath) async {
+  static Future<void> deleteFile(
+    String fileId,
+    String storagePath, {
+    String? storageProvider,
+  }) async {
     await client.from('dms_files').delete().eq('id', fileId);
-    await client.storage.from('documents').remove([storagePath]);
+    try {
+      if (storageProvider == 'dropbox' ||
+          CompanyFileStorage.isDropboxReference(storagePath)) {
+        // Dropbox-sletting håndteres separat ved behov; DB-raden er fjernet.
+        return;
+      }
+      final paths = StorageFileAccess.candidateSupabasePaths(storagePath);
+      if (paths.isNotEmpty) {
+        await client.storage.from('documents').remove([paths.first]);
+      }
+    } catch (_) {
+      // DB-raden er slettet; lagringsfeil ignoreres.
+    }
   }
 
   // ── Advanced Features ──

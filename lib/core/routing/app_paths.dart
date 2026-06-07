@@ -13,7 +13,35 @@ abstract final class AppPaths {
   static const live = '/live';
   static const portal = '/portal';
 
-  /// Hovedfaner i [MainShell] — rekkefølge = bottom nav.
+  // HMS undermoduler
+  static const hmsAvvik = '/hms/avvik';
+  static const hmsRisiko = '/hms/risiko';
+  static const hmsRisikomatrise = '/hms/risikomatrise';
+  static const hmsSja = '/hms/sja';
+  static const hmsVernerunde = '/hms/vernerunde';
+  static const hmsUtstyr = '/hms/utstyr';
+  static const hmsKompetanse = '/hms/kompetanse';
+  static const hmsDms = '/hms/dms';
+
+  // Mer-meny undermoduler
+  static const moreProfil = '/more/profil';
+  static const moreAvdelinger = '/more/avdelinger';
+  static const moreAnsatte = '/more/ansatte';
+  static const moreOrganisasjonskart = '/more/organisasjonskart';
+  static const morePartnere = '/more/partnere';
+  static const morePersonalmappe = '/more/personalmappe';
+  static const moreVarsler = '/more/varsler';
+  static const moreUndersokelser = '/more/undersokelser';
+  static const moreTilgangskontroll = '/more/tilgangskontroll';
+  static const moreBrukergodkjenning = '/more/brukergodkjenning';
+  static const moreInfoskjerm = '/more/infoskjerm';
+  static const moreWhistleblowing = '/more/whistleblowing';
+  static const moreDropbox = '/more/dropbox';
+  static const moreHjelp = '/more/hjelp';
+  static const morePersonvern = '/more/personvern';
+  static const moreOm = '/more/om';
+
+  /// Hovedfaner i [MainShell] — rekkefølge = bottom nav + skjult avvik-gren.
   static const shellTabs = <({String path, String access})>[
     (path: dashboard, access: AccessKeys.dashboard),
     (path: surveys, access: AccessKeys.surveys),
@@ -32,9 +60,13 @@ abstract final class AppPaths {
   }
 
   static int? branchIndexForPath(String path) {
-    final normalized = _normalize(path);
-    for (var i = 0; i < shellTabs.length; i++) {
-      if (_normalize(shellTabs[i].path) == normalized) return i;
+    final normalized = _normalize(path.split('?').first);
+    if (normalized == dashboard) return 0;
+    for (var i = 1; i < shellTabs.length; i++) {
+      final tabPath = _normalize(shellTabs[i].path);
+      if (normalized == tabPath || normalized.startsWith('$tabPath/')) {
+        return i;
+      }
     }
     return null;
   }
@@ -74,13 +106,33 @@ abstract final class AppPaths {
       if (_normalize(path) == _normalize(p)) return live;
     }
 
-    if (branchIndexForPath(path) != null) return _normalize(path);
+    if (branchIndexForPath(path) != null) {
+      return uri.hasQuery ? '$path?${uri.query}' : path;
+    }
 
     return dashboard;
   }
 
   static bool isPublicPath(String path) {
-    final p = _normalize(path);
+    final p = _normalize(path.split('?').first);
     return p.startsWith('/s/') || p.startsWith('/track/');
+  }
+
+  static String dmsPath({
+    String? section,
+    String? folderId,
+    String? folderName,
+  }) {
+    final params = <String, String>{};
+    if (section != null && section.isNotEmpty && section != 'home') {
+      params['section'] = section;
+    }
+    if (folderId != null && folderId.isNotEmpty) {
+      params['folder'] = folderId;
+      if (folderName != null && folderName.isNotEmpty) {
+        params['folderName'] = folderName;
+      }
+    }
+    return Uri(path: hmsDms, queryParameters: params.isEmpty ? null : params).toString();
   }
 }

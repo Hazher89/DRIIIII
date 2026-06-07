@@ -38,6 +38,7 @@ class DmsFolder {
       description: json['description'] as String?,
       passwordHash: json['password_hash'] as String?,
       isPrivate: json['is_private'] as bool? ?? false,
+      isSharedMavi: json['is_shared_mavi'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: DateTime.parse(json['updated_at'] as String),
     );
