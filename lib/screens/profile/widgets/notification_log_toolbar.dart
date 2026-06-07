@@ -165,10 +165,11 @@ class NotificationLogToolbar extends StatelessWidget {
             ),
             child: Text(
               queueFilterActive == 'i_ko'
-                  ? '«I kø» = SMS/e-post er registrert og venter på Sveve/e-post-worker. '
-                      'Mange rader betyr at utsendelse ikke er kjørt ennå — trykk ▶ for å sende køen.'
-                  : 'Status «I kø»: melding lagret og venter på utsending. '
-                      'Filter «I kø» viser kun ventende.',
+                  ? '«I kø» betyr at utsending ikke er ferdig ennå (sjelden). '
+                      'Varsler sendes automatisk ved opprettelse. '
+                      'Bruk ▶ kun ved feilsøking.'
+                  : 'Varsler sendes automatisk (e-post via Resend, SMS via Sveve). '
+                      '«I kø» = venter eller retry — oppdater loggen etter noen sekunder.',
               style: DriftProTheme.caption,
             ),
           ),
