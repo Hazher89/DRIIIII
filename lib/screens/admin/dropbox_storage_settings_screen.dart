@@ -47,7 +47,12 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
     setState(() => _loading = true);
     try {
       final s = await CompanyFileStorage.dropboxStatus();
-      final pending = await SupabaseDropboxMigrationService.countPendingMigration();
+      var pending = 0;
+      try {
+        pending = await SupabaseDropboxMigrationService.countPendingMigration();
+      } catch (_) {
+        // Migreringstall er valgfritt — skal ikke blokkere Dropbox-status.
+      }
       if (mounted) {
         setState(() {
           _status = s;

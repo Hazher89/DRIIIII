@@ -77,7 +77,7 @@ function resolveAppReturnUrl(returnUrl?: string): string {
 
 function redirectToApp(query = "dropbox=connected", returnUrl?: string) {
   const base = resolveAppReturnUrl(returnUrl);
-  return Response.redirect(`${base}/?${query}`, 302);
+  return Response.redirect(`${base}/more/dropbox?${query}`, 302);
 }
 
 function appHomeLink(returnUrl?: string): string {

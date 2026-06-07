@@ -97,6 +97,10 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
         }
         return AppPaths.dashboard;
       }
+      if (state.uri.queryParameters['dropbox'] == 'connected' &&
+          path != AppPaths.moreDropbox) {
+        return '${AppPaths.moreDropbox}?dropbox=connected';
+      }
       return null;
     },
     routes: [

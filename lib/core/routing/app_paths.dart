@@ -79,6 +79,10 @@ abstract final class AppPaths {
 
   /// Leser sti fra nettleser ved cold start / refresh.
   static String initialLocationFromUri(Uri uri) {
+    if (uri.queryParameters['dropbox'] == 'connected') {
+      return '${AppPaths.moreDropbox}?dropbox=connected';
+    }
+
     final track = uri.queryParameters['track']?.trim();
     if (track != null && track.isNotEmpty) return '/track/$track';
 
