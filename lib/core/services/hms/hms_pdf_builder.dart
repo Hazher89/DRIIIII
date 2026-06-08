@@ -8,6 +8,7 @@ import 'package:syncfusion_flutter_pdf/pdf.dart';
 class HmsPdfBuilder {
   static const double margin = 42;
   static const double bottomReserve = 48;
+  static const double colGap = 16;
 
   final PdfDocument doc = PdfDocument();
   late PdfPage page;
@@ -32,7 +33,6 @@ class HmsPdfBuilder {
   final PdfBrush whiteBrush = PdfSolidBrush(PdfColor(255, 255, 255));
   final PdfBrush brandBrush = PdfSolidBrush(PdfColor(33, 115, 70));
   final PdfBrush brandLightBrush = PdfSolidBrush(PdfColor(232, 245, 236));
-  final PdfBrush lineBrush = PdfSolidBrush(PdfColor(210, 210, 210));
 
   final DateFormat _df = DateFormat('dd.MM.yyyy');
   final DateFormat _dtf = DateFormat('dd.MM.yyyy HH:mm');
@@ -85,16 +85,26 @@ class HmsPdfBuilder {
     );
     y = barH + 18;
 
-    page.graphics.drawString(
-      title,
-      titleFont,
+    y = _drawWrappedAt(
+      x: margin,
+      text: title,
+      font: titleFont,
       brush: darkBrush,
-      bounds: Rect.fromLTWH(margin, y, _contentWidth, 26),
-    );
-    y += 28;
+      startY: y,
+      width: _contentWidth,
+      lineHeight: 20,
+    ) + 6;
 
     if (subtitle != null && subtitle.trim().isNotEmpty) {
-      y = _drawWrapped(subtitle.trim(), bodyFont, mutedBrush, y, lineHeight: 12) + 4;
+      y = _drawWrappedAt(
+        x: margin,
+        text: subtitle.trim(),
+        font: bodyFont,
+        brush: mutedBrush,
+        startY: y,
+        width: _contentWidth,
+        lineHeight: 12,
+      ) + 6;
     }
 
     final meta = <String>[
@@ -109,14 +119,14 @@ class HmsPdfBuilder {
         brush: mutedBrush,
         bounds: Rect.fromLTWH(margin, y, _contentWidth, 11),
       );
-      y += 11;
+      y += 12;
     }
-    y += 8;
+    y += 6;
     _drawHr();
   }
 
   void section(String title) {
-    ensureSpace(28);
+    ensureSpace(30);
     y += 6;
     page.graphics.drawRectangle(
       brush: brandLightBrush,
@@ -128,74 +138,114 @@ class HmsPdfBuilder {
       brush: brandBrush,
       bounds: Rect.fromLTWH(margin + 8, y + 4, _contentWidth - 16, 16),
     );
-    y += 26;
+    y += 28;
   }
 
   void field(String label, String? value) {
     final v = (value ?? '').trim();
     if (v.isEmpty) return;
-    ensureSpace(20);
+    ensureSpace(28);
     page.graphics.drawString(
       label,
       labelFont,
-      brush: darkBrush,
+      brush: mutedBrush,
       bounds: Rect.fromLTWH(margin, y, _contentWidth, 12),
     );
-    y += 13;
-    y = _drawWrapped(v, bodyFont, darkBrush, y, lineHeight: 11.5) + 6;
+    y += 14;
+    y = _drawWrappedAt(
+      x: margin,
+      text: v,
+      font: bodyFont,
+      brush: darkBrush,
+      startY: y,
+      width: _contentWidth,
+      lineHeight: 12,
+    ) + 10;
   }
 
   void paragraph(String? text) {
     final t = (text ?? '').trim();
     if (t.isEmpty) return;
     ensureSpace(16);
-    y = _drawWrapped(t, bodyFont, darkBrush, y, lineHeight: 11.5) + 8;
+    y = _drawWrappedAt(
+      x: margin,
+      text: t,
+      font: bodyFont,
+      brush: darkBrush,
+      startY: y,
+      width: _contentWidth,
+      lineHeight: 12,
+    ) + 10;
   }
 
   void bullets(Iterable<String> items) {
     for (final item in items) {
       final t = item.trim();
       if (t.isEmpty) continue;
-      ensureSpace(14);
-      page.graphics.drawString('•', bodyFont, brush: darkBrush,
-          bounds: Rect.fromLTWH(margin, y, 10, 12));
-      y = _drawWrapped(t, bodyFont, darkBrush, y, indent: 12, lineHeight: 11.5) + 4;
+      ensureSpace(16);
+      final bulletY = y;
+      page.graphics.drawString(
+        '•',
+        bodyFont,
+        brush: darkBrush,
+        bounds: Rect.fromLTWH(margin, bulletY, 10, 12),
+      );
+      y = _drawWrappedAt(
+        x: margin + 12,
+        text: t,
+        font: bodyFont,
+        brush: darkBrush,
+        startY: bulletY,
+        width: _contentWidth - 12,
+        lineHeight: 12,
+      ) + 6;
     }
     y += 4;
   }
 
   void keyValueGrid(List<(String, String)> pairs, {int columns = 2}) {
-    if (pairs.isEmpty) return;
-    final colW = (_contentWidth - (columns - 1) * 12) / columns;
-    var col = 0;
-    var rowY = y;
-    var maxRowH = 0.0;
+    final filtered = pairs.where((p) => p.$2.trim().isNotEmpty).toList();
+    if (filtered.isEmpty) return;
 
-    for (final pair in pairs) {
-      final label = pair.$1;
-      final value = pair.$2.trim();
-      if (value.isEmpty) continue;
-      final x = margin + col * (colW + 12);
-      page.graphics.drawString(
-        label,
-        labelFont,
-        brush: mutedBrush,
-        bounds: Rect.fromLTWH(x, rowY, colW, 11),
-      );
-      final endY = _drawWrapped(value, bodyFont, darkBrush, rowY + 12,
-          width: colW, lineHeight: 11);
-      final cellH = endY - rowY + 4;
-      if (cellH > maxRowH) maxRowH = cellH;
+    final cols = columns.clamp(1, 2);
+    final colW = (_contentWidth - (cols - 1) * colGap) / cols;
 
-      col++;
-      if (col >= columns) {
-        col = 0;
-        rowY += maxRowH + 8;
-        maxRowH = 0;
-        ensureSpace(40);
+    for (var i = 0; i < filtered.length; i += cols) {
+      final rowTop = y;
+      var rowBottom = rowTop;
+
+      ensureSpace(36);
+
+      for (var c = 0; c < cols; c++) {
+        final idx = i + c;
+        if (idx >= filtered.length) break;
+
+        final label = filtered[idx].$1;
+        final value = filtered[idx].$2.trim();
+        final x = margin + c * (colW + colGap);
+
+        page.graphics.drawString(
+          label,
+          labelFont,
+          brush: mutedBrush,
+          bounds: Rect.fromLTWH(x, rowTop, colW, 12),
+        );
+
+        final valueEnd = _drawWrappedAt(
+          x: x,
+          text: value,
+          font: bodyFont,
+          brush: darkBrush,
+          startY: rowTop + 14,
+          width: colW,
+          lineHeight: 12,
+        );
+
+        if (valueEnd > rowBottom) rowBottom = valueEnd;
       }
+
+      y = rowBottom + 12;
     }
-    y = col == 0 ? rowY : rowY + maxRowH + 8;
   }
 
   void table({
@@ -205,32 +255,31 @@ class HmsPdfBuilder {
   }) {
     if (headers.isEmpty || rows.isEmpty) return;
 
-    final useLandscape = landscapeIfWide != null && headers.length > 5;
-    if (useLandscape) {
+    if (landscapeIfWide != null && headers.length > 5) {
       ensureSpace(60);
       newPage(orientation: landscapeIfWide);
     }
 
     final colCount = headers.length;
-    final tableW = _contentWidth;
-    final colW = (tableW / colCount).clamp(36.0, 200.0);
-    final rowH = 16.0;
+    final colW = _contentWidth / colCount;
+    const pad = 4.0;
+    const lineH = 11.0;
 
     void drawHeaderRow() {
+      final rowH = lineH + pad * 2;
       ensureSpace(rowH + 4);
       var x = margin;
       for (var i = 0; i < colCount; i++) {
         final rect = Rect.fromLTWH(x, y, colW, rowH);
         page.graphics.drawRectangle(brush: brandBrush, bounds: rect);
-        page.graphics.drawString(
-          headers[i],
-          tableHeaderFont,
+        _drawWrappedAt(
+          x: x + pad,
+          text: headers[i],
+          font: tableHeaderFont,
           brush: whiteBrush,
-          bounds: Rect.fromLTWH(x + 3, y + 3, colW - 6, rowH - 4),
-          format: PdfStringFormat(
-            wordWrap: PdfWordWrapType.word,
-            alignment: PdfTextAlignment.left,
-          ),
+          startY: y + pad,
+          width: colW - pad * 2,
+          lineHeight: lineH,
         );
         x += colW;
       }
@@ -240,24 +289,33 @@ class HmsPdfBuilder {
     drawHeaderRow();
 
     for (final row in rows) {
+      var rowH = lineH + pad * 2;
+      final cellLines = <int>[];
+      for (var c = 0; c < colCount; c++) {
+        final val = c < row.length ? row[c] : '';
+        final lines = _wrapLines(val, tableCellFont, colW - pad * 2);
+        cellLines.add(lines.length);
+      }
+      final maxLines = cellLines.fold<int>(1, (a, b) => a > b ? a : b);
+      rowH = pad * 2 + maxLines * lineH;
+
       ensureSpace(rowH);
       var x = margin;
       for (var c = 0; c < colCount; c++) {
         final val = c < row.length ? row[c] : '';
         final rect = Rect.fromLTWH(x, y, colW, rowH);
         page.graphics.drawRectangle(
-          pen: PdfPen(PdfColor(210, 210, 210), width: 0.3),
+          pen: PdfPen(PdfColor(220, 220, 220), width: 0.3),
           bounds: rect,
         );
-        page.graphics.drawString(
-          val,
-          tableCellFont,
+        _drawWrappedAt(
+          x: x + pad,
+          text: val,
+          font: tableCellFont,
           brush: darkBrush,
-          bounds: Rect.fromLTWH(x + 3, y + 3, colW - 6, rowH - 4),
-          format: PdfStringFormat(
-            wordWrap: PdfWordWrapType.word,
-            alignment: PdfTextAlignment.left,
-          ),
+          startY: y + pad,
+          width: colW - pad * 2,
+          lineHeight: lineH,
         );
         x += colW;
       }
@@ -275,17 +333,16 @@ class HmsPdfBuilder {
     y += 10;
   }
 
-  double _drawWrapped(
-    String text,
-    PdfFont font,
-    PdfBrush brush,
-    double startY, {
-    double indent = 0,
-    double? width,
+  double _drawWrappedAt({
+    required double x,
+    required String text,
+    required PdfFont font,
+    required PdfBrush brush,
+    required double startY,
+    required double width,
     double lineHeight = 12,
   }) {
-    final w = width ?? (_contentWidth - indent);
-    final lines = _wrapLines(text, font, w);
+    final lines = _wrapLines(text, font, width);
     var cy = startY;
     for (final line in lines) {
       if (cy + lineHeight > _pageHeight - bottomReserve) {
@@ -296,7 +353,7 @@ class HmsPdfBuilder {
         line,
         font,
         brush: brush,
-        bounds: Rect.fromLTWH(margin + indent, cy, w, lineHeight + 2),
+        bounds: Rect.fromLTWH(x, cy, width, lineHeight + 1),
       );
       cy += lineHeight;
     }
@@ -304,22 +361,25 @@ class HmsPdfBuilder {
   }
 
   List<String> _wrapLines(String text, PdfFont font, double maxWidth) {
-    final words = text.split(RegExp(r'\s+'));
+    if (text.isEmpty) return [''];
     final lines = <String>[];
-    var current = '';
-    for (final word in words) {
-      final trial = current.isEmpty ? word : '$current $word';
-      final size = font.measureString(trial);
-      if (size.width > maxWidth && current.isNotEmpty) {
-        lines.add(current);
-        current = word;
-      } else {
-        current = trial;
+    for (final paragraph in text.split('\n')) {
+      final words = paragraph.split(RegExp(r'\s+'));
+      var current = '';
+      for (final word in words) {
+        if (word.isEmpty) continue;
+        final trial = current.isEmpty ? word : '$current $word';
+        if (font.measureString(trial).width > maxWidth && current.isNotEmpty) {
+          lines.add(current);
+          current = word;
+        } else {
+          current = trial;
+        }
       }
+      if (current.isNotEmpty) lines.add(current);
+      if (paragraph.isEmpty) lines.add('');
     }
-    if (current.isNotEmpty) lines.add(current);
-    if (lines.isEmpty) lines.add('');
-    return lines;
+    return lines.isEmpty ? [''] : lines;
   }
 
   void _stampFooters() {
@@ -337,13 +397,13 @@ class HmsPdfBuilder {
         'DriftPro HMS — konfidensielt internt dokument',
         smallFont,
         brush: mutedBrush,
-        bounds: Rect.fromLTWH(margin, h - 24, w - margin * 2, 10),
+        bounds: Rect.fromLTWH(margin, h - 22, w - margin * 2, 10),
       );
       p.graphics.drawString(
         'Side ${i + 1} av $total',
         smallFont,
         brush: mutedBrush,
-        bounds: Rect.fromLTWH(margin, h - 24, w - margin * 2, 10),
+        bounds: Rect.fromLTWH(margin, h - 22, w - margin * 2, 10),
         format: PdfStringFormat(alignment: PdfTextAlignment.right),
       );
     }
