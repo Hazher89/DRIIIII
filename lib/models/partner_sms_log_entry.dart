@@ -36,7 +36,7 @@ class PartnerSmsLogEntry {
     required this.triggeredByName,
     this.triggeredByUserId,
     required this.deliveryStatus,
-    this.senderName = 'Mavi',
+    this.senderName = 'MAVI',
     this.partnerName,
     this.contextLabel,
   });
@@ -62,7 +62,7 @@ class PartnerSmsLogEntry {
           json['triggered_by_name'] as String? ?? 'System (automatisk)',
       triggeredByUserId: json['triggered_by_user_id'] as String?,
       deliveryStatus: json['delivery_status'] as String? ?? 'i_ko',
-      senderName: json['sender_name'] as String? ?? 'Mavi',
+      senderName: json['sender_name'] as String? ?? 'MAVI',
       partnerName: json['partner_name'] as String?,
       contextLabel: json['context_label'] as String?,
     );

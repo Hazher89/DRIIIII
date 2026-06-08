@@ -25,7 +25,7 @@ export function readSveveConfig(): SveveConfig | { error: string } {
   return {
     user,
     passwd,
-    from: (Deno.env.get("SVEVE_FROM") ?? "DriftPro").slice(0, 11),
+    from: (Deno.env.get("SVEVE_FROM") ?? "MAVI").slice(0, 11),
     test: Deno.env.get("SVEVE_TEST") === "true",
   };
 }
