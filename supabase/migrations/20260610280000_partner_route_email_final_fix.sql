@@ -197,7 +197,7 @@ DECLARE
   driver_phone TEXT;
   owner_only BOOLEAN;
   sent_phones TEXT[] := ARRAY[]::TEXT[];
-  v_send_email BOOLEAN := true;
+  v_skip_email BOOLEAN := false;
 BEGIN
   SELECT
     prs.*,
@@ -232,7 +232,7 @@ BEGIN
       AND e.reference_id = p_route_share_id
       AND e.category = 'partner_route_share'
       AND e.created_at > now() - interval '10 minutes'
-  ) INTO v_send_email;
+  ) INTO v_skip_email;
 
   owner_only := coalesce(r.routes_owner_only, true);
   SELECT name INTO shift_name FROM public.fleet_shift_definitions WHERE id = r.shift_id;
@@ -286,7 +286,7 @@ BEGIN
     'partner_route_shares', r.id, 'Ny rute → bil-eier'
   );
 
-  IF v_send_email THEN
+  IF NOT v_skip_email THEN
     n := n + public.notify_partner_owner_emails(
       r.company_id, r.partner_id, email_sub, email_body, 'partner_route_share',
       'partner_route_owner', 'partner_route_shares', r.id, 'Ny rute (e-post HTML)'
