@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../core/case_trace/case_trace.dart';
+import '../../core/case_trace/case_trace_chip.dart';
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/constants/build_info.dart';
@@ -24,6 +26,7 @@ class TicketsScreen extends StatefulWidget {
 
 class _TicketsScreenState extends State<TicketsScreen> {
   TicketStatus? _filterStatus;
+  bool _showDeleted = false;
   final _searchController = TextEditingController();
 
   List<Ticket> _tickets = const [];
@@ -44,21 +47,17 @@ class _TicketsScreenState extends State<TicketsScreen> {
   }
 
   bool _matchesSearch(Ticket t) {
-    final q = _searchController.text.trim().toLowerCase();
-    if (q.isEmpty) return true;
-    final digits = q.replaceAll('#', '');
-    if (digits.isNotEmpty &&
-        int.tryParse(digits) != null &&
-        t.ticketNumber != null &&
-        t.ticketNumber.toString().contains(digits)) {
-      return true;
-    }
-    if (t.title.toLowerCase().contains(q)) return true;
-    if (t.description.toLowerCase().contains(q)) return true;
-    if ((t.reporterName ?? '').toLowerCase().contains(q)) return true;
-    if ((t.assigneeName ?? '').toLowerCase().contains(q)) return true;
-    if ((t.category ?? '').toLowerCase().contains(q)) return true;
-    return false;
+    return CaseTrace.matchesQuery(
+      query: _searchController.text,
+      traceRef: t.displayTraceRef,
+      id: t.id,
+      title: t.title,
+      ticketNumber: t.ticketNumber,
+    ) ||
+        t.description.toLowerCase().contains(_searchController.text.trim().toLowerCase()) ||
+        (t.reporterName ?? '').toLowerCase().contains(_searchController.text.trim().toLowerCase()) ||
+        (t.assigneeName ?? '').toLowerCase().contains(_searchController.text.trim().toLowerCase()) ||
+        (t.category ?? '').toLowerCase().contains(_searchController.text.trim().toLowerCase());
   }
 
   Future<void> _loadProfileAndTickets() async {
@@ -77,7 +76,9 @@ class _TicketsScreenState extends State<TicketsScreen> {
       if (profile == null) {
         throw StateError('Fant ikke brukerprofil.');
       }
-      final scoped = await SupabaseService.fetchScopedTickets(profile: profile);
+      final scoped = _showDeleted && profile.isAdmin
+          ? await SupabaseService.fetchScopedTicketsIncludingDeleted(profile: profile)
+          : await SupabaseService.fetchScopedTickets(profile: profile);
       setState(() {
         _tickets = scoped;
       });
@@ -254,6 +255,15 @@ class _TicketsScreenState extends State<TicketsScreen> {
                         () => setState(() => _filterStatus = s),
                       ),
                     ),
+                    if (_profile?.isAdmin == true)
+                      _chip(
+                        'Slettet',
+                        _showDeleted,
+                        () {
+                          setState(() => _showDeleted = !_showDeleted);
+                          _loadTickets();
+                        },
+                      ),
                   ],
                 ),
               ),
@@ -289,6 +299,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
     bool coord,
   ) {
     final filtered = _tickets
+        .where((t) => _showDeleted ? t.isDeleted : !t.isDeleted)
         .where((t) => _filterStatus == null || t.status == _filterStatus)
         .where(_matchesSearch)
         .toList();
@@ -577,16 +588,19 @@ class _TicketsScreenState extends State<TicketsScreen> {
                   const SizedBox(width: 8),
                   _statusBadge(stat.label, stc, _statIcon(stat)),
                   const Spacer(),
-                  if (t.ticketNumber != null)
-                    Text(
-                      '#${t.ticketNumber}',
-                      style: DriftProTheme.caption.copyWith(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                      ),
-                    ),
+                  CaseTraceChip(traceRef: t.displayTraceRef, id: t.id, compact: true),
                 ],
               ),
+              if (t.isDeleted) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Slettet — sporings-ID beholdes permanent',
+                  style: DriftProTheme.caption.copyWith(
+                    color: Colors.red.shade700,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               Text(
                 t.title,

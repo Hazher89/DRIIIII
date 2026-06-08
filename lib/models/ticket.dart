@@ -1,3 +1,4 @@
+import '../core/case_trace/case_trace.dart';
 import 'hms/hms_ticket_template.dart';
 
 enum TicketSeverity {
@@ -70,6 +71,7 @@ class Ticket {
   final String reportedBy;
   final String? assignedTo;
   final int? ticketNumber;
+  final String? traceRef;
   final String title;
   final String description;
   final String? category;
@@ -98,6 +100,8 @@ class Ticket {
   final String? escalationReason;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final DateTime? deletedAt;
+  final String? deletionComment;
 
   // Joined fields
   final String? reporterName;
@@ -113,6 +117,7 @@ class Ticket {
     required this.reportedBy,
     this.assignedTo,
     this.ticketNumber,
+    this.traceRef,
     required this.title,
     required this.description,
     this.category,
@@ -140,12 +145,19 @@ class Ticket {
     this.escalationReason,
     this.createdAt,
     this.updatedAt,
+    this.deletedAt,
+    this.deletionComment,
     this.reporterName,
     this.reporterAvatarUrl,
     this.assigneeName,
     this.resolvedByName,
     this.departmentName,
   });
+
+  bool get isDeleted => deletedAt != null;
+  String get traceCode => CaseTrace.codeFromId(id);
+  String get displayTraceRef =>
+      traceRef ?? (ticketNumber != null ? 'Avvik #$ticketNumber' : 'Avvik');
 
   factory Ticket.fromJson(Map<String, dynamic> json) {
     return Ticket(
@@ -155,6 +167,7 @@ class Ticket {
       reportedBy: json['reported_by'] as String,
       assignedTo: json['assigned_to'] as String?,
       ticketNumber: json['ticket_number'] as int?,
+      traceRef: json['trace_ref'] as String?,
       title: json['title'] as String,
       description: json['description'] as String,
       category: json['category'] as String?,
@@ -201,6 +214,10 @@ class Ticket {
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
           : null,
+      deletedAt: json['deleted_at'] != null
+          ? DateTime.parse(json['deleted_at'] as String)
+          : null,
+      deletionComment: json['deletion_comment'] as String?,
       reporterName: json['reporter'] != null
           ? json['reporter']['full_name'] as String?
           : null,

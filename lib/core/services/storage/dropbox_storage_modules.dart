@@ -5,6 +5,7 @@ enum DropboxStorageModule {
   tickets('tickets', 'Avvik — bilder og vedlegg'),
   dms('dms', 'Dokumenter (DMS)'),
   partners('partners', 'Partner — bilder og filer'),
+  partnerDeductions('partner_deductions', 'Bot/Trekk — bevis (bilde/video)'),
   employees('employees', 'Ansattfiler / personalmappe'),
   hms('hms', 'HMS — avvik, SJA, utstyr og kompetanse'),
   whistleblowing('whistleblowing', 'Varsling (anonym)');
@@ -25,6 +26,8 @@ enum DropboxStorageModule {
         return dms;
       case 'partners':
         return partners;
+      case 'partner_deductions':
+        return partnerDeductions;
       case 'employees':
         return employees;
       case 'hms':

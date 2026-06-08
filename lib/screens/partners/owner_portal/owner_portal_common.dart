@@ -265,6 +265,7 @@ class OwnerKpiCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color? accent;
+  final VoidCallback? onTap;
 
   const OwnerKpiCard({
     super.key,
@@ -272,13 +273,14 @@ class OwnerKpiCard extends StatelessWidget {
     required this.value,
     required this.icon,
     this.accent,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final c = accent ?? DriftProTheme.primaryGreen;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
+    final card = Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: isDark ? DriftProTheme.cardDark : Colors.white,
@@ -316,6 +318,15 @@ class OwnerKpiCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+    if (onTap == null) return card;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: card,
       ),
     );
   }

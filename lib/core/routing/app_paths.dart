@@ -18,6 +18,7 @@ abstract final class AppPaths {
   static const portalOwnerTabs = [
     'oversikt',
     'oppsummering',
+    'trekk',
     'dokumenter',
     'ruter',
     'utleie',
@@ -35,7 +36,7 @@ abstract final class AppPaths {
     'profil',
   ];
 
-  static const partnersTabs = ['bedrifter', 'ruter', 'sms', 'utleie'];
+  static const partnersTabs = ['bedrifter', 'ruter', 'sms', 'bot-trekk', 'utleie'];
   static const absenceTabs = ['dashboard', 'mine', 'godkjenn', 'team', 'roster'];
   static const equipmentTabs = ['oversikt', 'alle', 'truck', 'arkiv'];
   static const competenceTabs = ['kurs', 'dokumenter', 'oversikt'];

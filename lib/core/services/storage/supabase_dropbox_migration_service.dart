@@ -35,7 +35,7 @@ class SupabaseDropboxMigrationService {
       throw StateError('Fant ikke bedrift');
     }
     if (!await CompanyFileStorage.isDropboxConnected()) {
-      throw StateError('Koble Dropbox først under Innstillinger');
+      throw StateError('Koble skylagring først under Mer → Fillagring');
     }
 
     var migrated = 0;

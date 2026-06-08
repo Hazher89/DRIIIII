@@ -18,6 +18,7 @@ import '../../models/user_profile.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
 import 'widgets/partner_assigned_routes_tab.dart';
 import 'widgets/partner_compliance_tab.dart';
+import 'widgets/partner_deduction_tab.dart';
 import 'widgets/partner_documents_tab.dart';
 import 'widgets/partner_fri_tab.dart';
 import 'widgets/partner_overview_tab.dart';
@@ -112,6 +113,8 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
         PartnerTransportLicensesTab(partner: _p, onChanged: _reload),
       AccessKeys.partnersTabOppfolging =>
         PartnerComplianceTab(partner: _p, onChanged: _reload),
+      AccessKeys.partnersTabBotTrekk =>
+        PartnerDeductionTab(partner: _p, onChanged: _reload),
       AccessKeys.partnersTabOppsummering =>
         _SummaryTab(partner: _p, onChanged: _reload),
       AccessKeys.partnersTabFri => PartnerFriTab(partner: _p, vehicles: _vehicles),
@@ -159,7 +162,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
   @override
   Widget build(BuildContext context) {
     if (_accessLoading) {
-      return const Scaffold(body: DriftProLoadingCenter());
+      return const DriftProLoadingPage();
     }
 
     if (!PartnerAccess.canOpenPartnerDetail(_profile?.access)) {

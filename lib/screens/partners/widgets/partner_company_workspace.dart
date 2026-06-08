@@ -14,6 +14,7 @@ import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
 import 'partner_assigned_routes_tab.dart';
 import 'partner_compliance_tab.dart';
+import 'partner_deduction_tab.dart';
 import 'partner_documents_tab.dart';
 import 'partner_fri_tab.dart';
 import 'partner_modern_ui.dart';
@@ -400,6 +401,9 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
         break;
       case AccessKeys.partnersTabOppfolging:
         child = PartnerComplianceTab(partner: _p, onChanged: _reload);
+        break;
+      case AccessKeys.partnersTabBotTrekk:
+        child = PartnerDeductionTab(partner: _p, onChanged: _reload);
         break;
       case AccessKeys.partnersTabFri:
         child = PartnerFriTab(partner: _p, vehicles: _vehicles);

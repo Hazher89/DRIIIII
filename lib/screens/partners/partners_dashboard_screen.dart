@@ -16,6 +16,7 @@ import 'bulk_partners_screen.dart';
 import 'new_partner_screen.dart';
 import 'partner_route_planner_screen.dart';
 import 'widgets/partner_companies_board.dart';
+import 'partner_deduction_hub_screen.dart';
 import 'partner_sms_hub_screen.dart';
 import 'vehicle_rental_hub_screen.dart';
 import 'widgets/partner_companies_ui.dart';
@@ -46,6 +47,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   bool _showCompaniesTab = true;
   bool _showRoutesTab = true;
   bool _showSmsTab = true;
+  bool _showBotTrekkTab = true;
   bool _showRentalTab = true;
   int _savedTabIndex = 0;
   int _currentTabIndex = 0;
@@ -56,6 +58,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     if (_showCompaniesTab) slugs.add('bedrifter');
     if (_showRoutesTab) slugs.add('ruter');
     if (_showSmsTab) slugs.add('sms');
+    if (_showBotTrekkTab) slugs.add('bot-trekk');
     if (_showRentalTab) slugs.add('utleie');
     return slugs;
   }
@@ -119,13 +122,18 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     final companies = _canCompaniesList(access);
     final routes = access?.canPartnerRoutePlanning == true;
     final sms = PartnerAccess.canOpenPartnersModule(access);
+    final botTrekk = PartnerAccess.canOpenPartnersModule(access);
     final rental = _canManageVehicleRentals(access);
-    final length =
-        (companies ? 1 : 0) + (routes ? 1 : 0) + (sms ? 1 : 0) + (rental ? 1 : 0);
+    final length = (companies ? 1 : 0) +
+        (routes ? 1 : 0) +
+        (sms ? 1 : 0) +
+        (botTrekk ? 1 : 0) +
+        (rental ? 1 : 0);
 
     _showCompaniesTab = companies;
     _showRoutesTab = routes;
     _showSmsTab = sms;
+    _showBotTrekkTab = botTrekk;
     _showRentalTab = rental;
 
     if (length == 0) {
@@ -158,25 +166,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   }
 
   int _tabIndexCompanies() => _showCompaniesTab ? 0 : -1;
-
-  int _tabIndexRoutes() {
-    if (!_showRoutesTab) return -1;
-    return _showCompaniesTab ? 1 : 0;
-  }
-
-  int _tabIndexSms() {
-    if (!_showSmsTab) return -1;
-    var i = 0;
-    if (_showCompaniesTab) i++;
-    if (_showRoutesTab) i++;
-    return i;
-  }
-
-  void _goToSmsTab() {
-    final i = _tabIndexSms();
-    if (i < 0 || _tabs == null) return;
-    _tabs!.animateTo(i);
-  }
 
   void _applyPartnerData({
     required List<Partner> list,
@@ -315,8 +304,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final tabIndex = _currentTabIndex;
     final onCompaniesTab = _showCompaniesTab && tabIndex == _tabIndexCompanies();
-    final onRoutesTab = _showRoutesTab && tabIndex == _tabIndexRoutes();
-    final onSmsTab = _showSmsTab && tabIndex == _tabIndexSms();
     final canRegister = _profile?.access.canPartnersCreate == true ||
         _profile?.access.canPartnersAdmin == true;
     final showPartnerRegister = onCompaniesTab && canRegister;
@@ -381,6 +368,11 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                             icon: Icon(Icons.sms_outlined, size: 18),
                             text: 'SMS',
                           ),
+                        if (_showBotTrekkTab)
+                          const Tab(
+                            icon: Icon(Icons.gavel_rounded, size: 18),
+                            text: 'Bot/Trekk',
+                          ),
                         if (_showRentalTab)
                           const Tab(
                             icon: Icon(Icons.car_rental_outlined, size: 18),
@@ -389,18 +381,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                       ],
                     ),
                     actions: [
-                      if (_showSmsTab && !onSmsTab)
-                        IconButton(
-                          tooltip: 'SMS til samarbeidspartnere',
-                          icon: const Icon(Icons.sms_outlined),
-                          onPressed: _goToSmsTab,
-                        ),
-                      if (onRoutesTab)
-                        IconButton(
-                          tooltip: 'Oppdater ruteoversikt',
-                          icon: const Icon(Icons.refresh_rounded),
-                          onPressed: () => _routesKey.currentState?.reload(),
-                        ),
                       if (showPartnerRegister)
                         IconButton(
                           tooltip: 'Ny / masseimport',
@@ -434,6 +414,15 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                             embedded: true,
                             nestedScroll: true,
                             partners: _partners,
+                            canManageNotifications:
+                                _profile?.access.canNotifications == true,
+                          ),
+                        if (_showBotTrekkTab)
+                          PartnerDeductionHubScreen(
+                            embedded: true,
+                            nestedScroll: true,
+                            partners: _partners,
+                            profile: _profile,
                             canManageNotifications:
                                 _profile?.access.canNotifications == true,
                           ),

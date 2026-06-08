@@ -37,7 +37,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
       await _load();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Dropbox er koblet! Nye filer lagres nå i Dropbox.'),
+          content: Text('Skylagring er koblet! Nye filer lagres nå eksternt.'),
           duration: Duration(seconds: 6),
         ),
       );
@@ -84,7 +84,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Kunne ikke åpne Dropbox. Godkjenn tilgang i nettleseren, deretter trykk Oppdater.',
+              'Kunne ikke åpne innlogging. Godkjenn tilgang i nettleseren, deretter trykk Oppdater.',
             ),
           ),
         );
@@ -92,7 +92,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Logg inn hos Dropbox og godkjenn. Kom tilbake hit og trykk Oppdater.',
+              'Logg inn og godkjenn tilgang. Kom tilbake hit og trykk Oppdater.',
             ),
             duration: Duration(seconds: 8),
           ),
@@ -141,9 +141,9 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Koble fra Dropbox?'),
+        title: const Text('Koble fra skylagring?'),
         content: const Text(
-          'Nye filer lagres igjen kun i Supabase. Eksisterende filer i Dropbox blir liggende der.',
+          'Nye filer lagres igjen kun i Supabase. Eksisterende filer i skylagring blir liggende der.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
@@ -159,7 +159,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
       await _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Dropbox frakoblet')),
+          const SnackBar(content: Text('Skylagring frakoblet')),
         );
       }
     } catch (e) {
@@ -180,7 +180,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dropbox-lagring'),
+        title: const Text('Fillagring'),
         actions: [
           IconButton(
             tooltip: 'Oppdater',
@@ -210,7 +210,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                             const SizedBox(width: 12),
                             Expanded(
                               child: Text(
-                                'Ubegrenset fillagring via Dropbox',
+                                'Ubegrenset fillagring',
                                 style: DriftProTheme.headingSm,
                               ),
                             ),
@@ -218,8 +218,8 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Supabase har begrenset plass. Når Dropbox er koblet lagrer '
-                          'DriftPro alle filer i Dropbox — automatisk sortert i mapper '
+                          'Supabase har begrenset plass. Når skylagring er koblet lagrer '
+                          'DriftPro alle filer eksternt — automatisk sortert i mapper '
                           'per funksjon (ruter, HMS, dokumenter, osv.) per bedrift.',
                           style: DriftProTheme.bodyMd.copyWith(
                             color: isDark ? Colors.white70 : Colors.grey[700],
@@ -227,8 +227,8 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'Viktig: Vi lagrer aldri Dropbox-passordet ditt. Du logger inn '
-                          'via Dropboxes sikre side (OAuth), som bank-ID.',
+                          'Viktig: Vi lagrer aldri passordet ditt. Du logger inn '
+                          'via en sikker side (OAuth), som bank-ID.',
                           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
                         ),
                         const SizedBox(height: 8),
@@ -256,14 +256,14 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                             title: Text(_status?['account_email']?.toString() ?? 'Tilkoblet'),
                             subtitle: Text(
                               'Mappe: ${_status?['root_folder'] ?? '/DriftPro'}\n'
-                              'Lagring: ${((_status?['large_file_threshold_bytes'] as int?) ?? 0) == 0 ? 'Alltid Dropbox' : 'Supabase under ${((_status?['large_file_threshold_bytes'] as int?) ?? 0) / 1048576} MB'}',
+                              'Lagring: ${((_status?['large_file_threshold_bytes'] as int?) ?? 0) == 0 ? 'Alltid skylagring' : 'Supabase under ${((_status?['large_file_threshold_bytes'] as int?) ?? 0) / 1048576} MB'}',
                             ),
                           ),
                           const SizedBox(height: 8),
                           OutlinedButton.icon(
                             onPressed: _busy ? null : _disconnect,
                             icon: const Icon(Icons.link_off),
-                            label: const Text('Koble fra Dropbox'),
+                            label: const Text('Koble fra skylagring'),
                           ),
                         ] else ...[
                           const ListTile(
@@ -271,7 +271,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                             leading: Icon(Icons.cloud_off_outlined),
                             title: Text('Ikke koblet'),
                             subtitle: Text(
-                              'Koble Dropbox for å lagre alle filer utenfor Supabase-kvoten.',
+                              'Koble skylagring for å lagre alle filer utenfor Supabase-kvoten.',
                             ),
                           ),
                           FilledButton.icon(
@@ -279,7 +279,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                             icon: _busy
                                 ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                                 : const Icon(Icons.link),
-                            label: const Text('Koble Dropbox (sikker innlogging)'),
+                            label: const Text('Koble skylagring (sikker innlogging)'),
                           ),
                         ],
                       ],
@@ -303,7 +303,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                             const SizedBox(height: 6),
                             Text(
                               '$_pendingMigration fil(er) ligger fortsatt i Supabase med gamle stier. '
-                              'Kjør migrering én gang — deretter lagres alt nytt direkte i Dropbox.',
+                              'Kjør migrering én gang — deretter lagres alt nytt direkte i skylagring.',
                               style: DriftProTheme.bodySm,
                             ),
                             const SizedBox(height: 10),
@@ -330,7 +330,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                           const SizedBox(height: 4),
                           Text(
                             'Alle opplastinger (ruter, avvik, dokumenter, bilder m.m.) '
-                            'lagres automatisk i riktig mappe under Dropbox.',
+                            'lagres automatisk i riktig mappe i skylagring.',
                             style: DriftProTheme.bodySm.copyWith(
                               color: isDark ? Colors.white60 : Colors.grey[600],
                             ),
@@ -351,7 +351,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                 ],
                 const SizedBox(height: 16),
                 Text(
-                  'Mappestruktur i Dropbox',
+                  'Mappestruktur i skylagring',
                   style: DriftProTheme.labelLg,
                 ),
                 const SizedBox(height: 8),
@@ -366,6 +366,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                     '/DriftPro/\n'
                     '  company_<din-bedrift-id>/\n'
                     '    routes/          ← rute-PDF (tildelt)\n'
+                    '    partner_deductions/ ← bot/trekk bevis\n'
                     '    sap_inbox/       ← rute-PDF fra e-post\n'
                     '    tickets/         ← avvik-bilder\n'
                     '    dms/             ← dokumenter\n'
@@ -383,11 +384,10 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  '1. Opprett app på dropbox.com/developers\n'
-                  '2. Legg redirect-URL i appen:\n'
-                  '   …/functions/v1/dropbox-storage?action=oauth_callback\n'
-                  '3. Legg DROPBOX_APP_KEY, DROPBOX_APP_SECRET og DROPBOX_REDIRECT_URI i Supabase Secrets\n'
-                  '4. Deploy edge function dropbox-storage',
+                  '1. Opprett app i utviklerportal for skylagring\n'
+                  '2. Legg redirect-URL i appen (se README)\n'
+                  '3. Legg app-nøkler og redirect-URI i Supabase Secrets\n'
+                  '4. Deploy edge function for fillagring',
                   style: TextStyle(fontSize: 13, height: 1.5),
                 ),
               ],

@@ -69,6 +69,7 @@ class AccessKeys {
   static const partnersTabOppfolging = 'partners_tab_oppfolging';
   static const partnersTabOppsummering = 'partners_tab_oppsummering';
   static const partnersTabFri = 'partners_tab_fri';
+  static const partnersTabBotTrekk = 'partners_tab_bot_trekk';
 
   static const partnerDetailTabKeys = [
     partnersTabOversikt,
@@ -79,6 +80,7 @@ class AccessKeys {
     partnersTabOppfolging,
     partnersTabOppsummering,
     partnersTabFri,
+    partnersTabBotTrekk,
   ];
 
   // ── Administrasjon ─────────────────────────────────────────────────────────
@@ -136,6 +138,7 @@ class AccessKeys {
     partnersTabOppfolging,
     partnersTabOppsummering,
     partnersTabFri,
+    partnersTabBotTrekk,
     ansatteRediger,
     avdelingerRediger,
   ];
@@ -200,6 +203,7 @@ class AccessKeys {
     partnersTabOppfolging: 'Partner – Oppfølging (møter/revisjon/SMS)',
     partnersTabOppsummering: 'Partner – Oppsummering-fane',
     partnersTabFri: 'Partner – Fri-fane',
+    partnersTabBotTrekk: 'Partner – Bot/Trekk-fane',
     ansatteRediger: 'Redigere ansatte og tilganger',
     avdelingerRediger: 'Opprette / redigere avdelinger',
   };

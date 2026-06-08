@@ -22,6 +22,7 @@ import 'driver_portal/driver_portal_fri_page.dart';
 import 'driver_portal/driver_portal_overview_page.dart';
 import 'driver_portal/driver_portal_profile_page.dart';
 import 'driver_portal/driver_portal_routes_page.dart';
+import 'owner_portal/owner_portal_deductions_page.dart';
 import 'owner_portal/owner_portal_docs_page.dart';
 import 'owner_portal/owner_portal_inspections_page.dart';
 import 'owner_portal/owner_portal_meetings_page.dart';
@@ -61,7 +62,7 @@ List<Widget> _partnerLogoutActions(BuildContext context) => [
 
 /// Begrenset portal for [UserProfile] som er knyttet til en samarbeidspartner.
 /// Versjonsmerke — synlig for bil-eier når ny portal er lastet.
-const kOwnerPortalBuildLabel = 'Bil-eier v7';
+const kOwnerPortalBuildLabel = 'Bil-eier v8';
 const kDriverPortalBuildLabel = 'Sjåfør v5';
 
 class PartnerShell extends StatefulWidget {
@@ -142,7 +143,7 @@ class _PartnerShellState extends State<PartnerShell> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: DriftProLoadingCenter());
+      return const DriftProLoadingPage();
     }
 
     if (widget.profile.partnerId == null || _partner == null) {
@@ -200,7 +201,7 @@ class _PartnerShellState extends State<PartnerShell> {
     final isOwner = widget.portalAccountKind == 'owner';
     void goToRoutes({int tabIndex = 1, String? vehicleId}) {
       setState(() {
-        _index = 3;
+        _index = 4;
         _routesFocus = OwnerPortalRoutesFocus(tabIndex: tabIndex, vehicleId: vehicleId);
       });
       _syncUrl();
@@ -208,8 +209,13 @@ class _PartnerShellState extends State<PartnerShell> {
 
     final pages = isOwner
         ? [
-            OwnerPortalOverviewPage(partner: p, onGoToRoutes: goToRoutes),
+            OwnerPortalOverviewPage(
+              partner: p,
+              onGoToRoutes: goToRoutes,
+              onGoToTrekk: () => _selectTab(2),
+            ),
             OwnerPortalSummaryPage(partner: p),
+            OwnerPortalDeductionsPage(partner: p),
             OwnerPortalDocsPage(partner: p),
             OwnerPortalRoutesPage(
               partner: p,
@@ -235,6 +241,7 @@ class _PartnerShellState extends State<PartnerShell> {
     final ownerNavItems = const [
       PartnerPortalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
       PartnerPortalNavItem(icon: Icons.summarize_outlined, selectedIcon: Icons.summarize, label: 'Oppsummering'),
+      PartnerPortalNavItem(icon: Icons.gavel_rounded, selectedIcon: Icons.gavel, label: 'Trekk'),
       PartnerPortalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
       PartnerPortalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Alle ruter'),
       PartnerPortalNavItem(icon: Icons.car_rental_outlined, selectedIcon: Icons.car_rental, label: 'Utleie'),

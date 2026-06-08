@@ -226,9 +226,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
 
       final created = await SupabaseService.createTicket(ticket);
       if (!mounted) return;
-      final avvikId = created.ticketNumber != null
-          ? 'Avvik #${created.ticketNumber}'
-          : 'Avvik registrert';
+      final avvikId = created.traceRef ?? created.displayTraceRef;
       if (failedUploads > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

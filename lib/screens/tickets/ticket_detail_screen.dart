@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/case_trace/case_trace_chip.dart';
 import '../../core/services/hms/hms_pdf_generators.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
@@ -70,6 +71,59 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
   Future<void> _bootstrap() async {
     await _initialLoad();
+  }
+
+  Future<void> _deleteTicket() async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Slett avvik til arkiv'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${_ticket.displayTraceRef} flyttes til slettet-arkiv. '
+              'Sporings-ID kan brukes for oppslag senere.',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Kommentar (påkrevd)',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim().isNotEmpty),
+            child: const Text('Slett'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || ok != true) return;
+    try {
+      final updated = await SupabaseService.softDeleteTicket(
+        ticketId: _ticket.id,
+        deletionComment: ctrl.text.trim(),
+      );
+      if (!mounted) return;
+      setState(() => _ticket = updated);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${_ticket.displayTraceRef} arkivert')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      ctrl.dispose();
+    }
   }
 
   Future<void> _refreshTicket() async {
@@ -268,11 +322,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     return Scaffold(
       backgroundColor: isDark ? DriftProTheme.bgDark : DriftProTheme.bgLight,
       appBar: AppBar(
-        title: Text(
-          _ticket.ticketNumber != null
-              ? 'Avvik #${_ticket.ticketNumber}'
-              : 'Avvik',
-        ),
+        title: Text(_ticket.displayTraceRef),
         actions: [
           HmsPdfExportButton(
             fileName: _ticket.ticketNumber != null
@@ -315,6 +365,14 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                       if (_canProcess && _isClosed) ...[
                         const SizedBox(height: 16),
                         _buildProcessingCard(isDark, readOnly: true),
+                      ],
+                      if (_me?.isAdmin == true && !_ticket.isDeleted) ...[
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: _deleteTicket,
+                          icon: const Icon(Icons.archive_outlined),
+                          label: const Text('Slett til arkiv (beholder sporings-ID)'),
+                        ),
                       ],
                       const SizedBox(height: 20),
                       _buildDescription(isDark),
@@ -374,6 +432,24 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                 _miniBadge(_ticket.departmentName!, Colors.indigo),
             ],
           ),
+          const SizedBox(height: 12),
+          CaseTraceChip(traceRef: _ticket.displayTraceRef, id: _ticket.id),
+          if (_ticket.isDeleted) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Slettet — sporings-ID ${_ticket.displayTraceRef} beholdes for revisjon.',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: Colors.red.shade700,
+              ),
+            ),
+            if (_ticket.deletionComment?.isNotEmpty == true)
+              Text(
+                '«${_ticket.deletionComment}»',
+                style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+              ),
+          ],
           const SizedBox(height: 12),
           Text(_ticket.title, style: DriftProTheme.headingMd),
           const SizedBox(height: 8),

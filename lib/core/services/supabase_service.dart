@@ -250,9 +250,10 @@ department:departments!department_id(name)
     final cid = profile.companyId;
     if (cid == null) return const [];
     final all = await fetchTickets(companyId: cid);
-    if (profile.isAdmin) return all;
+    final active = all.where((t) => !t.isDeleted).toList();
+    if (profile.isAdmin) return active;
     if (profile.role == UserRole.leder) {
-      return all
+      return active
           .where((t) =>
               t.reportedBy == profile.id ||
               t.assignedTo == profile.id ||
@@ -260,10 +261,34 @@ department:departments!department_id(name)
                   t.departmentId == profile.departmentId))
           .toList();
     }
-    return all.where((t) =>
+    return active.where((t) =>
         t.reportedBy == profile.id ||
         (profile.departmentId != null &&
             t.departmentId == profile.departmentId)).toList();
+  }
+
+  static Future<List<Ticket>> fetchScopedTicketsIncludingDeleted({
+    required UserProfile profile,
+  }) async {
+    final cid = profile.companyId;
+    if (cid == null) return const [];
+    final all = await fetchTickets(companyId: cid);
+    if (profile.isAdmin) return all;
+    return fetchScopedTickets(profile: profile);
+  }
+
+  static Future<Ticket> softDeleteTicket({
+    required String ticketId,
+    required String deletionComment,
+  }) async {
+    final row = await client.rpc(
+      'soft_delete_ticket',
+      params: {
+        'p_ticket_id': ticketId,
+        'p_deletion_comment': deletionComment,
+      },
+    ) as Map<String, dynamic>;
+    return Ticket.fromJson(row);
   }
 
   static Future<Ticket?> fetchTicketById(String id) async {

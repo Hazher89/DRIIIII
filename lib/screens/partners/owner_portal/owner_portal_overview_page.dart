@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/auth/session_sign_out.dart';
+import '../../../core/services/partner/partner_deduction_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -14,11 +15,13 @@ import '../../../widgets/driftpro_loading_indicator.dart';
 class OwnerPortalOverviewPage extends StatefulWidget {
   final Partner partner;
   final void Function({int tabIndex, String? vehicleId})? onGoToRoutes;
+  final VoidCallback? onGoToTrekk;
 
   const OwnerPortalOverviewPage({
     super.key,
     required this.partner,
     this.onGoToRoutes,
+    this.onGoToTrekk,
   });
 
   @override
@@ -27,6 +30,7 @@ class OwnerPortalOverviewPage extends StatefulWidget {
 
 class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
   OwnerPortalData? _data;
+  int _trekkCount = 0;
   bool _loading = true;
   String? _loadError;
 
@@ -43,9 +47,11 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
     });
     try {
       final d = await OwnerPortalData.load(widget.partner);
+      final trekk = await PartnerDeductionService.listCasesPortal(partnerId: widget.partner.id);
       if (!mounted) return;
       setState(() {
         _data = d;
+        _trekkCount = trekk.length;
         _loading = false;
       });
     } catch (e) {
@@ -143,6 +149,13 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                         hint: 'Avtaler og andre filer under «Dokumenter»',
                         icon: Icons.folder_open_outlined,
                       ),
+                      if (_trekkCount > 0)
+                        PartnerSmartAction(
+                          label: 'Se $_trekkCount trekk i arkivet',
+                          hint: 'Fanen «Trekk» — saksnummer, begrunnelse og bevis',
+                          icon: Icons.gavel_rounded,
+                          onTap: widget.onGoToTrekk,
+                        ),
                     ],
                   ),
                   Padding(
@@ -187,6 +200,13 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                           label: 'Dokumenter',
                           value: '${_data!.documents.length}',
                           icon: Icons.folder_open,
+                        ),
+                        OwnerKpiCard(
+                          label: 'Trekk',
+                          value: '$_trekkCount',
+                          icon: Icons.gavel_rounded,
+                          accent: _trekkCount > 0 ? const Color(0xFF9A3412) : Colors.grey,
+                          onTap: widget.onGoToTrekk,
                         ),
                       ],
                     ),

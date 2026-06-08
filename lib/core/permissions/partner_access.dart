@@ -52,6 +52,11 @@ class PartnerAccess {
       label: 'Oppfølging',
     ),
     PartnerDetailTabDef(
+      accessKey: AccessKeys.partnersTabBotTrekk,
+      icon: Icons.gavel_rounded,
+      label: 'Bot/Trekk',
+    ),
+    PartnerDetailTabDef(
       accessKey: AccessKeys.partnersTabOppsummering,
       icon: Icons.summarize_outlined,
       label: 'Oppsummering',

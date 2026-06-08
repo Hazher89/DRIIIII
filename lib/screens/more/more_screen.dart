@@ -202,7 +202,7 @@ class _MoreScreenState extends State<MoreScreen> {
             _buildMenuItem(
               context,
               Icons.cloud_outlined,
-              'Dropbox-lagring',
+              'Fillagring',
               isDark,
             ),
 
@@ -325,7 +325,7 @@ class _MoreScreenState extends State<MoreScreen> {
             'Anonym anmeldelse' => AppPaths.moreWhistleblowing,
             'Brukergodkjenning' => AppPaths.moreBrukergodkjenning,
             'Infoskjerm' => AppPaths.moreInfoskjerm,
-            'Dropbox-lagring' => AppPaths.moreDropbox,
+            'Fillagring' => AppPaths.moreDropbox,
             'Min profil' => AppPaths.moreProfil,
             'Personalmappe' => AppPaths.morePersonalmappe,
             'Varsler' => AppPaths.moreVarsler,

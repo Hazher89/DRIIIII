@@ -183,7 +183,7 @@ class CompanyFileStorage {
 
       final reason = data is Map
           ? (data['error'] ?? data['reason'] ?? 'ukjent feil').toString()
-          : 'Dropbox-opplasting feilet';
+          : 'Opplasting til skylagring feilet';
       if (kDebugMode) {
         debugPrint('Dropbox upload feilet ($reason) — faller tilbake til Supabase.');
       }
@@ -220,6 +220,6 @@ class CompanyFileStorage {
     );
     final data = res.data;
     if (data is Map && data['link'] is String) return data['link'] as String;
-    throw Exception(data is Map ? data['error']?.toString() ?? 'Ingen lenke' : 'Dropbox-feil');
+    throw Exception(data is Map ? data['error']?.toString() ?? 'Ingen lenke' : 'Lagringsfeil');
   }
 }
