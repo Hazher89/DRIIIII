@@ -39,11 +39,15 @@ enum _PlannerViewMode { week, month }
 class PartnerRouteMasterScheduler extends StatefulWidget {
   final List<FleetPartnerVehicleRow> fleet;
   final VoidCallback? onChanged;
+  final List<Widget> leadingSlivers;
+  final bool nestedScroll;
 
   const PartnerRouteMasterScheduler({
     super.key,
     required this.fleet,
     this.onChanged,
+    this.leadingSlivers = const [],
+    this.nestedScroll = false,
   });
 
   @override
@@ -57,7 +61,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   DateTime _weekStart = _monday(DateTime.now());
   DateTime _focusDay = _dayOnly(DateTime.now());
   late final TextEditingController _searchCtrl;
-  final ScrollController _bodyH = ScrollController();
 
   List<FleetShiftDefinition> _shifts = [];
   List<PartnerRouteShare> _shares = [];
@@ -74,9 +77,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   static const double _rowHeight = 96;
   static const double _dayHeaderHeight = 88;
-  static const double _gridHeaderHeight = 89;
   static const double _sidebarW = 220;
-  static const double _minDayColW = 96;
 
   @override
   void initState() {
@@ -113,7 +114,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     _sapPollTimer?.cancel();
     SapRouteInboxLive.unsubscribe(_sapLiveChannel);
     _searchCtrl.dispose();
-    _bodyH.dispose();
     super.dispose();
   }
 
@@ -599,32 +599,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final hdrBg = isDark ? DriftProTheme.cardDark : Colors.white;
-    final borderCol = Colors.grey.withValues(alpha: isDark ? 0.35 : 0.22);
-
-    final screenH = MediaQuery.sizeOf(context).height;
-    final plannerH = (screenH * 0.64).clamp(480.0, 920.0);
-
-    return SizedBox(
-      height: plannerH,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final dayColW = ((constraints.maxWidth - _sidebarW) / _days.length)
-              .clamp(_minDayColW, double.infinity);
-
-          return Card(
-      margin: EdgeInsets.zero,
-      elevation: 1,
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: borderCol)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Top toolbar
-          Material(
+  Widget _buildToolbarContent(bool isDark, Color hdrBg, Color borderCol) {
+    return Material(
             color: hdrBg,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -825,85 +801,131 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                 ],
               ),
             ),
-          ),
+          );
+  }
 
-          Divider(height: 1, thickness: 1, color: borderCol),
-
-          Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(
-                  width: _sidebarW,
-                  decoration: BoxDecoration(
-                    border: Border(right: BorderSide(color: borderCol)),
-                    color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF8FAFC),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        height: _gridHeaderHeight,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            border: Border(bottom: BorderSide(color: borderCol)),
-                          ),
-                          child: const Padding(
-                            padding: EdgeInsets.fromLTRB(12, 8, 8, 8),
-                            child: Align(
-                              alignment: Alignment.bottomLeft,
-                              child: Text(
-                                'Sjåfører · MAVI',
-                                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: ListView.builder(
-                          padding: EdgeInsets.zero,
-                          itemCount: _filteredFleet.length,
-                          itemExtent: _rowHeight,
-                          itemBuilder: (_, i) =>
-                              _buildSidebarRow(_filteredFleet[i], borderCol),
-                        ),
-                      ),
-                    ],
-                  ),
+  Widget _buildPinnedWeekHeader(Color borderCol, bool isDark) {
+    final hdrBg = isDark ? DriftProTheme.cardDark : Colors.white;
+    return Material(
+      color: hdrBg,
+      elevation: 2,
+      child: SizedBox(
+        height: _dayHeaderHeight,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: _sidebarW,
+              decoration: BoxDecoration(
+                border: Border(
+                  right: BorderSide(color: borderCol),
+                  bottom: BorderSide(color: borderCol),
                 ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _buildDayHeaderRow(borderCol, dayColW),
-                      Divider(height: 1, color: borderCol),
-                      Expanded(
-                        child: ListView.builder(
-                          controller: _bodyH,
-                          padding: EdgeInsets.zero,
-                          itemCount: _filteredFleet.length,
-                          itemExtent: _rowHeight,
-                          itemBuilder: (_, i) => _buildFleetGridRow(
-                            context,
-                            _filteredFleet[i],
-                            isDark,
-                            borderCol,
-                            dayColW,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+                color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF8FAFC),
+              ),
+              padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+              alignment: Alignment.bottomLeft,
+              child: const Text(
+                'Sjåfører · MAVI',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+              ),
             ),
+            Expanded(child: _buildDayHeaderRow(borderCol)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCombinedDriverRow(
+    BuildContext context,
+    FleetPartnerVehicleRow row,
+    bool isDark,
+    Color borderCol,
+  ) {
+    return SizedBox(
+      height: _rowHeight,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            width: _sidebarW,
+            decoration: BoxDecoration(
+              border: Border(
+                right: BorderSide(color: borderCol),
+                bottom: BorderSide(color: borderCol),
+              ),
+              color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF8FAFC),
+            ),
+            child: _buildSidebarRow(row, borderCol),
           ),
+          Expanded(child: _buildFleetGridRow(context, row, isDark, borderCol)),
         ],
       ),
     );
-        },
-      ),
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final hdrBg = isDark ? DriftProTheme.cardDark : Colors.white;
+    final borderCol = Colors.grey.withValues(alpha: isDark ? 0.35 : 0.22);
+
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        if (widget.nestedScroll)
+          SliverOverlapInjector(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+          ),
+        ...widget.leadingSlivers,
+        SliverToBoxAdapter(
+          child: Card(
+            margin: EdgeInsets.zero,
+            elevation: 1,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              side: BorderSide(color: borderCol),
+            ),
+            child: _buildToolbarContent(isDark, hdrBg, borderCol),
+          ),
+        ),
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: _PlannerPinnedHeaderDelegate(
+            height: _dayHeaderHeight,
+            child: _buildPinnedWeekHeader(borderCol, isDark),
+          ),
+        ),
+        if (_filteredFleet.isEmpty)
+          SliverToBoxAdapter(
+            child: Card(
+              margin: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                side: BorderSide(color: borderCol),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.all(32),
+                child: Center(child: Text('Ingen MAVI-biler i listen.')),
+              ),
+            ),
+          )
+        else
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, i) => _buildCombinedDriverRow(
+                context,
+                _filteredFleet[i],
+                isDark,
+                borderCol,
+              ),
+              childCount: _filteredFleet.length,
+            ),
+          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 96)),
+      ],
     );
   }
 
@@ -982,7 +1004,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     );
   }
 
-  Widget _buildDayHeaderRow(Color borderCol, double dayColW) {
+  Widget _buildDayHeaderRow(Color borderCol) {
     return SizedBox(
       height: _dayHeaderHeight,
       child: Row(
@@ -1114,7 +1136,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     FleetPartnerVehicleRow row,
     bool isDark,
     Color borderCol,
-    double dayColW,
   ) {
     return Row(
       children: _days.map((day) {
@@ -1132,7 +1153,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             }
           },
           child: Container(
-            width: dayColW,
             height: _rowHeight,
             decoration: BoxDecoration(
               border: Border(
@@ -2169,6 +2189,28 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
       ),
     );
   }
+}
+
+class _PlannerPinnedHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final double height;
+  final Widget child;
+
+  _PlannerPinnedHeaderDelegate({required this.height, required this.child});
+
+  @override
+  double get minExtent => height;
+
+  @override
+  double get maxExtent => height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return child;
+  }
+
+  @override
+  bool shouldRebuild(covariant _PlannerPinnedHeaderDelegate oldDelegate) =>
+      oldDelegate.height != height || oldDelegate.child != child;
 }
 
 extension on PartnerRouteShare {
