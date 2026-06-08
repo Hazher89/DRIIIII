@@ -199,7 +199,9 @@ class UserProfile {
   }
 
   bool get isPartnerPortalUser =>
-      partnerId != null || role == UserRole.samarbeidspartner;
+      role != UserRole.superadmin &&
+      role != UserRole.admin &&
+      (partnerId != null || role == UserRole.samarbeidspartner);
 
   /// Intern MAVI-ansatt (ikke sjåfør, bil-eier eller annen samarbeidspartner).
   bool get isMaviEmployee => !isPartnerPortalUser;

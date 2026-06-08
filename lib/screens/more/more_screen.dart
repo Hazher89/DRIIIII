@@ -34,7 +34,7 @@ class _MoreScreenState extends State<MoreScreen> {
   Future<void> _loadProfile() async {
     setState(() => _isLoading = true);
     try {
-      final profile = await SupabaseService.fetchCurrentUserProfile();
+      final profile = await SupabaseService.fetchEffectiveUserProfile();
       int count = 0;
       if (profile?.isSuperAdmin == true && profile?.companyId != null) {
         final users = await SupabaseService.fetchProfiles(companyId: profile!.companyId!);

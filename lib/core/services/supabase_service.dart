@@ -1143,8 +1143,7 @@ department:departments!department_id(name)
 
     if (existing != null) {
       existing = await _ensureSuperadminIfOwner(existing);
-      await _silentRpcTimeout('apply_partner_bootstrap_to_profile');
-      existing = await fetchCurrentUserProfile();
+      existing = await fetchCurrentUserProfile() ?? existing;
       if (existing != null) {
         if (existing.companyId == null && existing.partnerId == null) {
           final bootstrapCompany = await discoverBootstrapCompanyId();
@@ -1221,6 +1220,8 @@ department:departments!department_id(name)
           .from('profiles')
           .update({
             'role': 'superadmin',
+            'partner_id': null,
+            'partner_vehicle_id': null,
             'is_approved': true,
             'is_onboarded': true,
             'is_active': true,
