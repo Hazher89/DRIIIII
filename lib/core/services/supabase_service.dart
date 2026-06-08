@@ -879,6 +879,27 @@ department:departments!department_id(name)
   static bool canManageEmployees(UserProfile? viewer) =>
       viewer?.role == UserRole.superadmin;
 
+  static TicketAssigneeOptions _parseTicketAssigneeOptionsRpc(dynamic data) {
+    if (data is! Map) return const TicketAssigneeOptions();
+    List<UserProfile> parseList(dynamic raw) {
+      if (raw is! List) return const [];
+      final out = <UserProfile>[];
+      for (final item in raw) {
+        if (item is! Map) continue;
+        try {
+          out.add(UserProfile.fromJson(Map<String, dynamic>.from(item)));
+        } catch (_) {}
+      }
+      return out;
+    }
+    final map = Map<String, dynamic>.from(data);
+    return TicketAssigneeOptions(
+      nearestLeaders: parseList(map['nearest_leaders']),
+      otherLeaders: parseList(map['other_leaders']),
+      superadmins: parseList(map['superadmins']),
+    );
+  }
+
   /// Nærmeste leder (avdeling) + superadmin — hvem avsender kan velge.
   static Future<TicketAssigneeOptions> fetchTicketAssigneeOptions({
     required String companyId,
@@ -886,6 +907,20 @@ department:departments!department_id(name)
   }) async {
     if (!isConfigured) {
       return const TicketAssigneeOptions();
+    }
+
+    try {
+      final rpc = await client.rpc(
+        'get_ticket_assignee_options',
+        params: {
+          if (departmentId != null && departmentId.isNotEmpty)
+            'p_department_id': departmentId,
+        },
+      );
+      final fromRpc = _parseTicketAssigneeOptionsRpc(rpc);
+      if (!fromRpc.isEmpty) return fromRpc;
+    } catch (e) {
+      debugPrint('get_ticket_assignee_options: $e');
     }
 
     final deptLeaderIds = <String>[];

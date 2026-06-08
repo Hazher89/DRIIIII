@@ -72,6 +72,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       List.generate(7, (i) => DateTime(_weekStart.year, _weekStart.month, _weekStart.day + i));
 
   static const double _rowHeight = 100;
+  static const double _dayHeaderHeight = 96;
+  static const double _gridHeaderHeight = 97; // dag-header + skillelinje
   static const double _sidebarW = 232;
   static const double _dayColW = 140;
 
@@ -623,6 +625,23 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     ],
                   ),
                   const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: 280,
+                      child: TextField(
+                        controller: _searchCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Søk MAVI / partner',
+                          prefixIcon: const Icon(Icons.search, size: 20),
+                          isDense: true,
+                          filled: true,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
                   Wrap(
                     spacing: 10,
                     runSpacing: 8,
@@ -709,27 +728,24 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(10, 10, 10, 6),
-                        child: TextField(
-                          controller: _searchCtrl,
-                          decoration: InputDecoration(
-                            hintText: 'Søk MAVI / partner',
-                            prefixIcon: const Icon(Icons.search, size: 20),
-                            isDense: true,
-                            filled: true,
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      SizedBox(
+                        height: _gridHeaderHeight,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border(bottom: BorderSide(color: borderCol)),
+                          ),
+                          child: const Padding(
+                            padding: EdgeInsets.fromLTRB(12, 8, 8, 8),
+                            child: Align(
+                              alignment: Alignment.bottomLeft,
+                              child: Text(
+                                'Sjåfører · MAVI',
+                                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                        child: Text(
-                          'Sjåfører · MAVI',
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
-                        ),
-                      ),
-                      const SizedBox(height: 97),
                       for (final row in _filteredFleet)
                         SizedBox(
                           height: _rowHeight,
@@ -845,7 +861,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   Widget _buildDayHeaderRow(Color borderCol) {
     return SizedBox(
-      height: 96,
+      height: _dayHeaderHeight,
       child: Row(
         children: _days.map((d) {
           final now = _dayOnly(DateTime.now());

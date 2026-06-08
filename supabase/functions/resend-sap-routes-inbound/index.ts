@@ -1,6 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
-import { tryUploadToDropbox } from "../_shared/dropbox_company_upload.ts";
+import {
+  parseEmailAddress,
+  processSapInboundEmail,
+  sapRoutesCompanyId,
+  type ResendAttachment,
+} from "../_shared/sap_route_inbound_core.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -20,25 +25,6 @@ function requireEnv(name: string): string {
   const v = Deno.env.get(name)?.trim();
   if (!v) throw new Error(`Mangler secret: ${name}`);
   return v;
-}
-
-function parseEmailAddress(raw: string): string {
-  const s = raw.trim();
-  const m = s.match(/<([^>]+)>/);
-  return (m?.[1] ?? s).trim().toLowerCase();
-}
-
-function subjectMatches(subject: string): boolean {
-  return subject.trim().toLowerCase() === "backup form";
-}
-
-function senderAllowed(from: string): boolean {
-  const email = parseEmailAddress(from);
-  return email.endsWith("@elkjop.no");
-}
-
-function pdfNameOk(name: string): boolean {
-  return name.trim().toLowerCase().endsWith(".pdf");
 }
 
 async function verifySvix(
@@ -82,19 +68,6 @@ async function verifySvix(
   return false;
 }
 
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(hash)].map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-type ResendAttachment = {
-  id: string;
-  filename: string;
-  content_type?: string;
-  download_url: string;
-};
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: cors });
@@ -110,6 +83,8 @@ Deno.serve(async (req) => {
       email_id?: string;
       from?: string;
       subject?: string;
+      to?: string[];
+      attachments?: ResendAttachment[];
     };
   };
   try {
@@ -121,7 +96,14 @@ Deno.serve(async (req) => {
   const webhookSecret = Deno.env.get("RESEND_WEBHOOK_SECRET")?.trim();
   if (webhookSecret) {
     const ok = await verifySvix(rawBody, req.headers, webhookSecret);
-    if (!ok) return json({ error: "Invalid webhook signature" }, 401);
+    if (!ok) {
+      console.error("Invalid webhook signature", {
+        hasSvixId: !!req.headers.get("svix-id"),
+        hasSvixTs: !!req.headers.get("svix-timestamp"),
+        hasSvixSig: !!req.headers.get("svix-signature"),
+      });
+      return json({ error: "Invalid webhook signature" }, 401);
+    }
   }
 
   if (event.type !== "email.received") {
@@ -133,35 +115,11 @@ Deno.serve(async (req) => {
   const subject = event.data?.subject?.trim() ?? "";
 
   if (!emailId) return json({ error: "Missing email_id" }, 400);
-  if (!senderAllowed(from)) {
-    return json({ ok: true, skipped: "sender" });
-  }
-  if (!subjectMatches(subject)) {
-    return json({ ok: true, skipped: "subject" });
-  }
 
-  const companyId = Deno.env.get("SAP_ROUTES_COMPANY_ID")?.trim() ||
-    "00000000-0000-0000-0000-000000000000";
-
-  const resendKey = requireEnv("RESEND_API_KEY");
-  const attRes = await fetch(
-    `https://api.resend.com/emails/receiving/${emailId}/attachments`,
-    { headers: { Authorization: `Bearer ${resendKey}` } },
-  );
-  if (!attRes.ok) {
-    const t = await attRes.text();
-    console.error("Resend attachments failed", attRes.status, t);
-    return json({ error: "Could not list attachments" }, 502);
-  }
-
-  const attJson = await attRes.json() as { data?: ResendAttachment[] };
-  const attachments = (attJson.data ?? []).filter((a) => {
-    const ct = (a.content_type ?? "").toLowerCase();
-    return ct.includes("pdf") || a.filename.toLowerCase().endsWith(".pdf");
-  });
-
-  if (attachments.length === 0) {
-    return json({ ok: true, skipped: "no_pdf" });
+  const toList = (event.data?.to ?? []).map((t) => parseEmailAddress(t));
+  if (toList.length > 0 && !toList.some((t) => t === "ruter@driftpro.no")) {
+    console.log("Skipped: not ruter@driftpro.no", { to: toList });
+    return json({ ok: true, skipped: "recipient" });
   }
 
   const supabase = createClient(
@@ -169,112 +127,31 @@ Deno.serve(async (req) => {
     requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
   );
 
-  const inserted: string[] = [];
-  const skipped: string[] = [];
+  const result = await processSapInboundEmail(supabase, {
+    resendKey: requireEnv("RESEND_API_KEY"),
+    companyId: sapRoutesCompanyId(),
+    emailId,
+    from,
+    subject,
+    attachmentHint: event.data?.attachments,
+  });
 
-  for (const att of attachments) {
-    if (!pdfNameOk(att.filename)) {
-      skipped.push(`${att.filename}:name`);
-      continue;
-    }
-
-    const dl = await fetch(att.download_url);
-    if (!dl.ok) {
-      skipped.push(`${att.filename}:download`);
-      continue;
-    }
-    const bytes = new Uint8Array(await dl.arrayBuffer());
-    if (bytes.length < 100) {
-      skipped.push(`${att.filename}:empty`);
-      continue;
-    }
-
-    const hash = await sha256Hex(bytes);
-    const safeName = att.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-    let storagePath =
-      `company_${companyId}/sap_inbox/${Date.now()}_${safeName}`;
-
-    try {
-      const dropbox = await tryUploadToDropbox(supabase, companyId, {
-        fileName: safeName,
-        category: "sap_inbox",
-        bytes,
-      });
-      if (dropbox) {
-        storagePath = dropbox.path;
-      } else {
-        const { error: upErr } = await supabase.storage
-          .from("documents")
-          .upload(storagePath, bytes, {
-            contentType: "application/pdf",
-            upsert: false,
-          });
-        if (upErr) {
-          console.error("Storage upload failed", upErr);
-          skipped.push(`${att.filename}:storage`);
-          continue;
-        }
-      }
-    } catch (e) {
-      console.error("Dropbox/SAP upload failed", e);
-      skipped.push(`${att.filename}:storage`);
-      continue;
-    }
-
-    const { data: dup } = await supabase
-      .from("sap_route_inbox")
-      .select("id")
-      .eq("resend_email_id", emailId)
-      .eq("attachment_id", att.id)
-      .maybeSingle();
-
-    if (dup?.id) {
-      skipped.push(`${att.filename}:duplicate`);
-      continue;
-    }
-
-    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const { data: hashDup } = await supabase
-      .from("sap_route_inbox")
-      .select("id")
-      .eq("company_id", companyId)
-      .eq("content_sha256", hash)
-      .in("status", ["pending", "imported"])
-      .gte("received_at", since)
-      .limit(1)
-      .maybeSingle();
-
-    if (hashDup?.id) {
-      skipped.push(`${att.filename}:content_duplicate`);
-      continue;
-    }
-
-    const { error: insErr } = await supabase.from("sap_route_inbox").insert({
-      company_id: companyId,
-      status: "pending",
-      sender_email: parseEmailAddress(from),
-      sender_name: from.includes("<") ? from.split("<")[0].trim() : null,
-      subject,
-      file_name: att.filename,
-      pdf_storage_path: storagePath,
-      resend_email_id: emailId,
-      attachment_id: att.id,
-      content_sha256: hash,
-    });
-
-    if (insErr) {
-      console.error("Inbox insert failed", insErr);
-      skipped.push(`${att.filename}:db`);
-      continue;
-    }
-    inserted.push(att.filename);
+  if (result.error) {
+    console.error("SAP inbound failed", emailId, result.error);
+    return json({ error: result.error }, 502);
   }
+
+  console.log("SAP inbound processed", {
+    emailId,
+    inserted: result.inserted.length,
+    skipped: result.skipped,
+  });
 
   return json({
     ok: true,
     email_id: emailId,
-    inserted: inserted.length,
-    files: inserted,
-    skipped,
+    inserted: result.inserted.length,
+    files: result.inserted,
+    skipped: result.skipped,
   });
 });

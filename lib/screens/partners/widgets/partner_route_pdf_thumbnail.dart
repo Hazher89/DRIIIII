@@ -16,6 +16,8 @@ class PartnerRoutePdfThumbnail extends StatefulWidget {
   final VoidCallback? onTapOpen;
   /// true = hele forsiden synlig (contain), false = fyller kort (cover).
   final bool showFullPage;
+  /// Zoom inn øverst på forsiden (strekkode, dato, sjåfør på SAP Trip Overview).
+  final bool zoomTripHeader;
 
   const PartnerRoutePdfThumbnail({
     super.key,
@@ -25,6 +27,7 @@ class PartnerRoutePdfThumbnail extends StatefulWidget {
     this.height,
     this.onTapOpen,
     this.showFullPage = true,
+    this.zoomTripHeader = false,
   });
 
   @override
@@ -133,14 +136,33 @@ class _PartnerRoutePdfThumbnailState extends State<PartnerRoutePdfThumbnail> {
             ),
           )
         else if (_png != null)
-          widget.showFullPage
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 4, 4, 28),
-                    child: Image.memory(_png!, fit: BoxFit.contain),
-                  ),
+          widget.zoomTripHeader
+              ? LayoutBuilder(
+                  builder: (context, constraints) {
+                    final w = constraints.maxWidth;
+                    return ClipRect(
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: Transform.scale(
+                          scale: 2.65,
+                          alignment: Alignment.topCenter,
+                          child: SizedBox(
+                            width: w,
+                            child: Image.memory(_png!, fit: BoxFit.fitWidth),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
                 )
-              : Image.memory(_png!, fit: BoxFit.cover)
+              : widget.showFullPage
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 4, 4, 28),
+                        child: Image.memory(_png!, fit: BoxFit.contain),
+                      ),
+                    )
+                  : Image.memory(_png!, fit: BoxFit.cover)
         else
           Center(
             child: Padding(

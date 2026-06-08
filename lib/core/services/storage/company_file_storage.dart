@@ -83,8 +83,8 @@ class CompanyFileStorage {
   static bool isDropboxPath(String path) {
     final p = path.trim();
     if (p.startsWith('/DriftPro') || p.startsWith('DriftPro/')) return true;
-    // App folder (rot = /): company_<uuid>/routes/... (med eller uten ledende /)
-    return RegExp(r'^/?company_[0-9a-f-]{36}/').hasMatch(p);
+    // company_<uuid>/… uten dropbox:// er Supabase documents — ikke Dropbox.
+    return false;
   }
 
   /// Tilgjengelig for alle innloggede (ikke bare admin).

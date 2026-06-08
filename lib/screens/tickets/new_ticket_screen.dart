@@ -263,9 +263,21 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
     if (_assignees.isEmpty) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
-        child: Text(
-          'Ingen saksbehandler funnet — kontakt HR.',
-          style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Ingen saksbehandler funnet — sjekk at avdeling har leder registrert, '
+              'eller kontakt HR.',
+              style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _loadHandlers,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Prøv igjen'),
+            ),
+          ],
         ),
       );
     }
@@ -645,8 +657,12 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
             ],
             const SizedBox(height: 24),
             FilledButton(
-              onPressed:
-                  _isSubmitting || _assignees.isEmpty ? null : _submit,
+              onPressed: _isSubmitting ||
+                      _loadingHandlers ||
+                      _assignees.isEmpty ||
+                      _selectedHandlerId == null
+                  ? null
+                  : _submit,
               child: _isSubmitting
                   ? const SizedBox(
                       width: 22,

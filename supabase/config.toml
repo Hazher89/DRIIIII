@@ -6,6 +6,10 @@ verify_jwt = false
 [functions.resend-sap-routes-inbound]
 verify_jwt = false
 
+# Manuell replay av Resend Inbound (service role i Authorization-header).
+[functions.resend-sap-routes-replay]
+verify_jwt = false
+
 # Kø-workers kalles også fra pg_cron med anon JWT.
 [functions.send-email-outbox]
 verify_jwt = true

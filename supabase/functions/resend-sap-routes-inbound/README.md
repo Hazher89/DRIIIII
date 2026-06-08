@@ -47,4 +47,24 @@ Krav:
 
 ## 6. DriftPro
 
-På **Rute-planlegger** → knapp **«SAP (n)»** → importer til AUTO MASS-flyt.
+På **Rute-planlegger** → knapp **«Ruter fra SAP (n)»** → importer til AUTO MASS-flyt.
+
+## 7. Feilsøking
+
+**Resend viser e-post, men knappen er tom**
+
+1. Sjekk at webhook peker på  
+   `https://ksnnyccthotjbrmgjgdc.supabase.co/functions/v1/resend-sap-routes-inbound`  
+   med event `email.received`, og at **Signing secret** = `RESEND_WEBHOOK_SECRET`.
+2. Dropbox-feil blokkerer ikke lenger import (fallback til Supabase `documents`).
+3. **Replay** av siste mottatte e-post (f.eks. etter webhook-nedetid):
+
+```bash
+supabase secrets set SAP_REPLAY_SECRET=din-hemmelige-nøkkel
+supabase functions deploy resend-sap-routes-replay --no-verify-jwt
+
+curl -X POST 'https://ksnnyccthotjbrmgjgdc.supabase.co/functions/v1/resend-sap-routes-replay' \
+  -H "x-sap-replay-secret: din-hemmelige-nøkkel" \
+  -H "Content-Type: application/json" \
+  -d '{"hours": 72, "limit": 50}'
+```

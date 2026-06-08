@@ -63,7 +63,8 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
   String get _fileLabel =>
       (share.title ?? share.pdfStoragePath.split('/').last).split('—').last.trim();
 
-  String get _mavi => MaviUnitCodes.compactLabel(row.vehicle.unitCode);
+  String get _driverLabel =>
+      MaviUnitCodes.fleetDriverLabel(row.vehicle.unitCode, row.partner.name);
 
   @override
   Widget build(BuildContext context) {
@@ -102,8 +103,9 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
                   children: [
                     PartnerRoutePdfThumbnail(
                       share: share,
-                      driverLabel: _mavi,
+                      driverLabel: _driverLabel,
                       showFullPage: true,
+                      zoomTripHeader: true,
                       onTapOpen: () => PartnerRoutePdfActions.openPdf(context, share),
                     ),
                     Positioned(
@@ -144,11 +146,51 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    PopupMenuButton<String>(
+                      tooltip: 'Bytt sjåfør',
+                      enabled: !busy,
+                      padding: EdgeInsets.zero,
+                      onSelected: onReassignVehicle,
+                      child: Row(
+                        children: [
+                          Icon(Icons.person_pin_outlined, size: 15, color: accentDark),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              _driverLabel,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                                color: accentDark,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.swap_horiz, size: 16, color: Colors.grey.shade600),
+                        ],
+                      ),
+                      itemBuilder: (ctx) => maviFleet
+                          .map(
+                            (r) => PopupMenuItem(
+                              value: r.vehicle.id,
+                              child: Text(
+                                MaviUnitCodes.fleetDriverLabel(
+                                  r.vehicle.unitCode,
+                                  r.partner.name,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    const SizedBox(height: 4),
                     Text(
                       _fileLabel,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 10),
                     ),
                     const SizedBox(height: 2),
                     Text(

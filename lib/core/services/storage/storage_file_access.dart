@@ -80,6 +80,13 @@ class StorageFileAccess {
 
     final cid = companyId ?? await SupabaseService.getCurrentCompanyId();
 
+    for (final path in candidateSupabasePaths(raw, companyId: cid)) {
+      try {
+        final bytes = await _client.storage.from('documents').download(path);
+        if (bytes.isNotEmpty) return bytes;
+      } catch (_) {}
+    }
+
     if (CompanyFileStorage.isDropboxReference(raw) ||
         CompanyFileStorage.isDropboxPath(raw)) {
       try {
@@ -88,23 +95,18 @@ class StorageFileAccess {
             : raw.startsWith('/')
                 ? raw
                 : '/$raw';
-        final res = await _client.functions.invoke(
-          'dropbox-storage',
-          body: {'path': dropboxPath},
-          queryParameters: {'action': 'download_bytes'},
-        );
+        final res = await _client.functions
+            .invoke(
+              'dropbox-storage',
+              body: {'path': dropboxPath},
+              queryParameters: {'action': 'download_bytes'},
+            )
+            .timeout(const Duration(seconds: 20));
         final data = res.data;
         if (data is Map && data['ok'] == true && data['bytes_base64'] is String) {
           final bytes = base64Decode(data['bytes_base64'] as String);
           if (bytes.isNotEmpty) return bytes;
         }
-      } catch (_) {}
-    }
-
-    for (final path in candidateSupabasePaths(raw, companyId: cid)) {
-      try {
-        final bytes = await _client.storage.from('documents').download(path);
-        if (bytes.isNotEmpty) return bytes;
       } catch (_) {}
     }
 
