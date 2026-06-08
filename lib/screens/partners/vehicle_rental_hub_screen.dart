@@ -11,6 +11,7 @@ import '../../models/partner/partner_links.dart';
 import '../../models/partner/vehicle_rental.dart';
 import 'widgets/partner_modern_ui.dart';
 import 'widgets/vehicle_rental_ui.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// MAVI: opprett utleie, godkjenn, retur, søk i arkiv.
 class VehicleRentalHubScreen extends StatefulWidget {
@@ -939,7 +940,7 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
             ),
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const DriftProLoadingCenter()
                   : _error != null
                       ? Center(child: Text(_error!))
                       : _filtered.isEmpty

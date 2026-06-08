@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_ui.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Møter, audit, SMS-varsler, arkiv og sporing — samlet oppfølging.
 class PartnerComplianceTab extends StatefulWidget {
@@ -350,7 +351,7 @@ class _PartnerComplianceTabState extends State<PartnerComplianceTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen));
+      return const DriftProLoadingCenter();
     }
 
     final planned = _active.where((m) => m.status == 'planlagt').length;

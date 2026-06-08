@@ -5,6 +5,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
 import '../employees/widgets/permission_matrix_editor.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Tilgangskontroll — samme matrise som i Ansatt-hub.
 class AccessControlScreen extends StatefulWidget {
@@ -50,7 +51,7 @@ class _AccessControlScreenState extends State<AccessControlScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: _users.length,

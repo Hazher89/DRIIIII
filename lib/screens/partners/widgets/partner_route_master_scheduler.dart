@@ -25,6 +25,7 @@ import 'route_reminder_badge.dart';
 import 'partner_route_single_assign_sheet.dart';
 import 'partner_route_auto_mass_sheet.dart';
 import 'partner_sap_routes_sheet.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 DateTime _monday(DateTime d) {
   final n = DateTime(d.year, d.month, d.day);
@@ -627,7 +628,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                           ],
                         ),
                       ),
-                      if (_busy) const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
+                      if (_busy) SizedBox(width: 24, height: 24, child: DriftProLoadingIndicator(size: 24)),
                     ],
                   ),
                   Wrap(
@@ -2153,11 +2154,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                     onPressed: _busy ? null : _pickPdf,
                     style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
                     icon: _busy
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
+                        ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                         : const Icon(Icons.upload_file),
                     label: const Text('Last opp PDF (kladd)'),
                   ),

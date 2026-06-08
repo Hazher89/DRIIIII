@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/hms/equipment.dart';
 import '../../../models/user_profile.dart';
 import 'equipment_service_entry_sheet.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Digitalt servicehefte — all historikk, registrering og SMS-planlegging.
 class EquipmentServiceBookScreen extends StatefulWidget {
@@ -239,7 +240,7 @@ class _EquipmentServiceBookScreenState extends State<EquipmentServiceBookScreen>
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: const DriftProLoadingCenter(),
       );
     }
     final e = _equipment;

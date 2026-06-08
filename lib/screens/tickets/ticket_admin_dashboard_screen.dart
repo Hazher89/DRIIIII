@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
 import '../../models/user_profile.dart';
 import 'ticket_detail_screen.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Kontrollsenter for ledere/admin: oversikt, KPI og hurtigliste.
 class TicketAdminDashboardScreen extends StatefulWidget {
@@ -90,7 +91,7 @@ class _TicketAdminDashboardScreenState extends State<TicketAdminDashboardScreen>
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _error != null
               ? Center(child: Text(_error!))
               : RefreshIndicator(

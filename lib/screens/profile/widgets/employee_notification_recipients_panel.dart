@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/notification_channel.dart';
 import '../../../models/notification_recipient_row.dart';
 import 'notification_channel_picker.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 enum _ViewMode { byEmployee, byEvent }
 
@@ -259,7 +260,7 @@ class _EmployeeNotificationRecipientsPanelState
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
     if (_error != null) {
       return Center(
@@ -478,11 +479,7 @@ class _EmployeeNotificationRecipientsPanelState
                       ? null
                       : _sendPendingRoutesDigest,
                   icon: _sendingDigest
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
                       : const Icon(Icons.send_outlined, size: 18),
                   label: const Text('Send oppsummering nå'),
                 ),

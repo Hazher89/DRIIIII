@@ -7,6 +7,7 @@ import '../../models/survey/survey.dart';
 import 'survey_master_editor.dart';
 import 'survey_archive_screen.dart';
 import 'survey_results_screen.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class SurveyListScreen extends StatefulWidget {
   const SurveyListScreen({super.key});
@@ -178,7 +179,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
           _buildWhatsNewStrip(isDark),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const DriftProLoadingCenter()
                 : _surveys.isEmpty
                     ? _buildEmptyState()
                     : ListView.builder(

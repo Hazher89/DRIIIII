@@ -9,6 +9,7 @@ import '../../models/partner/mavi_driver_day_assignment.dart';
 import '../../models/partner/partner_links.dart';
 import 'fleet_route_overview_tab.dart';
 import 'widgets/partner_modern_ui.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// MAVI rute-statistikk: rettferdig fordeling + ruteoversikt.
 class FleetRouteDriverStatsScreen extends StatefulWidget {
@@ -187,7 +188,7 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          ? const DriftProLoadingCenter()
           : _error != null
               ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!)))
               : Column(

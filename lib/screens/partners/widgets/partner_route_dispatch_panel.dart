@@ -10,6 +10,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Steg 2: Hver rute-PDF får eget skift før sending til sjåfør.
 class PartnerRouteDispatchPanel extends StatefulWidget {
@@ -226,7 +227,7 @@ class _PartnerRouteDispatchPanelState extends State<PartnerRouteDispatchPanel> {
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.all(24),
-        child: Center(child: CircularProgressIndicator()),
+        child: const DriftProLoadingCenter(),
       );
     }
 
@@ -354,11 +355,7 @@ class _PartnerRouteDispatchPanelState extends State<PartnerRouteDispatchPanel> {
             FilledButton.icon(
               onPressed: _sending || _staged.isEmpty ? null : _send,
               icon: _sending
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
+                  ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                   : const Icon(Icons.rocket_launch_outlined),
               label: Text('Send ${_selected.length} rute(r) med egne skift'),
               style: FilledButton.styleFrom(

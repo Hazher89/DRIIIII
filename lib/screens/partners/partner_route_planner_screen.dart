@@ -9,6 +9,7 @@ import 'fleet_shift_admin_screen.dart';
 import 'widgets/partner_available_vehicles_bar.dart';
 import 'widgets/partner_route_master_scheduler.dart';
 import 'widgets/partner_route_pdf_search_panel.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Ruteplanlegging: én arbeidsflate for fordeling + publisering.
 class PartnerRoutePlannerScreen extends StatefulWidget {
@@ -80,7 +81,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
 
     final today = DateTime.now();

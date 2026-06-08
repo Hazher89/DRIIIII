@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/vehicle_rental.dart';
 import '../widgets/vehicle_rental_ui.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Bil-eier og låntaker: utleie, retur, arkiv.
 class OwnerPortalVehicleRentalPage extends StatefulWidget {
@@ -118,7 +119,7 @@ class _OwnerPortalVehicleRentalPageState extends State<OwnerPortalVehicleRentalP
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : TabBarView(
               controller: _tabs,
               children: [
@@ -484,7 +485,7 @@ class _OwnerCheckoutFlowScreenState extends State<_OwnerCheckoutFlowScreen> {
               minimumSize: const Size(double.infinity, 52),
             ),
             icon: _submitting
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                 : const Icon(Icons.send),
             label: const Text('Send til godkjenning'),
           ),
@@ -675,7 +676,7 @@ class _BorrowerReturnFlowScreenState extends State<_BorrowerReturnFlowScreen> {
               minimumSize: const Size(double.infinity, 52),
             ),
             icon: _submitting
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                 : const Icon(Icons.assignment_return),
             label: const Text('Send retur til godkjenning'),
           ),

@@ -12,6 +12,7 @@ import 'new_risk_assessment_screen.dart';
 import 'risk_assessment_detail_screen.dart';
 import 'stakeholder_risk/stakeholder_risk_hub_tab.dart';
 import 'package:intl/intl.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class RiskAssessmentListScreen extends StatefulWidget {
   const RiskAssessmentListScreen({super.key, this.initialTab});
@@ -146,7 +147,7 @@ class _RiskAssessmentListScreenState extends State<RiskAssessmentListScreen>
   }
 
   Widget _buildClassicTab(bool isDark) {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) return const DriftProLoadingCenter();
     if (_loadError != null) {
       return Center(
         child: Padding(

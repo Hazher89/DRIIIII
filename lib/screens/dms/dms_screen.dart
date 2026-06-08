@@ -20,6 +20,7 @@ import 'widgets/dms_create_folder_sheet.dart';
 import 'widgets/dms_explorer_sidebar.dart';
 import 'widgets/dms_move_file_sheet.dart';
 import 'widgets/dms_permissions_sheet.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class DmsScreen extends StatefulWidget {
   final String? initialFolderId;
@@ -1107,11 +1108,7 @@ class _DmsScreenState extends State<DmsScreen> {
           ? FloatingActionButton.extended(
               onPressed: _uploading ? null : _showActionsMenu,
               icon: _uploading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
+                  ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                   : const Icon(Icons.add),
               label: Text(
                 _section == DmsExplorerSection.shared && _currentFolderId == null

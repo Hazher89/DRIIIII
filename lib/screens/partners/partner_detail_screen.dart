@@ -26,6 +26,7 @@ import 'widgets/partner_modern_ui.dart';
 import 'widgets/partner_ui.dart';
 import 'widgets/partner_company_lifecycle_panel.dart';
 import 'widgets/partner_vehicle_inspection_tab.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class PartnerDetailScreen extends StatefulWidget {
   final Partner partner;
@@ -158,7 +159,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
   @override
   Widget build(BuildContext context) {
     if (_accessLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: DriftProLoadingCenter());
     }
 
     if (!PartnerAccess.canOpenPartnerDetail(_profile?.access)) {

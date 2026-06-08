@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
 import '../../models/user_profile.dart';
 import '../employees/employee_edit_screen.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Fast visuell struktur — matcher offisielt organisasjonskart (uten superadmin).
 class _OrgPerson {
@@ -234,7 +235,7 @@ class _OrganizationChartScreenState extends State<OrganizationChartScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: DriftProLoadingCenter());
     }
     if (_error != null) {
       return Scaffold(

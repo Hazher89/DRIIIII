@@ -4,6 +4,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/services/survey/survey_advanced_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/survey/survey_advanced.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class SurveyArchiveScreen extends StatefulWidget {
   const SurveyArchiveScreen({super.key});
@@ -61,7 +62,7 @@ class _SurveyArchiveScreenState extends State<SurveyArchiveScreen> {
       ),
       backgroundColor: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF5F7F8),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _entries.isEmpty
               ? const Center(child: Text('Ingen arkiverte undersøkelser enda'))
               : ListView.separated(

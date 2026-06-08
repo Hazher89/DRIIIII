@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:docx_file_viewer/docx_file_viewer.dart';
 import 'package:path_provider/path_provider.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 Widget buildDocxNativePreview(Uint8List bytes) {
   return _DocxNativePreview(bytes: bytes);
@@ -40,7 +41,7 @@ class _DocxNativePreviewState extends State<_DocxNativePreview> {
       future: _layoutFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
-          return const Center(child: CircularProgressIndicator());
+          return const DriftProLoadingCenter();
         }
         if (snapshot.hasError) {
           return Center(

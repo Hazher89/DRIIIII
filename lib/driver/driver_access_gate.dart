@@ -4,6 +4,7 @@ import '../core/services/supabase_service.dart';
 import '../core/theme/app_theme.dart';
 import '../models/user_profile.dart';
 import 'driver_shell.dart';
+import '../widgets/driftpro_loading_indicator.dart';
 
 class DriverAccessGate extends StatefulWidget {
   const DriverAccessGate({super.key});
@@ -35,7 +36,7 @@ class _DriverAccessGateState extends State<DriverAccessGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading) return const Scaffold(body: DriftProLoadingCenter());
     if (_profile == null) {
       return Scaffold(
         body: Center(

@@ -8,6 +8,7 @@ import '../core/services/notification/notification_inbox_service.dart';
 import '../core/services/supabase_service.dart';
 import '../core/theme/app_theme.dart';
 import '../models/user_profile.dart';
+import 'driftpro_loading_indicator.dart';
 
 /// Global varselbjelle — kun hendelser brukeren har tilgang til.
 class DriftproNotificationBell extends StatefulWidget {
@@ -104,7 +105,7 @@ class _DriftproNotificationBellState extends State<DriftproNotificationBell> {
                 if (_loading)
                   const Padding(
                     padding: EdgeInsets.all(24),
-                    child: Center(child: CircularProgressIndicator()),
+                    child: const DriftProLoadingCenter(),
                   )
                 else if (summary == null || summary.items.isEmpty)
                   const Padding(

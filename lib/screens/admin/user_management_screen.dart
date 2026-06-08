@@ -3,6 +3,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../models/department.dart';
 import '../../../models/user_profile.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class UserManagementScreen extends StatefulWidget {
   const UserManagementScreen({super.key});
@@ -207,7 +208,7 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _users.isEmpty
               ? const Center(child: Text('Ingen brukere funnet'))
               : ListView.builder(

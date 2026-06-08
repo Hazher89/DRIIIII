@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/survey/survey_service.dart';
 import '../../models/survey/survey.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class SurveyResultsScreen extends StatefulWidget {
   final Survey survey;
@@ -48,7 +49,7 @@ class _SurveyResultsScreenState extends State<SurveyResultsScreen> {
         title: const Text('Resultater'),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(

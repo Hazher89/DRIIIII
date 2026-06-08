@@ -5,6 +5,7 @@ import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/vehicle_inspection.dart';
 import 'owner_portal_common.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class OwnerPortalInspectionsPage extends StatefulWidget {
   final Partner partner;
@@ -53,7 +54,7 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(

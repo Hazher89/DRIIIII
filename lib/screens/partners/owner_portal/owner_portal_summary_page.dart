@@ -7,6 +7,7 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_summary_meta.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_economic_summary.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Økonomisk oppsummering fra PDF (siste uke, arkiv, måned/år-sum).
 class OwnerPortalSummaryPage extends StatefulWidget {
@@ -65,7 +66,7 @@ class _OwnerPortalSummaryPageState extends State<OwnerPortalSummaryPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _load,
               child: _entries.isEmpty

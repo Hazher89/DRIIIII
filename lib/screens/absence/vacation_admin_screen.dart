@@ -5,6 +5,7 @@ import '../../core/services/absence/vacation_admin_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'widgets/vacation_distribute_wizard.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Avansert ferieadministrasjon — oversiktlig for admin.
 class VacationAdminScreen extends StatefulWidget {
@@ -120,7 +121,7 @@ class _VacationAdminScreenState extends State<VacationAdminScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _error != null
               ? _errorView()
               : Column(

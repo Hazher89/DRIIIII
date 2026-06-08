@@ -12,6 +12,7 @@ import 'screens/dispatch_home_screen.dart';
 import 'screens/dispatch_orders_screen.dart';
 import 'screens/dispatch_planner_screen.dart';
 import 'screens/dispatch_tracking_screen.dart';
+import '../widgets/driftpro_loading_indicator.dart';
 
 enum DispatchSection {
   home,
@@ -117,11 +118,7 @@ class _DispatchShellState extends State<DispatchShell> {
             child: IconButton(
               onPressed: _syncing ? null : _syncFleet,
               icon: _syncing
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? SizedBox(width: 22, height: 22, child: DriftProLoadingIndicator(size: 22))
                   : const Icon(Icons.cloud_sync_outlined),
             ),
           ),

@@ -19,6 +19,7 @@ import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_route_pdf_actions.dart';
 import 'partner_route_workflow_ui.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -427,7 +428,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
           minimumSize: const Size(double.infinity, 52),
         ),
         icon: _analyzing
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+            ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
             : const Icon(Icons.upload_file),
         label: Text(_hasPdf ? 'Bytt PDF' : 'Last opp PDF'),
       ),
@@ -576,7 +577,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
                 minimumSize: const Size(double.infinity, 50),
               ),
               icon: _busy
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
                   : const Icon(Icons.rocket_launch_outlined),
               label: Text(_publishLabel),
             ),

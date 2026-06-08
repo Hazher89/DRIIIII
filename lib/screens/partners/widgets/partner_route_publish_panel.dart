@@ -16,6 +16,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_route_pdf_actions.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Én arbeidsflate: last opp PDF → kontroller alle sjåfører → publiser.
 class PartnerRoutePublishPanel extends StatefulWidget {
@@ -372,7 +373,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()));
+      return const Padding(padding: EdgeInsets.all(32), child: const DriftProLoadingCenter());
     }
 
     final vehicleCount = _byVehicle.length;
@@ -415,7 +416,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
                 FilledButton.icon(
                   onPressed: _busyUpload ? null : _pickPdfs,
                   icon: _busyUpload
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
                       : const Icon(Icons.upload_file),
                   label: const Text('Last opp rute-PDF'),
                 ),
@@ -469,7 +470,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
             FilledButton.icon(
               onPressed: _publishing || _staged.isEmpty || _selected.isEmpty ? null : _publish,
               icon: _publishing
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                   : const Icon(Icons.rocket_launch_outlined),
               label: Text('Publiser $selectedCount rute(r) til sjåfører'),
               style: FilledButton.styleFrom(

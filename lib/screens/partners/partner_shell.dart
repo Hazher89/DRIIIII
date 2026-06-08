@@ -33,6 +33,7 @@ import 'owner_portal/owner_portal_summary_page.dart';
 import 'widgets/partner_portal_bottom_nav.dart';
 import 'widgets/partner_route_pdf_actions.dart';
 import 'widgets/partner_ui.dart' show PartnerStatusBadge;
+import '../../widgets/driftpro_loading_indicator.dart';
 
 DateTime _routeCalendarDay(PartnerRouteShare r) {
   final t = r.routeStartAt ?? r.shareDate;
@@ -141,7 +142,7 @@ class _PartnerShellState extends State<PartnerShell> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: DriftProLoadingCenter());
     }
 
     if (widget.profile.partnerId == null || _partner == null) {
@@ -704,7 +705,7 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _load,
               child: TabBarView(
@@ -788,7 +789,7 @@ class _PartnerMeetingsPageState extends State<_PartnerMeetingsPage> {
         actions: _partnerLogoutActions(context),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _meetings.isEmpty
               ? const Center(child: Text('Ingen planlagte møter.'))
               : ListView.separated(
@@ -859,7 +860,7 @@ class _PartnerInspectionsPageState extends State<_PartnerInspectionsPage> {
         actions: _partnerLogoutActions(context),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _items.isEmpty
               ? const Center(child: Text('Ingen registrerte bilkontroller ennå.'))
               : ListView.separated(
@@ -994,7 +995,7 @@ class _PartnerFriPageState extends State<_PartnerFriPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _mine.isEmpty
               ? Center(
                   child: Column(

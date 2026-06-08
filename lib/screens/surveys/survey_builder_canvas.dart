@@ -6,6 +6,7 @@ import '../../core/services/survey/survey_advanced_service.dart';
 import '../../core/services/survey/survey_question_catalog.dart';
 import '../../core/services/survey/survey_service.dart';
 import '../../core/services/survey/survey_theme_presets.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class SurveyBuilderCanvas extends StatefulWidget {
   final Survey survey;
@@ -364,7 +365,7 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
                   ],
                 ),
                 child: _isLoading 
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const DriftProLoadingCenter()
                   : ClipRRect(
                       borderRadius: BorderRadius.circular(12),
                       child: SingleChildScrollView(
@@ -1160,14 +1161,7 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                   child: _isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
+                      ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
                       : const Text(
                           'Ferdig — gå til Tema',
                           style: TextStyle(

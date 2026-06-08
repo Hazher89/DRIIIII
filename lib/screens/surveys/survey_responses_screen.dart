@@ -6,6 +6,7 @@ import '../../core/services/survey/survey_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/driftpro_theme_context.dart';
 import '../../models/survey/survey.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Innboks med alle innsendte svar — filtrer og drill-down.
 class SurveyResponsesScreen extends StatefulWidget {
@@ -74,7 +75,7 @@ class _SurveyResponsesScreenState extends State<SurveyResponsesScreen> {
     final drift = context.driftColors;
 
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
 
     return Column(

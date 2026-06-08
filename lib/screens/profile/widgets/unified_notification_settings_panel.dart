@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/notification_channel.dart';
 import '../../../models/notification_event_definition.dart';
 import 'notification_channel_picker.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 enum NotificationSettingsScope { all, mavi, partner }
 
@@ -170,7 +171,7 @@ class _UnifiedNotificationSettingsPanelState
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
     if (_error != null) {
       return Center(
@@ -364,11 +365,7 @@ class _UnifiedNotificationSettingsPanelState
                         ),
                       ),
                       if (saving)
-                        const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+                        SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18)),
                     ],
                   ),
                   if (event.subtitle != null) ...[

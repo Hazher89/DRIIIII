@@ -6,6 +6,7 @@ import '../../../../core/services/supabase_service.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../models/hms/stakeholder_risk_assessment.dart';
 import 'stakeholder_risk_editor_screen.dart';
+import '../../../../widgets/driftpro_loading_indicator.dart';
 
 class StakeholderRiskHubTab extends StatefulWidget {
   const StakeholderRiskHubTab({super.key});
@@ -113,7 +114,7 @@ class _StakeholderRiskHubTabState extends State<StakeholderRiskHubTab> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return const DriftProLoadingCenter();
     if (_error != null) {
       return Center(
         child: Column(

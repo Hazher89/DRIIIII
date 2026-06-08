@@ -20,6 +20,7 @@ import 'partner_sms_hub_screen.dart';
 import 'vehicle_rental_hub_screen.dart';
 import 'widgets/partner_companies_ui.dart';
 import 'widgets/partner_ui.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Oversikt over samarbeidspartnere (interne brukere).
 class PartnersDashboardScreen extends StatefulWidget {
@@ -339,7 +340,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       body: _tabs == null
           ? (_loading
-              ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+              ? const DriftProLoadingCenter()
               : Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),
@@ -411,7 +412,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                 ),
               ],
               body: _loading
-                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const DriftProLoadingCenter()
                   : TabBarView(
                       controller: _tabs,
                       children: [
@@ -452,7 +453,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
 
   Widget _buildPartnersList({bool nestedScroll = false}) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+      return const DriftProLoadingCenter();
     }
     if (_error != null) {
       return ListView(

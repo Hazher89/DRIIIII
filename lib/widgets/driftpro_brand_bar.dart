@@ -17,13 +17,13 @@ class DriftProBrandBar extends StatelessWidget {
         bottom: false,
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
           decoration: BoxDecoration(
             color: drift.surface,
             border: Border(bottom: BorderSide(color: drift.borderSubtle)),
           ),
           child: const DriftProBrandLogo(
-            density: DriftProBrandDensity.compact,
+            density: DriftProBrandDensity.header,
           ),
         ),
       ),

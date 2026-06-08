@@ -8,6 +8,7 @@ import '../../last_mile/models/lm_route.dart';
 import '../../last_mile/services/last_mile_order_service.dart';
 import '../../last_mile/services/last_mile_route_service.dart';
 import '../../last_mile/services/lm_tracking_service.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Planlegger — TransFleet-erstatning: VRPTW, kart, drag-drop rekkefølge.
 class DispatchPlannerScreen extends StatefulWidget {
@@ -135,7 +136,7 @@ class DispatchPlannerScreenState extends State<DispatchPlannerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return const DriftProLoadingCenter();
 
     final stops = _selected?.stops ?? [];
     final markers = <Marker>[];

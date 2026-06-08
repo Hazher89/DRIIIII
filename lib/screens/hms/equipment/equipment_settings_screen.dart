@@ -4,6 +4,7 @@ import '../../../core/services/hms/equipment_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/hms/equipment.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Varselinnstillinger — superadmin / admin / avdelingsleder med utstyr-admin.
 class EquipmentSettingsScreen extends StatefulWidget {
@@ -60,7 +61,7 @@ class _EquipmentSettingsScreenState extends State<EquipmentSettingsScreen> {
   Widget build(BuildContext context) {
     if (_loading || _settings == null) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: const DriftProLoadingCenter(),
       );
     }
     final s = _settings!;

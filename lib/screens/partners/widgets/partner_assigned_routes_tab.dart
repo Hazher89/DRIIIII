@@ -7,6 +7,7 @@ import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/route_reminder_flag.dart';
 import 'partner_route_pdf_actions.dart';
 import 'route_reminder_badge.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Tildelte ruter for én partner — status, skift, sporingsinfo.
 class PartnerAssignedRoutesTab extends StatefulWidget {
@@ -76,7 +77,7 @@ class _PartnerAssignedRoutesTabState extends State<PartnerAssignedRoutesTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
 
     final accepted = _routes.where((r) => r.ackStatus == 'accepted').length;

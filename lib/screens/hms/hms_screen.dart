@@ -11,6 +11,7 @@ import '../../core/services/hms/hms_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// HMS-hub — moduler for avvik, risiko, SJA, vernerunde m.m.
 class HmsScreen extends StatefulWidget {
@@ -158,7 +159,7 @@ class _HmsScreenState extends State<HmsScreen> {
           ],
         ),
         body: _profile == null
-            ? const Center(child: CircularProgressIndicator())
+            ? const DriftProLoadingCenter()
             : modules.isEmpty
                 ? Center(
                     child: Padding(

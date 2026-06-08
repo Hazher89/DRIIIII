@@ -11,6 +11,7 @@ import '../../models/partner/partner_links.dart';
 import '../../core/utils/portal_credentials.dart';
 import 'widgets/partner_companies_ui.dart';
 import 'widgets/partner_ui.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class NewPartnerScreen extends StatefulWidget {
   const NewPartnerScreen({super.key});
@@ -377,11 +378,7 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
                       : () => setState(() => _step++),
               style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
               icon: _saving && isLast
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
+                  ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                   : Icon(isLast ? Icons.check : Icons.arrow_forward),
               label: Text(isLast ? 'Registrer bedrift' : 'Neste'),
             ),

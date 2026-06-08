@@ -6,6 +6,7 @@ import '../../core/services/storage/dropbox_storage_modules.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/open_external_url.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Koble bedriftens Dropbox (OAuth — ikke passord i appen).
 class DropboxStorageSettingsScreen extends StatefulWidget {
@@ -189,7 +190,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -276,11 +277,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                           FilledButton.icon(
                             onPressed: _busy ? null : _connect,
                             icon: _busy
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
+                                ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                                 : const Icon(Icons.link),
                             label: const Text('Koble Dropbox (sikker innlogging)'),
                           ),
@@ -313,11 +310,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                             FilledButton.icon(
                               onPressed: _busy ? null : _migrateBatch,
                               icon: _busy
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                    )
+                                  ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                                   : const Icon(Icons.cloud_upload_outlined),
                               label: Text('Migrer neste batch (max 25)'),
                             ),

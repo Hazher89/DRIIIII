@@ -15,6 +15,7 @@ import '../widgets/interactive_risk_matrix.dart';
 import 'widgets/risk_assessment_attachments_panel.dart';
 import 'widgets/risk_form_section.dart';
 import '../../../models/ticket_assignee_options.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class RiskAssessmentDetailScreen extends StatefulWidget {
   final RiskAssessment assessment;
@@ -254,14 +255,14 @@ class _RiskAssessmentDetailScreenState extends State<RiskAssessmentDetailScreen>
           if (_canEdit)
             IconButton(
               icon: _saving
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
                   : const Icon(Icons.save_outlined),
               onPressed: _saving ? null : () => _save(),
             ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(

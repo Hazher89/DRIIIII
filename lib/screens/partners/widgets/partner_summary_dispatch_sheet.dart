@@ -9,6 +9,7 @@ import '../../../models/partner/partner_links.dart';
 import 'partner_route_pdf_actions.dart';
 import 'partner_route_workflow_ui.dart';
 import 'partner_summary_queue_card.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 const _summaryCardGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
   maxCrossAxisExtent: 280,
@@ -359,11 +360,7 @@ class _PartnerSummaryDispatchSheetState extends State<PartnerSummaryDispatchShee
             minimumSize: const Size(double.infinity, 50),
           ),
           icon: _busyUpload
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
+              ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
               : const Icon(Icons.upload_file),
           label: Text(_drafts.isEmpty ? 'Velg PDF-er' : 'Last opp flere PDF-er'),
         ),
@@ -588,7 +585,7 @@ class _PartnerSummaryDispatchSheetState extends State<PartnerSummaryDispatchShee
     final btnNoSms = FilledButton.icon(
       onPressed: _sending || !canSend ? null : () => _send(withSms: false),
       icon: _sending
-          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
           : const Icon(Icons.inventory_2_outlined, size: 20),
       label: Text('Uten SMS ($_selectedCount)'),
       style: FilledButton.styleFrom(
@@ -600,7 +597,7 @@ class _PartnerSummaryDispatchSheetState extends State<PartnerSummaryDispatchShee
     final btnSms = FilledButton.icon(
       onPressed: _sending || !canSend ? null : () => _send(withSms: true),
       icon: _sending
-          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+          ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
           : const Icon(Icons.rocket_launch_outlined, size: 20),
       label: Text('Med SMS ($_selectedCount)'),
       style: FilledButton.styleFrom(

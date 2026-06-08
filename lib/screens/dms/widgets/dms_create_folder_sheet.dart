@@ -6,6 +6,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/department.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Smart opprettelse av mappe: navn, passord, felles/privat, deling.
 class DmsCreateFolderSheet extends StatefulWidget {
@@ -322,11 +323,7 @@ class _DmsCreateFolderSheetState extends State<DmsCreateFolderSheet> {
                     FilledButton.icon(
                       onPressed: _saving ? null : _submit,
                       icon: _saving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
+                          ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                           : const Icon(Icons.create_new_folder),
                       label: Text(_isSharedMavi ? 'Opprett felles mappe' : 'Opprett mappe'),
                       style: FilledButton.styleFrom(

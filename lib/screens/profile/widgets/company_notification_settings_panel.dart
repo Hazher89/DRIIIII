@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/company_notification_settings.dart';
 import '../../../models/user_profile.dart';
 import 'notification_channel_picker.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Firmavide varselkanaler (MAVI-ansatte + samarbeidspartnere).
 class CompanyNotificationSettingsPanel extends StatefulWidget {
@@ -68,7 +69,7 @@ class _CompanyNotificationSettingsPanelState
   @override
   Widget build(BuildContext context) {
     if (_loading || _settings == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
     final s = _settings!;
 

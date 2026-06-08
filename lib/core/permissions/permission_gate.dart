@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/user_profile.dart';
 import 'user_access.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Naviger til en hovedfane via tilgangsnøkkel (ikke hardkodet indeks).
 typedef NavigateByAccess = void Function(String accessKey);
@@ -66,7 +67,7 @@ class PermissionGuard extends StatelessWidget {
   Widget build(BuildContext context) {
     if (profile == null) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: const DriftProLoadingCenter(),
       );
     }
     if (profile!.access.can(accessKey)) {

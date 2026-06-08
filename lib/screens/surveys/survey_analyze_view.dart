@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/driftpro_colors.dart';
 import '../../core/theme/driftpro_theme_context.dart';
 import '../../models/survey/survey.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class SurveyAnalyzeView extends StatefulWidget {
   final Survey survey;
@@ -68,7 +69,7 @@ class _SurveyAnalyzeViewState extends State<SurveyAnalyzeView> {
     final m = _metrics;
 
     return _isLoading
-      ? const Center(child: CircularProgressIndicator())
+      ? const DriftProLoadingCenter()
       : SingleChildScrollView(
           child: Column(
             children: [

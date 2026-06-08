@@ -15,6 +15,7 @@ import 'widgets/employee_approval_sheet.dart';
 import 'widgets/employee_display.dart';
 import 'widgets/employee_birthdays_tab.dart';
 import 'widgets/employee_move_department_sheet.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Ansattadministrasjon – superadmin styrer alle DriftPro-tilganger per bruker.
 class EmployeeHubScreen extends StatefulWidget {
@@ -257,7 +258,7 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _error != null
               ? Center(child: Text(_error!))
               : Column(

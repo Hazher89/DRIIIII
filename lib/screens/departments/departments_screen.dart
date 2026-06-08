@@ -15,6 +15,7 @@ import 'widgets/department_grid_card.dart';
 import 'widgets/department_ui_helpers.dart';
 import '../absence/widgets/leave_absence_rate_widgets.dart';
 import 'widgets/unassigned_employees_banner.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 enum _DepartmentFilter { all, needsLeader, hasMembers, empty }
 
@@ -207,7 +208,7 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
               label: const Text('Ny avdeling'),
             ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _error != null
               ? _buildError(isDark)
               : RefreshIndicator(

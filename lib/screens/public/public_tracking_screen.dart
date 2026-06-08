@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../last_mile/services/lm_tracking_service.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Offentlig kundesporing (?track=token).
 class PublicTrackingScreen extends StatefulWidget {
@@ -38,7 +39,7 @@ class _PublicTrackingScreenState extends State<PublicTrackingScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: DriftProLoadingCenter());
     }
     if (_data == null) {
       return Scaffold(

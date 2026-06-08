@@ -3,6 +3,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
 import '../../models/user_profile.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class OnboardingScreen extends StatefulWidget {
   final UserProfile profile;
@@ -146,7 +147,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       backgroundColor: isDark ? DriftProTheme.bgDark : DriftProTheme.bgLight,
       body: SafeArea(
         child: _isLoading 
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(32),

@@ -8,6 +8,7 @@ import '../../../models/safety_round.dart';
 import 'package:intl/intl.dart';
 import 'safety_round_conduct_screen.dart';
 import 'safety_round_detail_screen.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class SafetyRoundListScreen extends StatefulWidget {
   const SafetyRoundListScreen({super.key});
@@ -93,7 +94,7 @@ class _SafetyRoundListScreenState extends State<SafetyRoundListScreen> {
           ),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const DriftProLoadingCenter()
                 : RefreshIndicator(
                     onRefresh: _loadData,
                     child: _rounds.isEmpty

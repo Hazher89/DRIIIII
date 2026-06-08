@@ -3,6 +3,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/survey/survey_service.dart';
 import '../../models/survey/survey.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class SurveyEditorScreen extends StatefulWidget {
   final Survey survey;
@@ -157,7 +158,7 @@ class _SurveyEditorScreenState extends State<SurveyEditorScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _questions.isEmpty
               ? _buildEmptyState()
               : ReorderableListView(

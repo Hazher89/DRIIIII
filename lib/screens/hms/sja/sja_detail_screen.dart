@@ -13,6 +13,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/hms/hms_sja_step.dart';
 import '../../../models/sja_form.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class SjaDetailScreen extends StatefulWidget {
   final SjaForm form;
@@ -248,7 +249,7 @@ class _SjaDetailScreenState extends State<SjaDetailScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
@@ -440,11 +441,7 @@ class _SjaDetailScreenState extends State<SjaDetailScreen> {
                   child: FilledButton(
                     onPressed: _signing ? null : _signDigitally,
                     child: _signing
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
+                        ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                         : const Text('Signer'),
                   ),
                 ),

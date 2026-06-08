@@ -9,6 +9,7 @@ import '../../../models/dms/dms_file.dart';
 import '../../../models/dms/dms_folder.dart';
 import '../../../models/dms/dms_permission.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class DmsPermissionsSheet extends StatefulWidget {
   final DmsFolder? folder;
@@ -173,7 +174,7 @@ class _DmsPermissionsSheetState extends State<DmsPermissionsSheet>
           const SizedBox(height: 8),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const DriftProLoadingCenter()
                 : TabBarView(
                     controller: _tabs,
                     children: [

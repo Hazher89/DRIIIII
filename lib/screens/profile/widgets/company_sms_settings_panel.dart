@@ -4,6 +4,7 @@ import '../../../core/services/sms/company_sms_settings.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// SMS-innstillinger (innhold uten egen Scaffold).
 class CompanySmsSettingsPanel extends StatefulWidget {
@@ -62,7 +63,7 @@ class _CompanySmsSettingsPanelState extends State<CompanySmsSettingsPanel> {
   @override
   Widget build(BuildContext context) {
     if (_loading || _settings == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
     final s = _settings!;
 

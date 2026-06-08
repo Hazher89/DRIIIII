@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_route_pdf_actions.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Full oversikt over kladd-ruter før SMS/publisering til sjåfører.
 class PartnerRouteStagedPublishSheet extends StatefulWidget {
@@ -258,7 +259,7 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const SizedBox(height: 320, child: Center(child: CircularProgressIndicator()));
+      return const SizedBox(height: 320, child: const DriftProLoadingCenter());
     }
 
     final shiftItems = widget.shifts.where((s) => !s.isAvailability).toList();
@@ -397,7 +398,7 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
                 minimumSize: const Size(double.infinity, 52),
               ),
               icon: _publishing
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
                   : const Icon(Icons.rocket_launch_outlined),
               label: Text('$_publishLabel (${_selected.length})'),
             ),

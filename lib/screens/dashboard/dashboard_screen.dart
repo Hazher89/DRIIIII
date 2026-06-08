@@ -1438,20 +1438,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                   elevation: 0,
                   backgroundColor:
                       isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-                  title: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: DriftProTheme.primaryGreen,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.dashboard_rounded,
-                            color: Colors.white, size: 18),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(_companyName ?? CompanyDisplay.defaultName),
-                    ],
+                  title: Text(
+                    _heroTitleLine(),
+                    style: DriftProTheme.headingSm.copyWith(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   actions: [
                     if (_access?.canKiosk == true)

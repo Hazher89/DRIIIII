@@ -12,6 +12,7 @@ import 'widgets/employee_approval_sheet.dart';
 import 'widgets/employee_department_leadership_editor.dart';
 import 'widgets/employee_files_panel.dart';
 import 'widgets/permission_matrix_editor.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Full tilgangskonfigurasjon for én ansatt (superadmin).
 class EmployeeAccessDetailScreen extends StatefulWidget {
@@ -275,7 +276,7 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
   Widget _filesTab() {
     final me = _currentUser;
     if (me == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
     return EmployeeFilesPanel(
       employee: widget.employee,
@@ -503,11 +504,7 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
             backgroundColor: DriftProTheme.primaryGreen,
           ),
           child: _saving
-              ? const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
+              ? SizedBox(width: 24, height: 24, child: DriftProLoadingIndicator(size: 24))
               : const Text('Lagre alle tilganger'),
         ),
       ),

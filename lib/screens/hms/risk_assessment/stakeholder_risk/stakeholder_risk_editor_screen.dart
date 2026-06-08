@@ -6,6 +6,7 @@ import '../../widgets/hms_pdf_export_button.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../models/hms/stakeholder_risk_assessment.dart';
 import 'stakeholder_risk_widgets.dart';
+import '../../../../widgets/driftpro_loading_indicator.dart';
 
 class StakeholderRiskEditorScreen extends StatefulWidget {
   final String assessmentId;
@@ -266,7 +267,7 @@ class _StakeholderRiskEditorScreenState extends State<StakeholderRiskEditorScree
               label: const Text('Lagre'),
             ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _error != null
               ? Center(child: Text(_error!))
               : _assessment == null

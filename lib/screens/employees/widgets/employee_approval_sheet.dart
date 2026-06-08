@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/department.dart';
 import '../../../models/user_profile.dart';
 import 'permission_matrix_editor.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 enum ApprovalMode { auto, custom }
 
@@ -245,11 +246,7 @@ class _EmployeeApprovalSheetState extends State<EmployeeApprovalSheet> {
               child: FilledButton(
                 onPressed: _saving ? null : _submit,
                 child: _saving
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
+                    ? SizedBox(width: 24, height: 24, child: DriftProLoadingIndicator(size: 24))
                     : const Text('Godkjenn og gi tilgang'),
               ),
             ),

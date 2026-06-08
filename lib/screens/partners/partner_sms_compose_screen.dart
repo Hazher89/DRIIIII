@@ -10,6 +10,7 @@ import '../../models/partner/partner.dart';
 import 'widgets/partner_sms_message_section.dart';
 import 'widgets/partner_sms_route_customers_tab.dart';
 import 'widgets/partner_ui.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class PartnerSmsContact {
   final String id;
@@ -608,7 +609,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
           if (_loading)
             const Padding(
               padding: EdgeInsets.all(32),
-              child: Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen)),
+              child: const DriftProLoadingCenter(),
             )
           else if (_error != null)
             Padding(
@@ -655,7 +656,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                       child: _companyId == null
                           ? const Padding(
                               padding: EdgeInsets.all(32),
-                              child: Center(child: CircularProgressIndicator()),
+                              child: const DriftProLoadingCenter(),
                             )
                           : PartnerSmsRouteCustomersTab(
                               companyId: _companyId!,
@@ -747,7 +748,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     bool hideMaviPicker = false,
   }) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen));
+      return const DriftProLoadingCenter();
     }
     if (_error != null) {
       return Center(child: Text(_error!, textAlign: TextAlign.center));
@@ -1092,11 +1093,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
           icon: _sending
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
+              ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
               : const Icon(Icons.send),
           label: Text('Send til alle valgte ($totalRecipients)'),
         ),

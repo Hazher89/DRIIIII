@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner_notification_settings.dart';
 import '../../../models/user_profile.dart';
 import '../../profile/widgets/notification_channel_picker.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Kun samarbeidspartnere — adskilt fra MAVI-ansatte.
 class PartnerNotificationSettingsPanel extends StatefulWidget {
@@ -55,7 +56,7 @@ class _PartnerNotificationSettingsPanelState
   @override
   Widget build(BuildContext context) {
     if (_loading || _s == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
     final s = _s!;
     return Column(

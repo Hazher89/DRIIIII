@@ -6,6 +6,7 @@ import '../../../../core/services/storage/company_file_storage.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../models/risk_assessment.dart';
 import '../../../../widgets/resolved_storage_image.dart';
+import '../../../../widgets/driftpro_loading_indicator.dart';
 
 /// Opplasting og visning av bilder og dokumenter for risikoanalyser.
 class RiskAssessmentAttachmentsPanel extends StatelessWidget {
@@ -40,11 +41,7 @@ class RiskAssessmentAttachmentsPanel extends StatelessWidget {
             Text('Vedlegg', style: DriftProTheme.labelLg),
             if (uploading) ...[
               const SizedBox(width: 12),
-              const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
+              SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18)),
             ],
           ],
         ),

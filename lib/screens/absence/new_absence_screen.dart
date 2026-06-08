@@ -15,6 +15,7 @@ import '../../models/absence.dart';
 import '../../models/user_profile.dart';
 import 'widgets/department_leave_tip_card.dart';
 import 'widgets/leave_rules_panel.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class NewAbsenceScreen extends StatefulWidget {
   final AbsenceType type;
@@ -334,7 +335,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
         title: Text('Registrer ${widget.type.label.toLowerCase()}'),
       ),
       body: _isLoadingContext
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _egenmeldingBlocked
               ? _buildEgenmeldingBlockedBody(isDark)
               : SingleChildScrollView(

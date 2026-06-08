@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../models/hms/equipment.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class EquipmentRegistryScreen extends StatefulWidget {
   const EquipmentRegistryScreen({super.key});
@@ -72,7 +73,7 @@ class _EquipmentRegistryScreenState extends State<EquipmentRegistryScreen> {
           _buildSearchBar(isDark),
           Expanded(
             child: _isLoading 
-              ? const Center(child: CircularProgressIndicator())
+              ? const DriftProLoadingCenter()
               : _buildList(isDark),
           ),
         ],

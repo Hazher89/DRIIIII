@@ -10,6 +10,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/hms_document.dart';
 import '../../models/user_profile.dart';
 import '../../widgets/resolved_storage_image.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Avansert personalmappe — oversikt, søk, opplasting og redigering.
 class PersonalFolderHubScreen extends StatefulWidget {
@@ -139,7 +140,7 @@ class _PersonalFolderHubScreenState extends State<PersonalFolderHubScreen> {
         label: const Text('Last opp'),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _load,
               child: CustomScrollView(

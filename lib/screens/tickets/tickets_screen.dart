@@ -12,6 +12,7 @@ import '../../models/user_profile.dart';
 import 'new_ticket_screen.dart';
 import 'ticket_admin_dashboard_screen.dart';
 import 'ticket_detail_screen.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Avvik med synlig hub: KPI, hurtighandlinger og liste (ikke «gjemt» kontrollsenter).
 class TicketsScreen extends StatefulWidget {
@@ -259,7 +260,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
             ),
             if (_isLoading)
               const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator()),
+                child: const DriftProLoadingCenter(),
               )
             else if (_error != null)
               SliverFillRemaining(

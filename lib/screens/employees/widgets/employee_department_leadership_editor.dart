@@ -4,6 +4,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/department.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Velg hvilke avdelinger en ansatt skal være leder for (kan være flere).
 class EmployeeDepartmentLeadershipEditor extends StatefulWidget {
@@ -83,7 +84,7 @@ class _EmployeeDepartmentLeadershipEditorState
     if (_loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: CircularProgressIndicator()),
+        child: const DriftProLoadingCenter(),
       );
     }
 

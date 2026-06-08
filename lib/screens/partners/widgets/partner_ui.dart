@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Delte UI-komponenter for bedrifter / samarbeidspartnere.
 class PartnerUi {
@@ -475,11 +476,7 @@ class PartnerStickySaveBar extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: loading ? null : onPressed,
                     icon: loading
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
+                        ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                         : const Icon(Icons.save_outlined),
                     label: Text(label),
                     style: FilledButton.styleFrom(

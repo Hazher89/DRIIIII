@@ -4,7 +4,6 @@ import 'dart:ui';
 import '../../core/auth/employee_oauth_sign_in.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/driftpro_brand_bar.dart';
-import '../../widgets/driftpro_brand_logo.dart';
 import '../more/help_support_screen.dart';
 import '../more/privacy_screen.dart';
 import '../more/about_driftpro_screen.dart';
@@ -113,12 +112,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const DriftProBrandLogo(
-                      density: DriftProBrandDensity.comfortable,
-                      alignment: Alignment.center,
-                    ),
-                    const SizedBox(height: 40),
-
                     // Advanced Login Card
                     _buildGlassContainer(
                       width: 450,

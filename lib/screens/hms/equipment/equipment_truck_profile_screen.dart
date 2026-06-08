@@ -10,6 +10,7 @@ import '../../../models/hms/equipment.dart';
 import '../../../models/user_profile.dart';
 import 'equipment_form_screen.dart';
 import 'equipment_service_book_screen.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Truck-profil: mal (gaffel/klem), bilder, kontroll og SMS-planlegging.
 class EquipmentTruckProfileScreen extends StatefulWidget {
@@ -224,7 +225,7 @@ class _EquipmentTruckProfileScreenState extends State<EquipmentTruckProfileScree
   Widget build(BuildContext context) {
     final e = _equipment;
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: DriftProLoadingCenter());
     }
     if (e == null) {
       return const Scaffold(body: Center(child: Text('Fant ikke utstyr')));
@@ -264,7 +265,7 @@ class _EquipmentTruckProfileScreenState extends State<EquipmentTruckProfileScree
         ),
       ),
       body: _saving
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : TabBarView(
               controller: _tabs,
               children: [

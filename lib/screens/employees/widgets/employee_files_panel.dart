@@ -8,6 +8,7 @@ import '../../../models/hms_document.dart';
 import '../../../models/user_profile.dart';
 import '../../../widgets/resolved_storage_image.dart';
 import '../../../core/services/storage/company_file_storage.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Filer for én ansatt — opplasting, synlighet for ansatt, oversikt.
 class EmployeeFilesPanel extends StatefulWidget {
@@ -244,7 +245,7 @@ class _EmployeeFilesPanelState extends State<EmployeeFilesPanel> {
           ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const DriftProLoadingCenter()
               : _filtered.isEmpty
                   ? Center(
                       child: Text(

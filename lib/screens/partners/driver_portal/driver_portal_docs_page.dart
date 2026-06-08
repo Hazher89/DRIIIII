@@ -6,6 +6,7 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../widgets/partner_ui.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class DriverPortalDocsPage extends StatefulWidget {
   final Partner partner;
@@ -64,7 +65,7 @@ class _DriverPortalDocsPageState extends State<DriverPortalDocsPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : Column(
               children: [
                 Padding(

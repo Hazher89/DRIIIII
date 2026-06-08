@@ -9,6 +9,7 @@ import '../../../core/utils/nb_date_format.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class DriverPortalFriPage extends StatefulWidget {
   final Partner partner;
@@ -163,7 +164,7 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _mine.isEmpty
               ? Center(
                   child: Padding(

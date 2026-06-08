@@ -12,6 +12,7 @@ import '../../../models/hms/equipment.dart';
 import '../../../models/user_profile.dart';
 import 'equipment_form_screen.dart';
 import 'equipment_service_book_screen.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class EquipmentDetailScreen extends StatefulWidget {
   final String equipmentId;
@@ -177,7 +178,7 @@ class _EquipmentDetailScreenState extends State<EquipmentDetailScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: const DriftProLoadingCenter(),
       );
     }
     final e = _item;

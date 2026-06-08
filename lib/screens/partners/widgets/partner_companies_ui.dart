@@ -7,6 +7,7 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Delte, kompakte UI-komponenter for bedriftsliste og registrering.
 class PartnerCompaniesUi {
@@ -578,7 +579,7 @@ class _PartnerBrregLookupPanelState extends State<PartnerBrregLookupPanel> {
               onPressed: _loading ? null : _searchName,
               style: FilledButton.styleFrom(backgroundColor: DriftProTheme.accentBlue),
               child: _loading
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                   : const Icon(Icons.search, size: 20),
             ),
           ],

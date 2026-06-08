@@ -20,6 +20,7 @@ import 'partner_modern_ui.dart';
 import 'partner_overview_tab.dart';
 import 'partner_transport_licenses_tab.dart';
 import 'partner_vehicle_inspection_tab.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Åpner arbeidsflate for én bedrift — panel eller full skjerm.
 class PartnerCompanyWorkspace {
@@ -216,7 +217,7 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+      return const DriftProLoadingCenter();
     }
 
     return Column(

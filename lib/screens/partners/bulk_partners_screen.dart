@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import 'widgets/partner_companies_ui.dart';
 import 'widgets/partner_ui.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class _BulkRow {
   _BulkRow({
@@ -211,11 +212,7 @@ class _BulkPartnersScreenState extends State<BulkPartnersScreen> {
                 minimumSize: const Size.fromHeight(48),
               ),
               icon: _fetching
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
+                  ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
                   : const Icon(Icons.cloud_download_outlined),
               label: Text(_fetching ? 'Henter fra Brreg…' : 'Hent og forhåndsvis'),
             ),
@@ -351,11 +348,7 @@ class _BulkPartnersScreenState extends State<BulkPartnersScreen> {
             minimumSize: const Size.fromHeight(50),
           ),
           icon: _saving
-              ? const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                )
+              ? SizedBox(width: 22, height: 22, child: DriftProLoadingIndicator(size: 22))
               : const Icon(Icons.done_all),
           label: Text(_saving ? 'Registrerer…' : 'Registrer $_selectedCount bedrifter'),
         ),

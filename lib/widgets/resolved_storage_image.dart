@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/services/storage/company_file_storage.dart';
+import 'driftpro_loading_indicator.dart';
 
 /// Bilde fra Supabase-URL eller Dropbox-referanse (`dropbox://...`).
 class ResolvedStorageImage extends StatelessWidget {
@@ -34,7 +35,7 @@ class ResolvedStorageImage extends StatelessWidget {
           return SizedBox(
             width: width,
             height: height,
-            child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            child: const DriftProLoadingCenter(),
           );
         }
         return Image.network(

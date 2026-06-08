@@ -12,6 +12,7 @@ import '../../models/hms/hms_ticket_template.dart';
 import '../../models/ticket.dart';
 import '../../models/ticket_assignee_options.dart';
 import '../../models/user_profile.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Enkel, rask innrapportering for ansatte (tekst + bilder + alvor).
 class NewTicketScreen extends StatefulWidget {
@@ -474,11 +475,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
                   child: Text('Område', style: DriftProTheme.labelLg),
                 ),
                 if (_capturingGps)
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                  SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
                 else if (_gpsLat != null)
                   Text(
                     'GPS OK',
@@ -510,7 +507,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
             if (_loadingHandlers)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
-                child: Center(child: CircularProgressIndicator()),
+                child: const DriftProLoadingCenter(),
               )
             else
               _buildAssigneePicker(),
@@ -664,14 +661,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
                   ? null
                   : _submit,
               child: _isSubmitting
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
+                  ? SizedBox(width: 22, height: 22, child: DriftProLoadingIndicator(size: 22))
                   : const Text('Send avvik'),
             ),
           ],

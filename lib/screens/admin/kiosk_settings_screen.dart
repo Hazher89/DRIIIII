@@ -6,6 +6,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/services/tidsbanken/tidsbanken_presence_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/kiosk_settings.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Administrator styrer hva som vises på hjem/infoskjerm (f.eks. felles skjerm på kontoret).
 class KioskSettingsScreen extends StatefulWidget {
@@ -109,17 +110,13 @@ class _KioskSettingsScreenState extends State<KioskSettingsScreen> {
             TextButton(
               onPressed: _saving ? null : _save,
               child: _saving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
                   : const Text('Lagre'),
             ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _error != null
               ? Center(child: Text(_error!))
               : ListView(

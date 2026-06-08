@@ -7,6 +7,7 @@ import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
 import 'partner_shell.dart';
 import 'widgets/partner_portal_access_revoked.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Top-level `/portal` — samarbeidspartner med egen URL per fane.
 class PartnerPortalRoute extends StatefulWidget {
@@ -84,7 +85,7 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: DriftProLoadingCenter());
     }
     final profile = _profile;
     if (_portalAccountKind == null &&

@@ -5,6 +5,7 @@ import '../../../core/services/notification/notification_audit_service.dart';
 import '../../../core/services/notification/notification_log_admin_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/notification_audit_entry.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Logg over varsler som ikke ble sendt (eller lagt i kø).
 class NotificationAuditPanel extends StatefulWidget {
@@ -150,7 +151,7 @@ class _NotificationAuditPanelState extends State<NotificationAuditPanel> {
         ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const DriftProLoadingCenter()
               : _items.isEmpty
                   ? const Center(child: Text('Ingen hendelser i utvalget'))
                   : ListView.builder(

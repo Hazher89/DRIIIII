@@ -8,6 +8,7 @@ import '../../../core/services/hms/safety_round_service.dart';
 import '../widgets/hms_pdf_export_button.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/safety_round.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Arkivvisning – søkbar vernerunde med PDF-nedlasting.
 class SafetyRoundDetailScreen extends StatefulWidget {
@@ -91,7 +92,7 @@ class _SafetyRoundDetailScreenState extends State<SafetyRoundDetailScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: const DriftProLoadingCenter(),
       );
     }
     final r = _round;

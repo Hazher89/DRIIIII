@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/hms/competence_course.dart';
 import '../../../models/hms_document.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class CompetenceMatrixScreen extends StatefulWidget {
   const CompetenceMatrixScreen({super.key});
@@ -82,7 +83,7 @@ class _CompetenceMatrixScreenState extends State<CompetenceMatrixScreen> {
         title: const Text('Kompetanse-matrise'),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _buildMatrix(isDark),
     );
   }

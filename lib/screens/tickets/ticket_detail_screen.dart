@@ -9,6 +9,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
 import '../../models/user_profile.dart';
 import '../../widgets/resolved_storage_image.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class TicketDetailScreen extends StatefulWidget {
   final Ticket ticket;
@@ -293,7 +294,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : Column(
               children: [
                 Expanded(
@@ -770,14 +771,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               onPressed: _savingComment ? null : _submitComment,
               backgroundColor: DriftProTheme.primaryGreen,
               child: _savingComment
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
+                  ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
                   : const Icon(Icons.send, size: 18),
             ),
           ],

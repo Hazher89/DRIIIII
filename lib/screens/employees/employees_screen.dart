@@ -4,6 +4,7 @@ import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
 import 'employee_hub_screen.dart';
 import 'widgets/employee_display.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Ansatte – kun superadmin får full administrasjon.
 class EmployeesScreen extends StatefulWidget {
@@ -37,7 +38,7 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
   Widget build(BuildContext context) {
     if (_checking) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: const DriftProLoadingCenter(),
       );
     }
     if (_isSuperAdmin) {
@@ -95,7 +96,7 @@ class _EmployeeScopedReadOnlyListState extends State<_EmployeeScopedReadOnlyList
     return Scaffold(
       appBar: AppBar(title: const Text('Ansatte')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

@@ -32,6 +32,7 @@ import 'partner_route_pdf_actions.dart';
 import 'partner_route_pdf_thumbnail.dart';
 import 'partner_route_publish_review_dialog.dart';
 import 'partner_route_workflow_ui.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class _PdfAssignmentRow {
   final String fileName;
@@ -1983,7 +1984,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
 
     final ui = _ui;
@@ -2164,10 +2165,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ),
           icon: _isSap
               ? (_sapSyncing
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
                   : const Icon(Icons.cloud_download_outlined))
               : (_busyUpload
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
                   : const Icon(Icons.upload_file)),
           label: Text(
             _isSap
@@ -2182,7 +2183,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           OutlinedButton.icon(
             onPressed: _fillingShifts ? null : _fillAllShiftsForStaged,
             icon: _fillingShifts
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                 : const Icon(Icons.auto_fix_high_outlined),
             label: Text(_fillingShifts ? 'Fyller skift…' : 'Fyll skift fra PDF (alle)'),
           ),
@@ -2627,7 +2628,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         final btnGrey = FilledButton.icon(
           onPressed: _publishing || !canPublish ? null : () => _publish(notifyDriver: false),
           icon: _publishing
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
               : const Icon(Icons.inventory_2_outlined, size: 20),
           label: Text('Uten varsel (${_selected.length})'),
           style: FilledButton.styleFrom(
@@ -2640,7 +2641,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         final btnSms = FilledButton.icon(
           onPressed: _publishing || !canPublish ? null : () => _publish(notifyDriver: true),
           icon: _publishing
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
               : const Icon(Icons.rocket_launch_outlined, size: 20),
           label: Text(
             '$_withNotifyLabel (${_selected.length})',

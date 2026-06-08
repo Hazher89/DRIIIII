@@ -3,6 +3,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/services/survey/survey_service.dart';
 import '../../models/survey/survey.dart';
 import '../../core/services/supabase_service.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class SurveyParticipationScreen extends StatefulWidget {
   final Survey survey;
@@ -123,7 +124,7 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_isLoading) return const Scaffold(body: DriftProLoadingCenter());
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.survey.title)),

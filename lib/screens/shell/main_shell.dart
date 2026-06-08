@@ -18,6 +18,7 @@ import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/partner_access.dart';
 import '../../core/permissions/user_access.dart';
 import '../../widgets/driftpro_brand_bar.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class MainShell extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -201,7 +202,7 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingAccess) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_isLoadingAccess) return const Scaffold(body: DriftProLoadingCenter());
 
     if (_profile != null && _profile!.isPartnerPortalUser) {
       final email =
@@ -217,7 +218,7 @@ class _MainShellState extends State<MainShell> {
             context.go(AppPaths.portal);
           }
         });
-        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        return const Scaffold(body: DriftProLoadingCenter());
       }
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await SupabaseService.applyPartnerBootstrap();

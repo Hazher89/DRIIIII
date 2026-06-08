@@ -4,6 +4,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/hms_document.dart';
 import 'package:intl/intl.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class DocumentListScreen extends StatefulWidget {
   const DocumentListScreen({super.key});
@@ -52,7 +53,7 @@ class _DocumentListScreenState extends State<DocumentListScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _loadData,
               child: _docs.isEmpty

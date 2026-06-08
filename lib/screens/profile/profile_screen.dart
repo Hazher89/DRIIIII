@@ -7,6 +7,7 @@ import '../../core/constants/app_icons.dart';
 import '../../models/user_profile.dart';
 import 'employee_change_password_sheet.dart';
 import 'widgets/profile_children_under_12_card.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -59,7 +60,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: DriftProLoadingCenter());
     }
 
     if (_profile == null) {

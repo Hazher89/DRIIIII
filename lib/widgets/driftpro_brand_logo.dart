@@ -4,7 +4,7 @@ import '../core/constants/driftpro_brand.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/driftpro_theme_context.dart';
 
-enum DriftProBrandDensity { compact, comfortable, hero }
+enum DriftProBrandDensity { compact, header, comfortable, hero }
 
 /// DriftPro-logo med valgfri undertekst.
 class DriftProBrandLogo extends StatelessWidget {
@@ -23,10 +23,12 @@ class DriftProBrandLogo extends StatelessWidget {
     switch (density) {
       case DriftProBrandDensity.compact:
         return 22;
+      case DriftProBrandDensity.header:
+        return 40;
       case DriftProBrandDensity.comfortable:
-        return 32;
+        return 48;
       case DriftProBrandDensity.hero:
-        return 52;
+        return 64;
     }
   }
 
@@ -34,10 +36,12 @@ class DriftProBrandLogo extends StatelessWidget {
     switch (density) {
       case DriftProBrandDensity.compact:
         return 8.5;
+      case DriftProBrandDensity.header:
+        return 10;
       case DriftProBrandDensity.comfortable:
-        return 9.5;
+        return 10.5;
       case DriftProBrandDensity.hero:
-        return 11;
+        return 12;
     }
   }
 
@@ -62,7 +66,13 @@ class DriftProBrandLogo extends StatelessWidget {
             filterQuality: FilterQuality.high,
           ),
           if (showSubtitle) ...[
-            SizedBox(height: density == DriftProBrandDensity.compact ? 1 : 3),
+            SizedBox(
+              height: switch (density) {
+                DriftProBrandDensity.compact => 1,
+                DriftProBrandDensity.header => 2,
+                _ => 3,
+              },
+            ),
             Text(
               DriftProBrand.subtitle,
               textAlign: alignment == Alignment.center ? TextAlign.center : TextAlign.start,

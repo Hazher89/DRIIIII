@@ -14,6 +14,7 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../shared_routines_hub_screen.dart';
 import 'partner_ui.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Dokumenter for bil-eier — samme funksjoner som HMS-dokumenter, kun eier-tilgang.
 class PartnerDocumentsTab extends StatefulWidget {
@@ -645,7 +646,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
     }).length;
 
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen));
+      return const DriftProLoadingCenter();
     }
 
     return RefreshIndicator(

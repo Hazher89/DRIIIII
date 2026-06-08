@@ -7,6 +7,7 @@ import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/partner_portal_route_list_tile.dart';
 import 'driver_portal_common.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class DriverPortalRoutesPage extends StatefulWidget {
   final Partner partner;
@@ -69,7 +70,7 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
         ],
       ),
       body: _loading || _data == null
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

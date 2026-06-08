@@ -11,6 +11,7 @@ import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/shared_partner_document.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class SharedRoutinesHubScreen extends StatefulWidget {
   final bool canManage;
@@ -258,7 +259,7 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
     );
 
     final content = _loading
-        ? const Center(child: CircularProgressIndicator())
+        ? const DriftProLoadingCenter()
         : _error != null
             ? Center(child: Text(_error!))
             : _docs.isEmpty

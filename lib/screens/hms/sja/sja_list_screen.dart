@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../widgets/hms_template_picker_sheet.dart';
 import 'new_sja_screen.dart';
 import 'sja_detail_screen.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class SjaListScreen extends StatefulWidget {
   const SjaListScreen({super.key});
@@ -69,7 +70,7 @@ class _SjaListScreenState extends State<SjaListScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : _loadError != null
               ? Center(
                   child: Padding(

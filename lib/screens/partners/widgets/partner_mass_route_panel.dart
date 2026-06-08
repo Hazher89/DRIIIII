@@ -9,6 +9,7 @@ import '../../../core/services/partner/route_pdf_text_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Smart PDF-fordeling: leser Resource ID og sender til riktig MAVI/bil.
 class PartnerMassRoutePanel extends StatefulWidget {
@@ -259,14 +260,7 @@ class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
                 FilledButton.icon(
                   onPressed: _busy ? null : _pickFiles,
                   icon: _busy
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
+                      ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
                       : const Icon(Icons.picture_as_pdf_outlined),
                   label: const Text('Velg PDF-filer'),
                 ),

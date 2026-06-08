@@ -4,6 +4,7 @@ import '../../core/permissions/user_access.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
 import 'profile_notifications_tab.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Mer → Varsler: kun superadmin — logg, SMS-innstillinger og mottakere.
 class NotificationsHubScreen extends StatefulWidget {
@@ -43,7 +44,7 @@ class _NotificationsHubScreenState extends State<NotificationsHubScreen> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: const DriftProLoadingCenter(),
       );
     }
 

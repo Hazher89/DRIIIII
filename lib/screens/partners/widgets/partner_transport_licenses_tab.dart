@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_ui.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Flere transportløyver per bedrift — egen mappe/seksjon.
 class PartnerTransportLicensesTab extends StatefulWidget {
@@ -175,7 +176,7 @@ class _PartnerTransportLicensesTabState extends State<PartnerTransportLicensesTa
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen));
+      return const DriftProLoadingCenter();
     }
 
     final expired = _licenses.where((l) => l.isExpired).length;

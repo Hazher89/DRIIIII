@@ -8,6 +8,7 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/vehicle_inspection.dart';
 import 'partner_ui.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Bilkontroll: mal (reppe, dekk, …), avvik, arkiv og oppfølging.
 class PartnerVehicleInspectionTab extends StatefulWidget {
@@ -199,7 +200,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
 
     final vehicleOptions = [..._regVehicles, ..._maviVehicles];
@@ -339,7 +340,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
             minimumSize: const Size(double.infinity, 48),
           ),
           icon: _saving
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
               : const Icon(Icons.save_outlined),
           label: const Text('Lagre og arkiver kontroll'),
         ),

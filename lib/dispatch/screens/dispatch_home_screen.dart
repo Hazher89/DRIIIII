@@ -8,6 +8,7 @@ import '../../last_mile/models/lm_fleet_snapshot.dart';
 import '../../last_mile/services/driftpro_fleet_sync_service.dart';
 import '../../last_mile/services/last_mile_order_service.dart';
 import '../../models/user_profile.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class DispatchHomeScreen extends StatefulWidget {
   final UserProfile profile;
@@ -65,7 +66,7 @@ class _DispatchHomeScreenState extends State<DispatchHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return const DriftProLoadingCenter();
     final fleet = _fleet!;
 
     return RefreshIndicator(

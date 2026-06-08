@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/email_log_entry.dart';
 import '../../../models/email_log_filters.dart';
 import '../../../models/partner/partner.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 class PartnerEmailLogPanel extends StatefulWidget {
   const PartnerEmailLogPanel({super.key, required this.partners});
 
@@ -128,7 +129,7 @@ class _PartnerEmailLogPanelState extends State<PartnerEmailLogPanel> {
           ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const DriftProLoadingCenter()
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: _items.length,

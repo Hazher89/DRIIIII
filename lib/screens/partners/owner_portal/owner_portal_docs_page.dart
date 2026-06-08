@@ -12,6 +12,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import 'owner_portal_common.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class OwnerPortalDocsPage extends StatefulWidget {
   final Partner partner;
@@ -420,7 +421,7 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : Column(
               children: [
                 if (!inFolder)

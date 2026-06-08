@@ -4,6 +4,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/ticket_assignee_options.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Velg ansvarlig leder/saksbehandler for ROS eller SJA.
 class HmsResponsiblePicker extends StatelessWidget {
@@ -53,7 +54,7 @@ class HmsResponsiblePicker extends StatelessWidget {
     if (loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
-        child: Center(child: CircularProgressIndicator()),
+        child: const DriftProLoadingCenter(),
       );
     }
 

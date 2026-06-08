@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/email_log_entry.dart';
 import '../../../models/email_log_filters.dart';
 import 'notification_log_toolbar.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Superadmin: utgående e-post (ikkesvar@driftpro.no).
 class EmailOutboxLogPanel extends StatefulWidget {
@@ -159,7 +160,7 @@ class _EmailOutboxLogPanelState extends State<EmailOutboxLogPanel> {
         ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const DriftProLoadingCenter()
               : ListView.builder(
                   controller: _scroll,
                   padding: const EdgeInsets.all(12),

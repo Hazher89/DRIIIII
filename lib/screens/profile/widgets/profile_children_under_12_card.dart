@@ -4,6 +4,7 @@ import '../../../core/constants/leave_rules.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Ansatt registrerer antall barn under 12 — styrer sykt-barn-kvote automatisk.
 class ProfileChildrenUnder12Card extends StatefulWidget {
@@ -132,11 +133,7 @@ class _ProfileChildrenUnder12CardState extends State<ProfileChildrenUnder12Card>
             FilledButton(
               onPressed: _saving ? null : _save,
               child: _saving
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
                   : const Text('Lagre antall barn'),
             ),
           ],

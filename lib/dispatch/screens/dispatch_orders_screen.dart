@@ -7,6 +7,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../last_mile/models/lm_order.dart';
 import '../../last_mile/services/last_mile_order_service.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Ordrekø — erstatter SAP som primær inngang.
 class DispatchOrdersScreen extends StatefulWidget {
@@ -172,7 +173,7 @@ class _DispatchOrdersScreenState extends State<DispatchOrdersScreen> {
         if (_busy) const LinearProgressIndicator(),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const DriftProLoadingCenter()
               : _orders.isEmpty
                   ? Center(
                       child: Text(

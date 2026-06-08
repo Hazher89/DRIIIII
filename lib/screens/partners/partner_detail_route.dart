@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/services/partner/partner_service.dart';
 import 'partner_detail_screen.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 /// `/partners/bedrift/:partnerId` — delbar lenke til partnerdetalj.
 class PartnerDetailRoute extends StatelessWidget {
@@ -22,7 +23,7 @@ class PartnerDetailRoute extends StatelessWidget {
       future: PartnerService.fetchPartner(partnerId),
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(body: DriftProLoadingCenter());
         }
         final partner = snap.data;
         if (partner == null) {

@@ -5,6 +5,7 @@ import '../core/services/supabase_service.dart';
 import '../core/theme/app_theme.dart';
 import '../models/user_profile.dart';
 import 'dispatch_shell.dart';
+import '../widgets/driftpro_loading_indicator.dart';
 
 /// Etter innlogging: sjekk DriftPro-profil og rute-tilgang før planlegger åpnes.
 class DispatchAccessGate extends StatefulWidget {
@@ -88,7 +89,7 @@ class _DispatchAccessGateState extends State<DispatchAccessGate> {
   Widget build(BuildContext context) {
     if (_loading) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        body: const DriftProLoadingCenter(),
       );
     }
 

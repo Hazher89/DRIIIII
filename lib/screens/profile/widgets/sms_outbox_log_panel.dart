@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/sms_log_entry.dart';
 import '../../../models/sms_log_filters.dart';
 import 'notification_log_toolbar.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Superadmin: alle utgående SMS med avansert søk.
 class SmsOutboxLogPanel extends StatefulWidget {
@@ -293,7 +294,7 @@ class _SmsOutboxLogPanelState extends State<SmsOutboxLogPanel> {
         ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const DriftProLoadingCenter()
               : _items.isEmpty
                   ? const Center(child: Text('Ingen SMS matcher filteret'))
                   : RefreshIndicator(

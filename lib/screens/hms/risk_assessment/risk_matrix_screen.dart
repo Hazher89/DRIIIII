@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/risk_assessment.dart';
 import 'new_risk_assessment_screen.dart';
 import 'risk_assessment_list_screen.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Interaktiv 5×5 risikomatrise fra Supabase-data.
 class RiskMatrixScreen extends StatefulWidget {
@@ -64,7 +65,7 @@ class _RiskMatrixScreenState extends State<RiskMatrixScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(

@@ -8,6 +8,7 @@ import '../../../models/partner_sms_log_entry.dart';
 import '../../../models/partner_sms_log_filters.dart';
 import 'partner_ui.dart';
 import '../../profile/widgets/notification_log_toolbar.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// SMS-logg kun for samarbeid-modulen (RPC filtrerer bort HMS/fravær/avvik).
 class PartnerSmsLogPanel extends StatefulWidget {
@@ -378,7 +379,7 @@ class _PartnerSmsLogPanelState extends State<PartnerSmsLogPanel> {
         ),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const DriftProLoadingCenter()
               : _items.isEmpty
                   ? Center(
                       child: Padding(
@@ -400,7 +401,7 @@ class _PartnerSmsLogPanelState extends State<PartnerSmsLogPanel> {
                           if (i >= _items.length) {
                             return const Padding(
                               padding: EdgeInsets.all(16),
-                              child: Center(child: CircularProgressIndicator()),
+                              child: const DriftProLoadingCenter(),
                             );
                           }
                           return _logCard(_items[i], df);

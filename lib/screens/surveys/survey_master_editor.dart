@@ -13,6 +13,7 @@ import 'survey_overview_panel.dart';
 import 'survey_publish_view.dart';
 import 'survey_results_hub.dart';
 import 'widgets/survey_theme_studio.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class SurveyMasterEditor extends StatefulWidget {
   final Survey survey;
@@ -206,7 +207,7 @@ class _SurveyMasterEditorState extends State<SurveyMasterEditor> {
 
   Widget _buildCurrentView() {
     if (_isLoading && _currentStep == 2) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
     switch (_currentStep) {
       case 0:

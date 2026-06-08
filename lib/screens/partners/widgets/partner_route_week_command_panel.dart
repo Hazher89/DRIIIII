@@ -6,6 +6,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 DateTime _weekStartMonday(DateTime d) {
   final n = DateTime(d.year, d.month, d.day);
@@ -619,7 +620,7 @@ class _PartnerRouteWeekCommandPanelState extends State<PartnerRouteWeekCommandPa
                     style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                   ),
                 ),
-                if (_busy) const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                if (_busy) SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20)),
                 IconButton(
                   tooltip: 'Oppdater',
                   onPressed: _busy ? null : _reload,

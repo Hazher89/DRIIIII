@@ -13,6 +13,7 @@ import '../widgets/interactive_risk_matrix.dart';
 import 'widgets/risk_assessment_attachments_panel.dart';
 import 'widgets/risk_form_section.dart';
 import '../../../models/ticket_assignee_options.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class NewRiskAssessmentScreen extends StatefulWidget {
   final HmsRiskTemplate? template;
@@ -375,7 +376,7 @@ class _NewRiskAssessmentScreenState extends State<NewRiskAssessmentScreen> {
           onPressed: _isSubmitting ? null : _save,
           style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 52)),
           child: _isSubmitting
-              ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              ? SizedBox(width: 22, height: 22, child: DriftProLoadingIndicator(size: 22))
               : const Text('Lagre risikoanalyse'),
         ),
       ),

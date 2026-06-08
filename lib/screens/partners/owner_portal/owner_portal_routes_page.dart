@@ -10,6 +10,7 @@ import 'owner_portal_common.dart';
 import '../widgets/partner_portal_route_list_tile.dart';
 import 'owner_portal_route_history.dart';
 import 'owner_portal_routes_focus.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class OwnerPortalRoutesPage extends StatefulWidget {
   final Partner partner;
@@ -133,7 +134,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
               ),
       ),
       body: _loading || _data == null
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : TabBarView(
               controller: _tab,
               children: [

@@ -8,6 +8,7 @@ import '../../core/theme/driftpro_theme_context.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/survey/survey.dart';
 import '../../models/user_profile.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 class SurveyPublishView extends StatefulWidget {
   final Survey survey;
@@ -255,7 +256,7 @@ class _SurveyPublishViewState extends State<SurveyPublishView> {
                   : 'Utløper ${_expiresAt!.day}.${_expiresAt!.month}.${_expiresAt!.year}',
             ),
             trailing: _saving
-                ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                ? SizedBox(width: 24, height: 24, child: DriftProLoadingIndicator(size: 24))
                 : PopupMenuButton<String>(
                     onSelected: (action) async {
                       if (action == 'set') {
@@ -417,7 +418,7 @@ class _InternalShareSheetState extends State<_InternalShareSheet> {
           const SizedBox(height: 16),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const DriftProLoadingCenter()
                 : ListView.builder(
                     itemCount: _allUsers.length,
                     itemBuilder: (context, index) {

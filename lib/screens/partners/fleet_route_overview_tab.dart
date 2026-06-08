@@ -13,6 +13,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/partner/fleet_shift.dart';
 import '../../models/partner/mavi_driver_day_assignment.dart';
 import 'widgets/partner_modern_ui.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -389,7 +390,7 @@ class _FleetRouteOverviewTabState extends State<FleetRouteOverviewTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+      return const DriftProLoadingCenter();
     }
     if (_error != null) {
       return Center(

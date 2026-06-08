@@ -5,6 +5,7 @@ import '../../../core/constants/leave_rules.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/absence/vacation_admin_service.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Enkel veiviser: velg hvem → hvor mange dager → bekreft.
 class VacationDistributeWizard extends StatefulWidget {
@@ -404,11 +405,7 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
           FilledButton(
             onPressed: _saving ? null : _onPrimary,
             child: _saving
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
+                ? SizedBox(width: 22, height: 22, child: DriftProLoadingIndicator(size: 22))
                 : Text(_step < 2 ? 'Neste' : 'Bekreft og lagre'),
           ),
         ],

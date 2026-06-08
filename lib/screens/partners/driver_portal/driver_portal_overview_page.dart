@@ -12,6 +12,7 @@ import '../widgets/partner_ui.dart';
 import 'driver_portal_common.dart';
 import '../widgets/partner_portal_route_detail_page.dart';
 import '../widgets/partner_portal_route_list_tile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 class DriverPortalOverviewPage extends StatefulWidget {
   final Partner partner;
@@ -90,7 +91,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
         ],
       ),
       body: _loading || _data == null
-          ? const Center(child: CircularProgressIndicator())
+          ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(

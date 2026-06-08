@@ -18,6 +18,7 @@ import 'preview/office_document_preview.dart';
 import '../../widgets/platform_embedded_view.dart';
 import '../../widgets/platform_media_view.dart';
 import '../../widgets/platform_pdf_bytes_view.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 import '../partners/widgets/partner_route_pdf_bytes_url_stub.dart'
     if (dart.library.io) '../partners/widgets/partner_route_pdf_bytes_url_io.dart'
     if (dart.library.html) '../partners/widgets/partner_route_pdf_bytes_url_web.dart' as pdf_bytes_url;
@@ -419,11 +420,7 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
                 child: TextButton.icon(
                   onPressed: _isSaving ? null : _showSaveMenu,
                   icon: _isSaving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
                       : const Icon(Icons.edit_document),
                   label: const Text('Lagre'),
                 ),

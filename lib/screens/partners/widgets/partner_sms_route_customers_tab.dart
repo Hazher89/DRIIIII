@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/nb_date_format.dart';
 import 'partner_sms_message_section.dart';
 import 'partner_ui.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Velg dato + sjåfør, les kunder fra rute-PDF, velg mottakere, mal og send SMS.
 class PartnerSmsRouteCustomersTab extends StatefulWidget {
@@ -298,11 +299,7 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
                 onPressed: _loading || _vehicleId == null ? null : _loadCustomers,
                 style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
                 icon: _loading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
+                    ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
                     : const Icon(Icons.refresh, size: 18),
                 label: const Text('Hent kunder'),
               ),
@@ -420,7 +417,7 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
       if (_loading) {
         return const Padding(
           padding: EdgeInsets.all(32),
-          child: Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen)),
+          child: const DriftProLoadingCenter(),
         );
       }
       if (_customers.isEmpty) {
@@ -444,7 +441,7 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
 
     return Expanded(
       child: _loading
-          ? const Center(child: CircularProgressIndicator(color: DriftProTheme.primaryGreen))
+          ? const DriftProLoadingCenter()
           : _customers.isEmpty
               ? Center(
                   child: Padding(
@@ -626,11 +623,7 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
                   icon: widget.sending
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
+                      ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                       : const Icon(Icons.send),
                   label: Text('Send SMS og bekreft (${selected.length})'),
                 ),
@@ -658,11 +651,7 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
                       padding: const EdgeInsets.symmetric(vertical: 14),
                     ),
                     icon: widget.sending
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
+                        ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                         : const Icon(Icons.send),
                     label: Text('Send SMS og bekreft (${selected.length})'),
                   ),

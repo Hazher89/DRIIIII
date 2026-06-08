@@ -32,6 +32,7 @@ import 'widgets/leave_rules_panel.dart';
 import 'widgets/leave_saldo_panel.dart';
 import 'widgets/leave_team_table.dart';
 import 'widgets/leave_unified_team_view.dart';
+import '../../widgets/driftpro_loading_indicator.dart';
 
 enum _MineStatusFilter { alle, ventende, godkjent, avvist }
 
@@ -470,7 +471,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     if (_isLoading && _profile == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: DriftProLoadingCenter());
     }
 
     if (!_isLoading && (_tabController == null || _tabs.isEmpty)) {

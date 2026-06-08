@@ -5,6 +5,7 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Godkjenning av fri-forespørsler fra MAVI-sjåfører (intern partner-side).
 class PartnerFriTab extends StatefulWidget {
@@ -114,7 +115,7 @@ class _PartnerFriTabState extends State<PartnerFriTab> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const DriftProLoadingCenter();
     }
     if (_requests.isEmpty) {
       return const Center(
