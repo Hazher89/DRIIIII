@@ -69,3 +69,18 @@ class DriftProLoadingCenter extends StatelessWidget {
     return Center(child: DriftProLoadingIndicator(size: size));
   }
 }
+
+/// Fullside lasting med tematisert bakgrunn (ingen hvit flash).
+class DriftProLoadingPage extends StatelessWidget {
+  const DriftProLoadingPage({super.key, this.size = 48});
+
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: DriftProLoadingCenter(size: size),
+    );
+  }
+}
