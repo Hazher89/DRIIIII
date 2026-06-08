@@ -1,4 +1,5 @@
--- Én e-post ved ruteutsendelse (ikke to), riktig norsk (å/ø/æ), profesjonell HTML-mal.
+-- ÉN e-post per rute, profesjonell HTML, ingen «avvis», gammel trigger av.
+-- Kjør også: supabase functions deploy send-email-outbox (HTML-støtte).
 
 CREATE OR REPLACE FUNCTION public.escape_html(p_text text)
 RETURNS text
@@ -56,25 +57,25 @@ BEGIN
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>%s</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f7f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#eef2f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 %s
-<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#f4f7f5;padding:32px 16px;">
+<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="background:#eef2f0;padding:32px 16px;">
 <tr><td align="center">
-<table role="presentation" width="100%%" style="max-width:560px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 8px 30px rgba(15,23,42,0.08);">
-<tr><td style="background:linear-gradient(135deg,#1B5E20 0%%,#2E7D32 100%%);padding:28px 32px;">
-<div style="font-size:13px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:rgba(255,255,255,0.85);">DriftPro</div>
-<h1 style="margin:10px 0 0;font-size:24px;line-height:1.3;color:#ffffff;font-weight:700;">%s</h1>
+<table role="presentation" width="100%%" style="max-width:580px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 12px 40px rgba(15,23,42,0.10);">
+<tr><td style="background:linear-gradient(135deg,#0D3B13 0%%,#1B5E20 45%%,#2E7D32 100%%);padding:32px 32px 28px;">
+<div style="font-size:12px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.75);">DriftPro · MAVI Logistikk</div>
+<h1 style="margin:12px 0 0;font-size:26px;line-height:1.25;color:#ffffff;font-weight:700;">%s</h1>
 </td></tr>
-<tr><td style="padding:32px;">
-<p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#334155;">%s</p>
+<tr><td style="padding:32px 32px 24px;">
+<p style="margin:0 0 22px;font-size:15px;line-height:1.65;color:#334155;background:#f0faf4;border-left:4px solid #1B5E20;padding:14px 16px;border-radius:0 8px 8px 0;">%s</p>
 %s
-<div style="text-align:center;margin:28px 0 8px;">
-<a href="%s" style="display:inline-block;background:#1B5E20;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;padding:14px 28px;border-radius:10px;">%s</a>
+<div style="text-align:center;margin:30px 0 10px;">
+<a href="%s" style="display:inline-block;background:#1B5E20;color:#ffffff !important;text-decoration:none;font-weight:700;font-size:15px;padding:15px 32px;border-radius:10px;box-shadow:0 4px 14px rgba(27,94,32,0.35);">%s</a>
 </div>
-<p style="margin:20px 0 0;font-size:12px;line-height:1.5;color:#94a3b8;text-align:center;">Logg inn som samarbeidspartner på driftpro.no</p>
+<p style="margin:18px 0 0;font-size:12px;line-height:1.5;color:#94a3b8;text-align:center;">Logg inn som samarbeidspartner på <a href="https://driftpro.no" style="color:#1B5E20;text-decoration:none;font-weight:600;">driftpro.no</a></p>
 </td></tr>
-<tr><td style="padding:20px 32px;background:#f8faf9;border-top:1px solid #eef2f0;">
-<p style="margin:0;font-size:12px;line-height:1.5;color:#94a3b8;text-align:center;">Denne e-posten er sendt automatisk fra DriftPro. Svar ikke på denne adressen.</p>
+<tr><td style="padding:22px 32px;background:#f8faf9;border-top:1px solid #eef2f0;">
+<p style="margin:0;font-size:11px;line-height:1.5;color:#94a3b8;text-align:center;">Automatisk varsel fra DriftPro. Svar ikke på denne e-posten.</p>
 </td></tr>
 </table>
 </td></tr>
@@ -89,7 +90,7 @@ $html$,
     public.escape_html(p_heading),
     public.escape_html(p_intro),
     CASE WHEN v_rows <> '' THEN
-      '<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="margin:0 0 8px;">' || v_rows || '</table>'
+      '<table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="margin:0 0 4px;background:#fafbfc;border-radius:10px;padding:4px 12px;">' || v_rows || '</table>'
     ELSE '' END,
     public.escape_html(p_cta_url),
     public.escape_html(p_cta_label)
@@ -97,6 +98,22 @@ $html$,
 END;
 $$;
 
+-- ── 1. Slå av gammel duplikat-trigger (plain «aa aapne»-mail) ───────────────
+CREATE OR REPLACE FUNCTION public.notify_partner_on_route_share()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_notify_partner_on_route_share ON public.partner_route_shares;
+DROP TRIGGER IF EXISTS trg_notify_partner_on_route_share_sent ON public.partner_route_shares;
+
+-- ── 2. Oppdatert innhold — ikke nevn avvis ───────────────────────────────────
 CREATE OR REPLACE FUNCTION public.build_partner_route_published_email(
   p_unit_code text,
   p_vehicle_reg text,
@@ -157,29 +174,12 @@ BEGIN
       'Planlagt start: ' || to_char(p_route_start_at AT TIME ZONE 'Europe/Oslo', 'DD.MM.YYYY HH24:MI') || E'\n'
     ELSE '' END
     || E'\nÅpne: https://driftpro.no' || E'\n\n'
-    || 'Med vennlig hilsen' || E'\nDriftPro';
+    || 'Med vennlig hilsen' || E'\nDriftPro · MAVI Logistikk';
   RETURN NEXT;
 END;
 $$;
 
--- Gammel trigger sendte duplikat med «aa aapne» — deaktivert.
-CREATE OR REPLACE FUNCTION public.notify_partner_on_route_share()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_notify_partner_on_route_share ON public.partner_route_shares;
-DROP TRIGGER IF EXISTS trg_notify_partner_on_route_share_sent ON public.partner_route_shares;
-
-COMMENT ON FUNCTION public.notify_partner_on_route_share IS
-  'Deaktivert — e-post sendes kun via notify_partner_route_assigned_sms (én HTML-mal).';
-
+-- ── 3. Én e-post per utsendelse (dedup ved dobbel trigger) ───────────────────
 CREATE OR REPLACE FUNCTION public.notify_partner_route_assigned_sms(p_route_share_id UUID)
 RETURNS INT
 LANGUAGE plpgsql
@@ -197,6 +197,7 @@ DECLARE
   driver_phone TEXT;
   owner_only BOOLEAN;
   sent_phones TEXT[] := ARRAY[]::TEXT[];
+  v_send_email BOOLEAN := true;
 BEGIN
   SELECT
     prs.*,
@@ -224,13 +225,22 @@ BEGIN
     RETURN 0;
   END IF;
 
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.email_outbox e
+    WHERE e.reference_type = 'partner_route_shares'
+      AND e.reference_id = p_route_share_id
+      AND e.category = 'partner_route_share'
+      AND e.created_at > now() - interval '10 minutes'
+  ) INTO v_send_email;
+
   owner_only := coalesce(r.routes_owner_only, true);
   SELECT name INTO shift_name FROM public.fleet_shift_definitions WHERE id = r.shift_id;
 
   driver_msg := 'Ny rute tildelt ' || coalesce(r.unit_code, '') ||
     CASE WHEN r.vehicle_reg IS NOT NULL AND trim(r.vehicle_reg) <> '' THEN ' (' || trim(r.vehicle_reg) || ')' ELSE '' END ||
     CASE WHEN shift_name IS NOT NULL THEN ' · Skift: ' || shift_name ELSE '' END ||
-    '. Logg inn i DriftPro for PDF og aksept.';
+    '. Logg inn i DriftPro for PDF og godkjenning.';
 
   owner_msg := 'Ny rute på ' || coalesce(r.unit_code, 'bil') ||
     ' — ' || coalesce(r.partner_name, 'din bedrift') ||
@@ -276,16 +286,18 @@ BEGIN
     'partner_route_shares', r.id, 'Ny rute → bil-eier'
   );
 
-  n := n + public.notify_partner_owner_emails(
-    r.company_id, r.partner_id, email_sub, email_body, 'partner_route_share',
-    'partner_route_owner', 'partner_route_shares', r.id, 'Ny rute (e-post HTML)'
-  );
+  IF v_send_email THEN
+    n := n + public.notify_partner_owner_emails(
+      r.company_id, r.partner_id, email_sub, email_body, 'partner_route_share',
+      'partner_route_owner', 'partner_route_shares', r.id, 'Ny rute (e-post HTML)'
+    );
+  END IF;
 
   RETURN n;
 END;
 $$;
 
-COMMENT ON FUNCTION public.build_driftpro_email_html IS
-  'Gjenbrukbar HTML-mal for DriftPro e-postvarsler (UTF-8, norsk).';
+COMMENT ON FUNCTION public.notify_partner_on_route_share IS
+  'Deaktivert — bruk notify_partner_route_assigned_sms (én HTML-e-post).';
 COMMENT ON FUNCTION public.notify_partner_route_assigned_sms IS
-  'SMS + én profesjonell HTML-e-post ved ruteutsendelse til partner/bil-eier.';
+  'SMS + maks én HTML-e-post per rute (10 min dedup). Ingen «avvis» i e-post.';
