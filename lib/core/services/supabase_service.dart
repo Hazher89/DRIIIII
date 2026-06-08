@@ -45,11 +45,28 @@ class SupabaseService {
     'baxigshti@hotmail.de',
     // Vanlig skrivefeil (i/l) ved Google-innlogging — samme eier
     'baxlgshtl@gmail.com',
+    'hazher@mavilogistikk.no',
   };
+
+  /// Ansattnummer som alltid skal ha superadmin (Hazher = 25).
+  static const superadminEmployeeNumbers = {'25'};
 
   static bool _isSuperadminEmail(String? email) {
     if (email == null) return false;
     return superadminEmails.contains(email.trim().toLowerCase());
+  }
+
+  static bool _isMaviEmployeeEmail(String? email) {
+    if (email == null) return false;
+    return email.trim().toLowerCase().endsWith('@mavi-employees.driftpro.no');
+  }
+
+  static bool _shouldElevateToSuperadmin(UserProfile profile, {String? sessionEmail}) {
+    if (_isSuperadminEmail(profile.email) || _isSuperadminEmail(sessionEmail)) {
+      return true;
+    }
+    final no = profile.employeeNumber?.trim();
+    return no != null && no.isNotEmpty && superadminEmployeeNumbers.contains(no);
   }
 
   /// Når DB/RPC feiler: tillat innlogging for whitelisted eier-e-post (superadmin i minnet).
@@ -98,7 +115,13 @@ class SupabaseService {
     final isPortal =
         email.endsWith('.portal') || email.endsWith('@portal.driftpro.no');
 
-    if (!isPortal) {
+    if (_isMaviEmployeeEmail(email)) {
+      try {
+        await client.rpc('restore_mavi_employee_profile').timeout(_rpcTimeout);
+      } catch (e) {
+        debugPrint('restore_mavi_employee_profile: $e');
+      }
+    } else if (!isPortal) {
       await rpcEnsureInternalProfileMissing();
     } else {
       try {
@@ -108,7 +131,9 @@ class SupabaseService {
       }
     }
 
-    await _silentRpcTimeout('apply_partner_bootstrap_to_profile');
+    if (!_isMaviEmployeeEmail(email)) {
+      await _silentRpcTimeout('apply_partner_bootstrap_to_profile');
+    }
 
     var profile = await fetchCurrentUserProfile();
     profile = profile != null ? await _ensureSuperadminIfOwner(profile) : null;
@@ -1119,7 +1144,16 @@ department:departments!department_id(name)
     final user = client.auth.currentUser;
     if (user == null) return null;
 
-    await _silentRpcTimeout('apply_partner_bootstrap_to_profile');
+    final email = user.email?.trim().toLowerCase() ?? '';
+    if (_isMaviEmployeeEmail(email)) {
+      try {
+        await client.rpc('restore_mavi_employee_profile').timeout(_rpcTimeout);
+      } catch (e) {
+        debugPrint('restore_mavi_employee_profile: $e');
+      }
+    } else {
+      await _silentRpcTimeout('apply_partner_bootstrap_to_profile');
+    }
 
     var existing = await fetchCurrentUserProfile();
     if (existing == null) {
@@ -1209,7 +1243,10 @@ department:departments!department_id(name)
 
   /// Løfter eier-e-post til superadmin hvis DB-trigger hadde feil e-post.
   static Future<UserProfile> _ensureSuperadminIfOwner(UserProfile profile) async {
-    if (!_isSuperadminEmail(profile.email)) return profile;
+    final sessionEmail = currentUser?.email;
+    if (!_shouldElevateToSuperadmin(profile, sessionEmail: sessionEmail)) {
+      return profile;
+    }
     if (profile.role == UserRole.superadmin &&
         profile.isApproved &&
         profile.isOnboarded) {
