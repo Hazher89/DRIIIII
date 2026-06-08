@@ -6,6 +6,7 @@ import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
 import 'partner_shell.dart';
+import 'widgets/partner_portal_access_revoked.dart';
 
 /// Top-level `/portal` — samarbeidspartner med egen URL per fane.
 class PartnerPortalRoute extends StatefulWidget {
@@ -33,10 +34,30 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
       await SupabaseService.ensureSessionLinkedToCompany();
       var profile = await SupabaseService.fetchCurrentUserProfile();
       var portalKind = _portalAccountKind;
-      if (profile?.isPartnerPortalUser == true) {
-        final session = await PartnerService.resolvePortalSession();
-        portalKind = session?.accountKind;
-        if (session != null && profile != null) {
+
+      final email =
+          SupabaseService.currentUser?.email?.trim().toLowerCase() ?? '';
+      final looksLikePortal = email.endsWith('.portal') ||
+          email.endsWith('@portal.driftpro.no');
+
+      if (profile?.isPartnerPortalUser == true || looksLikePortal) {
+        var session = await PartnerService.resolvePortalSession();
+        if (session == null) {
+          await SupabaseService.applyPartnerBootstrap();
+          profile = await SupabaseService.fetchCurrentUserProfile();
+          session = await PartnerService.resolvePortalSession();
+        }
+        if (session == null) {
+          if (!mounted) return;
+          setState(() {
+            _profile = profile;
+            _portalAccountKind = null;
+            _loading = false;
+          });
+          return;
+        }
+        portalKind = session.accountKind;
+        if (profile != null) {
           profile = profile.copyWith(
             partnerId: session.partnerId,
             partnerVehicleId: session.isOwner ? null : session.partnerVehicleId,
@@ -55,8 +76,7 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
   }
 
   int _initialIndex(UserProfile profile) {
-    final isOwner = _portalAccountKind == 'owner' ||
-        (_portalAccountKind == null && profile.isPartnerPortalOwner);
+    final isOwner = _portalAccountKind == 'owner';
     final slugs = isOwner ? AppPaths.portalOwnerTabs : AppPaths.portalDriverTabs;
     return RouteUrlSync.indexForSlug(widget.initialTab, slugs);
   }
@@ -67,6 +87,10 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
     final profile = _profile;
+    if (_portalAccountKind == null &&
+        (profile == null || profile.isPartnerPortalUser)) {
+      return const PartnerPortalAccessRevoked();
+    }
     if (profile == null || !profile.isPartnerPortalUser) {
       return const Scaffold(
         body: Center(child: Text('Ingen portal-tilgang for denne kontoen.')),

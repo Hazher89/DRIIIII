@@ -61,7 +61,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
     final folders = results[1] as List<Map<String, dynamic>>;
     if (mounted) {
       setState(() {
-        _docs = d.where((x) => x.ownerVisible && !x.driverVisible).toList();
+        _docs = d.where((x) => x.ownerVisible).toList();
         _folders = folders;
         _loading = false;
       });
@@ -237,6 +237,8 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
           bytes: bytes,
           mimeType: file.extension != null ? _mimeForExt(file.extension!) : null,
         );
+        final sharedFolder =
+            (_folderById(_activeFolderId)?['visibility'] as String?) == 'shared';
         await PartnerService.addDocumentToFolder(
           PartnerDocument(
             id: '',
@@ -251,7 +253,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
             expiresAt: expires,
             folderId: _activeFolderId,
             ownerVisible: true,
-            driverVisible: false,
+            driverVisible: sharedFolder,
             docCategory: 'general',
             createdAt: DateTime.now(),
           ),

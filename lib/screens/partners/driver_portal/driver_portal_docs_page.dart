@@ -57,7 +57,7 @@ class _DriverPortalDocsPageState extends State<DriverPortalDocsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Dokumenter'),
+        title: const Text('Felles dokumenter'),
         actions: [
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
           IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
@@ -83,7 +83,7 @@ class _DriverPortalDocsPageState extends State<DriverPortalDocsPage> {
                   child: _filtered.isEmpty
                       ? Center(
                           child: Text(
-                            'Ingen dokumenter delt med sjåfør ennå.',
+                            'Ingen felles dokumenter er delt med sjåfører ennå.',
                             textAlign: TextAlign.center,
                             style: TextStyle(color: PartnerUi.mutedText(context)),
                           ),

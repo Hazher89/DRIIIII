@@ -165,6 +165,11 @@ class SupabaseService {
     return bootstrap != null ? recovery.copyWith(companyId: bootstrap) : recovery;
   }
 
+  /// Oppdaterer eller fjerner partner-kobling på profil etter aktiv portal-konto.
+  static Future<void> applyPartnerBootstrap() async {
+    await _silentRpcTimeout('apply_partner_bootstrap_to_profile');
+  }
+
   /// Sann hvis Supabase er konfigurert med ekte nøkler.
   static bool get isConfigured =>
       !SupabaseConfig.url.startsWith('YOUR_') &&

@@ -95,8 +95,7 @@ class _PartnerShellState extends State<PartnerShell> {
 
   void _syncUrl() {
     if (!mounted) return;
-    final isOwner = widget.portalAccountKind == 'owner' ||
-        (widget.portalAccountKind == null && widget.profile.isPartnerPortalOwner);
+    final isOwner = widget.portalAccountKind == 'owner';
     final slugs = isOwner ? AppPaths.portalOwnerTabs : AppPaths.portalDriverTabs;
     RouteUrlSync.syncTab(
       context,
@@ -196,8 +195,7 @@ class _PartnerShellState extends State<PartnerShell> {
     }
 
     final p = _partner!;
-    final isOwner = widget.portalAccountKind == 'owner' ||
-        (widget.portalAccountKind == null && widget.profile.isPartnerPortalOwner);
+    final isOwner = widget.portalAccountKind == 'owner';
     void goToRoutes({int tabIndex = 1, String? vehicleId}) {
       setState(() {
         _index = 3;

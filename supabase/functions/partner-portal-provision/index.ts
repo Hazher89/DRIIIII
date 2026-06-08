@@ -123,6 +123,8 @@ Deno.serve(async (req) => {
               is_active: false,
               phone: null,
               phone_normalized: null,
+              partner_id: null,
+              partner_vehicle_id: null,
             })
             .eq("id", acc.profile_id);
         }

@@ -1419,10 +1419,11 @@ class PartnerService {
     if (!_ok) return const [];
     var q = _client
         .from('partner_documents')
-        .select('*, partner_document_folders(name)')
+        .select('*, partner_document_folders!inner(name, visibility)')
         .eq('partner_id', partnerId)
         .neq('doc_category', 'summary')
-        .eq('driver_visible', true);
+        .eq('driver_visible', true)
+        .eq('partner_document_folders.visibility', 'shared');
     final data = await q.order('created_at', ascending: false) as List<dynamic>;
     final list = data.map((e) {
       final m = Map<String, dynamic>.from(e as Map<String, dynamic>);
@@ -1717,6 +1718,8 @@ class PartnerService {
           'is_active': false,
           'phone': null,
           'phone_normalized': null,
+          'partner_id': null,
+          'partner_vehicle_id': null,
         }).eq('id', profileId);
       } catch (_) {}
     }

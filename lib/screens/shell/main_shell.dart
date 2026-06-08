@@ -203,14 +203,25 @@ class _MainShellState extends State<MainShell> {
     if (_isLoadingAccess) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
     if (_profile != null && _profile!.isPartnerPortalUser) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final path = GoRouterState.of(context).uri.path;
-        if (path != AppPaths.portal && !path.startsWith('${AppPaths.portal}/')) {
-          context.go(AppPaths.portal);
-        }
+      final email =
+          SupabaseService.currentUser?.email?.trim().toLowerCase() ?? '';
+      final looksLikePortal = email.endsWith('.portal') ||
+          email.endsWith('@portal.driftpro.no');
+      if (looksLikePortal) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final path = GoRouterState.of(context).uri.path;
+          if (path != AppPaths.portal &&
+              !path.startsWith('${AppPaths.portal}/')) {
+            context.go(AppPaths.portal);
+          }
+        });
+        return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await SupabaseService.applyPartnerBootstrap();
+        if (mounted) _loadAccess();
       });
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     // Safety check fallback (Active enforcement)
