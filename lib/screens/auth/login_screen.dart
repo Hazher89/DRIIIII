@@ -3,7 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:ui';
 import '../../core/auth/employee_oauth_sign_in.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/constants/app_strings.dart';
+import '../../widgets/driftpro_brand_bar.dart';
+import '../../widgets/driftpro_brand_logo.dart';
 import '../more/help_support_screen.dart';
 import '../more/privacy_screen.dart';
 import '../more/about_driftpro_screen.dart';
@@ -70,7 +71,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      body: Stack(
+      body: Column(
+        children: [
+          const DriftProBrandBar(),
+          Expanded(
+            child: Stack(
         children: [
           // Background with animated mesh-like gradient effect
           Positioned.fill(
@@ -108,38 +113,11 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Glass Logo Container
-                    _buildGlassContainer(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Icon(
-                          Icons.dashboard_customize_rounded,
-                          size: 64,
-                          color: isDark ? Colors.white : DriftProTheme.primaryGreen,
-                        ),
-                      ),
+                    const DriftProBrandLogo(
+                      density: DriftProBrandDensity.comfortable,
+                      alignment: Alignment.center,
                     ),
-                    const SizedBox(height: 32),
-                    
-                    Text(
-                      'DriftPro',
-                      style: DriftProTheme.headingLg.copyWith(
-                        fontSize: 48,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -1.5,
-                        color: isDark ? Colors.white : Colors.grey[900],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Fremtidens ERP & HMS Platform'.toUpperCase(),
-                      style: DriftProTheme.labelSm.copyWith(
-                        letterSpacing: 3,
-                        color: DriftProTheme.primaryGreen,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 64),
+                    const SizedBox(height: 40),
 
                     // Advanced Login Card
                     _buildGlassContainer(
@@ -245,6 +223,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   ],
                 ),
               ),
+            ),
+          ),
+        ],
             ),
           ),
         ],

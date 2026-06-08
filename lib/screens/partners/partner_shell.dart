@@ -11,6 +11,7 @@ import '../../core/services/partner/partner_portal_scope.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/driftpro_brand_bar.dart';
 import '../../models/partner/fleet_shift.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
@@ -252,7 +253,7 @@ class _PartnerShellState extends State<PartnerShell> {
     final pageIndex = _index.clamp(0, pages.length - 1);
     final navIndex = _index.clamp(0, (isOwner ? ownerNavItems.length : driverDestinations.length) - 1);
 
-    return Scaffold(
+    return DriftProBrandedScaffold(
       // IndexedStack + nested Scaffold gir grå tom flate på Flutter web (Safari).
       body: pages[pageIndex],
       bottomNavigationBar: isOwner

@@ -10,6 +10,7 @@ import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/config/driftpro_client.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/driftpro_brand_bar.dart';
 
 /// Første valg: MAVI-ansatte (OAuth) eller samarbeidspartner (brukernavn/passord).
 class AuthGateScreen extends StatelessWidget {
@@ -19,44 +20,33 @@ class AuthGateScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
-      body: Stack(
+      body: Column(
         children: [
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: isDark
-                      ? [const Color(0xFF03080F), const Color(0xFF0A192F), const Color(0xFF112240)]
-                      : [const Color(0xFFE8F5E9), const Color(0xFFC8E6C9), const Color(0xFFA5D6A7)],
-                ),
-              ),
-            ),
-          ),
-          Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.hub_outlined,
-                      size: 56,
-                      color: isDark ? Colors.white : DriftProTheme.primaryGreen,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      DriftProClient.displayName,
-                      style: DriftProTheme.headingLg.copyWith(
-                        fontSize: 40,
-                        fontWeight: FontWeight.w900,
-                        color: isDark ? Colors.white : Colors.grey[900],
+          const DriftProBrandBar(),
+          Expanded(
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: isDark
+                            ? [const Color(0xFF03080F), const Color(0xFF0A192F), const Color(0xFF112240)]
+                            : [const Color(0xFFE8F5E9), const Color(0xFFC8E6C9), const Color(0xFFA5D6A7)],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
+                  ),
+                ),
+                Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 440),
+                      child: Column(
+                        children: [
+                          Text(
                       DriftProClient.isDesktop
                           ? '${DriftProClient.tagline}\nVelg hvordan du logger inn'
                           : 'Velg hvordan du logger inn',
@@ -100,10 +90,13 @@ class AuthGateScreen extends StatelessWidget {
                       style: DriftProTheme.caption.copyWith(
                         color: isDark ? Colors.white38 : Colors.grey[600],
                       ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ],
@@ -294,7 +287,11 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
+    return Column(
+      children: [
+        const DriftProBrandBar(),
+        Expanded(
+          child: Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -421,6 +418,9 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
           ),
         ),
       ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -666,7 +666,11 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Scaffold(
+    return Column(
+      children: [
+        const DriftProBrandBar(),
+        Expanded(
+          child: Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -748,6 +752,9 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
           ),
         ),
       ),
+          ),
+        ),
+      ],
     );
   }
 }

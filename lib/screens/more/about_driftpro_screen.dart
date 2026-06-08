@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_strings.dart';
 import '../../core/theme/app_theme.dart';
+import '../../widgets/driftpro_brand_logo.dart';
 import 'driftpro_platform_catalog.dart';
 import 'widgets/info_page_scaffold.dart';
 
@@ -18,16 +19,10 @@ class AboutDriftProScreen extends StatelessWidget {
       subtitle: DriftProPlatformCatalog.tagline,
       icon: Icons.info_outline,
       children: [
-        Center(
-          child: Container(
-            width: 96,
-            height: 96,
-            decoration: BoxDecoration(
-              gradient: DriftProTheme.primaryGradient,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: DriftProTheme.elevatedShadow,
-            ),
-            child: const Icon(Icons.local_shipping, color: Colors.white, size: 48),
+        const Center(
+          child: DriftProBrandLogo(
+            density: DriftProBrandDensity.comfortable,
+            alignment: Alignment.center,
           ),
         ),
         const SizedBox(height: 16),

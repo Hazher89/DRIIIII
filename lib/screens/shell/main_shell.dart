@@ -17,6 +17,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/partner_access.dart';
 import '../../core/permissions/user_access.dart';
+import '../../widgets/driftpro_brand_bar.dart';
 
 class MainShell extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -268,7 +269,7 @@ class _MainShellState extends State<MainShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureAllowedRoute(visibleScreens));
     final navIndex = _visibleIndexForCurrentBranch(visibleScreens);
 
-    return Scaffold(
+    return DriftProBrandedScaffold(
       body: widget.navigationShell,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
