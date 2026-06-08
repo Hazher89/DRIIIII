@@ -140,7 +140,7 @@ class _PartnerEmailLogPanelState extends State<PartnerEmailLogPanel> {
                         title: Text(e.contextLabel ?? e.displayTitle),
                         subtitle: Text(
                           '${e.partnerName ?? '—'} · ${e.toEmail}\n'
-                          '${e.statusLabel} · ${df.format(e.createdAt)}',
+                          '${e.statusLabel} · ${df.format(e.createdAt.toLocal())}',
                         ),
                         isThreeLine: true,
                         onTap: () => showDialog(

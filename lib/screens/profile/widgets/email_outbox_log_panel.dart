@@ -176,7 +176,7 @@ class _EmailOutboxLogPanelState extends State<EmailOutboxLogPanel> {
                       child: ExpansionTile(
                         leading: Icon(Icons.email_outlined, color: color),
                         title: Text(e.displayTitle, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        subtitle: Text('${e.recipientName} · ${e.statusLabel} · ${df.format(e.createdAt)}'),
+                        subtitle: Text('${e.recipientName} · ${e.statusLabel} · ${df.format(e.createdAt.toLocal())}'),
                         children: [
                           Padding(
                             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),

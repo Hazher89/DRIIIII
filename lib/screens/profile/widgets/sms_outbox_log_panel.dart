@@ -422,9 +422,9 @@ class _SmsOutboxLogPanelState extends State<SmsOutboxLogPanel> {
                 style: DriftProTheme.bodySm,
               ),
               const SizedBox(height: 10),
-              _meta(Icons.schedule, 'Kø', df.format(e.createdAt)),
+              _meta(Icons.schedule, 'Kø', df.format(e.createdAt.toLocal())),
               if (e.sentAt != null)
-                _meta(Icons.check_circle_outline, 'Sendt', df.format(e.sentAt!)),
+                _meta(Icons.check_circle_outline, 'Sendt', df.format(e.sentAt!.toLocal())),
               _meta(Icons.person_outline, 'Til', '${e.recipientName} · ${e.toPhone}'),
               _meta(Icons.send_outlined, 'Avsender', e.senderName),
               _meta(Icons.touch_app_outlined, 'Utløst av', e.triggeredByName),
@@ -485,9 +485,9 @@ class _SmsOutboxLogPanelState extends State<SmsOutboxLogPanel> {
               _detailRow('Mottaker', e.recipientName),
               _detailRow('Telefon', e.toPhone),
               _detailRow('Utløst av', e.triggeredByName),
-              _detailRow('Opprettet i kø', df.format(e.createdAt)),
+              _detailRow('Opprettet i kø', df.format(e.createdAt.toLocal())),
               if (e.sentAt != null)
-                _detailRow('Sendt', df.format(e.sentAt!)),
+                _detailRow('Sendt', df.format(e.sentAt!.toLocal())),
               if (e.sveveMessageId != null)
                 _detailRow('Sveve ID', '${e.sveveMessageId}'),
               if (e.referenceType != null)
