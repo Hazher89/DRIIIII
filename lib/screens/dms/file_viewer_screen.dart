@@ -17,7 +17,7 @@ import 'preview/excel_sheet_editor.dart';
 import 'preview/office_document_preview.dart';
 import '../../widgets/platform_embedded_view.dart';
 import '../../widgets/platform_media_view.dart';
-import '../../widgets/platform_pdf_view.dart';
+import '../../widgets/platform_pdf_bytes_view.dart';
 import '../partners/widgets/partner_route_pdf_bytes_url_stub.dart'
     if (dart.library.io) '../partners/widgets/partner_route_pdf_bytes_url_io.dart'
     if (dart.library.html) '../partners/widgets/partner_route_pdf_bytes_url_web.dart' as pdf_bytes_url;
@@ -531,7 +531,12 @@ class _FileViewerScreenState extends State<FileViewerScreen> {
 
     switch (kind) {
       case FilePreviewKind.pdf:
-        return PlatformPdfView(url: url);
+        return PlatformPdfBytesView(
+          bytes: bytes,
+          fileName: widget.file.name.toLowerCase().endsWith('.pdf')
+              ? widget.file.name
+              : '${widget.file.name}.pdf',
+        );
 
       case FilePreviewKind.image:
         return Center(

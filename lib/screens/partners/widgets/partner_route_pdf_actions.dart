@@ -10,7 +10,7 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/utils/open_external_url.dart';
 import '../../../core/constants/route_dispatch_status.dart';
 import '../../../models/partner/partner_links.dart';
-import '../../../widgets/platform_pdf_view.dart';
+import '../../../widgets/platform_pdf_bytes_view.dart';
 
 /// Delte PDF-handlinger for ruteplanlegging og sjåførportal.
 class PartnerRoutePdfActions {
@@ -78,13 +78,8 @@ class PartnerRoutePdfActions {
       return;
     }
     try {
-      final url = await pdf_bytes_url.pdfBytesToViewUrl(bytes);
       if (!context.mounted) return;
-      if (url == null || url.isEmpty) {
-        _snack(context, 'Forhåndsvisning støttes ikke på denne plattformen.', isError: true);
-        return;
-      }
-      await _showPdfViewer(context, url, title);
+      await _showPdfBytesViewer(context, bytes: bytes, title: title);
     } catch (e) {
       if (context.mounted) {
         _snack(context, 'Kunne ikke vise PDF: $e', isError: true);
@@ -92,7 +87,11 @@ class PartnerRoutePdfActions {
     }
   }
 
-  static Future<void> _showPdfViewer(BuildContext context, String url, String title) async {
+  static Future<void> _showPdfBytesViewer(
+    BuildContext context, {
+    required Uint8List bytes,
+    required String title,
+  }) async {
     await showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -104,7 +103,12 @@ class PartnerRoutePdfActions {
               IconButton(
                 tooltip: 'Åpne i ny fane',
                 icon: const Icon(Icons.open_in_new),
-                onPressed: () => openExternalUrl(url),
+                onPressed: () async {
+                  final url = await pdf_bytes_url.pdfBytesToViewUrl(bytes);
+                  if (url != null && url.isNotEmpty) {
+                    await openExternalUrl(url);
+                  }
+                },
               ),
               IconButton(
                 tooltip: 'Lukk',
@@ -113,7 +117,10 @@ class PartnerRoutePdfActions {
               ),
             ],
           ),
-          body: PlatformPdfView(url: url),
+          body: PlatformPdfBytesView(
+            bytes: bytes,
+            fileName: title.endsWith('.pdf') ? title : '$title.pdf',
+          ),
         ),
       ),
     );

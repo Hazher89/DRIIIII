@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../utils/open_external_url.dart';
+import '../../../widgets/platform_pdf_bytes_view.dart';
 import '../../../widgets/platform_pdf_view.dart';
 import 'storage_file_access.dart';
 import '../../../screens/partners/widgets/partner_route_pdf_bytes_url_stub.dart'
@@ -58,12 +59,7 @@ class StorageFileActions {
       if (!context.mounted) return;
 
       if (bytes != null) {
-        final viewUrl = await pdf_bytes_url.pdfBytesToViewUrl(bytes);
-        if (viewUrl == null || viewUrl.isEmpty) {
-          _snack(context, 'Forhåndsvisning støttes ikke på denne plattformen.', isError: true);
-          return;
-        }
-        await _showViewer(context, viewUrl, title);
+        await _showBytesViewer(context, bytes, title);
         return;
       }
 
@@ -76,6 +72,45 @@ class StorageFileActions {
         _snack(context, 'Kunne ikke åpne: $e', isError: true);
       }
     }
+  }
+
+  static Future<void> _showBytesViewer(
+    BuildContext context,
+    Uint8List bytes,
+    String title,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) => Dialog.fullscreen(
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(title, overflow: TextOverflow.ellipsis),
+            actions: [
+              IconButton(
+                tooltip: 'Åpne i ny fane',
+                icon: const Icon(Icons.open_in_new),
+                onPressed: () async {
+                  final viewUrl = await pdf_bytes_url.pdfBytesToViewUrl(bytes);
+                  if (viewUrl != null && viewUrl.isNotEmpty) {
+                    await openExternalUrl(viewUrl);
+                  }
+                },
+              ),
+              IconButton(
+                tooltip: 'Lukk',
+                icon: const Icon(Icons.close),
+                onPressed: () => Navigator.pop(ctx),
+              ),
+            ],
+          ),
+          body: PlatformPdfBytesView(
+            bytes: bytes,
+            fileName: title.endsWith('.pdf') ? title : '$title.pdf',
+          ),
+        ),
+      ),
+    );
   }
 
   static Future<void> _showViewer(
