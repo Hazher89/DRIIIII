@@ -5,6 +5,8 @@ import 'package:uuid/uuid.dart';
 
 import '../../../core/permissions/user_access.dart';
 import '../../../core/services/hms/equipment_service.dart';
+import '../../../core/services/hms/hms_pdf_generators.dart';
+import '../widgets/hms_pdf_export_button.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/hms/equipment.dart';
 import '../../../models/user_profile.dart';
@@ -187,6 +189,14 @@ class _EquipmentDetailScreenState extends State<EquipmentDetailScreen> {
       appBar: AppBar(
         title: Text(e.name),
         actions: [
+          HmsPdfExportButton(
+            fileName: 'utstyr_${e.id.substring(0, 8)}',
+            onGenerate: () => HmsPdfGenerators.equipment(
+              e,
+              logs: _logs,
+              purchases: _purchases,
+            ),
+          ),
           if (_canEdit)
             IconButton(
               icon: const Icon(Icons.edit),

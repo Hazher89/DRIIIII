@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/services/hms/hms_pdf_generators.dart';
 import '../../../../core/services/hms/stakeholder_risk_service.dart';
+import '../../widgets/hms_pdf_export_button.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../models/hms/stakeholder_risk_assessment.dart';
 import 'stakeholder_risk_widgets.dart';
@@ -207,6 +209,11 @@ class _StakeholderRiskEditorScreenState extends State<StakeholderRiskEditorScree
           ),
         ),
         actions: [
+          if (_assessment != null)
+            HmsPdfExportButton(
+              fileName: 'interessepart_${_assessment!.id.substring(0, 8)}',
+              onGenerate: () => HmsPdfGenerators.stakeholderRisk(_assessment!),
+            ),
           if (_saving)
             const Padding(
               padding: EdgeInsets.all(16),

@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/services/hms/hms_pdf_generators.dart';
 import '../../../core/services/hms/safety_round_service.dart';
+import '../widgets/hms_pdf_export_button.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/safety_round.dart';
 
@@ -118,9 +120,13 @@ class _SafetyRoundDetailScreenState extends State<SafetyRoundDetailScreen> {
       appBar: AppBar(
         title: const Text('Vernerunde – arkiv'),
         actions: [
+          HmsPdfExportButton(
+            fileName: 'vernerunde_${r.archiveNumber ?? r.id.substring(0, 8)}',
+            onGenerate: () => HmsPdfGenerators.safetyRound(r),
+          ),
           IconButton(
-            icon: const Icon(Icons.picture_as_pdf),
-            tooltip: 'Last ned PDF',
+            icon: const Icon(Icons.download_outlined),
+            tooltip: 'Åpne arkivert PDF',
             onPressed: _downloadPdf,
           ),
           if (kIsWeb)

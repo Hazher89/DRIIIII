@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/hms/hms_ecosystem_service.dart';
+import '../../../core/services/hms/hms_pdf_generators.dart';
 import '../../../core/services/supabase_service.dart';
+import '../widgets/hms_pdf_export_button.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/risk_assessment.dart';
 import '../../../models/risk_assessment_status.dart';
@@ -240,6 +242,10 @@ class _RiskAssessmentDetailScreenState extends State<RiskAssessmentDetailScreen>
       appBar: AppBar(
         title: Text(_ra.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          HmsPdfExportButton(
+            fileName: 'ros_${_ra.id.substring(0, 8)}',
+            onGenerate: () => HmsPdfGenerators.riskAssessment(_ra),
+          ),
           if (_canEdit && !RiskAssessmentStatuses.isTreated(_status))
             TextButton(
               onPressed: _saving ? null : () => _save(markTreated: true),

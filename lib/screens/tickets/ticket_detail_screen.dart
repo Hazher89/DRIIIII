@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/services/hms/hms_pdf_generators.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
+import '../hms/widgets/hms_pdf_export_button.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
 import '../../models/user_profile.dart';
@@ -271,6 +273,16 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               : 'Avvik',
         ),
         actions: [
+          HmsPdfExportButton(
+            fileName: _ticket.ticketNumber != null
+                ? 'avvik_${_ticket.ticketNumber}'
+                : 'avvik_${_ticket.id.substring(0, 8)}',
+            onGenerate: () => HmsPdfGenerators.ticket(
+              _ticket,
+              comments: _comments,
+              includeInternalNotes: _coord,
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () async {

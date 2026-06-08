@@ -5,6 +5,8 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:signature/signature.dart';
 
 import '../../../core/services/hms/hms_ecosystem_service.dart';
+import '../../../core/services/hms/hms_pdf_generators.dart';
+import '../widgets/hms_pdf_export_button.dart';
 import '../../../core/services/storage/company_file_storage.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -230,6 +232,14 @@ class _SjaDetailScreenState extends State<SjaDetailScreen> {
       appBar: AppBar(
         title: Text(_sja.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          HmsPdfExportButton(
+            fileName: 'sja_${_sja.id.substring(0, 8)}',
+            onGenerate: () => HmsPdfGenerators.sja(
+              _sja,
+              steps: _steps,
+              signatures: _signatures,
+            ),
+          ),
           if (_isLeader)
             IconButton(
               icon: const Icon(Icons.qr_code_2),
