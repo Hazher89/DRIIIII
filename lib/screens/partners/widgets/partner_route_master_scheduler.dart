@@ -993,8 +993,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           final n = _weekRouteCount(d);
           final pendingAck = _pendingAckCountForDay(d);
           return Expanded(
-            child: SizedBox(
-            width: dayColW,
+            child: Container(
             decoration: BoxDecoration(
               color: isFocus
                   ? DriftProTheme.primaryGreen.withValues(alpha: 0.1)
