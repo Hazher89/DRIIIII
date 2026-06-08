@@ -140,12 +140,13 @@ class _PartnerRoutePdfThumbnailState extends State<PartnerRoutePdfThumbnail> {
               ? LayoutBuilder(
                   builder: (context, constraints) {
                     final w = constraints.maxWidth;
+                    // Top-venstre: SAP Trip Overview har sjåfør/strekkode til venstre.
                     return ClipRect(
                       child: Align(
-                        alignment: Alignment.topCenter,
+                        alignment: Alignment.topLeft,
                         child: Transform.scale(
-                          scale: 2.65,
-                          alignment: Alignment.topCenter,
+                          scale: 2.55,
+                          alignment: Alignment.topLeft,
                           child: SizedBox(
                             width: w,
                             child: Image.memory(_png!, fit: BoxFit.fitWidth),
@@ -201,7 +202,7 @@ class _PartnerRoutePdfThumbnailState extends State<PartnerRoutePdfThumbnail> {
                 ),
               ),
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 20, 8, 6),
+                padding: const EdgeInsets.fromLTRB(12, 20, 8, 8),
                 child: Row(
                   children: [
                     const Icon(Icons.person_outline,

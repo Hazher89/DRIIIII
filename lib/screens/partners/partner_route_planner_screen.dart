@@ -133,7 +133,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
       ),
       SliverToBoxAdapter(
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
           child: PartnerRouteMasterScheduler(
             fleet: _fleet,
             onChanged: () => reload(notifyParent: true, silent: true),

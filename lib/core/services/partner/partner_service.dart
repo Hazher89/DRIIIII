@@ -13,6 +13,7 @@ import '../../../models/partner/shared_partner_document.dart';
 import '../../../models/partner/vehicle_inspection.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/mavi_driver_day_assignment.dart';
+import '../../../models/partner/route_ack_nudge_result.dart';
 import '../../../models/partner/route_reminder_flag.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import '../../utils/portal_credentials.dart';
@@ -752,6 +753,41 @@ class PartnerService {
       partnerId,
       partnerVehicleId: partnerVehicleId,
     );
+  }
+
+  /// Manuell purring: partner får SMS/e-post om å akseptere rute.
+  static Future<RouteAckNudgeResult> nudgeRouteAck(String shareId) async {
+    if (!_ok) {
+      return const RouteAckNudgeResult(ok: false, message: 'Supabase ikke konfigurert');
+    }
+    try {
+      final data = await _client.rpc(
+        'nudge_partner_route_ack',
+        params: {'p_share_id': shareId},
+      );
+      return RouteAckNudgeResult.fromRpc(data);
+    } catch (e) {
+      return RouteAckNudgeResult(ok: false, message: e.toString());
+    }
+  }
+
+  /// Purring til alle på valgt dag som ikke har akseptert.
+  static Future<RouteAckNudgeResult> nudgePendingRouteAcksForDay(
+    DateTime day,
+  ) async {
+    if (!_ok) {
+      return const RouteAckNudgeResult(ok: false, message: 'Supabase ikke konfigurert');
+    }
+    final d = DateTime(day.year, day.month, day.day);
+    try {
+      final data = await _client.rpc(
+        'nudge_partner_route_ack_pending',
+        params: {'p_day': d.toIso8601String().split('T').first},
+      );
+      return RouteAckNudgeResult.fromRpc(data);
+    } catch (e) {
+      return RouteAckNudgeResult(ok: false, message: e.toString());
+    }
   }
 
   /// Purring sendt (SMS/e-post) per rute-id — for badge i planlegger.

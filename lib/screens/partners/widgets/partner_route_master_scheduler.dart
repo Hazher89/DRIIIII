@@ -18,6 +18,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/route_ack_nudge_result.dart';
 import '../../../models/partner/route_reminder_flag.dart';
 import 'partner_route_pdf_actions.dart';
 import 'route_reminder_badge.dart';
@@ -71,11 +72,11 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   List<DateTime> get _days =>
       List.generate(7, (i) => DateTime(_weekStart.year, _weekStart.month, _weekStart.day + i));
 
-  static const double _rowHeight = 100;
-  static const double _dayHeaderHeight = 96;
-  static const double _gridHeaderHeight = 97; // dag-header + skillelinje
-  static const double _sidebarW = 232;
-  static const double _dayColW = 140;
+  static const double _rowHeight = 96;
+  static const double _dayHeaderHeight = 88;
+  static const double _gridHeaderHeight = 89;
+  static const double _sidebarW = 220;
+  static const double _minDayColW = 96;
 
   @override
   void initState() {
@@ -225,6 +226,106 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       final rs = s.routeStartAt != null ? _dayOnly(s.routeStartAt!.toLocal()) : null;
       return sd == dn || rs == dn;
     }).length;
+  }
+
+  bool _shareOnDay(PartnerRouteShare s, DateTime day) {
+    final dn = _dayOnly(day);
+    final sd = _dayOnly(s.shareDate);
+    final rs = s.routeStartAt != null ? _dayOnly(s.routeStartAt!.toLocal()) : null;
+    return sd == dn || rs == dn;
+  }
+
+  bool _needsAck(PartnerRouteShare s) =>
+      s.isSentWithNotify && s.ackStatus != 'accepted';
+
+  int _pendingAckCountForDay(DateTime day) =>
+      _shares.where((s) => _shareOnDay(s, day) && _needsAck(s)).length;
+
+  void _showNudgeSnack(RouteAckNudgeResult result) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result.message),
+        backgroundColor: result.ok ? null : Colors.red.shade700,
+      ),
+    );
+  }
+
+  Future<void> _nudgePendingForDay(DateTime day) async {
+    final n = _pendingAckCountForDay(day);
+    if (n == 0) {
+      _showNudgeSnack(const RouteAckNudgeResult(
+        ok: false,
+        message: 'Ingen ruter venter på aksept denne dagen.',
+      ));
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send purring?'),
+        content: Text(
+          'Sender SMS/e-post til $n partner(e) som ikke har akseptert ruten '
+          'på ${DateFormat('EEEE d. MMMM', 'nb').format(day)}.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Purr ($n)'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      final result = await PartnerService.nudgePendingRouteAcksForDay(day);
+      _showNudgeSnack(result);
+      if (result.ok) await _reload(light: true);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  static Future<void> nudgeOneRoute(
+    BuildContext context, {
+    required PartnerRouteShare share,
+    required VoidCallback onDone,
+    required void Function(bool) setBusy,
+  }) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send purring?'),
+        content: Text(
+          'Partner får SMS/e-post om å akseptere «${share.title ?? 'ruten'}».',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Purr'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    setBusy(true);
+    try {
+      final result = await PartnerService.nudgeRouteAck(share.id);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: result.ok ? null : Colors.red.shade700,
+          ),
+        );
+        if (result.ok) onDone();
+      }
+    } finally {
+      if (context.mounted) setBusy(false);
+    }
   }
 
   Future<void> _clearAllRoutesForDay(DateTime day) async {
@@ -379,10 +480,10 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           ),
           label: Text(
             hasQueue
-                ? 'Ruter fra SAP ($_sapStagedCount)'
+                ? 'SAP ($_sapStagedCount)'
                 : hasInbox
-                    ? 'Ruter fra SAP ($_sapInboxPending nye)'
-                    : 'Ruter fra SAP',
+                    ? 'SAP ($_sapInboxPending nye)'
+                    : 'SAP',
             style: TextStyle(
               fontWeight: active ? FontWeight.w800 : FontWeight.w600,
             ),
@@ -504,13 +605,21 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     final hdrBg = isDark ? DriftProTheme.cardDark : Colors.white;
     final borderCol = Colors.grey.withValues(alpha: isDark ? 0.35 : 0.22);
 
-    final gridWidth = _days.length * _dayColW;
+    final screenH = MediaQuery.sizeOf(context).height;
+    final plannerH = (screenH * 0.64).clamp(480.0, 920.0);
 
-    return Card(
+    return SizedBox(
+      height: plannerH,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final dayColW = ((constraints.maxWidth - _sidebarW) / _days.length)
+              .clamp(_minDayColW, double.infinity);
+
+          return Card(
       margin: EdgeInsets.zero,
-      elevation: 2,
+      elevation: 1,
       clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: borderCol)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: borderCol)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -610,6 +719,16 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         icon: const Icon(Icons.event_outlined, size: 18),
                         label: Text('Dag: ${DateFormat('d.M.y', 'nb').format(_focusDay)}'),
                       ),
+                      if (_pendingAckCountForDay(_focusDay) > 0)
+                        FilledButton.tonalIcon(
+                          onPressed: _busy ? null : () => _nudgePendingForDay(_focusDay),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.orange.shade50,
+                            foregroundColor: Colors.orange.shade900,
+                          ),
+                          icon: const Icon(Icons.notifications_active_outlined, size: 18),
+                          label: Text('Purr (${_pendingAckCountForDay(_focusDay)})'),
+                        ),
                       if (_weekRouteCount(_focusDay) > 0)
                         FilledButton.icon(
                           onPressed: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
@@ -618,9 +737,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                             foregroundColor: Colors.white,
                           ),
                           icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                          label: Text(
-                            'Tøm dag (${_weekRouteCount(_focusDay)} ruter)',
-                          ),
+                          label: Text('Tøm (${_weekRouteCount(_focusDay)})'),
                         ),
                     ],
                   ),
@@ -665,9 +782,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         ),
                         icon: const Icon(Icons.auto_awesome),
                         label: Text(
-                          _manualStagedCount > 0
-                              ? 'AUTO MASS ($_manualStagedCount)'
-                              : 'AUTO MASS',
+                          _manualStagedCount > 0 ? 'Auto ($_manualStagedCount)' : 'Auto',
                         ),
                       ),
                       OutlinedButton.icon(
@@ -714,16 +829,15 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
           Divider(height: 1, thickness: 1, color: borderCol),
 
-          // Master grid row — følger sidens vertikale scroll (ingen fast høyde)
-          Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Sidebar (MAVI)
                 Container(
                   width: _sidebarW,
                   decoration: BoxDecoration(
                     border: Border(right: BorderSide(color: borderCol)),
-                    color: (isDark ? DriftProTheme.surfaceDark : const Color(0xFFF9FAFB)),
+                    color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF8FAFC),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -746,40 +860,49 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                           ),
                         ),
                       ),
-                      for (final row in _filteredFleet)
-                        SizedBox(
-                          height: _rowHeight,
-                          child: _buildSidebarRow(row, borderCol),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: EdgeInsets.zero,
+                          itemCount: _filteredFleet.length,
+                          itemExtent: _rowHeight,
+                          itemBuilder: (_, i) =>
+                              _buildSidebarRow(_filteredFleet[i], borderCol),
                         ),
+                      ),
                     ],
                   ),
                 ),
-
-                // Calendar body — horisontal scroll, rader følger sidescroll
                 Expanded(
-                  child: SingleChildScrollView(
-                    controller: _bodyH,
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      width: gridWidth,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildDayHeaderRow(borderCol),
-                          Divider(height: 1, color: borderCol),
-                          for (final row in _filteredFleet)
-                            SizedBox(
-                              height: _rowHeight,
-                              child: _buildFleetGridRow(context, row, isDark, borderCol),
-                            ),
-                        ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildDayHeaderRow(borderCol, dayColW),
+                      Divider(height: 1, color: borderCol),
+                      Expanded(
+                        child: ListView.builder(
+                          controller: _bodyH,
+                          padding: EdgeInsets.zero,
+                          itemCount: _filteredFleet.length,
+                          itemExtent: _rowHeight,
+                          itemBuilder: (_, i) => _buildFleetGridRow(
+                            context,
+                            _filteredFleet[i],
+                            isDark,
+                            borderCol,
+                            dayColW,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ],
             ),
+          ),
         ],
+      ),
+    );
+        },
       ),
     );
   }
@@ -859,18 +982,25 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     );
   }
 
-  Widget _buildDayHeaderRow(Color borderCol) {
+  Widget _buildDayHeaderRow(Color borderCol, double dayColW) {
     return SizedBox(
       height: _dayHeaderHeight,
       child: Row(
         children: _days.map((d) {
           final now = _dayOnly(DateTime.now());
           final isToday = _dayOnly(d) == now;
+          final isFocus = _dayOnly(d) == _dayOnly(_focusDay);
           final n = _weekRouteCount(d);
-          return Container(
-            width: _dayColW,
+          final pendingAck = _pendingAckCountForDay(d);
+          return Expanded(
+            child: SizedBox(
+            width: dayColW,
             decoration: BoxDecoration(
-              color: isToday ? Colors.lightBlue.withValues(alpha: 0.12) : null,
+              color: isFocus
+                  ? DriftProTheme.primaryGreen.withValues(alpha: 0.1)
+                  : isToday
+                      ? Colors.lightBlue.withValues(alpha: 0.1)
+                      : null,
               border: Border(right: BorderSide(color: borderCol)),
             ),
             padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
@@ -887,7 +1017,11 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                   style: TextStyle(
                     fontWeight: FontWeight.w800,
                     fontSize: 11,
-                    color: isToday ? DriftProTheme.accentBlue : null,
+                    color: isFocus
+                        ? DriftProTheme.primaryGreen
+                        : isToday
+                            ? DriftProTheme.accentBlue
+                            : null,
                   ),
                 ),
                 Text(
@@ -896,46 +1030,80 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                   style: const TextStyle(fontSize: 10, height: 1.1),
                 ),
                 Text(
-                  '$n ruter',
+                  '$n ruter${pendingAck > 0 ? ' · $pendingAck venter' : ''}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 9, height: 1.2, color: Colors.grey[700]),
                 ),
                 if (n > 0) ...[
                   const SizedBox(height: 3),
-                  Material(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(6),
-                    child: InkWell(
-                      onTap: _busy ? null : () => _clearAllRoutesForDay(d),
-                      borderRadius: BorderRadius.circular(6),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.delete_sweep_outlined, size: 13, color: Colors.red.shade800),
-                            const SizedBox(width: 3),
-                            Flexible(
-                              child: Text(
-                                'Tøm',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.red.shade800,
+                  Row(
+                    children: [
+                      if (pendingAck > 0)
+                        Expanded(
+                          child: Material(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(6),
+                            child: InkWell(
+                              onTap: _busy ? null : () => _nudgePendingForDay(d),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.notifications_active_outlined,
+                                        size: 12, color: Colors.orange.shade900),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      'Purr',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.orange.shade900,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ),
-                          ],
+                          ),
+                        ),
+                      if (pendingAck > 0) const SizedBox(width: 3),
+                      Expanded(
+                        child: Material(
+                          color: Colors.red.shade50,
+                          borderRadius: BorderRadius.circular(6),
+                          child: InkWell(
+                            onTap: _busy ? null : () => _clearAllRoutesForDay(d),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.delete_sweep_outlined, size: 12, color: Colors.red.shade800),
+                                  const SizedBox(width: 2),
+                                  Text(
+                                    'Tøm',
+                                    style: TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.red.shade800,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ],
             ),
+          ),
           );
         }).toList(),
       ),
@@ -947,12 +1115,14 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     FleetPartnerVehicleRow row,
     bool isDark,
     Color borderCol,
+    double dayColW,
   ) {
     return Row(
       children: _days.map((day) {
         final list = _sharesCell(row.vehicle.id, day);
         final isFocusDay = _dayOnly(day) == _dayOnly(_focusDay);
-        return InkWell(
+        return Expanded(
+          child: InkWell(
           onTap: () {
             setState(() => _focusDay = _dayOnly(day));
             _refreshSapPendingCount();
@@ -963,7 +1133,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             }
           },
           child: Container(
-            width: _dayColW,
+            width: dayColW,
             height: _rowHeight,
             decoration: BoxDecoration(
               border: Border(
@@ -977,6 +1147,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             padding: const EdgeInsets.all(4),
             child: _buildDayCell(context, row, day, list, isDark),
           ),
+        ),
         );
       }).toList(),
     );
@@ -1204,6 +1375,15 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
     }
   }
 
+  Future<void> _nudge(PartnerRouteShare s) async {
+    await _PartnerRouteMasterSchedulerState.nudgeOneRoute(
+      context,
+      share: s,
+      onDone: widget.onChanged,
+      setBusy: (v) => setState(() => _busy = v),
+    );
+  }
+
   Future<void> _dispatchShare(PartnerRouteShare s, {required bool notifyDriver}) async {
     final shiftId = s.shiftId ?? widget.shifts.where((x) => !x.isAvailability).firstOrNull?.id;
     if (shiftId == null) return;
@@ -1315,7 +1495,7 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                         icon: const Icon(Icons.swap_horiz),
-                        label: const Text('Flytt til annen sjåfør / bil'),
+                        label: const Text('Flytt rute'),
                       ),
                       const SizedBox(height: 8),
                       if (s.isStaged || s.isRegistered) ...[
@@ -1326,7 +1506,7 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
                             padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
                           icon: const Icon(Icons.inventory_2_outlined),
-                          label: const Text('Publiser uten varsel'),
+                          label: const Text('Uten varsel'),
                         ),
                         const SizedBox(height: 8),
                       ],
@@ -1338,12 +1518,21 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
                             padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
                           icon: Icon(s.isSentWithNotify ? Icons.sms_outlined : Icons.rocket_launch_outlined),
-                          label: Text(
-                            s.isSentWithNotify
-                                ? 'Send på nytt (SMS + aksept)'
-                                : 'Publiser & send SMS',
-                          ),
+                          label: Text(s.isSentWithNotify ? 'Send SMS på nytt' : 'Publiser + SMS'),
                         ),
+                      if (s.isSentWithNotify && s.ackStatus != 'accepted') ...[
+                        const SizedBox(height: 8),
+                        FilledButton.tonalIcon(
+                          onPressed: _busy ? null : () => _nudge(s),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.orange.shade50,
+                            foregroundColor: Colors.orange.shade900,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                          icon: const Icon(Icons.notifications_active_outlined),
+                          label: const Text('Purr'),
+                        ),
+                      ],
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
                         onPressed: _busy ? null : () => _delete(s),
@@ -1881,12 +2070,28 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                               style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
                               child: Text(
                                 s.isStaged
-                                    ? 'Publiser & send SMS'
+                                    ? 'Publiser + SMS'
                                     : s.isRegistered
-                                        ? 'Varsle sjåfør (SMS)'
-                                        : 'Oppdater & varsle',
+                                        ? 'Varsle (SMS)'
+                                        : 'Oppdater + SMS',
                               ),
                             ),
+                            if (s.isSentWithNotify && s.ackStatus != 'accepted')
+                              FilledButton.tonal(
+                                onPressed: _busy
+                                    ? null
+                                    : () => _PartnerRouteMasterSchedulerState.nudgeOneRoute(
+                                          context,
+                                          share: s,
+                                          onDone: widget.onSaved,
+                                          setBusy: (v) => setState(() => _busy = v),
+                                        ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.orange.shade50,
+                                  foregroundColor: Colors.orange.shade900,
+                                ),
+                                child: const Text('Purr'),
+                              ),
                           ],
                         ),
                       ],
