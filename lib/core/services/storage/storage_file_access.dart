@@ -119,6 +119,11 @@ class StorageFileAccess {
     return null;
   }
 
+  static bool isSupabaseStorageUrl(String raw) {
+    final t = raw.trim();
+    return t.contains('/storage/v1/object/');
+  }
+
   static Future<String> resolveViewUrl(
     String storagePath, {
     String? companyId,
@@ -126,11 +131,35 @@ class StorageFileAccess {
     final raw = storagePath.trim();
     if (raw.isEmpty) throw ArgumentError('Sti mangler');
 
-    if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+    if (raw.startsWith('http://') || raw.startsWith('https://')) {
+      if (isSupabaseStorageUrl(raw)) {
+        final inner = extractSupabaseDocumentsPath(raw);
+        if (inner != null && inner.isNotEmpty) {
+          try {
+            return await _signedUrlForPath(inner, companyId: companyId);
+          } catch (_) {
+            final bytes = await downloadBytes(inner, companyId: companyId);
+            if (bytes != null && bytes.isNotEmpty) {
+              throw StorageBytesReady(bytes);
+            }
+          }
+        }
+      }
+      if (!isSupabaseStorageUrl(raw)) return raw;
+      throw StateError('Kunne ikke åpne lagret fil (ugyldig Supabase-lenke)');
+    }
 
     if (CompanyFileStorage.isDropboxReference(raw) ||
         CompanyFileStorage.isDropboxPath(raw)) {
-      return CompanyFileStorage.resolveDisplayUrl(raw);
+      try {
+        return await CompanyFileStorage.resolveDisplayUrl(raw);
+      } catch (_) {
+        final bytes = await downloadBytes(raw, companyId: companyId);
+        if (bytes != null && bytes.isNotEmpty) {
+          throw StorageBytesReady(bytes);
+        }
+        rethrow;
+      }
     }
 
     try {

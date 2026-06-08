@@ -82,8 +82,8 @@ class CompanyFileStorage {
   static bool isDropboxPath(String path) {
     final p = path.trim();
     if (p.startsWith('/DriftPro') || p.startsWith('DriftPro/')) return true;
-    // App folder (rot = /): /company_<uuid>/routes/...
-    return RegExp(r'^/company_[0-9a-f-]{36}/').hasMatch(p);
+    // App folder (rot = /): company_<uuid>/routes/... (med eller uten ledende /)
+    return RegExp(r'^/?company_[0-9a-f-]{36}/').hasMatch(p);
   }
 
   /// Tilgjengelig for alle innloggede (ikke bare admin).

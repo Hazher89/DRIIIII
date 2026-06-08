@@ -41,6 +41,17 @@ class EmployeeNotificationRecipientsService {
     );
   }
 
+  /// Manuell oppsummering «X ruter venter på partner-aksept» — kun valgte mottakere.
+  static Future<Map<String, dynamic>> sendPendingRoutesDigestNow({
+    required String companyId,
+  }) async {
+    final result = await SupabaseService.client.rpc(
+      'send_pending_routes_digest_now',
+      params: {'p_company_id': companyId},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
   static Future<int> resetSubscriptions({
     required String companyId,
     String? profileId,

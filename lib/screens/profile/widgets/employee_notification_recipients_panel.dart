@@ -11,7 +11,13 @@ enum _ViewMode { byEmployee, byEvent }
 
 /// Hvem får hvilke varsler — lagres umiddelbart i Supabase.
 class EmployeeNotificationRecipientsPanel extends StatefulWidget {
-  const EmployeeNotificationRecipientsPanel({super.key});
+  const EmployeeNotificationRecipientsPanel({
+    super.key,
+    this.initialEventId,
+  });
+
+  /// Åpne direkte på en varseltype (f.eks. partner_route_pending_internal).
+  final String? initialEventId;
 
   @override
   State<EmployeeNotificationRecipientsPanel> createState() =>
@@ -29,10 +35,17 @@ class _EmployeeNotificationRecipientsPanelState
   String? _selectedProfileId;
   String? _selectedEventId;
   String? _savingKey;
+  bool _sendingDigest = false;
+
+  static const _pendingRoutesEventId = 'partner_route_pending_internal';
 
   @override
   void initState() {
     super.initState();
+    if (widget.initialEventId != null) {
+      _viewMode = _ViewMode.byEvent;
+      _selectedEventId = widget.initialEventId;
+    }
     _load();
   }
 
@@ -58,7 +71,8 @@ class _EmployeeNotificationRecipientsPanelState
         _rows = rows;
         _loading = false;
         _selectedProfileId ??= _employees.firstOrNull?.id;
-        _selectedEventId ??= _events.firstOrNull?.id;
+        _selectedEventId ??=
+            widget.initialEventId ?? _events.firstOrNull?.id;
       });
     } catch (e) {
       if (!mounted) return;
@@ -169,6 +183,42 @@ class _EmployeeNotificationRecipientsPanelState
     }
   }
 
+  Future<void> _sendPendingRoutesDigest() async {
+    if (_companyId == null) return;
+    setState(() => _sendingDigest = true);
+    try {
+      final result = await EmployeeNotificationRecipientsService
+          .sendPendingRoutesDigestNow(companyId: _companyId!);
+      if (!mounted) return;
+      final ok = result['ok'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result['message'] as String? ??
+                (ok ? 'Oppsummering sendt' : 'Kunne ikke sende'),
+          ),
+          backgroundColor: ok ? null : Colors.orange.shade800,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke sende: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sendingDigest = false);
+    }
+  }
+
+  void _openPendingRoutesRecipients() {
+    setState(() {
+      _viewMode = _ViewMode.byEvent;
+      _selectedEventId = _pendingRoutesEventId;
+      _search = '';
+    });
+  }
+
   Future<void> _resetProfile(String profileId) async {
     if (_companyId == null) return;
     final emp = _employees.firstWhere((e) => e.id == profileId);
@@ -235,19 +285,9 @@ class _EmployeeNotificationRecipientsPanelState
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: Column(
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Velg hvem som får hvilke varsler — og om de skal motta SMS, e-post, '
-                  'begge eller av. Endringer lagres umiddelbart i Supabase og styrer '
-                  'faktisk utsending.',
-                  style: TextStyle(fontSize: 13),
-                ),
-              ),
+              _infoBanner(),
+              const SizedBox(height: 10),
+              _pendingRoutesActionBar(),
               const SizedBox(height: 10),
               SegmentedButton<_ViewMode>(
                 segments: const [
@@ -361,6 +401,99 @@ class _EmployeeNotificationRecipientsPanelState
     );
   }
 
+  Widget _infoBanner() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Kun valgte mottakere får SMS/e-post. Ingen varsler sendes automatisk '
+            'til alle ledere eller admin — du må aktivt velge hvem som skal motta hva.',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Automatisk daglig SMS «ruter venter på partner-aksept» er slått av. '
+            'Velg mottakere under, og send oppsummering manuelt når du trenger den.\n\n'
+            'Andre varsler som tidligere kunne gå til mange (nå kun ved eksplisitt valg): '
+            'partner avviste rute, SAP rute-PDF, bilutleie internt, ny ansatt venter godkjenning, '
+            'fravær, utstyr og generelle HMS-varsler.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _pendingRoutesActionBar() {
+    final selectedCount = _activeCountForEvent(_pendingRoutesEventId);
+    final onPendingEvent = _selectedEventId == _pendingRoutesEventId;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.route_outlined, color: DriftProTheme.primaryGreen),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Ruter venter på partner-aksept',
+                    style: DriftProTheme.labelLg,
+                  ),
+                ),
+                Chip(
+                  label: Text('$selectedCount valgt'),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Daglig automatisk SMS er av. Velg hvem som skal få oppsummeringen, '
+              'og trykk «Send nå» når du vil varsle dem.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: onPendingEvent ? null : _openPendingRoutesRecipients,
+                  icon: const Icon(Icons.people_outline, size: 18),
+                  label: const Text('Velg mottakere'),
+                ),
+                FilledButton.icon(
+                  onPressed: _sendingDigest || selectedCount == 0
+                      ? null
+                      : _sendPendingRoutesDigest,
+                  icon: _sendingDigest
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.send_outlined, size: 18),
+                  label: const Text('Send oppsummering nå'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _employeeList() {
     final items = _employees;
     return ListView.builder(
@@ -404,7 +537,11 @@ class _EmployeeNotificationRecipientsPanelState
         return ListTile(
           selected: selected,
           title: Text(e.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text('${e.category} · standard: ${_ruleLabel(e.rule)}'),
+          subtitle: Text(
+            e.id == _pendingRoutesEventId
+                ? '${e.category} · manuell oppsummering'
+                : e.category,
+          ),
           trailing: Chip(label: Text('$active'), visualDensity: VisualDensity.compact),
           onTap: () => setState(() => _selectedEventId = e.id),
         );
@@ -481,7 +618,11 @@ class _EmployeeNotificationRecipientsPanelState
       children: [
         if (event != null && MediaQuery.sizeOf(context).width >= 900) ...[
           Text(event.title, style: DriftProTheme.headingSm),
-          Text('Standard: ${_ruleLabel(event.rule)}'),
+          Text(
+            event.id == _pendingRoutesEventId
+                ? 'Automatisk daglig utsending er av — kun manuelt eller ved valg'
+                : 'Kun eksplisitt valgte mottakere får varsel',
+          ),
           const SizedBox(height: 8),
         ],
         ...filtered.map(_subscriptionTile),
@@ -509,9 +650,7 @@ class _EmployeeNotificationRecipientsPanelState
             const SizedBox(height: 2),
             Text(
               _viewMode == _ViewMode.byEmployee
-                  ? (row.isExplicit
-                      ? 'Manuelt valg'
-                      : 'Standard (${_ruleLabel(row.defaultRecipientRule)})')
+                  ? (row.isExplicit ? 'Manuelt valg' : 'Ikke valgt')
                   : '${row.profileRole}${row.departmentName != null ? ' · ${row.departmentName}' : ''}${row.isExplicit ? ' · manuelt' : ''}',
               style: TextStyle(fontSize: 12, color: Colors.grey[600]),
             ),
@@ -530,16 +669,6 @@ class _EmployeeNotificationRecipientsPanelState
     );
   }
 
-  String _ruleLabel(String rule) {
-    return switch (rule) {
-      'department_scoped' || 'department_leaders' => 'Egen avdeling',
-      'assignee_default' => 'Saksbehandler (på som standard)',
-      'admins' => 'Kun admin/superadmin',
-      'route_ops' => 'Rute-operasjon',
-      'leaders' => 'Ledere',
-      _ => rule,
-    };
-  }
 }
 
 class _EmployeeSummary {
