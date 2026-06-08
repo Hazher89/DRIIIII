@@ -40,6 +40,29 @@ type ResendErrorBody = {
   name?: string;
 };
 
+function isHtmlEmailBody(body: string): boolean {
+  const t = body.trim().toLowerCase();
+  return t.startsWith("<!doctype") || t.startsWith("<html");
+}
+
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export async function sendViaResend(
   cfg: ResendSendConfig,
   to: string,
@@ -59,8 +82,13 @@ export async function sendViaResend(
     from: `"${cfg.fromName}" <${cfg.from}>`,
     to: [email],
     subject: subject.trim(),
-    text: text,
   };
+  if (isHtmlEmailBody(text)) {
+    payload.html = text;
+    payload.text = htmlToPlainText(text);
+  } else {
+    payload.text = text;
+  }
   if (cfg.replyTo) {
     payload.reply_to = cfg.replyTo;
   }

@@ -32,6 +32,23 @@ export function readSmtpConfig(): SmtpConfig | { error: string } {
   };
 }
 
+function isHtmlEmailBody(body: string): boolean {
+  const t = body.trim().toLowerCase();
+  return t.startsWith("<!doctype") || t.startsWith("<html");
+}
+
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export async function sendViaSmtp(
   cfg: SmtpConfig,
   to: string,
@@ -53,13 +70,21 @@ export async function sendViaSmtp(
   });
 
   try {
-    await transporter.sendMail({
+    const mail: Record<string, string> = {
       from: `"${cfg.fromName}" <${cfg.from}>`,
       to: to.trim().toLowerCase(),
       subject: subject.trim(),
-      text: text,
-      replyTo: Deno.env.get("SMTP_REPLY_TO")?.trim() || undefined,
-    });
+    };
+    if (isHtmlEmailBody(text)) {
+      mail.html = text;
+      mail.text = htmlToPlainText(text);
+    } else {
+      mail.text = text;
+    }
+    const replyTo = Deno.env.get("SMTP_REPLY_TO")?.trim();
+    if (replyTo) mail.replyTo = replyTo;
+
+    await transporter.sendMail(mail);
     return { ok: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
