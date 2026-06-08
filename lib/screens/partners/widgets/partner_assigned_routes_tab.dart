@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/route_reminder_flag.dart';
+import 'partner_route_pdf_actions.dart';
 import 'route_reminder_badge.dart';
 
 /// Tildelte ruter for én partner — status, skift, sporingsinfo.
@@ -158,18 +157,7 @@ class _PartnerAssignedRoutesTabState extends State<PartnerAssignedRoutesTab> {
         ),
         trailing: IconButton(
           icon: const Icon(Icons.picture_as_pdf_outlined),
-          onPressed: () async {
-            try {
-              final url = await PartnerService.getRoutePdfSignedUrl(r.pdfStoragePath);
-              await launchUrl(Uri.parse(url));
-            } catch (e) {
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Kunne ikke åpne PDF: $e')),
-                );
-              }
-            }
-          },
+          onPressed: () => PartnerRoutePdfActions.openPdf(context, r),
         ),
       ),
     );

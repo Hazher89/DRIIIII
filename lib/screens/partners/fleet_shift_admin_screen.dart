@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
-
 import '../../core/services/partner/fleet_shift_seed.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/fleet_shift.dart';
 import '../../models/partner/partner_links.dart';
+import 'widgets/partner_route_pdf_actions.dart';
 
 /// Administrer skift + arkiv med tilhørende rute-PDF-er.
 class FleetShiftAdminScreen extends StatefulWidget {
@@ -71,14 +70,7 @@ class _FleetShiftAdminScreenState extends State<FleetShiftAdminScreen>
   }
 
   Future<void> _openPdf(PartnerRouteShare share) async {
-    try {
-      final url = await PartnerService.getRoutePdfSignedUrl(share.pdfStoragePath);
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
-      }
-    }
+    await PartnerRoutePdfActions.openPdf(context, share);
   }
 
   Future<void> _resetCanonical() async {

@@ -7,7 +7,6 @@ import 'partner_route_pdf_bytes_url_stub.dart'
     if (dart.library.html) 'partner_route_pdf_bytes_url_web.dart' as pdf_bytes_url;
 
 import '../../../core/services/partner/partner_service.dart';
-import '../../../core/services/storage/storage_file_access.dart';
 import '../../../core/utils/open_external_url.dart';
 import '../../../core/constants/route_dispatch_status.dart';
 import '../../../models/partner/partner_links.dart';
@@ -53,13 +52,13 @@ class PartnerRoutePdfActions {
         return;
       }
 
-      try {
-        final url = await PartnerService.getRoutePdfSignedUrl(path);
-        if (!context.mounted) return;
-        await _showPdfViewer(context, url, title);
-      } on StorageBytesReady catch (e) {
-        if (!context.mounted) return;
-        await openPdfBytes(context, bytes: e.bytes, title: title);
+      if (context.mounted) {
+        _snack(
+          context,
+          'Kunne ikke hente PDF fra lagring. Sjekk at Dropbox er koblet '
+          'eller at Storage-bucket «documents» finnes i Supabase.',
+          isError: true,
+        );
       }
     } catch (e) {
       messenger?.hideCurrentSnackBar();

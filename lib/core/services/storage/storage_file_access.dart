@@ -116,6 +116,23 @@ class StorageFileAccess {
       }
     } catch (_) {}
 
+    return _downloadBytesViaEdgeResolver(raw);
+  }
+
+  /// Service role via edge function — omgår bucket/RLS-problemer for rute-PDF.
+  static Future<Uint8List?> _downloadBytesViaEdgeResolver(String ref) async {
+    try {
+      final res = await _client.functions.invoke(
+        'dropbox-storage',
+        body: {'ref': ref.trim()},
+        queryParameters: {'action': 'resolve_file_bytes'},
+      );
+      final data = res.data;
+      if (data is Map && data['ok'] == true && data['bytes_base64'] is String) {
+        final bytes = base64Decode(data['bytes_base64'] as String);
+        if (bytes.isNotEmpty) return bytes;
+      }
+    } catch (_) {}
     return null;
   }
 

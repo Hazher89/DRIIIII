@@ -190,6 +190,88 @@ function sanitizeSegment(raw: string, fallback = "fil"): string {
   return s || fallback;
 }
 
+function extractSupabaseDocumentsPath(ref: string): string | null {
+  const r = ref.trim();
+  if (!r) return null;
+  if (r.startsWith("dropbox://")) return null;
+  if (r.startsWith("http://") || r.startsWith("https://")) {
+    try {
+      const u = new URL(r);
+      const idx = u.pathname.split("/").indexOf("documents");
+      if (idx >= 0) {
+        return decodeURIComponent(u.pathname.split("/").slice(idx + 1).join("/"));
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+  return r.replace(/^\/+/, "");
+}
+
+function storageRefCandidates(ref: string): Array<{ kind: "dropbox" | "supabase"; path: string }> {
+  const seen = new Set<string>();
+  const out: Array<{ kind: "dropbox" | "supabase"; path: string }> = [];
+  const add = (kind: "dropbox" | "supabase", path: string) => {
+    const p = path.trim();
+    if (!p) return;
+    const key = `${kind}:${p}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ kind, path: p });
+  };
+
+  const raw = ref.trim();
+  if (!raw) return out;
+
+  if (raw.startsWith("dropbox://")) {
+    const p = raw.slice("dropbox://".length);
+    add("dropbox", p.startsWith("/") ? p : `/${p}`);
+    return out;
+  }
+
+  const supa = extractSupabaseDocumentsPath(raw);
+  if (supa) add("supabase", supa);
+
+  const noLead = raw.replace(/^\/+/, "");
+  add("supabase", noLead);
+
+  if (/^\/?company_[0-9a-f-]{36}\//i.test(raw)) {
+    const dropPath = raw.startsWith("/") ? raw : `/${raw}`;
+    add("dropbox", dropPath);
+  }
+
+  return out;
+}
+
+async function downloadDropboxBytes(token: string, path: string): Promise<Uint8Array | null> {
+  const dlRes = await dropboxApi(token, "content", "/files/download", {
+    method: "POST",
+    dropboxArg: { path },
+  });
+  if (!dlRes.ok) return null;
+  return new Uint8Array(await dlRes.arrayBuffer());
+}
+
+async function downloadSupabaseBytes(
+  admin: ReturnType<typeof createClient>,
+  path: string,
+): Promise<Uint8Array | null> {
+  const clean = path.replace(/^\/+/, "");
+  const { data, error } = await admin.storage.from("documents").download(clean);
+  if (error || !data) return null;
+  return new Uint8Array(await data.arrayBuffer());
+}
+
+function bytesToBase64(bin: Uint8Array): string {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bin.length; i += chunk) {
+    binary += String.fromCharCode(...bin.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
 function buildStoragePath(
   root: string,
   companyId: string,
@@ -466,6 +548,58 @@ Deno.serve(async (req) => {
       authUrl.searchParams.set("token_access_type", "offline");
       authUrl.searchParams.set("state", state);
       return json({ auth_url: authUrl.toString() });
+    }
+
+    if (action === "resolve_file_bytes" && req.method === "POST") {
+      const { ref } = await req.json() as { ref?: string };
+      if (!ref?.trim()) return json({ error: "ref er påkrevd" }, 400);
+
+      const { data: connRow } = await admin
+        .from("company_dropbox_connections")
+        .select("*")
+        .eq("company_id", companyId)
+        .maybeSingle();
+
+      const candidates = storageRefCandidates(ref);
+      let lastError = "Fant ikke fil";
+
+      for (const c of candidates) {
+        if (c.kind === "dropbox" && connRow) {
+          try {
+            const token = await refreshAccessToken(connRow as Conn, admin);
+            const bytes = await downloadDropboxBytes(token, c.path);
+            if (bytes && bytes.length > 0) {
+              return json({
+                ok: true,
+                provider: "dropbox",
+                path: c.path,
+                bytes_base64: bytesToBase64(bytes),
+                size: bytes.length,
+              });
+            }
+          } catch (e) {
+            lastError = e instanceof Error ? e.message : String(e);
+          }
+        }
+        if (c.kind === "supabase") {
+          try {
+            const bytes = await downloadSupabaseBytes(admin, c.path);
+            if (bytes && bytes.length > 0) {
+              return json({
+                ok: true,
+                provider: "supabase",
+                path: c.path,
+                bytes_base64: bytesToBase64(bytes),
+                size: bytes.length,
+              });
+            }
+          } catch (e) {
+            lastError = e instanceof Error ? e.message : String(e);
+          }
+        }
+      }
+
+      return json({ ok: false, error: lastError.slice(0, 300) }, 404);
     }
 
     const { data: connRow, error: connErr } = await admin

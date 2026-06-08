@@ -40,7 +40,8 @@ class CompanyFileStorage {
 
   static String toStorageReference(StoredFileResult result) {
     if (result.isDropbox) return '$dropboxUrlScheme${result.path}';
-    return result.publicOrSignedUrl ?? result.path;
+    // Lagre relativ sti — ikke public URL (bucket kan være privat / mangler).
+    return result.path;
   }
 
   /// Løs lagret referanse til visbar URL (midlertidig lenke for Dropbox).
