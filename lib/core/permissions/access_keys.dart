@@ -9,7 +9,13 @@ class AccessKeys {
   static const avvik = 'avvik';
   static const hms = 'hms';
   static const partners = 'partners';
+  static const stempling = 'stempling';
   static const more = 'more';
+
+  // ── Stempling ──────────────────────────────────────────────────────────────
+  static const stemplingAdmin = 'stempling_admin';
+  static const stemplingMobile = 'stempling_mobile';
+  static const stemplingInnstillinger = 'stempling_innstillinger';
 
   // ── Mer-meny ───────────────────────────────────────────────────────────────
   static const avdelinger = 'avdelinger';
@@ -94,7 +100,11 @@ class AccessKeys {
     avvik,
     hms,
     partners,
+    stempling,
     more,
+    stemplingAdmin,
+    stemplingMobile,
+    stemplingInnstillinger,
     avdelinger,
     ansatte,
     personalmappe,
@@ -157,7 +167,11 @@ class AccessKeys {
     avvik: 'Avvik (modul)',
     hms: 'HMS (hovedmodul)',
     partners: 'Samarbeidspartnere (fane)',
+    stempling: 'Stempling (fane)',
     more: 'Mer-meny',
+    stemplingAdmin: 'Stempling – oversikt og timeliste',
+    stemplingMobile: 'Stempling – mobil/nett',
+    stemplingInnstillinger: 'Stempling – kiosk-innstillinger',
     avdelinger: 'Avdelinger',
     ansatte: 'Ansatte',
     personalmappe: 'Personalmappe / DMS',

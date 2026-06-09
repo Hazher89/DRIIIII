@@ -35,6 +35,8 @@ import '../../screens/profile/notifications_hub_screen.dart';
 import '../../screens/profile/profile_screen.dart';
 import '../../screens/public/public_tracking_screen.dart';
 import '../../screens/shell/main_shell.dart';
+import '../../screens/stempling/kiosk/kiosk_screen.dart';
+import '../../screens/stempling/stempling_screen.dart';
 import '../../screens/surveys/survey_list_screen.dart';
 import '../../screens/surveys/survey_player_screen.dart';
 import '../../screens/tickets/tickets_screen.dart';
@@ -141,6 +143,22 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
         path: '/track/:token',
         builder: (context, state) => PublicTrackingScreen(
           token: state.pathParameters['token']!,
+        ),
+      ),
+      GoRoute(
+        path: AppPaths.stemple,
+        builder: (context, state) => const KioskScreen(slug: 'stemple'),
+      ),
+      GoRoute(
+        path: '${AppPaths.stemple}/:slug',
+        builder: (context, state) => KioskScreen(
+          slug: state.pathParameters['slug']!,
+        ),
+      ),
+      GoRoute(
+        path: '${AppPaths.kiosk}/:slug',
+        builder: (context, state) => KioskScreen(
+          slug: state.pathParameters['slug']!,
         ),
       ),
       GoRoute(
@@ -278,6 +296,16 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     ),
                   ),
                 ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppPaths.stempling,
+                builder: (context, state) => StemplingScreen(
+                  initialTab: state.uri.queryParameters['tab'],
+                ),
               ),
             ],
           ),

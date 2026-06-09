@@ -202,7 +202,7 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingAccess) return const Scaffold(body: DriftProLoadingCenter());
+    if (_isLoadingAccess) return const DriftProLoadingPage();
 
     if (_profile != null && _profile!.isPartnerPortalUser) {
       final email =
@@ -218,7 +218,7 @@ class _MainShellState extends State<MainShell> {
             context.go(AppPaths.portal);
           }
         });
-        return const Scaffold(body: DriftProLoadingCenter());
+        return const DriftProLoadingPage();
       }
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await SupabaseService.applyPartnerBootstrap();
@@ -263,6 +263,7 @@ class _MainShellState extends State<MainShell> {
       {'icon': AppIcons.absence, 'label': AppStrings.navAbsence, 'access': AccessKeys.fravaer},
       {'icon': AppIcons.hms, 'label': AppStrings.navHMS, 'access': AccessKeys.hms},
       {'icon': Icons.handshake_outlined, 'label': AppStrings.navPartners, 'access': AccessKeys.partners},
+      {'icon': AppIcons.clock, 'label': AppStrings.navStempling, 'access': AccessKeys.stempling},
       {'icon': AppIcons.more, 'label': AppStrings.navMore, 'access': AccessKeys.more},
     ];
 

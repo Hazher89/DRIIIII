@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_icons.dart';
+import '../../core/routing/app_paths.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
@@ -104,7 +106,18 @@ class DashboardSearchCatalog {
     shell('hms', 'HMS', 'Helse, miljø og sikkerhet', AppIcons.hms,
         AccessKeys.hms, ['sikkerhet', 'risiko', 'sja']);
     shell('partners', 'Samarbeidspartnere', 'Partnere og ruter', Icons.handshake_outlined,
-        AccessKeys.partners, ['partner', 'rute', 'logistikk']);
+        AccessKeys.partners, ['partner', 'rute', 'logistikk', 'bot', 'trekk', 'bøtel']);
+    add(DashboardSearchItem(
+      id: 'partners_bot_trekk',
+      title: 'Bot/Trekk',
+      subtitle: 'Registrer trekk og bevis mot partnere',
+      keywords: ['bot', 'trekk', 'bøtel', 'trekk', 'partner'],
+      icon: Icons.gavel_rounded,
+      category: 'Samarbeidspartnere',
+      accessKey: AccessKeys.partners,
+      kind: DashboardSearchKind.module,
+      navigate: (ctx, _) => ctx.go(AppPaths.partnersPath(tab: 'bot-trekk')),
+    ));
     shell('more', 'Mer', 'Innstillinger og administrasjon', AppIcons.more,
         AccessKeys.more, ['meny', 'innstillinger']);
 

@@ -36,7 +36,7 @@ class _DriverAccessGateState extends State<DriverAccessGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: DriftProLoadingCenter());
+    if (_loading) return const DriftProLoadingPage();
     if (_profile == null) {
       return Scaffold(
         body: Center(

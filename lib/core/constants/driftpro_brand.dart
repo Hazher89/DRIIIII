@@ -3,11 +3,13 @@
 /// Logoer ligger i [assets/branding/]:
 /// - [logoPrimary] — horisontal lockup (ikon + DriftPro-tekst)
 /// - [logoIcon] — kvadratisk ikon (favicon, app-ikon)
+/// - [logoMark] — beskåret D-merke (header, spinner)
 class DriftProBrand {
   DriftProBrand._();
 
-  static const String logoPrimary = 'assets/branding/driftpro_logo_primary.png';
-  static const String logoIcon = 'assets/branding/driftpro_logo_icon.png';
+  static const String logoPrimary = 'assets/branding/driftpro_logo_primary_transparent.png';
+  static const String logoIcon = 'assets/branding/driftpro_logo_icon_transparent.png';
+  static const String logoMark = 'assets/branding/driftpro_logo_mark.png';
 
   /// Liten undertekst under DriftPro-logoen.
   static const String subtitle =

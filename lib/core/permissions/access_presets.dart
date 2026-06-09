@@ -13,6 +13,7 @@ class AccessPresets {
         AccessKeys.avvik: true,
         AccessKeys.whistleblowing: true,
         AccessKeys.profil: true,
+        AccessKeys.stempling: true,
       };
 
   static Map<String, dynamic> departmentLeader() => {
@@ -47,6 +48,9 @@ class AccessPresets {
         AccessKeys.partnersVehicleRentalApprove: true,
         for (final k in AccessKeys.partnerDetailTabKeys) k: true,
         AccessKeys.ferieAdmin: true,
+        AccessKeys.stempling: true,
+        AccessKeys.stemplingAdmin: true,
+        AccessKeys.stemplingInnstillinger: true,
       };
 
   static Map<String, dynamic> companyAdmin() => {

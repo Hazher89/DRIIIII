@@ -32,6 +32,7 @@ class AccessCatalog {
         AccessKeys.avvik,
         AccessKeys.hms,
         AccessKeys.partners,
+        AccessKeys.stempling,
         AccessKeys.more,
       ],
     ),
@@ -50,6 +51,16 @@ class AccessCatalog {
         AccessKeys.samarbeidspartnere,
         AccessKeys.tilgangskontroll,
         AccessKeys.brukergodkjenning,
+      ],
+    ),
+    AccessSection(
+      id: 'stempling',
+      title: 'Stempling – funksjoner',
+      subtitle: 'Krever Stempling i bunnmeny',
+      keys: [
+        AccessKeys.stemplingAdmin,
+        AccessKeys.stemplingMobile,
+        AccessKeys.stemplingInnstillinger,
       ],
     ),
     AccessSection(

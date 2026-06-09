@@ -47,6 +47,10 @@ class UserAccess {
   bool get canAvvik => can(AccessKeys.avvik);
   bool get canHms => can(AccessKeys.hms);
   bool get canPartnersTab => can(AccessKeys.partners);
+  bool get canStempling => can(AccessKeys.stempling);
+  bool get canStemplingAdmin => can(AccessKeys.stemplingAdmin);
+  bool get canStemplingMobile => can(AccessKeys.stemplingMobile);
+  bool get canStemplingSettings => can(AccessKeys.stemplingInnstillinger);
   bool get canMore => can(AccessKeys.more);
 
   // Mer-meny
@@ -95,6 +99,7 @@ class UserAccess {
   bool get canPartnersTabOppfolging => can(AccessKeys.partnersTabOppfolging);
   bool get canPartnersTabOppsummering => can(AccessKeys.partnersTabOppsummering);
   bool get canPartnersTabFri => can(AccessKeys.partnersTabFri);
+  bool get canPartnersTabBotTrekk => can(AccessKeys.partnersTabBotTrekk);
 
   // HMS undermoduler
   bool get canHmsRisk => can(AccessKeys.hmsRisikovurdering);

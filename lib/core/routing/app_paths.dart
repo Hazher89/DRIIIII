@@ -10,6 +10,9 @@ abstract final class AppPaths {
   static const tickets = '/avvik';
   static const hms = '/hms';
   static const partners = '/partners';
+  static const stempling = '/stempling';
+  static const stemple = '/stemple';
+  static const kiosk = '/kiosk';
   static const more = '/more';
   static const live = '/live';
   static const portal = '/portal';
@@ -37,6 +40,7 @@ abstract final class AppPaths {
   ];
 
   static const partnersTabs = ['bedrifter', 'ruter', 'sms', 'bot-trekk', 'utleie'];
+  static const stemplingTabs = ['oversikt', 'timeliste', 'min-dag', 'innstillinger'];
   static const absenceTabs = ['dashboard', 'mine', 'godkjenn', 'team', 'roster'];
   static const equipmentTabs = ['oversikt', 'alle', 'truck', 'arkiv'];
   static const competenceTabs = ['kurs', 'dokumenter', 'oversikt'];
@@ -110,6 +114,7 @@ abstract final class AppPaths {
     (path: tickets, access: AccessKeys.avvik),
     (path: hms, access: AccessKeys.hms),
     (path: partners, access: AccessKeys.partners),
+    (path: stempling, access: AccessKeys.stempling),
     (path: more, access: AccessKeys.more),
   ];
 
@@ -124,6 +129,7 @@ abstract final class AppPaths {
     final normalized = _normalize(path.split('?').first);
     if (normalized == dashboard) return 0;
     if (normalized.startsWith('$partners/')) return 5;
+    if (normalized.startsWith(stempling)) return 6;
     for (var i = 1; i < shellTabs.length; i++) {
       final tabPath = _normalize(shellTabs[i].path);
       if (normalized == tabPath || normalized.startsWith('$tabPath/')) {
@@ -193,8 +199,14 @@ abstract final class AppPaths {
 
   static bool isPublicPath(String path) {
     final p = _normalize(path.split('?').first);
-    return p.startsWith('/s/') || p.startsWith('/track/');
+    return p.startsWith('/s/') ||
+        p.startsWith('/track/') ||
+        p == stemple ||
+        p.startsWith('$stemple/') ||
+        p.startsWith('$kiosk/');
   }
+
+  static String kioskPath(String slug) => '$kiosk/$slug';
 
   static String dmsPath({
     String? section,

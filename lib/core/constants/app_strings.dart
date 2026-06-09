@@ -11,6 +11,7 @@ class AppStrings {
   static const String navHMS = 'HMS';
   static const String navSurveys = 'Undersøkelser';
   static const String navPartners = 'Partnere';
+  static const String navStempling = 'Stempling';
   static const String navMore = 'Mer';
 
   // ── Dashboard ──
