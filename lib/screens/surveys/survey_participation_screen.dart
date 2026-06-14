@@ -124,7 +124,7 @@ class _SurveyParticipationScreenState extends State<SurveyParticipationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return const Scaffold(body: DriftProLoadingCenter());
+    if (_isLoading) return const DriftProLoadingPage();
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.survey.title)),

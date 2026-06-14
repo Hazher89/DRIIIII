@@ -48,6 +48,9 @@ class PartnerVehicleInspection {
   final bool isArchived;
   final DateTime createdAt;
 
+  /// Joined fra profiles ved henting.
+  final String? inspectedByName;
+
   const PartnerVehicleInspection({
     required this.id,
     required this.partnerId,
@@ -66,6 +69,7 @@ class PartnerVehicleInspection {
     this.followUpAcknowledgedAt,
     this.isArchived = true,
     required this.createdAt,
+    this.inspectedByName,
   });
 
   factory PartnerVehicleInspection.fromJson(Map<String, dynamic> json) {
@@ -95,7 +99,21 @@ class PartnerVehicleInspection {
           : null,
       isArchived: json['is_archived'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
+      inspectedByName: json['profiles'] != null
+          ? json['profiles']['full_name'] as String?
+          : null,
     );
+  }
+
+  String get stampLine {
+    final name = inspectedByName?.trim().isNotEmpty == true
+        ? inspectedByName!
+        : 'Ukjent';
+    final local = inspectedAt.toLocal();
+    final ts =
+        '${local.day.toString().padLeft(2, '0')}.${local.month.toString().padLeft(2, '0')}.${local.year} '
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+    return 'Kontroll stempling · $name · $ts';
   }
 
   Map<String, dynamic> toInsertJson({required String inspectedBy}) {
@@ -105,6 +123,7 @@ class PartnerVehicleInspection {
       if (partnerVehicleId != null) 'partner_vehicle_id': partnerVehicleId,
       if (registrationNumber != null) 'registration_number': registrationNumber,
       if (unitCode != null) 'unit_code': unitCode,
+      'inspected_at': inspectedAt.toIso8601String(),
       'inspected_by': inspectedBy,
       'checklist': checklist,
       'has_deviation': hasDeviation,

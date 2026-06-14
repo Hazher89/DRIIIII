@@ -45,7 +45,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
 
   List<PartnerRouteShare> get _highlightRoutes {
     if (_data == null) return const [];
-    final pending = _data!.routes.where((r) => r.ackStatus == 'pending').toList();
+    final pending = _data!.routes.where((r) => r.requiresAck).toList();
     final today = _data!.routesToday.where((r) => r.ackStatus != 'pending').toList();
     final seen = <String>{};
     final out = <PartnerRouteShare>[];
@@ -53,8 +53,8 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
       if (seen.add(r.id)) out.add(r);
     }
     out.sort((a, b) {
-      if (a.ackStatus == 'pending' && b.ackStatus != 'pending') return -1;
-      if (b.ackStatus == 'pending' && a.ackStatus != 'pending') return 1;
+      if (a.requiresAck && !b.requiresAck) return -1;
+      if (b.requiresAck && !a.requiresAck) return 1;
       return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
     });
     return out;
@@ -113,7 +113,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                       child: FilledButton.icon(
                         onPressed: () {
                           final first = _data!.routes
-                              .where((r) => r.ackStatus == 'pending')
+                              .where((r) => r.requiresAck)
                               .firstOrNull;
                           if (first != null) {
                             PartnerPortalRouteDetailPage.open(

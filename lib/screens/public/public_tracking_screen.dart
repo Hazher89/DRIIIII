@@ -39,7 +39,7 @@ class _PublicTrackingScreenState extends State<PublicTrackingScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: DriftProLoadingCenter());
+      return const DriftProLoadingPage();
     }
     if (_data == null) {
       return Scaffold(

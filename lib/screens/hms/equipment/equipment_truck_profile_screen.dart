@@ -165,25 +165,106 @@ class _EquipmentTruckProfileScreenState extends State<EquipmentTruckProfileScree
     final interval =
         TruckInspectionTemplates.defaultInspectionIntervalDays(_subtype);
     final nextInspection = DateTime.now().add(Duration(days: interval));
+    var notifyOn = nextInspection.subtract(Duration(days: e.notifyDaysBefore));
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+    if (notifyOn.isBefore(todayDate)) notifyOn = todayDate;
+
     final notifyIds = <String>{
       if (e.responsibleUserId != null) e.responsibleUserId!,
       if (e.assignedTo != null) e.assignedTo!,
     };
+    final selectedNotifyIds = Set<String>.from(notifyIds);
 
-    final scheduleSms = await showDialog<bool>(
+    String fmt(DateTime d) => '${d.day}.${d.month}.${d.year}';
+    int notifyDaysBefore(DateTime due, DateTime notify) {
+      final dueDate = DateTime(due.year, due.month, due.day);
+      final notifyDate = DateTime(notify.year, notify.month, notify.day);
+      return dueDate.difference(notifyDate).inDays.clamp(0, 365);
+    }
+
+    final scheduleResult = await showDialog<({bool schedule, int daysBefore})?>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Kontroll fullført'),
-        content: Text(
-          'Neste kontroll foreslås ${nextInspection.day}.${nextInspection.month}.${nextInspection.year}.\n\n'
-          'Planlegge SMS-varsel?',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Nei')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Ja, planlegg SMS')),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setD) {
+          final profiles = widget.profileNames.entries.toList();
+          return AlertDialog(
+            title: const Text('Kontroll fullført'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Neste kontroll: ${fmt(nextInspection)}',
+                    style: DriftProTheme.bodyMd,
+                  ),
+                  const SizedBox(height: 12),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Dato for varsel'),
+                    subtitle: Text(fmt(notifyOn)),
+                    trailing: const Icon(Icons.notifications_active_outlined),
+                    onTap: () async {
+                      final d = await showDatePicker(
+                        context: ctx,
+                        initialDate: notifyOn,
+                        firstDate: DateTime.now(),
+                        lastDate: nextInspection,
+                      );
+                      if (d != null) setD(() => notifyOn = d);
+                    },
+                  ),
+                  Text('Varsle ansatt:', style: DriftProTheme.labelSm),
+                  ...profiles.map((ent) {
+                    final checked = selectedNotifyIds.contains(ent.key);
+                    return CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(ent.value),
+                      subtitle: checked ? Text('SMS ${fmt(notifyOn)}') : null,
+                      value: checked,
+                      onChanged: (on) {
+                        setD(() {
+                          if (on == true) {
+                            selectedNotifyIds.add(ent.key);
+                          } else {
+                            selectedNotifyIds.remove(ent.key);
+                          }
+                        });
+                      },
+                    );
+                  }),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Avbryt'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, (schedule: false, daysBefore: 0)),
+                child: const Text('Uten varsel'),
+              ),
+              FilledButton(
+                onPressed: selectedNotifyIds.isEmpty
+                    ? null
+                    : () => Navigator.pop(
+                          ctx,
+                          (
+                            schedule: true,
+                            daysBefore: notifyDaysBefore(nextInspection, notifyOn),
+                          ),
+                        ),
+                child: const Text('Lagre + planlegg SMS'),
+              ),
+            ],
+          );
+        },
       ),
     );
+    if (scheduleResult == null) return;
 
     setState(() => _saving = true);
     try {
@@ -206,8 +287,12 @@ class _EquipmentTruckProfileScreenState extends State<EquipmentTruckProfileScree
         performedBy: widget.profile.id,
         notes: 'Truck-kontroll (${_subtype.label}) — ${_checkedCount()}/${items.length} punkter',
         nextDueAt: nextInspection,
-        smsNotifyUserIds: scheduleSms == true ? notifyIds.toList() : null,
-        notifyDaysBefore: e.notifyDaysBefore,
+        smsNotifyUserIds: scheduleResult.schedule
+            ? selectedNotifyIds.toList()
+            : null,
+        notifyDaysBefore: scheduleResult.schedule
+            ? scheduleResult.daysBefore
+            : e.notifyDaysBefore,
       );
 
       await _load();
@@ -225,7 +310,7 @@ class _EquipmentTruckProfileScreenState extends State<EquipmentTruckProfileScree
   Widget build(BuildContext context) {
     final e = _equipment;
     if (_loading) {
-      return const Scaffold(body: DriftProLoadingCenter());
+      return const DriftProLoadingPage();
     }
     if (e == null) {
       return const Scaffold(body: Center(child: Text('Fant ikke utstyr')));
@@ -354,12 +439,21 @@ class _EquipmentTruckProfileScreenState extends State<EquipmentTruckProfileScree
         if (_reminders.isNotEmpty) ...[
           const SizedBox(height: 16),
           Text('Planlagte SMS', style: DriftProTheme.headingSm),
-          ..._reminders.map((r) => ListTile(
+          ..._reminders.map((r) {
+            final notifyDate =
+                r.dueDate.subtract(Duration(days: r.notifyDaysBefore));
+            return ListTile(
                 dense: true,
                 leading: const Icon(Icons.sms_outlined),
-                title: Text('${r.reminderType} — ${r.dueDate.day}.${r.dueDate.month}.${r.dueDate.year}'),
-                subtitle: Text(r.notes ?? ''),
-              )),
+                title: Text(
+                  '${r.reminderType} — ${r.dueDate.day}.${r.dueDate.month}.${r.dueDate.year}',
+                ),
+                subtitle: Text(
+                  'Varsel ${notifyDate.day}.${notifyDate.month}.${notifyDate.year}'
+                  '${r.notes != null && r.notes!.isNotEmpty ? '\n${r.notes}' : ''}',
+                ),
+              );
+          }),
         ],
       ],
     );

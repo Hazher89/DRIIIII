@@ -5,6 +5,7 @@ import '../../../models/partner/sap_route_inbox.dart';
 import 'mavi_unit_codes.dart';
 import 'partner_service.dart';
 import 'route_pdf_text_service.dart';
+import 'staged_route_duplicate_helper.dart';
 
 /// Importerer ventende SAP-PDF-er til staged ruter (samme logikk som AUTO MASS).
 class SapRouteImportService {
@@ -34,7 +35,10 @@ class SapRouteImportService {
     }
 
     final fallbackDay = DateTime(routeDate.year, routeDate.month, routeDate.day);
-    var staged = await PartnerService.fetchStagedRouteShares(companyId);
+    var staged = await PartnerService.fetchStagedRouteShares(
+      companyId,
+      importSource: PartnerService.stagedImportSap,
+    );
     final lines = <SapRouteImportLine>[];
     final skippedItems = <SapRouteImportSkippedItem>[];
     var imported = 0;
@@ -69,8 +73,8 @@ class SapRouteImportService {
           continue;
         }
 
-        final meta = RoutePdfTextService.extractTripOverviewMeta(bytes);
-        final code = meta.maviCode ?? RoutePdfTextService.extractResourceIdFromBytes(bytes);
+        final bundle = RoutePdfTextService.parseBundle(bytes, fallbackDate: fallbackDay);
+        final code = bundle.meta.maviCode ?? RoutePdfTextService.extractResourceIdFromBytes(bytes);
         if (code == null) {
           await _failItem(
             item: item,
@@ -151,7 +155,27 @@ class SapRouteImportService {
           continue;
         }
 
-        final bundle = RoutePdfTextService.parseBundle(bytes, fallbackDate: fallbackDay);
+        final contentDup = StagedRouteDuplicateHelper.findDuplicateInStaged(
+          staged: staged,
+          pdfSearchText: bundle.searchText,
+          bytes: bytes,
+          contentSha256: item.contentSha256,
+        );
+        if (contentDup != null) {
+          await PartnerService.markSapRouteInboxImported(
+            inboxId: item.id,
+            routeShareId: contentDup.id,
+            detectedMaviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+          );
+          lines.add(SapRouteImportLine(
+            fileName: item.fileName,
+            ok: true,
+            maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+            message: 'Duplikat — allerede i kø',
+          ));
+          continue;
+        }
+
         final shareId = await PartnerService.createStagedRouteShareFromPdf(
           companyId: companyId,
           partner: partner,
@@ -170,7 +194,10 @@ class SapRouteImportService {
         );
 
         imported++;
-        staged = await PartnerService.fetchStagedRouteShares(companyId);
+        staged = await PartnerService.fetchStagedRouteShares(
+          companyId,
+          importSource: PartnerService.stagedImportSap,
+        );
         lines.add(SapRouteImportLine(
           fileName: item.fileName,
           ok: true,

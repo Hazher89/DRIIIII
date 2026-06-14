@@ -46,7 +46,7 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
   }
 
   List<PartnerRouteShare> get _pending =>
-      _data?.routes.where((r) => r.ackStatus == 'pending').toList() ?? [];
+      _data?.routes.where((r) => r.requiresAck).toList() ?? [];
 
   @override
   Widget build(BuildContext context) {

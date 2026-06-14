@@ -23,7 +23,7 @@ class PartnerDetailRoute extends StatelessWidget {
       future: PartnerService.fetchPartner(partnerId),
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
-          return const Scaffold(body: DriftProLoadingCenter());
+          return const DriftProLoadingPage();
         }
         final partner = snap.data;
         if (partner == null) {

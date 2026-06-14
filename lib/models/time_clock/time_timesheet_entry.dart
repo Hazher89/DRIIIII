@@ -20,6 +20,9 @@ class TimeTimesheetEntry {
     this.workTypeName,
     this.workTypeColor,
     this.payrollCode,
+    this.regularHours = 0,
+    this.overtimeHours = 0,
+    this.overtimeReason,
   });
 
   final String id;
@@ -42,6 +45,9 @@ class TimeTimesheetEntry {
   final String? workTypeName;
   final String? workTypeColor;
   final String? payrollCode;
+  final double regularHours;
+  final double overtimeHours;
+  final String? overtimeReason;
 
   TimeTimesheetEntry copyWith({
     String? workTypeId,
@@ -53,6 +59,7 @@ class TimeTimesheetEntry {
     String? activity,
     String? invoiceNote,
     String? note,
+    String? overtimeReason,
   }) {
     return TimeTimesheetEntry(
       id: id,
@@ -75,6 +82,9 @@ class TimeTimesheetEntry {
       workTypeName: workTypeName,
       workTypeColor: workTypeColor,
       payrollCode: payrollCode,
+      regularHours: regularHours,
+      overtimeHours: overtimeHours,
+      overtimeReason: overtimeReason ?? this.overtimeReason,
     );
   }
 
@@ -91,6 +101,7 @@ class TimeTimesheetEntry {
         if (activity != null) 'activity': activity,
         if (invoiceNote != null) 'invoice_note': invoiceNote,
         if (note != null) 'note': note,
+        if (overtimeReason != null) 'overtime_reason': overtimeReason,
       };
 
   factory TimeTimesheetEntry.fromJson(Map<String, dynamic> json) {
@@ -123,6 +134,9 @@ class TimeTimesheetEntry {
       payrollCode: json['work_type'] != null
           ? (json['work_type'] as Map)['payroll_code'] as String?
           : json['payroll_code'] as String?,
+      regularHours: (json['regular_hours'] as num?)?.toDouble() ?? 0,
+      overtimeHours: (json['overtime_hours'] as num?)?.toDouble() ?? 0,
+      overtimeReason: json['overtime_reason'] as String?,
     );
   }
 }

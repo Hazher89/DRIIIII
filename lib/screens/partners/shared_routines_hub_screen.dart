@@ -10,8 +10,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/partner/partner.dart';
 import '../../models/partner/shared_partner_document.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import 'widgets/shared_document_notify_dialog.dart';
 
 class SharedRoutinesHubScreen extends StatefulWidget {
   final bool canManage;
@@ -36,6 +38,7 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
   String? _error;
   String? _companyId;
   List<SharedPartnerDocument> _docs = const [];
+  List<Partner> _partners = const [];
 
   @override
   void initState() {
@@ -54,10 +57,12 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
         throw Exception('Fant ikke bedrift for bruker.');
       }
       final list = await PartnerService.fetchSharedPartnerDocuments(companyId: cid);
+      final partners = await PartnerService.fetchPartners(companyId: cid);
       if (!mounted) return;
       setState(() {
         _companyId = cid;
         _docs = list;
+        _partners = partners.where((p) => p.isActive).toList();
         _loading = false;
       });
     } catch (e) {
@@ -90,38 +95,107 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
       allowedExtensions: const ['pdf', 'doc', 'docx', 'txt', 'png', 'jpg', 'jpeg'],
     );
     if (picked == null || picked.files.isEmpty) return;
+    if (!mounted) return;
 
-    for (var i = 0; i < picked.files.length; i++) {
-      final f = picked.files[i];
-      final bytes = f.bytes ?? (!kIsWeb && f.path != null ? await File(f.path!).readAsBytes() : null);
-      if (bytes == null || bytes.isEmpty) continue;
+    final notifyPlan = await showSharedDocumentNotifyDialog(
+      context,
+      partners: _partners,
+      fileCount: picked.files.length,
+    );
+    if (!mounted || notifyPlan == null) return;
 
-      final safeName = f.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-      final storagePath =
-          'company_${_companyId!}/partner_shared_routines/${DateTime.now().millisecondsSinceEpoch}_$safeName';
-      final mime = _guessMime(f.name);
-      final storedPath = await PartnerService.uploadPartnerDocumentFile(
-        storagePath: storagePath,
-        bytes: Uint8List.fromList(bytes),
-        mimeType: mime,
-      );
-      await PartnerService.addSharedPartnerDocument(
-        SharedPartnerDocument(
-          id: '',
-          companyId: _companyId!,
-          title: f.name,
-          storagePath: storedPath,
-          fileName: f.name,
-          mimeType: mime,
-          category: 'procedure',
-          createdAt: DateTime.now(),
+    setState(() => _loading = true);
+    var uploaded = 0;
+    var smsQueued = 0;
+    var emailQueued = 0;
+    var partnersNotified = 0;
+    String? lastError;
+
+    try {
+      for (var i = 0; i < picked.files.length; i++) {
+        final f = picked.files[i];
+        final bytes =
+            f.bytes ?? (!kIsWeb && f.path != null ? await File(f.path!).readAsBytes() : null);
+        if (bytes == null || bytes.isEmpty) continue;
+
+        final safeName = f.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+        final storagePath =
+            'company_${_companyId!}/partner_shared_routines/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+        final mime = _guessMime(f.name);
+        try {
+          final storedPath = await PartnerService.uploadPartnerDocumentFile(
+            storagePath: storagePath,
+            bytes: Uint8List.fromList(bytes),
+            mimeType: mime,
+          );
+          final created = await PartnerService.addSharedPartnerDocument(
+            SharedPartnerDocument(
+              id: '',
+              companyId: _companyId!,
+              title: f.name,
+              storagePath: storedPath,
+              fileName: f.name,
+              mimeType: mime,
+              category: 'procedure',
+              createdAt: DateTime.now(),
+            ),
+          );
+          uploaded++;
+
+          if (notifyPlan.willNotify) {
+            final stats = await PartnerService.notifySharedPartnerDocumentUpload(
+              documentId: created.id,
+              partnerIds: notifyPlan.partnerIds.toList(),
+              channel: sharedDocumentNotifyChannelDb(notifyPlan.channel),
+            );
+            smsQueued += (stats['sms'] as num?)?.toInt() ?? 0;
+            emailQueued += (stats['email'] as num?)?.toInt() ?? 0;
+            partnersNotified += (stats['partners'] as num?)?.toInt() ?? 0;
+          }
+        } catch (e) {
+          lastError = '$e';
+        }
+      }
+
+      if (notifyPlan.willNotify && (smsQueued > 0 || emailQueued > 0)) {
+        await PartnerService.flushSmsOutbox();
+      }
+    } finally {
+      await _load();
+    }
+
+    if (!mounted) return;
+    if (uploaded == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Opplasting feilet${lastError != null ? ': $lastError' : ''}'),
+          backgroundColor: Colors.red,
         ),
       );
+      return;
     }
-    await _load();
-    if (!mounted) return;
+
+    final parts = <String>[
+      uploaded == 1 ? '1 dokument lastet opp' : '$uploaded dokumenter lastet opp',
+    ];
+    if (notifyPlan.willNotify) {
+      if (smsQueued > 0 && emailQueued > 0) {
+        parts.add('$smsQueued SMS og $emailQueued e-post i kø');
+      } else if (smsQueued > 0) {
+        parts.add('$smsQueued SMS i kø');
+      } else if (emailQueued > 0) {
+        parts.add('$emailQueued e-post i kø');
+      } else {
+        parts.add('ingen varsler i kø (sjekk kontaktinfo hos partner)');
+      }
+      if (partnersNotified > 0) {
+        parts.add('til $partnersNotified bedrift(er)');
+      }
+    } else {
+      parts.add('uten varsel');
+    }
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Rutine/prosedyre lastet opp i fellesmappe')),
+      SnackBar(content: Text(parts.join(' · '))),
     );
   }
 
@@ -158,7 +232,7 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
         mimeType: 'application/pdf',
       );
 
-      await PartnerService.addSharedPartnerDocument(
+      final created = await PartnerService.addSharedPartnerDocument(
         SharedPartnerDocument(
           id: '',
           companyId: _companyId!,
@@ -170,6 +244,22 @@ class _SharedRoutinesHubScreenState extends State<SharedRoutinesHubScreen> {
           createdAt: DateTime.now(),
         ),
       );
+
+      if (!mounted) return;
+      final notifyPlan = await showSharedDocumentNotifyDialog(
+        context,
+        partners: _partners,
+        fileCount: 1,
+      );
+      if (!mounted) return;
+      if (notifyPlan != null && notifyPlan.willNotify) {
+        await PartnerService.notifySharedPartnerDocumentUpload(
+          documentId: created.id,
+          partnerIds: notifyPlan.partnerIds.toList(),
+          channel: sharedDocumentNotifyChannelDb(notifyPlan.channel),
+        );
+        await PartnerService.flushSmsOutbox();
+      }
 
       await _load();
       if (!mounted) return;

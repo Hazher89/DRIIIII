@@ -5,7 +5,9 @@ import '../../models/survey/survey.dart';
 import '../../core/services/survey/survey_advanced_service.dart';
 import '../../core/services/survey/survey_question_catalog.dart';
 import '../../core/services/survey/survey_service.dart';
+import '../../core/services/survey/survey_living_motion.dart';
 import '../../core/services/survey/survey_theme_presets.dart';
+import 'widgets/survey_living_background.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
 class SurveyBuilderCanvas extends StatefulWidget {
@@ -347,43 +349,57 @@ class SurveyBuilderCanvasState extends State<SurveyBuilderCanvas> {
       children: [
         _buildSidebar(isDark, themeColor),
         Expanded(
-          child: Container(
+          child: preset.visualStyle == SurveyVisualStyle.living
+              ? SurveyLivingBackground(
+                  motion: preset.id.livingMotionFromPresetId,
+                  background: canvasBg,
+                  primary: themeColor,
+                  accent: _colorFromHex(preset.accentHex),
+                  child: Center(
+                    child: _buildCanvasCard(preset, cardBg, themeColor, isDark),
+                  ),
+                )
+              : Container(
             color: canvasBg,
             child: Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 800),
-                margin: const EdgeInsets.all(40),
-                decoration: BoxDecoration(
-                  color: cardBg,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: preset.darkMode ? 0.4 : 0.08),
-                      blurRadius: 24,
-                      offset: const Offset(0, 12),
-                    ),
-                  ],
-                ),
-                child: _isLoading 
-                  ? const DriftProLoadingCenter()
-                  : ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          children: [
-                            _buildCanvasHeader(themeColor),
-                            _buildQuestionsList(isDark, themeColor),
-                            const SizedBox(height: 40),
-                            _buildCanvasFooter(themeColor),
-                          ],
-                        ),
-                      ),
-                    ),
-              ),
+              child: _buildCanvasCard(preset, cardBg, themeColor, isDark),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildCanvasCard(SurveyThemePreset preset, Color cardBg, Color themeColor, bool isDark) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 800),
+      margin: const EdgeInsets.all(40),
+      decoration: BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: preset.darkMode ? 0.4 : 0.08),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: _isLoading
+          ? const DriftProLoadingCenter()
+          : ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    _buildCanvasHeader(themeColor),
+                    _buildQuestionsList(isDark, themeColor),
+                    const SizedBox(height: 40),
+                    _buildCanvasFooter(themeColor),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 

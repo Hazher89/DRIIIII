@@ -1,7 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/case_trace/case_trace_chip.dart';
+import '../../core/services/hms/hms_ecosystem_service.dart';
 import '../../core/services/hms/hms_pdf_generators.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
@@ -37,6 +41,8 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   final _internalController = TextEditingController();
   bool _savingMeta = false;
   bool _savingComment = false;
+  final List<_PickedClosureImage> _closureImages = [];
+  final ImagePicker _imagePicker = ImagePicker();
 
   static final _stampFmt = DateFormat('dd.MM.yyyy HH:mm');
 
@@ -168,6 +174,52 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     return '$action · $name · ${_stampFmt.format(DateTime.now())}';
   }
 
+  Future<void> _pickClosureGallery() async {
+    final picked = await _imagePicker.pickMultiImage();
+    await _addClosureFiles(picked);
+  }
+
+  Future<void> _pickClosureCamera() async {
+    final shot = await _imagePicker.pickImage(source: ImageSource.camera);
+    if (shot != null) await _addClosureFiles([shot]);
+  }
+
+  Future<void> _addClosureFiles(List<XFile> files) async {
+    for (final f in files) {
+      final bytes = await f.readAsBytes();
+      if (!mounted) return;
+      setState(
+        () => _closureImages.add(_PickedClosureImage(bytes: bytes, name: f.name)),
+      );
+    }
+  }
+
+  Future<List<String>> _uploadAndMergeClosureImages() async {
+    if (_closureImages.isEmpty) return const [];
+    final uploaded = <String>[];
+    for (final img in _closureImages) {
+      try {
+        final url = await HmsEcosystemService.uploadAvvikMedia(
+          companyId: _ticket.companyId,
+          bytes: img.bytes,
+        );
+        uploaded.add(url);
+      } catch (e) {
+        debugPrint('closure image upload: $e');
+      }
+    }
+    if (!mounted) return uploaded;
+    setState(() => _closureImages.clear());
+    if (uploaded.isEmpty) return const [];
+
+    final merged = [..._ticket.annotatedImageUrls, ...uploaded];
+    await SupabaseService.updateTicket(_ticket.id, {
+      'annotated_image_urls': merged,
+    });
+    _ticket = _ticket.copyWith(annotatedImageUrls: merged);
+    return uploaded;
+  }
+
   Future<void> _stamp(TicketStatus next) async {
     if (!_canProcess) return;
 
@@ -179,12 +231,18 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
 
     setState(() => _savingComment = true);
     try {
+      final closing =
+          next == TicketStatus.lukket || next == TicketStatus.tiltakUtfort;
+      final newClosureImages =
+          closing ? await _uploadAndMergeClosureImages() : const <String>[];
+
       await SupabaseService.addTicketComment(
         ticketId: _ticket.id,
         comment: _stampLine('Status satt til «${next.label}»'),
         newStatus: next,
         resolutionComment: _resolutionController.text.trim(),
         rootCause: _rootCauseController.text.trim(),
+        imageUrls: newClosureImages,
       );
       await _refreshTicket();
       await _loadComments();
@@ -250,6 +308,8 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     if (!_canProcess) return;
     setState(() => _savingMeta = true);
     try {
+      final newClosureImages = await _uploadAndMergeClosureImages();
+
       await SupabaseService.updateTicket(_ticket.id, {
         'root_cause': _rootCauseController.text.trim().isEmpty
             ? null
@@ -264,7 +324,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       });
       await SupabaseService.addTicketComment(
         ticketId: _ticket.id,
-        comment: _stampLine('Saksfelt oppdatert'),
+        comment: newClosureImages.isEmpty
+            ? _stampLine('Saksfelt oppdatert')
+            : _stampLine(
+                'Saksfelt oppdatert (${newClosureImages.length} lukkebilde(r))',
+              ),
+        imageUrls: newClosureImages,
       );
       await _refreshTicket();
       await _loadComments();
@@ -355,6 +420,14 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                       if (_isClosed) ...[
                         const SizedBox(height: 16),
                         _buildOutcomeCard(isDark),
+                        if (_ticket.annotatedImageUrls.isNotEmpty) ...[
+                          const SizedBox(height: 20),
+                          _buildImageStrip(
+                            isDark,
+                            title: 'Lukkedokumentasjon',
+                            urls: _ticket.annotatedImageUrls,
+                          ),
+                        ],
                       ],
                       if (_canProcess && !_isClosed) ...[
                         const SizedBox(height: 16),
@@ -378,7 +451,11 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                       _buildDescription(isDark),
                       if (_ticket.imageUrls.isNotEmpty) ...[
                         const SizedBox(height: 20),
-                        _buildImages(isDark),
+                        _buildImageStrip(
+                          isDark,
+                          title: 'Dokumentasjon fra innmelder',
+                          urls: _ticket.imageUrls,
+                        ),
                       ],
                       const Divider(height: 40),
                       Row(
@@ -639,6 +716,8 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               ),
             ),
           ],
+          const SizedBox(height: 16),
+          _buildClosureImageSection(isDark, readOnly: readOnly),
           if (!readOnly) ...[
             const SizedBox(height: 16),
             SizedBox(
@@ -671,30 +750,133 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     );
   }
 
-  Widget _buildImages(bool isDark) {
+  Widget _buildClosureImageSection(bool isDark, {required bool readOnly}) {
+    final hasSaved = _ticket.annotatedImageUrls.isNotEmpty;
+    final hasDraft = _closureImages.isNotEmpty;
+    if (readOnly && !hasSaved) return const SizedBox.shrink();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Dokumentasjon', style: DriftProTheme.labelLg),
-        const SizedBox(height: 12),
+        Text('Bilder ved lukking (valgfritt)', style: DriftProTheme.labelLg),
+        if (!readOnly) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Dokumenter tiltak eller avslutning med bilder før du lukker saken.',
+            style: DriftProTheme.bodySm.copyWith(color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _savingMeta || _savingComment
+                      ? null
+                      : _pickClosureGallery,
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Galleri'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _savingMeta || _savingComment
+                      ? null
+                      : _pickClosureCamera,
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  label: const Text('Kamera'),
+                ),
+              ),
+            ],
+          ),
+        ],
+        if (hasDraft) ...[
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 88,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _closureImages.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) {
+                return Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        _closureImages[i].bytes,
+                        width: 88,
+                        height: 88,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    if (!readOnly)
+                      Positioned(
+                        top: 2,
+                        right: 2,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.black54,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.all(4),
+                          ),
+                          iconSize: 18,
+                          onPressed: () =>
+                              setState(() => _closureImages.removeAt(i)),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+        if (hasSaved) ...[
+          const SizedBox(height: 12),
+          _buildImageStrip(
+            isDark,
+            title: readOnly ? null : 'Lagrede lukkebilder',
+            urls: _ticket.annotatedImageUrls,
+            compact: true,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildImageStrip(
+    bool isDark, {
+    required String? title,
+    required List<String> urls,
+    bool compact = false,
+  }) {
+    final size = compact ? 88.0 : 120.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (title != null) ...[
+          Text(title, style: DriftProTheme.labelLg),
+          const SizedBox(height: 12),
+        ],
         SizedBox(
-          height: 120,
+          height: size,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            itemCount: _ticket.imageUrls.length,
+            itemCount: urls.length,
             itemBuilder: (context, index) {
               return Container(
-                width: 120,
-                margin: const EdgeInsets.only(right: 12),
+                width: size,
+                margin: EdgeInsets.only(right: compact ? 8 : 12),
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(8),
                   color: Colors.grey.shade200,
                 ),
                 child: ResolvedStorageImage(
-                  storageRef: _ticket.imageUrls[index],
-                  width: 120,
-                  height: 120,
+                  storageRef: urls[index],
+                  width: size,
+                  height: size,
                 ),
               );
             },
@@ -800,6 +982,15 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                   ),
                   child: Text(comment.comment),
                 ),
+                if (comment.imageUrls.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _buildImageStrip(
+                    isDark,
+                    title: null,
+                    urls: comment.imageUrls,
+                    compact: true,
+                  ),
+                ],
               ],
             ),
           ),
@@ -881,4 +1072,11 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         return Colors.purple;
     }
   }
+}
+
+class _PickedClosureImage {
+  final Uint8List bytes;
+  final String name;
+
+  _PickedClosureImage({required this.bytes, required this.name});
 }

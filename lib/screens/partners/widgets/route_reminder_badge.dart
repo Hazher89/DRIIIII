@@ -18,7 +18,7 @@ class RouteReminderBadge extends StatelessWidget {
 
   bool get _visible {
     if (flag == null || !flag!.hasAnyReminder) return false;
-    if (share.ackStatus != 'pending') return false;
+    if (!share.requiresAck) return false;
     if (share.isStaged || share.isRegistered) return false;
     return true;
   }

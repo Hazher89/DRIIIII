@@ -20,14 +20,52 @@ class StagedRouteDuplicateGroup {
 
 /// Finner 100 % like staged ruter (samme PDF-innhold).
 abstract final class StagedRouteDuplicateHelper {
-  static String fingerprint(PartnerRouteShare share) {
-    final text = share.pdfSearchText?.trim();
+  static String fingerprintFromText(String? pdfSearchText) {
+    final text = pdfSearchText?.trim();
     if (text != null && text.length >= 120) {
       return sha256.convert(utf8.encode(text)).toString();
     }
+    return '';
+  }
+
+  static String fingerprintFromBytes(List<int> bytes) {
+    if (bytes.isEmpty) return '';
+    return sha256.convert(bytes).toString();
+  }
+
+  static String fingerprint(PartnerRouteShare share) {
+    final fromText = fingerprintFromText(share.pdfSearchText);
+    if (fromText.isNotEmpty) return fromText;
     final title = (share.title ?? '').trim().toLowerCase();
     final path = share.pdfStoragePath.trim().toLowerCase();
     return '$title|$path';
+  }
+
+  /// Finn eksisterende staged-rute med samme PDF-innhold (for import-dedup).
+  static PartnerRouteShare? findDuplicateInStaged({
+    required List<PartnerRouteShare> staged,
+    String? pdfSearchText,
+    List<int>? bytes,
+    String? contentSha256,
+  }) {
+    final textFp = fingerprintFromText(pdfSearchText);
+    if (textFp.isNotEmpty) {
+      for (final s in staged) {
+        if (fingerprint(s) == textFp) return s;
+      }
+    }
+    final byteFp = bytes != null && bytes.isNotEmpty ? fingerprintFromBytes(bytes) : '';
+    if (byteFp.isNotEmpty) {
+      for (final s in staged) {
+        if (fingerprint(s) == byteFp) return s;
+      }
+    }
+    if (contentSha256 != null && contentSha256.trim().isNotEmpty) {
+      for (final s in staged) {
+        if (fingerprint(s) == contentSha256.trim()) return s;
+      }
+    }
+    return null;
   }
 
   static List<StagedRouteDuplicateGroup> findGroups(List<PartnerRouteShare> staged) {

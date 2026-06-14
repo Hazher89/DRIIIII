@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../models/time_clock/time_clock_presence.dart';
+import '../../../models/time_clock/time_overtime_summary.dart';
 import '../../../models/time_clock/time_timesheet_entry.dart';
 import '../../../models/time_clock/time_work_type.dart';
 
@@ -85,7 +86,9 @@ class TimeClockService {
   }) async {
     final data = await _client
         .from('time_timesheet_entries')
-        .select('*, work_type:time_work_types(code, name, color_hex, payroll_code)')
+        .select(
+          '*, work_type:time_work_types(code, name, color_hex, payroll_code, category)',
+        )
         .eq('profile_id', profileId)
         .gte('work_date', weekStart.toIso8601String().split('T').first)
         .lte('work_date', weekEnd.toIso8601String().split('T').first)
@@ -169,6 +172,35 @@ class TimeClockService {
         .maybeSingle();
 
     return data?['time_clock_mobile_allowed'] as bool? ?? false;
+  }
+
+  static Future<TimeOvertimeSummary?> fetchOvertimeSummary({
+    required String profileId,
+    required DateTime weekStart,
+  }) async {
+    final res = await _client.rpc('time_clock_overtime_summary', params: {
+      'p_profile_id': profileId,
+      'p_week_start': weekStart.toIso8601String().split('T').first,
+    });
+    if (res is! Map) return null;
+    final map = Map<String, dynamic>.from(res);
+    if (map['ok'] != true) return null;
+    return TimeOvertimeSummary.fromJson(map);
+  }
+
+  static TimeOvertimeSettings defaultOvertimeSettings() => const TimeOvertimeSettings(
+        dailyWorkLimitHours: 9,
+        weeklyWorkLimitHours: 40,
+        overtimeSupplementPct: 40,
+        overtimeRegime: 'standard',
+        overtimeWeeklyMax: 10,
+        overtimeFourWeekMax: 25,
+        overtimeAnnualMax: 200,
+      );
+
+  static TimeOvertimeSettings parseOvertimeSettings(Map<String, dynamic>? json) {
+    if (json == null) return defaultOvertimeSettings();
+    return TimeOvertimeSettings.fromJson(json);
   }
 
   static int clockedInCount(List<TimeClockPresence> list) =>

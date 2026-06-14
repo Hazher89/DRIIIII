@@ -93,6 +93,19 @@ class _TimeClockMobileTabState extends State<TimeClockMobileTab> {
         setState(() => _error = res['error'] as String? ?? 'Stempling feilet');
         return;
       }
+      final punchType = res['punch_type'] as String?;
+      final overtimeHours = (res['overtime_hours'] as num?)?.toDouble() ?? 0;
+      if (punchType == 'out' && overtimeHours > 0 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Overtid registrert: ${overtimeHours.toStringAsFixed(1)} t '
+              '(40 % tillegg etter §10-6)',
+            ),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
       await _load();
     } catch (e) {
       setState(() => _error = 'Stempling feilet');

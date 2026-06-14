@@ -42,7 +42,7 @@ DateTime _routeCalendarDay(PartnerRouteShare r) {
 }
 
 bool _isActivePortalRoute(PartnerRouteShare r) {
-  if (r.ackStatus == 'pending') return true;
+  if (r.requiresAck) return true;
   final now = DateTime.now();
   final startOfToday = DateTime(now.year, now.month, now.day);
   return !_routeCalendarDay(r).isBefore(startOfToday.subtract(const Duration(days: 1)));
@@ -670,7 +670,7 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
                 ),
               ],
             ),
-            if (showActions && r.ackStatus == 'pending') ...[
+            if (showActions && r.requiresAck) ...[
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -888,7 +888,7 @@ class _PartnerInspectionsPageState extends State<_PartnerInspectionsPage> {
                       ),
                       title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
                       subtitle: Text(
-                        '${DateFormat('d. MMM yyyy', 'nb').format(ins.inspectedAt.toLocal())}\n'
+                        '${ins.stampLine}\n'
                         '${ins.hasDeviation ? (ins.deviationNotes ?? "Avvik registrert") : "OK — ingen avvik"}',
                       ),
                       isThreeLine: true,

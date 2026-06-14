@@ -31,7 +31,7 @@ class OwnerPortalRouteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final day = ownerRouteCalendarDay(route);
     final area = ownerRouteArea(route, shifts);
-    final pending = route.ackStatus == 'pending';
+    final pending = route.requiresAck;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),

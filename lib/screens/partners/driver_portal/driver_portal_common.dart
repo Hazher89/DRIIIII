@@ -34,7 +34,7 @@ class DriverPortalData {
     return past;
   }
 
-  int get pendingAck => routes.where((r) => r.ackStatus == 'pending').length;
+  int get pendingAck => routes.where((r) => r.requiresAck).length;
 
   static Future<DriverPortalData> load({
     required Partner partner,

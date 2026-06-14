@@ -5,9 +5,11 @@ import '../../models/survey/survey_advanced.dart';
 import '../../core/services/survey/survey_advanced_service.dart';
 import '../../core/services/survey/survey_question_catalog.dart';
 import '../../core/services/survey/survey_service.dart';
+import '../../core/services/survey/survey_living_motion.dart';
 import '../../core/services/survey/survey_theme_presets.dart';
 import '../../core/services/supabase_service.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import 'widgets/survey_living_background.dart';
 
 class SurveyPlayerScreen extends StatefulWidget {
   final String surveyId;
@@ -150,7 +152,7 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(body: DriftProLoadingCenter());
+      return const DriftProLoadingPage();
     }
 
     if (_survey == null) {
@@ -237,11 +239,14 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
         title: Text(_survey!.title, style: TextStyle(color: text, fontWeight: FontWeight.w700)),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        flexibleSpace: Container(decoration: _playerBackground(preset, bg, primary, accent)),
+        flexibleSpace: _playerBackdrop(preset, bg, primary, accent, const SizedBox.expand()),
       ),
-      body: Container(
-        decoration: _playerBackground(preset, bg, primary, accent),
-        child: Center(
+      body: _playerBackdrop(
+        preset,
+        bg,
+        primary,
+        accent,
+        Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 800),
           child: Form(
@@ -328,6 +333,28 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
     );
   }
 
+  Widget _playerBackdrop(
+    SurveyThemePreset preset,
+    Color bg,
+    Color primary,
+    Color accent,
+    Widget child,
+  ) {
+    if (preset.visualStyle == SurveyVisualStyle.living) {
+      return SurveyLivingBackground(
+        motion: preset.id.livingMotionFromPresetId,
+        background: bg,
+        primary: primary,
+        accent: accent,
+        child: child,
+      );
+    }
+    return DecoratedBox(
+      decoration: _playerBackground(preset, bg, primary, accent),
+      child: child,
+    );
+  }
+
   BoxDecoration _playerBackground(SurveyThemePreset preset, Color bg, Color primary, Color accent) {
     switch (preset.visualStyle) {
       case SurveyVisualStyle.gradient:
@@ -347,6 +374,8 @@ class _SurveyPlayerScreenState extends State<SurveyPlayerScreen> {
           ),
         );
       case SurveyVisualStyle.neon:
+        return BoxDecoration(color: bg);
+      case SurveyVisualStyle.living:
         return BoxDecoration(color: bg);
       case SurveyVisualStyle.bold:
         return BoxDecoration(

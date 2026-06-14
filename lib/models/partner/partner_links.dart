@@ -417,6 +417,11 @@ class PartnerRouteShare {
 
   bool get isSentWithNotify => dispatchStatus == 'sent';
 
+  /// Kun varslede ruter (sent) kan kreve aksept eller purring.
+  bool get requiresAck => isSentWithNotify && ackStatus == 'pending';
+
+  bool get ackNotRequired => ackStatus == 'not_required' || isRegistered;
+
   Map<String, dynamic> toInsertJson() {
     return {
       'partner_id': partnerId,

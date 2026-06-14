@@ -27,7 +27,7 @@ class PartnerPortalRouteListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pending = route.ackStatus == 'pending';
+    final pending = route.requiresAck;
     final day = ownerRouteCalendarDay(route);
     final start = route.routeStartAt != null
         ? NbDateFormat.format(route.routeStartAt!.toLocal(), 'HH:mm')

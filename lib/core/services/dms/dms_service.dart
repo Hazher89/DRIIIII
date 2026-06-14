@@ -506,7 +506,7 @@ class DmsService {
       final url = await CompanyFileStorage.resolveDisplayUrl(storagePath);
       final res = await http.get(Uri.parse(url));
       if (res.statusCode != 200 || res.bodyBytes.isEmpty) {
-        throw StateError('Kunne ikke hente fil fra Dropbox');
+        throw StateError('Kunne ikke hente fil fra skylagring');
       }
       return res.bodyBytes;
     }

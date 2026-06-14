@@ -81,7 +81,7 @@ class _PartnerAssignedRoutesTabState extends State<PartnerAssignedRoutesTab> {
     }
 
     final accepted = _routes.where((r) => r.ackStatus == 'accepted').length;
-    final pending = _routes.where((r) => r.ackStatus == 'pending').length;
+    final pending = _routes.where((r) => r.requiresAck).length;
 
     return RefreshIndicator(
       onRefresh: _load,

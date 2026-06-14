@@ -63,6 +63,7 @@ class _EquipmentServiceEntrySheetState extends State<EquipmentServiceEntrySheet>
   final _odometer = TextEditingController();
   final _cost = TextEditingController();
   DateTime? _nextDue;
+  DateTime? _notifyOn;
   bool _scheduleSms = true;
   final Set<String> _notifyIds = {};
   List<String> _docs = [];
@@ -76,6 +77,9 @@ class _EquipmentServiceEntrySheetState extends State<EquipmentServiceEntrySheet>
     if (widget.equipment.responsibleUserId != null) {
       _notifyIds.add(widget.equipment.responsibleUserId!);
     }
+    if (widget.equipment.assignedTo != null) {
+      _notifyIds.add(widget.equipment.assignedTo!);
+    }
   }
 
   void _suggestNextDue() {
@@ -83,8 +87,36 @@ class _EquipmentServiceEntrySheetState extends State<EquipmentServiceEntrySheet>
     final days = _type == MaintenanceType.waterFill
         ? s.truckWaterIntervalDays
         : s.truckServiceIntervalDays;
-    setState(() => _nextDue = DateTime.now().add(Duration(days: days)));
+    setState(() {
+      _nextDue = DateTime.now().add(Duration(days: days));
+      _syncNotifyOnFromDue();
+    });
   }
+
+  void _syncNotifyOnFromDue() {
+    final due = _nextDue;
+    if (due == null) return;
+    var notify = due.subtract(
+      Duration(days: widget.settings.defaultNotifyDaysBefore),
+    );
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+    if (notify.isBefore(todayDate)) notify = todayDate;
+    _notifyOn = notify;
+  }
+
+  int get _notifyDaysBefore {
+    final due = _nextDue;
+    final notify = _notifyOn;
+    if (due == null || notify == null) {
+      return widget.settings.defaultNotifyDaysBefore;
+    }
+    final dueDate = DateTime(due.year, due.month, due.day);
+    final notifyDate = DateTime(notify.year, notify.month, notify.day);
+    return dueDate.difference(notifyDate).inDays.clamp(0, 365);
+  }
+
+  String _fmt(DateTime d) => '${d.day}.${d.month}.${d.year}';
 
   Future<void> _pickFiles() async {
     final r = await FilePicker.platform.pickFiles(allowMultiple: true, withData: true);
@@ -116,7 +148,7 @@ class _EquipmentServiceEntrySheetState extends State<EquipmentServiceEntrySheet>
         smsNotifyUserIds: _scheduleSms && _notifyIds.isNotEmpty
             ? _notifyIds.toList()
             : null,
-        notifyDaysBefore: widget.settings.defaultNotifyDaysBefore,
+        notifyDaysBefore: _notifyDaysBefore,
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
@@ -197,25 +229,55 @@ class _EquipmentServiceEntrySheetState extends State<EquipmentServiceEntrySheet>
                   firstDate: DateTime.now(),
                   lastDate: DateTime(2035),
                 );
-                if (d != null) setState(() => _nextDue = d);
+                if (d != null) {
+                  setState(() {
+                    _nextDue = d;
+                    _syncNotifyOnFromDue();
+                  });
+                }
               },
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('SMS-varsel til valgte ansatte'),
               subtitle: Text(
-                'Sendes ${widget.settings.defaultNotifyDaysBefore} dager før frist (via Sveve)',
+                _notifyOn != null && _nextDue != null
+                    ? 'Planlagt varsel ${_fmt(_notifyOn!)} (frist ${_fmt(_nextDue!)})'
+                    : 'Velg ansatt og varseldato',
               ),
               value: _scheduleSms,
               onChanged: (v) => setState(() => _scheduleSms = v),
             ),
             if (_scheduleSms) ...[
-              Text('Varsle:', style: DriftProTheme.labelSm),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Dato for varsel'),
+                subtitle: Text(
+                  _notifyOn != null ? _fmt(_notifyOn!) : '—',
+                ),
+                trailing: const Icon(Icons.notifications_active_outlined),
+                onTap: _nextDue == null
+                    ? null
+                    : () async {
+                        final d = await showDatePicker(
+                          context: context,
+                          initialDate: _notifyOn ?? DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: _nextDue!,
+                        );
+                        if (d != null) setState(() => _notifyOn = d);
+                      },
+              ),
+              Text('Varsle ansatt:', style: DriftProTheme.labelSm),
               ...profiles.map((e) {
+                final selected = _notifyIds.contains(e.key);
                 return CheckboxListTile(
                   dense: true,
                   title: Text(e.value),
-                  value: _notifyIds.contains(e.key),
+                  subtitle: selected && _notifyOn != null
+                      ? Text('SMS ${_fmt(_notifyOn!)}')
+                      : null,
+                  value: selected,
                   onChanged: (on) {
                     setState(() {
                       if (on == true) {
@@ -227,6 +289,18 @@ class _EquipmentServiceEntrySheetState extends State<EquipmentServiceEntrySheet>
                   },
                 );
               }),
+              if (_notifyIds.isNotEmpty && _notifyOn != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 8),
+                  child: Text(
+                    '${_notifyIds.length} ansatt(er) får varsel ${_fmt(_notifyOn!)} '
+                    'om truck-service (frist ${_fmt(_nextDue!)}).',
+                    style: DriftProTheme.caption.copyWith(
+                      color: DriftProTheme.primaryGreen,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
             ],
             OutlinedButton.icon(
               onPressed: _pickFiles,

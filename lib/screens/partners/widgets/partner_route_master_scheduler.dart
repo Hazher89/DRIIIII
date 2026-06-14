@@ -236,8 +236,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     return sd == dn || rs == dn;
   }
 
-  bool _needsAck(PartnerRouteShare s) =>
-      s.isSentWithNotify && s.ackStatus != 'accepted';
+  bool _needsAck(PartnerRouteShare s) => s.requiresAck;
 
   int _pendingAckCountForDay(DateTime day) =>
       _shares.where((s) => _shareOnDay(s, day) && _needsAck(s)).length;
@@ -295,6 +294,16 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     required VoidCallback onDone,
     required void Function(bool) setBusy,
   }) async {
+    if (!share.requiresAck) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Ruten er publisert uten varsel — purring gjelder ikke.'),
+          ),
+        );
+      }
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -396,7 +405,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     if (routes.isEmpty) return null;
     if (routes.any((s) => s.isStaged)) return RouteDispatchStatus.cellColor(RouteDispatchStatus.staged);
     if (routes.any((s) => s.isRegistered)) return RouteDispatchStatus.cellColor(RouteDispatchStatus.registered);
-    if (routes.any((s) => s.isSentWithNotify && s.ackStatus != 'accepted')) return Colors.red;
+    if (routes.any((s) => s.requiresAck)) return Colors.red;
     return RouteDispatchStatus.cellColor(RouteDispatchStatus.sent);
   }
 
@@ -480,11 +489,13 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             size: 20,
           ),
           label: Text(
-            hasQueue
-                ? 'SAP ($_sapStagedCount)'
-                : hasInbox
-                    ? 'SAP ($_sapInboxPending nye)'
-                    : 'SAP',
+            hasQueue && hasInbox
+                ? 'SAP ($_sapStagedCount · $_sapInboxPending nye)'
+                : hasQueue
+                    ? 'SAP ($_sapStagedCount i kø)'
+                    : hasInbox
+                        ? 'SAP ($_sapInboxPending nye)'
+                        : 'SAP',
             style: TextStyle(
               fontWeight: active ? FontWeight.w800 : FontWeight.w600,
             ),
@@ -1540,7 +1551,7 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
                           icon: Icon(s.isSentWithNotify ? Icons.sms_outlined : Icons.rocket_launch_outlined),
                           label: Text(s.isSentWithNotify ? 'Send SMS på nytt' : 'Publiser + SMS'),
                         ),
-                      if (s.isSentWithNotify && s.ackStatus != 'accepted') ...[
+                      if (s.requiresAck) ...[
                         const SizedBox(height: 8),
                         FilledButton.tonalIcon(
                           onPressed: _busy ? null : () => _nudge(s),
@@ -1938,8 +1949,12 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
     }
   }
 
-  String _ackShortStatic(String x) =>
-      x == 'accepted' ? 'OK' : x == 'rejected' ? 'Nei' : 'Venter';
+  String _ackShortStatic(String x) => switch (x) {
+        'accepted' => 'OK',
+        'rejected' => 'Nei',
+        'not_required' => 'Ikke påkrevd',
+        _ => 'Venter',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -2002,7 +2017,9 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                           ],
                         ),
                         Text(
-                          '${s.isStaged ? 'Kladd' : 'Sendt'} · Aksept: ${_ackShortStatic(s.ackStatus)}',
+                          s.isRegistered
+                              ? 'Registrert uten varsel — ingen aksept eller purring'
+                              : '${s.isStaged ? 'Kladd' : 'Sendt'} · Aksept: ${_ackShortStatic(s.ackStatus)}',
                           style: const TextStyle(fontSize: 12),
                         ),
                         RouteReminderBadge(
@@ -2096,7 +2113,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                                         : 'Oppdater + SMS',
                               ),
                             ),
-                            if (s.isSentWithNotify && s.ackStatus != 'accepted')
+                            if (s.requiresAck)
                               FilledButton.tonal(
                                 onPressed: _busy
                                     ? null

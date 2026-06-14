@@ -235,7 +235,7 @@ class _OrganizationChartScreenState extends State<OrganizationChartScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: DriftProLoadingCenter());
+      return const DriftProLoadingPage();
     }
     if (_error != null) {
       return Scaffold(

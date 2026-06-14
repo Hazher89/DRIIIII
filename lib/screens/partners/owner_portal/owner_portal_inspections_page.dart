@@ -105,7 +105,7 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
                             ),
                             title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
                             subtitle: Text(
-                              '${ownerFmtDate(ins.inspectedAt)}\n'
+                              '${ins.stampLine}\n'
                               '${ins.hasDeviation ? (ins.deviationNotes ?? "Avvik") : "OK"}',
                             ),
                             isThreeLine: true,

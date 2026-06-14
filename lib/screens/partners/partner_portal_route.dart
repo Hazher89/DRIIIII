@@ -85,7 +85,7 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: DriftProLoadingCenter());
+      return const DriftProLoadingPage();
     }
     final profile = _profile;
     if (_portalAccountKind == null &&

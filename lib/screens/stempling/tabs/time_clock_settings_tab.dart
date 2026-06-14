@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/time_clock/time_clock_service.dart';
+import '../../../models/time_clock/time_overtime_summary.dart';
 import '../../../models/user_profile.dart';
 import '../widgets/stempling_save_bar.dart';
 
@@ -29,6 +30,8 @@ class _TimeClockSettingsTabState extends State<TimeClockSettingsTab> {
   String? _pinProfileId;
   final _pinCtrl = TextEditingController();
   bool _grantMobile = false;
+  TimeOvertimeSettings _overtime = TimeClockService.defaultOvertimeSettings();
+  String _overtimeRegime = 'standard';
 
   @override
   void initState() {
@@ -67,6 +70,10 @@ class _TimeClockSettingsTabState extends State<TimeClockSettingsTab> {
         _enabled = res['kiosk_enabled'] as bool? ?? true;
         _kioskUrl = res['kiosk_url'] as String? ?? '/stemple';
         _kioskUrlLegacy = res['kiosk_url_legacy'] as String?;
+        _overtime = TimeClockService.parseOvertimeSettings(
+          res['overtime'] as Map<String, dynamic>?,
+        );
+        _overtimeRegime = _overtime.overtimeRegime;
       }
       final companyId = widget.profile.companyId;
       if (companyId != null) {
@@ -92,6 +99,7 @@ class _TimeClockSettingsTabState extends State<TimeClockSettingsTab> {
         'display_name': _nameCtrl.text.trim(),
         'kiosk_enabled': _enabled,
         'punch_reset_seconds': int.tryParse(_resetCtrl.text) ?? 4,
+        'overtime': _overtime.copyWithRegime(_overtimeRegime).toPayload(),
       });
 
       if (_pinProfileId != null && _pinCtrl.text.isNotEmpty) {
@@ -286,6 +294,124 @@ class _TimeClockSettingsTabState extends State<TimeClockSettingsTab> {
                   onPressed: _saving ? null : _syncAllPins,
                   icon: const Icon(Icons.pin_outlined),
                   label: const Text('Sett PIN 0 for alle ansatte'),
+                ),
+                const SizedBox(height: 32),
+                const Text(
+                  'Overtid — arbeidsmiljøloven',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '§10-4 alminnelig arbeidstid og §10-6 overtidsregler. '
+                  '40 % tillegg er lovpålagt minimum og kan ikke avspaseres.',
+                  style: TextStyle(fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: _overtimeRegime,
+                  decoration: const InputDecoration(
+                    labelText: 'Overtidsregime',
+                    border: OutlineInputBorder(),
+                    helperText: 'Standard eller tariffavtale (§10-6 fjerde/femte ledd)',
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'standard',
+                      child: Text('Standard — 10/25/200 timer'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'tariff',
+                      child: Text('Tariffavtale — 20/50/300 timer'),
+                    ),
+                  ],
+                  onChanged: (v) => setState(() {
+                    _overtimeRegime = v ?? 'standard';
+                    _dirty = true;
+                  }),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        initialValue: _overtime.dailyWorkLimitHours.toStringAsFixed(0),
+                        decoration: const InputDecoration(
+                          labelText: 'Daglig grense (§10-4)',
+                          suffixText: 't',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        onChanged: (v) {
+                          final n = double.tryParse(v.replaceAll(',', '.'));
+                          if (n != null) {
+                            _overtime = TimeOvertimeSettings(
+                              dailyWorkLimitHours: n,
+                              weeklyWorkLimitHours: _overtime.weeklyWorkLimitHours,
+                              overtimeSupplementPct: _overtime.overtimeSupplementPct,
+                              overtimeRegime: _overtimeRegime,
+                              overtimeWeeklyMax: _overtime.overtimeWeeklyMax,
+                              overtimeFourWeekMax: _overtime.overtimeFourWeekMax,
+                              overtimeAnnualMax: _overtime.overtimeAnnualMax,
+                            );
+                            _dirty = true;
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextFormField(
+                        initialValue: _overtime.weeklyWorkLimitHours.toStringAsFixed(0),
+                        decoration: const InputDecoration(
+                          labelText: 'Ukentlig grense (§10-4)',
+                          suffixText: 't',
+                          border: OutlineInputBorder(),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        onChanged: (v) {
+                          final n = double.tryParse(v.replaceAll(',', '.'));
+                          if (n != null) {
+                            _overtime = TimeOvertimeSettings(
+                              dailyWorkLimitHours: _overtime.dailyWorkLimitHours,
+                              weeklyWorkLimitHours: n,
+                              overtimeSupplementPct: _overtime.overtimeSupplementPct,
+                              overtimeRegime: _overtimeRegime,
+                              overtimeWeeklyMax: _overtime.overtimeWeeklyMax,
+                              overtimeFourWeekMax: _overtime.overtimeFourWeekMax,
+                              overtimeAnnualMax: _overtime.overtimeAnnualMax,
+                            );
+                            _dirty = true;
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  initialValue: _overtime.overtimeSupplementPct.toStringAsFixed(0),
+                  decoration: const InputDecoration(
+                    labelText: 'Overtidstillegg (§10-6 (11))',
+                    suffixText: '%',
+                    border: OutlineInputBorder(),
+                    helperText: 'Minimum 40 % etter lov — kan ikke avtales lavere',
+                  ),
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) {
+                    final n = double.tryParse(v.replaceAll(',', '.'));
+                    if (n != null && n >= 40) {
+                      _overtime = TimeOvertimeSettings(
+                        dailyWorkLimitHours: _overtime.dailyWorkLimitHours,
+                        weeklyWorkLimitHours: _overtime.weeklyWorkLimitHours,
+                        overtimeSupplementPct: n,
+                        overtimeRegime: _overtimeRegime,
+                        overtimeWeeklyMax: _overtime.overtimeWeeklyMax,
+                        overtimeFourWeekMax: _overtime.overtimeFourWeekMax,
+                        overtimeAnnualMax: _overtime.overtimeAnnualMax,
+                      );
+                      _dirty = true;
+                    }
+                  },
                 ),
               ],
             ),

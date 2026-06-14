@@ -43,6 +43,7 @@ class _KioskScreenState extends State<KioskScreen> {
   String? _selectedWorkTypeId;
   List<TimeWorkType> _workTypes = [];
   String? _companyName;
+  double _lastOvertimeHours = 0;
   Timer? _resetTimer;
   Timer? _durationTimer;
 
@@ -173,6 +174,9 @@ class _KioskScreenState extends State<KioskScreen> {
       final punchType = res['punch_type'] as String?;
       setState(() {
         _isClockedIn = punchType == 'in';
+        _lastOvertimeHours = punchType == 'out'
+            ? (res['overtime_hours'] as num?)?.toDouble() ?? 0
+            : 0;
         if (punchType == 'in') {
           _clockedInAt = DateTime.tryParse(res['punched_at'] as String? ?? '') ?? DateTime.now();
         } else {
@@ -428,6 +432,13 @@ class _KioskScreenState extends State<KioskScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(_fullName ?? '', style: TextStyle(fontSize: 18, color: fg.withValues(alpha: 0.7))),
+                if (!_isClockedIn && _lastOvertimeHours > 0) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    'Overtid: ${_lastOvertimeHours.toStringAsFixed(1)} t (40 % tillegg)',
+                    style: TextStyle(fontSize: 15, color: DriftProTheme.warning.withValues(alpha: 0.9)),
+                  ),
+                ],
                 const SizedBox(height: 24),
                 Text(
                   'Tilbake om $_resetSeconds sek…',

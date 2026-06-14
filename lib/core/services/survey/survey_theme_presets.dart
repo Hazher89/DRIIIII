@@ -7,6 +7,7 @@ enum SurveyVisualStyle {
   minimal,
   bold,
   neon,
+  living,
 }
 
 extension SurveyVisualStyleLabel on SurveyVisualStyle {
@@ -17,6 +18,7 @@ extension SurveyVisualStyleLabel on SurveyVisualStyle {
         SurveyVisualStyle.minimal => 'Minimal',
         SurveyVisualStyle.bold => 'Bold',
         SurveyVisualStyle.neon => 'Neon',
+        SurveyVisualStyle.living => 'Levende',
       };
 }
 
@@ -201,6 +203,16 @@ class SurveyThemePresets {
     c('season-summer', 'Sommergul', 'Sesong', '#CA8A04', '#FEFCE8', '#FFFFFF', '#713F12', '#FACC15', style: SurveyVisualStyle.gradient);
     c('season-autumn', 'Høst', 'Sesong', '#EA580C', '#FFF7ED', '#FFFFFF', '#7C2D12', '#FB923C', style: SurveyVisualStyle.gradient);
     c('season-winter', 'Vinter', 'Sesong', '#0369A1', '#F0F9FF', '#FFFFFF', '#0C4A6E', '#7DD3FC', style: SurveyVisualStyle.minimal);
+
+    // —— Levende animerte bakgrunner ——
+    c('living-aurora-drift', 'DriftPro Aurora', 'Levende', '#1B5E20', '#F0F7F2', '#FFFFFF', '#0F172A', '#2E7D32', style: SurveyVisualStyle.living, button: 'pill');
+    c('living-nordic-breeze', 'Nordisk Bris', 'Levende', '#0288D1', '#E3F2FD', '#FFFFFF', '#0D47A1', '#4FC3F7', style: SurveyVisualStyle.living, button: 'pill');
+    c('living-violet-orbs', 'Violet Orbs', 'Levende', '#7C3AED', '#F5F3FF', '#FFFFFF', '#4C1D95', '#A78BFA', style: SurveyVisualStyle.living, button: 'pill');
+    c('living-sunset-waves', 'Solnedgang Bølger', 'Levende', '#EA580C', '#FFF7ED', '#FFFFFF', '#7C2D12', '#FB923C', style: SurveyVisualStyle.living, button: 'pill');
+    c('living-sage-drift', 'Sage Drift', 'Levende', '#059669', '#ECFDF5', '#FFFFFF', '#064E3B', '#34D399', style: SurveyVisualStyle.living, button: 'pill');
+    c('living-midnight-pulse', 'Midnight Pulse', 'Levende', '#60A5FA', '#0B1220', '#151D2E', '#E2E8F0', '#3B82F6', dark: true, style: SurveyVisualStyle.living, button: 'pill');
+    c('living-coral-spark', 'Coral Spark', 'Levende', '#F97316', '#FFF4ED', '#FFFFFF', '#9A3412', '#FDBA74', style: SurveyVisualStyle.living, button: 'pill');
+    c('living-rose-orbs', 'Rose Orbs', 'Levende', '#EC4899', '#FDF2F8', '#FFFFFF', '#831843', '#F472B6', style: SurveyVisualStyle.living, button: 'pill');
 
     return out;
   }

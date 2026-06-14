@@ -60,6 +60,7 @@ class _TimeClockEntrySheetState extends State<TimeClockEntrySheet> {
   late final TextEditingController _projectCtrl;
   late final TextEditingController _activityCtrl;
   late final TextEditingController _noteCtrl;
+  late final TextEditingController _overtimeReasonCtrl;
   bool _manualHours = false;
 
   bool get _isEdit => widget.entry != null;
@@ -82,6 +83,7 @@ class _TimeClockEntrySheetState extends State<TimeClockEntrySheet> {
     _projectCtrl = TextEditingController(text: e?.project ?? '');
     _activityCtrl = TextEditingController(text: e?.activity ?? '');
     _noteCtrl = TextEditingController(text: e?.note ?? '');
+    _overtimeReasonCtrl = TextEditingController(text: e?.overtimeReason ?? '');
     _manualHours = e != null && (_start == null || _end == null);
   }
 
@@ -91,6 +93,7 @@ class _TimeClockEntrySheetState extends State<TimeClockEntrySheet> {
     _projectCtrl.dispose();
     _activityCtrl.dispose();
     _noteCtrl.dispose();
+    _overtimeReasonCtrl.dispose();
     super.dispose();
   }
 
@@ -161,6 +164,9 @@ class _TimeClockEntrySheetState extends State<TimeClockEntrySheet> {
         project: _projectCtrl.text.trim().isEmpty ? null : _projectCtrl.text.trim(),
         activity: _activityCtrl.text.trim().isEmpty ? null : _activityCtrl.text.trim(),
         note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
+        overtimeReason: _overtimeReasonCtrl.text.trim().isEmpty
+            ? null
+            : _overtimeReasonCtrl.text.trim(),
         isLocked: base?.isLocked ?? false,
         isApproved: base?.isApproved ?? false,
         source: base?.source ?? 'manual',
@@ -263,6 +269,19 @@ class _TimeClockEntrySheetState extends State<TimeClockEntrySheet> {
               labelText: 'Aktivitet',
               border: OutlineInputBorder(),
               prefixIcon: Icon(Icons.task_alt_outlined, size: 20),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _overtimeReasonCtrl,
+            readOnly: _isLocked,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              labelText: 'Årsak til overtid (§10-6)',
+              hintText: 'Særlig og tidsavgrenset behov',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.gavel_outlined, size: 20),
+              helperText: 'Påkrevd dokumentasjon ved overtidsarbeid',
             ),
           ),
           const SizedBox(height: 12),

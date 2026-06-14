@@ -33,15 +33,14 @@ bool ownerRouteIsPast(PartnerRouteShare r) {
   return ownerRouteCalendarDay(r).isBefore(_startOfDay(DateTime.now()));
 }
 
-/// Rute som fortsatt må aksepteres i portalen (i dag eller fremtid — ikke gamle arkivruter).
+/// Rute som fortsatt må aksepteres i portalen (kun varslet — ikke «uten varsel»).
 bool ownerRouteNeedsPortalAck(PartnerRouteShare r) {
-  if (r.ackStatus != 'pending') return false;
-  if (!r.isSentWithNotify && !r.isRegistered) return false;
+  if (!r.requiresAck) return false;
   return !ownerRouteIsPast(r);
 }
 
 bool ownerRouteIsActive(PartnerRouteShare r) {
-  if (r.ackStatus == 'pending') return true;
+  if (r.requiresAck) return true;
   final now = DateTime.now();
   final startOfToday = _startOfDay(now);
   return !ownerRouteCalendarDay(r).isBefore(startOfToday.subtract(const Duration(days: 1)));

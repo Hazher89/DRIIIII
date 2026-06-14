@@ -471,7 +471,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     if (_isLoading && _profile == null) {
-      return const Scaffold(body: DriftProLoadingCenter());
+      return const DriftProLoadingPage();
     }
 
     if (!_isLoading && (_tabController == null || _tabs.isEmpty)) {

@@ -872,11 +872,18 @@ class PartnerService {
       'partner_vehicle_id': newTarget.vehicle.id,
       'shift_id': shiftId,
       'share_date': d,
-      'ack_status': 'pending',
-      'ack_at': null,
-      'ack_by': null,
-      'ack_comment': null,
     };
+    if (share.isSentWithNotify) {
+      patch['ack_status'] = 'pending';
+      patch['ack_at'] = null;
+      patch['ack_by'] = null;
+      patch['ack_comment'] = null;
+    } else if (share.isRegistered) {
+      patch['ack_status'] = 'not_required';
+      patch['ack_at'] = null;
+      patch['ack_by'] = null;
+      patch['ack_comment'] = null;
+    }
     if (routeStartAt != null) {
       patch['route_start_at'] = routeStartAt.toUtc().toIso8601String();
     }
@@ -1149,12 +1156,39 @@ class PartnerService {
 
   static List<PartnerRouteShare> _filterStagedByImportSource(
     List<PartnerRouteShare> list,
-    String? importSource,
-  ) {
+    String? importSource, {
+    Set<String> sapLinkedShareIds = const {},
+  }) {
     if (importSource == null) return list;
+    if (importSource == stagedImportSap) {
+      return list
+          .where(
+            (s) =>
+                (s.stagedImportSource ?? stagedImportManual) == stagedImportSap ||
+                sapLinkedShareIds.contains(s.id),
+          )
+          .toList();
+    }
     return list
         .where((s) => (s.stagedImportSource ?? stagedImportManual) == importSource)
         .toList();
+  }
+
+  static Future<Set<String>> _fetchSapLinkedStagedShareIds(String companyId) async {
+    if (!_ok) return const {};
+    try {
+      final data = await _client
+          .from('sap_route_inbox')
+          .select('imported_route_share_id')
+          .eq('company_id', companyId)
+          .not('imported_route_share_id', 'is', null) as List<dynamic>;
+      return data
+          .map((e) => (e as Map)['imported_route_share_id'] as String?)
+          .whereType<String>()
+          .toSet();
+    } catch (_) {
+      return const {};
+    }
   }
 
   static Future<List<PartnerRouteShare>> fetchStagedRouteShares(
@@ -1163,19 +1197,23 @@ class PartnerService {
     String? importSource,
   }) async {
     if (!_ok) return const [];
+    final sapLinkedIds = importSource == stagedImportSap
+        ? await _fetchSapLinkedStagedShareIds(companyId)
+        : const <String>{};
     try {
-      var query = _client
+      final data = await _client
           .from('partner_route_shares')
           .select()
           .eq('company_id', companyId)
-          .eq('dispatch_status', 'staged');
-      if (importSource != null) {
-        query = query.eq('staged_import_source', importSource);
-      }
-      final data = await query.order('created_at', ascending: false) as List<dynamic>;
+          .eq('dispatch_status', 'staged')
+          .order('created_at', ascending: false) as List<dynamic>;
       var list = data.map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>)).toList();
       if (importSource != null) {
-        list = _filterStagedByImportSource(list, importSource);
+        list = _filterStagedByImportSource(
+          list,
+          importSource,
+          sapLinkedShareIds: sapLinkedIds,
+        );
       }
       if (routeDay != null) {
         final dn = _dayOnly(routeDay);
@@ -1187,11 +1225,14 @@ class PartnerService {
       }
       return list;
     } catch (_) {
-      // Fallback: filtrer staged client-side (ikke shift_id — staged kan ha skift).
       try {
         final all = await fetchRouteSharesForCompany(companyId, limit: 500);
         var list = all.where((s) => s.isStaged).toList();
-        list = _filterStagedByImportSource(list, importSource);
+        list = _filterStagedByImportSource(
+          list,
+          importSource,
+          sapLinkedShareIds: sapLinkedIds,
+        );
         if (routeDay != null) {
           final dn = _dayOnly(routeDay);
           list = list.where((s) {
@@ -1254,6 +1295,12 @@ class PartnerService {
       if (notifyDriver) {
         patch['sent_at'] = sentAt;
         patch['ack_status'] = 'pending';
+        patch['ack_at'] = null;
+        patch['ack_by'] = null;
+        patch['ack_comment'] = null;
+      } else {
+        patch['sent_at'] = null;
+        patch['ack_status'] = 'not_required';
         patch['ack_at'] = null;
         patch['ack_by'] = null;
         patch['ack_comment'] = null;
@@ -1505,6 +1552,27 @@ class PartnerService {
   static Future<void> deleteSharedPartnerDocument(String id) async {
     if (!_ok) return;
     await _client.from('partner_shared_documents').delete().eq('id', id);
+  }
+
+  /// Varsle valgte samarbeidspartnere om ny fil i fellesmappe.
+  static Future<Map<String, dynamic>> notifySharedPartnerDocumentUpload({
+    required String documentId,
+    required List<String> partnerIds,
+    required String channel,
+  }) async {
+    if (!_ok) return const {'sms': 0, 'email': 0, 'partners': 0};
+    if (channel == 'none' || partnerIds.isEmpty) {
+      return const {'sms': 0, 'email': 0, 'partners': 0, 'channel': 'none'};
+    }
+    final result = await _client.rpc(
+      'notify_partner_shared_document_upload',
+      params: {
+        'p_document_id': documentId,
+        'p_partner_ids': partnerIds,
+        'p_channel': channel,
+      },
+    );
+    return Map<String, dynamic>.from(result as Map);
   }
 
   static Future<List<PartnerMeeting>> fetchPortalMeetings(String partnerId) async {
@@ -2696,7 +2764,7 @@ class PartnerService {
     try {
       final data = await _client
           .from('partner_vehicle_inspections')
-          .select()
+          .select('*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name)')
           .eq('partner_id', partnerId)
           .order('inspected_at', ascending: false) as List<dynamic>;
       return data
@@ -2715,7 +2783,7 @@ class PartnerService {
     try {
       var q = _client
           .from('partner_vehicle_inspections')
-          .select()
+          .select('*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name)')
           .eq('company_id', companyId)
           .eq('has_deviation', true);
       if (assigneeProfileId != null) {
@@ -2840,6 +2908,11 @@ class PartnerService {
         routeShareId: match.id,
         detectedMaviCode: item.detectedMaviCode,
       );
+      if ((match.stagedImportSource ?? stagedImportManual) != stagedImportSap) {
+        try {
+          await updateRouteShareFields(match.id, {'staged_import_source': stagedImportSap});
+        } catch (_) {}
+      }
       reconciled++;
     }
     return reconciled;

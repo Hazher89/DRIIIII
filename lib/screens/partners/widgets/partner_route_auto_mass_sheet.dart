@@ -80,10 +80,10 @@ class _SkippedPdf {
 String _friendlyImportError(Object error) {
   final msg = error.toString();
   if (msg.contains('malformed_path')) {
-    return 'Dropbox avviste filstien (ugyldig tegn i filnavn). Lagrer nå via Supabase i stedet — prøv på nytt.';
+    return 'Skylagring avviste filstien (ugyldig tegn i filnavn). Lagrer nå via Supabase i stedet — prøv på nytt.';
   }
   if (msg.contains('Dropbox') || msg.contains('dropbox')) {
-    return 'Dropbox-lagring feilet. Sjekk tilkobling under Mer → Dropbox-lagring, eller prøv import på nytt.';
+    return 'Skylagring feilet. Sjekk tilkobling under Mer → Fillagring, eller prøv import på nytt.';
   }
   if (msg.contains('FunctionException')) {
     return 'Serverfeil ved lagring av PDF. Prøv på nytt — systemet bruker alternativ lagring ved behov.';
@@ -163,6 +163,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   _RouteQueueFilter _queueFilter = _RouteQueueFilter.all;
   bool _sapSyncing = false;
   int _sapPendingInbox = 0;
+  List<SapRouteInboxItem> _pendingInboxItems = [];
+  bool _importAborted = false;
   RealtimeChannel? _sapLiveChannel;
   bool _showAllDrivers = false;
   bool _guideExpanded = false;
@@ -232,6 +234,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   @override
   void dispose() {
+    _importAborted = true;
     SapRouteInboxLive.unsubscribe(_sapLiveChannel);
     for (final c in _noteByShare.values) {
       c.dispose();
@@ -254,11 +257,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (!_isSap || !mounted) return;
       _bindSapLive();
       await _refreshSapInboxCounts();
-      if (!mounted) return;
-      // Importer nye SAP-PDF i bakgrunnen — ikke blokker visning av eksisterende kø.
-      if (_sapPendingInbox > 0) {
-        unawaited(_syncSapInbox());
-      }
+      // Ingen auto-import — bruker må trykke «Importer» etter å ha sett ventende PDF-er.
     });
     _loadPublishLabels();
   }
@@ -294,8 +293,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null || !mounted) return;
       await PartnerService.reconcileSapInboxWithStagedQueue(cid);
-      final n = await PartnerService.countSapRouteInboxPending(cid);
-      if (mounted) setState(() => _sapPendingInbox = n);
+      final pending = await PartnerService.fetchSapRouteInboxPending(cid);
+      if (mounted) {
+        setState(() {
+          _sapPendingInbox = pending.length;
+          _pendingInboxItems = pending;
+        });
+      }
     } catch (_) {}
   }
 
@@ -322,15 +326,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Future<void> _syncSapInbox() async {
-    if (!_isSap || _sapSyncing) return;
+    if (!_isSap || _sapSyncing || _importAborted) return;
     setState(() => _sapSyncing = true);
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
-      if (cid == null) return;
+      if (cid == null || _importAborted) return;
       await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final pending = await PartnerService.fetchSapRouteInboxPending(cid);
-      if (!mounted) return;
-      setState(() => _sapPendingInbox = pending.length);
+      if (!mounted || _importAborted) return;
+      setState(() {
+        _sapPendingInbox = pending.length;
+        _pendingInboxItems = pending;
+      });
       if (pending.isEmpty) {
         await _reload();
         return;
@@ -342,7 +349,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         fleet: widget.fleet,
         rejectOnFailure: false,
       );
-
+      if (_importAborted || !mounted) return;
       final newSkipped = <_SkippedPdf>[];
       for (final s in result.skippedItems) {
         final exists = _skipped.any((x) => x.sapInboxId == s.inboxId);
@@ -362,7 +369,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           _skipped.addAll(newSkipped);
         });
       }
-      await _reload(preferRoutesTab: result.imported > 0);
+      await _reload(preferRoutesTab: result.imported > 0, expectedMinStaged: result.imported);
       await _refreshSapInboxCounts();
       if (mounted) {
         if (result.imported > 0 && _staged.isEmpty) {
@@ -428,16 +435,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   void _selectReadyNonDuplicates() {
     final dupIds = StagedRouteDuplicateHelper.allDuplicateIds(_duplicateGroups);
-    _selected
-      ..clear()
-      ..addAll(
-        _staged
-            .where((s) {
-              if (dupIds.contains(s.id)) return false;
-              return _effectiveShiftId(s.id) != null;
-            })
-            .map((s) => s.id),
-      );
+    setState(() {
+      _selected
+        ..clear()
+        ..addAll(
+          _staged
+              .where((s) {
+                if (dupIds.contains(s.id)) return false;
+                return _effectiveShiftId(s.id) != null;
+              })
+              .map((s) => s.id),
+        );
+    });
   }
 
   Future<void> _removeDuplicateRoutes() async {
@@ -584,8 +593,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     _portalByVehicle = portals;
     if (preserveSelection) {
       _selected.removeWhere((id) => !_staged.any((s) => s.id == id));
-    } else if (!_selectionInitialized && staged.isNotEmpty) {
-      _selectReadyNonDuplicates();
+    } else if (!_selectionInitialized) {
+      // Ikke auto-velg — bruker må gjennomgå og velge ruter manuelt før publisering.
+      _selected.clear();
       _selectionInitialized = true;
     } else if (!preserveSelection) {
       _selected.removeWhere((id) => !_staged.any((s) => s.id == id));
@@ -625,7 +635,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     _initialTabSet = true;
   }
 
-  Future<void> _reload({bool preferRoutesTab = false}) async {
+  Future<void> _reload({bool preferRoutesTab = false, int expectedMinStaged = 0}) async {
     setState(() => _loading = true);
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
@@ -642,12 +652,19 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           await PartnerService.reconcileSapInboxWithStagedQueue(cid);
         } catch (_) {}
       }
-      final staged = await PartnerService.fetchStagedRouteShares(
-        cid,
-        importSource: _isSap
-            ? PartnerService.stagedImportSap
-            : PartnerService.stagedImportManual,
-      );
+      List<PartnerRouteShare> staged = const [];
+      for (var attempt = 0; attempt < 4; attempt++) {
+        staged = await PartnerService.fetchStagedRouteShares(
+          cid,
+          importSource: _isSap
+              ? PartnerService.stagedImportSap
+              : PartnerService.stagedImportManual,
+        );
+        if (expectedMinStaged <= 0 || staged.length >= expectedMinStaged || attempt == 3) {
+          break;
+        }
+        await Future<void>.delayed(Duration(milliseconds: 350 * (attempt + 1)));
+      }
       if (!mounted) return;
       setState(() {
         _applyStagedQueueState(
@@ -977,6 +994,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       );
       return;
     }
+    if (!await _guardPublishPrerequisites()) return;
 
     setState(() => _busyUpload = true);
     String? dateSyncSummary;
@@ -1361,6 +1379,34 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
     final routeDay = bundle.schedule.routeDate;
     try {
+      final existingStaged = await PartnerService.fetchStagedRouteShares(
+        companyId,
+        importSource: PartnerService.stagedImportManual,
+      );
+      final dup = StagedRouteDuplicateHelper.findDuplicateInStaged(
+        staged: existingStaged,
+        pdfSearchText: bundle.searchText,
+        bytes: bytes,
+      );
+      if (dup != null) {
+        return (
+          row: _PdfAssignmentRow(
+            fileName: file.name,
+            status: 'skipped',
+            maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+            reason: 'Duplikat — allerede i kø',
+          ),
+          shareId: dup.id,
+          stowing: RoutePdfTextService.parseStowingLane(bundle.searchText),
+          start: bundle.schedule.routeStartAt != null
+              ? TimeOfDay(
+                  hour: bundle.schedule.routeStartAt!.hour,
+                  minute: bundle.schedule.routeStartAt!.minute,
+                )
+              : null,
+        );
+      }
+
       final shareId = await PartnerService.createStagedRouteShareFromPdf(
         companyId: companyId,
         partner: partner,
@@ -1799,13 +1845,54 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     await _importPdfs(picked.files);
   }
 
+  Future<bool> _guardPublishPrerequisites() async {
+    if (_duplicateExtraCount > 0) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Duplikat-ruter i køen'),
+          content: Text(
+            'Det finnes $_duplicateExtraCount identiske kopi(er) av samme PDF. '
+            'Fjern duplikater før publisering slik at ingen sjåfør får samme rute to ganger.',
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Fjern duplikater nå'),
+            ),
+          ],
+        ),
+      );
+      if (ok == true) {
+        await _removeDuplicateRoutes();
+      }
+      if (_duplicateExtraCount > 0) return false;
+    }
+    if (_isSap && _sapPendingInbox > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$_sapPendingInbox SAP-PDF venter fortsatt på import. '
+            'Importer og kontroller alle ruter før publisering.',
+          ),
+          backgroundColor: Colors.orange.shade800,
+          duration: const Duration(seconds: 6),
+        ),
+      );
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _publish({required bool notifyDriver}) async {
     if (_selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ingen ruter valgt for publisering.')),
+        const SnackBar(content: Text('Velg ruter du vil publisere etter kontroll.')),
       );
       return;
     }
+    if (!await _guardPublishPrerequisites()) return;
     await _fillMissingShiftsForSelected();
     if (mounted) setState(() {});
     final missingShift = _selected.where((id) => _effectiveShiftId(id) == null).toList();
@@ -2064,7 +2151,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
-  Widget _buildSidebar(_MassUi ui) => _buildActionsRow(ui);
+  Widget _buildSidebar(_MassUi ui) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildPendingInboxBanner(ui),
+          _buildDuplicateBanner(ui),
+          _buildActionsRow(ui),
+        ],
+      );
 
   Widget _buildWorkflowGuideContent(_MassUi ui) {
     return Material(
@@ -2149,6 +2243,68 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
+  Widget _buildPendingInboxBanner(_MassUi ui) {
+    if (!_isSap || _sapPendingInbox <= 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange.shade300),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.inbox_outlined, color: Colors.orange.shade900),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '$_sapPendingInbox PDF fra SAP venter',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: Colors.orange.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Ingenting fordeles automatisk. Trykk «Importer» nedenfor, '
+                'kontroller alle ruter i køen, og publiser først når alt stemmer.',
+                style: TextStyle(fontSize: 12, height: 1.35, color: Colors.orange.shade900),
+              ),
+              if (_pendingInboxItems.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ..._pendingInboxItems.take(6).map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 3),
+                    child: Text(
+                      '• ${item.fileName}'
+                      '${item.detectedMaviCode != null ? ' (${MaviUnitCodes.compactLabel(item.detectedMaviCode!)})' : ''}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                if (_pendingInboxItems.length > 6)
+                  Text(
+                    '… og ${_pendingInboxItems.length - 6} til',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildActionsRow(_MassUi ui) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2173,8 +2329,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           label: Text(
             _isSap
                 ? (_sapPendingInbox > 0
-                    ? 'Importer $_sapPendingInbox SAP-PDF'
-                    : 'Ingen nye SAP-PDF')
+                    ? 'Importer $_sapPendingInbox SAP-PDF til kø'
+                    : _staged.isEmpty
+                        ? 'Ingen nye SAP-PDF'
+                        : 'Oppdater kø')
                 : 'Last opp PDF-er',
           ),
         ),
@@ -2186,6 +2344,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                 : const Icon(Icons.auto_fix_high_outlined),
             label: Text(_fillingShifts ? 'Fyller skift…' : 'Fyll skift fra PDF (alle)'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busyUpload || _publishing ? null : _selectReadyNonDuplicates,
+            icon: const Icon(Icons.fact_check_outlined),
+            label: Text('Velg alle klare (${_readyShiftCount})'),
           ),
         ],
       ],
@@ -2268,6 +2432,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ),
           ),
         if (showFilters && !forceMissingOnly) _buildDuplicateBanner(ui),
+        if (showFilters && !forceMissingOnly) _buildPendingInboxBanner(ui),
         if (showFilters && !forceMissingOnly)
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
@@ -2278,7 +2443,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           child: Row(
             children: [
               TextButton(
-                onPressed: () => setState(_selectReadyNonDuplicates),
+                onPressed: _selectReadyNonDuplicates,
                 child: const Text('Velg klare'),
               ),
               TextButton(
@@ -3221,17 +3386,18 @@ class _MassUi {
         surfaceTint: const Color(0xFFE3F2FD),
         title: 'Ruter fra SAP',
         badge: 'SAP · e-post',
-        tagline: 'Importer, kontroller sjåfører og PDF-er, publiser når alt stemmer',
+        tagline: 'Importer manuelt, kontroller sjåfører og PDF-er, publiser når alt stemmer',
         icon: Icons.mark_email_read_outlined,
         steps: [
           'SAP sender PDF til ${SapRoutesConfig.inboundAddress} (emne «${SapRoutesConfig.expectedSubject}»).',
-          'DriftPro henter e-post automatisk og leser MAVI-nummer fra PDF (Trip Overview).',
-          'Ruter fordeles til riktig sjåfør — det som ikke matcher havner under «Manuell tildeling».',
-          'Sjekk PDF-forside på kortene (sjåførnavn synlig) — juster skift, notat og starttid før publisering.',
+          'Ventende PDF-er vises øverst — ingenting importeres automatisk.',
+          'Trykk «Importer til kø» — systemet leser MAVI og fordeler til sjåfør (manuell tab for resten).',
+          'Kontroller alle kort, fjern duplikater, velg ruter — publiser først når alt er kontrollert.',
         ],
         emptyHint:
-            'Ingen SAP-ruter i kø ennå.\n\nNår e-post kommer til ${SapRoutesConfig.inboundAddress}, '
-            'fordeler systemet automatisk. Bruk «Hent nye fra SAP» for å synce manuelt.',
+            'Ingen SAP-ruter i kø.\n\n'
+            'Når e-post kommer til ${SapRoutesConfig.inboundAddress}, vises ventende PDF-er her. '
+            'Trykk «Importer» for å legge dem i kø — ingenting sendes til sjåfør før du publiserer.',
       );
     }
     return _MassUi(

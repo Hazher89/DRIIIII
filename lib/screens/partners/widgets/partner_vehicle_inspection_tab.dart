@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -36,6 +38,9 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   DateTime? _nextInspection;
   DateTime? _followUpDue;
   bool _saving = false;
+  String? _inspectorName;
+
+  static final _stampFmt = DateFormat('dd.MM.yyyy HH:mm');
 
   int _countNotChecked(PartnerVehicleInspection ins) {
     var c = 0;
@@ -61,7 +66,18 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   void initState() {
     super.initState();
     _resetChecklist();
+    _loadInspectorName();
     _load();
+  }
+
+  Future<void> _loadInspectorName() async {
+    final profile = await SupabaseService.fetchCurrentUserProfile();
+    if (mounted) setState(() => _inspectorName = profile?.fullName);
+  }
+
+  String _formatStamp(DateTime at, {String? name}) {
+    final who = name?.trim().isNotEmpty == true ? name! : 'Bruker';
+    return 'Kontroll stempling · $who · ${_stampFmt.format(at.toLocal())}';
   }
 
   @override
@@ -154,6 +170,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
     setState(() => _saving = true);
     try {
       final uid = Supabase.instance.client.auth.currentUser?.id;
+      final stampedAt = DateTime.now();
       final reg = MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode)
           ? MaviUnitCodes.plateFromRegistrationUnit(v.unitCode)
           : (v.registrationNumber == MaviUnitCodes.regNrPlaceholder ? null : v.registrationNumber);
@@ -164,7 +181,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
         partnerVehicleId: v.id,
         registrationNumber: reg,
         unitCode: MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode) ? null : v.unitCode,
-        inspectedAt: DateTime.now(),
+        inspectedAt: stampedAt,
         checklist: Map<String, dynamic>.from(_checklistValues),
         hasDeviation: _hasDeviation || implied,
         deviationNotes: _deviationNotes.text.trim().isEmpty ? null : _deviationNotes.text.trim(),
@@ -178,7 +195,11 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
       await _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Kontroll lagret og arkivert.')),
+          SnackBar(
+            content: Text(
+              'Kontroll lagret. ${_formatStamp(stampedAt, name: _inspectorName)}',
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -333,6 +354,8 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
           },
         ),
         const SizedBox(height: 16),
+        _stampPreview(),
+        const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: _saving ? null : _saveInspection,
           style: FilledButton.styleFrom(
@@ -371,16 +394,16 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
                   ),
                   child: ListTile(
                     title: Text(
-                      '${a.registrationNumber ?? a.unitCode ?? "Bil"} · '
-                      '${a.inspectedAt.day}.${a.inspectedAt.month}.${a.inspectedAt.year}',
+                      '${a.registrationNumber ?? a.unitCode ?? "Bil"}',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: Text(
-                          a.hasDeviation
+                      '${a.stampLine}\n'
+                          '${a.hasDeviation
                               ? 'Avvik: ${a.deviationNotes ?? "—"}'
                               : notCheckedCount > 0
                                   ? 'Kan ikke sjekkes: $notCheckedCount felt'
-                                  : 'OK — ingen avvik',
+                                  : 'OK — ingen avvik'}',
                     ),
                     trailing: a.hasDeviation
                         ? Icon(Icons.warning_amber, color: Colors.orange.shade700)
@@ -393,6 +416,41 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
           ],
         ),
       ],
+    );
+  }
+
+  Widget _stampPreview() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+        border: Border.all(
+          color: DriftProTheme.primaryGreen.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.verified_outlined, color: DriftProTheme.primaryGreen),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Datostempling ved lagring', style: DriftProTheme.labelSm),
+                const SizedBox(height: 2),
+                Text(
+                  _formatStamp(DateTime.now(), name: _inspectorName),
+                  style: DriftProTheme.bodySm.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

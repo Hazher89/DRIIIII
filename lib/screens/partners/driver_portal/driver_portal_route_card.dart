@@ -34,7 +34,7 @@ class DriverPortalRouteCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final day = ownerRouteCalendarDay(route);
     final area = ownerRouteArea(route, shifts);
-    final pending = route.ackStatus == 'pending';
+    final pending = route.requiresAck;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final cardBg = isDark ? const Color(0xFF1A2332) : Colors.white;
 

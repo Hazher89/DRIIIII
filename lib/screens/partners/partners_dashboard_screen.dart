@@ -50,7 +50,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   bool _showBotTrekkTab = true;
   bool _showRentalTab = true;
   int _savedTabIndex = 0;
-  int _currentTabIndex = 0;
   String? _pendingTabSlug;
 
   List<String> _visibleTabSlugs() {
@@ -93,7 +92,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     final tabs = _tabs;
     if (tabs == null || tabs.indexIsChanging) return;
     _savedTabIndex = tabs.index;
-    if (mounted) setState(() => _currentTabIndex = tabs.index);
     _syncUrl();
   }
 
@@ -161,11 +159,8 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       initialIndex: safeIndex,
     )..addListener(_onTabChanged);
     _savedTabIndex = safeIndex;
-    _currentTabIndex = safeIndex;
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
   }
-
-  int _tabIndexCompanies() => _showCompaniesTab ? 0 : -1;
 
   void _applyPartnerData({
     required List<Partner> list,
@@ -302,11 +297,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final tabIndex = _currentTabIndex;
-    final onCompaniesTab = _showCompaniesTab && tabIndex == _tabIndexCompanies();
-    final canRegister = _profile?.access.canPartnersCreate == true ||
-        _profile?.access.canPartnersAdmin == true;
-    final showPartnerRegister = onCompaniesTab && canRegister;
 
     if (_profile != null && !PartnerAccess.canOpenPartnersModule(_profile!.access)) {
       return Scaffold(
@@ -380,14 +370,6 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                           ),
                       ],
                     ),
-                    actions: [
-                      if (showPartnerRegister)
-                        IconButton(
-                          tooltip: 'Ny / masseimport',
-                          icon: const Icon(Icons.add_circle_outline),
-                          onPressed: _openRegisterMenu,
-                        ),
-                    ],
                   ),
                 ),
               ],

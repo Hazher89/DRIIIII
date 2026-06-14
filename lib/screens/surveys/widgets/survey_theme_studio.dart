@@ -77,6 +77,7 @@ class _SurveyThemeStudioState extends State<SurveyThemeStudio> {
           preset: active,
           selected: true,
           compact: false,
+          showLabels: false,
           onTap: null,
         ),
         const SizedBox(height: 8),

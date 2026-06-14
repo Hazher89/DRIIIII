@@ -89,11 +89,25 @@ class _EquipmentServiceBookScreenState extends State<EquipmentServiceBookScreen>
     if (e == null || widget.profile.companyId == null) return;
 
     DateTime due = e.nextService ?? DateTime.now().add(const Duration(days: 90));
+    DateTime notifyOn = due.subtract(
+      Duration(days: _settings.defaultNotifyDaysBefore),
+    );
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+    if (notifyOn.isBefore(todayDate)) notifyOn = todayDate;
+
     final selected = <String>{
       if (e.responsibleUserId != null) e.responsibleUserId!,
     };
     final notesCtrl = TextEditingController();
     String rType = 'service';
+
+    String fmt(DateTime d) => '${d.day}.${d.month}.${d.year}';
+    int notifyDaysBefore() {
+      final dueDate = DateTime(due.year, due.month, due.day);
+      final notifyDate = DateTime(notifyOn.year, notifyOn.month, notifyOn.day);
+      return dueDate.difference(notifyDate).inDays.clamp(0, 365);
+    }
 
     final ok = await showDialog<bool>(
       context: context,
@@ -117,9 +131,10 @@ class _EquipmentServiceBookScreenState extends State<EquipmentServiceBookScreen>
                   onChanged: (v) => setD(() => rType = v ?? 'service'),
                 ),
                 ListTile(
+                  contentPadding: EdgeInsets.zero,
                   title: const Text('Fristdato'),
-                  subtitle: Text(
-                      '${due.day}.${due.month}.${due.year}'),
+                  subtitle: Text(fmt(due)),
+                  trailing: const Icon(Icons.calendar_today),
                   onTap: () async {
                     final d = await showDatePicker(
                       context: ctx,
@@ -127,7 +142,30 @@ class _EquipmentServiceBookScreenState extends State<EquipmentServiceBookScreen>
                       firstDate: DateTime.now(),
                       lastDate: DateTime(2035),
                     );
-                    if (d != null) setD(() => due = d);
+                    if (d != null) {
+                      setD(() {
+                        due = d;
+                        notifyOn = d.subtract(
+                          Duration(days: _settings.defaultNotifyDaysBefore),
+                        );
+                        if (notifyOn.isBefore(todayDate)) notifyOn = todayDate;
+                      });
+                    }
+                  },
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Dato for varsel'),
+                  subtitle: Text(fmt(notifyOn)),
+                  trailing: const Icon(Icons.notifications_active_outlined),
+                  onTap: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: notifyOn,
+                      firstDate: DateTime.now(),
+                      lastDate: due,
+                    );
+                    if (d != null) setD(() => notifyOn = d);
                   },
                 ),
                 TextField(
@@ -135,10 +173,15 @@ class _EquipmentServiceBookScreenState extends State<EquipmentServiceBookScreen>
                   decoration: const InputDecoration(labelText: 'Notat'),
                 ),
                 const Divider(),
+                Text('Varsle ansatt:', style: DriftProTheme.labelSm),
                 ...widget.profileNames.entries.map((ent) {
+                  final checked = selected.contains(ent.key);
                   return CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
                     title: Text(ent.value),
-                    value: selected.contains(ent.key),
+                    subtitle: checked ? Text('SMS ${fmt(notifyOn)}') : null,
+                    value: checked,
                     onChanged: (on) {
                       setD(() {
                         if (on == true) {
@@ -150,6 +193,18 @@ class _EquipmentServiceBookScreenState extends State<EquipmentServiceBookScreen>
                     },
                   );
                 }),
+                if (selected.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      '${selected.length} ansatt(er) varsles ${fmt(notifyOn)} '
+                      '(frist ${fmt(due)}).',
+                      style: DriftProTheme.caption.copyWith(
+                        color: DriftProTheme.primaryGreen,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -173,7 +228,7 @@ class _EquipmentServiceBookScreenState extends State<EquipmentServiceBookScreen>
       reminderType: rType,
       dueDate: due,
       notifyUserIds: selected.toList(),
-      notifyDaysBefore: _settings.defaultNotifyDaysBefore,
+      notifyDaysBefore: notifyDaysBefore(),
       notes: notesCtrl.text.isEmpty ? null : notesCtrl.text,
     );
 
@@ -181,7 +236,8 @@ class _EquipmentServiceBookScreenState extends State<EquipmentServiceBookScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Frist lagret. SMS sendes ca. ${_settings.defaultNotifyDaysBefore} dager før (Sveve-kø).',
+            'Frist ${fmt(due)}. SMS til ${selected.length} ansatt(er) '
+            'planlagt ${fmt(notifyOn)}.',
           ),
         ),
       );
@@ -390,6 +446,7 @@ class _EquipmentServiceBookScreenState extends State<EquipmentServiceBookScreen>
     final names = r.notifyUserIds
         .map((id) => widget.profileNames[id] ?? id.substring(0, 8))
         .join(', ');
+    final notifyDate = r.dueDate.subtract(Duration(days: r.notifyDaysBefore));
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -400,7 +457,8 @@ class _EquipmentServiceBookScreenState extends State<EquipmentServiceBookScreen>
         title: Text('${r.typeLabel} – ${r.dueDate.day}.${r.dueDate.month}.${r.dueDate.year}'),
         subtitle: Text(
           'SMS til: $names\n'
-          '${r.smsSentAt != null ? 'Sendt ${r.smsSentAt!.day}.${r.smsSentAt!.month}' : 'Venter (${r.notifyDaysBefore} dager før)'}',
+          'Varsel: ${notifyDate.day}.${notifyDate.month}.${notifyDate.year}\n'
+          '${r.smsSentAt != null ? 'Sendt ${r.smsSentAt!.day}.${r.smsSentAt!.month}' : 'Venter på varseldato'}',
         ),
         trailing: _canWrite && r.smsSentAt == null
             ? IconButton(

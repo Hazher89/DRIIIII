@@ -100,8 +100,8 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
   List<PartnerRouteShare> _sortedPendingFirst(List<PartnerRouteShare> routes) {
     final copy = List<PartnerRouteShare>.from(routes);
     copy.sort((a, b) {
-      if (a.ackStatus == 'pending' && b.ackStatus != 'pending') return -1;
-      if (b.ackStatus == 'pending' && a.ackStatus != 'pending') return 1;
+      if (a.requiresAck && !b.requiresAck) return -1;
+      if (b.requiresAck && !a.requiresAck) return 1;
       return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
     });
     return copy;

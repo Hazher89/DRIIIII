@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/services/survey/survey_living_motion.dart';
 import '../../../core/services/survey/survey_theme_presets.dart';
+import 'survey_living_background.dart';
 
 /// Visuell forhåndsvisning av et respondent-tema — ikke bare farger.
 class SurveyThemePreviewCard extends StatelessWidget {
@@ -9,12 +11,15 @@ class SurveyThemePreviewCard extends StatelessWidget {
     required this.preset,
     required this.selected,
     this.compact = false,
+    this.showLabels = true,
     this.onTap,
   });
 
   final SurveyThemePreset preset;
   final bool selected;
   final bool compact;
+  /// Vis navn/kategori inne i kortet. Slå av for stor «aktivt tema»-forhåndsvisning.
+  final bool showLabels;
   final VoidCallback? onTap;
 
   Color _hex(String h, [Color fallback = Colors.grey]) {
@@ -36,7 +41,7 @@ class SurveyThemePreviewCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(compact ? 12 : 16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        height: compact ? 100 : 140,
+        height: compact ? 100 : (showLabels ? 148 : 120),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(compact ? 12 : 16),
           border: Border.all(color: selected ? primary : Colors.grey.withValues(alpha: 0.25), width: selected ? 2.5 : 1),
@@ -51,9 +56,9 @@ class SurveyThemePreviewCard extends StatelessWidget {
             children: [
               _buildBackground(bg, primary, accent),
               Padding(
-                padding: EdgeInsets.all(compact ? 10 : 14),
+                padding: EdgeInsets.all(compact ? 10 : 12),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(
                       children: [
@@ -63,23 +68,32 @@ class SurveyThemePreviewCard extends StatelessWidget {
                           Icon(Icons.check_circle, size: compact ? 16 : 20, color: primary),
                       ],
                     ),
-                    const Spacer(),
-                    _mockQuestionCard(card, text, primary, accent),
-                    const SizedBox(height: 6),
-                    _mockButton(primary, text),
-                    if (!compact) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        preset.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: text),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _mockQuestionCard(card, text, primary, accent),
+                          SizedBox(height: compact ? 4 : 6),
+                          _mockButton(primary, text),
+                          if (!compact && showLabels) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              preset.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: text),
+                            ),
+                            Text(
+                              '${preset.category} · ${preset.visualStyleLabel}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 10, color: text.withValues(alpha: 0.65)),
+                            ),
+                          ],
+                        ],
                       ),
-                      Text(
-                        '${preset.category} · ${preset.visualStyleLabel}',
-                        style: TextStyle(fontSize: 10, color: text.withValues(alpha: 0.65)),
-                      ),
-                    ],
+                    ),
                   ],
                 ),
               ),
@@ -135,6 +149,14 @@ class SurveyThemePreviewCard extends StatelessWidget {
               colors: [bg, primary.withValues(alpha: 0.06)],
             ),
           ),
+        );
+      case SurveyVisualStyle.living:
+        return SurveyLivingBackground(
+          motion: preset.id.livingMotionFromPresetId,
+          background: bg,
+          primary: primary,
+          accent: accent,
+          child: const SizedBox.expand(),
         );
     }
   }

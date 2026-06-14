@@ -49,7 +49,7 @@ class PartnerPortalRouteDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pending = route.ackStatus == 'pending';
+    final pending = route.requiresAck;
     final day = ownerRouteCalendarDay(route);
     final area = ownerRouteArea(route, shifts);
     final shiftName = route.shiftId != null ? shifts[route.shiftId]?.name : null;

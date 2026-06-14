@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../core/routing/app_paths.dart';
 import '../core/theme/driftpro_theme_context.dart';
 import 'driftpro_brand_logo.dart';
 
@@ -17,13 +19,27 @@ class DriftProBrandBar extends StatelessWidget {
         bottom: false,
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
           decoration: BoxDecoration(
             color: drift.surface,
             border: Border(bottom: BorderSide(color: drift.borderSubtle)),
           ),
-          child: const DriftProBrandLogo(
-            density: DriftProBrandDensity.header,
+          child: Tooltip(
+            message: 'Gå til dashboard',
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => context.go(AppPaths.dashboard),
+                borderRadius: BorderRadius.circular(10),
+                mouseCursor: SystemMouseCursors.click,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 2),
+                  child: DriftProBrandLogo(
+                    density: DriftProBrandDensity.header,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),

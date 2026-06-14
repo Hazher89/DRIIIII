@@ -55,7 +55,7 @@ class PartnerRoutePdfActions {
       if (context.mounted) {
         _snack(
           context,
-          'Kunne ikke hente PDF fra lagring. Sjekk at Dropbox er koblet '
+          'Kunne ikke hente PDF fra lagring. Sjekk at skylagring er koblet '
           'eller at Storage-bucket «documents» finnes i Supabase.',
           isError: true,
         );

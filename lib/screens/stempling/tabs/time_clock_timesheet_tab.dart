@@ -6,12 +6,14 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/services/time_clock/time_clock_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/department.dart';
+import '../../../models/time_clock/time_overtime_summary.dart';
 import '../../../models/time_clock/time_timesheet_entry.dart';
 import '../../../models/time_clock/time_work_type.dart';
 import '../../../models/user_profile.dart';
 import '../../employees/employee_access_detail_screen.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 import '../widgets/time_clock_entry_sheet.dart';
+import '../widgets/time_clock_overtime_panel.dart';
 
 class TimeClockTimesheetTab extends StatefulWidget {
   const TimeClockTimesheetTab({
@@ -32,6 +34,7 @@ class _TimeClockTimesheetTabState extends State<TimeClockTimesheetTab> {
   List<Department> _departments = [];
   List<TimeWorkType> _workTypes = [];
   List<TimeTimesheetEntry> _entries = [];
+  TimeOvertimeSummary? _overtime;
   String? _selectedProfileId;
   DateTime _weekStart = _mondayOf(DateTime.now());
   bool _loading = true;
@@ -123,9 +126,14 @@ class _TimeClockTimesheetTabState extends State<TimeClockTimesheetTab> {
         weekStart: _weekStart,
         weekEnd: _weekEnd,
       );
+      final overtime = await TimeClockService.fetchOvertimeSummary(
+        profileId: pid,
+        weekStart: _weekStart,
+      );
       if (!mounted) return;
       setState(() {
         _entries = entries;
+        _overtime = overtime;
         _loading = false;
       });
     } catch (e) {
@@ -281,6 +289,10 @@ class _TimeClockTimesheetTabState extends State<TimeClockTimesheetTab> {
               : ListView(
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                   children: [
+                    if (_overtime != null) ...[
+                      TimeClockOvertimePanel(summary: _overtime!),
+                      const SizedBox(height: 16),
+                    ],
                     _summaryRow(isDark),
                     const SizedBox(height: 16),
                     for (var i = 0; i < 7; i++)
@@ -595,6 +607,7 @@ class _TimeClockTimesheetTabState extends State<TimeClockTimesheetTab> {
           _colHeader('Fra', flex: 2),
           _colHeader('Til', flex: 2),
           _colHeader('Timer', flex: 2),
+          _colHeader('OT', flex: 1),
           _colHeader('Notat', flex: 3),
           const SizedBox(width: 72),
         ],
@@ -672,9 +685,22 @@ class _TimeClockTimesheetTabState extends State<TimeClockTimesheetTab> {
               ),
             ),
             Expanded(
+              flex: 1,
+              child: entry.overtimeHours > 0
+                  ? Text(
+                      '+${entry.overtimeHours.toStringAsFixed(1)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFDC2626),
+                      ),
+                    )
+                  : Text('—', style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+            ),
+            Expanded(
               flex: 3,
               child: Text(
-                entry.note ?? entry.project ?? entry.activity ?? '—',
+                entry.overtimeReason ?? entry.note ?? entry.project ?? entry.activity ?? '—',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 overflow: TextOverflow.ellipsis,
               ),
