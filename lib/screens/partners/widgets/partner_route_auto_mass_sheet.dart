@@ -372,6 +372,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           _skipped.addAll(newSkipped);
         });
       }
+      await _autoAssignReadySkipped(newSkipped);
       await _reload(preferRoutesTab: result.imported > 0, expectedMinStaged: result.imported);
       await _refreshSapInboxCounts();
       if (mounted) {
@@ -518,6 +519,25 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   int get _allDuplicateExtraCount => _allDuplicateRemoveIds.length;
+
+  Set<String> get _duplicateRouteIds {
+    final ids = <String>{};
+    for (final g in _duplicateGroups) {
+      for (final s in g.shares) {
+        ids.add(s.id);
+      }
+    }
+    for (final g in _maviDateOnlyGroups) {
+      for (final s in g.shares) {
+        ids.add(s.id);
+      }
+    }
+    return ids;
+  }
+
+  int get _duplicateGroupCount => _duplicateGroups.length + _maviDateOnlyGroups.length;
+
+  int get _stagedCountAfterDedup => _staged.length - _allDuplicateExtraCount;
 
   void _selectReadyNonDuplicates() {
     final dupIds = StagedRouteDuplicateHelper.allDuplicateIds(_duplicateGroups);
@@ -729,7 +749,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (_allDuplicateExtraCount == 0) {
       return const SizedBox.shrink();
     }
-    final total = _allDuplicateExtraCount;
+    final extra = _allDuplicateExtraCount;
+    final inGroups = _duplicateRouteIds.length;
+    final groups = _duplicateGroupCount;
+    final after = _stagedCountAfterDedup;
+    final total = _staged.length;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Material(
@@ -737,34 +762,58 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(Icons.copy_all_outlined, color: Colors.deepPurple.shade800),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$total dobbelt/trippel funnet',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: Colors.deepPurple.shade900,
-                      ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.copy_all_outlined, color: Colors.deepPurple.shade800, size: 22),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Duplikater i køen',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                            color: Colors.deepPurple.shade900,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: [
+                            _duplicateStatChip('$total totalt', Colors.deepPurple.shade900),
+                            _duplicateStatChip('$inGroups i duplikat', Colors.deepPurple.shade800),
+                            _duplicateStatChip('$extra ekstra', Colors.orange.shade900),
+                            _duplicateStatChip('$groups gruppe(r)', Colors.deepPurple.shade700),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Etter «Behold én av hver»: $after ruter igjen '
+                          '(sletter $extra, beholder én per gruppe)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.deepPurple.shade900,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Samme PDF eller samme MAVI+dag — behold én rute per gruppe før publisering.',
-                      style: TextStyle(fontSize: 12, color: Colors.deepPurple.shade900),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 8),
+              const SizedBox(height: 10),
               Wrap(
-                spacing: 6,
-                runSpacing: 6,
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.end,
                 children: [
                   OutlinedButton(
                     onPressed: _busyUpload || _publishing ? null : () => _setTabIndex(3),
@@ -772,13 +821,28 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   ),
                   FilledButton.tonal(
                     onPressed: _busyUpload || _publishing ? null : _deduplicateAllKeepOneEach,
-                    child: Text('Behold én av hver ($total)'),
+                    child: Text('Behold én av hver (slett $extra)'),
                   ),
                 ],
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _duplicateStatChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
       ),
     );
   }
@@ -968,6 +1032,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       }
       await PostalCodeRegistry.ensureLoaded();
       final shiftById = await _resolveShiftIdsForStaged(staged: working, shifts: shifts);
+      if (manualSkipped.isNotEmpty) {
+        await _autoAssignReadySkipped(manualSkipped);
+      }
       if (!mounted) return;
       setState(() {
         _applyStagedQueueState(
@@ -1758,6 +1825,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             }
           }
           if (result.row.status != 'ok') {
+            final isDupInQueue = result.shareId != null &&
+                (result.row.reason?.toLowerCase().contains('duplikat') ?? false);
+            if (isDupInQueue) {
+              continue;
+            }
             final bytes = await _readPlatformFile(file);
             String? preselect;
             final code = result.row.maviCode ??
@@ -1799,6 +1871,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           _importLog = log;
         });
       }
+      await _autoAssignReadySkipped(newSkipped);
       await _reload(preferRoutesTab: ok > 0);
       if (mounted) {
         if (ok > 0 && _staged.isEmpty) {
@@ -1842,7 +1915,69 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
   }
 
-  Future<void> _assignSkipped(_SkippedPdf item) async {
+  Future<String?> _resolveShiftIdForSkipped(_SkippedPdf item) async {
+    if (item.bytes.isEmpty) return null;
+    final bundle = RoutePdfTextService.parseBundle(
+      item.bytes,
+      fallbackDate: _routeDate,
+      fileName: item.fileName,
+    );
+    if (_routeShifts.isEmpty) return null;
+    final best = await RouteShiftResolver.resolveBestFromPdfText(
+      pdfText: bundle.searchText,
+      shifts: _routeShifts,
+      routeStartAt: bundle.schedule.routeStartAt,
+      routeDate: bundle.schedule.routeDate,
+      title: item.fileName,
+    );
+    return best?.id;
+  }
+
+  Future<bool> _tryAutoAssignSkipped(_SkippedPdf item) async {
+    if (item.selectedVehicleId == null || item.bytes.isEmpty) return false;
+    if (item.reason?.toLowerCase().contains('duplikat') == true) return false;
+
+    if ((item.shiftId ?? '').isEmpty) {
+      final shiftId = await _resolveShiftIdForSkipped(item);
+      if (shiftId == null || shiftId.isEmpty) return false;
+      item.shiftId = shiftId;
+    }
+
+    final bundle = RoutePdfTextService.parseBundle(
+      item.bytes,
+      fallbackDate: _routeDate,
+      fileName: item.fileName,
+    );
+    if (bundle.schedule.routeStartAt != null) {
+      item.startTime = TimeOfDay(
+        hour: bundle.schedule.routeStartAt!.hour,
+        minute: bundle.schedule.routeStartAt!.minute,
+      );
+    }
+
+    await _assignSkipped(item, silent: true);
+    return !_skipped.contains(item);
+  }
+
+  Future<void> _autoAssignReadySkipped(Iterable<_SkippedPdf> items) async {
+    var assigned = 0;
+    for (final item in items.toList()) {
+      try {
+        if (await _tryAutoAssignSkipped(item)) assigned++;
+      } catch (_) {}
+    }
+    if (assigned > 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Auto-tildelte $assigned PDF-er (MAVI + skift funnet i PDF).',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _assignSkipped(_SkippedPdf item, {bool silent = false}) async {
     if (item.selectedVehicleId == null || item.bytes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Velg sjåfør / MAVI-bil først')),
@@ -1903,13 +2038,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         });
       }
       await _reload();
-      if (mounted) {
+      if (mounted && !silent) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('${item.fileName} tildelt ${row.vehicle.unitCode}')),
         );
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && !silent) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Tildeling feilet: $e'), backgroundColor: Colors.red),
         );
@@ -2114,14 +2249,16 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Future<bool> _guardPublishPrerequisites() async {
-    if (_duplicateExtraCount > 0) {
+    if (_allDuplicateExtraCount > 0) {
       final ok = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Duplikat-ruter i køen'),
           content: Text(
-            'Det finnes $_duplicateExtraCount identiske kopi(er) av samme PDF. '
-            'Fjern duplikater før publisering slik at ingen sjåfør får samme rute to ganger.',
+            '${_duplicateRouteIds.length} ruter er dobbelt/trippel '
+            '($_allDuplicateExtraCount ekstra kopier).\n\n'
+            'Etter «Behold én av hver» blir det ${_stagedCountAfterDedup} ruter igjen. '
+            'Rydd duplikater før publisering.',
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
@@ -2135,7 +2272,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (ok == true) {
         await _removeDuplicateRoutes();
       }
-      if (_duplicateExtraCount > 0) return false;
+      if (_allDuplicateExtraCount > 0) return false;
     }
     if (_isSap && _sapPendingInbox > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2427,7 +2564,6 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildPendingInboxBanner(ui),
-          _buildDuplicateBanner(ui),
           _buildActionsRow(ui),
         ],
       );
@@ -3507,6 +3643,15 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
+  String _shortSkipReason(String reason) {
+    final lower = reason.toLowerCase();
+    if (lower.contains('duplikat')) return 'Allerede i kø — ikke importert på nytt';
+    if (lower.contains('lagring feilet')) return 'Lagring feilet — tildel manuelt';
+    if (lower.contains('ingen bil matcher')) return 'MAVI ikke i flåten';
+    if (lower.contains('fant ikke mavi')) return 'Fant ikke MAVI i PDF';
+    return reason.length > 72 ? '${reason.substring(0, 69)}…' : reason;
+  }
+
   Widget _buildSkippedCompactCard(_SkippedPdf item, _MassUi ui, {bool showDelete = false}) {
     final label = _skippedDriverLabel(item);
     final shortName = _shortFileLabel(item.fileName);
@@ -3564,6 +3709,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                       Text(
                         MaviUnitCodes.compactLabel(item.detectedCode!),
                         style: TextStyle(fontSize: 11, color: ui.accentDark, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                    if (item.reason != null && !storageError) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        _shortSkipReason(item.reason!),
+                        style: TextStyle(fontSize: 10, color: Colors.orange.shade900, height: 1.25),
                       ),
                     ],
                     if (storageError) ...[
