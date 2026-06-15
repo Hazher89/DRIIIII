@@ -455,27 +455,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   List<StagedRouteDuplicateGroup> get _duplicateGroups =>
       StagedRouteDuplicateHelper.findGroups(_staged);
 
-  List<StagedRouteMaviDateGroup> get _maviDateDuplicateGroups =>
-      StagedRouteDuplicateHelper.findMaviDateGroups(
-        staged: _staged,
-        maviCodeOf: _maviCodeForShare,
-        routeDateOf: (s) => _routeDayFor(s.id),
-      );
-
-  /// Samme MAVI+dag med ulikt PDF-innhold (ikke allerede fanget som identisk PDF).
-  List<StagedRouteMaviDateGroup> get _maviDateOnlyGroups =>
-      _maviDateDuplicateGroups
-          .where((g) => g.shares.map(StagedRouteDuplicateHelper.fingerprint).toSet().length > 1)
-          .toList();
-
   List<PartnerRouteShare> get _orphanShares =>
       _staged.where((s) => _rowForShare(s) == null).toList();
 
-  int get _duplicatesTabCount =>
-      _duplicateExtraCount +
-      _maviDateOnlyGroups.fold<int>(0, (n, g) => n + g.extraCount) +
-      _orphanShares.length +
-      _skipped.length;
+  /// Kun 100 % identisk PDF-innhold — flere last samme MAVI samme dag er normalt.
+  int get _duplicatesTabCount => _duplicateExtraCount;
 
   String? _maviCodeForShare(PartnerRouteShare share) {
     final title = share.title ?? '';
@@ -512,9 +496,6 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     for (final g in _duplicateGroups) {
       remove.addAll(StagedRouteDuplicateHelper.idsToRemoveShares(g.shares));
     }
-    for (final g in _maviDateOnlyGroups) {
-      remove.addAll(StagedRouteDuplicateHelper.idsToRemoveShares(g.shares));
-    }
     return remove;
   }
 
@@ -527,15 +508,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         ids.add(s.id);
       }
     }
-    for (final g in _maviDateOnlyGroups) {
-      for (final s in g.shares) {
-        ids.add(s.id);
-      }
-    }
     return ids;
   }
 
-  int get _duplicateGroupCount => _duplicateGroups.length + _maviDateOnlyGroups.length;
+  int get _duplicateGroupCount => _duplicateGroups.length;
 
   int get _stagedCountAfterDedup => _staged.length - _allDuplicateExtraCount;
 
@@ -716,14 +692,15 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final removeIds = _allDuplicateRemoveIds.toList();
     if (removeIds.isEmpty) return;
     final extra = removeIds.length;
-    final groups = _duplicateGroups.length + _maviDateOnlyGroups.length;
+    final groups = _duplicateGroups.length;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Behold én av hver?'),
         content: Text(
-          'Fant $extra ekstra kopi(er) i $groups duplikat-gruppe(r).\n\n'
-          'Systemet beholder én rute per gruppe (helst med skift) og sletter resten fra køen.',
+          'Fant $extra ekstra kopi(er) av identisk PDF i $groups gruppe(r).\n\n'
+          'Systemet beholder én rute per gruppe (helst med skift) og sletter resten fra køen. '
+          'Ulike last/rute for samme bil på samme dag påvirkes ikke.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
@@ -775,7 +752,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Duplikater i køen',
+                          'Identisk PDF i køen',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             fontSize: 14,
@@ -796,7 +773,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                         const SizedBox(height: 6),
                         Text(
                           'Etter «Behold én av hver»: $after ruter igjen '
-                          '(sletter $extra, beholder én per gruppe)',
+                          '(sletter $extra identiske kopier, beholder én per gruppe)',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -2801,6 +2778,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             text: '$_multiLoadDriverCount bil(er) med 2+ last/rute — trykk for liste',
             onTap: _showMultiLoadDetails,
           ),
+        if (_orphanShares.isNotEmpty && _sheetTab == _MassTab.allRoutes)
+          _buildCompactAlert(
+            icon: Icons.link_off_outlined,
+            color: Colors.blue.shade800,
+            text: '${_orphanShares.length} rute(r) uten sjåfør — koble fra MAVI i filnavn',
+            onTap: _relinkAllOrphanShares,
+          ),
         if (_skipped.isNotEmpty && _sheetTab != _MassTab.skipped)
           _buildCompactAlert(
             icon: Icons.pan_tool_alt_outlined,
@@ -2882,7 +2866,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       _MassTab.missingShift =>
         'Kun ruter uten skiftplan — velg skift i kolonnen før publisering.',
       _MassTab.duplicates =>
-        'Dobbelt/trippel av samme PDF eller samme MAVI+dag. Uten sjåfør kan kobles fra filnavn. Behold én per gruppe.',
+        'Kun 100 % identisk PDF-innhold telles som duplikat. Flere ulike last for samme bil samme dag er helt normalt.',
       _MassTab.importLog =>
         'Oversikt over hva systemet gjorde med hver PDF (automatisk MAVI-fordeling eller årsak til manuell).',
       _MassTab.skipped =>
@@ -3759,22 +3743,17 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   Widget _buildDuplicatesTab(_MassUi ui) {
     final contentDupes = _duplicateGroups;
-    final maviDupes = _maviDateOnlyGroups;
-    final orphans = _orphanShares;
-    final manual = _skipped;
-    final empty = contentDupes.isEmpty &&
-        maviDupes.isEmpty &&
-        orphans.isEmpty &&
-        manual.isEmpty;
 
-    if (empty) {
+    if (contentDupes.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'Ingen duplikater, foreldreløse ruter eller manuelle PDF-er akkurat nå.',
+            'Ingen duplikater akkurat nå.\n\n'
+            'Flere ulike ruter for samme bil samme dag er ikke duplikat — '
+            'kun 100 % identisk PDF-innhold flagges her.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600, height: 1.4),
+            style: TextStyle(color: Colors.grey.shade600, height: 1.45),
           ),
         ),
       );
@@ -3783,84 +3762,20 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        if (contentDupes.isNotEmpty || maviDupes.isNotEmpty)
-          SliverToBoxAdapter(
-            child: _buildDuplicateSectionHeader(
-              title: 'Rydd duplikater',
-              subtitle:
-                  'Behold én rute per gruppe — identisk PDF eller samme MAVI på samme dag.',
-              action: FilledButton.icon(
-                onPressed: _busyUpload || _publishing ? null : _deduplicateAllKeepOneEach,
-                icon: const Icon(Icons.filter_1_outlined, size: 18),
-                label: Text('Behold én av hver (${_allDuplicateExtraCount} slettes)'),
-              ),
+        SliverToBoxAdapter(
+          child: _buildDuplicateSectionHeader(
+            title: 'Identisk PDF (${contentDupes.length} gruppe(r))',
+            subtitle:
+                '100 % samme innhold — ved 2+ kopier beholdes kun én. Ulike freight order / kunder er separate ruter.',
+            action: FilledButton.icon(
+              onPressed: _busyUpload || _publishing ? null : _deduplicateAllKeepOneEach,
+              icon: const Icon(Icons.filter_1_outlined, size: 18),
+              label: Text('Behold én av hver (${_allDuplicateExtraCount} slettes)'),
             ),
           ),
-        if (orphans.isNotEmpty)
-          SliverToBoxAdapter(
-            child: _buildDuplicateSectionHeader(
-              title: 'Uten sjåfør (${orphans.length})',
-              subtitle: 'Ruter uten koblet bil — MAVI leses fra filnavn/tittel.',
-              action: orphans.any((s) => _fleetRowForMaviCode(_maviCodeForShare(s)) != null)
-                  ? FilledButton.tonal(
-                      onPressed: _busyUpload ? null : _relinkAllOrphanShares,
-                      child: const Text('Koble alle foreslåtte'),
-                    )
-                  : null,
-            ),
-          ),
-        if (orphans.isNotEmpty)
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
-            sliver: SliverGrid(
-              gridDelegate: _routeCardGridDelegate,
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => _buildDuplicateShareCard(orphans[i], ui, isOrphan: true),
-                childCount: orphans.length,
-              ),
-            ),
-          ),
-        if (contentDupes.isNotEmpty)
-          SliverToBoxAdapter(
-            child: _buildDuplicateSectionHeader(
-              title: 'Identisk PDF (${contentDupes.length} gruppe(r))',
-              subtitle: '100 % samme innhold — ved 2+ kopier beholdes kun én.',
-            ),
-          ),
+        ),
         for (final group in contentDupes)
-          ..._duplicateGroupSlivers(group, ui, isContentDuplicate: true),
-        if (maviDupes.isNotEmpty)
-          SliverToBoxAdapter(
-            child: _buildDuplicateSectionHeader(
-              title: 'Samme MAVI + dag (${maviDupes.length} gruppe(r))',
-              subtitle: 'Ulike PDF-er for samme bil og dato — dobbelt, trippel osv.',
-            ),
-          ),
-        for (final group in maviDupes)
-          ..._duplicateGroupSlivers(group.shares, ui, groupLabel: group.countLabel, maviCode: group.maviCode),
-        if (manual.isNotEmpty)
-          SliverToBoxAdapter(
-            child: _buildDuplicateSectionHeader(
-              title: 'Manuell tildeling (${manual.length})',
-              subtitle: 'PDF-er som ikke ble auto-fordelt — tildel eller fjern.',
-            ),
-          ),
-        if (manual.isNotEmpty)
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 20),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 280,
-                childAspectRatio: 0.54,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => _buildSkippedCompactCard(manual[i], ui, showDelete: true),
-                childCount: manual.length,
-              ),
-            ),
-          ),
+          ..._duplicateGroupSlivers(group, ui),
       ],
     );
   }
@@ -3888,23 +3803,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   List<Widget> _duplicateGroupSlivers(
-    dynamic groupOrShares,
-    _MassUi ui, {
-    bool isContentDuplicate = false,
-    String? groupLabel,
-    String? maviCode,
-  }) {
-    final List<PartnerRouteShare> shares;
-    final String label;
-    if (isContentDuplicate) {
-      final group = groupOrShares as StagedRouteDuplicateGroup;
-      shares = group.shares;
-      label = group.countLabel;
-    } else {
-      shares = groupOrShares as List<PartnerRouteShare>;
-      label = groupLabel ?? StagedRouteDuplicateHelper.countLabel(shares.length);
-    }
-    final mavi = maviCode ?? _maviCodeForShare(shares.first);
+    StagedRouteDuplicateGroup group,
+    _MassUi ui,
+  ) {
+    final shares = group.shares;
+    final label = group.countLabel;
+    final mavi = _maviCodeForShare(shares.first);
     return [
       SliverToBoxAdapter(
         child: Padding(

@@ -57,9 +57,34 @@ abstract final class StagedRouteDuplicateHelper {
   static String fingerprint(PartnerRouteShare share) {
     final fromText = fingerprintFromText(share.pdfSearchText);
     if (fromText.isNotEmpty) return fromText;
+    final identity = routeIdentityFromText(share.pdfSearchText);
+    if (identity.isNotEmpty) {
+      return sha256.convert(utf8.encode(identity)).toString();
+    }
     final title = (share.title ?? '').trim().toLowerCase();
     final path = share.pdfStoragePath.trim().toLowerCase();
     return '$title|$path';
+  }
+
+  /// Unik ruteidentitet fra PDF (freight units, vekt, resource) — ikke MAVI+dag alene.
+  static String routeIdentityFromText(String? pdfSearchText) {
+    final raw = pdfSearchText?.trim();
+    if (raw == null || raw.isEmpty) return '';
+    final freight = <String>{};
+    for (final m in RegExp(r'\b\d{8,12}\b').allMatches(raw)) {
+      freight.add(m.group(0)!);
+    }
+    final sortedFreight = freight.toList()..sort();
+    final weight = RegExp(
+      r'Consumed\s+Weight[:\s]*([\d.]+)',
+      caseSensitive: false,
+    ).firstMatch(raw)?.group(1);
+    final resource = RegExp(
+      r'Resource\s+ID[:\s]*(\S+)',
+      caseSensitive: false,
+    ).firstMatch(raw)?.group(1)?.trim();
+    if (sortedFreight.isEmpty && weight == null && resource == null) return '';
+    return 'fu:${sortedFreight.join(",")}|w:${weight ?? ""}|r:${resource ?? ""}';
   }
 
   /// Finn eksisterende staged-rute med samme PDF-innhold (for import-dedup).
