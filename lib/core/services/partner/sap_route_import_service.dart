@@ -73,7 +73,11 @@ class SapRouteImportService {
           continue;
         }
 
-        final bundle = RoutePdfTextService.parseBundle(bytes, fallbackDate: fallbackDay);
+        final bundle = RoutePdfTextService.parseBundle(
+          bytes,
+          fallbackDate: fallbackDay,
+          fileName: item.fileName,
+        );
         final code = bundle.meta.maviCode ?? RoutePdfTextService.extractResourceIdFromBytes(bytes);
         if (code == null) {
           await _failItem(

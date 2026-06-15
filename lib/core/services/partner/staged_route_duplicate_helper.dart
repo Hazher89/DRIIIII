@@ -16,6 +16,27 @@ class StagedRouteDuplicateGroup {
   int get extraCount => shares.length - 1;
 
   PartnerRouteShare get keeper => StagedRouteDuplicateHelper.pickKeeper(shares);
+
+  String get countLabel => StagedRouteDuplicateHelper.countLabel(shares.length);
+}
+
+/// Flere staged-ruter for samme MAVI på samme dag (ulike PDF-er).
+class StagedRouteMaviDateGroup {
+  final String maviCode;
+  final DateTime routeDate;
+  final List<PartnerRouteShare> shares;
+
+  const StagedRouteMaviDateGroup({
+    required this.maviCode,
+    required this.routeDate,
+    required this.shares,
+  });
+
+  int get extraCount => shares.length - 1;
+
+  PartnerRouteShare get keeper => StagedRouteDuplicateHelper.pickKeeper(shares);
+
+  String get countLabel => StagedRouteDuplicateHelper.countLabel(shares.length);
 }
 
 /// Finner 100 % like staged ruter (samme PDF-innhold).
@@ -111,11 +132,59 @@ abstract final class StagedRouteDuplicateHelper {
   static List<String> idsToRemove(List<StagedRouteDuplicateGroup> groups) {
     final remove = <String>[];
     for (final g in groups) {
-      final keeperId = g.keeper.id;
-      for (final s in g.shares) {
-        if (s.id != keeperId) remove.add(s.id);
-      }
+      remove.addAll(idsToRemoveShares(g.shares));
     }
     return remove;
+  }
+
+  static List<String> idsToRemoveShares(List<PartnerRouteShare> shares) {
+    if (shares.length < 2) return const [];
+    final keeperId = pickKeeper(shares).id;
+    return [
+      for (final s in shares)
+        if (s.id != keeperId) s.id,
+    ];
+  }
+
+  static String countLabel(int n) => switch (n) {
+        2 => 'Dobbelt',
+        3 => 'Trippel',
+        4 => 'Firedobbelt',
+        _ => '${n}×',
+      };
+
+  static List<StagedRouteMaviDateGroup> findMaviDateGroups({
+    required List<PartnerRouteShare> staged,
+    required String? Function(PartnerRouteShare share) maviCodeOf,
+    required DateTime Function(PartnerRouteShare share) routeDateOf,
+  }) {
+    final map = <String, List<PartnerRouteShare>>{};
+    for (final s in staged) {
+      final code = maviCodeOf(s);
+      if (code == null || code.isEmpty) continue;
+      final day = routeDateOf(s);
+      final key = '${code.trim().toUpperCase()}|${day.year}-${day.month}-${day.day}';
+      map.putIfAbsent(key, () => []).add(s);
+    }
+    final groups = <StagedRouteMaviDateGroup>[];
+    for (final e in map.entries) {
+      if (e.value.length < 2) continue;
+      final parts = e.key.split('|');
+      final code = parts.first;
+      final dateParts = parts[1].split('-');
+      groups.add(
+        StagedRouteMaviDateGroup(
+          maviCode: code,
+          routeDate: DateTime(
+            int.parse(dateParts[0]),
+            int.parse(dateParts[1]),
+            int.parse(dateParts[2]),
+          ),
+          shares: e.value,
+        ),
+      );
+    }
+    groups.sort((a, b) => b.extraCount.compareTo(a.extraCount));
+    return groups;
   }
 }

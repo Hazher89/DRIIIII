@@ -109,6 +109,7 @@ class RoutePdfTextService {
     Uint8List bytes, {
     required DateTime fallbackDate,
     bool includeFullText = true,
+    String? fileName,
   }) {
     final headerText = extractHeaderText(bytes);
     final fullText = includeFullText ? extractFullText(bytes) : '';
@@ -118,10 +119,12 @@ class RoutePdfTextService {
       fallbackDate: fallbackDate,
       headerHint: headerText,
     );
+    final fromFile = fileName != null ? extractResourceIdFromFileName(fileName) : null;
     final meta = RoutePdfTripOverviewMeta(
       maviCode: parseResourceIdTripOverviewHeader(headerText) ??
           parseResourceIdTripOverviewHeader(primary) ??
-          parseResourceId(primary),
+          parseResourceId(primary) ??
+          fromFile,
       stowingLane: parseStowingLane(headerText) ?? parseStowingLane(primary),
     );
     return RoutePdfParseBundle(
@@ -822,8 +825,36 @@ class RoutePdfTextService {
     return out;
   }
 
-  /// Filnavn brukes ikke — kan være feil. Beholdt for API-kompatibilitet.
-  static String? extractResourceIdFromFileName(String fileName) => null;
+  /// Leser MAVI fra filnavn når PDF-tekst mangler treff (f.eks. `_M24_KVELD.pdf`).
+  static String? extractResourceIdFromFileName(String fileName) {
+    final base = fileName.split(RegExp(r'[/\\]')).last.trim();
+    if (base.isEmpty) return null;
+    final upper = base
+        .replaceAll('\uFF3F', '_')
+        .replaceAll('\u2013', '-')
+        .toUpperCase();
+
+    final noOm = RegExp(r'NO_O_M0*(\d{1,5})', caseSensitive: false).firstMatch(upper);
+    if (noOm != null) {
+      return _codeFromDigits(noOm.group(1)!);
+    }
+
+    String? last;
+    for (final m in RegExp(
+      r'[_\-\.]M0*(\d{1,5})(?=[_\-\.]|\.PDF|$)',
+      caseSensitive: false,
+    ).allMatches(upper)) {
+      last = _codeFromDigits(m.group(1)!);
+    }
+    if (last != null) return last;
+
+    final bare = RegExp(r'(?:^|[_\-\.])M0*(\d{1,5})\.PDF$', caseSensitive: false)
+        .firstMatch(upper);
+    if (bare != null) {
+      return _codeFromDigits(bare.group(1)!);
+    }
+    return null;
+  }
 
   static const int _minAcceptScore = 28;
 

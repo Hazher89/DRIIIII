@@ -18,6 +18,20 @@ import 'partner_companies_ui.dart';
 import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 
+String _friendlyPartnerSaveError(Object error) {
+  final msg = error.toString();
+  if (msg.contains('uq_partner_portal_email') ||
+      (msg.contains('23505') && msg.contains('login_email'))) {
+    return 'E-postadressen er allerede knyttet til en annen portal-bruker. '
+        'Hver bil-eier får eget brukernavn — kontakt-e-post under «Kontakt & bedrift» '
+        'brukes kun til varsler og skal ikke overskrive innlogging.';
+  }
+  if (msg.contains('23505')) {
+    return 'Verdien finnes allerede i systemet (duplikat).';
+  }
+  return msg.length > 200 ? '${msg.substring(0, 197)}…' : msg;
+}
+
 /// Oversikt: bedriftsinfo, transportløyve, ansatte, kjøretøy med EU per bil.
 class PartnerOverviewTab extends StatefulWidget {
   final Partner partner;
@@ -344,7 +358,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       if (mounted) {
         setState(() => _routesOwnerOnly = !value);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke lagre: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Kunne ikke lagre: ${_friendlyPartnerSaveError(e)}'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -581,7 +595,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke opprette bedriftsansvarlig: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Kunne ikke opprette bedriftsansvarlig: ${_friendlyPartnerSaveError(e)}'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -1092,7 +1106,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Kunne ikke lagre: $e'),
+            content: Text('Kunne ikke lagre: ${_friendlyPartnerSaveError(e)}'),
             backgroundColor: Colors.red,
           ),
         );

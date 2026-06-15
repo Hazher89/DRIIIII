@@ -94,7 +94,7 @@ String _friendlyImportError(Object error) {
 
 enum PartnerRouteMassSource { manual, sap }
 
-enum _MassTab { allRoutes, drivers, missingShift, importLog, skipped }
+enum _MassTab { allRoutes, drivers, missingShift, duplicates, importLog, skipped }
 
 enum _RouteQueueFilter { all, missingShift, ready, selected }
 
@@ -318,7 +318,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         fileName: item.fileName,
         bytes: bytes,
         reason: reason.isEmpty ? 'Krever manuell tildeling' : reason,
-        detectedCode: item.detectedMaviCode,
+        detectedCode: item.detectedMaviCode ??
+            RoutePdfTextService.extractResourceIdFromFileName(item.fileName),
         sapInboxId: item.id,
       ));
     }
@@ -358,7 +359,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           fileName: s.fileName,
           bytes: Uint8List.fromList(s.bytes),
           reason: s.reason,
-          detectedCode: s.detectedCode,
+          detectedCode: s.detectedCode ??
+              RoutePdfTextService.extractResourceIdFromFileName(s.fileName),
           sapInboxId: s.inboxId,
         ));
       }
@@ -430,6 +432,56 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   List<StagedRouteDuplicateGroup> get _duplicateGroups =>
       StagedRouteDuplicateHelper.findGroups(_staged);
 
+  List<StagedRouteMaviDateGroup> get _maviDateDuplicateGroups =>
+      StagedRouteDuplicateHelper.findMaviDateGroups(
+        staged: _staged,
+        maviCodeOf: _maviCodeForShare,
+        routeDateOf: (s) => _routeDayFor(s.id),
+      );
+
+  /// Samme MAVI+dag med ulikt PDF-innhold (ikke allerede fanget som identisk PDF).
+  List<StagedRouteMaviDateGroup> get _maviDateOnlyGroups =>
+      _maviDateDuplicateGroups
+          .where((g) => g.shares.map(StagedRouteDuplicateHelper.fingerprint).toSet().length > 1)
+          .toList();
+
+  List<PartnerRouteShare> get _orphanShares =>
+      _staged.where((s) => _rowForShare(s) == null).toList();
+
+  int get _duplicatesTabCount =>
+      _duplicateExtraCount +
+      _maviDateOnlyGroups.fold<int>(0, (n, g) => n + g.extraCount) +
+      _orphanShares.length +
+      _skipped.length;
+
+  String? _maviCodeForShare(PartnerRouteShare share) {
+    final title = share.title ?? '';
+    final fileLabel = title.contains('—')
+        ? title.split('—').last.trim()
+        : share.pdfStoragePath.split('/').last;
+    return RoutePdfTextService.extractResourceIdFromFileName(fileLabel) ??
+        RoutePdfTextService.extractResourceIdFromFileName(title) ??
+        _maviFromRouteTitle(title);
+  }
+
+  String? _maviFromRouteTitle(String title) {
+    final m = RegExp(r'Rute\s+(\S+)', caseSensitive: false).firstMatch(title.trim());
+    if (m == null) return null;
+    final raw = m.group(1)!.trim();
+    if (raw.isEmpty) return null;
+    return MaviUnitCodes.normalize(raw);
+  }
+
+  FleetPartnerVehicleRow? _fleetRowForMaviCode(String? code) {
+    if (code == null || code.isEmpty) return null;
+    for (final row in _maviFleet) {
+      if (MaviUnitCodes.normalize(row.vehicle.unitCode) == MaviUnitCodes.normalize(code)) {
+        return row;
+      }
+    }
+    return null;
+  }
+
   int get _duplicateExtraCount =>
       StagedRouteDuplicateHelper.totalExtraDuplicates(_duplicateGroups);
 
@@ -447,6 +499,153 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               .map((s) => s.id),
         );
     });
+  }
+
+  Future<void> _removeSharesByIds(List<String> removeIds) async {
+    if (removeIds.isEmpty) return;
+    setState(() => _busyUpload = true);
+    try {
+      for (final id in removeIds) {
+        final share = _staged.where((s) => s.id == id).firstOrNull;
+        if (share == null) continue;
+        await PartnerService.deleteRouteShare(share);
+        _selected.remove(id);
+      }
+      await _reload();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke fjerne ruter: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyUpload = false);
+    }
+  }
+
+  Future<void> _removeDuplicateGroupShares(List<PartnerRouteShare> shares) async {
+    if (shares.length < 2) return;
+    final extra = shares.length - 1;
+    final label = StagedRouteDuplicateHelper.countLabel(shares.length);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Behold én av $label?'),
+        content: Text(
+          'Fant ${shares.length} like ruter. Systemet beholder én (med skift om mulig) '
+          'og sletter $extra fra køen.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Behold én ($extra slettes)'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _removeSharesByIds(StagedRouteDuplicateHelper.idsToRemoveShares(shares));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fjernet $extra duplikat-rute(r).')),
+      );
+    }
+  }
+
+  Future<void> _relinkOrphanShare(PartnerRouteShare share) async {
+    final code = _maviCodeForShare(share);
+    final row = _fleetRowForMaviCode(code);
+    if (row == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              code == null
+                  ? 'Fant ikke MAVI i filnavn eller tittel.'
+                  : 'Ingen sjåfør matcher $code i flåten.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    await _reassignShare(share, row.vehicle.id);
+  }
+
+  Future<void> _relinkAllOrphanShares() async {
+    final orphans = _orphanShares;
+    if (orphans.isEmpty) return;
+    var linked = 0;
+    setState(() => _busyUpload = true);
+    try {
+      for (final share in orphans) {
+        final code = _maviCodeForShare(share);
+        final row = _fleetRowForMaviCode(code);
+        if (row == null) continue;
+        await PartnerService.reassignStagedRouteShare(
+          share: share,
+          partnerId: row.partner.id,
+          partnerVehicleId: row.vehicle.id,
+          title: share.title,
+        );
+        linked++;
+      }
+      await _reload();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              linked > 0
+                  ? 'Koblet $linked rute(r) til sjåfør fra filnavn/tittel.'
+                  : 'Ingen foreslåtte sjåfører kunne kobles automatisk.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kobling feilet: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busyUpload = false);
+    }
+  }
+
+  Future<void> _dismissSkippedPdf(_SkippedPdf item) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Fjern manuell PDF?'),
+        content: Text(item.fileName),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
+            child: const Text('Fjern'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      if (item.sapInboxId != null) {
+        await PartnerService.dismissSapRouteInbox(item.sapInboxId!);
+      }
+      item.noteCtrl.dispose();
+      if (mounted) {
+        setState(() => _skipped.remove(item));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke fjerne: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   Future<void> _removeDuplicateRoutes() async {
@@ -472,34 +671,20 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       ),
     );
     if (ok != true) return;
-    setState(() => _busyUpload = true);
-    try {
-      final removeIds = StagedRouteDuplicateHelper.idsToRemove(groups);
-      for (final id in removeIds) {
-        final share = _staged.where((s) => s.id == id).firstOrNull;
-        if (share == null) continue;
-        await PartnerService.deleteRouteShare(share);
-        _selected.remove(id);
-      }
-      await _reload();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fjernet $extra duplikat-rute(r) fra køen.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke fjerne duplikater: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _busyUpload = false);
+    await _removeSharesByIds(StagedRouteDuplicateHelper.idsToRemove(groups));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fjernet $extra duplikat-rute(r) fra køen.')),
+      );
     }
   }
 
   Widget _buildDuplicateBanner(_MassUi ui) {
-    if (_duplicateExtraCount == 0) return const SizedBox.shrink();
+    if (_duplicateExtraCount == 0 && _maviDateOnlyGroups.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final total = _duplicateExtraCount +
+        _maviDateOnlyGroups.fold<int>(0, (n, g) => n + g.extraCount);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Material(
@@ -517,7 +702,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '$_duplicateExtraCount duplikat-rute(r) funnet',
+                      '$total duplikat/dobbelt funnet',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
                         color: Colors.deepPurple.shade900,
@@ -525,8 +710,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'SAP har sendt identiske PDF-er. Fjern kopier før publisering, '
-                      'eller huk av kun én per gruppe.',
+                      'Identiske PDF-er eller flere ruter for samme MAVI på samme dag. '
+                      'Se fanen «Duplikater» for å beholde én.',
                       style: TextStyle(fontSize: 12, color: Colors.deepPurple.shade900),
                     ),
                   ],
@@ -534,8 +719,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               ),
               const SizedBox(width: 8),
               FilledButton.tonal(
-                onPressed: _busyUpload || _publishing ? null : _removeDuplicateRoutes,
-                child: const Text('Behold én'),
+                onPressed: _busyUpload || _publishing ? null : () => _setTabIndex(3),
+                child: const Text('Åpne'),
               ),
             ],
           ),
@@ -1332,14 +1517,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       );
     }
 
-    final bundle = RoutePdfTextService.parseBundle(bytes, fallbackDate: _routeDate);
+    final bundle = RoutePdfTextService.parseBundle(
+      bytes,
+      fallbackDate: _routeDate,
+      fileName: file.name,
+    );
     final code = bundle.meta.maviCode;
     if (code == null) {
       return (
         row: _PdfAssignmentRow(
           fileName: file.name,
           status: 'skipped',
-          reason: 'Fant ikke MAVI-nummer inne i PDF (Start date / Trip Overview)',
+          reason: 'Fant ikke MAVI-nummer i PDF eller filnavn',
         ),
         shareId: null,
         stowing: null,
@@ -1497,7 +1686,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           if (result.row.status != 'ok') {
             final bytes = await _readPlatformFile(file);
             String? preselect;
-            final code = result.row.maviCode;
+            final code = result.row.maviCode ??
+                RoutePdfTextService.extractResourceIdFromFileName(file.name);
             if (code != null) {
               for (final r in _maviFleet) {
                 if (MaviUnitCodes.normalize(r.vehicle.unitCode) ==
@@ -1511,7 +1701,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               fileName: file.name,
               bytes: bytes ?? Uint8List(0),
               reason: result.row.reason ?? 'Ukjent feil',
-              detectedCode: result.row.maviCode,
+              detectedCode: code,
               selectedVehicleId: preselect,
             ));
           }
@@ -1596,7 +1786,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) return;
       final row = _maviFleet.firstWhere((r) => r.vehicle.id == item.selectedVehicleId);
-      final bundle = RoutePdfTextService.parseBundle(item.bytes, fallbackDate: _routeDate);
+      final bundle = RoutePdfTextService.parseBundle(
+        item.bytes,
+        fallbackDate: _routeDate,
+        fileName: item.fileName,
+      );
       final shareId = await PartnerService.createStagedRouteShareFromPdf(
         companyId: cid,
         partner: row.partner,
@@ -1923,8 +2117,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         _MassTab.allRoutes => 0,
         _MassTab.drivers => 1,
         _MassTab.missingShift => 2,
-        _MassTab.importLog => 3,
-        _MassTab.skipped => 4,
+        _MassTab.duplicates => 3,
+        _MassTab.importLog => 4,
+        _MassTab.skipped => 5,
       };
 
   void _setTabIndex(int i) {
@@ -1933,8 +2128,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         0 => _MassTab.allRoutes,
         1 => _MassTab.drivers,
         2 => _MassTab.missingShift,
-        3 => _MassTab.importLog,
-        4 => _MassTab.skipped,
+        3 => _MassTab.duplicates,
+        4 => _MassTab.importLog,
+        5 => _MassTab.skipped,
         _ => _MassTab.allRoutes,
       };
       if (_sheetTab == _MassTab.allRoutes) {
@@ -2128,11 +2324,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       guidePanel: _buildWorkflowGuideContent(ui),
       guideExpanded: _guideExpanded,
       onGuideToggle: () => setState(() => _guideExpanded = !_guideExpanded),
-      tabLabels: const ['Ruter', 'Flere last/rute', 'Mangler skift', 'Logg', 'Manuell'],
+      tabLabels: const ['Ruter', 'Flere last/rute', 'Mangler skift', 'Duplikater', 'Logg', 'Manuell'],
       tabBadges: [
         _staged.isNotEmpty ? _staged.length : null,
         _multiLoadDriverCount > 0 ? _multiLoadDriverCount : null,
         missingShift > 0 ? missingShift : null,
+        _duplicatesTabCount > 0 ? _duplicatesTabCount : null,
         _importLog.isNotEmpty ? _importLog.length : null,
         _skipped.isNotEmpty ? _skipped.length : null,
       ],
@@ -2140,6 +2337,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         ui.accentDark,
         _multiLoadDriverCount > 0 ? Colors.orange.shade900 : ui.accentDark,
         Colors.red.shade700,
+        Colors.deepPurple.shade800,
         Colors.grey.shade700,
         Colors.orange.shade800,
       ],
@@ -2398,7 +2596,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             icon: Icons.pan_tool_alt_outlined,
             color: Colors.orange.shade900,
             text: '$_skipped PDF krever manuell tildeling',
-            onTap: () => _setTabIndex(4),
+            onTap: () => _setTabIndex(5),
           ),
         if (_missingShiftCount > 0 && _sheetTab != _MassTab.missingShift)
           _buildCompactAlert(
@@ -2473,6 +2671,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             : 'Ingen biler med flere last/rute akkurat nå. Slå på «Vis alle biler med rute» for full oversikt.',
       _MassTab.missingShift =>
         'Kun ruter uten skiftplan — velg skift i kolonnen før publisering.',
+      _MassTab.duplicates =>
+        'Dobbelt/trippel av samme PDF eller samme MAVI+dag. Uten sjåfør kan kobles fra filnavn. Behold én per gruppe.',
       _MassTab.importLog =>
         'Oversikt over hva systemet gjorde med hver PDF (automatisk MAVI-fordeling eller årsak til manuell).',
       _MassTab.skipped =>
@@ -2485,6 +2685,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       _MassTab.allRoutes => _buildRoutesOverview(ui),
       _MassTab.drivers => _buildDriverCentricList(ui),
       _MassTab.missingShift => _buildRoutesOverview(ui, forceMissingOnly: true),
+      _MassTab.duplicates => _buildDuplicatesTab(ui),
       _MassTab.importLog => _buildAssignmentOverview(ui),
       _MassTab.skipped => _buildSkippedList(ui),
     };
@@ -2712,6 +2913,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Widget _buildOrphanRouteCard(PartnerRouteShare share, _MassUi ui) {
+    final code = _maviCodeForShare(share);
+    final row = _fleetRowForMaviCode(code);
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -2740,14 +2943,28 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Ingen sjåfør koblet — velg bil i Manuell-fanen eller tildel på nytt.',
+                  code != null
+                      ? 'Foreslått MAVI: ${MaviUnitCodes.compactLabel(code)}'
+                      : 'Ingen sjåfør koblet — velg bil i Duplikater- eller Manuell-fanen.',
                   style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
                 ),
                 const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () => _setTabIndex(4),
-                  icon: const Icon(Icons.pan_tool_alt_outlined, size: 18),
-                  label: const Text('Gå til manuell tildeling'),
+                if (row != null)
+                  FilledButton.tonal(
+                    onPressed: _busyUpload ? null : () => _relinkOrphanShare(share),
+                    child: Text('Koble til ${MaviUnitCodes.fleetDriverLabel(row.vehicle.unitCode, row.partner.name)}'),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: () => _setTabIndex(5),
+                    icon: const Icon(Icons.pan_tool_alt_outlined, size: 18),
+                    label: const Text('Gå til manuell tildeling'),
+                  ),
+                const SizedBox(height: 6),
+                TextButton.icon(
+                  onPressed: () => _setTabIndex(3),
+                  icon: const Icon(Icons.copy_all_outlined, size: 16),
+                  label: const Text('Se i Duplikater'),
                 ),
               ],
             ),
@@ -3211,7 +3428,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
-  Widget _buildSkippedCompactCard(_SkippedPdf item, _MassUi ui) {
+  Widget _buildSkippedCompactCard(_SkippedPdf item, _MassUi ui, {bool showDelete = false}) {
     final label = _skippedDriverLabel(item);
     final shortName = _shortFileLabel(item.fileName);
     final storageError = item.reason?.contains('Lagring feilet') == true;
@@ -3282,10 +3499,21 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                       children: [
                         Icon(Icons.touch_app_outlined, size: 14, color: Colors.grey.shade600),
                         const SizedBox(width: 4),
-                        Text(
-                          'Trykk for tildeling',
-                          style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                        Expanded(
+                          child: Text(
+                            'Trykk for tildeling',
+                            style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+                          ),
                         ),
+                        if (showDelete)
+                          IconButton(
+                            tooltip: 'Fjern manuell PDF',
+                            onPressed: _busyUpload ? null : () => _dismissSkippedPdf(item),
+                            icon: Icon(Icons.delete_outline, size: 18, color: Colors.red.shade700),
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          ),
                       ],
                     ),
                   ],
@@ -3294,6 +3522,258 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildDuplicatesTab(_MassUi ui) {
+    final contentDupes = _duplicateGroups;
+    final maviDupes = _maviDateOnlyGroups;
+    final orphans = _orphanShares;
+    final manual = _skipped;
+    final empty = contentDupes.isEmpty &&
+        maviDupes.isEmpty &&
+        orphans.isEmpty &&
+        manual.isEmpty;
+
+    if (empty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Ingen duplikater, foreldreløse ruter eller manuelle PDF-er akkurat nå.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600, height: 1.4),
+          ),
+        ),
+      );
+    }
+
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        if (orphans.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _buildDuplicateSectionHeader(
+              title: 'Uten sjåfør (${orphans.length})',
+              subtitle: 'Ruter uten koblet bil — MAVI leses fra filnavn/tittel.',
+              action: orphans.any((s) => _fleetRowForMaviCode(_maviCodeForShare(s)) != null)
+                  ? FilledButton.tonal(
+                      onPressed: _busyUpload ? null : _relinkAllOrphanShares,
+                      child: const Text('Koble alle foreslåtte'),
+                    )
+                  : null,
+            ),
+          ),
+        if (orphans.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+            sliver: SliverGrid(
+              gridDelegate: _routeCardGridDelegate,
+              delegate: SliverChildBuilderDelegate(
+                (context, i) => _buildDuplicateShareCard(orphans[i], ui, isOrphan: true),
+                childCount: orphans.length,
+              ),
+            ),
+          ),
+        if (contentDupes.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _buildDuplicateSectionHeader(
+              title: 'Identisk PDF (${contentDupes.length} gruppe(r))',
+              subtitle: '100 % samme innhold — behold én per gruppe.',
+              action: FilledButton.tonal(
+                onPressed: _busyUpload ? null : _removeDuplicateRoutes,
+                child: Text('Behold én (alle, $_duplicateExtraCount slettes)'),
+              ),
+            ),
+          ),
+        for (final group in contentDupes)
+          ..._duplicateGroupSlivers(group, ui, isContentDuplicate: true),
+        if (maviDupes.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _buildDuplicateSectionHeader(
+              title: 'Samme MAVI + dag (${maviDupes.length} gruppe(r))',
+              subtitle: 'Ulike PDF-er for samme bil og dato — dobbelt, trippel osv.',
+            ),
+          ),
+        for (final group in maviDupes)
+          ..._duplicateGroupSlivers(group.shares, ui, groupLabel: group.countLabel, maviCode: group.maviCode),
+        if (manual.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _buildDuplicateSectionHeader(
+              title: 'Manuell tildeling (${manual.length})',
+              subtitle: 'PDF-er som ikke ble auto-fordelt — tildel eller fjern.',
+            ),
+          ),
+        if (manual.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 20),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 280,
+                childAspectRatio: 0.54,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, i) => _buildSkippedCompactCard(manual[i], ui, showDelete: true),
+                childCount: manual.length,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDuplicateSectionHeader({
+    required String title,
+    required String subtitle,
+    Widget? action,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 4),
+          Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.35)),
+          if (action != null) ...[
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.centerLeft, child: action),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _duplicateGroupSlivers(
+    dynamic groupOrShares,
+    _MassUi ui, {
+    bool isContentDuplicate = false,
+    String? groupLabel,
+    String? maviCode,
+  }) {
+    final List<PartnerRouteShare> shares;
+    final String label;
+    if (isContentDuplicate) {
+      final group = groupOrShares as StagedRouteDuplicateGroup;
+      shares = group.shares;
+      label = group.countLabel;
+    } else {
+      shares = groupOrShares as List<PartnerRouteShare>;
+      label = groupLabel ?? StagedRouteDuplicateHelper.countLabel(shares.length);
+    }
+    final mavi = maviCode ?? _maviCodeForShare(shares.first);
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$label · ${mavi != null ? MaviUnitCodes.compactLabel(mavi) : 'Ukjent MAVI'} · ${shares.length} ruter',
+                  style: TextStyle(fontWeight: FontWeight.w700, color: Colors.deepPurple.shade900),
+                ),
+              ),
+              FilledButton.tonal(
+                onPressed: _busyUpload ? null : () => _removeDuplicateGroupShares(shares),
+                child: const Text('Behold én'),
+              ),
+            ],
+          ),
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+        sliver: SliverGrid(
+          gridDelegate: _routeCardGridDelegate,
+          delegate: SliverChildBuilderDelegate(
+            (context, i) => _buildDuplicateShareCard(shares[i], ui, isKeeper: shares[i].id == StagedRouteDuplicateHelper.pickKeeper(shares).id),
+            childCount: shares.length,
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Widget _buildDuplicateShareCard(
+    PartnerRouteShare share,
+    _MassUi ui, {
+    bool isOrphan = false,
+    bool isKeeper = false,
+  }) {
+    final code = _maviCodeForShare(share);
+    final row = _rowForShare(share) ?? _fleetRowForMaviCode(code);
+    final driverLabel = row != null
+        ? MaviUnitCodes.fleetDriverLabel(row.vehicle.unitCode, row.partner.name)
+        : 'Ingen sjåfør';
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isKeeper ? Colors.green.shade400 : Colors.deepPurple.shade200,
+          width: isKeeper ? 2 : 1,
+        ),
+        boxShadow: DriftProTheme.cardShadow,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PartnerRoutePdfThumbnail(
+            share: share,
+            driverLabel: driverLabel,
+            height: 120,
+            onTapOpen: () => PartnerRoutePdfActions.openPdf(context, share),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (isKeeper)
+                  Text(
+                    'Beholdes',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.green.shade800),
+                  ),
+                Text(
+                  share.title ?? share.pdfStoragePath.split('/').last,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    if (isOrphan && row != null)
+                      Expanded(
+                        child: FilledButton.tonal(
+                          onPressed: _busyUpload ? null : () => _relinkOrphanShare(share),
+                          style: FilledButton.styleFrom(
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                          ),
+                          child: const Text('Koble', style: TextStyle(fontSize: 11)),
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    IconButton(
+                      tooltip: 'Fjern fra kø',
+                      onPressed: _busyUpload ? null : () => _removeShare(share),
+                      icon: Icon(Icons.delete_outline, size: 20, color: Colors.red.shade700),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -3344,7 +3824,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               mainAxisSpacing: 10,
             ),
             delegate: SliverChildBuilderDelegate(
-              (context, i) => _buildSkippedCompactCard(_skipped[i], ui),
+              (context, i) => _buildSkippedCompactCard(_skipped[i], ui, showDelete: true),
               childCount: _skipped.length,
             ),
           ),

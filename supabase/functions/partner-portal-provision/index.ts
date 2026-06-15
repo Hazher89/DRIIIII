@@ -294,9 +294,22 @@ Deno.serve(async (req) => {
     };
 
     if (existing?.id) {
-      await admin.from("partner_portal_accounts").update(row).eq("id", existing.id);
+      const { error: updErr } = await admin.from("partner_portal_accounts").update(row).eq("id", existing.id);
+      if (updErr) throw updErr;
     } else {
-      await admin.from("partner_portal_accounts").insert(row);
+      const { data: emailTaken } = await admin
+        .from("partner_portal_accounts")
+        .select("id")
+        .eq("is_active", true)
+        .ilike("login_email", authEmail)
+        .maybeSingle();
+      if (emailTaken) {
+        throw new Error(
+          `Innloggings-e-posten ${authEmail} er allerede knyttet til en annen portal-konto.`,
+        );
+      }
+      const { error: insErr } = await admin.from("partner_portal_accounts").insert(row);
+      if (insErr) throw insErr;
     }
 
     let smsSent = false;

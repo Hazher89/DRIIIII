@@ -17,10 +17,20 @@ Start date 24.04.26
       expect(RoutePdfTextService.parseResourceId(text), 'M17');
     });
 
-    test('filnavn brukes ikke', () {
+    test('leser MAVI fra filnavn (_M24, NO_O_M0024)', () {
+      expect(
+        RoutePdfTextService.extractResourceIdFromFileName(
+          '13f4530b-9a2c-4f67-9590-0b29981d9949_M24_KVELD.pdf',
+        ),
+        'M24',
+      );
+      expect(
+        RoutePdfTextService.extractResourceIdFromFileName('8785f8a4_M24.pdf'),
+        'M24',
+      );
       expect(
         RoutePdfTextService.extractResourceIdFromFileName('NO_O_M0099_route.pdf'),
-        isNull,
+        'M99',
       );
     });
 

@@ -163,7 +163,7 @@ class PartnerService {
     } catch (_) {}
   }
 
-  /// Fyller portal login_email fra partners.email (og motsatt der det mangler).
+  /// Fyller partners.email fra portal der det mangler (login_email synkroniseres ikke).
   static Future<Map<String, int>> syncPartnerNotificationEmails(
     String companyId,
   ) async {
@@ -3063,7 +3063,7 @@ class PartnerService {
     await PostalCodeRegistry.ensureLoaded();
     await ensureCanonicalFleetShifts(companyId);
     final shifts = await fetchFleetShifts(companyId);
-    final bundle = parsed ?? RoutePdfTextService.parseBundle(bytes, fallbackDate: routeDate);
+    final bundle = parsed ?? RoutePdfTextService.parseBundle(bytes, fallbackDate: routeDate, fileName: fileName);
     final routeShifts = FleetShiftFilters.forRouteAssignment(shifts);
     final auto = await RoutePdfAutoAssign.analyze(
       bytes: bytes,
