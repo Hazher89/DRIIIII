@@ -170,6 +170,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   bool _guideExpanded = false;
   bool _fillingShifts = false;
   bool _initialTabSet = false;
+  List<FleetPartnerVehicleRow> _expandedMaviFleet = const [];
   bool _selectionInitialized = false;
   String _withNotifyLabel = 'Med varsel';
   NotificationChannel _massChannel = NotificationChannel.both;
@@ -426,8 +427,29 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         .toList();
   }
 
-  List<FleetPartnerVehicleRow> get _maviFleet =>
-      PartnerService.filterMaviFleetOnly(widget.fleet);
+  List<FleetPartnerVehicleRow> get _maviFleet {
+    final byVehicleId = <String, FleetPartnerVehicleRow>{};
+    for (final row in widget.fleet) {
+      byVehicleId[row.vehicle.id] = row;
+    }
+    for (final row in _expandedMaviFleet) {
+      byVehicleId.putIfAbsent(row.vehicle.id, () => row);
+    }
+    return PartnerService.filterMaviFleetOnly(byVehicleId.values);
+  }
+
+  Future<void> _refreshExpandedFleet(String companyId) async {
+    final fresh = PartnerService.filterMaviFleetOnly(
+      await PartnerService.fetchCompanyFleet(companyId),
+    );
+    if (!mounted) return;
+    _expandedMaviFleet = fresh;
+  }
+
+  String _normalizedMaviKey(String? code) {
+    if (code == null || code.trim().isEmpty) return '';
+    return RoutePdfTextService.normalizeUnitCodeForMatch(MaviUnitCodes.normalize(code));
+  }
 
   List<StagedRouteDuplicateGroup> get _duplicateGroups =>
       StagedRouteDuplicateHelper.findGroups(_staged);
@@ -473,17 +495,29 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   FleetPartnerVehicleRow? _fleetRowForMaviCode(String? code) {
-    if (code == null || code.isEmpty) return null;
+    final want = _normalizedMaviKey(code);
+    if (want.isEmpty) return null;
     for (final row in _maviFleet) {
-      if (MaviUnitCodes.normalize(row.vehicle.unitCode) == MaviUnitCodes.normalize(code)) {
-        return row;
-      }
+      if (_normalizedMaviKey(row.vehicle.unitCode) == want) return row;
     }
     return null;
   }
 
   int get _duplicateExtraCount =>
       StagedRouteDuplicateHelper.totalExtraDuplicates(_duplicateGroups);
+
+  Set<String> get _allDuplicateRemoveIds {
+    final remove = <String>{};
+    for (final g in _duplicateGroups) {
+      remove.addAll(StagedRouteDuplicateHelper.idsToRemoveShares(g.shares));
+    }
+    for (final g in _maviDateOnlyGroups) {
+      remove.addAll(StagedRouteDuplicateHelper.idsToRemoveShares(g.shares));
+    }
+    return remove;
+  }
+
+  int get _allDuplicateExtraCount => _allDuplicateRemoveIds.length;
 
   void _selectReadyNonDuplicates() {
     final dupIds = StagedRouteDuplicateHelper.allDuplicateIds(_duplicateGroups);
@@ -530,16 +564,16 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Behold én av $label?'),
+        title: Text('Behold én i denne gruppen?'),
         content: Text(
-          'Fant ${shares.length} like ruter. Systemet beholder én (med skift om mulig) '
-          'og sletter $extra fra køen.',
+          'Fant ${shares.length} like ruter ($label). Systemet beholder én '
+          '(med skift om mulig) og sletter $extra.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Behold én ($extra slettes)'),
+            child: Text('Behold én her ($extra slettes)'),
           ),
         ],
       ),
@@ -573,24 +607,34 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     await _reassignShare(share, row.vehicle.id);
   }
 
+  Future<int> _autoRelinkOrphanSharesQuiet(List<PartnerRouteShare> staged) async {
+    var linked = 0;
+    for (final share in staged) {
+      if (_rowForShare(share) != null) continue;
+      final code = _maviCodeForShare(share);
+      final row = _fleetRowForMaviCode(code);
+      if (row == null) continue;
+      final baseTitle = share.title ?? share.pdfStoragePath.split('/').last;
+      final fileLabel = baseTitle.contains('—')
+          ? baseTitle.split('—').last.trim()
+          : baseTitle;
+      await PartnerService.reassignStagedRouteShare(
+        share: share,
+        partnerId: row.partner.id,
+        partnerVehicleId: row.vehicle.id,
+        title: 'Rute ${MaviUnitCodes.compactLabel(row.vehicle.unitCode)} — $fileLabel',
+      );
+      linked++;
+    }
+    return linked;
+  }
+
   Future<void> _relinkAllOrphanShares() async {
     final orphans = _orphanShares;
     if (orphans.isEmpty) return;
-    var linked = 0;
     setState(() => _busyUpload = true);
     try {
-      for (final share in orphans) {
-        final code = _maviCodeForShare(share);
-        final row = _fleetRowForMaviCode(code);
-        if (row == null) continue;
-        await PartnerService.reassignStagedRouteShare(
-          share: share,
-          partnerId: row.partner.id,
-          partnerVehicleId: row.vehicle.id,
-          title: share.title,
-        );
-        linked++;
-      }
+      final linked = await _autoRelinkOrphanSharesQuiet(orphans);
       await _reload();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -648,43 +692,44 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
   }
 
-  Future<void> _removeDuplicateRoutes() async {
-    final groups = _duplicateGroups;
-    if (groups.isEmpty) return;
-    final extra = _duplicateExtraCount;
+  Future<void> _deduplicateAllKeepOneEach() async {
+    final removeIds = _allDuplicateRemoveIds.toList();
+    if (removeIds.isEmpty) return;
+    final extra = removeIds.length;
+    final groups = _duplicateGroups.length + _maviDateOnlyGroups.length;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Fjern duplikat-ruter?'),
+        title: const Text('Behold én av hver?'),
         content: Text(
-          'Fant $extra identiske kopi(er) av samme PDF.\n\n'
-          'Systemet beholder én rute per duplikat-gruppe (med skift om mulig) '
-          'og sletter resten fra køen.',
+          'Fant $extra ekstra kopi(er) i $groups duplikat-gruppe(r).\n\n'
+          'Systemet beholder én rute per gruppe (helst med skift) og sletter resten fra køen.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Fjern $extra duplikat'),
+            child: Text('Behold én av hver ($extra slettes)'),
           ),
         ],
       ),
     );
     if (ok != true) return;
-    await _removeSharesByIds(StagedRouteDuplicateHelper.idsToRemove(groups));
+    await _removeSharesByIds(removeIds);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Fjernet $extra duplikat-rute(r) fra køen.')),
+        SnackBar(content: Text('Fjernet $extra duplikat-rute(r). Én beholdt per gruppe.')),
       );
     }
   }
 
+  Future<void> _removeDuplicateRoutes() async => _deduplicateAllKeepOneEach();
+
   Widget _buildDuplicateBanner(_MassUi ui) {
-    if (_duplicateExtraCount == 0 && _maviDateOnlyGroups.isEmpty) {
+    if (_allDuplicateExtraCount == 0) {
       return const SizedBox.shrink();
     }
-    final total = _duplicateExtraCount +
-        _maviDateOnlyGroups.fold<int>(0, (n, g) => n + g.extraCount);
+    final total = _allDuplicateExtraCount;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Material(
@@ -702,7 +747,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '$total duplikat/dobbelt funnet',
+                      '$total dobbelt/trippel funnet',
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
                         color: Colors.deepPurple.shade900,
@@ -710,17 +755,26 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Identiske PDF-er eller flere ruter for samme MAVI på samme dag. '
-                      'Se fanen «Duplikater» for å beholde én.',
+                      'Samme PDF eller samme MAVI+dag — behold én rute per gruppe før publisering.',
                       style: TextStyle(fontSize: 12, color: Colors.deepPurple.shade900),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              FilledButton.tonal(
-                onPressed: _busyUpload || _publishing ? null : () => _setTabIndex(3),
-                child: const Text('Åpne'),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  OutlinedButton(
+                    onPressed: _busyUpload || _publishing ? null : () => _setTabIndex(3),
+                    child: const Text('Se duplikater'),
+                  ),
+                  FilledButton.tonal(
+                    onPressed: _busyUpload || _publishing ? null : _deduplicateAllKeepOneEach,
+                    child: Text('Behold én av hver ($total)'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -891,6 +945,17 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     bool preserveSelection = false,
   }) async {
     try {
+      await _refreshExpandedFleet(companyId);
+      var working = staged;
+      final relinked = await _autoRelinkOrphanSharesQuiet(working);
+      if (relinked > 0) {
+        working = await PartnerService.fetchStagedRouteShares(
+          companyId,
+          importSource: _isSap
+              ? PartnerService.stagedImportSap
+              : PartnerService.stagedImportManual,
+        );
+      }
       final manualSkipped = _isSap
           ? await _collectSapManualSkipped(companyId)
           : const <_SkippedPdf>[];
@@ -902,11 +967,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         }
       }
       await PostalCodeRegistry.ensureLoaded();
-      final shiftById = await _resolveShiftIdsForStaged(staged: staged, shifts: shifts);
+      final shiftById = await _resolveShiftIdsForStaged(staged: working, shifts: shifts);
       if (!mounted) return;
       setState(() {
         _applyStagedQueueState(
-          staged: staged,
+          staged: working,
           shifts: shifts,
           shiftById: shiftById,
           portals: portals,
@@ -915,6 +980,15 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           preserveSelection: preserveSelection,
         );
       });
+      if (relinked > 0 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Koblet $relinked rute(r) automatisk til riktig MAVI fra filnavn/tittel.',
+            ),
+          ),
+        );
+      }
     } catch (_) {}
   }
 
@@ -2929,7 +3003,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           PartnerRoutePdfThumbnail(
             share: share,
             driverLabel: 'Ingen sjåfør',
-            height: 140,
+            height: 170,
+            showFullPage: true,
+            zoomTripHeader: true,
             onTapOpen: () => PartnerRoutePdfActions.openPdf(context, share),
           ),
           Padding(
@@ -2943,9 +3019,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  code != null
-                      ? 'Foreslått MAVI: ${MaviUnitCodes.compactLabel(code)}'
-                      : 'Ingen sjåfør koblet — velg bil i Duplikater- eller Manuell-fanen.',
+                  code != null && row == null
+                      ? '${MaviUnitCodes.compactLabel(code)} finnes ikke som aktiv MAVI i flåten — '
+                          'registrer bilen under Samarbeidspartner først.'
+                      : code != null
+                          ? 'Foreslått MAVI: ${MaviUnitCodes.compactLabel(code)}'
+                          : 'Ingen sjåfør koblet — velg bil i Duplikater- eller Manuell-fanen.',
                   style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
                 ),
                 const SizedBox(height: 8),
@@ -3552,6 +3631,19 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
+        if (contentDupes.isNotEmpty || maviDupes.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _buildDuplicateSectionHeader(
+              title: 'Rydd duplikater',
+              subtitle:
+                  'Behold én rute per gruppe — identisk PDF eller samme MAVI på samme dag.',
+              action: FilledButton.icon(
+                onPressed: _busyUpload || _publishing ? null : _deduplicateAllKeepOneEach,
+                icon: const Icon(Icons.filter_1_outlined, size: 18),
+                label: Text('Behold én av hver (${_allDuplicateExtraCount} slettes)'),
+              ),
+            ),
+          ),
         if (orphans.isNotEmpty)
           SliverToBoxAdapter(
             child: _buildDuplicateSectionHeader(
@@ -3580,11 +3672,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           SliverToBoxAdapter(
             child: _buildDuplicateSectionHeader(
               title: 'Identisk PDF (${contentDupes.length} gruppe(r))',
-              subtitle: '100 % samme innhold — behold én per gruppe.',
-              action: FilledButton.tonal(
-                onPressed: _busyUpload ? null : _removeDuplicateRoutes,
-                child: Text('Behold én (alle, $_duplicateExtraCount slettes)'),
-              ),
+              subtitle: '100 % samme innhold — ved 2+ kopier beholdes kun én.',
             ),
           ),
         for (final group in contentDupes)
@@ -3679,7 +3767,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               ),
               FilledButton.tonal(
                 onPressed: _busyUpload ? null : () => _removeDuplicateGroupShares(shares),
-                child: const Text('Behold én'),
+                child: const Text('Behold én her'),
               ),
             ],
           ),
@@ -3727,7 +3815,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           PartnerRoutePdfThumbnail(
             share: share,
             driverLabel: driverLabel,
-            height: 120,
+            height: 170,
+            showFullPage: true,
+            zoomTripHeader: true,
             onTapOpen: () => PartnerRoutePdfActions.openPdf(context, share),
           ),
           Padding(
