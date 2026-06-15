@@ -94,7 +94,14 @@ String _friendlyImportError(Object error) {
 
 enum PartnerRouteMassSource { manual, sap }
 
-enum _MassTab { allRoutes, drivers, missingShift, duplicates, importLog, skipped }
+enum _MassTab { skipped, duplicates, drivers, missingShift, allRoutes }
+
+/// Fanerekkefølge: Manuell → Duplikater → Flere last → Mangler skift → Ruter.
+const _kTabManual = 0;
+const _kTabDuplicates = 1;
+const _kTabMultiLoad = 2;
+const _kTabMissingShift = 3;
+const _kTabRoutes = 4;
 
 enum _RouteQueueFilter { all, missingShift, ready, selected }
 
@@ -159,7 +166,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   late DateTime _routeDate;
   final Map<String, DateTime> _dateByShare = {};
   DateTime? _filterDay;
-  _MassTab _sheetTab = _MassTab.allRoutes;
+  _MassTab _sheetTab = _MassTab.skipped;
   _RouteQueueFilter _queueFilter = _RouteQueueFilter.all;
   bool _sapSyncing = false;
   int _sapPendingInbox = 0;
@@ -793,7 +800,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 alignment: WrapAlignment.end,
                 children: [
                   OutlinedButton(
-                    onPressed: _busyUpload || _publishing ? null : () => _setTabIndex(3),
+                    onPressed: _busyUpload || _publishing ? null : () => _setTabIndex(_kTabDuplicates),
                     child: const Text('Se duplikater'),
                   ),
                   FilledButton.tonal(
@@ -905,12 +912,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (preferRoutesTab && staged.isNotEmpty) {
       _sheetTab = _MassTab.allRoutes;
       _queueFilter = _RouteQueueFilter.all;
-    } else if (!_initialTabSet && _routesMissingShift.isNotEmpty) {
-      _sheetTab = _MassTab.missingShift;
-      _queueFilter = _RouteQueueFilter.missingShift;
-    } else if (!_initialTabSet && staged.isNotEmpty) {
-      _sheetTab = _MassTab.allRoutes;
-      _queueFilter = _RouteQueueFilter.all;
+    } else if (!_initialTabSet) {
+      if (_skipped.isNotEmpty) {
+        _sheetTab = _MassTab.skipped;
+      } else if (_duplicateExtraCount > 0) {
+        _sheetTab = _MassTab.duplicates;
+      } else if (_routesMissingShift.isNotEmpty) {
+        _sheetTab = _MassTab.missingShift;
+        _queueFilter = _RouteQueueFilter.missingShift;
+      } else if (staged.isNotEmpty) {
+        _sheetTab = _MassTab.allRoutes;
+        _queueFilter = _RouteQueueFilter.all;
+      }
     }
     _initialTabSet = true;
   }
@@ -1320,7 +1333,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             backgroundColor: Colors.orange.shade800,
           ),
         );
-        _setTabIndex(2);
+        _setTabIndex(_kTabMissingShift);
         return;
       }
 
@@ -2011,7 +2024,15 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               driverLabel: row.partner.name,
             ),
           ];
-          if (_skipped.isEmpty) _sheetTab = _MassTab.drivers;
+          if (_skipped.isEmpty) {
+            if (_duplicateExtraCount > 0) {
+              _sheetTab = _MassTab.duplicates;
+            } else if (_missingShiftCount > 0) {
+              _sheetTab = _MassTab.missingShift;
+            } else {
+              _sheetTab = _MassTab.allRoutes;
+            }
+          }
         });
       }
       await _reload();
@@ -2288,7 +2309,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           backgroundColor: Colors.orange.shade800,
         ),
       );
-      _setTabIndex(2);
+      _setTabIndex(_kTabMissingShift);
       return;
     }
 
@@ -2302,23 +2323,29 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   int get _tabIndex => switch (_sheetTab) {
-        _MassTab.allRoutes => 0,
-        _MassTab.drivers => 1,
-        _MassTab.missingShift => 2,
-        _MassTab.duplicates => 3,
-        _MassTab.importLog => 4,
-        _MassTab.skipped => 5,
+        _MassTab.skipped => _kTabManual,
+        _MassTab.duplicates => _kTabDuplicates,
+        _MassTab.drivers => _kTabMultiLoad,
+        _MassTab.missingShift => _kTabMissingShift,
+        _MassTab.allRoutes => _kTabRoutes,
+      };
+
+  int get _currentWorkflowStepNumber => switch (_sheetTab) {
+        _MassTab.skipped => 1,
+        _MassTab.duplicates => 2,
+        _MassTab.drivers => 3,
+        _MassTab.missingShift => 4,
+        _MassTab.allRoutes => 5,
       };
 
   void _setTabIndex(int i) {
     setState(() {
       _sheetTab = switch (i) {
-        0 => _MassTab.allRoutes,
-        1 => _MassTab.drivers,
-        2 => _MassTab.missingShift,
-        3 => _MassTab.duplicates,
-        4 => _MassTab.importLog,
-        5 => _MassTab.skipped,
+        _kTabManual => _MassTab.skipped,
+        _kTabDuplicates => _MassTab.duplicates,
+        _kTabMultiLoad => _MassTab.drivers,
+        _kTabMissingShift => _MassTab.missingShift,
+        _kTabRoutes => _MassTab.allRoutes,
         _ => _MassTab.allRoutes,
       };
       if (_sheetTab == _MassTab.allRoutes) {
@@ -2327,6 +2354,102 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         _queueFilter = _RouteQueueFilter.missingShift;
       }
     });
+  }
+
+  void _goToNextWorkflowStep() {
+    if (_skipped.isNotEmpty) {
+      _setTabIndex(_kTabManual);
+      return;
+    }
+    if (_duplicateExtraCount > 0) {
+      _setTabIndex(_kTabDuplicates);
+      return;
+    }
+    if (_multiLoadDriverCount > 0) {
+      _setTabIndex(_kTabMultiLoad);
+      return;
+    }
+    if (_missingShiftCount > 0) {
+      _setTabIndex(_kTabMissingShift);
+      return;
+    }
+    _setTabIndex(_kTabRoutes);
+  }
+
+  Widget _buildWorkflowStepBanner(_MassUi ui) {
+    const steps = ['Manuell', 'Duplikater', '2+ last', 'Skift', 'Del ruter'];
+    final current = _currentWorkflowStepNumber;
+  final issues = <String>[
+      if (_skipped.isNotEmpty) '${_skipped.length} manuell',
+      if (_duplicateExtraCount > 0) '$_duplicateExtraCount duplikat',
+      if (_multiLoadDriverCount > 0) '$_multiLoadDriverCount med 2+ last',
+      if (_missingShiftCount > 0) '$_missingShiftCount mangler skift',
+    ];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: ui.accent.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Steg $current av 5',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: ui.accentDark),
+              ),
+              const Spacer(),
+              if (current < 5)
+                TextButton(
+                  onPressed: _goToNextWorkflowStep,
+                  child: const Text('Neste steg'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: List.generate(steps.length, (i) {
+              final n = i + 1;
+              final active = n == current;
+              final done = n < current;
+              return ActionChip(
+                label: Text(
+                  '${n}. ${steps[i]}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                    color: active ? ui.accentDark : done ? Colors.green.shade800 : Colors.grey.shade700,
+                  ),
+                ),
+                backgroundColor: active
+                    ? ui.surfaceTint
+                    : done
+                        ? Colors.green.shade50
+                        : Colors.grey.shade100,
+                side: BorderSide(
+                  color: active ? ui.accentDark : Colors.grey.shade300,
+                ),
+                padding: EdgeInsets.zero,
+                visualDensity: VisualDensity.compact,
+                onPressed: () => _setTabIndex(i),
+              );
+            }),
+          ),
+          if (issues.isNotEmpty && current < 5) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Gjenstår: ${issues.join(' · ')}',
+              style: TextStyle(fontSize: 11, color: Colors.orange.shade900, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   List<Widget> _infoChips(_MassUi ui) {
@@ -2358,7 +2481,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         routeInfoChip(
           '$_missingShiftCount mangler skift',
           color: Colors.red.shade800,
-          onTap: () => _setTabIndex(2),
+          onTap: () => _setTabIndex(_kTabMissingShift),
         ),
       );
     }
@@ -2415,7 +2538,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              _setTabIndex(1);
+              _setTabIndex(_kTabMultiLoad);
             },
             child: const Text('Se flere last/rute'),
           ),
@@ -2512,22 +2635,22 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       guidePanel: _buildWorkflowGuideContent(ui),
       guideExpanded: _guideExpanded,
       onGuideToggle: () => setState(() => _guideExpanded = !_guideExpanded),
-      tabLabels: const ['Ruter', 'Flere last/rute', 'Mangler skift', 'Duplikater', 'Logg', 'Manuell'],
+      topBanner: _buildWorkflowStepBanner(ui),
+      showTabCaption: true,
+      tabLabels: const ['Manuell', 'Duplikater', 'Flere last/rute', 'Mangler skift', 'Ruter'],
       tabBadges: [
-        _staged.isNotEmpty ? _staged.length : null,
+        _skipped.isNotEmpty ? _skipped.length : null,
+        _duplicatesTabCount > 0 ? _duplicatesTabCount : null,
         _multiLoadDriverCount > 0 ? _multiLoadDriverCount : null,
         missingShift > 0 ? missingShift : null,
-        _duplicatesTabCount > 0 ? _duplicatesTabCount : null,
-        _importLog.isNotEmpty ? _importLog.length : null,
-        _skipped.isNotEmpty ? _skipped.length : null,
+        _staged.isNotEmpty ? _staged.length : null,
       ],
       tabBadgeColors: [
-        ui.accentDark,
+        Colors.orange.shade800,
+        Colors.deepPurple.shade800,
         _multiLoadDriverCount > 0 ? Colors.orange.shade900 : ui.accentDark,
         Colors.red.shade700,
-        Colors.deepPurple.shade800,
-        Colors.grey.shade700,
-        Colors.orange.shade800,
+        ui.accentDark,
       ],
       selectedTabIndex: _tabIndex,
       onTabSelected: _setTabIndex,
@@ -2553,13 +2676,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: ui.steps.asMap().entries.map((e) => _workflowStep(e.key + 1, e.value, ui)).toList(),
+          children: ui.steps.asMap().entries.map((e) => _workflowStepRow(e.key + 1, e.value, ui)).toList(),
         ),
       ),
     );
   }
 
-  Widget _workflowStep(int n, String text, _MassUi ui) {
+  Widget _workflowStepRow(int n, String text, _MassUi ui) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
@@ -2790,14 +2913,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             icon: Icons.pan_tool_alt_outlined,
             color: Colors.orange.shade900,
             text: '$_skipped PDF krever manuell tildeling',
-            onTap: () => _setTabIndex(5),
+            onTap: () => _setTabIndex(_kTabManual),
           ),
         if (_missingShiftCount > 0 && _sheetTab != _MassTab.missingShift)
           _buildCompactAlert(
             icon: Icons.warning_amber_rounded,
             color: Colors.red.shade800,
             text: '$_missingShiftCount rute(r) mangler skift',
-            onTap: () => _setTabIndex(2),
+            onTap: () => _setTabIndex(_kTabMissingShift),
           ),
         if (_staged.isNotEmpty)
           Padding(
@@ -2857,31 +2980,28 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   String _tabHint() {
     return switch (_sheetTab) {
-      _MassTab.allRoutes =>
-        'Zoom på strekkode/dato/sjåfør på kortene. Sjåfør står under PDF — trykk for å bytte.',
+      _MassTab.skipped =>
+        'Steg 1: Tildel sjåfør og skift på PDF-er som ikke ble auto-fordelt. Trykk OK når valgt.',
+      _MassTab.duplicates =>
+        'Steg 2: Kun identisk PDF er duplikat. Rydd bort ekstra kopier før du deler ruter.',
       _MassTab.drivers =>
         _multiLoadDriverCount > 0
-            ? '$_multiLoadDriverCount bil(er) med 2+ last/rute — markert med oransje. Sjekk rettferdig fordeling før publisering.'
-            : 'Ingen biler med flere last/rute akkurat nå. Slå på «Vis alle biler med rute» for full oversikt.',
+            ? 'Steg 3: $_multiLoadDriverCount bil(er) med 2+ last — sjekk at fordelingen er rettferdig.'
+            : 'Steg 3: Ingen biler med flere last akkurat nå.',
       _MassTab.missingShift =>
-        'Kun ruter uten skiftplan — velg skift i kolonnen før publisering.',
-      _MassTab.duplicates =>
-        'Kun 100 % identisk PDF-innhold telles som duplikat. Flere ulike last for samme bil samme dag er helt normalt.',
-      _MassTab.importLog =>
-        'Oversikt over hva systemet gjorde med hver PDF (automatisk MAVI-fordeling eller årsak til manuell).',
-      _MassTab.skipped =>
-        'Manuelle PDF-er sendes ikke med automatisk. Tildel sjåfør her — de legges i kø når du er klar.',
+        'Steg 4: Velg skift på ruter uten skiftplan før publisering.',
+      _MassTab.allRoutes =>
+        'Steg 5: Velg ruter og del med SMS + e-post eller uten varsel.',
     };
   }
 
   Widget _buildTabContent(_MassUi ui) {
     return switch (_sheetTab) {
-      _MassTab.allRoutes => _buildRoutesOverview(ui),
+      _MassTab.skipped => _buildSkippedList(ui),
+      _MassTab.duplicates => _buildDuplicatesTab(ui),
       _MassTab.drivers => _buildDriverCentricList(ui),
       _MassTab.missingShift => _buildRoutesOverview(ui, forceMissingOnly: true),
-      _MassTab.duplicates => _buildDuplicatesTab(ui),
-      _MassTab.importLog => _buildAssignmentOverview(ui),
-      _MassTab.skipped => _buildSkippedList(ui),
+      _MassTab.allRoutes => _buildRoutesOverview(ui),
     };
   }
 
@@ -3155,13 +3275,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   )
                 else
                   OutlinedButton.icon(
-                    onPressed: () => _setTabIndex(5),
+                    onPressed: () => _setTabIndex(_kTabManual),
                     icon: const Icon(Icons.pan_tool_alt_outlined, size: 18),
                     label: const Text('Gå til manuell tildeling'),
                   ),
                 const SizedBox(height: 6),
                 TextButton.icon(
-                  onPressed: () => _setTabIndex(3),
+                  onPressed: () => _setTabIndex(_kTabDuplicates),
                   icon: const Icon(Icons.copy_all_outlined, size: 16),
                   label: const Text('Se i Duplikater'),
                 ),
@@ -3174,35 +3294,38 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Widget _buildPublishBar(_MassUi ui) {
-    final missing = _missingShiftCount;
     final selectedMissing =
         _selected.where((id) => _effectiveShiftId(id) == null).length;
     final canPublish = _staged.isNotEmpty &&
         _selected.isNotEmpty &&
-        selectedMissing == 0;
+        selectedMissing == 0 &&
+        _skipped.isEmpty;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final stacked = constraints.maxWidth < 640;
         final statusText = _staged.isEmpty
-            ? 'Ingen ruter i kø'
-            : selectedMissing > 0
-                ? '$selectedMissing valgte rute(r) mangler skift · $_readyShiftCount OK totalt'
-                : canPublish
-                    ? 'Sjekk sjåfør og PDF-zoom på kortene · ${_selected.length} valgt'
-                        '${_skipped.isNotEmpty ? ' · ${_skipped.length} manuelle venter' : ''}'
-                    : 'Huk av ruter du vil sende (manuell-fanen kan vente)';
+            ? 'Steg 5: Ingen ruter i kø ennå'
+            : _skipped.isNotEmpty
+                ? 'Fullfør steg 1 (manuell) før du deler ruter'
+                : selectedMissing > 0
+                    ? 'Steg 4: $selectedMissing valgte rute(r) mangler skift'
+                    : canPublish
+                        ? 'Steg 5: Klar — ${_selected.length} rute(r) valgt for utsending'
+                        : 'Steg 5: Huk av ruter du vil dele';
 
         final status = Text(
           statusText,
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: selectedMissing > 0
-                ? Colors.red.shade800
-                : _multiLoadDriverCount > 0 && canPublish
-                    ? Colors.orange.shade900
-                    : Colors.grey.shade800,
+            color: _skipped.isNotEmpty
+                ? Colors.orange.shade900
+                : selectedMissing > 0
+                    ? Colors.red.shade800
+                    : canPublish
+                        ? Colors.green.shade800
+                        : Colors.grey.shade800,
           ),
         );
 
@@ -3210,12 +3333,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           onPressed: _publishing || !canPublish ? null : () => _publish(notifyDriver: false),
           icon: _publishing
               ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
-              : const Icon(Icons.inventory_2_outlined, size: 20),
+              : const Icon(Icons.notifications_off_outlined, size: 20),
           label: Text('Uten varsel (${_selected.length})'),
           style: FilledButton.styleFrom(
             backgroundColor: RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
-            minimumSize: const Size(0, 46),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            minimumSize: const Size(0, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 18),
           ),
         );
 
@@ -3223,14 +3346,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           onPressed: _publishing || !canPublish ? null : () => _publish(notifyDriver: true),
           icon: _publishing
               ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
-              : const Icon(Icons.rocket_launch_outlined, size: 20),
-          label: Text(
-            '$_withNotifyLabel (${_selected.length})',
-          ),
+              : const Icon(Icons.sms_outlined, size: 20),
+          label: Text('SMS + e-post (${_selected.length})'),
           style: FilledButton.styleFrom(
             backgroundColor: ui.accentDark,
-            minimumSize: const Size(0, 46),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            minimumSize: const Size(0, 48),
+            padding: const EdgeInsets.symmetric(horizontal: 18),
           ),
         );
 
@@ -3442,47 +3563,6 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
-  Widget _buildAssignmentOverview(_MassUi ui) {
-    if (_importLog.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Text(
-            _isSap
-                ? 'Importlogg fylles når SAP-e-poster hentes inn og fordeles.'
-                : 'Importlogg fylles når du laster opp PDF-er.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600, height: 1.4),
-          ),
-        ),
-      );
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.all(10),
-      physics: const AlwaysScrollableScrollPhysics(),
-      itemCount: _importLog.length,
-      separatorBuilder: (_, _) => const Divider(height: 1),
-      itemBuilder: (_, i) {
-        final row = _importLog[i];
-        final ok = row.status == 'ok';
-        return ListTile(
-          leading: CircleAvatar(
-            radius: 18,
-            backgroundColor: (ok ? Colors.green : Colors.orange).withValues(alpha: 0.15),
-            child: Icon(ok ? Icons.check : Icons.priority_high, color: ok ? Colors.green.shade800 : Colors.orange.shade900, size: 20),
-          ),
-          title: Text(row.fileName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-          subtitle: Text(
-            ok
-                ? 'Automatisk → ${row.maviCode != null ? MaviUnitCodes.compactLabel(row.maviCode!) : "?"}${row.stowingLane != null ? " · Lane ${row.stowingLane}" : ""}${row.driverLabel != null ? " · ${row.driverLabel}" : ""}'
-                : 'Manuell: ${row.reason ?? "ukjent"}',
-            style: TextStyle(fontSize: 11.5, color: ok ? Colors.grey.shade700 : Colors.orange.shade900),
-          ),
-        );
-      },
-    );
-  }
-
   String? _skippedDriverLabel(_SkippedPdf item) {
     if (item.selectedVehicleId == null) {
       return item.detectedCode != null
@@ -3515,6 +3595,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
+            final driverChosen = item.selectedVehicleId != null;
+            final shiftChosen = item.shiftId != null && item.shiftId!.isNotEmpty;
+            final canOk = driverChosen && shiftChosen && !_busyUpload;
             return Padding(
               padding: EdgeInsets.only(
                 left: 16,
@@ -3560,6 +3643,33 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                         setState(() => item.selectedVehicleId = v);
                       },
                     ),
+                    if (driverChosen) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _skippedDriverLabel(item) ?? 'Sjåfør valgt',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.green.shade900,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       value: item.shiftId,
@@ -3606,17 +3716,35 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                         }
                       },
                     ),
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      onPressed: _busyUpload
-                          ? null
-                          : () async {
-                              Navigator.pop(ctx);
-                              await _assignSkipped(item);
-                            },
-                      style: FilledButton.styleFrom(backgroundColor: ui.accentDark),
-                      child: const Text('Tildel rute'),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text('Avbryt'),
+                        ),
+                        const Spacer(),
+                        FilledButton.icon(
+                          onPressed: canOk
+                              ? () async {
+                                  Navigator.pop(ctx);
+                                  await _assignSkipped(item);
+                                }
+                              : null,
+                          icon: const Icon(Icons.check, size: 20),
+                          style: FilledButton.styleFrom(backgroundColor: ui.accentDark),
+                          label: const Text('OK — legg i kø'),
+                        ),
+                      ],
                     ),
+                    if (driverChosen && !shiftChosen)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          'Velg også skiftplan for å aktivere OK.',
+                          style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -3952,8 +4080,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Disse rutene venter mens du sender de automatisk tildelte. '
-                  'Velg sjåfør og skift på hvert kort — deretter «Tildel rute».',
+                  'Steg 1: Velg sjåfør og skift på hvert kort, trykk OK — ruten legges i køen.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.35),
                 ),
               ],
@@ -4015,10 +4142,11 @@ class _MassUi {
         tagline: 'Importer manuelt, kontroller sjåfører og PDF-er, publiser når alt stemmer',
         icon: Icons.mark_email_read_outlined,
         steps: [
-          'SAP sender PDF til ${SapRoutesConfig.inboundAddress} (emne «${SapRoutesConfig.expectedSubject}»).',
-          'Ventende PDF-er vises øverst — ingenting importeres automatisk.',
-          'Trykk «Importer til kø» — systemet leser MAVI og fordeler til sjåfør (manuell tab for resten).',
-          'Kontroller alle kort, fjern duplikater, velg ruter — publiser først når alt er kontrollert.',
+          'Importer/lag opp PDF-er — systemet fordeler automatisk der MAVI finnes.',
+          'Manuell: velg sjåfør + skift, trykk OK.',
+          'Duplikater: behold én per identisk PDF.',
+          'Sjekk 2+ last og manglende skift.',
+          'Velg ruter og del med SMS + e-post eller uten varsel.',
         ],
         emptyHint:
             'Ingen SAP-ruter i kø.\n\n'
@@ -4035,10 +4163,11 @@ class _MassUi {
       tagline: 'Last opp PDF-er, kontroller fordeling, publiser når alt stemmer',
       icon: Icons.auto_awesome,
       steps: [
-        'Last opp én eller mange rute-PDF-er fra PC (filnavn spiller ingen rolle).',
-        'Systemet leser MAVI fra PDF og fordeler til sjåfør i flåten.',
-        'PDF uten treff legges under «Manuell tildeling» — velg bil og skift der.',
-        'Sjekk forhåndsvisning på hvert kort — velg ruter, juster sjåfør/notat/skift før publisering.',
+        'Last opp PDF-er — MAVI leses automatisk fra filen.',
+        'Manuell: velg sjåfør + skift, trykk OK.',
+        'Duplikater: behold én per identisk PDF.',
+        'Sjekk 2+ last og manglende skift.',
+        'Velg ruter og del med SMS + e-post eller uten varsel.',
       ],
       emptyHint:
           'Ingen ruter i kø.\n\nLast opp PDF-er med knappen over. '

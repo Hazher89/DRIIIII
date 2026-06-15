@@ -63,22 +63,24 @@ Future<SharedDocumentNotifyPlan?> showSharedDocumentNotifyDialog(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const Text(
-                    'Fellesmappe deles med valgte samarbeidspartnere. '
-                    'Velg hvordan de skal varsles.',
+                    'Fellesmappe deles med alle samarbeidspartnere. '
+                    'Velg kanal og hvilke bedrifter som skal varsles — kun valgte får beskjed.',
                     style: TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                   const SizedBox(height: 14),
-                  Text('Varsel', style: DriftProTheme.labelMd),
+                  Text('Varselkanal', style: DriftProTheme.labelMd),
                   const SizedBox(height: 8),
-                  SegmentedButton<SharedDocumentNotifyChannel>(
-                    segments: SharedDocumentNotifyChannel.values.map((c) {
-                      return ButtonSegment(
-                        value: c,
-                        label: Text(channelLabel(c), style: const TextStyle(fontSize: 11)),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: SharedDocumentNotifyChannel.values.map((c) {
+                      final selected = channel == c;
+                      return ChoiceChip(
+                        label: Text(channelLabel(c)),
+                        selected: selected,
+                        onSelected: (_) => setSt(() => channel = c),
                       );
                     }).toList(),
-                    selected: {channel},
-                    onSelectionChanged: (v) => setSt(() => channel = v.first),
                   ),
                   if (needsRecipients) ...[
                     const SizedBox(height: 16),
@@ -169,7 +171,7 @@ Future<SharedDocumentNotifyPlan?> showSharedDocumentNotifyDialog(
                           partnerIds: Set<String>.from(selected),
                         ),
                       ),
-              child: const Text('Last opp'),
+              child: Text(needsRecipients ? 'Last opp og varsle' : 'Last opp uten varsel'),
             ),
           ],
         );
