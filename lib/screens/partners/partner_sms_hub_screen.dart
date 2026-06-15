@@ -103,7 +103,7 @@ class _PartnerSmsHubScreenState extends State<PartnerSmsHubScreen> {
       SliverToBoxAdapter(
         child: PartnerSmsHubSectionTitle(
           title: 'Send SMS',
-          subtitle: 'Velg kontakter eller hent kunder fra rute-PDF',
+          subtitle: '1. Velg MAVI · 2. Velg mottakere · 3. Skriv melding · 4. Send',
         ),
       ),
       SliverToBoxAdapter(

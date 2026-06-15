@@ -20,6 +20,7 @@ class PartnerSmsContact {
   final String phone;
   final String kind;
   final String? maviCode;
+  final String? vehicleId;
 
   const PartnerSmsContact({
     required this.id,
@@ -29,6 +30,7 @@ class PartnerSmsContact {
     required this.phone,
     required this.kind,
     this.maviCode,
+    this.vehicleId,
   });
 }
 
@@ -94,7 +96,6 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
   bool _loading = true;
   String? _error;
   String? _companyId;
-  List<Partner> _partners = [];
   List<PartnerSmsContact> _contacts = [];
   List<FleetPartnerVehicleRow> _fleet = [];
   bool _sending = false;
@@ -146,9 +147,9 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
       );
       final portals = await PartnerService.fetchCompanyPortalAccounts(cid);
       final partnerById = {for (final p in partners) p.id: p};
-      final maviByPartner = {
+      final vehicleToMavi = {
         for (final row in fleet)
-          row.partner.id: MaviUnitCodes.normalize(row.vehicle.unitCode),
+          row.vehicle.id: MaviUnitCodes.normalize(row.vehicle.unitCode),
       };
       final contacts = <PartnerSmsContact>[];
       final seenPhones = <String>{};
@@ -159,62 +160,89 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
         required String label,
         required String? phone,
         required String kind,
-        String? maviCode,
+        required String maviCode,
+        String? vehicleId,
       }) {
-        final p = phone?.trim();
-        if (p == null || p.length < 8) return;
-        final key = p.replaceAll(RegExp(r'\s+'), '');
-        if (seenPhones.contains(key)) return;
-        seenPhones.add(key);
+        final norm = normalizePhoneNo(phone ?? '');
+        if (norm == null) return;
+        if (seenPhones.contains(norm)) return;
+        seenPhones.add(norm);
         final partner = partnerById[partnerId];
         contacts.add(PartnerSmsContact(
           id: id,
           partnerId: partnerId,
           partnerName: partner?.name ?? 'Ukjent',
           label: label,
-          phone: p,
+          phone: displayPhoneNo(norm),
           kind: kind,
-          maviCode: maviCode ?? maviByPartner[partnerId],
+          maviCode: maviCode,
+          vehicleId: vehicleId,
         ));
       }
 
-      for (final p in partners) {
-        addContact(
-          id: 'partner:${p.id}',
-          partnerId: p.id,
-          label: '${p.name} · bedrift',
-          phone: p.phone,
-          kind: 'company',
-          maviCode: maviByPartner[p.id],
-        );
-      }
       for (final row in fleet) {
         final v = row.vehicle;
         final mavi = MaviUnitCodes.normalize(v.unitCode);
+        final partner = row.partner;
         final driver = v.driverName?.trim();
-        final label = driver != null && driver.isNotEmpty
+        final driverLabel = driver != null && driver.isNotEmpty
             ? '${MaviUnitCodes.compactLabel(mavi)} · $driver'
-            : MaviUnitCodes.compactLabel(mavi);
+            : '${MaviUnitCodes.compactLabel(mavi)} · sjåfør';
+
         addContact(
           id: 'vehicle:${v.id}',
-          partnerId: row.partner.id,
-          label: label,
+          partnerId: partner.id,
+          label: driverLabel,
           phone: v.phone,
           kind: 'vehicle',
           maviCode: mavi,
+          vehicleId: v.id,
+        );
+        addContact(
+          id: 'partner:${partner.id}:v:${v.id}',
+          partnerId: partner.id,
+          label: '${partner.name} · bedrift',
+          phone: partner.phone,
+          kind: 'company',
+          maviCode: mavi,
+          vehicleId: v.id,
         );
       }
+
       for (final a in portals) {
         if (!a.isActive) continue;
         final kind = a.isOwner ? 'portal_owner' : 'portal_driver';
-        addContact(
-          id: 'portal:${a.id}',
-          partnerId: a.partnerId,
-          label: '${a.username} · ${a.isOwner ? 'eier' : 'sjåfør'}',
-          phone: a.phone,
-          kind: kind,
-          maviCode: maviByPartner[a.partnerId],
-        );
+        final role = a.isOwner ? 'eier' : 'sjåfør';
+
+        if (a.partnerVehicleId != null) {
+          final mavi = vehicleToMavi[a.partnerVehicleId];
+          if (mavi == null) continue;
+          addContact(
+            id: 'portal:${a.id}',
+            partnerId: a.partnerId,
+            label: '${a.username} · $role',
+            phone: a.phone,
+            kind: kind,
+            maviCode: mavi,
+            vehicleId: a.partnerVehicleId,
+          );
+          continue;
+        }
+
+        final partnerRows = fleet.where((r) => r.partner.id == a.partnerId);
+        for (final row in partnerRows) {
+          final mavi = vehicleToMavi[row.vehicle.id];
+          if (mavi == null) continue;
+          addContact(
+            id: 'portal:${a.id}:v:${row.vehicle.id}',
+            partnerId: a.partnerId,
+            label: '${a.username} · $role',
+            phone: a.phone,
+            kind: kind,
+            maviCode: mavi,
+            vehicleId: row.vehicle.id,
+          );
+        }
       }
 
       contacts.sort((a, b) {
@@ -231,7 +259,6 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
       if (mounted) {
         setState(() {
           _companyId = cid;
-          _partners = partners;
           _contacts = contacts;
           _fleet = fleet;
           _loading = false;
@@ -285,10 +312,31 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     return keys;
   }
 
-  List<PartnerSmsContact> get _contactsForSelectedMavi {
-    final key = _selectedMaviGroup;
-    if (key == null) return const [];
-    return _maviGroups[key] ?? const [];
+  List<PartnerSmsContact> get _activeMaviContacts {
+    final mavi = _selectedMaviCode;
+    if (mavi == null || mavi.isEmpty) return const [];
+    return _filtered.where((c) => c.maviCode == mavi).toList();
+  }
+
+  String? get _selectedMaviCode {
+    final vid = _selectedVehicleId;
+    if (vid != null) {
+      for (final row in _fleet) {
+        if (row.vehicle.id == vid) {
+          return MaviUnitCodes.normalize(row.vehicle.unitCode);
+        }
+      }
+    }
+    return _selectedMaviGroup;
+  }
+
+  int _contactCountForVehicle(String vehicleId) {
+    final mavi = _fleet
+        .where((r) => r.vehicle.id == vehicleId)
+        .map((r) => MaviUnitCodes.normalize(r.vehicle.unitCode))
+        .firstOrNull;
+    if (mavi == null) return 0;
+    return _contacts.where((c) => c.maviCode == mavi).length;
   }
 
   String _maviGroupLabel(String mavi) {
@@ -366,7 +414,8 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                 DropdownMenuItem(
                   value: row.vehicle.id,
                   child: Text(
-                    _maviFleetLabel(row),
+                    '${_maviFleetLabel(row)}'
+                    '${_contactCountForVehicle(row.vehicle.id) > 0 ? ' · ${_contactCountForVehicle(row.vehicle.id)} kontakt(er)' : ' · ingen telefon'}',
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
@@ -609,7 +658,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
           if (_loading)
             const Padding(
               padding: EdgeInsets.all(32),
-              child: const DriftProLoadingCenter(),
+              child: DriftProLoadingCenter(),
             )
           else if (_error != null)
             Padding(
@@ -617,9 +666,20 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
               child: Text(_error!, textAlign: TextAlign.center),
             )
           else ...[
-            _buildSharedMaviPicker(padding: const EdgeInsets.fromLTRB(12, 8, 12, 4)),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+              child: Text(
+                'Steg 1 · Velg MAVI',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                  color: DriftProTheme.primaryGreenDark,
+                ),
+              ),
+            ),
+            _buildSharedMaviPicker(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: SegmentedButton<int>(
                 segments: const [
                   ButtonSegment(
@@ -656,7 +716,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                       child: _companyId == null
                           ? const Padding(
                               padding: EdgeInsets.all(32),
-                              child: const DriftProLoadingCenter(),
+                              child: DriftProLoadingCenter(),
                             )
                           : PartnerSmsRouteCustomersTab(
                               companyId: _companyId!,
@@ -759,15 +819,35 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
       _selectedMaviGroup = maviKeys.first;
     }
     final selectedKey = _selectedMaviGroup;
-    final groupContacts = _contactsForSelectedMavi;
+    final groupContacts = _activeMaviContacts;
+    final maviLabel = _selectedMaviCode != null
+        ? MaviUnitCodes.compactLabel(_selectedMaviCode!)
+        : 'MAVI';
 
-    Widget maviSelector() {
-      if (maviKeys.isEmpty) {
-        return const Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('Ingen kontakter matcher søket.', textAlign: TextAlign.center),
+    Widget contactList() {
+      if (groupContacts.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Icon(Icons.phone_disabled_outlined, size: 36, color: Colors.grey.shade500),
+              const SizedBox(height: 8),
+              Text(
+                'Ingen telefon registrert for $maviLabel.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Legg inn telefon under Samarbeidspartner → bil, bedrift eller sjåfør-portal.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context), height: 1.35),
+              ),
+            ],
+          ),
         );
       }
+
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -807,23 +887,27 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             child: Row(
               children: [
-                TextButton.icon(
-                  onPressed: groupContacts.isEmpty
-                      ? null
-                      : () => setState(() => _selected.addAll(groupContacts.map((c) => c.id))),
-                  icon: const Icon(Icons.select_all, size: 18),
-                  label: const Text('Velg denne MAVI'),
+                Expanded(
+                  child: Text(
+                    hideMaviPicker
+                        ? 'Steg 2 · ${groupContacts.length} kontakt(er) for $maviLabel'
+                        : '${groupContacts.length} kontakt(er)',
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  ),
                 ),
-                TextButton.icon(
-                  onPressed: groupContacts.isEmpty
+                TextButton(
+                  onPressed: () => setState(() => _selected.addAll(groupContacts.map((c) => c.id))),
+                  child: const Text('Velg alle'),
+                ),
+                TextButton(
+                  onPressed: groupContacts.every((c) => !_selected.contains(c.id))
                       ? null
                       : () => setState(() {
                             for (final c in groupContacts) {
                               _selected.remove(c.id);
                             }
                           }),
-                  icon: const Icon(Icons.deselect, size: 18),
-                  label: const Text('Fjern valg'),
+                  child: const Text('Fjern'),
                 ),
               ],
             ),
@@ -847,7 +931,8 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                   _contactRoleLabel(c),
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
-                subtitle: Text(c.phone),
+                subtitle: Text('${c.label}\n${c.phone}'),
+                isThreeLine: true,
                 trailing: IconButton(
                   tooltip: 'Send kun til denne',
                   icon: const Icon(Icons.send_outlined),
@@ -866,14 +951,19 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
       );
     }
 
+    Widget maviSelector() => contactList();
+
     final messageBlock = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const Divider(),
         const SizedBox(height: 8),
-        const Text(
-          'SMS til valgte kontakter / egne nummer',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        Text(
+          hideMaviPicker ? 'Steg 3 · Skriv melding' : 'Skriv melding',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: hideMaviPicker ? DriftProTheme.primaryGreenDark : null,
+          ),
         ),
         const SizedBox(height: 8),
         PartnerSmsMessageSection(
@@ -882,52 +972,46 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
           minLines: 3,
         ),
         const SizedBox(height: 12),
-        _buildContactsSendSection(isDark, totalRecipients, manualCount, selectedCount),
+        _buildContactsSendSection(
+          isDark,
+          totalRecipients,
+          manualCount,
+          selectedCount,
+          hideMaviPicker: hideMaviPicker,
+        ),
       ],
     );
 
-    final searchRow = Padding(
-      padding: EdgeInsets.fromLTRB(16, scrollable ? 0 : 12, 16, 8),
-      child: TextField(
-        controller: _searchCtrl,
-        decoration: InputDecoration(
-          hintText: 'Søk MAVI-nummer eller telefon…',
-          prefixIcon: const Icon(Icons.search),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-          isDense: true,
-        ),
-        onChanged: (_) {
-          if (hideMaviPicker) {
-            setState(() {});
-            return;
-          }
-          final keys = _sortedMaviKeys;
-          if (keys.isNotEmpty &&
-              (_selectedMaviGroup == null || !keys.contains(_selectedMaviGroup))) {
-            setState(() => _selectedMaviGroup = keys.first);
-          }
-        },
-      ),
-    );
+    final searchRow = hideMaviPicker
+        ? const SizedBox.shrink()
+        : Padding(
+            padding: EdgeInsets.fromLTRB(16, scrollable ? 0 : 12, 16, 8),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Søk MAVI-nummer eller telefon…',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                isDense: true,
+              ),
+              onChanged: (_) {
+                final keys = _sortedMaviKeys;
+                if (keys.isNotEmpty &&
+                    (_selectedMaviGroup == null || !keys.contains(_selectedMaviGroup))) {
+                  setState(() => _selectedMaviGroup = keys.first);
+                } else {
+                  setState(() {});
+                }
+              },
+            ),
+          );
 
     if (scrollable) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           searchRow,
-          if (groupContacts.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                hideMaviPicker
-                    ? 'Ingen kontakter for valgt MAVI.'
-                    : 'Ingen kontakter matcher søket.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: PartnerUi.mutedText(context)),
-              ),
-            )
-          else
-            maviSelector(),
+          contactList(),
           Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), child: messageBlock),
         ],
       );
@@ -958,8 +1042,9 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     bool isDark,
     int totalRecipients,
     int manualCount,
-    int selectedCount,
-  ) {
+    int selectedCount, {
+    bool hideMaviPicker = false,
+  }) {
     final selectedContacts =
         _contacts.where((c) => _selected.contains(c.id)).toList(growable: false);
     final manualPhones = _manualPhones;
@@ -1084,6 +1169,15 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
           ),
         ),
         const SizedBox(height: 16),
+        Text(
+          hideMaviPicker ? 'Steg 4 · Send' : 'Send',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 13,
+            color: hideMaviPicker ? DriftProTheme.primaryGreenDark : null,
+          ),
+        ),
+        const SizedBox(height: 10),
         FilledButton.icon(
           onPressed: _sending || totalRecipients == 0 || _messageCtrl.text.trim().isEmpty
               ? null
@@ -1095,7 +1189,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
           icon: _sending
               ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
               : const Icon(Icons.send),
-          label: Text('Send til alle valgte ($totalRecipients)'),
+          label: Text('Send SMS ($totalRecipients)'),
         ),
         if (selectedCount > 0) ...[
           const SizedBox(height: 10),

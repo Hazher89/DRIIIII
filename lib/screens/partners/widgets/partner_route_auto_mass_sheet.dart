@@ -1404,7 +1404,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 Icon(Icons.delete_forever_outlined, size: 18, color: Colors.red.shade900),
                 const SizedBox(width: 10),
                 Text(
-                  'Tøm alle rutene (${_staged.length})',
+                  'Tøm hele køen ($_queueTotalCount)',
                   style: TextStyle(color: Colors.red.shade900, fontWeight: FontWeight.w700),
                 ),
               ],
@@ -1866,13 +1866,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (mounted) {
         if (ok > 0 && _staged.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
+            SnackBar(
               content: Text(
-                'PDF-er ble lagret, men køen vises ikke. Lukk og åpne AUTO MASS på nytt, '
-                'eller sjekk fanen Manuell / Logg.',
+                'PDF-er ble lagret, men køen vises ikke. Lukk og åpne ${_ui.title} på nytt, '
+                'eller sjekk fanen Manuell.',
               ),
               backgroundColor: Colors.orange,
-              duration: Duration(seconds: 8),
+              duration: const Duration(seconds: 8),
             ),
           );
         } else if (newSkipped.isNotEmpty && ok == 0) {
@@ -1885,7 +1885,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           SnackBar(
             content: Text(
               ok > 0
-                  ? 'AUTO MASS: $ok rute(r) i kø.$skippedMsg Sjekk PDF-forside på kortene før publisering.'
+                  ? '${_ui.title}: $ok rute(r) i kø.$skippedMsg Sjekk PDF-forside på kortene før publisering.'
                   : newSkipped.isNotEmpty
                       ? 'Ingen ruter auto-fordelt.$skippedMsg'
                       : 'Ingen PDF-er ble importert — sjekk at filene er gyldige rute-PDF-er.',
@@ -2052,22 +2052,41 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
   }
 
+  Future<void> _clearAllSkippedPdfsQuiet() async {
+    for (final item in List<_SkippedPdf>.from(_skipped)) {
+      if (item.sapInboxId != null) {
+        await PartnerService.dismissSapRouteInbox(item.sapInboxId!);
+      }
+      item.noteCtrl.dispose();
+    }
+    if (mounted) {
+      setState(() => _skipped.clear());
+    }
+  }
+
+  int get _queueTotalCount => _staged.length + _skipped.length;
+
   Future<void> _clearAllStaged() async {
-    if (_staged.isEmpty) return;
+    if (_staged.isEmpty && _skipped.isEmpty) return;
+    final stagedN = _staged.length;
+    final manualN = _skipped.length;
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Tøm alle tildelte ruter?'),
+        title: const Text('Tøm hele køen?'),
         content: Text(
-          'Fjerner alle ${_staged.length} rute(r) fra AUTO MASS-køen. '
-          'PDF-er i «Hoppet over» beholdes (${_skipped.length} stk).',
+          stagedN > 0 && manualN > 0
+              ? 'Fjerner $stagedN rute(r) fra køen og $manualN manuell(e) PDF-er.'
+              : stagedN > 0
+                  ? 'Fjerner alle $stagedN rute(r) fra køen.'
+                  : 'Fjerner alle $manualN manuell(e) PDF-er fra køen.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
-            child: const Text('Tøm alle'),
+            child: const Text('Tøm alt'),
           ),
         ],
       ),
@@ -2079,9 +2098,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       for (final s in List<PartnerRouteShare>.from(_staged)) {
         await PartnerService.deleteRouteShare(s);
       }
+      await _clearAllSkippedPdfsQuiet();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Alle tildelte ruter er fjernet fra køen.')),
+          SnackBar(
+            content: Text(
+              stagedN > 0 && manualN > 0
+                  ? 'Køen er tømt ($stagedN ruter + $manualN manuelle PDF-er).'
+                  : stagedN > 0
+                      ? 'Alle $stagedN ruter er fjernet fra køen.'
+                      : 'Alle $manualN manuelle PDF-er er fjernet.',
+            ),
+          ),
         );
       }
       await _reload();
@@ -2499,13 +2527,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         ),
       );
     }
-    if (_staged.isNotEmpty) {
+    if (_queueTotalCount > 0) {
       chips.add(
         TextButton.icon(
           onPressed: _busyUpload ? null : _clearAllStaged,
           icon: Icon(Icons.delete_sweep_outlined, size: 18, color: Colors.grey.shade700),
           label: Text(
-            'Tøm kø (${_staged.length})',
+            'Tøm kø ($_queueTotalCount)',
             style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
           ),
         ),
@@ -2725,7 +2753,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
-        if (_staged.isNotEmpty) ...[
+        if (_queueTotalCount > 0) ...[
           const SizedBox(height: 8),
           Row(
             children: [
@@ -2733,19 +2761,28 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 child: TextButton.icon(
                   onPressed: _busyUpload || _publishing ? null : _clearAllStaged,
                   icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                  label: Text('Tøm kø (${_staged.length})'),
+                  label: Text('Tøm kø ($_queueTotalCount)'),
                   style: TextButton.styleFrom(foregroundColor: Colors.grey.shade700),
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(child: _buildDateQueueMenu(_stagedByDate)),
+              if (_staged.isNotEmpty) Expanded(child: _buildDateQueueMenu(_stagedByDate)),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            '${_staged.length} ruter i kø${_filterDay != null ? ' · filtrert' : ''}',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: ui.accentDark),
-          ),
+          if (_staged.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              '${_staged.length} ruter i kø${_filterDay != null ? ' · filtrert' : ''}'
+              '${_skipped.isNotEmpty ? ' · ${_skipped.length} manuelle' : ''}',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: ui.accentDark),
+            ),
+          ] else if (_skipped.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              '${_skipped.length} manuelle PDF-er i kø',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: ui.accentDark),
+            ),
+          ],
         ],
       ],
     );
@@ -2912,7 +2949,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           _buildCompactAlert(
             icon: Icons.pan_tool_alt_outlined,
             color: Colors.orange.shade900,
-            text: '$_skipped PDF krever manuell tildeling',
+            text: '${_skipped.length} PDF krever manuell tildeling',
             onTap: () => _setTabIndex(_kTabManual),
           ),
         if (_missingShiftCount > 0 && _sheetTab != _MassTab.missingShift)
