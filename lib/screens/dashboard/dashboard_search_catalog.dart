@@ -260,6 +260,8 @@ class DashboardSearchCatalog {
           AccessKeys.hmsUtstyr, ['maskin', 'utstyr']),
       ('hms_kompetanse', 'Kompetanse', 'Kurs og sertifikater', Icons.school_outlined,
           AccessKeys.hmsKompetanse, ['kurs']),
+      ('hms_opplaering', 'Opplæring', 'Hub Driftsrutiner SOP', Icons.menu_book_rounded,
+          AccessKeys.hms, ['sop', 'hubanero', 'opplæring', 'driftsrutiner']),
       ('hms_dok', 'HMS-dokumenter', 'Dokumentbibliotek', AppIcons.document,
           AccessKeys.hmsDokumenter, ['dokument']),
     ];
@@ -274,7 +276,13 @@ class DashboardSearchCatalog {
         category: 'HMS',
         accessKey: h.$5,
         kind: DashboardSearchKind.module,
-        navigate: (_, go) => go?.call(AccessKeys.hms),
+        navigate: (ctx, go) {
+          if (h.$1 == 'hms_opplaering') {
+            ctx.push(AppPaths.hmsOpplaering);
+            return;
+          }
+          go?.call(AccessKeys.hms);
+        },
       ));
     }
 

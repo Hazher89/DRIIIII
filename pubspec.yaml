@@ -59,3 +59,4 @@ flutter:
     - assets/branding/
     - assets/data/norway_postal_codes.json
     - assets/hms/stakeholder_risk_template.json
+    - assets/hms/sop_hub_driftsrutiner_v4_8.docx

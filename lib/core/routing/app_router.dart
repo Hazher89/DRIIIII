@@ -17,6 +17,7 @@ import '../../screens/employees/employees_screen.dart';
 import '../../screens/hms/competence/competence_hub_screen.dart';
 import '../../screens/hms/equipment/equipment_hub_screen.dart';
 import '../../screens/hms/hms_screen.dart';
+import '../../screens/hms/training/sop_training_screen.dart';
 import '../../screens/hms/risk_assessment/risk_assessment_list_screen.dart';
 import '../../screens/hms/risk_assessment/risk_matrix_screen.dart';
 import '../../screens/hms/safety_rounds/safety_round_list_screen.dart';
@@ -263,6 +264,11 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     builder: (context, state) => CompetenceHubScreen(
                       initialTab: state.uri.queryParameters['tab'],
                     ),
+                  ),
+                  GoRoute(
+                    path: 'opplaering',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const SopTrainingScreen(),
                   ),
                   GoRoute(
                     path: 'dms',

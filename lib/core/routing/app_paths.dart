@@ -86,6 +86,7 @@ abstract final class AppPaths {
   static const hmsVernerunde = '/hms/vernerunde';
   static const hmsUtstyr = '/hms/utstyr';
   static const hmsKompetanse = '/hms/kompetanse';
+  static const hmsOpplaering = '/hms/opplaering';
   static const hmsDms = '/hms/dms';
 
   // Mer-meny undermoduler

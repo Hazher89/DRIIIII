@@ -134,6 +134,18 @@ class _HmsScreenState extends State<HmsScreen> {
         onTap: () => context.push(AppPaths.hmsKompetanse),
       ));
     }
+    if (a?.canHms == true) {
+      modules.add(_buildModuleCard(
+        context,
+        icon: Icons.school_rounded,
+        title: 'Opplæring',
+        subtitle: 'Søk i Hub Driftsrutiner — SOP-HUB-001',
+        color: const Color(0xFF00695C),
+        isDark: isDark,
+        badge: 'SOP',
+        onTap: () => context.push(AppPaths.hmsOpplaering),
+      ));
+    }
     if (a?.canHmsDocuments == true) {
       modules.add(_buildModuleCard(
         context,
