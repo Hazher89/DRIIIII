@@ -605,7 +605,7 @@ class _ScanCard extends StatelessWidget {
             if (d.shipmentId != null) 'Ship ${d.shipmentId}',
             if (d.consignee != null) 'Cons ${d.consignee}',
             if (d.weightKg != null) d.weightKg,
-          ].where((s) => s.isNotEmpty).join(' · '),
+          ].nonNulls.where((s) => s.isNotEmpty).join(' · '),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
