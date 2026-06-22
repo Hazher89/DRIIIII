@@ -106,6 +106,7 @@ abstract final class AppPaths {
   static const moreHjelp = '/more/hjelp';
   static const morePersonvern = '/more/personvern';
   static const moreOm = '/more/om';
+  static const moreGmStoro = '/more/gm-storo';
 
   /// Hovedfaner i [MainShell] — rekkefølge = bottom nav + skjult avvik-gren.
   static const shellTabs = <({String path, String access})>[

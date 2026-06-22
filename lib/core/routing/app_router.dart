@@ -23,6 +23,7 @@ import '../../screens/hms/risk_assessment/risk_matrix_screen.dart';
 import '../../screens/hms/safety_rounds/safety_round_list_screen.dart';
 import '../../screens/hms/sja/sja_list_screen.dart';
 import '../../screens/more/about_driftpro_screen.dart';
+import '../../screens/more/gm_storo/gm_storo_hub_screen.dart';
 import '../../screens/more/help_support_screen.dart';
 import '../../screens/more/more_screen.dart';
 import '../../screens/more/organization_chart_screen.dart';
@@ -407,6 +408,11 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     path: 'om',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) => const AboutDriftProScreen(),
+                  ),
+                  GoRoute(
+                    path: 'gm-storo',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const GmStoroHubScreen(),
                   ),
                 ],
               ),

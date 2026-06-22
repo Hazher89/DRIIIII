@@ -186,6 +186,15 @@ class _MoreScreenState extends State<MoreScreen> {
           ],
 
           const SizedBox(height: 20),
+          _buildSectionLabel(context, 'Hub'),
+          _buildMenuItem(
+            context,
+            Icons.qr_code_scanner_rounded,
+            'GM & STORO',
+            isDark,
+          ),
+
+          const SizedBox(height: 20),
           _buildSectionLabel(context, 'Innstillinger'),
           if (_profile?.access.canProfile ?? true)
             _buildMenuItem(
@@ -332,6 +341,7 @@ class _MoreScreenState extends State<MoreScreen> {
             'Hjelp & støtte' => AppPaths.moreHjelp,
             'Personvern' => AppPaths.morePersonvern,
             'Om DriftPro' => AppPaths.moreOm,
+            'GM & STORO' => AppPaths.moreGmStoro,
             _ => null,
           };
           if (path != null) context.push(path);
