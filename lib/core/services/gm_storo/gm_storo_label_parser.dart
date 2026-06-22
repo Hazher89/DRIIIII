@@ -1,3 +1,5 @@
+import 'package:mobile_scanner/mobile_scanner.dart';
+
 import '../../../models/gm_storo_scan.dart';
 
 /// Parser for Elgiganten Logistik / Elkjøp hub shipping labels.
@@ -33,16 +35,51 @@ class GmStoroLabelParser {
 
   static GmStoroLabelData parseBarcode(String? raw) {
     if (raw == null || raw.trim().isEmpty) return const GmStoroLabelData();
-    final cleaned = raw.replaceAll(RegExp(r'[^\d]'), '');
-    String? sscc;
-    if (cleaned.length >= 18) {
-      sscc = cleaned.length > 18 ? cleaned.substring(cleaned.length - 18) : cleaned;
+    final trimmed = raw.trim();
+
+    // GS1 Application Identifier (00) = SSCC
+    final gs1 = RegExp(r'\(00\)\s*(\d{18})').firstMatch(trimmed);
+    if (gs1 != null) {
+      return GmStoroLabelData(
+        sscc: gs1.group(1),
+        barcodeRaw: trimmed,
+        rawText: trimmed,
+      );
     }
+
+    final cleaned = trimmed.replaceAll(RegExp(r'[^\d]'), '');
+    String? sscc;
+    if (cleaned.length >= 20 && cleaned.startsWith('00')) {
+      sscc = cleaned.substring(2, 20);
+    } else if (cleaned.length >= 18) {
+      sscc = cleaned.length > 18
+          ? cleaned.substring(cleaned.length - 18)
+          : cleaned;
+    }
+
     return GmStoroLabelData(
       sscc: sscc,
-      barcodeRaw: raw.trim(),
-      rawText: raw,
+      barcodeRaw: trimmed,
+      rawText: trimmed,
     );
+  }
+
+  /// Prøver alle strekkoder i et kamerabilde — returnerer første gyldige SSCC.
+  static GmStoroLabelData parseFromCapture(BarcodeCapture capture) {
+    GmStoroLabelData? fallback;
+    for (final bc in capture.barcodes) {
+      for (final candidate in <String?>[
+        bc.rawValue,
+        bc.displayValue,
+      ]) {
+        if (candidate == null || candidate.trim().isEmpty) continue;
+        final parsed = parseBarcode(candidate);
+        final key = normalizeSscc(parsed.sscc);
+        if (key.length == 18) return parsed;
+        if (fallback == null && parsed.sscc != null) fallback = parsed;
+      }
+    }
+    return fallback ?? const GmStoroLabelData();
   }
 
   static GmStoroLabelData parseOcrText(String text) {

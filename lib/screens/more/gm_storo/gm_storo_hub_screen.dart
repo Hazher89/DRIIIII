@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
@@ -61,9 +64,15 @@ class _GmStoroHubScreenState extends State<GmStoroHubScreen>
   }
 
   Future<void> _submit() async {
-    if (_batch == null || (_batch!.scans.isEmpty)) return;
+    if (_batch == null) return;
     setState(() => _submitting = true);
     try {
+      final fresh = await GmStoroService.instance.fetchBatch(_batch!.id);
+      if (fresh == null || fresh.scans.where((s) => !s.isDuplicate).isEmpty) {
+        return;
+      }
+      setState(() => _batch = fresh);
+
       final ok = await GmStoroService.instance.submitBatch(_batch!.id);
       if (!mounted) return;
       if (ok) {
@@ -112,6 +121,7 @@ class _GmStoroHubScreenState extends State<GmStoroHubScreen>
                       controller: _tabs,
                       children: [
                         _GmStoroScanPanel(
+                          key: ValueKey(_batch!.id),
                           batch: _batch!,
                           onBatchChanged: _reloadBatch,
                           onSubmit: _submit,
@@ -121,6 +131,7 @@ class _GmStoroHubScreenState extends State<GmStoroHubScreen>
                       ],
                     )
                   : _GmStoroScanPanel(
+                      key: ValueKey(_batch!.id),
                       batch: _batch!,
                       onBatchChanged: _reloadBatch,
                       onSubmit: _submit,
@@ -132,6 +143,7 @@ class _GmStoroHubScreenState extends State<GmStoroHubScreen>
 
 class _GmStoroScanPanel extends StatefulWidget {
   const _GmStoroScanPanel({
+    super.key,
     required this.batch,
     required this.onBatchChanged,
     required this.onSubmit,
@@ -149,37 +161,41 @@ class _GmStoroScanPanel extends StatefulWidget {
 
 class _GmStoroScanPanelState extends State<_GmStoroScanPanel> {
   final _scannerCtrl = MobileScannerController(
-    detectionSpeed: DetectionSpeed.noDuplicates,
+    detectionSpeed: DetectionSpeed.unrestricted,
     facing: CameraFacing.back,
   );
   final _picker = ImagePicker();
 
-  String? _lastBarcode;
-  DateTime? _lastScanAt;
-  bool _processing = false;
+  bool _ocrBusy = false;
   Color _flashColor = Colors.transparent;
   final Set<String> _localSscc = {};
+  final Set<String> _inflightSscc = {};
+  final Map<String, DateTime> _lastSsccAt = {};
+  final List<GmStoroScanRecord> _sessionScans = [];
 
   @override
   void initState() {
     super.initState();
-    _syncLocalSscc();
+    _hydrateFromBatch();
   }
 
   @override
   void didUpdateWidget(covariant _GmStoroScanPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.batch.id != widget.batch.id) _syncLocalSscc();
+    if (oldWidget.batch.id != widget.batch.id) _hydrateFromBatch();
   }
 
-  void _syncLocalSscc() {
+  void _hydrateFromBatch() {
     _localSscc
       ..clear()
       ..addAll(
         widget.batch.scans
             .map((s) => GmStoroLabelParser.normalizeSscc(s.data.sscc))
-            .where((s) => s.isNotEmpty),
+            .where((s) => s.length == 18),
       );
+    _sessionScans
+      ..clear()
+      ..addAll(widget.batch.scans);
   }
 
   @override
@@ -188,120 +204,219 @@ class _GmStoroScanPanelState extends State<_GmStoroScanPanel> {
     super.dispose();
   }
 
-  Future<void> _flash(Color color) async {
+  void _flash(Color color) {
     setState(() => _flashColor = color);
-    await Future<void>.delayed(const Duration(milliseconds: 280));
-    if (mounted) setState(() => _flashColor = Colors.transparent);
+    Future<void>.delayed(const Duration(milliseconds: 120), () {
+      if (mounted) setState(() => _flashColor = Colors.transparent);
+    });
   }
 
-  Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_processing) return;
-    final raw = capture.barcodes.firstOrNull?.rawValue?.trim();
-    if (raw == null || raw.isEmpty) return;
+  void _onDetect(BarcodeCapture capture) {
+    if (_ocrBusy) return;
+
+    final data = GmStoroLabelParser.parseFromCapture(capture);
+    if (!data.hasMinimumData) return;
+
+    final ssccKey = GmStoroLabelParser.normalizeSscc(data.sscc);
+    if (ssccKey.length != 18) return;
 
     final now = DateTime.now();
-    if (_lastBarcode == raw &&
-        _lastScanAt != null &&
-        now.difference(_lastScanAt!) < const Duration(milliseconds: 1800)) {
+    final last = _lastSsccAt[ssccKey];
+    if (last != null && now.difference(last) < const Duration(milliseconds: 400)) {
       return;
     }
-    _lastBarcode = raw;
-    _lastScanAt = now;
+    _lastSsccAt[ssccKey] = now;
 
-    setState(() => _processing = true);
+    if (_localSscc.contains(ssccKey)) {
+      _flash(Colors.red.withValues(alpha: 0.4));
+      HapticFeedback.heavyImpact();
+      return;
+    }
+    if (_inflightSscc.contains(ssccKey)) return;
+
+    _inflightSscc.add(ssccKey);
+    _localSscc.add(ssccKey);
+
+    final optimistic = GmStoroScanRecord(
+      id: 'pending-$ssccKey',
+      batchId: widget.batch.id,
+      data: data.copyWithSscc(ssccKey),
+      scannedAt: now,
+    );
+
+    setState(() => _sessionScans.insert(0, optimistic));
+    _flash(DriftProTheme.success.withValues(alpha: 0.4));
+    HapticFeedback.lightImpact();
+
+    unawaited(_persistScan(ssccKey, data));
+  }
+
+  Future<void> _persistScan(String ssccKey, GmStoroLabelData data) async {
     try {
-      var data = GmStoroLabelParser.parseBarcode(raw);
-      await _register(data);
+      final outcome = await GmStoroService.instance.registerScan(
+        batchId: widget.batch.id,
+        data: data,
+        localSsccKeys: Set<String>.from(_localSscc)..remove(ssccKey),
+      );
+
+      if (!mounted) return;
+
+      switch (outcome.result) {
+        case GmStoroScanResult.duplicate:
+          _localSscc.remove(ssccKey);
+          setState(() {
+            _sessionScans.removeWhere((s) => s.id == 'pending-$ssccKey');
+            _markDuplicate(ssccKey);
+          });
+          _flash(Colors.red.withValues(alpha: 0.4));
+          HapticFeedback.heavyImpact();
+        case GmStoroScanResult.invalid:
+          _localSscc.remove(ssccKey);
+          setState(() {
+            _sessionScans.removeWhere((s) => s.id == 'pending-$ssccKey');
+          });
+          _flash(Colors.orange.withValues(alpha: 0.35));
+        case GmStoroScanResult.success:
+          final record = outcome.record;
+          if (record != null) {
+            setState(() {
+              final i = _sessionScans.indexWhere((s) => s.id == 'pending-$ssccKey');
+              if (i >= 0) _sessionScans[i] = record;
+            });
+          }
+      }
+    } catch (_) {
+      if (!mounted) return;
+      _localSscc.remove(ssccKey);
+      setState(() {
+        _sessionScans.removeWhere((s) => s.id == 'pending-$ssccKey');
+      });
+      _flash(Colors.orange.withValues(alpha: 0.35));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nettverksfeil — prøv å skanne på nytt'),
+          duration: Duration(milliseconds: 1200),
+        ),
+      );
     } finally {
-      if (mounted) setState(() => _processing = false);
+      _inflightSscc.remove(ssccKey);
     }
   }
 
-  Future<void> _register(GmStoroLabelData data) async {
-    final outcome = await GmStoroService.instance.registerScan(
-      batchId: widget.batch.id,
-      data: data,
-      localSsccKeys: _localSscc,
+  void _markDuplicate(String ssccKey) {
+    final idx = _sessionScans.indexWhere(
+      (s) => GmStoroLabelParser.normalizeSscc(s.data.sscc) == ssccKey,
     );
-
-    if (!mounted) return;
-
-    switch (outcome.result) {
-      case GmStoroScanResult.duplicate:
-        await _flash(Colors.red.withValues(alpha: 0.35));
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Dobbel skann! SSCC ${outcome.sscc} finnes allerede.'),
-            backgroundColor: DriftProTheme.error,
-            duration: const Duration(milliseconds: 1200),
-          ),
-        );
-        break;
-      case GmStoroScanResult.invalid:
-        await _flash(Colors.orange.withValues(alpha: 0.3));
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Kunne ikke lese etiketten — bruk kamera-ikon for full lesing'),
-            backgroundColor: DriftProTheme.warning,
-            duration: Duration(milliseconds: 1500),
-          ),
-        );
-        break;
-      case GmStoroScanResult.success:
-        _localSscc.add(outcome.sscc!);
-        await _flash(DriftProTheme.success.withValues(alpha: 0.35));
-        await widget.onBatchChanged();
-        break;
-    }
+    if (idx < 0) return;
+    final s = _sessionScans[idx];
+    _sessionScans[idx] = GmStoroScanRecord(
+      id: s.id,
+      batchId: s.batchId,
+      data: s.data,
+      scannedAt: s.scannedAt,
+      isDuplicate: true,
+      scannerName: s.scannerName,
+    );
   }
 
   Future<void> _captureLabelPhoto() async {
-    if (_processing) return;
+    if (_ocrBusy) return;
     final file = await _picker.pickImage(source: ImageSource.camera, imageQuality: 92);
     if (file == null || !mounted) return;
 
-    setState(() => _processing = true);
+    setState(() => _ocrBusy = true);
     try {
       var data = const GmStoroLabelData();
       final capture = await _scannerCtrl.analyzeImage(file.path);
       if (capture != null) {
-        final raw = capture.barcodes.firstOrNull?.rawValue;
-        data = GmStoroLabelParser.parseBarcode(raw);
+        data = GmStoroLabelParser.parseFromCapture(capture);
       }
       final ocr = await recognizeLabelFromPath(file.path);
       if (ocr != null && ocr.isNotEmpty) {
         data = data.merge(GmStoroLabelParser.parseOcrText(ocr));
       }
-      await _register(data);
+
+      if (!data.hasMinimumData) {
+        if (!mounted) return;
+        _flash(Colors.orange.withValues(alpha: 0.35));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Fant ikke kollinummer (SSCC) — hold strekkoden tydelig i rammen'),
+            backgroundColor: DriftProTheme.warning,
+            duration: Duration(milliseconds: 1800),
+          ),
+        );
+        return;
+      }
+
+      final ssccKey = GmStoroLabelParser.normalizeSscc(data.sscc);
+      if (_localSscc.contains(ssccKey)) {
+        _flash(Colors.red.withValues(alpha: 0.4));
+        return;
+      }
+
+      _localSscc.add(ssccKey);
+      final optimistic = GmStoroScanRecord(
+        id: 'pending-$ssccKey',
+        batchId: widget.batch.id,
+        data: data.copyWithSscc(ssccKey),
+        scannedAt: DateTime.now(),
+      );
+      setState(() => _sessionScans.insert(0, optimistic));
+      _flash(DriftProTheme.success.withValues(alpha: 0.4));
+      await _persistScan(ssccKey, data);
     } finally {
-      if (mounted) setState(() => _processing = false);
+      if (mounted) setState(() => _ocrBusy = false);
     }
+  }
+
+  Future<void> _toggleTorch() async {
+    await _scannerCtrl.toggleTorch();
+    setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final scans = widget.batch.scans;
+    final scans = _sessionScans;
     final validCount = scans.where((s) => !s.isDuplicate).length;
+    final torchOn = _scannerCtrl.value.torchState == TorchState.on;
 
     return Column(
       children: [
-        SizedBox(
-          height: 220,
+        Expanded(
+          flex: 5,
           child: Stack(
             fit: StackFit.expand,
             children: [
-              MobileScanner(controller: _scannerCtrl, onDetect: _onDetect),
+              MobileScanner(
+                controller: _scannerCtrl,
+                onDetect: _onDetect,
+                fit: BoxFit.cover,
+              ),
               AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
+                duration: const Duration(milliseconds: 100),
                 color: _flashColor,
               ),
-              if (_processing)
+              if (_ocrBusy)
                 Container(
                   color: Colors.black26,
                   child: const Center(child: DriftProLoadingIndicator()),
                 ),
+              Positioned(
+                left: 16,
+                right: 16,
+                top: 12,
+                child: Center(
+                  child: Container(
+                    width: 280,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.white70, width: 2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
               Positioned(
                 left: 12,
                 right: 12,
@@ -313,10 +428,23 @@ class _GmStoroScanPanelState extends State<_GmStoroScanPanel> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    'Hold etiketten i rammen — strekkode leses automatisk',
+                    'Hold strekkoden i rammen — kollinummer registreres automatisk',
                     textAlign: TextAlign.center,
                     style: DriftProTheme.caption.copyWith(color: Colors.white),
                   ),
+                ),
+              ),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  tooltip: torchOn ? 'Slå av lommelykt' : 'Slå på lommelykt',
+                  onPressed: _toggleTorch,
+                  icon: Icon(
+                    torchOn ? Icons.flash_on : Icons.flash_off,
+                    color: Colors.white,
+                  ),
+                  style: IconButton.styleFrom(backgroundColor: Colors.black45),
                 ),
               ),
             ],
@@ -331,14 +459,15 @@ class _GmStoroScanPanelState extends State<_GmStoroScanPanel> {
               _statChip(Icons.qr_code_2, 'GM + Storo', DriftProTheme.accentBlue),
               const Spacer(),
               IconButton(
-                tooltip: 'Les hele etiketten med kamera',
-                onPressed: _processing ? null : _captureLabelPhoto,
+                tooltip: 'Les hele etiketten med kamera (valgfritt)',
+                onPressed: _ocrBusy ? null : _captureLabelPhoto,
                 icon: const Icon(Icons.document_scanner_outlined),
               ),
             ],
           ),
         ),
         Expanded(
+          flex: 4,
           child: scans.isEmpty
               ? Center(
                   child: Column(
@@ -349,14 +478,14 @@ class _GmStoroScanPanelState extends State<_GmStoroScanPanel> {
                       Text('Ingen etiketter ennå', style: DriftProTheme.headingSm),
                       const SizedBox(height: 4),
                       Text(
-                        'Skann en etikett — den blir grønn når den er registrert',
+                        'Skann strekkoden — kolli blir grønt med én gang',
                         style: DriftProTheme.caption,
                       ),
                     ],
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                   itemCount: scans.length,
                   itemBuilder: (context, i) => _ScanCard(scan: scans[i]),
                 ),
@@ -405,6 +534,31 @@ class _GmStoroScanPanelState extends State<_GmStoroScanPanel> {
   }
 }
 
+extension _GmStoroLabelDataSscc on GmStoroLabelData {
+  GmStoroLabelData copyWithSscc(String sscc) {
+    return GmStoroLabelData(
+      sscc: sscc,
+      barcodeRaw: barcodeRaw,
+      packageId: packageId,
+      shipmentId: shipmentId,
+      consignee: consignee,
+      recipientName: recipientName,
+      recipientAddress: recipientAddress,
+      recipientPostal: recipientPostal,
+      weightKg: weightKg,
+      readyTime: readyTime,
+      readyDate: readyDate,
+      articleEg: articleEg,
+      articleNdc: articleNdc,
+      areaCode: areaCode,
+      unitType: unitType,
+      senderName: senderName,
+      destination: destination,
+      rawText: rawText,
+    );
+  }
+}
+
 class _ScanCard extends StatelessWidget {
   const _ScanCard({required this.scan});
 
@@ -414,6 +568,7 @@ class _ScanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final d = scan.data;
     final isOk = !scan.isDuplicate;
+    final isPending = scan.id.startsWith('pending-');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -428,10 +583,16 @@ class _ScanCard extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: isOk ? DriftProTheme.success : DriftProTheme.error,
-          child: Icon(
-            isOk ? Icons.check : Icons.warning_amber,
-            color: Colors.white,
-          ),
+          child: isPending
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : Icon(
+                  isOk ? Icons.check : Icons.warning_amber,
+                  color: Colors.white,
+                ),
         ),
         title: Text(
           d.sscc ?? 'Ukjent SSCC',
@@ -444,7 +605,7 @@ class _ScanCard extends StatelessWidget {
             if (d.shipmentId != null) 'Ship ${d.shipmentId}',
             if (d.consignee != null) 'Cons ${d.consignee}',
             if (d.weightKg != null) d.weightKg,
-          ].join(' · '),
+          ].where((s) => s.isNotEmpty).join(' · '),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),

@@ -54,6 +54,18 @@ Ready Time 09:30
   test('parses barcode SSCC', () {
     final d = GmStoroLabelParser.parseBarcode('(00)373000005303894849');
     expect(d.sscc, '373000005303894849');
+    expect(d.hasMinimumData, isTrue);
+  });
+
+  test('parses 20-digit GS1 barcode with 00 prefix', () {
+    final d = GmStoroLabelParser.parseBarcode('00373000005304853074');
+    expect(d.sscc, '373000005304853074');
+    expect(d.hasMinimumData, isTrue);
+  });
+
+  test('parses label SSCC from user screenshot', () {
+    final d = GmStoroLabelParser.parseBarcode('(00)373000005304853074');
+    expect(d.sscc, '373000005304853074');
   });
 
   test('normalize sscc strips prefix', () {

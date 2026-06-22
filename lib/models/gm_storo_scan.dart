@@ -40,9 +40,12 @@ class GmStoroLabelData {
   final String? destination;
   final String? rawText;
 
+  /// Kolli (SSCC) er obligatorisk — øvrige felt er valgfrie.
   bool get hasMinimumData =>
-      (sscc != null && sscc!.length >= 16) ||
-      (packageId != null && packageId!.isNotEmpty);
+      sscc != null && GmStoroLabelData._ssccDigits(sscc!).length >= 18;
+
+  static String _ssccDigits(String value) =>
+      value.replaceAll(RegExp(r'[^\d]'), '');
 
   String get destinationLabel => switch (destination) {
         'gm' => 'Glasmagasinet',

@@ -142,7 +142,7 @@ class GmStoroService {
     }
 
     final ssccKey = GmStoroLabelParser.normalizeSscc(data.sscc ?? data.barcodeRaw);
-    if (ssccKey.length < 16) {
+    if (ssccKey.length < 18) {
       return const GmStoroScanOutcome(result: GmStoroScanResult.invalid);
     }
 
@@ -174,12 +174,8 @@ class GmStoroService {
           .select()
           .single();
 
-      final countRows = await _client
-          .from('gm_storo_scans')
-          .select('id')
-          .eq('batch_id', batchId) as List;
-      await _client.from('gm_storo_batches').update({
-        'label_count': countRows.length,
+      // Oppdater batch i bakgrunnen — ikke blokker neste skann.
+      _client.from('gm_storo_batches').update({
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', batchId);
 
