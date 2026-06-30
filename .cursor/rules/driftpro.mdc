@@ -1,0 +1,15 @@
+---
+description: DriftPro project context for all agents (desktop, cloud, mobile)
+alwaysApply: true
+---
+
+# DriftPro
+
+Flutter + Supabase app. Norwegian UI. Deployed to Cloudflare Pages from `main` via `build_web.sh`.
+
+- Repo: Hazher89/DRIIIII
+- Do not commit secrets, `supabase/.temp/`, or root-level Excel/PDF uploads
+- Only git commit/push when user explicitly asks
+- Prefer minimal, focused diffs; reuse existing patterns
+- Run `flutter test` for changed logic when practical
+- See `AGENTS.md` for feature paths and stack details
