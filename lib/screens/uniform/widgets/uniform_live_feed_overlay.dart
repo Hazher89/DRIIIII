@@ -23,7 +23,7 @@ class _UniformLiveFeedOverlayState extends State<UniformLiveFeedOverlay>
     with TickerProviderStateMixin {
   final Set<String> _seen = {};
   final List<_FloatingLine> _active = [];
-  String _statusLine = 'Skanner live etter MAVI-logo og vernesko…';
+  String _statusLine = 'Skanner etter MAVI-logo og vernesko …';
 
   static const _okColor = Color(0xFF66BB6A);
   static const _badColor = Color(0xFFEF5350);
@@ -35,15 +35,17 @@ class _UniformLiveFeedOverlayState extends State<UniformLiveFeedOverlay>
 
     if (widget.persons > 0) {
       _statusLine = widget.persons == 1
-          ? '1 person i bildet — analyserer uniform'
-          : '${widget.persons} personer i bildet — analyserer uniform';
+          ? '1 person i bildet · analyserer uniform'
+          : '${widget.persons} personer i bildet · analyserer uniform';
     } else if (widget.scanActive) {
-      _statusLine = 'Skanner live etter MAVI-logo og vernesko…';
+      _statusLine = 'Skanner etter MAVI-logo og vernesko …';
     }
 
     for (final line in widget.lines) {
       if (line.id.isEmpty || !_seen.add(line.id)) continue;
       _statusLine = line.text;
+      // Skannemeldinger kun i statuslinjen — ikke flytende bobler oppå hverandre.
+      if (line.status == 'scan') continue;
       _spawn(line);
     }
   }
@@ -55,7 +57,7 @@ class _UniformLiveFeedOverlayState extends State<UniformLiveFeedOverlay>
     );
     final entry = _FloatingLine(line: line, controller: controller);
     setState(() => _active.add(entry));
-    if (_active.length > 6) {
+    if (_active.length > 3) {
       final old = _active.removeAt(0);
       old.controller.dispose();
     }
@@ -94,7 +96,7 @@ class _UniformLiveFeedOverlayState extends State<UniformLiveFeedOverlay>
             right: 10,
             bottom: 10,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.black.withValues(alpha: 0.72),
                 borderRadius: BorderRadius.circular(10),
@@ -107,17 +109,17 @@ class _UniformLiveFeedOverlayState extends State<UniformLiveFeedOverlay>
                   color: statusColor,
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  height: 1.25,
+                  height: 1.45,
+                  letterSpacing: 0.2,
                 ),
               ),
             ),
           ),
-          // Flytende meldinger oppover
           for (var i = 0; i < _active.length; i++)
             Positioned(
-              left: 10,
-              right: 10,
-              bottom: 52 + (i % 3) * 8.0,
+              left: 12,
+              right: 12,
+              bottom: 64 + i * 52.0,
               child: _FloatingBubble(
                 entry: _active[i],
                 color: _colorFor(_active[i].line),
@@ -145,7 +147,8 @@ class _FloatingBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final line = entry.line;
-    final label = line.trackId != null ? 'Person ${line.trackId}' : 'Live';
+    final label = line.trackId != null ? 'Person ${line.trackId}' : null;
+    final message = label != null ? '$label  ·  ${line.text}' : line.text;
 
     return AnimatedBuilder(
       animation: entry.controller,
@@ -160,20 +163,21 @@ class _FloatingBubble extends StatelessWidget {
         );
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: Colors.black.withValues(alpha: 0.78),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: color, width: 1.5),
         ),
         child: Text(
-          '$label · ${line.text}',
+          message,
           textAlign: TextAlign.center,
           style: TextStyle(
             color: color,
             fontWeight: FontWeight.w700,
             fontSize: 13,
-            height: 1.25,
+            height: 1.45,
+            letterSpacing: 0.2,
           ),
         ),
       ),

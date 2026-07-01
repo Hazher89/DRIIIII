@@ -395,7 +395,7 @@ class _ScanStatusBar extends StatelessWidget {
                 child: Text(
                   active
                       ? 'Skanner etter MAVI-logo og vernesko'
-                      : 'Venter på kamerastrøm…',
+                      : 'Venter på kamerastrøm …',
                   style: TextStyle(
                     color: scheme.onSurface,
                     fontWeight: FontWeight.w600,

@@ -11,6 +11,8 @@ import cv2
 import numpy as np
 
 from detector import PERSON_CLASS_ID, PersonDetection, PersonEntryDetector
+from logo_matcher import MaviLogoMatcher
+from shoe_analyzer import ShoeAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +43,8 @@ class UniformViolationDetector:
         logo_template_path: Path | None = None,
         confidence_threshold: float = 0.45,
         violation_cooldown_seconds: float = 12.0,
-        logo_match_threshold: float = 0.45,
-        shoes_score_threshold: float = 0.32,
+        logo_match_threshold: float = 0.38,
+        shoes_score_threshold: float = 0.34,
     ) -> None:
         self._person = PersonEntryDetector(
             model_path,
@@ -50,8 +52,6 @@ class UniformViolationDetector:
             entry_cooldown_seconds=0.5,
         )
         self._violation_cooldown = violation_cooldown_seconds
-        self._logo_threshold = logo_match_threshold
-        self._shoes_threshold = shoes_score_threshold
         self._last_violation: dict[int, float] = {}
         self._last_feed: dict[int, tuple[str, float]] = {}
         self._track_hits: dict[int, int] = {}
@@ -60,26 +60,11 @@ class UniformViolationDetector:
         self._min_violation_streak = 2
         self._min_violation_conf = 0.42
         self._min_person_height_px = 160
-        self._logo_templates = self._load_logo_templates(logo_template_path or _LOGO_PATH)
-
-    def _load_logo_templates(self, path: Path) -> list[np.ndarray]:
-        if not path.is_file():
-            logger.warning("MAVI logo template missing at %s", path)
-            return []
-
-        img = cv2.imread(str(path), cv2.IMREAD_COLOR)
-        if img is None:
-            return []
-
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        h, w = gray.shape[:2]
-        templates: list[np.ndarray] = []
-        for scale in (0.35, 0.5, 0.7, 1.0, 1.3):
-            tw = max(24, int(w * scale))
-            th = max(24, int(h * scale))
-            templates.append(cv2.resize(gray, (tw, th), interpolation=cv2.INTER_AREA))
-        logger.info("Loaded %s MAVI logo template scales from %s", len(templates), path)
-        return templates
+        self._logo = MaviLogoMatcher(
+            logo_template_path or _LOGO_PATH,
+            match_threshold=logo_match_threshold,
+        )
+        self._shoes = ShoeAnalyzer(safety_threshold=shoes_score_threshold)
 
     def process_frame(self, frame: np.ndarray) -> list[UniformViolation]:
         """Return violations detected this frame (respecting per-track cooldown)."""
@@ -132,8 +117,8 @@ class UniformViolationDetector:
     def _assess_person(
         self, frame: np.ndarray, det: PersonDetection
     ) -> tuple[PersonDetection, bool, bool, float, float]:
-        missing_logo, logo_score = self._check_logo(frame, det.bbox)
-        missing_shoes, shoes_score = self._check_shoes(frame, det.bbox)
+        missing_logo, logo_score = self._logo.score(frame, det.bbox)
+        missing_shoes, shoes_score = self._shoes.score(frame, det.bbox)
         return det, missing_logo, missing_shoes, logo_score, shoes_score
 
     def _feed_from_assessed(
@@ -157,10 +142,10 @@ class UniformViolationDetector:
                     parts.append("mangler MAVI-logo")
                 if missing_shoes:
                     parts.append("mangler vernesko")
-                text = f"Avvik — {' og '.join(parts)}"
+                text = f"Avvik: {' og '.join(parts)}"
             else:
                 status = "ok"
-                text = "Godkjent uniform — MAVI-logo og vernesko"
+                text = "Godkjent uniform: MAVI-logo og vernesko"
 
             last = self._last_feed.get(det.track_id)
             if last is not None and last[0] == status and (now - last[1]) < 2.8:
@@ -307,73 +292,6 @@ class UniformViolationDetector:
         scale = max_w / w
         small = cv2.resize(frame, (max_w, int(h * scale)), interpolation=cv2.INTER_AREA)
         return small, scale
-
-    def _check_logo(self, frame: np.ndarray, bbox: tuple[int, int, int, int]) -> tuple[bool, float]:
-        if not self._logo_templates:
-            return False, 1.0
-
-        x1, y1, x2, y2 = bbox
-        h, w = frame.shape[:2]
-        bw, bh = x2 - x1, y2 - y1
-        if bw < 40 or bh < 80:
-            return False, 1.0
-
-        chest_y1 = y1 + int(bh * 0.12)
-        chest_y2 = y1 + int(bh * 0.48)
-        chest_x1 = x1 + int(bw * 0.18)
-        chest_x2 = x2 - int(bw * 0.18)
-        chest_y1, chest_y2 = max(0, chest_y1), min(h, chest_y2)
-        chest_x1, chest_x2 = max(0, chest_x1), min(w, chest_x2)
-        roi = frame[chest_y1:chest_y2, chest_x1:chest_x2]
-        if roi.size == 0:
-            return False, 1.0
-
-        gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        best = 0.0
-        for tmpl in self._logo_templates:
-            th, tw = tmpl.shape[:2]
-            if gray.shape[0] < th + 4 or gray.shape[1] < tw + 4:
-                continue
-            res = cv2.matchTemplate(gray, tmpl, cv2.TM_CCOEFF_NORMED)
-            _, max_val, _, _ = cv2.minMaxLoc(res)
-            best = max(best, float(max_val))
-
-        return best < self._logo_threshold, best
-
-    def _check_shoes(self, frame: np.ndarray, bbox: tuple[int, int, int, int]) -> tuple[bool, float]:
-        x1, y1, x2, y2 = bbox
-        h, w = frame.shape[:2]
-        bw, bh = x2 - x1, y2 - y1
-        if bh < 100:
-            return False, 1.0
-
-        foot_y1 = y2 - max(12, int(bh * 0.1))
-        foot_y2 = y2
-        foot_x1 = x1 + int(bw * 0.08)
-        foot_x2 = x2 - int(bw * 0.08)
-        foot_y1, foot_y2 = max(0, foot_y1), min(h, foot_y2)
-        foot_x1, foot_x2 = max(0, foot_x1), min(w, foot_x2)
-        roi = frame[foot_y1:foot_y2, foot_x1:foot_x2]
-        if roi.size == 0:
-            return False, 1.0
-
-        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        sat = float(np.mean(hsv[:, :, 1]))
-        val = float(np.mean(hsv[:, :, 2]))
-        edges = cv2.Canny(cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY), 60, 150)
-        edge_density = float(np.count_nonzero(edges)) / max(1, edges.size)
-
-        # Dark, low-saturation footwear + some edge structure → likely vernesko.
-        dark_score = 0.0
-        if val < 95:
-            dark_score += 0.45
-        if sat < 55:
-            dark_score += 0.25
-        if edge_density > 0.04:
-            dark_score += 0.35
-
-        missing = dark_score < self._shoes_threshold
-        return missing, dark_score
 
     def count_persons(self, frame: np.ndarray) -> int:
         return len(self._detect_persons(frame))

@@ -49,3 +49,6 @@ services/vision_monitor/.env
 services/vision_monitor/captures/
 services/vision_monitor/.venv/
 services/vision_monitor/yolov8n.pt
+services/vision_monitor/models/yolov8n-pose.pt
+services/vision_monitor/models/yolov8s-worldv2.pt
+services/vision_monitor/models/yolov8s-world.pt

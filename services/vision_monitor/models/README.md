@@ -3,8 +3,9 @@
 | Fil | Kilde |
 |-----|--------|
 | `yolov8n.pt` | Ultralytics COCO (person) — lastes alltid ned |
-| `ppe.pt` | Roboflow — krever `ROBOFLOW_MODELS` i `.env` |
-| `person.pt` | Roboflow — valgfritt ekstra prosjekt |
+| `yolov8n-pose.pt` | Ultralytics pose — ankler for fot-ROI (gratis) |
+| `yolov8s-worldv2.pt` | YOLO-World — skiller vernesko vs joggesko (gratis) |
+| `ppe.pt` | Roboflow — valgfritt ekstra PPE-prosjekt |
 
 ## Last ned alt
 

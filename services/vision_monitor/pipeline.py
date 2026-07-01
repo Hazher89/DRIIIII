@@ -140,18 +140,6 @@ class VisionMonitorPipeline:
                     STATE.set_scan(persons, active=self._settings.local_dev)
                     if feed:
                         STATE.push_feed(feed)
-                    elif persons > 0:
-                        STATE.push_feed(
-                            [
-                                {
-                                    "id": f"scan-{frame_index}",
-                                    "status": "scan",
-                                    "text": (
-                                        f"Fant {persons} person(er) — sjekker MAVI-logo og vernesko"
-                                    ),
-                                }
-                            ]
-                        )
                 else:
                     skip_counter += 1
                     if skip_counter % self._settings.frame_skip != 0:
