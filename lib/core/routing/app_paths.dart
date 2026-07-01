@@ -11,6 +11,7 @@ abstract final class AppPaths {
   static const hms = '/hms';
   static const partners = '/partners';
   static const stempling = '/stempling';
+  static const uniform = '/uniform';
   static const stemple = '/stemple';
   static const kiosk = '/kiosk';
   static const more = '/more';
@@ -107,6 +108,8 @@ abstract final class AppPaths {
   static const morePersonvern = '/more/personvern';
   static const moreOm = '/more/om';
   static const moreGmStoro = '/more/gm-storo';
+  static const moreVisionCameras = '/more/vision-cameras';
+  static const moreVisionEvents = '/more/vision-events';
 
   /// Hovedfaner i [MainShell] — rekkefølge = bottom nav + skjult avvik-gren.
   static const shellTabs = <({String path, String access})>[
@@ -115,6 +118,7 @@ abstract final class AppPaths {
     (path: absence, access: AccessKeys.fravaer),
     (path: tickets, access: AccessKeys.avvik),
     (path: hms, access: AccessKeys.hms),
+    (path: uniform, access: AccessKeys.uniformMonitor),
     (path: partners, access: AccessKeys.partners),
     (path: stempling, access: AccessKeys.stempling),
     (path: more, access: AccessKeys.more),
@@ -130,8 +134,9 @@ abstract final class AppPaths {
   static int? branchIndexForPath(String path) {
     final normalized = _normalize(path.split('?').first);
     if (normalized == dashboard) return 0;
-    if (normalized.startsWith('$partners/')) return 5;
-    if (normalized.startsWith(stempling)) return 6;
+    if (normalized.startsWith('$partners/')) return 6;
+    if (normalized.startsWith(stempling)) return 7;
+    if (normalized.startsWith(uniform)) return 5;
     for (var i = 1; i < shellTabs.length; i++) {
       final tabPath = _normalize(shellTabs[i].path);
       if (normalized == tabPath || normalized.startsWith('$tabPath/')) {

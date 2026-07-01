@@ -57,6 +57,8 @@ class AccessPresets {
         ...AccessKeys.allOn(),
         AccessKeys.varsler: false,
         AccessKeys.brukergodkjenning: false,
+        AccessKeys.uniformMonitor: false,
+        AccessKeys.uniformMonitorAdmin: false,
         for (final k in AccessKeys.partnerDetailTabKeys) k: true,
       };
 

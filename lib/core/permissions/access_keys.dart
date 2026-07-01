@@ -10,12 +10,16 @@ class AccessKeys {
   static const hms = 'hms';
   static const partners = 'partners';
   static const stempling = 'stempling';
+  static const uniformMonitor = 'uniform_monitor';
   static const more = 'more';
 
   // ── Stempling ──────────────────────────────────────────────────────────────
   static const stemplingAdmin = 'stempling_admin';
   static const stemplingMobile = 'stempling_mobile';
   static const stemplingInnstillinger = 'stempling_innstillinger';
+
+  // ── Uniform-monitor (MAVI logo + vernesko) ─────────────────────────────────
+  static const uniformMonitorAdmin = 'uniform_monitor_admin';
 
   // ── Mer-meny ───────────────────────────────────────────────────────────────
   static const avdelinger = 'avdelinger';
@@ -101,8 +105,10 @@ class AccessKeys {
     hms,
     partners,
     stempling,
+    uniformMonitor,
     more,
     stemplingAdmin,
+    uniformMonitorAdmin,
     stemplingMobile,
     stemplingInnstillinger,
     avdelinger,
@@ -168,7 +174,9 @@ class AccessKeys {
     hms: 'HMS (hovedmodul)',
     partners: 'Samarbeidspartnere (fane)',
     stempling: 'Stempling (fane)',
+    uniformMonitor: 'Uniform-monitor (fane)',
     more: 'Mer-meny',
+    uniformMonitorAdmin: 'Uniform-monitor – kamera og innstillinger',
     stemplingAdmin: 'Stempling – oversikt og timeliste',
     stemplingMobile: 'Stempling – mobil/nett',
     stemplingInnstillinger: 'Stempling – kiosk-innstillinger',
@@ -234,6 +242,11 @@ class AccessKeys {
     ferieAdmin: 'Tildele feriedager for hele bedriften',
     ansatteRediger: 'Endre roller og tilganger for andre',
     brukergodkjenning: 'Kun superadmin bør ha denne',
+    uniformMonitor:
+        'Live kameraovervåking av MAVI-uniform og vernesko. '
+        'Kun superadmin som standard — kan gis til enkeltansatte.',
+    uniformMonitorAdmin:
+        'Konfigurere IP-kameraer for uniform-monitor. Krever også Uniform-monitor i bunnmeny.',
     varsler:
         'Varselsenter under Mer, varselinnstillinger og feilede varsler. '
         'Uavhengig av tilgang til Samarbeidspartnere.',

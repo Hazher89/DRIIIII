@@ -193,6 +193,21 @@ class _MoreScreenState extends State<MoreScreen> {
             'GM & STORO',
             isDark,
           ),
+          if (_profile?.access.canUniformMonitorAdmin == true) ...[
+            _buildMenuItem(
+              context,
+              Icons.videocam_outlined,
+              'Kameraer',
+              isDark,
+            ),
+          ],
+          if (_profile?.access.canUniformMonitor == true)
+            _buildMenuItem(
+              context,
+              Icons.photo_camera_front_outlined,
+              'Kamerahendelser',
+              isDark,
+            ),
 
           const SizedBox(height: 20),
           _buildSectionLabel(context, 'Innstillinger'),
@@ -342,6 +357,8 @@ class _MoreScreenState extends State<MoreScreen> {
             'Personvern' => AppPaths.morePersonvern,
             'Om DriftPro' => AppPaths.moreOm,
             'GM & STORO' => AppPaths.moreGmStoro,
+            'Kameraer' => AppPaths.moreVisionCameras,
+            'Kamerahendelser' => AppPaths.moreVisionEvents,
             _ => null,
           };
           if (path != null) context.push(path);

@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Vision monitor local secrets & captures
+services/vision_monitor/.env
+services/vision_monitor/captures/
+services/vision_monitor/.venv/
+services/vision_monitor/yolov8n.pt

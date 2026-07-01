@@ -8,6 +8,7 @@ enum DropboxStorageModule {
   partnerDeductions('partner_deductions', 'Bot/Trekk — bevis (bilde/video)'),
   employees('employees', 'Ansattfiler / personalmappe'),
   hms('hms', 'HMS — avvik, SJA, utstyr og kompetanse'),
+  visionUniform('vision_uniform', 'Uniform-monitor — bruddbilder'),
   whistleblowing('whistleblowing', 'Varsling (anonym)');
 
   const DropboxStorageModule(this.key, this.label);
@@ -32,6 +33,8 @@ enum DropboxStorageModule {
         return employees;
       case 'hms':
         return hms;
+      case 'vision_uniform':
+        return visionUniform;
       case 'whistleblowing':
         return whistleblowing;
       default:

@@ -9,6 +9,7 @@ class AppStrings {
   static const String navAbsence = 'Fravær';
   static const String navTickets = 'Avvik';
   static const String navHMS = 'HMS';
+  static const String navUniform = 'Uniform';
   static const String navSurveys = 'Undersøkelser';
   static const String navPartners = 'Partnere';
   static const String navStempling = 'Stempling';

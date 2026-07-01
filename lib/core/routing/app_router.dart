@@ -24,6 +24,9 @@ import '../../screens/hms/safety_rounds/safety_round_list_screen.dart';
 import '../../screens/hms/sja/sja_list_screen.dart';
 import '../../screens/more/about_driftpro_screen.dart';
 import '../../screens/more/gm_storo/gm_storo_hub_screen.dart';
+import '../../screens/more/vision/vision_cameras_screen.dart';
+import '../../screens/more/vision/vision_events_screen.dart';
+import '../../screens/uniform/uniform_monitor_screen.dart';
 import '../../screens/more/help_support_screen.dart';
 import '../../screens/more/more_screen.dart';
 import '../../screens/more/organization_chart_screen.dart';
@@ -289,6 +292,14 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
           StatefulShellBranch(
             routes: [
               GoRoute(
+                path: AppPaths.uniform,
+                builder: (context, state) => const UniformMonitorScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
                 path: AppPaths.partners,
                 builder: (context, state) => PartnersDashboardScreen(
                   initialTab: state.uri.queryParameters['tab'],
@@ -413,6 +424,16 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     path: 'gm-storo',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) => const GmStoroHubScreen(),
+                  ),
+                  GoRoute(
+                    path: 'vision-cameras',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const VisionCamerasScreen(),
+                  ),
+                  GoRoute(
+                    path: 'vision-events',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const VisionEventsScreen(),
                   ),
                 ],
               ),

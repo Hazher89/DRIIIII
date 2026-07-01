@@ -48,6 +48,8 @@ class UserAccess {
   bool get canHms => can(AccessKeys.hms);
   bool get canPartnersTab => can(AccessKeys.partners);
   bool get canStempling => can(AccessKeys.stempling);
+  bool get canUniformMonitor => can(AccessKeys.uniformMonitor);
+  bool get canUniformMonitorAdmin => can(AccessKeys.uniformMonitorAdmin);
   bool get canStemplingAdmin => can(AccessKeys.stemplingAdmin);
   bool get canStemplingMobile => can(AccessKeys.stemplingMobile);
   bool get canStemplingSettings => can(AccessKeys.stemplingInnstillinger);

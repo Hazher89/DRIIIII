@@ -31,6 +31,7 @@ class AccessCatalog {
         AccessKeys.fravaer,
         AccessKeys.avvik,
         AccessKeys.hms,
+        AccessKeys.uniformMonitor,
         AccessKeys.partners,
         AccessKeys.stempling,
         AccessKeys.more,
@@ -130,6 +131,13 @@ class AccessCatalog {
       id: 'admin',
       title: 'Administrasjon',
       keys: [AccessKeys.ansatteRediger, AccessKeys.avdelingerRediger],
+    ),
+    AccessSection(
+      id: 'uniform',
+      title: 'Uniform-monitor (MAVI)',
+      subtitle:
+          'Live overvåking av MAVI-logo på bryst og vernesko. Bilder lagres i Dropbox.',
+      keys: [AccessKeys.uniformMonitorAdmin],
     ),
     AccessSection(
       id: 'varsler',
