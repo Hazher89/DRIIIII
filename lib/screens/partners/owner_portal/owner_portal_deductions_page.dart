@@ -6,6 +6,7 @@ import '../../../core/services/partner/partner_deduction_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_deduction_case.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_modern_ui.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 import 'owner_portal_deduction_detail_sheet.dart';
@@ -81,22 +82,14 @@ class _OwnerPortalDeductionsPageState extends State<OwnerPortalDeductionsPage> {
     final bottomPad = MediaQuery.paddingOf(context).bottom + 76;
     final filtered = _filtered;
 
-    return Scaffold(
+    return PartnerPortalPageShell(
       backgroundColor: Theme.of(context).brightness == Brightness.dark
           ? const Color(0xFF0F1419)
           : const Color(0xFFF3F4F6),
-      appBar: AppBar(
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Trekk', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-            Text('Ditt arkiv — kun lesing', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-          ],
-        ),
-        actions: [
-          IconButton(tooltip: 'Oppdater', icon: const Icon(Icons.refresh), onPressed: _load),
-        ],
-      ),
+      title: 'Trekk',
+      actions: [
+        IconButton(tooltip: 'Oppdater', icon: const Icon(Icons.refresh), onPressed: _load),
+      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : _error != null

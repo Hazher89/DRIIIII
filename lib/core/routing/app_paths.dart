@@ -137,6 +137,7 @@ abstract final class AppPaths {
     if (normalized.startsWith('$partners/')) return 6;
     if (normalized.startsWith(stempling)) return 7;
     if (normalized.startsWith(uniform)) return 5;
+    if (normalized == tickets || normalized.startsWith('$tickets/')) return 3;
     for (var i = 1; i < shellTabs.length; i++) {
       final tabPath = _normalize(shellTabs[i].path);
       if (normalized == tabPath || normalized.startsWith('$tabPath/')) {

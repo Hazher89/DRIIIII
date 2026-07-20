@@ -61,6 +61,42 @@ class SupabaseService {
     return email.trim().toLowerCase().endsWith('@mavi-employees.driftpro.no');
   }
 
+  static bool emailLooksLikePortal(String? email) {
+    final e = email?.trim().toLowerCase() ?? '';
+    return e.endsWith('.portal') || e.endsWith('@portal.driftpro.no');
+  }
+
+  /// Sjekker om innlogget bruker har aktiv rad i partner_portal_accounts.
+  static Future<bool> currentSessionHasActivePortalAccount() async {
+    if (!isConfigured) return false;
+    final user = currentUser;
+    if (user == null) return false;
+    if (emailLooksLikePortal(user.email)) return true;
+    try {
+      final byProfile = await client
+          .from('partner_portal_accounts')
+          .select('id')
+          .eq('is_active', true)
+          .eq('profile_id', user.id)
+          .maybeSingle()
+          .timeout(_rpcTimeout);
+      if (byProfile != null) return true;
+      final email = user.email?.trim().toLowerCase() ?? '';
+      if (email.isEmpty) return false;
+      final byEmail = await client
+          .from('partner_portal_accounts')
+          .select('id')
+          .eq('is_active', true)
+          .eq('login_email', email)
+          .maybeSingle()
+          .timeout(_rpcTimeout);
+      return byEmail != null;
+    } catch (e) {
+      debugPrint('currentSessionHasActivePortalAccount: $e');
+      return false;
+    }
+  }
+
   static bool _shouldElevateToSuperadmin(UserProfile profile, {String? sessionEmail}) {
     if (_isSuperadminEmail(profile.email) || _isSuperadminEmail(sessionEmail)) {
       return true;
@@ -112,8 +148,8 @@ class SupabaseService {
     if (user == null) return null;
 
     final email = user.email?.trim().toLowerCase() ?? '';
-    final isPortal =
-        email.endsWith('.portal') || email.endsWith('@portal.driftpro.no');
+    final hasPortalAccount = await currentSessionHasActivePortalAccount();
+    final isPortal = emailLooksLikePortal(email) || hasPortalAccount;
 
     if (_isMaviEmployeeEmail(email)) {
       try {
@@ -121,14 +157,14 @@ class SupabaseService {
       } catch (e) {
         debugPrint('restore_mavi_employee_profile: $e');
       }
-    } else if (!isPortal) {
-      await rpcEnsureInternalProfileMissing();
-    } else {
+    } else if (isPortal) {
       try {
         await client.rpc('ensure_partner_profile_from_portal').timeout(_rpcTimeout);
       } catch (e) {
         debugPrint('ensure_partner_profile_from_portal: $e');
       }
+    } else {
+      await rpcEnsureInternalProfileMissing();
     }
 
     if (!_isMaviEmployeeEmail(email)) {
@@ -136,7 +172,9 @@ class SupabaseService {
     }
 
     var profile = await fetchCurrentUserProfile();
-    profile = profile != null ? await _ensureSuperadminIfOwner(profile) : null;
+    if (profile != null && !isPortal) {
+      profile = await _ensureSuperadminIfOwner(profile);
+    }
 
     final bootstrap = await discoverBootstrapCompanyId();
 
@@ -151,13 +189,15 @@ class SupabaseService {
             .eq('id', profile.id)
             .timeout(_writeTimeout);
         profile = await fetchCurrentUserProfile();
-        if (profile != null) profile = await _ensureSuperadminIfOwner(profile);
+        if (profile != null && !isPortal) {
+          profile = await _ensureSuperadminIfOwner(profile);
+        }
       } catch (e) {
         debugPrint('ensureSessionLinkedToCompany update company_id: $e');
       }
     }
 
-    if (profile == null && _isSuperadminEmail(email) && bootstrap != null) {
+    if (profile == null && !isPortal && _isSuperadminEmail(email) && bootstrap != null) {
       try {
         final fn = email.split('@').first;
         await client.from('profiles').upsert({
@@ -171,7 +211,9 @@ class SupabaseService {
           'is_active': true,
         }).timeout(_writeTimeout);
         profile = await fetchCurrentUserProfile();
-        if (profile != null) profile = await _ensureSuperadminIfOwner(profile);
+        if (profile != null && !isPortal) {
+          profile = await _ensureSuperadminIfOwner(profile);
+        }
       } catch (e) {
         debugPrint('ensureSessionLinkedToCompany superadmin upsert: $e');
       }
@@ -184,6 +226,8 @@ class SupabaseService {
       }
       return profile;
     }
+
+    if (isPortal) return null;
 
     final recovery = emergencySuperadminProfileFromSession();
     if (recovery == null) return null;
@@ -1303,7 +1347,11 @@ department:departments!department_id(name)
 
   /// Løfter eier-e-post til superadmin hvis DB-trigger hadde feil e-post.
   static Future<UserProfile> _ensureSuperadminIfOwner(UserProfile profile) async {
+    if (profile.partnerId != null || profile.role == UserRole.samarbeidspartner) {
+      return profile;
+    }
     final sessionEmail = currentUser?.email;
+    if (emailLooksLikePortal(sessionEmail)) return profile;
     if (!_shouldElevateToSuperadmin(profile, sessionEmail: sessionEmail)) {
       return profile;
     }
@@ -1565,6 +1613,23 @@ department:departments!department_id(name)
     await client.rpc('admin_delete_user_hard', params: {
       'target_user_id': targetUserId,
     });
+  }
+
+  /// App Store: slett egen konto (edge `delete-own-account`).
+  static Future<void> deleteOwnAccount() async {
+    final token = client.auth.currentSession?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw StateError('Økten er utløpt. Logg inn på nytt.');
+    }
+    final res = await client.functions.invoke(
+      'delete-own-account',
+      body: {'confirm': 'SLETT'},
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final data = res.data;
+    if (data is Map && data['error'] != null) {
+      throw Exception('${data['error']}');
+    }
   }
 
   static Future<String?> getCurrentCompanyId() async {

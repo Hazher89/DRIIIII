@@ -208,6 +208,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
             isActive: _p.isActive,
             canToggleActive: false,
             onActiveChanged: null,
+            ecoDrivingStatus: _p.ecoDrivingStatus,
           ),
           PartnerCompanyLifecyclePanel(
             partner: _p,

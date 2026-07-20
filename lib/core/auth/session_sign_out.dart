@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../routing/app_paths.dart';
+import '../services/notification/push_notification_service.dart';
 
 /// Logger ut og lar [DriftProApp] sin auth-StreamBuilder vise innlogging igjen.
 Future<void> signOutFromPortal(BuildContext context) async {
@@ -22,5 +26,9 @@ Future<void> signOutFromPortal(BuildContext context) async {
     try {
       await auth.signOut(scope: SignOutScope.global);
     } catch (_) {}
+  }
+  await PushNotificationService.deactivateOnLogout();
+  if (context.mounted) {
+    GoRouter.of(context).go(AppPaths.login);
   }
 }

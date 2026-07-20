@@ -4,6 +4,7 @@ import '../../../core/auth/session_sign_out.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_common.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
@@ -46,14 +47,12 @@ class _OwnerPortalMeetingsPageState extends State<OwnerPortalMeetingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Møter & revisjon'),
-        actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-          IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
-        ],
-      ),
+    return PartnerPortalPageShell(
+      title: 'Møter & revisjon',
+      actions: [
+        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+        IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
+      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : RefreshIndicator(

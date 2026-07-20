@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/layout/mobile_layout.dart';
 import '../../core/services/hms/employee_document_service.dart';
 import '../../core/services/storage/company_file_storage.dart';
 import '../../core/services/supabase_service.dart';
@@ -134,11 +135,15 @@ class _PersonalFolderHubScreenState extends State<PersonalFolderHubScreen> {
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _me == null ? null : _upload,
-        icon: const Icon(Icons.upload_file),
-        label: const Text('Last opp'),
+      floatingActionButton: MobileLayout.wrapFab(
+        context,
+        FloatingActionButton.extended(
+          onPressed: _me == null ? null : _upload,
+          icon: const Icon(Icons.upload_file),
+          label: const Text('Last opp'),
+        ),
       ),
+      floatingActionButtonLocation: MobileLayout.fabLocation,
       body: _loading
           ? const DriftProLoadingCenter()
           : RefreshIndicator(

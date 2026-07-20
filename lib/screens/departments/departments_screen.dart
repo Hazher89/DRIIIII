@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/layout/mobile_layout.dart';
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/leave_rules.dart';
 import '../../core/services/absence/employee_leave_stats.dart';
@@ -199,14 +200,18 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
 
     return Scaffold(
       backgroundColor: isDark ? DriftProTheme.bgDark : DriftProTheme.bgLight,
-      floatingActionButton: _isLoading || _error != null
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _createNewDepartment,
-              backgroundColor: DriftProTheme.primaryGreen,
-              icon: const Icon(AppIcons.add),
-              label: const Text('Ny avdeling'),
-            ),
+      floatingActionButton: MobileLayout.wrapFab(
+        context,
+        _isLoading || _error != null
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: _createNewDepartment,
+                backgroundColor: DriftProTheme.primaryGreen,
+                icon: const Icon(AppIcons.add),
+                label: const Text('Ny avdeling'),
+              ),
+      ),
+      floatingActionButtonLocation: MobileLayout.fabLocation,
       body: _isLoading
           ? const DriftProLoadingCenter()
           : _error != null

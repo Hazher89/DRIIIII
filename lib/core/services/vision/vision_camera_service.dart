@@ -151,6 +151,26 @@ class VisionCameraService {
       'http://localhost:8090/api/events/clear';
   static const String localWorkerFeedUrl = 'http://localhost:8090/api/feed';
 
+  /// Brudd/hendelser for uniform-monitor — lokal worker i dev, Supabase i prod (iOS/Android).
+  Future<List<VisionEvent>> fetchMonitorViolations() async {
+    if (kDebugMode) {
+      final local = await fetchLocalViolations();
+      if (local.isNotEmpty) return local;
+    }
+    return fetchUniformViolations();
+  }
+
+  /// Skannestatus — kun tilgjengelig mot lokal worker (utvikling).
+  Future<VisionScanStatus?> fetchMonitorScanStatus() async {
+    if (kDebugMode) return fetchLocalScanStatus();
+    return null;
+  }
+
+  Future<List<VisionFeedLine>> fetchMonitorScanFeed() async {
+    if (kDebugMode) return fetchLocalScanFeed();
+    return [];
+  }
+
   /// Nullstiller lokale brudd i worker (kun dev).
   Future<bool> clearLocalViolations() async {
     if (!kDebugMode && !kIsWeb) return false;

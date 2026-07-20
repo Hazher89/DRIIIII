@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/routing/app_paths.dart';
+import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/routing/route_url_sync.dart';
 
 import '../../core/utils/nb_date_format.dart';
@@ -477,8 +478,8 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     if (!_isLoading && (_tabController == null || _tabs.isEmpty)) {
       final msg = _loadError ??
           (_profile != null ? 'Kunne ikke laste innhold på fraværssiden.' : 'Fant ikke pålogget bruker eller bedrift.');
-      return Scaffold(
-        appBar: AppBar(title: const Text('Fravær & Ferie')),
+      return MobileShellScaffold(
+        title: 'Fravær & Ferie',
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -506,12 +507,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     return PermissionGuard(
       profile: _profile,
       accessKey: AccessKeys.fravaer,
-      child: Scaffold(
-      backgroundColor:
-          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-      appBar: AppBar(
-        title: const Text('Fravær & Ferie'),
-        actions: [
+      child: MobileShellScaffold(
+      title: 'Fravær & Ferie',
+      actions: [
           IconButton(
             icon: const Icon(Icons.help_outline),
             onPressed: () => showDialog(
@@ -535,20 +533,21 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
             tooltip: 'Oppdater',
           ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true,
-          indicatorColor: DriftProTheme.primaryGreen,
-          tabs: _tabs,
-        ),
+      bottom: TabBar(
+        controller: _tabController,
+        isScrollable: true,
+        indicatorColor: DriftProTheme.primaryGreen,
+        tabs: _tabs,
       ),
+      backgroundColor:
+          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       floatingActionButton: access?.canFravaer != false
-          ? FloatingActionButton.extended(
-              onPressed: () => _showRegisterOptions(context),
-              icon: const Icon(Icons.add_task),
-              label: const Text('Ny registrering'),
-            )
-          : null,
+            ? FloatingActionButton.extended(
+                onPressed: () => _showRegisterOptions(context),
+                icon: const Icon(Icons.add_task),
+                label: const Text('Ny registrering'),
+              )
+            : null,
       body: TabBarView(
         controller: _tabController,
         children: _buildTabBodies(isDark, isManager, canAdmin),

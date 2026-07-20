@@ -1,2 +1,2 @@
-/// No-op on non-web platforms (OAuth uses [url_launcher] instead).
+/// No-op on non-web platforms (OAuth uses deep link / ASWebAuthenticationSession).
 void assignBrowserLocation(String url) {}

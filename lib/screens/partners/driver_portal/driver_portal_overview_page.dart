@@ -10,6 +10,7 @@ import '../owner_portal/owner_portal_common.dart';
 import '../partner_shell.dart';
 import '../widgets/partner_ui.dart';
 import 'driver_portal_common.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_portal_route_detail_page.dart';
 import '../widgets/partner_portal_route_list_tile.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
@@ -66,30 +67,17 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = isDark ? const Color(0xFF0F1419) : const Color(0xFFF4F6F8);
 
-    return Scaffold(
+    return PartnerPortalPageShell(
       backgroundColor: surface,
-      appBar: AppBar(
-        backgroundColor: surface,
-        surfaceTintColor: Colors.transparent,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.partner.name, style: const TextStyle(fontSize: 16)),
-            const Text(
-              kDriverPortalBuildLabel,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: DriftProTheme.accentBlue),
-            ),
-          ],
+      title: widget.partner.name,
+      actions: [
+        IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
+        IconButton(
+          tooltip: 'Logg ut',
+          icon: const Icon(Icons.logout),
+          onPressed: () => signOutFromPortal(context),
         ),
-        actions: [
-          IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
-          IconButton(
-            tooltip: 'Logg ut',
-            icon: const Icon(Icons.logout),
-            onPressed: () => signOutFromPortal(context),
-          ),
-        ],
-      ),
+      ],
       body: _loading || _data == null
           ? const DriftProLoadingCenter()
           : RefreshIndicator(

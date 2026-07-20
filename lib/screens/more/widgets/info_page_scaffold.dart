@@ -14,6 +14,10 @@ Future<void> launchInfoEmail(String email, {String subject = 'DriftPro'}) async 
   }
 }
 
+Future<void> launchInfoUrl(String url) async {
+  await openExternalUrl(url);
+}
+
 /// Felles layout for Hjelp, Personvern og Om-sider.
 class InfoPageScaffold extends StatelessWidget {
   final String title;

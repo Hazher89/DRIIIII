@@ -5,6 +5,7 @@ import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_common.dart';
 import '../widgets/partner_portal_route_list_tile.dart';
@@ -109,30 +110,28 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Alle ruter'),
-        actions: [
-          IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
-          IconButton(
-            tooltip: 'Logg ut',
-            icon: const Icon(Icons.logout),
-            onPressed: () => signOutFromPortal(context),
-          ),
-        ],
-        bottom: _data == null
-            ? null
-            : TabBar(
-                controller: _tab,
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                tabs: [
-                  Tab(text: 'I dag (${_data!.routesToday.length})'),
-                  Tab(text: 'Kommende (${_data!.routesUpcoming.length})'),
-                  Tab(text: 'Tidligere (${_data!.routesPast.length})'),
-                ],
-              ),
-      ),
+    return PartnerPortalPageShell(
+      title: 'Alle ruter',
+      actions: [
+        IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
+        IconButton(
+          tooltip: 'Logg ut',
+          icon: const Icon(Icons.logout),
+          onPressed: () => signOutFromPortal(context),
+        ),
+      ],
+      bottom: _data == null
+          ? null
+          : TabBar(
+              controller: _tab,
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              tabs: [
+                Tab(text: 'I dag (${_data!.routesToday.length})'),
+                Tab(text: 'Kommende (${_data!.routesUpcoming.length})'),
+                Tab(text: 'Tidligere (${_data!.routesPast.length})'),
+              ],
+            ),
       body: _loading || _data == null
           ? const DriftProLoadingCenter()
           : TabBarView(

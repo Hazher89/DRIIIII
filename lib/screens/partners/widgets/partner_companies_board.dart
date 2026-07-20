@@ -393,6 +393,7 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
                     regCount: _regCount(hit),
                     isActive: hit.partner.isActive,
                     routesOwnerOnly: hit.partner.routesOwnerOnly,
+                    ecoDrivingStatus: hit.partner.ecoDrivingStatus,
                     ownerAccounts: widget.portalAccountsByPartner[hit.partner.id]
                             ?.where((a) => a.isOwner)
                             .length ??

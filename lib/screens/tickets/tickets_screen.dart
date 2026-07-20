@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/case_trace/case_trace.dart';
 import '../../core/case_trace/case_trace_chip.dart';
+import '../../core/layout/mobile_layout.dart';
+import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/constants/build_info.dart';
@@ -166,12 +168,9 @@ class _TicketsScreenState extends State<TicketsScreen> {
     return PermissionGuard(
       profile: _profile,
       accessKey: AccessKeys.avvik,
-      child: Scaffold(
-      backgroundColor:
-          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-      appBar: AppBar(
-        title: const Text(AppStrings.navTickets),
-        actions: [
+      child: MobileShellScaffold(
+      title: AppStrings.navTickets,
+      actions: [
           if (coord || ticketAdmin)
             IconButton(
               icon: const Icon(Icons.dashboard_customize_outlined),
@@ -179,12 +178,13 @@ class _TicketsScreenState extends State<TicketsScreen> {
               onPressed: _openControlCenter,
             ),
         ],
-      ),
+      backgroundColor:
+          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openNewTicket,
-        icon: const Icon(AppIcons.add),
-        label: const Text(AppStrings.reportDeviation),
-      ),
+          onPressed: _openNewTicket,
+          icon: const Icon(AppIcons.add),
+          label: const Text(AppStrings.reportDeviation),
+        ),
       body: RefreshIndicator(
         onRefresh: _loadTickets,
         color: DriftProTheme.primaryGreen,
@@ -315,7 +315,12 @@ class _TicketsScreenState extends State<TicketsScreen> {
 
     return [
       SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          100 + MobileLayout.shellBottomInset(context),
+        ),
         sliver: SliverList(
           delegate: SliverChildBuilderDelegate(
             (ctx, i) => Padding(

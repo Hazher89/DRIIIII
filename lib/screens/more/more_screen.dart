@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_icons.dart';
+import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/theme/app_theme.dart';
@@ -55,9 +56,9 @@ class _MoreScreenState extends State<MoreScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
+    return MobileShellScaffold(
+      title: AppStrings.navMore,
       backgroundColor: context.driftColors.scaffold,
-      appBar: AppBar(title: const Text(AppStrings.navMore)),
       body: ListView(
         padding: const EdgeInsets.all(16),
         physics: const BouncingScrollPhysics(),
@@ -129,7 +130,7 @@ class _MoreScreenState extends State<MoreScreen> {
               _buildMenuItem(context, AppIcons.employees, 'Ansatte', isDark),
             if (_profile!.isSuperAdmin || _profile!.access.canEmployeesList)
               _buildMenuItem(context, Icons.account_tree_outlined, 'Organisasjonskart', isDark),
-            if (_profile!.access.canPartnersMenu)
+            if (_profile!.access.canPartnersMenu || _profile!.access.canPartnersTab)
               _buildMenuItem(
                 context,
                 Icons.handshake_outlined,
@@ -145,7 +146,7 @@ class _MoreScreenState extends State<MoreScreen> {
                 'Varsler',
                 isDark,
               ),
-            if (_profile!.access.canSurveysMenu)
+            if (_profile!.access.canSurveysMenu || _profile!.access.canSurveys)
               _buildMenuItem(
                 context,
                 Icons.assignment_outlined,
@@ -267,9 +268,11 @@ class _MoreScreenState extends State<MoreScreen> {
         a.canEmployeesList ||
         a.canEditEmployees ||
         a.canPartnersMenu ||
+        a.canPartnersTab ||
         a.canPersonalFolder ||
         p.isSuperAdmin ||
         a.canSurveysMenu ||
+        a.canSurveys ||
         a.canAccessControl ||
         p.isSuperAdmin ||
         a.canKiosk ||

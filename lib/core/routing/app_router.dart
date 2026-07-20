@@ -45,6 +45,7 @@ import '../../screens/stempling/stempling_screen.dart';
 import '../../screens/surveys/survey_list_screen.dart';
 import '../../screens/surveys/survey_player_screen.dart';
 import '../../screens/tickets/tickets_screen.dart';
+import '../services/supabase_service.dart';
 import 'app_paths.dart';
 import 'auth_refresh_listenable.dart';
 
@@ -102,8 +103,7 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
 
       final user = Supabase.instance.client.auth.currentUser;
       final email = user?.email?.trim().toLowerCase() ?? '';
-      final looksLikePortal = email.endsWith('.portal') ||
-          email.endsWith('@portal.driftpro.no');
+      final looksLikePortal = SupabaseService.emailLooksLikePortal(email);
 
       if (looksLikePortal &&
           path != AppPaths.portal &&
@@ -112,11 +112,6 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
           !AppPaths.isPublicPath(path)) {
         final tab = state.uri.queryParameters['tab'];
         return AppPaths.portalPath(tab: tab);
-      }
-
-      if (!looksLikePortal &&
-          (path == AppPaths.portal || path.startsWith('${AppPaths.portal}/'))) {
-        return AppPaths.dashboard;
       }
 
       if (path == AppPaths.login) {

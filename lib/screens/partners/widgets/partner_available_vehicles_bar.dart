@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/config/driftpro_client.dart';
 import '../../../core/constants/mavi_fleet_roles.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
@@ -100,52 +101,44 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
               ),
             ),
           const SizedBox(height: 8),
-          Row(
-            children: List.generate(MaviFleetRoles.all.length, (i) {
-              final r = MaviFleetRoles.all[i];
-              final n = byRole[r]!.length;
-              final selected = _roleIndex == i;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(left: i == 0 ? 0 : 4),
-                  child: Material(
-                    color: selected ? const Color(0xFFE65100) : Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(8),
-                      onTap: () => setState(() => _roleIndex = i),
+          DriftProClient.isMobile
+              ? SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: List.generate(MaviFleetRoles.all.length, (i) {
+                      final r = MaviFleetRoles.all[i];
+                      final n = byRole[r]!.length;
+                      final selected = _roleIndex == i;
+                      return Padding(
+                        padding: EdgeInsets.only(right: i == MaviFleetRoles.all.length - 1 ? 0 : 8),
+                        child: _roleFilterChip(
+                          role: r,
+                          count: n,
+                          selected: selected,
+                          onTap: () => setState(() => _roleIndex = i),
+                        ),
+                      );
+                    }),
+                  ),
+                )
+              : Row(
+                  children: List.generate(MaviFleetRoles.all.length, (i) {
+                    final r = MaviFleetRoles.all[i];
+                    final n = byRole[r]!.length;
+                    final selected = _roleIndex == i;
+                    return Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                        child: Column(
-                          children: [
-                            Text(
-                              '${n}',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w900,
-                                fontSize: 16,
-                                color: selected ? Colors.white : const Color(0xFFE65100),
-                              ),
-                            ),
-                            Text(
-                              MaviFleetRoles.label(r),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w700,
-                                color: selected ? Colors.white : Colors.grey.shade800,
-                              ),
-                            ),
-                          ],
+                        padding: EdgeInsets.only(left: i == 0 ? 0 : 4),
+                        child: _roleFilterChip(
+                          role: r,
+                          count: n,
+                          selected: selected,
+                          onTap: () => setState(() => _roleIndex = i),
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  }),
                 ),
-              );
-            }),
-          ),
           const SizedBox(height: 8),
           Container(
             constraints: const BoxConstraints(maxHeight: 88),
@@ -185,6 +178,51 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
                   ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _roleFilterChip({
+    required String role,
+    required int count,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected ? const Color(0xFFE65100) : Colors.white,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            vertical: DriftProClient.isMobile ? 10 : 8,
+            horizontal: DriftProClient.isMobile ? 14 : 4,
+          ),
+          child: Column(
+            children: [
+              Text(
+                '$count',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  color: selected ? Colors.white : const Color(0xFFE65100),
+                ),
+              ),
+              Text(
+                MaviFleetRoles.label(role),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: DriftProClient.isMobile ? 11 : 9,
+                  fontWeight: FontWeight.w700,
+                  color: selected ? Colors.white : Colors.grey.shade800,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

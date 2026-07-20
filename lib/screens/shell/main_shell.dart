@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/auth/session_sign_out.dart';
+import '../../core/layout/mobile_shell_nav.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/theme/driftpro_theme_context.dart';
 import '../../core/constants/app_strings.dart';
@@ -12,6 +13,7 @@ import '../../core/constants/app_icons.dart';
 import '../auth/onboarding_screen.dart';
 import '../auth/pending_approval_screen.dart';
 import '../../models/user_profile.dart';
+import '../../core/services/native_permissions_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/permissions/access_keys.dart';
@@ -33,11 +35,34 @@ class _MainShellState extends State<MainShell> {
   UserProfile? _profile;
   String? _portalAccountKind;
   bool _isLoadingAccess = true;
+  StreamSubscription<AuthState>? _authSub;
+  String? _sessionUserId;
 
   @override
   void initState() {
     super.initState();
+    _sessionUserId = Supabase.instance.client.auth.currentUser?.id;
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
+      final nextId = event.session?.user.id;
+      if (nextId == _sessionUserId) return;
+      _sessionUserId = nextId;
+      if (!mounted) return;
+      setState(() {
+        _profile = null;
+        _portalAccountKind = null;
+        _isLoadingAccess = true;
+      });
+      if (nextId != null) {
+        unawaited(_loadAccess());
+      }
+    });
     _loadAccess();
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 
   /// true = vi forlater MainShell (onboarding / ventende godkjenning).
@@ -101,8 +126,7 @@ class _MainShellState extends State<MainShell> {
     try {
       var profile = await SupabaseService.fetchOrCreateCurrentUserProfile();
       final portalEmail = Supabase.instance.client.auth.currentUser?.email?.trim().toLowerCase() ?? '';
-      final looksLikePortal = portalEmail.endsWith('.portal') ||
-          portalEmail.endsWith('@portal.driftpro.no');
+      final looksLikePortal = SupabaseService.emailLooksLikePortal(portalEmail);
       if (profile != null &&
           profile.partnerId == null &&
           (looksLikePortal || profile.role == UserRole.samarbeidspartner)) {
@@ -122,6 +146,17 @@ class _MainShellState extends State<MainShell> {
 
       if (_scheduleProfileGate(profile)) {
         setState(() => _isLoadingAccess = false);
+        return;
+      }
+
+      final hasPortalAccount =
+          await SupabaseService.currentSessionHasActivePortalAccount();
+      if (hasPortalAccount) {
+        if (!mounted) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          context.go(AppPaths.portal);
+        });
         return;
       }
 
@@ -145,6 +180,10 @@ class _MainShellState extends State<MainShell> {
         _isLoadingAccess = false;
       });
 
+      unawaited(NativePermissionsService.bootstrapAfterLogin(
+        mounted ? context : null,
+      ));
+
       if (profile.isRecoverySession) {
         unawaited(_syncDbProfileAfterRecovery());
       }
@@ -167,6 +206,15 @@ class _MainShellState extends State<MainShell> {
   void _onNavigate(int visibleIndex, List<Map<String, dynamic>> visibleScreens) {
     HapticFeedback.selectionClick();
     final access = visibleScreens[visibleIndex]['access'] as String;
+    final branchIndex =
+        AppPaths.shellTabs.indexWhere((t) => t.access == access);
+    if (branchIndex >= 0) {
+      widget.navigationShell.goBranch(
+        branchIndex,
+        initialLocation: branchIndex == widget.navigationShell.currentIndex,
+      );
+      return;
+    }
     final path = AppPaths.pathForAccess(access) ?? AppPaths.dashboard;
     context.go(path);
   }
@@ -205,25 +253,14 @@ class _MainShellState extends State<MainShell> {
     if (_isLoadingAccess) return const DriftProLoadingPage();
 
     if (_profile != null && _profile!.isPartnerPortalUser) {
-      final email =
-          SupabaseService.currentUser?.email?.trim().toLowerCase() ?? '';
-      final looksLikePortal = email.endsWith('.portal') ||
-          email.endsWith('@portal.driftpro.no');
-      if (looksLikePortal) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          final path = GoRouterState.of(context).uri.path;
-          if (path != AppPaths.portal &&
-              !path.startsWith('${AppPaths.portal}/')) {
-            context.go(AppPaths.portal);
-          }
-        });
-        return const DriftProLoadingPage();
-      }
-      WidgetsBinding.instance.addPostFrameCallback((_) async {
-        await SupabaseService.applyPartnerBootstrap();
-        if (mounted) _loadAccess();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final path = GoRouterState.of(context).uri.path;
+        if (path != AppPaths.portal && !path.startsWith('${AppPaths.portal}/')) {
+          context.go(AppPaths.portal);
+        }
       });
+      return const DriftProLoadingPage();
     }
 
     // Safety check fallback (Active enforcement)
@@ -259,17 +296,46 @@ class _MainShellState extends State<MainShell> {
         'label': AppStrings.navDashboard,
         'access': AccessKeys.dashboard,
       },
-      {'icon': AppIcons.survey, 'label': AppStrings.navSurveys, 'access': AccessKeys.surveys},
-      {'icon': AppIcons.absence, 'label': AppStrings.navAbsence, 'access': AccessKeys.fravaer},
-      {'icon': AppIcons.hms, 'label': AppStrings.navHMS, 'access': AccessKeys.hms},
+      {
+        'icon': AppIcons.survey,
+        'label': AppStrings.navSurveys,
+        'access': AccessKeys.surveys,
+      },
+      {
+        'icon': AppIcons.absence,
+        'label': AppStrings.navAbsence,
+        'access': AccessKeys.fravaer,
+      },
+      {
+        'icon': AppIcons.ticket,
+        'label': AppStrings.navTickets,
+        'access': AccessKeys.avvik,
+      },
+      {
+        'icon': AppIcons.hms,
+        'label': AppStrings.navHMS,
+        'access': AccessKeys.hms,
+      },
       {
         'icon': Icons.verified_user_outlined,
         'label': AppStrings.navUniform,
         'access': AccessKeys.uniformMonitor,
       },
-      {'icon': Icons.handshake_outlined, 'label': AppStrings.navPartners, 'access': AccessKeys.partners},
-      {'icon': AppIcons.clock, 'label': AppStrings.navStempling, 'access': AccessKeys.stempling},
-      {'icon': AppIcons.more, 'label': AppStrings.navMore, 'access': AccessKeys.more},
+      {
+        'icon': Icons.handshake_outlined,
+        'label': AppStrings.navPartners,
+        'access': AccessKeys.partners,
+      },
+      {
+        'icon': AppIcons.clock,
+        'label': AppStrings.navStempling,
+        'access': AccessKeys.stempling,
+      },
+      {
+        'icon': AppIcons.more,
+        'label': AppStrings.navMore,
+        'access': AccessKeys.more,
+      },
     ];
 
     final visibleScreens = allScreens.where((s) => _hasAccess(s['access'] as String)).toList();
@@ -286,12 +352,11 @@ class _MainShellState extends State<MainShell> {
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: visibleScreens.asMap().entries.map((entry) {
-                final i = entry.key;
-                final s = entry.value;
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: MobileShellNavBar(
+              itemCount: visibleScreens.length,
+              builder: (context, i, {required compact}) {
+                final s = visibleScreens[i];
                 return _buildNavItem(
                   context,
                   i,
@@ -299,8 +364,9 @@ class _MainShellState extends State<MainShell> {
                   s['label'] as String,
                   navIndex: navIndex,
                   visibleScreens: visibleScreens,
+                  compact: compact,
                 );
-              }).toList(),
+              },
             ),
           ),
         ),
@@ -316,16 +382,22 @@ class _MainShellState extends State<MainShell> {
     required int navIndex,
     required List<Map<String, dynamic>> visibleScreens,
     int? badge,
+    bool compact = false,
   }) {
     final drift = context.driftColors;
     final scheme = Theme.of(context).colorScheme;
     final isSelected = navIndex == index;
+    final metrics = ShellNavItemMetrics.of(context, compact: compact);
     return GestureDetector(
       onTap: () => _onNavigate(index, visibleScreens),
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: EdgeInsets.symmetric(
+          horizontal: metrics.horizontalPadding,
+          vertical: 6,
+        ),
+        constraints: BoxConstraints(minWidth: metrics.minWidth),
         decoration: BoxDecoration(
           color: isSelected ? scheme.primary.withValues(alpha: 0.12) : Colors.transparent,
           borderRadius: BorderRadius.circular(12),
@@ -335,16 +407,24 @@ class _MainShellState extends State<MainShell> {
           children: [
             Badge(
               isLabelVisible: badge != null && badge > 0,
-              label: badge != null ? Text('$badge', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700)) : null,
+              label: badge != null
+                  ? Text(
+                      '$badge',
+                      style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    )
+                  : null,
               child: Icon(
                 icon,
-                size: 24,
+                size: metrics.iconSize,
                 color: isSelected ? drift.navSelected : drift.navUnselected,
               ),
             ),
             const SizedBox(height: 3),
             SizedBox(
-              width: 64,
+              width: compact ? 56 : 64,
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
@@ -352,7 +432,7 @@ class _MainShellState extends State<MainShell> {
                   maxLines: 1,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 10,
+                    fontSize: metrics.labelSize,
                     fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                     color: isSelected ? drift.navSelected : drift.navUnselected,
                   ),

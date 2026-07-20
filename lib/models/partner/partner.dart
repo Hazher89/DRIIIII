@@ -1,3 +1,19 @@
+enum EcoDrivingStatus {
+  completed,
+  required,
+  overdue;
+
+  static EcoDrivingStatus fromDeadline(DateTime? deadline, {DateTime? now}) {
+    final today = now ?? DateTime.now();
+    final day = DateTime(today.year, today.month, today.day);
+    if (deadline != null) {
+      final d = DateTime(deadline.year, deadline.month, deadline.day);
+      if (d.isBefore(day)) return EcoDrivingStatus.overdue;
+    }
+    return EcoDrivingStatus.required;
+  }
+}
+
 class Partner {
   final String id;
   final String companyId;
@@ -28,6 +44,12 @@ class Partner {
   final bool isActive;
   /// Kun bil-eier får ruter, SMS og aksept for alle MAVI under bedriften.
   final bool routesOwnerOnly;
+  /// ECO Driving Kurs gjennomført.
+  final bool ecoDrivingCompleted;
+  /// Frist for å ta kurset (typisk 3 måneder fra registrering).
+  final DateTime? ecoDrivingDeadline;
+  /// Når kurset ble registrert som tatt.
+  final DateTime? ecoDrivingCompletedAt;
   final DateTime createdAt;
 
   Partner({
@@ -59,8 +81,24 @@ class Partner {
     this.nextAuditAt,
     this.isActive = true,
     this.routesOwnerOnly = false,
+    this.ecoDrivingCompleted = false,
+    this.ecoDrivingDeadline,
+    this.ecoDrivingCompletedAt,
     required this.createdAt,
   });
+
+  EcoDrivingStatus get ecoDrivingStatus {
+    if (ecoDrivingCompleted) return EcoDrivingStatus.completed;
+    return EcoDrivingStatus.fromDeadline(ecoDrivingDeadline);
+  }
+
+  bool get hasEcoDrivingGlow => ecoDrivingCompleted;
+
+  static DateTime defaultEcoDrivingDeadline([DateTime? from]) {
+    final base = from ?? DateTime.now();
+    final start = DateTime(base.year, base.month, base.day);
+    return start.add(const Duration(days: 90));
+  }
 
   factory Partner.fromJson(Map<String, dynamic> json) {
     return Partner(
@@ -100,6 +138,13 @@ class Partner {
           : null,
       isActive: json['is_active'] as bool? ?? true,
       routesOwnerOnly: json['routes_owner_only'] as bool? ?? true,
+      ecoDrivingCompleted: json['eco_driving_completed'] as bool? ?? false,
+      ecoDrivingDeadline: json['eco_driving_deadline'] != null
+          ? DateTime.parse(json['eco_driving_deadline'] as String)
+          : null,
+      ecoDrivingCompletedAt: json['eco_driving_completed_at'] != null
+          ? DateTime.parse(json['eco_driving_completed_at'] as String)
+          : null,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -131,6 +176,10 @@ class Partner {
       'next_meeting_at': nextMeetingAt?.toIso8601String(),
       'last_audit_at': lastAuditAt?.toIso8601String().split('T').first,
       'next_audit_at': nextAuditAt?.toIso8601String().split('T').first,
+      'eco_driving_completed': ecoDrivingCompleted,
+      'eco_driving_deadline': ecoDrivingDeadline?.toIso8601String().split('T').first,
+      'eco_driving_completed_at':
+          ecoDrivingCompletedAt?.toIso8601String().split('T').first,
       if (createdBy != null) 'created_by': createdBy,
     };
   }
@@ -163,6 +212,10 @@ class Partner {
       'next_audit_at': nextAuditAt?.toIso8601String().split('T').first,
       'is_active': isActive,
       'routes_owner_only': routesOwnerOnly,
+      'eco_driving_completed': ecoDrivingCompleted,
+      'eco_driving_deadline': ecoDrivingDeadline?.toIso8601String().split('T').first,
+      'eco_driving_completed_at':
+          ecoDrivingCompletedAt?.toIso8601String().split('T').first,
       'updated_at': DateTime.now().toIso8601String(),
     };
   }

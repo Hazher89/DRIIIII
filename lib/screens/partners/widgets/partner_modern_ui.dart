@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/driftpro_theme_context.dart';
+import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import 'eco_driving_badge.dart';
 
 /// Nøytralt, moderne UI for bedrifter — uten sterke gradienter.
 class PartnerModernUi {
@@ -364,6 +366,7 @@ class PartnerModernDetailHeader extends StatelessWidget {
     required this.isActive,
     required this.onActiveChanged,
     this.canToggleActive = true,
+    this.ecoDrivingStatus,
   });
 
   final String title;
@@ -373,6 +376,7 @@ class PartnerModernDetailHeader extends StatelessWidget {
   final bool isActive;
   final ValueChanged<bool>? onActiveChanged;
   final bool canToggleActive;
+  final EcoDrivingStatus? ecoDrivingStatus;
 
   @override
   Widget build(BuildContext context) {
@@ -421,11 +425,14 @@ class PartnerModernDetailHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
             children: [
               _pill(context, '$maviCount MAVI'),
-              const SizedBox(width: 8),
               _pill(context, '$regCount reg.nr'),
+              if (ecoDrivingStatus != null)
+                EcoDrivingBadge(status: ecoDrivingStatus!, compact: true),
             ],
           ),
         ],

@@ -4,6 +4,7 @@ import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/vehicle_inspection.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import 'owner_portal_common.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
@@ -45,14 +46,12 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
       byVehicle.putIfAbsent(key, () => []).add(ins);
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Bilkontroll'),
-        actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-          IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
-        ],
-      ),
+    return PartnerPortalPageShell(
+      title: 'Bilkontroll',
+      actions: [
+        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+        IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
+      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : RefreshIndicator(

@@ -112,7 +112,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         companyId = _departments.first.companyId;
       }
 
-      await SupabaseService.client.from('profiles').update({
+      final updates = <String, dynamic>{
         'full_name': _nameController.text,
         'phone': _phoneController.text,
         'address': _addressController.text,
@@ -122,7 +122,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         'department_id': _selectedDepartmentId,
         'company_id': companyId,
         'is_onboarded': true,
-      }).eq('id', widget.profile.id);
+      };
+      await SupabaseService.client
+          .from('profiles')
+          .update(updates)
+          .eq('id', widget.profile.id);
 
       if (mounted) {
         // Trigger a refresh of the app state
@@ -164,8 +168,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'Fyll ut skjemaet. Telefonnummer brukes til SMS-varsler senere. '
-                          'Du får ikke tilgang før superadmin har godkjent deg.',
+                          'Fyll ut skjemaet. Telefonnummer brukes til SMS-varsler. '
+                          'Etterpå får du standard ansatt-tilgang i appen.',
                           style: TextStyle(fontSize: 16, color: Colors.grey),
                         ),
                         const SizedBox(height: 48),

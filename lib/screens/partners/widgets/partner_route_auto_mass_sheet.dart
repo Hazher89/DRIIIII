@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/config/driftpro_client.dart';
 import '../../../core/constants/route_dispatch_status.dart';
 import '../../../core/constants/sap_routes_config.dart';
 import '../../../core/services/partner/fleet_shift_filters.dart';
@@ -2663,8 +2664,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       guidePanel: _buildWorkflowGuideContent(ui),
       guideExpanded: _guideExpanded,
       onGuideToggle: () => setState(() => _guideExpanded = !_guideExpanded),
-      topBanner: _buildWorkflowStepBanner(ui),
-      showTabCaption: true,
+      topBanner: DriftProClient.isMobile ? null : _buildWorkflowStepBanner(ui),
+      showTabCaption: !DriftProClient.isMobile,
       tabLabels: const ['Manuell', 'Duplikater', 'Flere last/rute', 'Mangler skift', 'Ruter'],
       tabBadges: [
         _skipped.isNotEmpty ? _skipped.length : null,
@@ -3107,6 +3108,37 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
+  Widget _routeCardsSliver({
+    required List<PartnerRouteShare> routes,
+    required Widget Function(PartnerRouteShare share) itemBuilder,
+    EdgeInsets padding = const EdgeInsets.fromLTRB(12, 4, 12, 24),
+  }) {
+    if (DriftProClient.isMobile) {
+      return SliverPadding(
+        padding: padding,
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, i) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: itemBuilder(routes[i]),
+            ),
+            childCount: routes.length,
+          ),
+        ),
+      );
+    }
+    return SliverPadding(
+      padding: padding,
+      sliver: SliverGrid(
+        gridDelegate: _routeCardGridDelegate,
+        delegate: SliverChildBuilderDelegate(
+          (context, i) => itemBuilder(routes[i]),
+          childCount: routes.length,
+        ),
+      ),
+    );
+  }
+
   Widget _buildRoutesOverview(_MassUi ui, {bool forceMissingOnly = false}) {
     if (_staged.isEmpty) {
       return Center(
@@ -3136,20 +3168,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ),
           )
         else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
-            sliver: SliverGrid(
-              gridDelegate: _routeCardGridDelegate,
-              delegate: SliverChildBuilderDelegate(
-                (context, i) {
-                  final share = routes[i];
-                  final row = _rowForShare(share);
-                  if (row == null) return _buildOrphanRouteCard(share, ui);
-                  return _buildMassRouteCard(share, row, ui);
-                },
-                childCount: routes.length,
-              ),
-            ),
+          _routeCardsSliver(
+            routes: routes,
+            itemBuilder: (share) {
+              final row = _rowForShare(share);
+              if (row == null) return _buildOrphanRouteCard(share, ui);
+              return _buildMassRouteCard(share, row, ui);
+            },
           ),
       ],
     );
@@ -3583,17 +3608,30 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   ),
                 ]
               : [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-                    child: GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      gridDelegate: _routeCardGridDelegate,
-                      itemCount: routes.length,
-                      itemBuilder: (_, i) =>
-                          _buildMassRouteCard(routes[i], row, ui),
-                    ),
-                  ),
+                  DriftProClient.isMobile
+                      ? Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                          child: Column(
+                            children: [
+                              for (final route in routes)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: _buildMassRouteCard(route, row, ui),
+                                ),
+                            ],
+                          ),
+                        )
+                      : Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+                          child: GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate: _routeCardGridDelegate,
+                            itemCount: routes.length,
+                            itemBuilder: (_, i) =>
+                                _buildMassRouteCard(routes[i], row, ui),
+                          ),
+                        ),
                 ],
         ),
       ),
@@ -3994,14 +4032,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ),
         ),
       ),
-      SliverPadding(
+      _routeCardsSliver(
         padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
-        sliver: SliverGrid(
-          gridDelegate: _routeCardGridDelegate,
-          delegate: SliverChildBuilderDelegate(
-            (context, i) => _buildDuplicateShareCard(shares[i], ui, isKeeper: shares[i].id == StagedRouteDuplicateHelper.pickKeeper(shares).id),
-            childCount: shares.length,
-          ),
+        routes: shares,
+        itemBuilder: (share) => _buildDuplicateShareCard(
+          share,
+          ui,
+          isKeeper: share.id == StagedRouteDuplicateHelper.pickKeeper(shares).id,
         ),
       ),
     ];
@@ -4124,21 +4161,35 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ),
           ),
         ),
-        SliverPadding(
-          padding: const EdgeInsets.fromLTRB(10, 4, 10, 20),
-          sliver: SliverGrid(
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 280,
-              childAspectRatio: 0.58,
-              crossAxisSpacing: 10,
-              mainAxisSpacing: 10,
+        if (DriftProClient.isMobile)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 20),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, i) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _buildSkippedCompactCard(_skipped[i], ui, showDelete: true),
+                ),
+                childCount: _skipped.length,
+              ),
             ),
-            delegate: SliverChildBuilderDelegate(
-              (context, i) => _buildSkippedCompactCard(_skipped[i], ui, showDelete: true),
-              childCount: _skipped.length,
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 20),
+            sliver: SliverGrid(
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 280,
+                childAspectRatio: 0.58,
+                crossAxisSpacing: 10,
+                mainAxisSpacing: 10,
+              ),
+              delegate: SliverChildBuilderDelegate(
+                (context, i) => _buildSkippedCompactCard(_skipped[i], ui, showDelete: true),
+                childCount: _skipped.length,
+              ),
             ),
           ),
-        ),
       ],
     );
   }

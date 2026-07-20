@@ -45,6 +45,12 @@ class DriftProPlatformCatalog {
   static const String privacyEmail = 'hazher@mavilogistikk.no';
   static const String companyName = 'Mavi Logistikk AS';
 
+  /// Offentlige URL-er for App Store Connect / Google Play.
+  static const String privacyPolicyUrl = 'https://hazher.no/DRIFTPRO/Privacy/';
+  static const String termsOfUseUrl = 'https://hazher.no/DRIFTPRO/Terms/';
+  static const String supportUrl = 'https://hazher.no/DRIFTPRO/Support/';
+  static const String productUrl = 'https://hazher.no/DRIFTPRO/';
+
   /// Intern Dropbox-admin — kun disse brukerne ser kobling i Mer-menyen.
   static const Set<String> dropboxOperatorEmployeeNumbers = {'25'};
 

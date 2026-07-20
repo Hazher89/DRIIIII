@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/config/driftpro_client.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../models/partner/partner_links.dart';
 import '../../core/services/supabase_service.dart';
@@ -97,7 +98,12 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
         leadingSlivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              padding: EdgeInsets.fromLTRB(
+                12,
+                DriftProClient.isMobile ? 4 : 12,
+                12,
+                0,
+              ),
               child: PartnerAvailableVehiclesPanel(
                 fleet: _fleet,
                 sharesToday: _sharesToday,
@@ -108,32 +114,64 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).push<void>(
-                          MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
-                        );
-                      },
-                      icon: const Icon(Icons.insights_outlined, size: 18),
-                      label: const Text('MAVI-statistikk'),
+              child: DriftProClient.isMobile
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).push<void>(
+                              MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
+                            );
+                          },
+                          icon: const Icon(Icons.insights_outlined, size: 18),
+                          label: const Text('MAVI-statistikk'),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _openShiftAdmin,
+                                icon: const Icon(Icons.schedule_outlined, size: 18),
+                                label: const Text('Skiftplan'),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Søk i rute-PDF',
+                              onPressed: _openPdfSearch,
+                              icon: const Icon(Icons.manage_search_outlined),
+                            ),
+                          ],
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).push<void>(
+                                MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
+                              );
+                            },
+                            icon: const Icon(Icons.insights_outlined, size: 18),
+                            label: const Text('MAVI-statistikk'),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        TextButton.icon(
+                          onPressed: _openShiftAdmin,
+                          icon: const Icon(Icons.schedule_outlined, size: 18),
+                          label: const Text('Skiftplan'),
+                        ),
+                        IconButton(
+                          tooltip: 'Søk i rute-PDF',
+                          onPressed: _openPdfSearch,
+                          icon: const Icon(Icons.manage_search_outlined),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  TextButton.icon(
-                    onPressed: _openShiftAdmin,
-                    icon: const Icon(Icons.schedule_outlined, size: 18),
-                    label: const Text('Skiftplan'),
-                  ),
-                  IconButton(
-                    tooltip: 'Søk i rute-PDF',
-                    onPressed: _openPdfSearch,
-                    icon: const Icon(Icons.manage_search_outlined),
-                  ),
-                ],
-              ),
             ),
           ),
         ],

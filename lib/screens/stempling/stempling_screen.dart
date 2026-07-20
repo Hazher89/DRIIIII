@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/user_access.dart';
 import '../../core/routing/app_paths.dart';
@@ -162,16 +163,14 @@ class _StemplingScreenState extends State<StemplingScreen> with SingleTickerProv
     return PermissionGuard(
       profile: _profile,
       accessKey: AccessKeys.stempling,
-      child: Scaffold(
-        backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-        appBar: AppBar(
-          title: const Text('Stempling'),
-          bottom: TabBar(
-            controller: _tabController,
-            isScrollable: tabs.length > 3,
-            tabs: tabs.map((t) => Tab(text: t.label)).toList(),
-          ),
+      child: MobileShellScaffold(
+        title: 'Stempling',
+        bottom: TabBar(
+          controller: _tabController,
+          isScrollable: tabs.length > 3,
+          tabs: tabs.map((t) => Tab(text: t.label)).toList(),
         ),
+        backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
         body: TabBarView(
           controller: _tabController,
           children: tabs.map((t) => t.child).toList(),

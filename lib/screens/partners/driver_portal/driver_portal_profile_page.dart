@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/partner_portal_page_shell.dart';
 import '../../../core/auth/session_sign_out.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/user_profile.dart';
+import '../../more/driftpro_platform_catalog.dart';
+import '../../more/widgets/info_page_scaffold.dart';
 import '../widgets/partner_ui.dart';
 
 class DriverPortalProfilePage extends StatelessWidget {
@@ -12,17 +15,15 @@ class DriverPortalProfilePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profil'),
-        actions: [
-          IconButton(
-            tooltip: 'Logg ut',
-            icon: const Icon(Icons.logout),
-            onPressed: () => signOutFromPortal(context),
-          ),
-        ],
-      ),
+    return PartnerPortalPageShell(
+      title: 'Profil',
+      actions: [
+        IconButton(
+          tooltip: 'Logg ut',
+          icon: const Icon(Icons.logout),
+          onPressed: () => signOutFromPortal(context),
+        ),
+      ],
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -44,6 +45,27 @@ class DriverPortalProfilePage extends StatelessWidget {
               leading: const Icon(Icons.badge_outlined, color: DriftProTheme.primaryGreen),
               title: const Text('Rolle'),
               subtitle: const Text('Sjåfør (MAVI-bil)'),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.description_outlined),
+                  title: const Text('Vilkår for bruk'),
+                  trailing: const Icon(Icons.open_in_new, size: 18),
+                  onTap: () => launchInfoUrl(DriftProPlatformCatalog.termsOfUseUrl),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('Personvernerklæring'),
+                  trailing: const Icon(Icons.open_in_new, size: 18),
+                  onTap: () =>
+                      launchInfoUrl(DriftProPlatformCatalog.privacyPolicyUrl),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 12),

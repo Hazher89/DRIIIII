@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_portal_route_list_tile.dart';
 import 'driver_portal_common.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
@@ -54,21 +55,17 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
     final surface = isDark ? const Color(0xFF0F1419) : const Color(0xFFF4F6F8);
     final pending = _pending;
 
-    return Scaffold(
+    return PartnerPortalPageShell(
       backgroundColor: surface,
-      appBar: AppBar(
-        backgroundColor: surface,
-        surfaceTintColor: Colors.transparent,
-        title: const Text('Mine ruter'),
-        actions: [
-          IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
-          IconButton(
-            tooltip: 'Logg ut',
-            icon: const Icon(Icons.logout),
-            onPressed: () => signOutFromPortal(context),
-          ),
-        ],
-      ),
+      title: 'Mine ruter',
+      actions: [
+        IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
+        IconButton(
+          tooltip: 'Logg ut',
+          icon: const Icon(Icons.logout),
+          onPressed: () => signOutFromPortal(context),
+        ),
+      ],
       body: _loading || _data == null
           ? const DriftProLoadingCenter()
           : Column(

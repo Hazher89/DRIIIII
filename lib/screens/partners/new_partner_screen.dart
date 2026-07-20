@@ -10,6 +10,7 @@ import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
 import '../../core/utils/portal_credentials.dart';
 import 'widgets/partner_companies_ui.dart';
+import 'widgets/eco_driving_badge.dart';
 import 'widgets/partner_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
@@ -43,6 +44,7 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
   final List<TextEditingController> _driverPhoneControllers = [TextEditingController()];
 
   bool _euApproved = false;
+  bool _ecoDrivingCompleted = false;
   bool _saving = false;
 
   @override
@@ -174,6 +176,12 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
         vehicleCountRegistered: veh,
         vehicleMaxPayloadKg: pay,
         euApproved: _euApproved ? true : null,
+        ecoDrivingCompleted: _ecoDrivingCompleted,
+        ecoDrivingDeadline: _ecoDrivingCompleted
+            ? null
+            : Partner.defaultEcoDrivingDeadline(),
+        ecoDrivingCompletedAt:
+            _ecoDrivingCompleted ? DateTime.now() : null,
         brregSnapshot: snapshot,
         createdAt: DateTime.now(),
       );
@@ -435,6 +443,15 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
           onChanged: (v) => setState(() => _euApproved = v),
           title: const Text('EU-godkjent materiell'),
         ),
+        const SizedBox(height: 8),
+        EcoDrivingCourseEditor(
+          completed: _ecoDrivingCompleted,
+          deadline: _ecoDrivingCompleted
+              ? null
+              : Partner.defaultEcoDrivingDeadline(),
+          onCompletedChanged: (v) => setState(() => _ecoDrivingCompleted = v),
+        ),
+        const SizedBox(height: 8),
         PartnerInlineField(label: 'Notater', controller: _notesCtrl, maxLines: 3),
       ],
     );

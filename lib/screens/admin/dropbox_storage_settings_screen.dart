@@ -138,16 +138,32 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
   }
 
   Future<void> _disconnect() async {
+    final locked = _status?['disconnect_locked'] != false;
+    if (locked) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Dropbox er låst mot frakobling. Lås opp først (kun superadmin).',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Koble fra skylagring?'),
+        title: const Text('Deaktiver skylagring midlertidig?'),
         content: const Text(
-          'Nye filer lagres igjen kun i Supabase. Eksisterende filer i skylagring blir liggende der.',
+          'Tilkoblingen slettes ikke — refresh-token beholdes. '
+          'Du kan reaktivere uten ny innlogging. '
+          'Nye filer går til Supabase til Dropbox er aktiv igjen.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Koble fra')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Deaktiver')),
         ],
       ),
     );
@@ -159,13 +175,118 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
       await _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Skylagring frakoblet')),
+          const SnackBar(content: Text('Skylagring deaktivert (token beholdt)')),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Feil: $e')),
+          SnackBar(content: Text('Feil: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _unlockDisconnect() async {
+    final ctrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Lås opp frakobling?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Kun superadmin. Skriv nøyaktig:\nLÅS OPP DROPBOX',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                hintText: 'LÅS OPP DROPBOX',
+              ),
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Lås opp'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _busy = true);
+    try {
+      await CompanyFileStorage.setDisconnectLocked(
+        locked: false,
+        confirmPhrase: ctrl.text.trim(),
+      );
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lås åpnet — husk å låse igjen etterpå.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      ctrl.dispose();
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _lockDisconnect() async {
+    setState(() => _busy = true);
+    try {
+      await CompanyFileStorage.setDisconnectLocked(locked: true);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Dropbox er låst mot frakobling.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _reactivate() async {
+    setState(() => _busy = true);
+    try {
+      await CompanyFileStorage.reactivateDropbox();
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Dropbox reaktivert og låst.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -218,11 +339,19 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Supabase har begrenset plass. Når skylagring er koblet lagrer '
-                          'DriftPro alle filer eksternt — automatisk sortert i mapper '
-                          'per funksjon (ruter, HMS, dokumenter, osv.) per bedrift.',
+                          'Når Dropbox er koblet, lagrer DriftPro (web, iOS og Android) '
+                          'alle filer, bilder og PDF-er der — ikke i Supabase. '
+                          'Filene ligger under Apps/DriftPro/company_…/kategori/dato/.',
                           style: DriftProTheme.bodyMd.copyWith(
                             color: isDark ? Colors.white70 : Colors.grey[700],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Åpne f.eks. tickets → 2026-07-17 for å se avviksbilder. '
+                          'Tomme kategori-mapper betyr bare at det ikke er lastet opp noe den dagen.',
+                          style: DriftProTheme.bodySm.copyWith(
+                            color: isDark ? Colors.white54 : Colors.grey[600],
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -255,23 +384,39 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                             leading: const Icon(Icons.check_circle, color: Colors.green),
                             title: Text(_status?['account_email']?.toString() ?? 'Tilkoblet'),
                             subtitle: Text(
-                              'Mappe: ${_status?['root_folder'] ?? '/DriftPro'}\n'
-                              'Lagring: ${((_status?['large_file_threshold_bytes'] as int?) ?? 0) == 0 ? 'Alltid skylagring' : 'Supabase under ${((_status?['large_file_threshold_bytes'] as int?) ?? 0) / 1048576} MB'}',
+                              'Mappe: ${_status?['root_folder'] ?? '/'}\n'
+                              'Lås: ${(_status?['disconnect_locked'] != false) ? 'På — kan ikke kobles fra ved et uhell' : 'Av — frakobling mulig'}\n'
+                              'Helse: ${_status?['last_health_ok_at'] != null ? 'OK' : (_status?['needs_reauth'] == true ? 'Trenger ny innlogging' : 'Venter')}'
+                              '${_status?['last_health_error'] != null ? '\nSiste feil: ${_status!['last_health_error']}' : ''}',
                             ),
                           ),
                           const SizedBox(height: 8),
-                          OutlinedButton.icon(
-                            onPressed: _busy ? null : _disconnect,
-                            icon: const Icon(Icons.link_off),
-                            label: const Text('Koble fra skylagring'),
-                          ),
+                          if (_status?['disconnect_locked'] != false) ...[
+                            OutlinedButton.icon(
+                              onPressed: _busy ? null : _unlockDisconnect,
+                              icon: const Icon(Icons.lock_open),
+                              label: const Text('Lås opp frakobling (superadmin)'),
+                            ),
+                          ] else ...[
+                            FilledButton.icon(
+                              onPressed: _busy ? null : _lockDisconnect,
+                              icon: const Icon(Icons.lock),
+                              label: const Text('Lås Dropbox igjen'),
+                            ),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: _busy ? null : _disconnect,
+                              icon: const Icon(Icons.pause_circle_outline),
+                              label: const Text('Deaktiver midlertidig'),
+                            ),
+                          ],
                         ] else ...[
                           const ListTile(
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(Icons.cloud_off_outlined),
-                            title: Text('Ikke koblet'),
+                            title: Text('Ikke aktiv'),
                             subtitle: Text(
-                              'Koble skylagring for å lagre alle filer utenfor Supabase-kvoten.',
+                              'Koble skylagring, eller reaktiver lagret tilkobling.',
                             ),
                           ),
                           FilledButton.icon(
@@ -280,6 +425,12 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                                 ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                                 : const Icon(Icons.link),
                             label: const Text('Koble skylagring (sikker innlogging)'),
+                          ),
+                          const SizedBox(height: 8),
+                          OutlinedButton.icon(
+                            onPressed: _busy ? null : _reactivate,
+                            icon: const Icon(Icons.restart_alt),
+                            label: const Text('Reaktiver lagret tilkobling'),
                           ),
                         ],
                       ],

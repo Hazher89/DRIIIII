@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../../core/permissions/user_access.dart';
+import '../../../core/services/native_permissions_service.dart';
 import '../../../core/services/gm_storo/gm_storo_label_parser.dart';
 import '../../../core/services/gm_storo/gm_storo_ocr.dart';
 import '../../../core/services/gm_storo/gm_storo_service.dart';
@@ -177,6 +178,10 @@ class _GmStoroScanPanelState extends State<_GmStoroScanPanel> {
   void initState() {
     super.initState();
     _hydrateFromBatch();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      NativePermissionsService.ensureCamera(context: context);
+    });
   }
 
   @override
@@ -321,6 +326,7 @@ class _GmStoroScanPanelState extends State<_GmStoroScanPanel> {
 
   Future<void> _captureLabelPhoto() async {
     if (_ocrBusy) return;
+    if (!await NativePermissionsService.ensureCamera(context: context)) return;
     final file = await _picker.pickImage(source: ImageSource.camera, imageQuality: 92);
     if (file == null || !mounted) return;
 

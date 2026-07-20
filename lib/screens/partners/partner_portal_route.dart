@@ -4,6 +4,7 @@ import '../../core/routing/app_paths.dart';
 import '../../core/routing/route_url_sync.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
+import '../../models/partner/partner_links.dart';
 import '../../models/user_profile.dart';
 import 'partner_shell.dart';
 import 'widgets/partner_portal_access_revoked.dart';
@@ -30,18 +31,48 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
     _load();
   }
 
+  UserProfile _profileForPortalSession(
+    UserProfile? profile,
+    PartnerPortalSession session,
+  ) {
+    final user = SupabaseService.currentUser;
+    final base = profile ??
+        UserProfile(
+          id: user?.id ?? '',
+          email: user?.email?.trim().toLowerCase() ?? '',
+          fullName: 'Partner',
+          role: UserRole.samarbeidspartner,
+          companyId: session.companyId,
+          isOnboarded: true,
+          isApproved: true,
+          isActive: true,
+        );
+    return base.copyWith(
+      partnerId: session.partnerId,
+      companyId: session.companyId,
+      partnerVehicleId: session.isOwner ? null : session.partnerVehicleId,
+      role: UserRole.samarbeidspartner,
+      isOnboarded: true,
+      isApproved: true,
+      isActive: true,
+    );
+  }
+
   Future<void> _load() async {
     try {
       await SupabaseService.ensureSessionLinkedToCompany();
       var profile = await SupabaseService.fetchCurrentUserProfile();
       var portalKind = _portalAccountKind;
 
+      final hasPortalAccount =
+          await SupabaseService.currentSessionHasActivePortalAccount();
       final email =
           SupabaseService.currentUser?.email?.trim().toLowerCase() ?? '';
-      final looksLikePortal = email.endsWith('.portal') ||
-          email.endsWith('@portal.driftpro.no');
+      final looksLikePortal = SupabaseService.emailLooksLikePortal(email);
 
-      if (profile?.isPartnerPortalUser == true || looksLikePortal) {
+      if (hasPortalAccount ||
+          profile?.isPartnerPortalUser == true ||
+          looksLikePortal) {
         var session = await PartnerService.resolvePortalSession();
         if (session == null) {
           await SupabaseService.applyPartnerBootstrap();
@@ -58,12 +89,7 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
           return;
         }
         portalKind = session.accountKind;
-        if (profile != null) {
-          profile = profile.copyWith(
-            partnerId: session.partnerId,
-            partnerVehicleId: session.isOwner ? null : session.partnerVehicleId,
-          );
-        }
+        profile = _profileForPortalSession(profile, session);
       }
       if (!mounted) return;
       setState(() {
@@ -88,19 +114,19 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
       return const DriftProLoadingPage();
     }
     final profile = _profile;
+    if (_portalAccountKind != null && profile != null) {
+      return PartnerShell(
+        profile: profile,
+        portalAccountKind: _portalAccountKind,
+        initialTabIndex: _initialIndex(profile),
+      );
+    }
     if (_portalAccountKind == null &&
         (profile == null || profile.isPartnerPortalUser)) {
       return const PartnerPortalAccessRevoked();
     }
-    if (profile == null || !profile.isPartnerPortalUser) {
-      return const Scaffold(
-        body: Center(child: Text('Ingen portal-tilgang for denne kontoen.')),
-      );
-    }
-    return PartnerShell(
-      profile: profile,
-      portalAccountKind: _portalAccountKind,
-      initialTabIndex: _initialIndex(profile),
+    return const Scaffold(
+      body: Center(child: Text('Ingen portal-tilgang for denne kontoen.')),
     );
   }
 }

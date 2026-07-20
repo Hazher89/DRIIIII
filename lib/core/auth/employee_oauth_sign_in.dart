@@ -5,20 +5,21 @@ import '../config/app_origin.dart';
 import 'oauth_browser_redirect_stub.dart'
     if (dart.library.html) 'oauth_browser_redirect_web.dart';
 
-/// Starts Google/Apple OAuth for MAVI employees.
+/// Starter Google/Apple OAuth for ansatte (og nye App Store-brukere).
 ///
-/// Signs out any existing session first so the user always sees the provider
-/// login screen instead of silently reusing a cached session.
+/// Logger ut eksisterende sesjon først, så provider-skjermen alltid vises.
 Future<bool> startEmployeeOAuthSignIn(OAuthProvider provider) async {
   final auth = Supabase.instance.client.auth;
   if (auth.currentSession != null) {
     await auth.signOut();
   }
 
+  final redirectTo = appAuthRedirectOrigin;
+
   if (kIsWeb) {
     final res = await auth.getOAuthSignInUrl(
       provider: provider,
-      redirectTo: appAuthRedirectOrigin,
+      redirectTo: redirectTo,
     );
     assignBrowserLocation(res.url);
     return true;
@@ -26,6 +27,6 @@ Future<bool> startEmployeeOAuthSignIn(OAuthProvider provider) async {
 
   return auth.signInWithOAuth(
     provider,
-    redirectTo: appAuthRedirectOrigin,
+    redirectTo: redirectTo,
   );
 }

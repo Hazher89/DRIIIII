@@ -6,6 +6,8 @@ import '../../core/constants/app_strings.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
+import '../../core/layout/mobile_layout.dart';
+import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/services/hms/hms_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -78,6 +80,17 @@ class _HmsScreenState extends State<HmsScreen> {
         badge: _statsLoading ? null : '${_stats.riskCount}',
         badgeColor: _stats.highRiskCount > 0 ? DriftProTheme.error : null,
         onTap: () => context.push(AppPaths.hmsRisiko),
+      ));
+    }
+    if (a?.canHmsRiskMatrix == true) {
+      modules.add(_buildModuleCard(
+        context,
+        icon: Icons.grid_view_rounded,
+        title: 'Risikomatrise',
+        subtitle: '5×5 matrise · sannsynlighet og konsekvens',
+        color: DriftProTheme.warning,
+        isDark: isDark,
+        onTap: () => context.push(AppPaths.hmsRisikomatrise),
       ));
     }
     if (a?.canHmsSja == true) {
@@ -161,15 +174,13 @@ class _HmsScreenState extends State<HmsScreen> {
     return PermissionGuard(
       profile: _profile,
       accessKey: AccessKeys.hms,
-      child: Scaffold(
+      child: MobileShellScaffold(
+        title: AppStrings.navHMS,
+        actions: [
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+        ],
         backgroundColor:
             isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-        appBar: AppBar(
-          title: const Text(AppStrings.navHMS),
-          actions: [
-            IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
-          ],
-        ),
         body: _profile == null
             ? const DriftProLoadingCenter()
             : modules.isEmpty
@@ -253,6 +264,24 @@ class _HmsScreenState extends State<HmsScreen> {
   }
 
   Widget _buildKpiRow(bool isDark) {
+    if (MobileLayout.isCompact(context)) {
+      return Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: _kpiTile(isDark, 'Risikoer', '${_stats.riskCount}',
+                  Icons.warning_amber_rounded, DriftProTheme.riskHigh)),
+              const SizedBox(width: 8),
+              Expanded(child: _kpiTile(isDark, 'Høy risiko', '${_stats.highRiskCount}',
+                  Icons.priority_high, DriftProTheme.error)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _kpiTile(isDark, 'SJA åpne', '${_stats.sjaOpen}', AppIcons.sja,
+              DriftProTheme.accentBlue),
+        ],
+      );
+    }
     return Row(
       children: [
         Expanded(

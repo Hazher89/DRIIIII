@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../../../core/layout/mobile_layout.dart';
 import '../../../core/permissions/user_access.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/storage/storage_file_actions.dart';
@@ -113,8 +114,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) => AlertDialog(
           title: Text(multi ? 'Last opp ${files.length} dokumenter' : 'Last opp dokument til bil-eier'),
-          content: SizedBox(
-            width: 420,
+          content: MobileDialogBody(
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -490,8 +490,7 @@ class _PartnerDocumentsTabState extends State<PartnerDocumentsTab> {
 
           return AlertDialog(
             title: Text('Tilgang: ${folder['name'] ?? 'Mappe'}'),
-            content: SizedBox(
-              width: 420,
+            content: MobileDialogBody(
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,

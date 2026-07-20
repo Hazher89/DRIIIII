@@ -66,7 +66,7 @@ class DispatchAuthScreen extends StatelessWidget {
                   _LoginCard(
                     icon: Icons.badge_outlined,
                     title: 'MAVI / DriftPro-ansatt',
-                    subtitle: 'Ansattnummer, Google eller Apple — samme konto som i DriftPro.',
+                    subtitle: 'Ansattnummer + passord — samme konto som i DriftPro.',
                     color: DriftProTheme.primaryGreen,
                     onTap: () {
                       Navigator.of(context).push(

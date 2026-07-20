@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/permissions/access_keys.dart';
+import '../../../core/permissions/permission_gate.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../core/services/vision/vision_camera_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../models/user_profile.dart';
 import '../../../models/vision_camera.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
@@ -16,6 +20,7 @@ class VisionEventsScreen extends StatefulWidget {
 
 class _VisionEventsScreenState extends State<VisionEventsScreen> {
   List<VisionEvent> _events = [];
+  UserProfile? _profile;
   bool _loading = true;
 
   @override
@@ -27,7 +32,8 @@ class _VisionEventsScreenState extends State<VisionEventsScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final events = await VisionCameraService.instance.fetchRecentEvents();
+      _profile ??= await SupabaseService.fetchCurrentUserProfile();
+      final events = await VisionCameraService.instance.fetchMonitorViolations();
       if (!mounted) return;
       setState(() {
         _events = events;
@@ -44,9 +50,20 @@ class _VisionEventsScreenState extends State<VisionEventsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Kamerahendelser')),
-      body: _loading
+    return PermissionGuard(
+      profile: _profile,
+      accessKey: AccessKeys.uniformMonitor,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Kamerahendelser'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _load,
+            ),
+          ],
+        ),
+        body: _loading
           ? const DriftProLoadingCenter()
           : _events.isEmpty
               ? Center(
@@ -67,6 +84,7 @@ class _VisionEventsScreenState extends State<VisionEventsScreen> {
                     itemBuilder: (context, i) => _EventCard(event: _events[i]),
                   ),
                 ),
+      ),
     );
   }
 }

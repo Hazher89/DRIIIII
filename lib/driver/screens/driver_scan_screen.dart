@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
+import '../../core/services/native_permissions_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../last_mile/services/lm_warehouse_service.dart';
 
@@ -15,6 +16,15 @@ class _DriverScanScreenState extends State<DriverScanScreen> {
   final _search = TextEditingController();
   List<Map<String, dynamic>> _items = [];
   String? _lastScan;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      NativePermissionsService.ensureCamera(context: context);
+    });
+  }
 
   Future<void> _onDetect(BarcodeCapture capture) async {
     final code = capture.barcodes.firstOrNull?.rawValue;

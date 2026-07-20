@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/services/native_permissions_service.dart';
 import '../../../core/constants/vehicle_rental_agreement.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/app_theme.dart';
@@ -385,6 +386,7 @@ class VehicleRentalPhotoGrid extends StatelessWidget {
   }
 
   Future<void> _pick(BuildContext context, String slotKey) async {
+    if (!await NativePermissionsService.ensureCamera(context: context)) return;
     final picker = ImagePicker();
     final file = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
     if (file == null) return;

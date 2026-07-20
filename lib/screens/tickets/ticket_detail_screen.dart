@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../core/case_trace/case_trace_chip.dart';
 import '../../core/services/hms/hms_ecosystem_service.dart';
 import '../../core/services/hms/hms_pdf_generators.dart';
+import '../../core/services/native_permissions_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
 import '../hms/widgets/hms_pdf_export_button.dart';
@@ -175,11 +176,13 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 
   Future<void> _pickClosureGallery() async {
+    if (!await NativePermissionsService.ensurePhotos(context: context)) return;
     final picked = await _imagePicker.pickMultiImage();
     await _addClosureFiles(picked);
   }
 
   Future<void> _pickClosureCamera() async {
+    if (!await NativePermissionsService.ensureCamera(context: context)) return;
     final shot = await _imagePicker.pickImage(source: ImageSource.camera);
     if (shot != null) await _addClosureFiles([shot]);
   }

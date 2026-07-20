@@ -5,6 +5,7 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_summary_meta.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_economic_summary.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
@@ -51,20 +52,16 @@ class _OwnerPortalSummaryPageState extends State<OwnerPortalSummaryPage> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bg = isDark ? const Color(0xFF0F1419) : const Color(0xFFF4F6F8);
 
-    return Scaffold(
+    return PartnerPortalPageShell(
       backgroundColor: bg,
-      appBar: AppBar(
-        backgroundColor: bg,
-        surfaceTintColor: Colors.transparent,
-        title: const Text('Oppsummering'),
-        actions: [
-          IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => signOutFromPortal(context),
-          ),
-        ],
-      ),
+      title: 'Oppsummering',
+      actions: [
+        IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
+        IconButton(
+          icon: const Icon(Icons.logout),
+          onPressed: () => signOutFromPortal(context),
+        ),
+      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : RefreshIndicator(

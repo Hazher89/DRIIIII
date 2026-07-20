@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/layout/mobile_layout.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -273,8 +274,7 @@ class _PartnerRouteWeekCommandPanelState extends State<PartnerRouteWeekCommandPa
         return StatefulBuilder(
           builder: (ctx, setSt) => AlertDialog(
             title: const Text('Flytt rute til annen sjåfør / bil'),
-            content: SizedBox(
-              width: 420,
+            content: MobileDialogBody(
               child: DropdownButtonFormField<FleetPartnerVehicleRow>(
                 decoration: const InputDecoration(
                   labelText: 'Ny bil (MAVI)',

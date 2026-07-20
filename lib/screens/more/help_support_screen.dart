@@ -23,13 +23,22 @@ class HelpSupportScreen extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         FilledButton.icon(
+          onPressed: () => launchInfoUrl(DriftProPlatformCatalog.supportUrl),
+          icon: const Icon(Icons.open_in_new),
+          label: const Text('Åpne support-side (hazher.no)'),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size(double.infinity, 48),
+          ),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
           onPressed: () => launchInfoEmail(
             DriftProPlatformCatalog.supportEmail,
             subject: 'DriftPro — støtte',
           ),
           icon: const Icon(Icons.mail_outline),
           label: Text('Send e-post til ${DriftProPlatformCatalog.supportEmail}'),
-          style: FilledButton.styleFrom(
+          style: OutlinedButton.styleFrom(
             minimumSize: const Size(double.infinity, 48),
           ),
         ),
@@ -39,9 +48,8 @@ class HelpSupportScreen extends StatelessWidget {
           icon: Icons.rocket_launch_outlined,
           paragraphs: [
             '${AppStrings.appName} er en skybasert plattform for hele bedriften. '
-            'Du logger inn med ansattnummer eller e-post (avhengig av oppsett). '
-            'Første gang du logger inn fullfører du en kort onboarding, og en administrator '
-            'må godkjenne kontoen din før du får full tilgang.',
+            'Du logger inn med ansattnummer og passord (eller partner-brukernavn). '
+            'Konto opprettes av administrator — det er ikke offentlig selvregistrering.',
           ],
           bullets: [
             'Dashbord: daglig oversikt over fravær, avvik og HMS',

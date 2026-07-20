@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_strings.dart';
 import '../../core/theme/app_theme.dart';
+import '../profile/delete_own_account_dialog.dart';
 import 'driftpro_platform_catalog.dart';
 import 'widgets/info_page_scaffold.dart';
 
@@ -22,6 +23,27 @@ class PrivacyScreen extends StatelessWidget {
               'Spørsmål om personvern, innsyn eller sletting? Kontakt oss på e-post.',
         ),
         const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: () => launchInfoUrl(DriftProPlatformCatalog.privacyPolicyUrl),
+          icon: const Icon(Icons.open_in_new),
+          label: const Text('Åpne personvernerklæring (hazher.no)'),
+          style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () => launchInfoUrl(DriftProPlatformCatalog.termsOfUseUrl),
+          icon: const Icon(Icons.description_outlined),
+          label: const Text('Vilkår for bruk (hazher.no)'),
+          style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () => launchInfoUrl(DriftProPlatformCatalog.supportUrl),
+          icon: const Icon(Icons.support_agent_outlined),
+          label: const Text('Support (hazher.no)'),
+          style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 48)),
+        ),
+        const SizedBox(height: 8),
         OutlinedButton.icon(
           onPressed: () => launchInfoEmail(
             DriftProPlatformCatalog.privacyEmail,
@@ -81,11 +103,37 @@ class PrivacyScreen extends StatelessWidget {
           bullets: [
             'Innsyn: se egne data via Min profil og personalmappe',
             'Retting: be leder eller superadmin om å korrigere feil',
-            'Sletting: ved opphør i arbeidsforhold, etter bedriftens rutiner',
+            'Sletting: bruk «Slett konto» under Min profil / denne siden',
             'Begrensning og protest: kontakt behandlingsansvarlig',
             'Dataportabilitet: dokumenter kan leveres ut ved forespørsel',
             'Klage til Datatilsynet dersom du mener behandlingen er ulovlig',
           ],
+        ),
+        InfoSection(
+          title: 'Slett konto',
+          icon: Icons.person_off_outlined,
+          paragraphs: [
+            '${AppStrings.appName} er en bedriftsapp. Konto opprettes vanligvis av '
+            'administrator. Du kan likevel slette din egen innlogging og '
+            'personopplysninger direkte i appen (App Store-krav).',
+          ],
+          bullets: const [
+            'Gå til Min profil → Slett konto, eller bruk knappen under',
+            'Skriv SLETT for å bekrefte',
+            'Lovpålagt HMS-/HR-historikk kan oppbevares uten din identitet',
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: FilledButton.icon(
+            onPressed: () => showDeleteOwnAccountDialog(context),
+            icon: const Icon(Icons.delete_forever_outlined),
+            label: const Text('Slett konto permanent'),
+            style: FilledButton.styleFrom(
+              backgroundColor: DriftProTheme.error,
+              minimumSize: const Size(double.infinity, 48),
+            ),
+          ),
         ),
         const InfoSection(
           title: 'Sikkerhetstiltak',
@@ -120,6 +168,8 @@ class PrivacyScreen extends StatelessWidget {
           icon: Icons.cloud_outlined,
           bullets: [
             'Supabase — database, autentisering, edge functions og sanntid',
+            'Firebase — push-varsler der dette er aktivert',
+            'Dropbox — fillagring når bedriften har koblet lagring',
             'Mavi / SMS-gateway — varsler der dette er konfigurert',
             'Resend — e-post for SAP ruteinnboks og systemmeldinger',
           ],
@@ -144,7 +194,8 @@ class PrivacyScreen extends StatelessWidget {
         ),
       ],
       footer: Text(
-        'Sist oppdatert: ${DateTime.now().year} · ${DriftProPlatformCatalog.companyName}',
+        'Sist oppdatert: ${DateTime.now().year} · ${DriftProPlatformCatalog.companyName}\n'
+        '${DriftProPlatformCatalog.privacyPolicyUrl}',
         textAlign: TextAlign.center,
         style: DriftProTheme.caption,
       ),

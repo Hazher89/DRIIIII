@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/permissions/user_access.dart';
+import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/vision/vision_camera_service.dart';
@@ -33,7 +34,6 @@ class _UniformMonitorScreenState extends State<UniformMonitorScreen>
   String? _liveError;
   bool _scanActive = false;
   int _scanPersons = 0;
-  int _sessionViolations = 0;
   List<VisionFeedLine> _feedLines = [];
   bool _loading = true;
   bool _liveBusy = false;
@@ -55,12 +55,11 @@ class _UniformMonitorScreenState extends State<UniformMonitorScreen>
   }
 
   Future<void> _refreshViolations() async {
-    final localEvents =
-        await VisionCameraService.instance.fetchLocalViolations();
+    final events =
+        await VisionCameraService.instance.fetchMonitorViolations();
     if (!mounted) return;
     setState(() {
-      _violations = localEvents;
-      _sessionViolations = localEvents.length;
+      _violations = events;
     });
   }
 
@@ -99,18 +98,11 @@ class _UniformMonitorScreenState extends State<UniformMonitorScreen>
       } else {
         _cameras = cameras;
       }
-      final violations = await VisionCameraService.instance.fetchUniformViolations();
-      final localViolations =
-          await VisionCameraService.instance.fetchLocalViolations();
+      final violations =
+          await VisionCameraService.instance.fetchMonitorViolations();
       if (!mounted) return;
       setState(() {
-        if (kDebugMode || kIsWeb) {
-          _violations = localViolations;
-          _sessionViolations = localViolations.length;
-        } else {
-          _violations = violations;
-          _sessionViolations = violations.length;
-        }
+        _violations = violations;
         _activeCameraId ??= _cameras.isNotEmpty ? _cameras.first.id : null;
         _loading = false;
       });
@@ -149,25 +141,19 @@ class _UniformMonitorScreenState extends State<UniformMonitorScreen>
   }
 
   Future<void> _pollScan() async {
-    final scan = await VisionCameraService.instance.fetchLocalScanStatus();
-    final localEvents =
-        await VisionCameraService.instance.fetchLocalViolations();
-    final feed = await VisionCameraService.instance.fetchLocalScanFeed();
+    final scan = await VisionCameraService.instance.fetchMonitorScanStatus();
+    final events =
+        await VisionCameraService.instance.fetchMonitorViolations();
+    final feed = await VisionCameraService.instance.fetchMonitorScanFeed();
     if (!mounted) return;
     setState(() {
-      if (localEvents.isNotEmpty || scan?.violationsSession == 0) {
-        _violations = localEvents;
-        _sessionViolations = localEvents.length;
-      } else if (scan != null && scan.violationsSession > _violations.length) {
-        _sessionViolations = scan.violationsSession;
-      }
+      _violations = events;
       _feedLines = feed;
       if (scan != null) {
         _scanPersons = scan.persons;
         if (scan.active) _scanActive = true;
-        if (localEvents.isEmpty && scan.violationsSession > 0) {
-          unawaited(_refreshViolations());
-        }
+      } else if (_liveFrame != null) {
+        _scanActive = true;
       }
     });
   }
@@ -199,51 +185,49 @@ class _UniformMonitorScreenState extends State<UniformMonitorScreen>
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Uniform-monitor'),
-        actions: [
-          if (_canAdmin)
-            IconButton(
-              tooltip: 'Kameraer',
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: () => context.push(AppPaths.moreVisionCameras),
-            ),
+    return MobileShellScaffold(
+      title: 'Uniform-monitor',
+      actions: [
+        if (_canAdmin)
           IconButton(
-            tooltip: 'Oppdater',
-            icon: const Icon(Icons.refresh),
-            onPressed: () async {
-              await _reload();
-              await _refreshViolations();
-              if (!kIsWeb) await _pollLive();
-            },
+            tooltip: 'Kameraer',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => context.push(AppPaths.moreVisionCameras),
+          ),
+        IconButton(
+          tooltip: 'Oppdater',
+          icon: const Icon(Icons.refresh),
+          onPressed: () async {
+            await _reload();
+            await _refreshViolations();
+            if (!kIsWeb) await _pollLive();
+          },
+        ),
+      ],
+      bottom: TabBar(
+        controller: _tabs,
+        tabs: [
+          const Tab(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.videocam_outlined, size: 18),
+                SizedBox(width: 6),
+                Text('Live'),
+              ],
+            ),
+          ),
+          Tab(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.warning_amber_outlined, size: 18),
+                const SizedBox(width: 6),
+                Text('Brudd ($_bruddCount)'),
+              ],
+            ),
           ),
         ],
-        bottom: TabBar(
-          controller: _tabs,
-          tabs: [
-            const Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.videocam_outlined, size: 18),
-                  SizedBox(width: 6),
-                  Text('Live'),
-                ],
-              ),
-            ),
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.warning_amber_outlined, size: 18),
-                  const SizedBox(width: 6),
-                  Text('Brudd ($_bruddCount)'),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
       body: _loading
           ? const DriftProLoadingCenter()

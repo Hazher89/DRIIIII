@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/services/native_permissions_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/hms/hms_ecosystem_service.dart';
@@ -73,10 +74,8 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   Future<void> _captureGps() async {
     setState(() => _capturingGps = true);
     try {
-      final perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        await Geolocator.requestPermission();
-      }
+      final allowed = await NativePermissionsService.ensureLocation(context: context);
+      if (!allowed) return;
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -145,11 +144,13 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   }
 
   Future<void> _pickGallery() async {
+    if (!await NativePermissionsService.ensurePhotos(context: context)) return;
     final List<XFile> picked = await _picker.pickMultiImage();
     await _addFiles(picked);
   }
 
   Future<void> _pickCamera() async {
+    if (!await NativePermissionsService.ensureCamera(context: context)) return;
     final XFile? shot =
         await _picker.pickImage(source: ImageSource.camera);
     if (shot != null) await _addFiles([shot]);

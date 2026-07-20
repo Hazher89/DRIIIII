@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/layout/mobile_layout.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../models/hms/equipment.dart';
@@ -78,11 +79,15 @@ class _EquipmentRegistryScreenState extends State<EquipmentRegistryScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        backgroundColor: DriftProTheme.primaryGreen,
-        child: const Icon(Icons.add),
+      floatingActionButton: MobileLayout.wrapFab(
+        context,
+        FloatingActionButton(
+          onPressed: () {},
+          backgroundColor: DriftProTheme.primaryGreen,
+          child: const Icon(Icons.add),
+        ),
       ),
+      floatingActionButtonLocation: MobileLayout.fabLocation,
     );
   }
 

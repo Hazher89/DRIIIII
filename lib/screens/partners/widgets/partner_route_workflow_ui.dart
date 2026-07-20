@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/config/driftpro_client.dart';
 import '../../../core/theme/driftpro_theme_context.dart';
 
 /// Nesten fullskjerm dialog for rute-arbeidsflyt (SAP, AUTO MASS, Ny rute).
@@ -12,7 +13,7 @@ Future<T?> showPartnerRouteWorkflowDialog<T>(
     barrierDismissible: true,
     builder: (ctx) {
       final size = MediaQuery.sizeOf(ctx);
-      final compact = size.width < 640;
+      final compact = DriftProClient.isMobile || size.width < 640;
       // Nesten fullskjerm — samme størrelse for AUTO MASS, SAP og Ny rute.
       final inset = compact ? 0.0 : 6.0;
       final radius = compact ? 0.0 : 16.0;
@@ -96,10 +97,12 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
   static const _railWidth = 340.0;
   static const _breakpoint = 980.0;
 
+  bool get _nativeMobile => DriftProClient.isMobile;
+
   @override
   Widget build(BuildContext context) {
     final drift = context.driftColors;
-    final wide = MediaQuery.sizeOf(context).width >= _breakpoint;
+    final wide = !_nativeMobile && MediaQuery.sizeOf(context).width >= _breakpoint;
 
     return Material(
       color: drift.surfaceMuted,
@@ -108,15 +111,19 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
         children: [
           _buildHeader(context),
           _buildMetricsRow(context),
-          if (topBanner != null)
+          if (topBanner != null && !_nativeMobile)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
               child: topBanner!,
             ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-              child: wide ? _buildWideBody(context) : _buildNarrowBody(context),
+              padding: EdgeInsets.fromLTRB(12, 0, 12, _nativeMobile ? 4 : 0),
+              child: wide
+                  ? _buildWideBody(context)
+                  : _nativeMobile
+                      ? _buildNativeMobileBody(context)
+                      : _buildNarrowBody(context),
             ),
           ),
           _buildFooterArea(context),
@@ -125,9 +132,60 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     );
   }
 
+  Widget _buildNativeMobileBody(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildMobileSidebarToggle(context),
+        const SizedBox(height: 8),
+        Expanded(child: _buildMainPanel(context, nativeMobile: true)),
+      ],
+    );
+  }
+
+  Widget _buildMobileSidebarToggle(BuildContext context) {
+    final drift = context.driftColors;
+    return Material(
+      color: drift.card,
+      borderRadius: BorderRadius.circular(12),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+          leading: Icon(Icons.tune_rounded, color: accentDark, size: 22),
+          title: Text(
+            'Import og handlinger',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+              color: drift.textPrimary,
+            ),
+          ),
+          subtitle: Text(
+            'Dato, SAP-import, skift',
+            style: TextStyle(fontSize: 11, color: drift.textMuted),
+          ),
+          children: [
+            sidebar,
+            if (onGuideToggle != null) ...[
+              const SizedBox(height: 10),
+              _buildGuideToggle(context),
+            ],
+            if (guideExpanded && guidePanel != null) ...[
+              const SizedBox(height: 8),
+              guidePanel!,
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader(BuildContext context) {
+    final compact = _nativeMobile;
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 14, 8, 14),
+      padding: EdgeInsets.fromLTRB(compact ? 14 : 20, compact ? 10 : 14, 4, compact ? 10 : 14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [accentDark, accent],
@@ -143,9 +201,9 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
               color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: Colors.white, size: 28),
+            child: Icon(icon, color: Colors.white, size: compact ? 22 : 28),
           ),
-          const SizedBox(width: 14),
+          SizedBox(width: compact ? 10 : 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -155,10 +213,10 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
                     Flexible(
                       child: Text(
                         title,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w900,
-                          fontSize: 22,
+                          fontSize: compact ? 17 : 22,
                           letterSpacing: -0.3,
                         ),
                       ),
@@ -184,7 +242,7 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
                     ],
                   ],
                 ),
-                if (subtitle != null) ...[
+                if (subtitle != null && !compact) ...[
                   const SizedBox(height: 4),
                   Text(
                     subtitle!,
@@ -214,24 +272,32 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     final drift = context.driftColors;
     if (metrics.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: EdgeInsets.fromLTRB(12, _nativeMobile ? 6 : 8, 12, 4),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: _nativeMobile ? 10 : 8),
         decoration: BoxDecoration(
           color: drift.card,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: drift.borderSubtle),
         ),
-        child: IntrinsicHeight(
-          child: Row(
-            children: [
-              for (var i = 0; i < metrics.length; i++) ...[
-                if (i > 0) Container(width: 1, height: 28, color: drift.divider),
-                Expanded(child: _CompactMetric(metric: metrics[i])),
-              ],
-            ],
-          ),
-        ),
+        child: _nativeMobile
+            ? Wrap(
+                alignment: WrapAlignment.spaceAround,
+                runSpacing: 8,
+                children: metrics
+                    .map((m) => SizedBox(width: MediaQuery.sizeOf(context).width * 0.38, child: _CompactMetric(metric: m)))
+                    .toList(),
+              )
+            : IntrinsicHeight(
+                child: Row(
+                  children: [
+                    for (var i = 0; i < metrics.length; i++) ...[
+                      if (i > 0) Container(width: 1, height: 28, color: drift.divider),
+                      Expanded(child: _CompactMetric(metric: metrics[i])),
+                    ],
+                  ],
+                ),
+              ),
       ),
     );
   }
@@ -301,15 +367,20 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     );
   }
 
-  Widget _buildMainPanel(BuildContext context) {
+  Widget _buildMainPanel(BuildContext context, {bool nativeMobile = false}) {
     final drift = context.driftColors;
+    final showCaption = showTabCaption && !nativeMobile;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         LayoutBuilder(
-          builder: (context, constraints) => _buildTabBar(context, wide: constraints.maxWidth >= _breakpoint),
+          builder: (context, constraints) => _buildTabBar(
+            context,
+            wide: !nativeMobile && constraints.maxWidth >= _breakpoint,
+            nativeMobile: nativeMobile,
+          ),
         ),
-        if (showTabCaption)
+        if (showCaption)
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 6, 4, 4),
             child: Text(
@@ -344,12 +415,13 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     );
   }
 
-  Widget _buildTabBar(BuildContext context, {required bool wide}) {
+  Widget _buildTabBar(BuildContext context, {required bool wide, bool nativeMobile = false}) {
     final drift = context.driftColors;
     Widget tabChip(int i) {
       final selected = i == selectedTabIndex;
       final badge = i < tabBadges.length ? tabBadges[i] : null;
       final badgeColor = i < tabBadgeColors.length ? tabBadgeColors[i] : null;
+      final label = nativeMobile ? '${i + 1}. ${tabLabels[i]}' : tabLabels[i];
       return Padding(
         padding: EdgeInsets.only(right: wide ? 0 : 6, left: wide ? 0 : i == 0 ? 4 : 0),
         child: Material(
@@ -360,17 +432,17 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
             onTap: () => onTabSelected(i),
             child: Padding(
               padding: EdgeInsets.symmetric(
-                horizontal: wide ? 8 : 14,
-                vertical: 12,
+                horizontal: wide ? 8 : nativeMobile ? 12 : 14,
+                vertical: nativeMobile ? 10 : 12,
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: wide ? MainAxisSize.max : MainAxisSize.min,
                 children: [
                   Text(
-                    tabLabels[i],
+                    label,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: nativeMobile ? 12 : 13,
                       fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
                       color: selected ? accentDark : drift.textSecondary,
                     ),
@@ -466,7 +538,7 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
   Widget _buildFooterArea(BuildContext context) {
     final drift = context.driftColors;
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+      padding: EdgeInsets.fromLTRB(16, 8, 16, _nativeMobile ? 10 : 14),
       decoration: BoxDecoration(
         color: drift.cardElevated,
         border: Border(top: BorderSide(color: drift.borderSubtle)),

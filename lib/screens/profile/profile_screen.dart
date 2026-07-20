@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/auth/session_sign_out.dart';
 import '../../core/permissions/user_access.dart';
+import '../../core/routing/app_paths.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_icons.dart';
 import '../../models/user_profile.dart';
+import '../more/driftpro_platform_catalog.dart';
+import '../more/widgets/info_page_scaffold.dart';
+import 'delete_own_account_dialog.dart';
 import 'employee_change_password_sheet.dart';
 import 'widgets/profile_children_under_12_card.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
@@ -165,10 +170,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 isDark,
               ),
             _buildActionTile(
-              Icons.security_rounded,
-              'Personvern og sikkerhet',
-              () {},
+              Icons.description_outlined,
+              'Vilkår for bruk',
+              () => launchInfoUrl(DriftProPlatformCatalog.termsOfUseUrl),
               isDark,
+              subtitle: 'Åpner hazher.no (norsk)',
+            ),
+            _buildActionTile(
+              Icons.privacy_tip_outlined,
+              'Personvernerklæring',
+              () => launchInfoUrl(DriftProPlatformCatalog.privacyPolicyUrl),
+              isDark,
+              subtitle: 'Åpner hazher.no (norsk)',
+            ),
+            _buildActionTile(
+              Icons.shield_outlined,
+              'Personvern i appen',
+              () => context.push(AppPaths.morePersonvern),
+              isDark,
+              subtitle: 'Policy, rettigheter og slett konto',
+            ),
+            _buildActionTile(
+              Icons.delete_forever_outlined,
+              'Slett konto',
+              () => showDeleteOwnAccountDialog(context),
+              isDark,
+              subtitle: 'Fjerner innlogging og personopplysninger',
             ),
           ]),
           const SizedBox(height: 32),

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../core/layout/mobile_layout.dart';
+import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/constants/build_info.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/supabase_service.dart';
@@ -151,28 +153,24 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
+    return MobileShellScaffold(
+      title: 'Undersøkelser',
       backgroundColor: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF5F7F8),
-      appBar: AppBar(
-        title: const Text('Undersøkelser'),
-        elevation: 0,
-        backgroundColor: isDark ? DriftProTheme.cardDark : Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.archive_outlined),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SurveyArchiveScreen()),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadSurveys,
-          ),
-        ],
-      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.archive_outlined),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SurveyArchiveScreen()),
+            );
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          onPressed: _loadSurveys,
+        ),
+      ],
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -183,7 +181,10 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
                 : _surveys.isEmpty
                     ? _buildEmptyState()
                     : ListView.builder(
-                        padding: const EdgeInsets.all(16),
+                        padding: MobileLayout.listBottomPadding(
+                          context,
+                          withFab: true,
+                        ).add(const EdgeInsets.all(16)),
                         itemCount: _surveys.length,
                         itemBuilder: (context, index) {
                           final survey = _surveys[index];
@@ -195,7 +196,10 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createSurvey,
-        label: const Text('Lag ny undersøkelse', style: TextStyle(fontWeight: FontWeight.bold)),
+        label: const Text(
+          'Lag ny undersøkelse',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         icon: const Icon(Icons.add),
         backgroundColor: DriftProTheme.primaryGreen,
       ),

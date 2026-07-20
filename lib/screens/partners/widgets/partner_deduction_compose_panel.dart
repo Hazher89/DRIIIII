@@ -44,6 +44,7 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
   bool _notifyEmail = true;
   bool _submitting = false;
   String? _companyId;
+  String? _companyCaseCode;
   final List<PartnerDeductionPendingEvidence> _evidence = [];
   bool? _dropboxConnected;
   String _partnerQuery = '';
@@ -68,9 +69,21 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
 
   Future<void> _loadCompany() async {
     final cid = await SupabaseService.getCurrentCompanyId();
+    String? code;
+    if (cid != null) {
+      try {
+        final row = await SupabaseService.client
+            .from('companies')
+            .select('case_code')
+            .eq('id', cid)
+            .maybeSingle();
+        code = (row?['case_code'] as String?)?.trim();
+      } catch (_) {}
+    }
     final dropbox = await CompanyFileStorage.isDropboxConnected();
     if (mounted) setState(() {
       _companyId = cid;
+      _companyCaseCode = (code != null && code.isNotEmpty) ? code.toUpperCase() : null;
       _dropboxConnected = dropbox;
     });
   }
@@ -82,6 +95,13 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
         .where((p) => q.isEmpty || p.name.toLowerCase().contains(q))
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  /// Forhåndsvisning i SMS/e-post — ekte nummer tildeles ved lagring.
+  String get _previewCaseNumber {
+    final year = DateTime.now().year;
+    final code = _companyCaseCode ?? 'XXXX';
+    return 'BOT-$code-$year-0001';
   }
 
   Future<void> _pickEvidence() async {
@@ -124,7 +144,7 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
       logiqrmaCaseNumber: _logiqrmaCaseCtrl.text.trim(),
       voucherNumber: _voucherCtrl.text.trim(),
       logiqrmaComment: _logisticsDescCtrl.text.trim(),
-    ).replaceAll('{sak}', 'BOT-${DateTime.now().year}-0001');
+    ).replaceAll('{sak}', _previewCaseNumber);
   }
 
   Future<void> _submit() async {

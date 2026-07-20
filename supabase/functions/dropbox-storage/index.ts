@@ -16,6 +16,8 @@ type Conn = {
   token_expires_at: string | null;
   large_file_threshold_bytes: number;
   storage_modules?: Record<string, boolean>;
+  is_active?: boolean;
+  disconnect_locked?: boolean;
 };
 
 function json(body: unknown, status = 200) {
@@ -104,7 +106,18 @@ async function refreshAccessToken(conn: Conn, admin: ReturnType<typeof createCli
 
   if (conn.access_token && conn.token_expires_at) {
     const exp = new Date(conn.token_expires_at).getTime();
-    if (exp > Date.now() + 60_000) return conn.access_token;
+    if (exp > Date.now() + 60_000) {
+      try {
+        await admin.rpc("mark_dropbox_health", {
+          p_company_id: conn.company_id,
+          p_ok: true,
+          p_error: null,
+        });
+      } catch (_) {
+        /* kolonne/RPC kan mangle før migrasjon */
+      }
+      return conn.access_token;
+    }
   }
 
   const basic = btoa(`${appKey}:${appSecret}`);
@@ -121,7 +134,18 @@ async function refreshAccessToken(conn: Conn, admin: ReturnType<typeof createCli
   });
 
   const text = await res.text();
-  if (!res.ok) throw new Error(`Dropbox token: ${text.slice(0, 200)}`);
+  if (!res.ok) {
+    try {
+      await admin.rpc("mark_dropbox_health", {
+        p_company_id: conn.company_id,
+        p_ok: false,
+        p_error: text.slice(0, 400),
+      });
+    } catch (_) {
+      /* ignore */
+    }
+    throw new Error(`Dropbox token: ${text.slice(0, 200)}`);
+  }
 
   const data = JSON.parse(text) as { access_token: string; expires_in?: number };
   const expiresAt = data.expires_in
@@ -133,6 +157,16 @@ async function refreshAccessToken(conn: Conn, admin: ReturnType<typeof createCli
     token_expires_at: expiresAt,
     updated_at: new Date().toISOString(),
   }).eq("company_id", conn.company_id);
+
+  try {
+    await admin.rpc("mark_dropbox_health", {
+      p_company_id: conn.company_id,
+      p_ok: true,
+      p_error: null,
+    });
+  } catch (_) {
+    /* ignore */
+  }
 
   return data.access_token;
 }
@@ -472,6 +506,11 @@ async function handleOAuthCallback(
       connected_by: state.uid,
       connected_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
+      disconnect_locked: true,
+      is_active: true,
+      health_fail_count: 0,
+      last_health_error: null,
+      last_health_ok_at: new Date().toISOString(),
     });
     if (upErr) {
       console.error("dropbox upsert failed", upErr);
@@ -501,6 +540,43 @@ Deno.serve(async (req) => {
     // Dropbox redirect uten JWT — må være først
     if (action === "oauth_callback" && req.method === "GET") {
       return await handleOAuthCallback(req, admin);
+    }
+
+    // Periodisk keepalive (pg_cron) — ingen bruker-JWT, kun service-side refresh.
+    if (action === "keepalive" && (req.method === "POST" || req.method === "GET")) {
+      const { data: rows, error } = await admin
+        .from("company_dropbox_connections")
+        .select("*");
+      if (error) return json({ error: error.message }, 500);
+
+      let ok = 0;
+      let failed = 0;
+      const details: Array<{ company_id: string; ok: boolean; error?: string }> = [];
+
+      for (const row of rows ?? []) {
+        const conn = row as Conn;
+        if (conn.is_active === false) continue;
+        if (!conn.refresh_token?.trim()) continue;
+        try {
+          // Tving refresh ved å nullstille utløp midlertidig i minnet
+          const force: Conn = {
+            ...conn,
+            token_expires_at: null,
+          };
+          await refreshAccessToken(force, admin);
+          ok++;
+          details.push({ company_id: conn.company_id, ok: true });
+        } catch (e) {
+          failed++;
+          details.push({
+            company_id: conn.company_id,
+            ok: false,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+
+      return json({ ok: true, refreshed: ok, failed, details });
     }
 
     const authHeader = req.headers.get("Authorization") ?? "";
@@ -602,14 +678,26 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: lastError.slice(0, 300) }, 404);
     }
 
-    const { data: connRow, error: connErr } = await admin
+    let { data: connRow, error: connErr } = await admin
       .from("company_dropbox_connections")
       .select("*")
       .eq("company_id", companyId)
+      .eq("is_active", true)
       .maybeSingle();
 
+    if (connErr) {
+      // is_active-filter kan feile før migrasjon — prøv uten
+      const fallback = await admin
+        .from("company_dropbox_connections")
+        .select("*")
+        .eq("company_id", companyId)
+        .maybeSingle();
+      connRow = fallback.data;
+      connErr = fallback.error;
+    }
+
     if (connErr) throw connErr;
-    if (!connRow) {
+    if (!connRow || (connRow as Conn).is_active === false) {
       return json({
         error: "Dropbox er ikke koblet. Administrator må koble under Innstillinger → Dropbox.",
       }, 400);

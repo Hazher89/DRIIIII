@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import '../../core/config/driftpro_client.dart';
+import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/company_display.dart';
 import '../../core/constants/app_strings.dart';
@@ -1410,11 +1412,79 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _loadAllData();
   }
 
+  List<Widget> _dashboardHeaderActions(bool isDark) {
+    return [
+      if (_access?.canKiosk == true)
+        IconButton(
+          tooltip: 'Infoskjerm',
+          onPressed: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const KioskSettingsScreen(),
+              ),
+            );
+            _loadAllData();
+          },
+          icon: Icon(
+            Icons.display_settings_outlined,
+            color: DriftProClient.isMobile ? null : (isDark ? Colors.white : Colors.black87),
+          ),
+        ),
+      if (_access?.canNotifications == true) ...[
+        const DriftproNotificationBell(),
+        IconButton(
+          onPressed: _openNotificationsSheet,
+          icon: Badge(
+            isLabelVisible: _notices.isNotEmpty,
+            backgroundColor: DriftProTheme.error,
+            label: Text(
+              '${_notices.length}',
+              style: const TextStyle(fontSize: 9),
+            ),
+            child: Icon(
+              Icons.dashboard_customize_outlined,
+              color: DriftProClient.isMobile ? null : (isDark ? Colors.white : Colors.black87),
+            ),
+          ),
+          tooltip: 'Oppgaver på dashboard',
+        ),
+      ],
+      if (_access?.canProfile != false)
+        GestureDetector(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ProfileScreen()),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.only(right: 12, left: 4),
+            child: CircleAvatar(
+              radius: 16,
+              backgroundColor: DriftProTheme.primaryGreen.withOpacity(0.1),
+              backgroundImage: _profile?.avatarUrl != null
+                  ? NetworkImage(_profile!.avatarUrl!)
+                  : null,
+              child: _profile?.avatarUrl == null
+                  ? Text(
+                      _profile?.initials ?? '?',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: DriftProTheme.primaryGreen,
+                      ),
+                    )
+                  : null,
+            ),
+          ),
+        ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return Scaffold(
+    return MobileShellScaffold(
+      title: DriftProClient.isMobile ? _heroTitleLine() : null,
+      actions: DriftProClient.isMobile ? _dashboardHeaderActions(isDark) : null,
       backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       body: FadeTransition(
         opacity: _fadeAnimation,
@@ -1432,75 +1502,22 @@ class _DashboardScreenState extends State<DashboardScreen>
                 parent: AlwaysScrollableScrollPhysics(),
               ),
               slivers: [
-                SliverAppBar(
-                  pinned: true,
-                  floating: true,
-                  elevation: 0,
-                  backgroundColor:
-                      isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-                  title: Text(
-                    _heroTitleLine(),
-                    style: DriftProTheme.headingSm.copyWith(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
+                if (!DriftProClient.isMobile)
+                  SliverAppBar(
+                    pinned: true,
+                    floating: true,
+                    elevation: 0,
+                    backgroundColor:
+                        isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+                    title: Text(
+                      _heroTitleLine(),
+                      style: DriftProTheme.headingSm.copyWith(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
+                    actions: _dashboardHeaderActions(isDark),
                   ),
-                  actions: [
-                    if (_access?.canKiosk == true)
-                      IconButton(
-                        tooltip: 'Infoskjerm',
-                        onPressed: () async {
-                          await Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const KioskSettingsScreen(),
-                            ),
-                          );
-                          _loadAllData();
-                        },
-                        icon: Icon(Icons.display_settings_outlined,
-                            color: isDark ? Colors.white : Colors.black87),
-                      ),
-                    if (_access?.canNotifications == true) ...[
-                      const DriftproNotificationBell(),
-                      IconButton(
-                        onPressed: _openNotificationsSheet,
-                        icon: Badge(
-                          isLabelVisible: _notices.isNotEmpty,
-                          backgroundColor: DriftProTheme.error,
-                          label: Text('${_notices.length}',
-                              style: const TextStyle(fontSize: 9)),
-                          child: Icon(Icons.dashboard_customize_outlined,
-                              color: isDark ? Colors.white : Colors.black87),
-                        ),
-                        tooltip: 'Oppgaver på dashboard',
-                      ),
-                    ],
-                    if (_access?.canProfile != false)
-                      GestureDetector(
-                        onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                                builder: (_) => const ProfileScreen())),
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 16, left: 8),
-                          child: CircleAvatar(
-                            radius: 16,
-                            backgroundColor:
-                                DriftProTheme.primaryGreen.withOpacity(0.1),
-                            backgroundImage: _profile?.avatarUrl != null
-                                ? NetworkImage(_profile!.avatarUrl!)
-                                : null,
-                            child: _profile?.avatarUrl == null
-                                ? Text(_profile?.initials ?? '?',
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                        color: DriftProTheme.primaryGreen))
-                                : null,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
 
                 SliverToBoxAdapter(
                   child: StrategicGoalsOverview(

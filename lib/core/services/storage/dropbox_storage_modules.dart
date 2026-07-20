@@ -1,4 +1,4 @@
-/// Moduler som kan bruke Dropbox for store filer.
+/// Moduler som bruker Dropbox for filer (bilder, PDF, vedlegg).
 enum DropboxStorageModule {
   routes('routes', 'Rute-PDF (partnere)'),
   sapInbox('sap_inbox', 'SAP e-post innboks (rute-PDF)'),
@@ -6,8 +6,10 @@ enum DropboxStorageModule {
   dms('dms', 'Dokumenter (DMS)'),
   partners('partners', 'Partner — bilder og filer'),
   partnerDeductions('partner_deductions', 'Bot/Trekk — bevis (bilde/video)'),
+  vehicleRentals('vehicle_rentals', 'Utleie — bilder og dokumenter'),
   employees('employees', 'Ansattfiler / personalmappe'),
-  hms('hms', 'HMS — avvik, SJA, utstyr og kompetanse'),
+  hms('hms', 'HMS — SJA, utstyr og kompetanse'),
+  risk('risk', 'Risikovurdering — vedlegg'),
   visionUniform('vision_uniform', 'Uniform-monitor — bruddbilder'),
   whistleblowing('whistleblowing', 'Varsling (anonym)');
 
@@ -29,10 +31,14 @@ enum DropboxStorageModule {
         return partners;
       case 'partner_deductions':
         return partnerDeductions;
+      case 'vehicle_rentals':
+        return vehicleRentals;
       case 'employees':
         return employees;
       case 'hms':
         return hms;
+      case 'risk':
+        return risk;
       case 'vision_uniform':
         return visionUniform;
       case 'whistleblowing':

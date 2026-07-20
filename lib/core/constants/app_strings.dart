@@ -153,8 +153,6 @@ class AppStrings {
   // ── Auth ──
   static const String signIn = 'Logg inn';
   static const String signOut = 'Logg ut';
-  static const String signInWithGoogle = 'Logg inn med Google';
-  static const String signInWithApple = 'Logg inn med Apple';
   static const String signInWithEmail = 'Logg inn med e-post';
   static const String magicLinkSent = 'Vi har sendt deg en innloggingslenke';
   static const String enterEmail = 'Skriv inn din e-postadresse';

@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -130,12 +129,11 @@ class _SafetyRoundDetailScreenState extends State<SafetyRoundDetailScreen> {
             tooltip: 'Åpne arkivert PDF',
             onPressed: _downloadPdf,
           ),
-          if (kIsWeb)
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Generer PDF på nytt',
-              onPressed: _regeneratePdf,
-            ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Generer PDF på nytt',
+            onPressed: _regeneratePdf,
+          ),
         ],
       ),
       body: Column(

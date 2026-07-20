@@ -9,6 +9,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import '../../../core/config/driftpro_client.dart';
+import '../../../core/layout/mobile_layout.dart';
 import '../../../core/constants/route_dispatch_status.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
@@ -879,6 +881,9 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   @override
   Widget build(BuildContext context) {
+    if (DriftProClient.isMobile) {
+      return _buildMobilePlanner(context);
+    }
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hdrBg = isDark ? DriftProTheme.cardDark : Colors.white;
     final borderCol = Colors.grey.withValues(alpha: isDark ? 0.35 : 0.22);
@@ -938,6 +943,483 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           ),
         const SliverToBoxAdapter(child: SizedBox(height: 96)),
       ],
+    );
+  }
+
+  Widget _buildMobilePlanner(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final borderCol = Colors.grey.withValues(alpha: isDark ? 0.35 : 0.22);
+
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        if (widget.nestedScroll)
+          SliverOverlapInjector(
+            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+          ),
+        ...widget.leadingSlivers,
+        SliverToBoxAdapter(child: _buildMobileToolbar(isDark, borderCol)),
+        SliverToBoxAdapter(child: _buildMobileDayStrip(isDark, borderCol)),
+        SliverToBoxAdapter(child: _buildMobileDayActions(isDark)),
+        if (_filteredFleet.isEmpty)
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: Text('Ingen MAVI-biler i listen.')),
+            ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, i) => _buildMobileDriverCard(
+                  context,
+                  _filteredFleet[i],
+                  isDark,
+                  borderCol,
+                ),
+                childCount: _filteredFleet.length,
+              ),
+            ),
+          ),
+        SliverToBoxAdapter(
+          child: SizedBox(height: MobileLayout.shellBottomInset(context) + 96),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMobileToolbar(bool isDark, Color borderCol) {
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: borderCol),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Rute-planlegger',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+                  ),
+                ),
+                if (_busy) const SizedBox(width: 24, height: 24, child: DriftProLoadingIndicator(size: 24)),
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (v) async {
+                    switch (v) {
+                      case 'month':
+                        setState(() => _mode = _PlannerViewMode.month);
+                      case 'week':
+                        setState(() => _mode = _PlannerViewMode.week);
+                      case 'reload':
+                        await _reload();
+                      case 'today':
+                        final now = _dayOnly(DateTime.now());
+                        setState(() {
+                          _focusDay = now;
+                          _jumpWeek(now);
+                        });
+                        await _reload();
+                    }
+                  },
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      value: _mode == _PlannerViewMode.week ? 'month' : 'week',
+                      child: Text(_mode == _PlannerViewMode.week ? 'Månedsvisning' : 'Ukevisning'),
+                    ),
+                    const PopupMenuItem(value: 'today', child: Text('Gå til i dag')),
+                    const PopupMenuItem(value: 'reload', child: Text('Oppdater')),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                IconButton.outlined(
+                  onPressed: () {
+                    setState(() => _weekStart = _weekStart.subtract(const Duration(days: 7)));
+                    _reload();
+                  },
+                  icon: const Icon(Icons.chevron_left),
+                ),
+                Expanded(
+                  child: Text(
+                    '${DateFormat('d. MMM', 'nb_NO').format(_weekStart)} – ${DateFormat('d. MMM', 'nb_NO').format(_weekEnd)}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                  ),
+                ),
+                IconButton.outlined(
+                  onPressed: () {
+                    setState(() => _weekStart = _weekStart.add(const Duration(days: 7)));
+                    _reload();
+                  },
+                  icon: const Icon(Icons.chevron_right),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Søk MAVI / partner',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                isDense: true,
+                filled: true,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _busy || _filteredFleet.isEmpty ? null : () => _openSingleAssign(),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DriftProTheme.accentBlue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    icon: const Icon(Icons.add_circle_outline, size: 18),
+                    label: const Text('Ny rute'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _sapInboxButton(),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _busy || _maviFleet.isEmpty ? null : _openAutoMass,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF6A1B9A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    icon: const Icon(Icons.auto_awesome, size: 18),
+                    label: Text(_manualStagedCount > 0 ? 'Auto ($_manualStagedCount)' : 'Auto'),
+                  ),
+                ),
+              ],
+            ),
+            if (_mode == _PlannerViewMode.month) ...[
+              const SizedBox(height: 10),
+              CalendarDatePicker(
+                initialDate: _weekStart,
+                firstDate: DateTime(2023),
+                lastDate: DateTime.now().add(const Duration(days: 540)),
+                onDateChanged: (d) {
+                  setState(() {
+                    _focusDay = _dayOnly(d);
+                    _weekStart = _monday(d);
+                    _mode = _PlannerViewMode.week;
+                  });
+                  _reload();
+                },
+              ),
+            ],
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                _dispatchLegendChip('Kladd', RouteDispatchStatus.cellColor(RouteDispatchStatus.staged)),
+                _dispatchLegendChip('Uten varsel', RouteDispatchStatus.cellColor(RouteDispatchStatus.registered)),
+                _dispatchLegendChip('Varslet', RouteDispatchStatus.cellColor(RouteDispatchStatus.sent)),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileDayStrip(bool isDark, Color borderCol) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      child: SizedBox(
+        height: 72,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: _days.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, i) {
+            final d = _days[i];
+            final now = _dayOnly(DateTime.now());
+            final isToday = _dayOnly(d) == now;
+            final isFocus = _dayOnly(d) == _dayOnly(_focusDay);
+            final n = _weekRouteCount(d);
+            return Material(
+              color: isFocus
+                  ? DriftProTheme.primaryGreen.withValues(alpha: 0.14)
+                  : isDark
+                      ? DriftProTheme.cardDark
+                      : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () {
+                  setState(() => _focusDay = _dayOnly(d));
+                  _refreshSapPendingCount();
+                },
+                child: Container(
+                  width: 64,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isFocus
+                          ? DriftProTheme.primaryGreen
+                          : isToday
+                              ? DriftProTheme.accentBlue.withValues(alpha: 0.5)
+                              : borderCol,
+                      width: isFocus ? 2 : 1,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        DateFormat.E('nb_NO').format(d),
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 11,
+                          color: isFocus ? DriftProTheme.primaryGreenDark : null,
+                        ),
+                      ),
+                      Text(
+                        DateFormat('d/M', 'nb_NO').format(d),
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        '$n ruter',
+                        style: TextStyle(fontSize: 9, color: Colors.grey[600]),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileDayActions(bool isDark) {
+    final pendingAck = _pendingAckCountForDay(_focusDay);
+    final routeCount = _weekRouteCount(_focusDay);
+    if (pendingAck == 0 && routeCount == 0) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton.icon(
+            onPressed: () async {
+              final d = await showDatePicker(
+                context: context,
+                initialDate: _focusDay,
+                firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                lastDate: DateTime.now().add(const Duration(days: 365)),
+              );
+              if (d != null) {
+                setState(() {
+                  _focusDay = _dayOnly(d);
+                  _jumpWeek(d);
+                });
+                await _reload();
+              }
+            },
+            icon: const Icon(Icons.event_outlined, size: 18),
+            label: Text(DateFormat('d. MMM', 'nb').format(_focusDay)),
+          ),
+          if (pendingAck > 0)
+            FilledButton.tonalIcon(
+              onPressed: _busy ? null : () => _nudgePendingForDay(_focusDay),
+              icon: const Icon(Icons.notifications_active_outlined, size: 18),
+              label: Text('Purr ($pendingAck)'),
+            ),
+          if (routeCount > 0)
+            FilledButton.icon(
+              onPressed: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+              label: Text('Tøm ($routeCount)'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileDriverCard(
+    BuildContext context,
+    FleetPartnerVehicleRow row,
+    bool isDark,
+    Color borderCol,
+  ) {
+    final day = _focusDay;
+    final list = _sharesCell(row.vehicle.id, day);
+    final mavi = MaviUnitCodes.compactLabel(row.vehicle.unitCode);
+    final ackDot = _vehicleAckDotColor(row.vehicle.id);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: BorderSide(color: borderCol),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _busy
+            ? null
+            : () {
+                if (list.isEmpty) {
+                  _openRouteEditor(row, day);
+                } else {
+                  _openRouteManageMenu(row, day, list);
+                }
+              },
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: Colors.teal.withValues(alpha: 0.25),
+                        child: Text(
+                          mavi.length >= 2 ? mavi.substring(0, 2) : mavi,
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+                        ),
+                      ),
+                      if (ackDot != null)
+                        Positioned(
+                          right: -1,
+                          top: -1,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: ackDot,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white, width: 2),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          mavi,
+                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                        ),
+                        Text(
+                          row.partner.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 13, color: Colors.grey[700]),
+                        ),
+                        Text(
+                          row.vehicle.fleetRolesLabel,
+                          style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    list.isEmpty ? Icons.add_circle_outline : Icons.chevron_right,
+                    color: list.isEmpty ? Colors.grey : DriftProTheme.primaryGreen,
+                  ),
+                ],
+              ),
+              if (list.isEmpty) ...[
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : () => _openRouteEditor(row, day),
+                  icon: const Icon(Icons.upload_file_outlined, size: 18),
+                  label: const Text('Legg til rute'),
+                ),
+              ] else ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final s in list)
+                      _buildMobileRouteChip(context, s, day, isDark),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileRouteChip(
+    BuildContext context,
+    PartnerRouteShare s,
+    DateTime day,
+    bool isDark,
+  ) {
+    final start = TimeOfDay.fromDateTime(
+      s.routeStartAt?.toLocal() ?? DateTime(day.year, day.month, day.day, 6),
+    ).format(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: RouteDispatchStatus.cellFill(s.dispatchStatus, isDark: isDark),
+        borderRadius: BorderRadius.circular(10),
+        border: Border(left: BorderSide(color: _shiftColor(s.shiftId), width: 4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          PartnerRoutePdfActions.ackDot(s, size: 9),
+          const SizedBox(width: 6),
+          Text(start, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+          const SizedBox(width: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: Text(
+              s.title?.split('—').first ?? 'Rute',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1311,8 +1793,7 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) => AlertDialog(
           title: const Text('Flytt rute til annen sjåfør / bil'),
-          content: SizedBox(
-            width: 420,
+          content: MobileDialogBody(
             child: DropdownButtonFormField<FleetPartnerVehicleRow>(
               decoration: const InputDecoration(labelText: 'Ny MAVI-bil', border: OutlineInputBorder()),
               isExpanded: true,
@@ -1796,8 +2277,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setSt) => AlertDialog(
           title: const Text('Flytt rute til annen bil / sjåfør'),
-          content: SizedBox(
-            width: 420,
+          content: MobileDialogBody(
             child: DropdownButtonFormField<FleetPartnerVehicleRow>(
               decoration: const InputDecoration(
                 labelText: 'Ny MAVI-bil',

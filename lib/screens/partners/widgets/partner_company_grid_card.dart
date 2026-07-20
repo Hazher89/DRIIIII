@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import 'eco_driving_badge.dart';
 import 'partner_modern_ui.dart';
 
 /// Kompakt bedriftskort for rutenett.
@@ -20,6 +22,7 @@ class PartnerCompanyGridCard extends StatelessWidget {
     required this.onTap,
     this.ownerName,
     this.onActivate,
+    this.ecoDrivingStatus = EcoDrivingStatus.required,
   });
 
   final String name;
@@ -35,6 +38,9 @@ class PartnerCompanyGridCard extends StatelessWidget {
   final VoidCallback onTap;
   final String? ownerName;
   final VoidCallback? onActivate;
+  final EcoDrivingStatus ecoDrivingStatus;
+
+  bool get _ecoDone => ecoDrivingStatus == EcoDrivingStatus.completed;
 
   @override
   Widget build(BuildContext context) {
@@ -43,11 +49,17 @@ class PartnerCompanyGridCard extends StatelessWidget {
       maviVehicles,
       includeInactive: !isActive,
     );
+    final ecoGreen = const Color(0xFF166534);
+    final ecoSurface = const Color(0xFFF0FDF4);
 
     return Opacity(
       opacity: isActive ? 1 : 0.72,
       child: Material(
-        color: isActive ? PartnerModernUi.surface(context) : PartnerModernUi.border(context).withValues(alpha: 0.25),
+        color: !isActive
+            ? PartnerModernUi.border(context).withValues(alpha: 0.25)
+            : _ecoDone
+                ? ecoSurface
+                : PartnerModernUi.surface(context),
         elevation: 0,
         shadowColor: Colors.transparent,
         borderRadius: BorderRadius.circular(16),
@@ -58,152 +70,165 @@ class PartnerCompanyGridCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isActive ? PartnerModernUi.border(context) : const Color(0xFF9CA3AF),
+                color: !isActive
+                    ? const Color(0xFF9CA3AF)
+                    : _ecoDone
+                        ? const Color(0xFF86EFAC)
+                        : PartnerModernUi.border(context),
+                width: _ecoDone && isActive ? 1.5 : 1,
               ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: PartnerModernUi.border(context).withValues(alpha: 0.45),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        initial,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 16,
-                          color: PartnerModernUi.textPrimary(context),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                              height: 1.25,
-                              color: PartnerModernUi.textPrimary(context),
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              _statusPill(context),
-                              if (maviCount > 0) ...[
-                                const SizedBox(width: 6),
-                                _miniPill(context, '$maviCount MAVI'),
-                              ],
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      size: 20,
-                      color: PartnerModernUi.muted(context),
-                    ),
-                  ],
+              boxShadow: [
+                BoxShadow(
+                  color: (_ecoDone && isActive ? ecoGreen : Colors.black)
+                      .withValues(alpha: _ecoDone && isActive ? 0.10 : 0.04),
+                  blurRadius: _ecoDone && isActive ? 12 : 8,
+                  offset: const Offset(0, 2),
                 ),
-                if (orgNumber != null && orgNumber!.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    orgNumber!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                      color: PartnerModernUi.muted(context),
-                    ),
-                  ),
-                ],
-                if (ownerName != null && ownerName!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    ownerName!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
-                  ),
-                ],
-                const SizedBox(height: 10),
-                _statLine(
-                  context,
-                  label: 'Registrert',
-                  value: '$ownerAccounts bedriftsansvarlig${ownerAccounts == 1 ? '' : 'e'} · '
-                      '$driverAccounts sjåfør${driverAccounts == 1 ? '' : 'er'}',
-                  icon: Icons.badge_outlined,
-                ),
-                const SizedBox(height: 6),
-                _statLine(
-                  context,
-                  label: 'Rute-SMS',
-                  value: routesOwnerOnly
-                      ? 'Kun bedriftsansvarlig'
-                      : 'Bedriftsansvarlig + sjåfør',
-                  icon: routesOwnerOnly ? Icons.person_outline : Icons.groups_2_outlined,
-                ),
-                const SizedBox(height: 6),
-                _statLine(
-                  context,
-                  label: 'SMS-nummer',
-                  value: smsPhones.isEmpty
-                      ? 'Ingen registrert'
-                      : '${smsPhones.length} nummer · ${smsPhones.take(2).join(' · ')}'
-                          '${smsPhones.length > 2 ? ' · +${smsPhones.length - 2}' : ''}',
-                  icon: Icons.sms_outlined,
-                ),
-                const SizedBox(height: 10),
-                PartnerMaviVehicleOverview(vehicles: maviList, dense: true, muted: !isActive),
-                if (onActivate != null) ...[
-                  const SizedBox(height: 10),
-                  FilledButton.icon(
-                    onPressed: onActivate,
-                    icon: const Icon(Icons.play_circle_outline, size: 18),
-                    label: const Text('Aktiver'),
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 36),
-                      backgroundColor: const Color(0xFF15803D),
-                    ),
-                  ),
-                ],
-                if (regCount > 0) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    '$regCount registrering${regCount == 1 ? '' : 'er'} (kun skilt)',
-                    style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context)),
-                  ),
-                ],
               ],
             ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _ecoDone && isActive
+                              ? const Color(0xFFDCFCE7)
+                              : PartnerModernUi.border(context).withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          initial,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                            color: _ecoDone && isActive
+                                ? ecoGreen
+                                : PartnerModernUi.textPrimary(context),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                height: 1.25,
+                                color: PartnerModernUi.textPrimary(context),
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: [
+                                _statusPill(context),
+                                if (maviCount > 0) _miniPill(context, '$maviCount MAVI'),
+                                EcoDrivingBadge(
+                                  status: ecoDrivingStatus,
+                                  compact: true,
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 20,
+                        color: PartnerModernUi.muted(context),
+                      ),
+                    ],
+                  ),
+                  if (orgNumber != null && orgNumber!.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Text(
+                      orgNumber!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: PartnerModernUi.muted(context),
+                      ),
+                    ),
+                  ],
+                  if (ownerName != null && ownerName!.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      ownerName!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  _statLine(
+                    context,
+                    label: 'Registrert',
+                    value: '$ownerAccounts bedriftsansvarlig${ownerAccounts == 1 ? '' : 'e'} · '
+                        '$driverAccounts sjåfør${driverAccounts == 1 ? '' : 'er'}',
+                    icon: Icons.badge_outlined,
+                  ),
+                  const SizedBox(height: 6),
+                  _statLine(
+                    context,
+                    label: 'Rute-SMS',
+                    value: routesOwnerOnly
+                        ? 'Kun bedriftsansvarlig'
+                        : 'Bedriftsansvarlig + sjåfør',
+                    icon: routesOwnerOnly ? Icons.person_outline : Icons.groups_2_outlined,
+                  ),
+                  const SizedBox(height: 6),
+                  _statLine(
+                    context,
+                    label: 'SMS-nummer',
+                    value: smsPhones.isEmpty
+                        ? 'Ingen registrert'
+                        : '${smsPhones.length} nummer · ${smsPhones.take(2).join(' · ')}'
+                            '${smsPhones.length > 2 ? ' · +${smsPhones.length - 2}' : ''}',
+                    icon: Icons.sms_outlined,
+                  ),
+                  const SizedBox(height: 10),
+                  PartnerMaviVehicleOverview(vehicles: maviList, dense: true, muted: !isActive),
+                  if (onActivate != null) ...[
+                    const SizedBox(height: 10),
+                    FilledButton.icon(
+                      onPressed: onActivate,
+                      icon: const Icon(Icons.play_circle_outline, size: 18),
+                      label: const Text('Aktiver'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 36),
+                        backgroundColor: const Color(0xFF15803D),
+                      ),
+                    ),
+                  ],
+                  if (regCount > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '$regCount registrering${regCount == 1 ? '' : 'er'} (kun skilt)',
+                      style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
-        ),
         ),
       ),
     );

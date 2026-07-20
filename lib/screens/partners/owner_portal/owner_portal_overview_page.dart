@@ -5,11 +5,13 @@ import '../../../core/services/partner/partner_deduction_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
-import '../partner_shell.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_modern_ui.dart';
 import '../widgets/partner_portal_route_detail_page.dart';
 import '../widgets/partner_ui.dart';
+import '../widgets/eco_driving_badge.dart';
 import 'owner_portal_common.dart';
+import '../../../widgets/auth_legal_links.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 class OwnerPortalOverviewPage extends StatefulWidget {
@@ -65,27 +67,16 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.partner.name, style: const TextStyle(fontSize: 16)),
-            const Text(
-              kOwnerPortalBuildLabel,
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: DriftProTheme.accentBlue),
-            ),
-          ],
+    return PartnerPortalPageShell(
+      title: widget.partner.name,
+      actions: [
+        IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
+        IconButton(
+          tooltip: 'Logg ut',
+          icon: const Icon(Icons.logout),
+          onPressed: () => signOutFromPortal(context),
         ),
-        actions: [
-          IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
-          IconButton(
-            tooltip: 'Logg ut',
-            icon: const Icon(Icons.logout),
-            onPressed: () => signOutFromPortal(context),
-          ),
-        ],
-      ),
+      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : _loadError != null
@@ -119,6 +110,13 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     title: 'Bil-eier oversikt',
                     subtitle: '${_data!.vehicles.length} kjøretøy · ${_data!.routes.length} ruter (90 d)',
                     leading: const Icon(Icons.business_center, color: Colors.white, size: 32),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: EcoDrivingBadge.forPartner(widget.partner),
+                    ),
                   ),
                   if (_data!.pendingAckTotal > 0) ...[
                     _pendingRoutesBanner(context, onTap: _openPendingRoutes),
@@ -239,6 +237,10 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                       style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context), height: 1.4),
                     ),
                   ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: AuthLegalLinks(compact: true),
+                  ),
                   const SizedBox(height: 24),
                 ],
               ),
@@ -323,6 +325,17 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
   }
 
   Widget _infoCard(BuildContext context, Partner p) {
+    final ecoLabel = switch (p.ecoDrivingStatus) {
+      EcoDrivingStatus.completed => p.ecoDrivingCompletedAt != null
+          ? 'Gjennomført ${ownerFmtDate(p.ecoDrivingCompletedAt!)}'
+          : 'Gjennomført',
+      EcoDrivingStatus.overdue => p.ecoDrivingDeadline != null
+          ? 'Frist utløpt ${ownerFmtDate(p.ecoDrivingDeadline!)}'
+          : 'Frist utløpt',
+      EcoDrivingStatus.required => p.ecoDrivingDeadline != null
+          ? 'Skal tas innen ${ownerFmtDate(p.ecoDrivingDeadline!)}'
+          : 'Skal tas innen 3 måneder',
+    };
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       child: Padding(
@@ -333,6 +346,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
             _row(Icons.phone_outlined, 'Telefon', p.phone ?? '—'),
             _row(Icons.email_outlined, 'E-post', p.email ?? '—'),
             _row(Icons.local_shipping_outlined, 'Kjøretøy registrert', '${p.vehicleCountRegistered}'),
+            _row(Icons.eco_rounded, 'ECO Driving Kurs', ecoLabel),
             if (p.nextMeetingAt != null)
               _row(Icons.event_outlined, 'Neste møte', ownerFmtDateTime(p.nextMeetingAt!)),
             if (p.nextAuditAt != null)

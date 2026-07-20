@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/layout/mobile_layout.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 
@@ -55,8 +56,8 @@ Future<SharedDocumentNotifyPlan?> showSharedDocumentNotifyDialog(
 
         return AlertDialog(
           title: Text(fileCount == 1 ? 'Varsel om nytt dokument' : 'Varsel om $fileCount dokumenter'),
-          content: SizedBox(
-            width: 460,
+          content: MobileDialogBody(
+            maxWidth: 460,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,

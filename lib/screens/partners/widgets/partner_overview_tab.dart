@@ -15,6 +15,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_companies_ui.dart';
+import 'eco_driving_badge.dart';
 import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 
@@ -187,6 +188,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   bool _portalSaving = false;
   bool _routesOwnerOnly = false;
   bool _routesOwnerOnlySaving = false;
+  bool _ecoDrivingCompleted = false;
+  DateTime? _ecoDrivingDeadline;
+  DateTime? _ecoDrivingCompletedAt;
   bool _isSuperAdmin = false;
   Timer? _vegvesenDebounce;
   final Set<_VehicleRowState> _vegvesenLoading = {};
@@ -210,6 +214,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _auditPlate = TextEditingController(text: p.auditPlate ?? '');
     _notes = TextEditingController(text: p.notes ?? '');
     _routesOwnerOnly = p.routesOwnerOnly;
+    _ecoDrivingCompleted = p.ecoDrivingCompleted;
+    _ecoDrivingDeadline = p.ecoDrivingDeadline;
+    _ecoDrivingCompletedAt = p.ecoDrivingCompletedAt;
     _ownerRows.add(_OwnerPortalRowState(phone: widget.partner.phone));
     _resetVehicles(widget.vehicles);
     _loadPortals();
@@ -375,6 +382,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _phone.text = p.phone ?? '';
     _employees.text = p.employeeCount?.toString() ?? '';
     _routesOwnerOnly = p.routesOwnerOnly;
+    _ecoDrivingCompleted = p.ecoDrivingCompleted;
+    _ecoDrivingDeadline = p.ecoDrivingDeadline;
+    _ecoDrivingCompletedAt = p.ecoDrivingCompletedAt;
     if (_vehiclesDiffer(oldWidget.vehicles, widget.vehicles)) {
       _resetVehicles(widget.vehicles);
       _loadPortals();
@@ -996,6 +1006,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         nextAuditAt: p.nextAuditAt,
         isActive: p.isActive,
         routesOwnerOnly: _routesOwnerOnly,
+        ecoDrivingCompleted: _ecoDrivingCompleted,
+        ecoDrivingDeadline: _ecoDrivingDeadline,
+        ecoDrivingCompletedAt: _ecoDrivingCompletedAt,
         createdAt: p.createdAt,
       );
       await PartnerService.updatePartner(p.id, updated);
@@ -1230,6 +1243,30 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                     const SizedBox(width: 8),
                     Expanded(child: _field('Ant. ansatte', _employees)),
                   ],
+                ),
+              ],
+            ),
+            if (_activeSection == _OverviewSection.profile)
+              PartnerModernSection(
+              title: 'ECO Driving Kurs',
+              subtitle: 'Grønn badge på bedriftskort når kurset er tatt',
+              initiallyExpanded: true,
+              children: [
+                EcoDrivingCourseEditor(
+                  completed: _ecoDrivingCompleted,
+                  deadline: _ecoDrivingDeadline,
+                  onCompletedChanged: (v) {
+                    setState(() {
+                      _ecoDrivingCompleted = v;
+                      if (v) {
+                        _ecoDrivingCompletedAt = DateTime.now();
+                      } else {
+                        _ecoDrivingCompletedAt = null;
+                        _ecoDrivingDeadline ??=
+                            Partner.defaultEcoDrivingDeadline();
+                      }
+                    });
+                  },
                 ),
               ],
             ),

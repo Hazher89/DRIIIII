@@ -48,7 +48,7 @@ MAVI-enhet: $mavi
 
 4. Leieperiode
 $period
-Utlånet skjer først når bileier har dokumentert tilstand, bekreftet avtalen digitalt og MAVI har godkjent utleien i DriftPro.
+Utlånet skjer først når tilstand er dokumentert (6 bilder, drivstoff og km), avtalen er bekreftet digitalt og MAVI har godkjent utleien i DriftPro.
 
 5. Leiepris, kostnader og fakturering
 Leiepris: 1.000,- pr påbegynte dag.

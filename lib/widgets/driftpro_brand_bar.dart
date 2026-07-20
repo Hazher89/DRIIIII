@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/config/driftpro_client.dart';
 import '../core/routing/app_paths.dart';
 import '../core/theme/driftpro_theme_context.dart';
 import 'driftpro_brand_logo.dart';
@@ -19,7 +20,12 @@ class DriftProBrandBar extends StatelessWidget {
         bottom: false,
         child: Container(
           width: double.infinity,
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          padding: EdgeInsets.fromLTRB(
+            DriftProClient.isMobile ? 12 : 16,
+            DriftProClient.isMobile ? 4 : 10,
+            DriftProClient.isMobile ? 12 : 16,
+            DriftProClient.isMobile ? 6 : 12,
+          ),
           decoration: BoxDecoration(
             color: drift.surface,
             border: Border(bottom: BorderSide(color: drift.borderSubtle)),
@@ -32,10 +38,13 @@ class DriftProBrandBar extends StatelessWidget {
                 onTap: () => context.go(AppPaths.dashboard),
                 borderRadius: BorderRadius.circular(10),
                 mouseCursor: SystemMouseCursors.click,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 2),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
                   child: DriftProBrandLogo(
-                    density: DriftProBrandDensity.header,
+                    density: DriftProClient.isMobile
+                        ? DriftProBrandDensity.compact
+                        : DriftProBrandDensity.header,
+                    showSubtitle: !DriftProClient.isMobile,
                   ),
                 ),
               ),
@@ -62,12 +71,20 @@ class DriftProBrandedScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final content = DriftProClient.isMobile
+        ? MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: body,
+          )
+        : body;
+
     return Scaffold(
       backgroundColor: backgroundColor,
       body: Column(
         children: [
           const DriftProBrandBar(),
-          Expanded(child: body),
+          Expanded(child: content),
         ],
       ),
       bottomNavigationBar: bottomNavigationBar,

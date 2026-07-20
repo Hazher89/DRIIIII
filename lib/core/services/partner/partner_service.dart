@@ -2352,7 +2352,15 @@ class PartnerService {
     required String storagePath,
     required Uint8List bytes,
   }) async {
-    return uploadPartnerRoutePdf(storagePath: storagePath, bytes: bytes);
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final result = await CompanyFileStorage.upload(
+      supabaseBucket: 'documents',
+      storagePath: storagePath,
+      bytes: bytes,
+      category: 'partners',
+      fileName: storagePath.split('/').last,
+    );
+    return CompanyFileStorage.toStorageReference(result);
   }
 
   static Future<String> getDocumentPdfSignedUrl(String storagePath) async {

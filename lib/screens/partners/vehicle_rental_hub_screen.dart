@@ -10,6 +10,7 @@ import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
 import '../../models/partner/vehicle_rental.dart';
 import 'widgets/partner_modern_ui.dart';
+import 'widgets/vehicle_rental_checkout_flow.dart';
 import 'widgets/vehicle_rental_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
@@ -762,7 +763,22 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     }
   }
 
+  Future<void> _openCheckout(VehicleRental rental) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => VehicleRentalCheckoutFlowScreen(
+          rental: rental,
+          onDone: _load,
+        ),
+      ),
+    );
+  }
+
   Future<void> _showDetail(VehicleRental rental) async {
+    if (rental.isPendingOwner) {
+      await _openCheckout(rental);
+      return;
+    }
     await showVehicleRentalDetailSheet(
       context,
       rental: rental,
@@ -856,6 +872,12 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                   hint: 'Start med låntaker, bil og periode',
                   icon: Icons.add_circle_outline,
                 ),
+                if (_count('pending_owner') > 0)
+                  const PartnerSmartAction(
+                    label: 'Dokumenter før utleie',
+                    hint: 'Ta alle 6 bildene, drivstoff og km',
+                    icon: Icons.photo_camera_outlined,
+                  ),
                 if (_count('pending_mavi') > 0)
                   const PartnerSmartAction(
                     label: 'Godkjenn ventende utlån',
@@ -1001,6 +1023,17 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
   }
 
   Widget? _buildCardAction(VehicleRental r) {
+    if (r.isPendingOwner) {
+      return FilledButton.icon(
+        onPressed: () => _openCheckout(r),
+        style: FilledButton.styleFrom(
+          backgroundColor: DriftProTheme.accentBlue,
+          minimumSize: const Size(double.infinity, 44),
+        ),
+        icon: const Icon(Icons.photo_camera_outlined, size: 18),
+        label: const Text('Dokumenter utleie (6 bilder)'),
+      );
+    }
     if (r.isApproved) {
       return FilledButton.icon(
         onPressed: () => _showDetail(r),

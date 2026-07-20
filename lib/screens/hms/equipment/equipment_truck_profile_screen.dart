@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/hms/truck_inspection_templates.dart';
 import '../../../core/permissions/user_access.dart';
 import '../../../core/services/hms/equipment_service.dart';
+import '../../../core/services/native_permissions_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/hms/equipment.dart';
 import '../../../models/user_profile.dart';
@@ -117,6 +118,7 @@ class _EquipmentTruckProfileScreenState extends State<EquipmentTruckProfileScree
   Future<void> _pickImages() async {
     final companyId = widget.profile.companyId;
     if (companyId == null) return;
+    if (!await NativePermissionsService.ensurePhotos(context: context)) return;
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       withData: true,

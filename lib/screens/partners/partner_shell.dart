@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +10,8 @@ import '../../core/auth/session_sign_out.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
 import '../../core/services/partner/partner_portal_scope.dart';
 import '../../core/services/partner/partner_service.dart';
+import '../../core/services/notification/partner_route_push_listener.dart';
+import '../../core/services/native_permissions_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/driftpro_brand_bar.dart';
@@ -94,6 +97,26 @@ class _PartnerShellState extends State<PartnerShell> {
     _index = widget.initialTabIndex;
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(NativePermissionsService.bootstrapAfterLogin(context));
+    });
+  }
+
+  @override
+  void dispose() {
+    PartnerRoutePushListener.stop();
+    super.dispose();
+  }
+
+  void _startDriverPushListener() {
+    if (widget.portalAccountKind != 'driver') return;
+    final pid = widget.profile.partnerId;
+    if (pid == null) return;
+    PartnerRoutePushListener.start(
+      partnerId: pid,
+      partnerVehicleId: widget.profile.partnerVehicleId,
+    );
   }
 
   void _syncUrl() {
@@ -130,6 +153,7 @@ class _PartnerShellState extends State<PartnerShell> {
         _partner = p;
         _loading = false;
       });
+      _startDriverPushListener();
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);

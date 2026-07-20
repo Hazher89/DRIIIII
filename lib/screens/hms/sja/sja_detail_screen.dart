@@ -6,6 +6,7 @@ import 'package:signature/signature.dart';
 
 import '../../../core/services/hms/hms_ecosystem_service.dart';
 import '../../../core/services/hms/hms_pdf_generators.dart';
+import '../../../core/services/native_permissions_service.dart';
 import '../widgets/hms_pdf_export_button.dart';
 import '../../../core/services/storage/company_file_storage.dart';
 import '../../../core/services/supabase_service.dart';
@@ -470,6 +471,15 @@ class SjaQrScanScreen extends StatefulWidget {
 
 class _SjaQrScanScreenState extends State<SjaQrScanScreen> {
   bool _handled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      NativePermissionsService.ensureCamera(context: context);
+    });
+  }
 
   void _onDetect(BarcodeCapture capture) async {
     if (_handled) return;

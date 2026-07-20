@@ -6,11 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/layout/mobile_layout.dart';
 import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import 'owner_portal_common.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
@@ -236,8 +238,8 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(multi ? 'Last opp ${files.length} filer' : 'Last opp fil'),
-        content: SizedBox(
-          width: 400,
+        content: MobileDialogBody(
+          maxWidth: 400,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -392,34 +394,33 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
             ? _filterList(_maviSharedDocs)
             : const <PartnerDocument>[];
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          inFolder
-              ? (_folders.cast<Map<String, dynamic>?>().firstWhere(
-                    (f) => f?['id'] == _activeFolderId,
-                    orElse: () => null,
-                  )?['name'] as String?) ??
-                  'Mappe'
-              : showingMavi
-                  ? 'Dokumenter fra MAVI'
-                  : 'Dokumenter',
-        ),
-        leading: (inFolder || showingMavi)
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => setState(() {
-                  _activeFolderId = null;
-                  _showMaviDocs = false;
-                  _query = '';
-                }),
-              )
-            : null,
-        actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-          IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
-        ],
-      ),
+    final pageTitle = inFolder
+        ? (_folders.cast<Map<String, dynamic>?>().firstWhere(
+              (f) => f?['id'] == _activeFolderId,
+              orElse: () => null,
+            )?['name'] as String?) ??
+            'Mappe'
+        : showingMavi
+            ? 'Dokumenter fra MAVI'
+            : 'Dokumenter';
+    final backLeading = (inFolder || showingMavi)
+        ? IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => setState(() {
+              _activeFolderId = null;
+              _showMaviDocs = false;
+              _query = '';
+            }),
+          )
+        : null;
+
+    return PartnerPortalPageShell(
+      title: pageTitle,
+      leading: backLeading,
+      actions: [
+        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+        IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
+      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : Column(

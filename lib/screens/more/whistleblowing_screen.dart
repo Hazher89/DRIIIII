@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 import 'package:uuid/uuid.dart';
 
+import '../../core/services/native_permissions_service.dart';
 import '../../core/services/storage/company_file_storage.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -25,6 +26,7 @@ class _WhistleblowingScreenState extends State<WhistleblowingScreen> {
   bool _isSubmitting = false;
 
   Future<void> _pickImages() async {
+    if (!await NativePermissionsService.ensurePhotos(context: context)) return;
     final List<XFile> images = await _picker.pickMultiImage();
     if (images.isNotEmpty) {
       setState(() {

@@ -31,8 +31,6 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
@@ -45,9 +43,43 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>DriftPro trenger posisjon for GPS-sporing under levering.</string>
+	<string>DriftPro bruker posisjonen din mens appen er åpen for å knytte sted til avvik, følge leveringsoppgaver og støtte sjåførfunksjoner når du selv aktiverer dette.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>DriftPro kan bruke posisjon i bakgrunnen kun under aktiv rute- eller leveringssporing når arbeidsgiver har aktivert dette for jobben din.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>DriftPro trenger kamera for strekkodeskann i lageret.</string>
+	<string>DriftPro trenger kameraet for å ta bilder til avvik, bilutleie, HMS-dokumentasjon, strekkodeskanning og GM &amp; STORO-etiketter — kun når du velger å ta bilde.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>DriftPro trenger tilgang til bildebiblioteket når du velger vedlegg til avvik, HMS, personalmappe eller andre dokumenter. Vi laster ikke opp bilder uten at du velger dem.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>DriftPro kan lagre eksporterte bilder og dokumentasjon i Foto-appen når du velger å lagre eller eksportere.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>DriftPro kan bruke mikrofonen når du tar video med lyd som dokumentasjon. Stillbilder krever ikke mikrofon.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>DriftPro kobler til IP-kamera og lokal vision-tjeneste på bedriftens nettverk for uniform-monitor og live visning — kun på godkjent bedriftsnett.</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>DriftPro bruker ikke sporing på tvers av apper eller nettsteder til reklame.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>FlutterDeepLinkingEnabled</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>no.driftpro.driftpro</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>no.driftpro.driftpro</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

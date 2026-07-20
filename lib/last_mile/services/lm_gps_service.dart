@@ -1,17 +1,14 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/services/native_permissions_service.dart';
 import '../../core/services/supabase_service.dart';
 
 class LmGpsService {
   LmGpsService._();
 
   static Future<bool> ensurePermission() async {
-    var perm = await Geolocator.checkPermission();
-    if (perm == LocationPermission.denied) {
-      perm = await Geolocator.requestPermission();
-    }
-    return perm == LocationPermission.always || perm == LocationPermission.whileInUse;
+    return NativePermissionsService.ensureLocation();
   }
 
   static Future<void> uploadPosition({

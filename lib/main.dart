@@ -68,6 +68,7 @@ Future<void> _initSupabase() async {
     anonKey: SupabaseConfig.anonKey,
     authOptions: const FlutterAuthClientOptions(
       autoRefreshToken: true,
+      authFlowType: AuthFlowType.pkce,
     ),
   );
 }

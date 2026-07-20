@@ -6,6 +6,7 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../widgets/partner_ui.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 class DriverPortalDocsPage extends StatefulWidget {
@@ -56,14 +57,12 @@ class _DriverPortalDocsPageState extends State<DriverPortalDocsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Felles dokumenter'),
-        actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-          IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
-        ],
-      ),
+    return PartnerPortalPageShell(
+      title: 'Felles dokumenter',
+      actions: [
+        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+        IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
+      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : Column(

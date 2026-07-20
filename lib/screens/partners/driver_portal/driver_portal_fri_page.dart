@@ -9,6 +9,7 @@ import '../../../core/utils/nb_date_format.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
+import '../widgets/partner_portal_page_shell.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 class DriverPortalFriPage extends StatefulWidget {
@@ -155,14 +156,12 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Fri'),
-        actions: [
-          IconButton(tooltip: 'Søk fri', onPressed: _requestFri, icon: const Icon(Icons.add)),
-          IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
-        ],
-      ),
+    return PartnerPortalPageShell(
+      title: 'Fri',
+      actions: [
+        IconButton(tooltip: 'Søk fri', onPressed: _requestFri, icon: const Icon(Icons.add)),
+        IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
+      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : _mine.isEmpty
