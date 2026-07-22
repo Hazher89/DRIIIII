@@ -43,6 +43,7 @@ class PartnerVehicleInspectionTab extends StatefulWidget {
 }
 
 class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTab> {
+  List<PartnerVehicle> _vehicles = [];
   List<PartnerVehicleInspection> _archive = [];
   List<PartnerVehicleInspection> _followUps = [];
   bool _loading = true;
@@ -71,22 +72,39 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
     return c;
   }
 
-  List<PartnerVehicle> get _regVehicles => widget.vehicles
+  List<PartnerVehicle> get _regVehicles => _vehicles
       .where((v) =>
           v.vehicleKind == 'registration' || MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
       .toList();
 
-  List<PartnerVehicle> get _maviVehicles => widget.vehicles
+  List<PartnerVehicle> get _maviVehicles => _vehicles
       .where((v) =>
           v.vehicleKind != 'registration' && !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
       .toList();
 
+  bool _vehicleListsDiffer(List<PartnerVehicle> a, List<PartnerVehicle> b) {
+    if (a.length != b.length) return true;
+    final aKeys = a.map((v) => '${v.id}|${v.unitCode}').toSet();
+    final bKeys = b.map((v) => '${v.id}|${v.unitCode}').toSet();
+    return aKeys.length != bKeys.length || !aKeys.containsAll(bKeys);
+  }
+
   @override
   void initState() {
     super.initState();
+    _vehicles = List<PartnerVehicle>.from(widget.vehicles);
     _resetChecklist();
     _loadInspectorName();
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant PartnerVehicleInspectionTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.partner.id != widget.partner.id ||
+        _vehicleListsDiffer(oldWidget.vehicles, widget.vehicles)) {
+      _load();
+    }
   }
 
   Future<void> _loadInspectorName() async {
@@ -120,6 +138,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    final vehicles = await PartnerService.fetchVehicles(widget.partner.id);
     final archive = await PartnerService.fetchVehicleInspections(widget.partner.id);
     final uid = Supabase.instance.client.auth.currentUser?.id;
     final followUps = await PartnerService.fetchOpenInspectionFollowUps(
@@ -128,6 +147,11 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
     );
     if (mounted) {
       setState(() {
+        _vehicles = vehicles;
+        if (_selectedVehicleId != null &&
+            !vehicles.any((v) => v.id == _selectedVehicleId)) {
+          _selectedVehicleId = null;
+        }
         _archive = archive;
         _followUps = followUps;
         _loading = false;
@@ -137,7 +161,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
 
   PartnerVehicle? get _selectedVehicle {
     if (_selectedVehicleId == null) return null;
-    for (final v in widget.vehicles) {
+    for (final v in _vehicles) {
       if (v.id == _selectedVehicleId) return v;
     }
     return null;
@@ -467,7 +491,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
 
     final vehicleOptions = [..._maviVehicles, ..._regVehicles];
     final lastByVehicle =
-        PartnerVehicleInspection.latestByVehicleId(widget.vehicles, _archive);
+        PartnerVehicleInspection.latestByVehicleId(_vehicles, _archive);
     final deviationCount = _archive.where((a) => a.hasDeviation).length;
 
     return ListView(

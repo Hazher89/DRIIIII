@@ -56,6 +56,8 @@ class SupabaseService {
     return superadminEmails.contains(email.trim().toLowerCase());
   }
 
+  static const superadminDisplayName = 'Hazher';
+
   static bool _isMaviEmployeeEmail(String? email) {
     if (email == null) return false;
     return email.trim().toLowerCase().endsWith('@mavi-employees.driftpro.no');
@@ -114,11 +116,10 @@ class SupabaseService {
     final email = u.email?.trim().toLowerCase();
     if (email == null || email.isEmpty) return null;
     if (!superadminEmails.contains(email)) return null;
-    final name = email.split('@').first;
     return UserProfile(
       id: u.id,
       email: email,
-      fullName: name,
+      fullName: superadminDisplayName,
       role: UserRole.superadmin,
       isOnboarded: true,
       isApproved: true,
@@ -199,11 +200,10 @@ class SupabaseService {
 
     if (profile == null && !isPortal && _isSuperadminEmail(email) && bootstrap != null) {
       try {
-        final fn = email.split('@').first;
         await client.from('profiles').upsert({
           'id': user.id,
           'email': email,
-          'full_name': fn.isEmpty ? 'Bruker' : fn,
+          'full_name': superadminDisplayName,
           'company_id': bootstrap,
           'role': 'superadmin',
           'is_onboarded': true,
@@ -1303,11 +1303,14 @@ department:departments!department_id(name)
     }
 
     try {
-      String fullName = (user.userMetadata?['full_name']?.toString() ??
-              user.userMetadata?['name']?.toString() ??
-              user.email?.split('@').first ??
-              'Ny bruker')
-          .trim();
+      final email = user.email?.trim().toLowerCase() ?? '';
+      String fullName = _isSuperadminEmail(email)
+          ? superadminDisplayName
+          : (user.userMetadata?['full_name']?.toString() ??
+                  user.userMetadata?['name']?.toString() ??
+                  user.email?.split('@').first ??
+                  'Ny bruker')
+              .trim();
       if (fullName.isEmpty) fullName = 'Ny bruker';
 
       final companyId = await discoverBootstrapCompanyId();
@@ -1355,9 +1358,11 @@ department:departments!department_id(name)
     if (!_shouldElevateToSuperadmin(profile, sessionEmail: sessionEmail)) {
       return profile;
     }
+    final needsNameFix = profile.fullName.trim() != superadminDisplayName;
     if (profile.role == UserRole.superadmin &&
         profile.isApproved &&
-        profile.isOnboarded) {
+        profile.isOnboarded &&
+        !needsNameFix) {
       return profile;
     }
     try {
@@ -1365,6 +1370,7 @@ department:departments!department_id(name)
           .from('profiles')
           .update({
             'role': 'superadmin',
+            'full_name': superadminDisplayName,
             'partner_id': null,
             'partner_vehicle_id': null,
             'is_approved': true,
@@ -1376,6 +1382,7 @@ department:departments!department_id(name)
       final refreshed = await fetchCurrentUserProfile();
       return refreshed ?? profile.copyWith(
         role: UserRole.superadmin,
+        fullName: superadminDisplayName,
         isApproved: true,
         isOnboarded: true,
         isActive: true,
@@ -1384,6 +1391,7 @@ department:departments!department_id(name)
       debugPrint('ensureSuperadminIfOwner: $e');
       return profile.copyWith(
         role: UserRole.superadmin,
+        fullName: superadminDisplayName,
         isApproved: true,
         isOnboarded: true,
         isActive: true,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -146,8 +148,10 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
     final tabs = PartnerAccess.visibleDetailTabs(profile?.access);
     if (!mounted) return;
     final oldCtrl = _tabCtrl;
+    oldCtrl?.removeListener(_onTabChanged);
     oldCtrl?.dispose();
     final ctrl = tabs.isNotEmpty ? TabController(length: tabs.length, vsync: this) : null;
+    ctrl?.addListener(_onTabChanged);
     setState(() {
       _profile = profile;
       _tabs = tabs;
@@ -157,8 +161,18 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
     if (mounted) setState(() => _loading = false);
   }
 
+  void _onTabChanged() {
+    final ctrl = _tabCtrl;
+    if (ctrl == null || ctrl.indexIsChanging) return;
+    if (ctrl.index >= _tabs.length) return;
+    if (_tabs[ctrl.index].accessKey == AccessKeys.partnersTabBilkontroll) {
+      unawaited(_reload());
+    }
+  }
+
   @override
   void dispose() {
+    _tabCtrl?.removeListener(_onTabChanged);
     _tabCtrl?.dispose();
     super.dispose();
   }
@@ -166,13 +180,12 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
   Future<void> _reload() async {
     final fresh = await PartnerService.fetchPartner(_p.id);
     final vehicles = await PartnerService.fetchVehicles(_p.id);
-    if (fresh != null && mounted) {
-      setState(() {
-        _p = fresh;
-        _vehicles = vehicles;
-      });
-      widget.onDataChanged();
-    }
+    if (!mounted) return;
+    setState(() {
+      if (fresh != null) _p = fresh;
+      _vehicles = vehicles;
+    });
+    widget.onDataChanged();
   }
 
   int get _maviCount => _vehicles

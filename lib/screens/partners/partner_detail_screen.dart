@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -59,6 +61,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
     final profile = await SupabaseService.fetchCurrentUserProfile();
     final tabs = PartnerAccess.visibleDetailTabs(profile?.access);
     if (!mounted) return;
+    _tabs?.removeListener(_onTabChanged);
     _tabs?.dispose();
     final initial = _indexForTabSlug(tabs, widget.initialTab);
     setState(() {
@@ -70,10 +73,19 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
           length: tabs.length,
           vsync: this,
           initialIndex: initial,
-        );
+        )..addListener(_onTabChanged);
       }
     });
     await _reload();
+  }
+
+  void _onTabChanged() {
+    final tabs = _tabs;
+    if (tabs == null || tabs.indexIsChanging) return;
+    if (tabs.index >= _visibleTabs.length) return;
+    if (_visibleTabs[tabs.index].accessKey == AccessKeys.partnersTabBilkontroll) {
+      unawaited(_reload());
+    }
   }
 
   int _indexForTabSlug(List<PartnerDetailTabDef> tabs, String? slug) {
@@ -102,6 +114,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
 
   @override
   void dispose() {
+    _tabs?.removeListener(_onTabChanged);
     _tabs?.dispose();
     super.dispose();
   }
@@ -110,13 +123,12 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
     final fresh = await PartnerService.fetchPartner(_p.id);
     final vehicles = await PartnerService.fetchVehicles(_p.id);
     final portalAccounts = await PartnerService.fetchPortalAccounts(_p.id);
-    if (fresh != null && mounted) {
-      setState(() {
-        _p = fresh;
-        _vehicles = vehicles;
-        _portalAccounts = portalAccounts;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      if (fresh != null) _p = fresh;
+      _vehicles = vehicles;
+      _portalAccounts = portalAccounts;
+    });
   }
 
   int get _maviCount => _vehicles

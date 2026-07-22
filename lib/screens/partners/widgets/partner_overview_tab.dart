@@ -1106,22 +1106,35 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
           .length;
       final expectedMavi = vehicles.where((v) => v.vehicleKind == 'mavi').length;
+      final expectedReg = vehicles.where((v) => v.vehicleKind == 'registration').length;
+      final savedReg = saved
+          .where((v) =>
+              v.vehicleKind == 'registration' ||
+              MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
+          .length;
       if (savedMavi < expectedMavi) {
         throw StateError(
           'Kunne ikke lagre alle MAVI-biler ($savedMavi av $expectedMavi). '
           'Sjekk at nummeret er gyldig (f.eks. M75 eller NO_O_M0075).',
         );
       }
+      if (savedReg < expectedReg) {
+        throw StateError(
+          'Kunne ikke lagre alle skiltnummer ($savedReg av $expectedReg). '
+          'Sjekk at reg.nr har minst 4 tegn.',
+        );
+      }
 
       if (mounted) {
         _resetVehicles(saved);
         await _loadPortals();
+        final parts = <String>[];
+        if (savedReg > 0) parts.add('$savedReg reg.nr');
+        if (savedMavi > 0) parts.add('$savedMavi MAVI');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              expectedMavi > 0
-                  ? 'Lagret — $savedMavi MAVI-bil(er) på bedriften'
-                  : 'Lagret',
+              parts.isEmpty ? 'Lagret' : 'Lagret — ${parts.join(' · ')}',
             ),
           ),
         );
@@ -1199,6 +1212,52 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                           .toList(),
                     ),
                     lastInspectionByVehicleId: _inspectionByVehicleId,
+                  ),
+                ),
+              ),
+            if (regRows.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: PartnerModernUi.surface(context),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: PartnerModernUi.border(context)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Registrerte skilt (${regRows.length})',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: PartnerModernUi.textPrimary(context).withValues(alpha: 0.78),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: regRows.map((r) {
+                          final plate = r.reg.text.trim().toUpperCase();
+                          return Chip(
+                            label: Text(
+                              plate,
+                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Skilt vises under Bilkontroll etter at du har trykket Lagre endringer.',
+                        style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context)),
+                      ),
+                    ],
                   ),
                 ),
               ),
