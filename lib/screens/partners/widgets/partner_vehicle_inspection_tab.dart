@@ -235,13 +235,12 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
         followUpDueAt: (_hasDeviation || implied) ? _followUpDue : null,
         createdAt: DateTime.now(),
       );
-      final result = await PartnerService.saveVehicleInspection(
+      final saved = await PartnerService.saveVehicleInspection(
         draft,
         partner: widget.partner,
         inspectorName: _inspectorName,
         pendingPhotos: _pendingPhotos.map((p) => p.bytes).toList(),
       );
-      final saved = result.inspection;
       if (!mounted) return;
       setState(() {
         _resetChecklist();
@@ -250,16 +249,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
       });
       await _load();
       if (!mounted) return;
-      // Kun dialog for PDF — ingen sticky snackbar med «Last ned PDF» (forsvinner ikke på web).
-      await _offerPdfExport(saved);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Kontroll arkivert. ${result.notifySummary}'),
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      await _offerPostSaveActions(saved);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -445,36 +435,229 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
     );
   }
 
-  Future<void> _offerPdfExport(PartnerVehicleInspection inspection) async {
+  Future<void> _offerPostSaveActions(PartnerVehicleInspection inspection) async {
     if (!mounted) return;
-    final export = await showDialog<bool>(
+    var downloadPdf = false;
+    // 0 = ingen, 1 = SMS, 2 = push, 3 = begge — ingen auto-send.
+    var notifyChoice = 0;
+    final plateHint = [
+      if ((inspection.registrationNumber ?? '').trim().isNotEmpty &&
+          inspection.registrationNumber!.trim() != '—')
+        inspection.registrationNumber!.trim().toUpperCase(),
+      if ((inspection.unitCode ?? '').trim().isNotEmpty) inspection.unitCode!.trim(),
+    ].join(' · ');
+
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Kontroll arkivert'),
-        content: const Text(
-          'PDF-rapporten er registrert for denne bilen og datoen, '
-          'og kan lastes ned når som helst under Arkiv.\n\n'
-          'Vil du laste den ned nå?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Senere'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(
-              backgroundColor: DriftProTheme.primaryGreen,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Kontroll arkivert'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  plateHint.isEmpty
+                      ? 'PDF er lagret i arkivet. Velg hva du vil gjøre:'
+                      : 'Kontroll lagret for $plateHint. Velg hva du vil gjøre:',
+                  style: TextStyle(color: PartnerModernUi.textPrimary(ctx)),
+                ),
+                const SizedBox(height: 12),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: const Text('Last ned PDF nå'),
+                  subtitle: const Text('Eller last ned senere fra Arkiv'),
+                  value: downloadPdf,
+                  onChanged: (v) => setLocal(() => downloadPdf = v ?? false),
+                ),
+                const Divider(height: 20),
+                Text(
+                  'Varsle bedriftsansvarlig',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: PartnerModernUi.textPrimary(ctx),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'SMS og push inneholder skiltnummer på bilen. Ingenting sendes før du velger og trykker Utfør.',
+                  style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(ctx)),
+                ),
+                RadioListTile<int>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Ikke varsle'),
+                  value: 0,
+                  groupValue: notifyChoice,
+                  onChanged: (v) => setLocal(() => notifyChoice = v ?? 0),
+                ),
+                RadioListTile<int>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Kun SMS'),
+                  value: 1,
+                  groupValue: notifyChoice,
+                  onChanged: (v) => setLocal(() => notifyChoice = v ?? 0),
+                ),
+                RadioListTile<int>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('Kun push-varsel'),
+                  value: 2,
+                  groupValue: notifyChoice,
+                  onChanged: (v) => setLocal(() => notifyChoice = v ?? 0),
+                ),
+                RadioListTile<int>(
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                  title: const Text('SMS og push (begge)'),
+                  value: 3,
+                  groupValue: notifyChoice,
+                  onChanged: (v) => setLocal(() => notifyChoice = v ?? 0),
+                ),
+              ],
             ),
-            icon: const Icon(Icons.picture_as_pdf_outlined),
-            label: const Text('Last ned PDF'),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Senere'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+              child: const Text('Utfør'),
+            ),
+          ],
+        ),
       ),
     );
-    if (export == true && mounted) {
+
+    if (!mounted || confirmed != true) return;
+
+    final sendSms = notifyChoice == 1 || notifyChoice == 3;
+    final sendPush = notifyChoice == 2 || notifyChoice == 3;
+
+    if (downloadPdf) {
       await _exportPdf(inspection);
     }
+    if (sendSms || sendPush) {
+      final summary = await PartnerService.notifyVehicleInspectionOwners(
+        inspection.id,
+        sms: sendSms,
+        push: sendPush,
+        email: false,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(summary), duration: const Duration(seconds: 5)),
+      );
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            downloadPdf ? 'Kontroll arkivert. PDF lastet ned.' : 'Kontroll arkivert.',
+          ),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<void> _offerNotifyOwners(PartnerVehicleInspection inspection) async {
+    if (!mounted) return;
+    var notifyChoice = 3; // SMS + push as suggested when opening from archive
+    final plateHint = [
+      if ((inspection.registrationNumber ?? '').trim().isNotEmpty &&
+          inspection.registrationNumber!.trim() != '—')
+        inspection.registrationNumber!.trim().toUpperCase(),
+      if ((inspection.unitCode ?? '').trim().isNotEmpty) inspection.unitCode!.trim(),
+    ].join(' · ');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: const Text('Varsle bedriftsansvarlig'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                plateHint.isEmpty
+                    ? 'Velg hvordan bedriftsansvarlig skal varsles om kontrollen.'
+                    : 'Varsel om kontroll på $plateHint. SMS/push inkluderer skiltnummer.',
+                style: TextStyle(color: PartnerModernUi.textPrimary(ctx)),
+              ),
+              RadioListTile<int>(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Kun SMS'),
+                value: 1,
+                groupValue: notifyChoice,
+                onChanged: (v) => setLocal(() => notifyChoice = v ?? 1),
+              ),
+              RadioListTile<int>(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('Kun push-varsel'),
+                value: 2,
+                groupValue: notifyChoice,
+                onChanged: (v) => setLocal(() => notifyChoice = v ?? 2),
+              ),
+              RadioListTile<int>(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('SMS og push (begge)'),
+                value: 3,
+                groupValue: notifyChoice,
+                onChanged: (v) => setLocal(() => notifyChoice = v ?? 3),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+              child: const Text('Send'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    await _sendOwnerNotify(
+      inspection,
+      sms: notifyChoice == 1 || notifyChoice == 3,
+      push: notifyChoice == 2 || notifyChoice == 3,
+    );
+  }
+
+  Future<void> _sendOwnerNotify(
+    PartnerVehicleInspection inspection, {
+    required bool sms,
+    required bool push,
+  }) async {
+    final summary = await PartnerService.notifyVehicleInspectionOwners(
+      inspection.id,
+      sms: sms,
+      push: push,
+      email: false,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(summary), duration: const Duration(seconds: 5)),
+    );
   }
 
   Future<void> _ackFollowUp(PartnerVehicleInspection ins) async {
@@ -962,6 +1145,29 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
                   statusText,
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: statusColor),
                 ),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Varsle bedriftsansvarlig',
+                padding: EdgeInsets.zero,
+                icon: const Icon(Icons.campaign_outlined, size: 20),
+                onSelected: (choice) async {
+                  switch (choice) {
+                    case 'sms':
+                      await _sendOwnerNotify(a, sms: true, push: false);
+                    case 'push':
+                      await _sendOwnerNotify(a, sms: false, push: true);
+                    case 'both':
+                      await _sendOwnerNotify(a, sms: true, push: true);
+                    case 'choose':
+                      await _offerNotifyOwners(a);
+                  }
+                },
+                itemBuilder: (ctx) => const [
+                  PopupMenuItem(value: 'sms', child: Text('Send SMS')),
+                  PopupMenuItem(value: 'push', child: Text('Send push-varsel')),
+                  PopupMenuItem(value: 'both', child: Text('Send SMS + push')),
+                  PopupMenuItem(value: 'choose', child: Text('Velg…')),
+                ],
               ),
               IconButton(
                 tooltip: 'Last ned PDF',

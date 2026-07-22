@@ -2841,9 +2841,9 @@ class PartnerService {
     }
   }
 
-  /// Lagrer bilkontroll, arkiverer PDF og varsler bedriftsansvarlig (SMS/push/e-post).
-  static Future<({PartnerVehicleInspection inspection, String notifySummary})>
-      saveVehicleInspection(
+  /// Lagrer bilkontroll og arkiverer PDF. Varsel til bedriftsansvarlig skjer
+  /// eksplisitt via [notifyVehicleInspectionOwners] (valg i UI).
+  static Future<PartnerVehicleInspection> saveVehicleInspection(
     PartnerVehicleInspection draft, {
     Partner? partner,
     String? inspectorName,
@@ -2881,24 +2881,40 @@ class PartnerService {
       }
     }
 
-    final notifySummary = await _notifyVehicleInspectionCompleted(saved.id);
-    return (inspection: saved, notifySummary: notifySummary);
+    return saved;
   }
 
-  static Future<String> _notifyVehicleInspectionCompleted(String inspectionId) async {
+  /// Varsle bedriftsansvarlig om en lagret bilkontroll (SMS / push / e-post).
+  static Future<String> notifyVehicleInspectionOwners(
+    String inspectionId, {
+    bool sms = true,
+    bool push = true,
+    bool email = false,
+  }) async {
+    if (!_ok) return 'Supabase er ikke konfigurert.';
+    if (!sms && !push && !email) return 'Ingen kanal valgt.';
     try {
       final raw = await _client.rpc(
         'notify_partner_vehicle_inspection_completed',
-        params: {'p_inspection_id': inspectionId},
+        params: {
+          'p_inspection_id': inspectionId,
+          'p_send_sms': sms,
+          'p_send_push': push,
+          'p_send_email': email,
+        },
       );
       return _formatInspectionNotifySummary(raw);
     } catch (_) {
       try {
-        final legacy = await _client.rpc(
-          'notify_partner_vehicle_inspection_deviation',
-          params: {'p_inspection_id': inspectionId},
-        );
-        return _formatInspectionNotifySummary(legacy);
+        // Eldre 1-arg RPC (sender alle kanaler) hvis kanal-migrasjon mangler.
+        if (sms || push) {
+          final legacy = await _client.rpc(
+            'notify_partner_vehicle_inspection_completed',
+            params: {'p_inspection_id': inspectionId},
+          );
+          return _formatInspectionNotifySummary(legacy);
+        }
+        return 'Ingen kanal valgt.';
       } catch (e) {
         return 'Varsel ikke sendt — kjør SQL-migrasjon for bilkontroll-varsler i Supabase.';
       }
@@ -2911,6 +2927,9 @@ class PartnerService {
     if (m['ok'] == false) {
       return 'Varsel ikke sendt (${m['reason'] ?? 'feil'}).';
     }
+    if (m['skipped'] == true && m['reason'] == 'no_channels') {
+      return 'Ingen kanal valgt.';
+    }
     final sms = (m['sms_to_owners'] as num?)?.toInt() ?? 0;
     final push = (m['push_to_owners'] as num?)?.toInt() ?? 0;
     final email = (m['email_to_owners'] as num?)?.toInt() ?? 0;
@@ -2919,7 +2938,7 @@ class PartnerService {
     if (push > 0) parts.add('push ($push)');
     if (email > 0) parts.add('e-post ($email)');
     if (parts.isEmpty) {
-      return 'Ingen SMS/push sendt — sjekk telefonnummer på bedriftsansvarlig og at varselkanal er på.';
+      return 'Ingen SMS/push sendt — sjekk telefonnummer på bedriftsansvarlig, push-app, og varselkanal.';
     }
     return 'Bedriftsansvarlig varslet: ${parts.join(' · ')}.';
   }
