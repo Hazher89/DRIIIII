@@ -2841,6 +2841,7 @@ class PartnerService {
     PartnerVehicleInspection draft, {
     Partner? partner,
     String? inspectorName,
+    List<Uint8List> pendingPhotos = const [],
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
     final uid = _client.auth.currentUser?.id;
@@ -2852,6 +2853,14 @@ class PartnerService {
         .single();
     var saved = PartnerVehicleInspection.fromJson(row);
 
+    if (pendingPhotos.isNotEmpty) {
+      try {
+        saved = await _uploadInspectionPhotos(saved, pendingPhotos);
+      } catch (_) {
+        // Kontroll lagret uten bilder — kan lastes opp senere ved ny kontroll.
+      }
+    }
+
     final p = partner ?? await fetchPartner(saved.partnerId);
     if (p != null) {
       try {
@@ -2859,6 +2868,7 @@ class PartnerService {
           saved,
           partner: p,
           inspectorName: inspectorName ?? saved.inspectedByName,
+          photoBytes: pendingPhotos,
         );
       } catch (_) {
         // Kontrollen er lagret — PDF-arkiv kan regenereres ved nedlasting.
@@ -2867,15 +2877,51 @@ class PartnerService {
     return saved;
   }
 
+  static Future<PartnerVehicleInspection> _uploadInspectionPhotos(
+    PartnerVehicleInspection inspection,
+    List<Uint8List> photos,
+  ) async {
+    final paths = <String>[];
+    for (var i = 0; i < photos.length; i++) {
+      final ref = await uploadInspectionPhoto(
+        companyId: inspection.companyId,
+        partnerId: inspection.partnerId,
+        inspectionId: inspection.id,
+        bytes: photos[i],
+        index: i,
+      );
+      paths.add(ref);
+    }
+    await _client.from('partner_vehicle_inspections').update({
+      'photo_paths': paths,
+    }).eq('id', inspection.id);
+    return inspection.copyWith(photoPaths: paths);
+  }
+
+  static Future<String> uploadInspectionPhoto({
+    required String companyId,
+    required String partnerId,
+    required String inspectionId,
+    required Uint8List bytes,
+    required int index,
+  }) async {
+    final path = StoragePathSanitizer.storagePath(
+      '$companyId/partners/bilkontroll/$partnerId/$inspectionId/photo_${index + 1}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+    return uploadPartnerDocumentPdf(storagePath: path, bytes: bytes);
+  }
+
   static Future<PartnerVehicleInspection> _archiveVehicleInspectionPdf(
     PartnerVehicleInspection inspection, {
     required Partner partner,
     String? inspectorName,
+    List<Uint8List> photoBytes = const [],
   }) async {
     final bytes = await VehicleInspectionPdf.generate(
       inspection: inspection,
       partner: partner,
       inspectorName: inspectorName,
+      photoBytes: photoBytes,
     );
     final fileName = '${VehicleInspectionPdf.fileNameFor(inspection)}.pdf';
     final path = StoragePathSanitizer.storagePath(

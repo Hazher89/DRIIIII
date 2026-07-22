@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -166,9 +168,22 @@ class _VehicleInspectionHubScreenState extends State<VehicleInspectionHubScreen>
           inspection: inspection,
           partner: partner,
           inspectorName: inspection.inspectedByName,
+          photoBytes: await _photoBytesForExport(inspection),
         );
       },
     );
+  }
+
+  Future<List<Uint8List>> _photoBytesForExport(PartnerVehicleInspection inspection) async {
+    final out = <Uint8List>[];
+    for (final path in inspection.photoPaths) {
+      final bytes = await PartnerService.downloadInspectionPdfBytes(
+        path,
+        companyId: inspection.companyId,
+      );
+      if (bytes != null && bytes.isNotEmpty) out.add(bytes);
+    }
+    return out;
   }
 
   void _openPartner(String partnerId) {

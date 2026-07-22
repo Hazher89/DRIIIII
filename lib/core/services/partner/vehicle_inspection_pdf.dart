@@ -26,14 +26,12 @@ abstract final class VehicleInspectionPdf {
     required PartnerVehicleInspection inspection,
     required Partner partner,
     String? inspectorName,
+    List<Uint8List> photoBytes = const [],
   }) async {
     final inspectedLocal = inspection.inspectedAt.toLocal();
     final b = HmsPdfBuilder()
       ..brandHeader = 'MAVI LOGISTIKK AS'
-      ..footerLeft = 'MAVI Logistikk AS · DriftPro bilkontroll · konfidensielt'
-      ..watermarkPrimary = 'MAVI Logistikk AS'
-      ..watermarkSecondary = _df.format(inspectedLocal)
-      ..watermarkOpacity = 0.14;
+      ..footerLeft = 'MAVI Logistikk AS · DriftPro bilkontroll · konfidensielt';
 
     final vehicle = _vehicleLabel(inspection);
     final partnerName = _partnerDisplayName(partner);
@@ -157,6 +155,17 @@ abstract final class VehicleInspectionPdf {
           'Oppfølging markert som utført '
           '${_dtf.format(inspection.followUpAcknowledgedAt!.toLocal())}.',
         );
+      }
+    }
+
+    if (photoBytes.isNotEmpty || inspection.photoPaths.isNotEmpty) {
+      b.section('Vedlegg — bilder');
+      b.paragraph(
+        '${photoBytes.isNotEmpty ? photoBytes.length : inspection.photoPaths.length} '
+        'bilde(r) dokumenterer tilstand ved kontroll.',
+      );
+      if (photoBytes.isNotEmpty) {
+        b.photoGrid(photoBytes);
       }
     }
 

@@ -52,6 +52,9 @@ class Partner {
   final DateTime? ecoDrivingCompletedAt;
   final DateTime createdAt;
 
+  /// Unik kode i bot-/trekk-saksnummer (BOT-{caseCode}-2026-0001).
+  final String? caseCode;
+
   Partner({
     required this.id,
     required this.companyId,
@@ -85,6 +88,7 @@ class Partner {
     this.ecoDrivingDeadline,
     this.ecoDrivingCompletedAt,
     required this.createdAt,
+    this.caseCode,
   });
 
   EcoDrivingStatus get ecoDrivingStatus {
@@ -146,6 +150,7 @@ class Partner {
           ? DateTime.parse(json['eco_driving_completed_at'] as String)
           : null,
       createdAt: DateTime.parse(json['created_at'] as String),
+      caseCode: json['case_code'] as String?,
     );
   }
 

@@ -1,4 +1,4 @@
-/// Mal for utstyrskontroll på bil (reppe, dekk, osv.).
+/// Mal for utstyrskontroll på bil (lastsikring, festemateriell, dekk, osv.).
 import '../../core/services/partner/mavi_unit_codes.dart';
 import 'partner_links.dart';
 
@@ -6,14 +6,52 @@ class VehicleInspectionTemplate {
   static const items = <VehicleInspectionField>[
     VehicleInspectionField(key: 'repp', label: 'Repp / presenning', type: InspectionFieldType.okAvvik),
     VehicleInspectionField(key: 'lastestopp', label: 'Lastestopp / sperrer', type: InspectionFieldType.okAvvik),
+    VehicleInspectionField(key: 'spennreim', label: 'Spennreim / surring', type: InspectionFieldType.okAvvik),
+    VehicleInspectionField(
+      key: 'beskyttelsestepper',
+      label: 'Beskyttelsestepper / flyttetepper',
+      type: InspectionFieldType.okAvvik,
+    ),
+    VehicleInspectionField(
+      key: 'festerem',
+      label: 'Festerem / surringsstropper',
+      type: InspectionFieldType.okAvvik,
+    ),
+    VehicleInspectionField(
+      key: 'godsstotter',
+      label: 'Godsstøtter / hjørnebokser',
+      type: InspectionFieldType.okAvvik,
+    ),
+    VehicleInspectionField(key: 'kantbeskyttere', label: 'Kantbeskyttere', type: InspectionFieldType.okAvvik),
+    VehicleInspectionField(
+      key: 'lastsikringsnetting',
+      label: 'Lastsikringsnett',
+      type: InspectionFieldType.okAvvik,
+    ),
+    VehicleInspectionField(
+      key: 'antiskli_matter',
+      label: 'Antiskli-matter / lastunderlag',
+      type: InspectionFieldType.okAvvik,
+    ),
+    VehicleInspectionField(
+      key: 'sprederlast',
+      label: 'Sprederlast / mellomlegg',
+      type: InspectionFieldType.okAvvik,
+    ),
     VehicleInspectionField(key: 'dekk_foran_mm', label: 'Dekkdybde foran (mm)', type: InspectionFieldType.number),
     VehicleInspectionField(key: 'dekk_bak_mm', label: 'Dekkdybde bak (mm)', type: InspectionFieldType.number),
     VehicleInspectionField(key: 'bremser', label: 'Bremser', type: InspectionFieldType.okAvvik),
     VehicleInspectionField(key: 'lys', label: 'Lys og blinklys', type: InspectionFieldType.okAvvik),
     VehicleInspectionField(key: 'refleks', label: 'Refleks og merking', type: InspectionFieldType.okAvvik),
-    VehicleInspectionField(key: 'spennreim', label: 'Spennreim / surring', type: InspectionFieldType.okAvvik),
     VehicleInspectionField(key: 'lofteinnretning', label: 'Løfte-/lasteinnretning', type: InspectionFieldType.okAvvik),
     VehicleInspectionField(key: 'karosseri', label: 'Karosseri / rust', type: InspectionFieldType.okAvvik),
+    VehicleInspectionField(
+      key: 'varselutstyr',
+      label: 'Advarselstrekant / refleksvest i bil',
+      type: InspectionFieldType.okAvvik,
+    ),
+    VehicleInspectionField(key: 'brannslukker', label: 'Brannslukker', type: InspectionFieldType.okAvvik),
+    VehicleInspectionField(key: 'forstehjelp', label: 'Førstehjelpsutstyr', type: InspectionFieldType.okAvvik),
     VehicleInspectionField(key: 'annet', label: 'Annet / kommentar', type: InspectionFieldType.text),
   ];
 }
@@ -54,6 +92,9 @@ class PartnerVehicleInspection {
   /// Lagret PDF i documents-bucket (genereres automatisk ved arkivering).
   final String? pdfStoragePath;
 
+  /// Lagrede bilder (storage-referanser).
+  final List<String> photoPaths;
+
   /// Joined fra profiles ved henting.
   final String? inspectedByName;
 
@@ -83,6 +124,7 @@ class PartnerVehicleInspection {
     this.partnerName,
     this.partnerTradeName,
     this.pdfStoragePath,
+    this.photoPaths = const [],
   });
 
   factory PartnerVehicleInspection.fromJson(Map<String, dynamic> json) {
@@ -119,6 +161,11 @@ class PartnerVehicleInspection {
       isArchived: json['is_archived'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
       pdfStoragePath: json['pdf_storage_path'] as String?,
+      photoPaths: (json['photo_paths'] as List?)
+              ?.map((e) => '$e'.trim())
+              .where((e) => e.isNotEmpty)
+              .toList() ??
+          const [],
       inspectedByName: json['profiles'] != null
           ? json['profiles']['full_name'] as String?
           : null,
@@ -212,6 +259,7 @@ class PartnerVehicleInspection {
       if (followUpDueAt != null)
         'follow_up_due_at': followUpDueAt!.toIso8601String().split('T').first,
       'is_archived': isArchived,
+      if (photoPaths.isNotEmpty) 'photo_paths': photoPaths,
     };
   }
 
@@ -223,6 +271,7 @@ class PartnerVehicleInspection {
 
   PartnerVehicleInspection copyWith({
     String? pdfStoragePath,
+    List<String>? photoPaths,
   }) {
     return PartnerVehicleInspection(
       id: id,
@@ -246,6 +295,7 @@ class PartnerVehicleInspection {
       partnerName: partnerName,
       partnerTradeName: partnerTradeName,
       pdfStoragePath: pdfStoragePath ?? this.pdfStoragePath,
+      photoPaths: photoPaths ?? this.photoPaths,
     );
   }
 }

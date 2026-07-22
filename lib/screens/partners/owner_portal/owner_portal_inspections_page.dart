@@ -1,8 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/hms/hms_pdf_export_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/vehicle_inspection_pdf.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/vehicle_inspection.dart';
@@ -43,11 +46,22 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
     await HmsPdfExportService.runWithFeedback(
       context,
       fileName: VehicleInspectionPdf.fileNameFor(inspection),
-      generate: () => VehicleInspectionPdf.generate(
-        inspection: inspection,
-        partner: widget.partner,
-        inspectorName: inspection.inspectedByName,
-      ),
+      generate: () async {
+        final photoBytes = <Uint8List>[];
+        for (final path in inspection.photoPaths) {
+          final bytes = await PartnerService.downloadInspectionPdfBytes(
+            path,
+            companyId: inspection.companyId,
+          );
+          if (bytes != null && bytes.isNotEmpty) photoBytes.add(bytes);
+        }
+        return VehicleInspectionPdf.generate(
+          inspection: inspection,
+          partner: widget.partner,
+          inspectorName: inspection.inspectedByName,
+          photoBytes: photoBytes,
+        );
+      },
     );
   }
 

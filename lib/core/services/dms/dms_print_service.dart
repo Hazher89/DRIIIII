@@ -4,6 +4,8 @@ import 'dart:ui';
 import 'package:printing/printing.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart' as sf;
 
+import '../pdf/pdf_watermark.dart';
+
 /// Utskrift / PDF-utskrift for alle dokumenttyper i DMS.
 class DmsPrintService {
   DmsPrintService._();
@@ -50,6 +52,7 @@ class DmsPrintService {
       image,
       Rect.fromLTWH((size.width - w) / 2, 20, w, h),
     );
+    await PdfWatermark.finalizeDocument(doc);
     final bytes = Uint8List.fromList(await doc.save());
     doc.dispose();
     await printPdfBytes(bytes, name: title);
@@ -87,6 +90,7 @@ class DmsPrintService {
       y += 14;
     }
 
+    await PdfWatermark.finalizeDocument(doc);
     final bytes = Uint8List.fromList(await doc.save());
     doc.dispose();
     return bytes;
@@ -155,6 +159,7 @@ class DmsPrintService {
       }
     }
 
+    await PdfWatermark.finalizeDocument(doc);
     final bytes = Uint8List.fromList(await doc.save());
     doc.dispose();
     return bytes;

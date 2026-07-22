@@ -4,6 +4,8 @@ import 'dart:ui' show Offset, Rect;
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import '../pdf/pdf_watermark.dart';
+
 /// Formell HMS-PDF med DriftPro-header, seksjoner og sidetall.
 class HmsPdfBuilder {
   static const double margin = 42;
@@ -39,11 +41,6 @@ class HmsPdfBuilder {
 
   /// Venstre sidetekst i footer.
   String footerLeft = 'DriftPro HMS — konfidensielt internt dokument';
-
-  /// Valgfritt vannmerke (f.eks. «MAVI Logistikk AS») på alle sider.
-  String? watermarkPrimary;
-  String? watermarkSecondary;
-  double watermarkOpacity = 0.12;
 
   final DateFormat _df = DateFormat('dd.MM.yyyy');
   final DateFormat _dtf = DateFormat('dd.MM.yyyy HH:mm');
@@ -335,6 +332,47 @@ class HmsPdfBuilder {
     y += 10;
   }
 
+  /// Legger inn bilder (f.eks. fra bilkontroll) — to per rad.
+  void photoGrid(List<Uint8List> images, {String title = 'Bilder fra kontroll'}) {
+    if (images.isEmpty) return;
+    section(title);
+    const gap = 10.0;
+    final colW = (_contentWidth - gap) / 2;
+    var col = 0;
+    var rowH = 0.0;
+
+    for (var i = 0; i < images.length; i++) {
+      try {
+        final bitmap = PdfBitmap(images[i]);
+        final aspect = bitmap.width / bitmap.height;
+        final drawW = colW;
+        final drawH = (drawW / aspect).clamp(80.0, 180.0);
+        if (col == 0) {
+          ensureSpace(drawH + gap);
+          rowH = drawH;
+        }
+        final x = margin + col * (colW + gap);
+        page.graphics.drawImage(
+          bitmap,
+          Rect.fromLTWH(x, y, drawW, drawH),
+        );
+        page.graphics.drawRectangle(
+          pen: PdfPen(PdfColor(210, 210, 210), width: 0.5),
+          bounds: Rect.fromLTWH(x, y, drawW, drawH),
+        );
+        col++;
+        if (col >= 2) {
+          y += rowH + gap;
+          col = 0;
+          rowH = 0;
+        }
+      } catch (_) {
+        // Hopp over ugyldig bilde
+      }
+    }
+    if (col > 0) y += rowH + gap;
+  }
+
   void _drawHr() {
     page.graphics.drawLine(
       PdfPen(PdfColor(210, 210, 210), width: 0.8),
@@ -420,59 +458,8 @@ class HmsPdfBuilder {
     }
   }
 
-  void _drawPageWatermarks() {
-    final primary = watermarkPrimary?.trim();
-    if (primary == null || primary.isEmpty) return;
-
-    final secondary = watermarkSecondary?.trim();
-    final wmFont = PdfStandardFont(PdfFontFamily.helvetica, 32, style: PdfFontStyle.bold);
-    final wmSubFont = PdfStandardFont(PdfFontFamily.helvetica, 14, style: PdfFontStyle.bold);
-    final alpha = (255 * watermarkOpacity.clamp(0.04, 0.35)).round();
-    final brush = PdfSolidBrush(PdfColor(33, 115, 70, alpha));
-
-    for (var i = 0; i < doc.pages.count; i++) {
-      final p = doc.pages[i];
-      final size = p.getClientSize();
-      final g = p.graphics;
-      final cx = size.width / 2;
-      final cy = size.height / 2;
-
-      g.save();
-      g.translateTransform(cx, cy);
-      g.rotateTransform(-38);
-      g.drawString(
-        primary,
-        wmFont,
-        brush: brush,
-        bounds: Rect.fromCenter(center: Offset.zero, width: size.width * 0.95, height: 40),
-        format: PdfStringFormat(alignment: PdfTextAlignment.center),
-      );
-      if (secondary != null && secondary.isNotEmpty) {
-        g.drawString(
-          secondary,
-          wmSubFont,
-          brush: brush,
-          bounds: Rect.fromCenter(center: const Offset(0, 28), width: size.width * 0.8, height: 20),
-          format: PdfStringFormat(alignment: PdfTextAlignment.center),
-        );
-      }
-      g.restore();
-
-      // Ekstra diskret gjennomskinn i hjørner
-      final cornerFont = PdfStandardFont(PdfFontFamily.helvetica, 10, style: PdfFontStyle.bold);
-      final cornerBrush = PdfSolidBrush(PdfColor(33, 115, 70, (alpha * 0.65).round()));
-      g.drawString(
-        primary,
-        cornerFont,
-        brush: cornerBrush,
-        bounds: Rect.fromLTWH(margin, size.height - 52, size.width - margin * 2, 12),
-        format: PdfStringFormat(alignment: PdfTextAlignment.center),
-      );
-    }
-  }
-
   Future<Uint8List> build() async {
-    _drawPageWatermarks();
+    await PdfWatermark.applyLogoBackground(doc);
     _stampFooters();
     final bytes = Uint8List.fromList(await doc.save());
     doc.dispose();

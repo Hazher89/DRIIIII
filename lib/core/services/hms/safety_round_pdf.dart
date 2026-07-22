@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../../../models/safety_round.dart';
+import '../pdf/pdf_watermark.dart';
 
 /// Genererer PDF-rapport for arkivert vernerunde.
 class SafetyRoundPdfGenerator {
@@ -107,6 +108,7 @@ class SafetyRoundPdfGenerator {
       bounds: Rect.fromLTWH(margin, y, width, 24),
     );
 
+    await PdfWatermark.finalizeDocument(doc);
     final bytes = Uint8List.fromList(await doc.save());
     doc.dispose();
     return bytes;

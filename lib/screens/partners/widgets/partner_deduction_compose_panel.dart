@@ -44,7 +44,6 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
   bool _notifyEmail = true;
   bool _submitting = false;
   String? _companyId;
-  String? _companyCaseCode;
   final List<PartnerDeductionPendingEvidence> _evidence = [];
   bool? _dropboxConnected;
   String _partnerQuery = '';
@@ -69,21 +68,9 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
 
   Future<void> _loadCompany() async {
     final cid = await SupabaseService.getCurrentCompanyId();
-    String? code;
-    if (cid != null) {
-      try {
-        final row = await SupabaseService.client
-            .from('companies')
-            .select('case_code')
-            .eq('id', cid)
-            .maybeSingle();
-        code = (row?['case_code'] as String?)?.trim();
-      } catch (_) {}
-    }
     final dropbox = await CompanyFileStorage.isDropboxConnected();
     if (mounted) setState(() {
       _companyId = cid;
-      _companyCaseCode = (code != null && code.isNotEmpty) ? code.toUpperCase() : null;
       _dropboxConnected = dropbox;
     });
   }
@@ -97,11 +84,23 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
       ..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  /// Forhåndsvisning i SMS/e-post — ekte nummer tildeles ved lagring.
+  /// Forhåndsvisning — ekte nummer tildeles ved lagring (per samarbeidsbedrift).
   String get _previewCaseNumber {
     final year = DateTime.now().year;
-    final code = _companyCaseCode ?? 'XXXX';
+    final code = _partnerCaseCode ?? 'XXXX';
     return 'BOT-$code-$year-0001';
+  }
+
+  String? get _partnerCaseCode {
+    final p = _partner;
+    if (p == null) return null;
+    final stored = p.caseCode?.trim();
+    if (stored != null && stored.isNotEmpty) return stored.toUpperCase();
+    final label = (p.tradeName?.trim().isNotEmpty == true ? p.tradeName! : p.name).toUpperCase();
+    final match = RegExp(r'[A-ZÆØÅ0-9]+').firstMatch(label);
+    final word = match?.group(0);
+    if (word == null || word.length < 2) return null;
+    return word.length > 8 ? word.substring(0, 8) : word;
   }
 
   Future<void> _pickEvidence() async {
@@ -291,6 +290,11 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
         if (_partner != null) ...[
           const SizedBox(height: 8),
           _contactRow(_partner!),
+          const SizedBox(height: 6),
+          Text(
+            'Saksnummer: $_previewCaseNumber (unikt for ${_partner!.name})',
+            style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+          ),
         ],
         const SizedBox(height: 20),
         _sectionTitle('2. Velg mal'),

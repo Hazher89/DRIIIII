@@ -1,8 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/hms/hms_pdf_export_service.dart';
+import '../../../core/services/native_permissions_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/vehicle_inspection_pdf.dart';
@@ -14,6 +18,14 @@ import '../../../models/partner/vehicle_inspection.dart';
 import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../../widgets/resolved_storage_image.dart';
+
+class _PendingInspectionPhoto {
+  const _PendingInspectionPhoto({required this.bytes, required this.name});
+
+  final Uint8List bytes;
+  final String name;
+}
 
 /// Bilkontroll: mal (reppe, dekk, …), avvik, arkiv og oppfølging.
 class PartnerVehicleInspectionTab extends StatefulWidget {
@@ -44,6 +56,8 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   bool _saving = false;
   String? _inspectorName;
   String? _lastSavedInspectionId;
+  final List<_PendingInspectionPhoto> _pendingPhotos = [];
+  final ImagePicker _imagePicker = ImagePicker();
 
   static final _stampFmt = DateFormat('dd.MM.yyyy HH:mm');
 
@@ -101,6 +115,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
     _nextInspection = null;
     _followUpDue = DateTime.now().add(const Duration(days: 14));
     _deviationNotes.clear();
+    _pendingPhotos.clear();
   }
 
   Future<void> _load() async {
@@ -200,6 +215,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
         draft,
         partner: widget.partner,
         inspectorName: _inspectorName,
+        pendingPhotos: _pendingPhotos.map((p) => p.bytes).toList(),
       );
       if (!mounted) return;
       setState(() {
@@ -249,8 +265,160 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
           inspection: inspection,
           partner: widget.partner,
           inspectorName: inspection.inspectedByName ?? _inspectorName,
+          photoBytes: await _photoBytesForExport(inspection),
         );
       },
+    );
+  }
+
+  Future<List<Uint8List>> _photoBytesForExport(PartnerVehicleInspection inspection) async {
+    final out = <Uint8List>[];
+    for (final path in inspection.photoPaths) {
+      final bytes = await PartnerService.downloadInspectionPdfBytes(
+        path,
+        companyId: inspection.companyId,
+      );
+      if (bytes != null && bytes.isNotEmpty) out.add(bytes);
+    }
+    return out;
+  }
+
+  Future<void> _pickInspectionCamera() async {
+    if (!await NativePermissionsService.ensureCamera(context: context)) return;
+    final shot = await _imagePicker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    if (shot == null) return;
+    final bytes = await shot.readAsBytes();
+    if (!mounted) return;
+    setState(() => _pendingPhotos.add(_PendingInspectionPhoto(bytes: bytes, name: shot.name)));
+  }
+
+  Future<void> _pickInspectionGallery() async {
+    if (!await NativePermissionsService.ensurePhotos(context: context)) return;
+    final picked = await _imagePicker.pickMultiImage(imageQuality: 85);
+    if (picked.isEmpty) return;
+    final added = <_PendingInspectionPhoto>[];
+    for (final file in picked) {
+      added.add(_PendingInspectionPhoto(bytes: await file.readAsBytes(), name: file.name));
+    }
+    if (!mounted) return;
+    setState(() => _pendingPhotos.addAll(added));
+  }
+
+  void _removePendingPhoto(int index) {
+    setState(() => _pendingPhotos.removeAt(index));
+  }
+
+  Widget _photoPickerSection(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Bilder (valgfritt)',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+            color: PartnerModernUi.textPrimary(context),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Ta bilde eller last opp — dokumenterer utstyr, avvik eller bil.',
+          style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+        ),
+        if (_pendingPhotos.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (var i = 0; i < _pendingPhotos.length; i++)
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        _pendingPhotos[i].bytes,
+                        width: 88,
+                        height: 88,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    Positioned(
+                      top: -6,
+                      right: -6,
+                      child: Material(
+                        color: Colors.black87,
+                        shape: const CircleBorder(),
+                        child: InkWell(
+                          customBorder: const CircleBorder(),
+                          onTap: () => _removePendingPhoto(i),
+                          child: const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(Icons.close, size: 14, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ],
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _saving ? null : _pickInspectionCamera,
+                icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                label: const Text('Ta bilde'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _saving ? null : _pickInspectionGallery,
+                icon: const Icon(Icons.photo_library_outlined, size: 18),
+                label: const Text('Last opp'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _showSavedPhotos(PartnerVehicleInspection inspection) async {
+    if (inspection.photoPaths.isEmpty) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Bilder — ${inspection.vehicleLabel}'),
+        content: SizedBox(
+          width: 320,
+          child: GridView.builder(
+            shrinkWrap: true,
+            itemCount: inspection.photoPaths.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemBuilder: (_, i) => ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: ResolvedStorageImage(
+                storageRef: inspection.photoPaths[i],
+                width: double.infinity,
+                height: double.infinity,
+              ),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Lukk')),
+        ],
+      ),
     );
   }
 
@@ -353,6 +521,8 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
             initiallyExpanded: true,
             children: [
               ...VehicleInspectionTemplate.items.map(_fieldWidget),
+              const SizedBox(height: 12),
+              _photoPickerSection(context),
               const SizedBox(height: 8),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
@@ -742,12 +912,20 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
                     color: DriftProTheme.primaryGreen,
                   ),
                 ),
+              if (a.photoPaths.isNotEmpty)
+                IconButton(
+                  tooltip: 'Vis bilder',
+                  icon: const Icon(Icons.photo_library_outlined, size: 20),
+                  onPressed: () => _showSavedPhotos(a),
+                ),
             ],
           ),
           subtitle: Text(
-            '${a.stampLine}\n${a.hasDeviation ? a.deviationNotes ?? "Avvik registrert" : "Ingen avvik"}',
+            '${a.stampLine}\n${a.hasDeviation ? a.deviationNotes ?? "Avvik registrert" : "Ingen avvik"}'
+            '${a.photoPaths.isNotEmpty ? "\n${a.photoPaths.length} bilde(r)" : ""}',
             style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
           ),
+          onTap: a.photoPaths.isNotEmpty ? () => _showSavedPhotos(a) : null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
