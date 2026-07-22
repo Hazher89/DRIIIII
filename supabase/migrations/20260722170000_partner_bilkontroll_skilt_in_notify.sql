@@ -420,6 +420,8 @@ BEGIN
 END;
 $$;
 
+DROP FUNCTION IF EXISTS public.notify_partner_vehicle_inspection_completed(UUID);
+
 GRANT EXECUTE ON FUNCTION public.partner_vehicle_inspection_display(UUID)
   TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.notify_partner_vehicle_inspection_completed(UUID, BOOLEAN, BOOLEAN, BOOLEAN)

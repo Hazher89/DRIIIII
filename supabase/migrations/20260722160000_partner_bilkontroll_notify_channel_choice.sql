@@ -307,22 +307,6 @@ BEGIN
 END;
 $$;
 
--- Bakoverkompatibilitet: 1-arg kall = send alle kanaler.
-CREATE OR REPLACE FUNCTION public.notify_partner_vehicle_inspection_completed(
-  p_inspection_id UUID
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  RETURN public.notify_partner_vehicle_inspection_completed(
-    p_inspection_id, true, true, true
-  );
-END;
-$$;
-
 CREATE OR REPLACE FUNCTION public.notify_partner_vehicle_inspection_deviation(
   p_inspection_id UUID
 )
@@ -339,8 +323,6 @@ END;
 $$;
 
 GRANT EXECUTE ON FUNCTION public.notify_partner_vehicle_inspection_completed(UUID, BOOLEAN, BOOLEAN, BOOLEAN)
-  TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.notify_partner_vehicle_inspection_completed(UUID)
   TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.notify_partner_vehicle_inspection_deviation(UUID)
   TO authenticated, service_role;
