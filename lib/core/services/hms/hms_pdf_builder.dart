@@ -34,6 +34,12 @@ class HmsPdfBuilder {
   final PdfBrush brandBrush = PdfSolidBrush(PdfColor(33, 115, 70));
   final PdfBrush brandLightBrush = PdfSolidBrush(PdfColor(232, 245, 236));
 
+  /// Header-merke (f.eks. «DRIFTPRO» eller «DRIFTPRO HMS»).
+  String brandHeader = 'DRIFTPRO HMS';
+
+  /// Venstre sidetekst i footer.
+  String footerLeft = 'DriftPro HMS — konfidensielt internt dokument';
+
   final DateFormat _df = DateFormat('dd.MM.yyyy');
   final DateFormat _dtf = DateFormat('dd.MM.yyyy HH:mm');
 
@@ -71,7 +77,7 @@ class HmsPdfBuilder {
       bounds: Rect.fromLTWH(0, 0, _pageWidth, barH),
     );
     page.graphics.drawString(
-      'DRIFTPRO HMS',
+      brandHeader,
       docTypeFont,
       brush: whiteBrush,
       bounds: Rect.fromLTWH(margin, 8, _contentWidth * 0.4, 14),
@@ -394,7 +400,7 @@ class HmsPdfBuilder {
         Offset(w - margin, h - 32),
       );
       p.graphics.drawString(
-        'DriftPro HMS — konfidensielt internt dokument',
+        footerLeft,
         smallFont,
         brush: mutedBrush,
         bounds: Rect.fromLTWH(margin, h - 22, w - margin * 2, 10),

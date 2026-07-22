@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/services/hms/hms_pdf_export_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/partner/vehicle_inspection_pdf.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/vehicle_inspection.dart';
+import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
@@ -33,6 +36,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   bool _loading = true;
   String? _selectedVehicleId;
   final _deviationNotes = TextEditingController();
+  final _archiveSearch = TextEditingController();
   final _checklistValues = <String, dynamic>{};
   bool _hasDeviation = false;
   DateTime? _nextInspection;
@@ -83,6 +87,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   @override
   void dispose() {
     _deviationNotes.dispose();
+    _archiveSearch.dispose();
     super.dispose();
   }
 
@@ -190,18 +195,18 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
         followUpDueAt: (_hasDeviation || implied) ? _followUpDue : null,
         createdAt: DateTime.now(),
       );
-      await PartnerService.saveVehicleInspection(draft);
+      final saved = await PartnerService.saveVehicleInspection(draft);
       _resetChecklist();
       await _load();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Kontroll lagret. ${_formatStamp(stampedAt, name: _inspectorName)}',
-            ),
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Kontroll lagret. ${_formatStamp(stampedAt, name: _inspectorName)}',
           ),
-        );
-      }
+        ),
+      );
+      await _offerPdfExport(saved);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -210,6 +215,48 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _exportPdf(PartnerVehicleInspection inspection) async {
+    await HmsPdfExportService.runWithFeedback(
+      context,
+      fileName: VehicleInspectionPdf.fileNameFor(inspection),
+      generate: () => VehicleInspectionPdf.generate(
+        inspection: inspection,
+        partner: widget.partner,
+        inspectorName: inspection.inspectedByName ?? _inspectorName,
+      ),
+    );
+  }
+
+  Future<void> _offerPdfExport(PartnerVehicleInspection inspection) async {
+    if (!mounted) return;
+    final export = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Kontroll arkivert'),
+        content: const Text(
+          'Vil du laste ned hele bilkontrollrapporten som PDF?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Ikke nå'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: DriftProTheme.primaryGreen,
+            ),
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('Last ned PDF'),
+          ),
+        ],
+      ),
+    );
+    if (export == true && mounted) {
+      await _exportPdf(inspection);
     }
   }
 
@@ -224,199 +271,459 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
       return const DriftProLoadingCenter();
     }
 
-    final vehicleOptions = [..._regVehicles, ..._maviVehicles];
+    final vehicleOptions = [..._maviVehicles, ..._regVehicles];
+    final lastByVehicle =
+        PartnerVehicleInspection.latestByVehicleId(widget.vehicles, _archive);
+    final deviationCount = _archive.where((a) => a.hasDeviation).length;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 32),
       children: [
-        PartnerHeroBanner(
-          compact: true,
+        PartnerModernPageHeader(
           title: 'Bilkontroll',
-          subtitle: 'Utstyrskontroll per bil — avvik arkiveres og varsler om oppfølging.',
-          leading: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.fact_check_outlined, color: Colors.white),
+          subtitle: [
+            widget.partner.tradeName?.trim().isNotEmpty == true
+                ? widget.partner.tradeName!.trim()
+                : widget.partner.name,
+            '${vehicleOptions.length} bil${vehicleOptions.length == 1 ? '' : 'er'}',
+          ].join(' · '),
+          trailing: IconButton(
+            tooltip: 'Oppdater',
+            icon: const Icon(Icons.refresh_outlined),
+            onPressed: _load,
           ),
         ),
-        if (_followUps.isNotEmpty)
-          PartnerSectionCard(
-            icon: Icons.warning_amber_rounded,
-            iconColor: DriftProTheme.warning,
-            title: 'Åpne avvik (${_followUps.length})',
-            children: _followUps.map((f) {
-              final overdue = f.followUpOverdue;
-              return Container(
-                margin: const EdgeInsets.only(bottom: 8),
-                decoration: BoxDecoration(
-                  color: (overdue ? DriftProTheme.error : DriftProTheme.warning).withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
-                  border: Border.all(
-                    color: (overdue ? DriftProTheme.error : DriftProTheme.warning).withValues(alpha: 0.25),
-                  ),
-                ),
-                child: ListTile(
-                  title: Text(
-                    '${f.registrationNumber ?? f.unitCode ?? "Bil"} — oppfølging',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(
-                    '${f.deviationNotes ?? "Avvik"}\n'
-                    'Frist: ${f.followUpDueAt!.day}.${f.followUpDueAt!.month}.${f.followUpDueAt!.year}'
-                    '${overdue ? " ⚠ Forfalt" : ""}',
-                  ),
-                  trailing: FilledButton(
-                    onPressed: () => _ackFollowUp(f),
-                    style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-                    child: const Text('Utført'),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        PartnerSectionCard(
-          icon: Icons.checklist_rtl_outlined,
-          title: 'Ny kontroll',
-          children: [
-            DropdownButtonFormField<String>(
-              value: _selectedVehicleId,
-              decoration: const InputDecoration(labelText: 'Velg bil (reg.nr eller MAVI)'),
-              items: [
-                const DropdownMenuItem(value: null, child: Text('— velg —')),
-                ...vehicleOptions.map(
-                  (v) => DropdownMenuItem(value: v.id, child: Text(_vehicleLabel(v))),
-                ),
-              ],
-              onChanged: (id) => setState(() => _selectedVehicleId = id),
-            ),
-            const SizedBox(height: 12),
-            Text('Utstyrskontroll-mal', style: DriftProTheme.headingSm),
-            const SizedBox(height: 8),
-            ...VehicleInspectionTemplate.items.map(_fieldWidget),
-        const SizedBox(height: 12),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Avvik registrert'),
-          subtitle: const Text('Krever beskrivelse og oppfølging'),
-          value: _hasDeviation || _checklistImpliesDeviation(),
-          onChanged: (v) => setState(() => _hasDeviation = v),
-        ),
-        if (_hasDeviation || _checklistImpliesDeviation()) ...[
-          TextField(
-            controller: _deviationNotes,
-            maxLines: 3,
-            decoration: const InputDecoration(
-              labelText: 'Avvik — beskrivelse *',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Oppfølging innen'),
-            subtitle: Text(
-              _followUpDue != null
-                  ? '${_followUpDue!.day}.${_followUpDue!.month}.${_followUpDue!.year}'
-                  : 'Velg dato',
-            ),
-            trailing: const Icon(Icons.event),
-            onTap: () async {
-              final d = await showDatePicker(
-                context: context,
-                initialDate: _followUpDue ?? DateTime.now().add(const Duration(days: 14)),
-                firstDate: DateTime.now(),
-                lastDate: DateTime(2040),
-              );
-              if (d != null) setState(() => _followUpDue = d);
-            },
-          ),
-        ],
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Neste planlagte kontroll'),
-          subtitle: Text(
-            _nextInspection != null
-                ? '${_nextInspection!.day}.${_nextInspection!.month}.${_nextInspection!.year}'
-                : 'Valgfritt',
-          ),
-          trailing: const Icon(Icons.calendar_month),
-          onTap: () async {
-            final d = await showDatePicker(
-              context: context,
-              initialDate: _nextInspection ?? DateTime.now().add(const Duration(days: 90)),
-              firstDate: DateTime.now(),
-              lastDate: DateTime(2040),
-            );
-            if (d != null) setState(() => _nextInspection = d);
-          },
-        ),
-        const SizedBox(height: 16),
-        _stampPreview(),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _saving ? null : _saveInspection,
-          style: FilledButton.styleFrom(
-            backgroundColor: DriftProTheme.primaryGreen,
-            minimumSize: const Size(double.infinity, 48),
-          ),
-          icon: _saving
-              ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
-              : const Icon(Icons.save_outlined),
-          label: const Text('Lagre og arkiver kontroll'),
-        ),
+        PartnerModernKpiGrid(
+          items: [
+            ('Kontroller', '${_archive.length}'),
+            ('Avvik', '$deviationCount'),
+            ('Oppfølging', _followUps.isEmpty ? 'Ingen' : '${_followUps.length}'),
+            ('Biler', '${vehicleOptions.length}'),
           ],
         ),
-        PartnerSectionCard(
-          icon: Icons.inventory_2_outlined,
+        const SizedBox(height: 8),
+        if (_followUps.isNotEmpty) _followUpSection(context),
+        PartnerModernSection(
+          title: 'Velg bil',
+          subtitle: vehicleOptions.isEmpty
+              ? 'Registrer MAVI eller reg.nr under Oversikt først'
+              : 'Trykk bilen du skal kontrollere — sist kontroll vises til høyre',
+          initiallyExpanded: true,
+          children: [
+            if (vehicleOptions.isEmpty)
+              PartnerEmptyState(
+                icon: Icons.directions_car_outlined,
+                title: 'Ingen biler registrert',
+                subtitle: 'Legg til MAVI eller skiltnummer under fanen Oversikt.',
+              )
+            else
+              _vehiclePicker(context, vehicleOptions, lastByVehicle),
+          ],
+        ),
+        if (_selectedVehicle != null) ...[
+          PartnerModernSection(
+            title: 'Kontrollskjema',
+            subtitle: _vehicleLabel(_selectedVehicle!),
+            initiallyExpanded: true,
+            children: [
+              ...VehicleInspectionTemplate.items.map(_fieldWidget),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Avvik registrert'),
+                subtitle: const Text('Krever beskrivelse og oppfølging'),
+                value: _hasDeviation || _checklistImpliesDeviation(),
+                onChanged: (v) => setState(() => _hasDeviation = v),
+              ),
+              if (_hasDeviation || _checklistImpliesDeviation()) ...[
+                TextField(
+                  controller: _deviationNotes,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Avvik — beskrivelse *',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Oppfølging innen'),
+                  subtitle: Text(
+                    _followUpDue != null
+                        ? '${_followUpDue!.day}.${_followUpDue!.month}.${_followUpDue!.year}'
+                        : 'Velg dato',
+                  ),
+                  trailing: const Icon(Icons.event_outlined),
+                  onTap: () async {
+                    final d = await showDatePicker(
+                      context: context,
+                      initialDate: _followUpDue ?? DateTime.now().add(const Duration(days: 14)),
+                      firstDate: DateTime.now(),
+                      lastDate: DateTime(2040),
+                    );
+                    if (d != null) setState(() => _followUpDue = d);
+                  },
+                ),
+              ],
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Neste planlagte kontroll'),
+                subtitle: Text(
+                  _nextInspection != null
+                      ? '${_nextInspection!.day}.${_nextInspection!.month}.${_nextInspection!.year}'
+                      : 'Valgfritt',
+                ),
+                trailing: const Icon(Icons.calendar_month_outlined),
+                onTap: () async {
+                  final d = await showDatePicker(
+                    context: context,
+                    initialDate: _nextInspection ?? DateTime.now().add(const Duration(days: 90)),
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime(2040),
+                  );
+                  if (d != null) setState(() => _nextInspection = d);
+                },
+              ),
+              const SizedBox(height: 12),
+              _stampPreview(),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: _saving ? null : _saveInspection,
+                style: FilledButton.styleFrom(
+                  backgroundColor: DriftProTheme.primaryGreen,
+                  minimumSize: const Size(double.infinity, 48),
+                ),
+                icon: _saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: DriftProLoadingIndicator(size: 18),
+                      )
+                    : const Icon(Icons.save_outlined),
+                label: const Text('Lagre og arkiver kontroll'),
+              ),
+            ],
+          ),
+        ],
+        PartnerModernSection(
           title: 'Arkiv',
-          trailing: PartnerStatusBadge(
-            label: '${_archive.length}',
-            color: DriftProTheme.accentBlue,
+          subtitle: 'Alle lagrede kontroller for bedriften',
+          trailing: Text(
+            '${_archive.length}',
+            style: TextStyle(fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context)),
           ),
           children: [
             if (_archive.isEmpty)
               PartnerEmptyState(
                 icon: Icons.archive_outlined,
-                title: 'Ingen kontroller arkivert',
-                subtitle: 'Lagrede kontroller vises her med status og avvik.',
+                title: 'Ingen kontroller ennå',
+                subtitle: 'Lagrede kontroller vises her med status, dato og PDF.',
               )
-            else
-              ..._archive.take(20).map((a) {
-                    final notCheckedCount = _countNotChecked(a);
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
-                    border: Border.all(color: Colors.grey.withValues(alpha: 0.16)),
-                  ),
-                  child: ListTile(
-                    title: Text(
-                      '${a.registrationNumber ?? a.unitCode ?? "Bil"}',
-                      style: const TextStyle(fontWeight: FontWeight.w700),
-                    ),
-                    subtitle: Text(
-                      '${a.stampLine}\n'
-                          '${a.hasDeviation
-                              ? 'Avvik: ${a.deviationNotes ?? "—"}'
-                              : notCheckedCount > 0
-                                  ? 'Kan ikke sjekkes: $notCheckedCount felt'
-                                  : 'OK — ingen avvik'}',
-                    ),
-                    trailing: a.hasDeviation
-                        ? Icon(Icons.warning_amber, color: Colors.orange.shade700)
-                            : notCheckedCount > 0
-                                ? const Icon(Icons.help_outline, color: Colors.grey)
-                                : const Icon(Icons.check_circle, color: Colors.green),
-                  ),
-                );
-              }),
+            else ...[
+              TextField(
+                controller: _archiveSearch,
+                decoration: InputDecoration(
+                  hintText: 'Søk reg.nr, MAVI, kontrollør…',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  suffixIcon: _archiveSearch.text.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _archiveSearch.clear();
+                            setState(() {});
+                          },
+                        ),
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 10),
+              ..._archiveCards(context),
+            ],
           ],
         ),
       ],
     );
+  }
+
+  Widget _followUpSection(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: DriftProTheme.warning.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: DriftProTheme.warning.withValues(alpha: 0.28)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 4),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: DriftProTheme.warning, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Åpne avvik (${_followUps.length})',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                      color: PartnerModernUi.textPrimary(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ..._followUps.map((f) {
+              final overdue = f.followUpOverdue;
+              return Container(
+                margin: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+                decoration: BoxDecoration(
+                  color: PartnerModernUi.surface(context),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: (overdue ? DriftProTheme.error : DriftProTheme.warning)
+                        .withValues(alpha: 0.35),
+                  ),
+                ),
+                child: ListTile(
+                  dense: true,
+                  title: Text(
+                    f.vehicleLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  ),
+                  subtitle: Text(
+                    '${f.deviationNotes ?? "Avvik"}\n'
+                    'Frist: ${f.followUpDueAt!.day}.${f.followUpDueAt!.month}.${f.followUpDueAt!.year}'
+                    '${overdue ? " · Forfalt" : ""}',
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                  trailing: FilledButton(
+                    onPressed: () => _ackFollowUp(f),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DriftProTheme.primaryGreen,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    child: const Text('Utført'),
+                  ),
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _vehiclePicker(
+    BuildContext context,
+    List<PartnerVehicle> vehicles,
+    Map<String, PartnerVehicleInspection> lastByVehicle,
+  ) {
+    return Column(
+      children: vehicles.map((v) {
+        final selected = _selectedVehicleId == v.id;
+        final last = lastByVehicle[v.id];
+        final isMavi = !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode) &&
+            v.vehicleKind != 'registration';
+        final code = isMavi ? MaviUnitCodes.compactLabel(MaviUnitCodes.normalize(v.unitCode)) : null;
+        final statusLabel = _lastInspectionLabel(last);
+        final statusColor = _lastInspectionColor(last);
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Material(
+            color: selected
+                ? DriftProTheme.primaryGreen.withValues(alpha: 0.08)
+                : PartnerModernUi.border(context).withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => setState(() => _selectedVehicleId = v.id),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: selected
+                        ? DriftProTheme.primaryGreen.withValues(alpha: 0.5)
+                        : PartnerModernUi.border(context),
+                    width: selected ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    if (code != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF15803D).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          code,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 11,
+                            fontFamily: 'monospace',
+                            color: Color(0xFF15803D),
+                          ),
+                        ),
+                      )
+                    else
+                      Icon(Icons.pin_outlined, size: 18, color: PartnerModernUi.muted(context)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _vehicleLabel(v),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: PartnerModernUi.textPrimary(context),
+                            ),
+                          ),
+                          if (v.driverName?.trim().isNotEmpty == true)
+                            Text(
+                              v.driverName!.trim(),
+                              style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: statusColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: statusColor.withValues(alpha: 0.28)),
+                      ),
+                      child: Text(
+                        statusLabel,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: statusColor,
+                        ),
+                      ),
+                    ),
+                    if (selected) ...[
+                      const SizedBox(width: 6),
+                      Icon(Icons.check_circle, size: 18, color: DriftProTheme.primaryGreen),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  String _lastInspectionLabel(PartnerVehicleInspection? last) {
+    if (last == null) return 'Ikke kontrollert';
+    final d = last.inspectedAt.toLocal();
+    final stamp =
+        '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+    if (last.hasDeviation) return 'Avvik · $stamp';
+    return 'OK · $stamp';
+  }
+
+  Color _lastInspectionColor(PartnerVehicleInspection? last) {
+    if (last == null) return const Color(0xFFD97706);
+    if (last.hasDeviation) return const Color(0xFFDC2626);
+    return const Color(0xFF15803D);
+  }
+
+  List<Widget> _archiveCards(BuildContext context) {
+    final q = _archiveSearch.text.trim().toLowerCase();
+    final filtered = q.isEmpty
+        ? _archive
+        : _archive.where((a) {
+            final hay = [
+              a.registrationNumber ?? '',
+              a.unitCode ?? '',
+              a.inspectedByName ?? '',
+              a.deviationNotes ?? '',
+              a.stampLine,
+            ].join(' ').toLowerCase();
+            return hay.contains(q);
+          }).toList();
+    if (filtered.isEmpty) {
+      return [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+            'Ingen treff i arkivet for «${_archiveSearch.text.trim()}».',
+            style: TextStyle(color: Colors.grey.shade600),
+          ),
+        ),
+      ];
+    }
+    return filtered.map((a) {
+      final notCheckedCount = _countNotChecked(a);
+      final statusColor = a.hasDeviation
+          ? const Color(0xFFDC2626)
+          : notCheckedCount > 0
+              ? const Color(0xFF9CA3AF)
+              : const Color(0xFF15803D);
+      final statusText = a.hasDeviation
+          ? 'Avvik'
+          : notCheckedCount > 0
+              ? '$notCheckedCount ikke sjekket'
+              : 'OK';
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        decoration: BoxDecoration(
+          color: PartnerModernUi.border(context).withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: PartnerModernUi.border(context)),
+        ),
+        child: ListTile(
+          dense: true,
+          title: Text(
+            a.vehicleLabel,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+              color: PartnerModernUi.textPrimary(context),
+            ),
+          ),
+          subtitle: Text(
+            '${a.stampLine}\n${a.hasDeviation ? a.deviationNotes ?? "Avvik registrert" : "Ingen avvik"}',
+            style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Text(
+                  statusText,
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: statusColor),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Last ned PDF',
+                icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                onPressed: () => _exportPdf(a),
+              ),
+            ],
+          ),
+        ),
+      );
+    }).toList();
   }
 
   Widget _stampPreview() {
@@ -459,23 +766,27 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
       case InspectionFieldType.okAvvik:
         final val = _checklistValues[f.key] as String? ?? 'ok';
         return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Text(f.label)),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'ok', label: Text('OK')),
-                  ButtonSegment(value: 'avvik', label: Text('Avvik')),
-                  ButtonSegment(value: 'not_checked', label: Text('Kan ikke sjekkes')),
+              Text(
+                f.label,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: PartnerModernUi.textPrimary(context),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  _checkOptionChip('OK', 'ok', val, f.key),
+                  _checkOptionChip('Avvik', 'avvik', val, f.key),
+                  _checkOptionChip('Kan ikke sjekkes', 'not_checked', val, f.key),
                 ],
-                selected: {val},
-                onSelectionChanged: (s) {
-                  setState(() {
-                    _checklistValues[f.key] = s.first;
-                    if (_checklistImpliesDeviation()) _hasDeviation = true;
-                  });
-                },
               ),
             ],
           ),
@@ -512,5 +823,21 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
           ),
         );
     }
+  }
+
+  Widget _checkOptionChip(String label, String value, String selected, String fieldKey) {
+    final sel = value == selected;
+    return FilterChip(
+      label: Text(label),
+      selected: sel,
+      onSelected: (_) {
+        setState(() {
+          _checklistValues[fieldKey] = value;
+          if (_checklistImpliesDeviation()) _hasDeviation = true;
+        });
+      },
+      selectedColor: DriftProTheme.primaryGreen.withValues(alpha: 0.2),
+      checkmarkColor: DriftProTheme.primaryGreen,
+    );
   }
 }

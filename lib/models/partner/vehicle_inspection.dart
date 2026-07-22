@@ -1,4 +1,7 @@
 /// Mal for utstyrskontroll på bil (reppe, dekk, osv.).
+import '../../core/services/partner/mavi_unit_codes.dart';
+import 'partner_links.dart';
+
 class VehicleInspectionTemplate {
   static const items = <VehicleInspectionField>[
     VehicleInspectionField(key: 'repp', label: 'Repp / presenning', type: InspectionFieldType.okAvvik),
@@ -51,6 +54,10 @@ class PartnerVehicleInspection {
   /// Joined fra profiles ved henting.
   final String? inspectedByName;
 
+  /// Joined fra partners ved firmavis henting.
+  final String? partnerName;
+  final String? partnerTradeName;
+
   const PartnerVehicleInspection({
     required this.id,
     required this.partnerId,
@@ -70,6 +77,8 @@ class PartnerVehicleInspection {
     this.isArchived = true,
     required this.createdAt,
     this.inspectedByName,
+    this.partnerName,
+    this.partnerTradeName,
   });
 
   factory PartnerVehicleInspection.fromJson(Map<String, dynamic> json) {
@@ -77,6 +86,12 @@ class PartnerVehicleInspection {
       if (v == null) return null;
       if (v is String && v.length == 10) return DateTime.tryParse(v);
       return DateTime.tryParse(v.toString());
+    }
+
+    final partnersRaw = json['partners'];
+    Map<String, dynamic>? partnersMap;
+    if (partnersRaw is Map) {
+      partnersMap = Map<String, dynamic>.from(partnersRaw);
     }
 
     return PartnerVehicleInspection(
@@ -102,7 +117,65 @@ class PartnerVehicleInspection {
       inspectedByName: json['profiles'] != null
           ? json['profiles']['full_name'] as String?
           : null,
+      partnerName: partnersMap?['name'] as String?,
+      partnerTradeName: partnersMap?['trade_name'] as String?,
     );
+  }
+
+  String get partnerDisplayName {
+    final trade = (partnerTradeName ?? '').trim();
+    if (trade.isNotEmpty) return trade;
+    final name = (partnerName ?? '').trim();
+    return name.isEmpty ? 'Ukjent bedrift' : name;
+  }
+
+  String get vehicleLabel {
+    final reg = (registrationNumber ?? '').trim();
+    final unit = (unitCode ?? '').trim();
+    if (reg.isNotEmpty && unit.isNotEmpty) return '$reg · $unit';
+    if (reg.isNotEmpty) return reg;
+    if (unit.isNotEmpty) return unit;
+    return 'Bil';
+  }
+
+  /// Siste kontroll for et kjøretøy (match på id, MAVI eller reg.nr).
+  static PartnerVehicleInspection? latestForVehicle(
+    PartnerVehicle vehicle,
+    Iterable<PartnerVehicleInspection> inspections,
+  ) {
+    final unit = vehicle.unitCode.trim();
+    final reg = vehicle.registrationNumber.trim();
+    PartnerVehicleInspection? best;
+    for (final ins in inspections) {
+      final matchesId =
+          ins.partnerVehicleId != null && ins.partnerVehicleId == vehicle.id;
+      final matchesUnit = unit.isNotEmpty &&
+          ins.unitCode != null &&
+          ins.unitCode!.trim() == unit;
+      final matchesReg = reg.isNotEmpty &&
+          reg != MaviUnitCodes.regNrPlaceholder &&
+          ins.registrationNumber != null &&
+          ins.registrationNumber!.trim().toUpperCase() ==
+              reg.toUpperCase();
+      if (!matchesId && !matchesUnit && !matchesReg) continue;
+      if (best == null || ins.inspectedAt.isAfter(best.inspectedAt)) {
+        best = ins;
+      }
+    }
+    return best;
+  }
+
+  static Map<String, PartnerVehicleInspection> latestByVehicleId(
+    Iterable<PartnerVehicle> vehicles,
+    Iterable<PartnerVehicleInspection> inspections,
+  ) {
+    final out = <String, PartnerVehicleInspection>{};
+    for (final v in vehicles) {
+      if (v.id.isEmpty) continue;
+      final latest = latestForVehicle(v, inspections);
+      if (latest != null) out[v.id] = latest;
+    }
+    return out;
   }
 
   String get stampLine {

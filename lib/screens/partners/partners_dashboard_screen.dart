@@ -21,6 +21,7 @@ import 'widgets/partner_companies_board.dart';
 import 'partner_deduction_hub_screen.dart';
 import 'partner_sms_hub_screen.dart';
 import 'vehicle_rental_hub_screen.dart';
+import 'vehicle_inspection_hub_screen.dart';
 import 'widgets/partner_companies_ui.dart';
 import 'widgets/partner_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
@@ -51,6 +52,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   bool _showSmsTab = true;
   bool _showBotTrekkTab = true;
   bool _showRentalTab = true;
+  bool _showInspectionTab = true;
   int _savedTabIndex = 0;
   String? _pendingTabSlug;
 
@@ -61,6 +63,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     if (_showSmsTab) slugs.add('sms');
     if (_showBotTrekkTab) slugs.add('bot-trekk');
     if (_showRentalTab) slugs.add('utleie');
+    if (_showInspectionTab) slugs.add('bilkontroll');
     return slugs;
   }
 
@@ -124,17 +127,22 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     final sms = PartnerAccess.canOpenPartnersModule(access);
     final botTrekk = PartnerAccess.canOpenPartnersModule(access);
     final rental = _canManageVehicleRentals(access);
+    final inspections = access?.canPartnersTabBilkontroll == true ||
+        access?.canPartnersAdmin == true ||
+        PartnerAccess.canOpenPartnersModule(access);
     final length = (companies ? 1 : 0) +
         (routes ? 1 : 0) +
         (sms ? 1 : 0) +
         (botTrekk ? 1 : 0) +
-        (rental ? 1 : 0);
+        (rental ? 1 : 0) +
+        (inspections ? 1 : 0);
 
     _showCompaniesTab = companies;
     _showRoutesTab = routes;
     _showSmsTab = sms;
     _showBotTrekkTab = botTrekk;
     _showRentalTab = rental;
+    _showInspectionTab = inspections;
 
     if (length == 0) {
       _tabs?.removeListener(_onTabChanged);
@@ -320,7 +328,10 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     return MobileShellScaffold(
       title: DriftProClient.isMobile ? 'Partnere' : null,
       backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-      bottom: _tabs == null ? null : _buildPartnerTabBar(context),
+      // Web: faner ligger i NestedScrollView og skroller med innholdet (ikke fast AppBar).
+      bottom: _tabs == null || !DriftProClient.isMobile
+          ? null
+          : _buildPartnerTabBar(context),
       body: _tabs == null
           ? (_loading
               ? const DriftProLoadingCenter()
@@ -348,8 +359,8 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
                         pinned: false,
                         floating: false,
                         snap: false,
+                        toolbarHeight: 0,
                         forceElevated: innerBoxIsScrolled,
-                        title: Text('Samarbeidspartnere', style: DriftProTheme.headingSm),
                         bottom: _buildPartnerTabBar(context),
                       ),
                     ),
@@ -399,6 +410,11 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
             icon: Icon(Icons.car_rental_outlined, size: DriftProClient.isMobile ? 20 : 18),
             text: DriftProClient.isMobile ? 'Utleie' : 'Utleie av bil',
           ),
+        if (_showInspectionTab)
+          Tab(
+            icon: Icon(Icons.fact_check_outlined, size: DriftProClient.isMobile ? 20 : 18),
+            text: DriftProClient.isMobile ? 'Kontroll' : 'Bilkontroll',
+          ),
       ],
     );
   }
@@ -442,6 +458,12 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
             partners: _partners,
             canApproveRentals: _canApproveVehicleRentals(_profile?.access),
             canForceDeleteRentals: _profile?.role == UserRole.superadmin,
+          ),
+        if (_showInspectionTab)
+          VehicleInspectionHubScreen(
+            embedded: true,
+            nestedScroll: nestedScroll,
+            partners: _partners,
           ),
       ],
     );

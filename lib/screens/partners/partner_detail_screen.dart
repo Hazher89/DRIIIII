@@ -47,7 +47,6 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
   UserProfile? _profile;
   List<PartnerDetailTabDef> _visibleTabs = const [];
   bool _accessLoading = true;
-  bool _showAllSections = false;
 
   @override
   void initState() {
@@ -61,15 +60,44 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
     final tabs = PartnerAccess.visibleDetailTabs(profile?.access);
     if (!mounted) return;
     _tabs?.dispose();
+    final initial = _indexForTabSlug(tabs, widget.initialTab);
     setState(() {
       _profile = profile;
       _visibleTabs = tabs;
       _accessLoading = false;
       if (tabs.isNotEmpty) {
-        _tabs = TabController(length: tabs.length, vsync: this);
+        _tabs = TabController(
+          length: tabs.length,
+          vsync: this,
+          initialIndex: initial,
+        );
       }
     });
     await _reload();
+  }
+
+  int _indexForTabSlug(List<PartnerDetailTabDef> tabs, String? slug) {
+    if (slug == null || slug.trim().isEmpty || tabs.isEmpty) return 0;
+    final t = slug.trim().toLowerCase();
+    const aliases = <String, String>{
+      'oversikt': AccessKeys.partnersTabOversikt,
+      'bilkontroll': AccessKeys.partnersTabBilkontroll,
+      'ruter': AccessKeys.partnersTabRuter,
+      'dokumenter': AccessKeys.partnersTabDokumenter,
+      'loyver': AccessKeys.partnersTabLoyver,
+      'løyver': AccessKeys.partnersTabLoyver,
+      'oppfolging': AccessKeys.partnersTabOppfolging,
+      'oppfølging': AccessKeys.partnersTabOppfolging,
+      'bot-trekk': AccessKeys.partnersTabBotTrekk,
+      'bot_trekk': AccessKeys.partnersTabBotTrekk,
+      'oppsummering': AccessKeys.partnersTabOppsummering,
+      'fri': AccessKeys.partnersTabFri,
+    };
+    final target = aliases[t] ?? t;
+    for (var i = 0; i < tabs.length; i++) {
+      if (tabs[i].accessKey == target || tabs[i].accessKey == t) return i;
+    }
+    return 0;
   }
 
   @override
@@ -97,8 +125,6 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
       .length;
 
   int get _regCount => _vehicles.length - _maviCount;
-  int get _ownerCount => _portalAccounts.where((a) => a.isOwner && a.isActive).length;
-  int get _driverCount => _portalAccounts.where((a) => a.isDriver && a.isActive).length;
 
   Widget _buildTabBody(PartnerDetailTabDef tab) {
     final child = switch (tab.accessKey) {
@@ -129,35 +155,6 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
 
   List<(IconData, String)> get _tabBarEntries =>
       _visibleTabs.map((t) => (t.icon, t.label)).toList();
-
-  Future<void> _openSectionPicker() async {
-    final ctrl = _tabs;
-    if (ctrl == null || _visibleTabs.isEmpty) return;
-    final selected = await showModalBottomSheet<int>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: ListView.separated(
-          shrinkWrap: true,
-          itemCount: _visibleTabs.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (_, i) {
-            final tab = _visibleTabs[i];
-            final active = ctrl.index == i;
-            return ListTile(
-              leading: Icon(tab.icon),
-              title: Text(tab.label),
-              trailing: active ? const Icon(Icons.check_circle, color: Colors.green) : null,
-              onTap: () => Navigator.of(ctx).pop(i),
-            );
-          },
-        ),
-      ),
-    );
-    if (selected != null && mounted && _tabs != null) {
-      _tabs!.animateTo(selected);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -216,30 +213,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
             onChanged: _reload,
             onDeleted: () => Navigator.pop(context, true),
           ),
-          PartnerSmartActionsPanel(
-            title: 'Smart status',
-            actions: [
-              PartnerSmartAction(
-                label: 'Registrerte kontoer: $_ownerCount bedriftsansvarlige · $_driverCount sjåfører',
-                icon: Icons.badge_outlined,
-              ),
-              PartnerSmartAction(
-                label: _p.routesOwnerOnly
-                    ? 'Rute-SMS: kun bedriftsansvarlig'
-                    : 'Rute-SMS: bedriftsansvarlig + sjåfør',
-                icon: _p.routesOwnerOnly ? Icons.person_outline : Icons.groups_2_outlined,
-              ),
-              if (_ownerCount == 0)
-                const PartnerSmartAction(
-                  label: 'Mangler bedriftsansvarlig-konto',
-                  hint: 'Opprett portal for bedriftsansvarlig i oversikt-fanen',
-                  icon: Icons.warning_amber_rounded,
-                ),
-            ],
-          ),
           if (_tabs != null)
-            _smartToolbar(),
-          if (_tabs != null && _showAllSections)
             PartnerDetailTabBar(controller: _tabs!, tabs: _tabBarEntries),
           Expanded(
             child: _tabs == null
@@ -251,23 +225,6 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
           ),
         ],
       ),
-    );
-  }
-
-  Widget _smartToolbar() {
-    final ctrl = _tabs!;
-    return AnimatedBuilder(
-      animation: ctrl,
-      builder: (context, _) {
-        final tab = _visibleTabs[ctrl.index];
-        return PartnerSmartSectionPicker(
-          title: 'Viser',
-          currentLabel: tab.label,
-          onPick: _openSectionPicker,
-          onToggleAll: () => setState(() => _showAllSections = !_showAllSections),
-          showAll: _showAllSections,
-        );
-      },
     );
   }
 }

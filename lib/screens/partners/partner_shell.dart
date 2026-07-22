@@ -7,9 +7,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/routing/route_url_sync.dart';
 import '../../core/auth/session_sign_out.dart';
+import '../../core/services/hms/hms_pdf_export_service.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
 import '../../core/services/partner/partner_portal_scope.dart';
 import '../../core/services/partner/partner_service.dart';
+import '../../core/services/partner/vehicle_inspection_pdf.dart';
 import '../../core/services/notification/partner_route_push_listener.dart';
 import '../../core/services/native_permissions_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -883,6 +885,18 @@ class _PartnerInspectionsPageState extends State<_PartnerInspectionsPage> {
     }
   }
 
+  Future<void> _exportPdf(PartnerVehicleInspection ins) async {
+    await HmsPdfExportService.runWithFeedback(
+      context,
+      fileName: VehicleInspectionPdf.fileNameFor(ins),
+      generate: () => VehicleInspectionPdf.generate(
+        inspection: ins,
+        partner: widget.partner,
+        inspectorName: ins.inspectedByName,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -916,6 +930,11 @@ class _PartnerInspectionsPageState extends State<_PartnerInspectionsPage> {
                         '${ins.hasDeviation ? (ins.deviationNotes ?? "Avvik registrert") : "OK — ingen avvik"}',
                       ),
                       isThreeLine: true,
+                      trailing: IconButton(
+                        tooltip: 'Last ned PDF-rapport',
+                        icon: const Icon(Icons.picture_as_pdf_outlined),
+                        onPressed: () => _exportPdf(ins),
+                      ),
                     );
                   },
                 ),

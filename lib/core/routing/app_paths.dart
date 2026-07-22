@@ -40,7 +40,14 @@ abstract final class AppPaths {
     'profil',
   ];
 
-  static const partnersTabs = ['bedrifter', 'ruter', 'sms', 'bot-trekk', 'utleie'];
+  static const partnersTabs = [
+    'bedrifter',
+    'ruter',
+    'sms',
+    'bot-trekk',
+    'utleie',
+    'bilkontroll',
+  ];
   static const stemplingTabs = ['oversikt', 'timeliste', 'min-dag', 'innstillinger'];
   static const absenceTabs = ['dashboard', 'mine', 'godkjenn', 'team', 'roster'];
   static const equipmentTabs = ['oversikt', 'alle', 'truck', 'arkiv'];

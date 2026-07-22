@@ -22,9 +22,9 @@ class DriftProBrandBar extends StatelessWidget {
           width: double.infinity,
           padding: EdgeInsets.fromLTRB(
             DriftProClient.isMobile ? 12 : 16,
-            DriftProClient.isMobile ? 4 : 10,
+            DriftProClient.isMobile ? 4 : 4,
             DriftProClient.isMobile ? 12 : 16,
-            DriftProClient.isMobile ? 6 : 12,
+            DriftProClient.isMobile ? 6 : 6,
           ),
           decoration: BoxDecoration(
             color: drift.surface,

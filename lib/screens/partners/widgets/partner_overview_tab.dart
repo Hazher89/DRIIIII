@@ -14,6 +14,7 @@ import '../../../core/services/vegvesen/vehicle_registry_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/vehicle_inspection.dart';
 import 'partner_companies_ui.dart';
 import 'eco_driving_badge.dart';
 import 'partner_modern_ui.dart';
@@ -197,6 +198,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   Map<String, PartnerPortalAccount> _portalByVehicle = {};
   final List<_OwnerPortalRowState> _ownerRows = [];
   _OverviewSection _activeSection = _OverviewSection.profile;
+  List<PartnerVehicleInspection> _inspections = [];
 
   @override
   void initState() {
@@ -220,8 +222,18 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _ownerRows.add(_OwnerPortalRowState(phone: widget.partner.phone));
     _resetVehicles(widget.vehicles);
     _loadPortals();
+    _loadInspections();
     _loadCurrentUser();
   }
+
+  Future<void> _loadInspections() async {
+    final list = await PartnerService.fetchVehicleInspections(widget.partner.id);
+    if (!mounted) return;
+    setState(() => _inspections = list);
+  }
+
+  Map<String, PartnerVehicleInspection> get _inspectionByVehicleId =>
+      PartnerVehicleInspection.latestByVehicleId(widget.vehicles, _inspections);
 
   Future<void> _loadCurrentUser() async {
     final profile = await SupabaseService.fetchEffectiveUserProfile();
@@ -1144,60 +1156,61 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     return Stack(
       children: [
         ListView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+          padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
           children: [
+            PartnerModernPageHeader(
+              title: p.tradeName?.isNotEmpty == true ? p.tradeName! : p.name,
+              subtitle: [
+                if (p.orgNumber != null) 'Org.nr ${p.orgNumber}',
+                if (p.ownerName?.isNotEmpty == true) p.ownerName!,
+                '${maviRows.length} MAVI · ${regRows.length} reg.nr',
+              ].join(' · '),
+            ),
             if (maviRows.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
-                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: PartnerModernUi.surface(context),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: PartnerModernUi.border(context)),
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${maviRows.length} MAVI · ${regRows.length} reg.nr',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
-                      ),
-                      const SizedBox(height: 6),
-                      PartnerMaviVehicleOverview(
-                        vehicles: PartnerMaviVehicleOverview.filterMavi(
-                          maviRows
-                              .map(
-                                (r) => PartnerVehicle(
-                                  id: r.id ?? '',
-                                  partnerId: widget.partner.id,
-                                  companyId: widget.partner.companyId,
-                                  unitCode: MaviUnitCodes.normalize(r.mavi.text),
-                                  registrationNumber: r.reg.text.trim(),
-                                  driverName: r.driverName.text.trim().isEmpty
-                                      ? null
-                                      : r.driverName.text.trim(),
-                                  fleetRoles: r.fleetRoles.toList(),
-                                  isActive: r.isActive,
-                                  createdAt: DateTime.now(),
-                                ),
-                              )
-                              .where((v) => v.unitCode.isNotEmpty)
-                              .toList(),
-                        ),
-                      ),
-                    ],
+                  child: PartnerMaviVehicleOverview(
+                    vehicles: PartnerMaviVehicleOverview.filterMavi(
+                      maviRows
+                          .map(
+                            (r) => PartnerVehicle(
+                              id: r.id ?? '',
+                              partnerId: widget.partner.id,
+                              companyId: widget.partner.companyId,
+                              unitCode: MaviUnitCodes.normalize(r.mavi.text),
+                              registrationNumber: r.reg.text.trim(),
+                              driverName: r.driverName.text.trim().isEmpty
+                                  ? null
+                                  : r.driverName.text.trim(),
+                              fleetRoles: r.fleetRoles.toList(),
+                              isActive: r.isActive,
+                              createdAt: DateTime.now(),
+                            ),
+                          )
+                          .where((v) => v.unitCode.isNotEmpty)
+                          .toList(),
+                    ),
+                    lastInspectionByVehicleId: _inspectionByVehicleId,
                   ),
                 ),
               ),
             PartnerModernKpiGrid(
               items: [
-                ('MAVI Nummer', '${maviRows.length}'),
-                ('Skiltnummer', '${regRows.length}'),
+                ('MAVI', '${maviRows.length}'),
+                ('Reg.nr', '${regRows.length}'),
                 ('SMS', '${smsPhones.length}'),
-                ('Portal', activeOwnerCount == 0 ? 'Mangler' : '$activeOwnerCount eier${activeOwnerCount == 1 ? '' : 'e'}'),
+                ('Portal', activeOwnerCount == 0 ? 'Mangler' : '$activeOwnerCount'),
               ],
             ),
+            const SizedBox(height: 8),
             PartnerModernSegmented<_OverviewSection>(
               options: _OverviewSection.values,
               selected: _activeSection,

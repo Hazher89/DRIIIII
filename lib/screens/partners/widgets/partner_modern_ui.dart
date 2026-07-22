@@ -4,6 +4,7 @@ import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/driftpro_theme_context.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/vehicle_inspection.dart';
 import 'eco_driving_badge.dart';
 
 /// Nøytralt, moderne UI for bedrifter — uten sterke gradienter.
@@ -699,18 +700,20 @@ class PartnerModernSegmented<T> extends StatelessWidget {
   }
 }
 
-/// Viser alle MAVI-biler med kode, skilt, sjåfør og biltype.
+/// Viser alle MAVI-biler med kode, skilt, sjåfør, biltype og sist bilkontroll.
 class PartnerMaviVehicleOverview extends StatelessWidget {
   const PartnerMaviVehicleOverview({
     super.key,
     required this.vehicles,
     this.dense = false,
     this.muted = false,
+    this.lastInspectionByVehicleId = const {},
   });
 
   final List<PartnerVehicle> vehicles;
   final bool dense;
   final bool muted;
+  final Map<String, PartnerVehicleInspection> lastInspectionByVehicleId;
 
   static List<PartnerVehicle> filterMavi(
     Iterable<PartnerVehicle> all, {
@@ -780,59 +783,110 @@ class PartnerMaviVehicleOverview extends StatelessWidget {
     final code = MaviUnitCodes.normalize(v.unitCode);
     final gray = muted || !v.isActive;
     final accent = gray ? const Color(0xFF9CA3AF) : const Color(0xFF15803D);
+    final last = v.id.isNotEmpty ? lastInspectionByVehicleId[v.id] : null;
+    final inspectionLabel = _inspectionLabel(last);
+    final inspectionColor = _inspectionColor(last, gray);
+
     return Padding(
       padding: EdgeInsets.only(bottom: dense ? 4 : 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: accent.withValues(alpha: 0.25)),
-            ),
-            child: Text(
-              MaviUnitCodes.compactLabel(code),
-              style: TextStyle(
-                fontSize: dense ? 10 : 11,
-                fontWeight: FontWeight.w800,
-                fontFamily: 'monospace',
-                color: accent,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: dense ? 8 : 10,
+          vertical: dense ? 6 : 8,
+        ),
+        decoration: BoxDecoration(
+          color: PartnerModernUi.border(context).withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: PartnerModernUi.border(context).withValues(alpha: 0.45),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: accent.withValues(alpha: 0.25)),
+              ),
+              child: Text(
+                MaviUnitCodes.compactLabel(code),
+                style: TextStyle(
+                  fontSize: dense ? 10 : 11,
+                  fontWeight: FontWeight.w800,
+                  fontFamily: 'monospace',
+                  color: accent,
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  code,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: dense ? 10 : 11,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: 'monospace',
-                    color: PartnerModernUi.textPrimary(context),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    code,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: dense ? 10 : 11,
+                      fontWeight: FontWeight.w600,
+                      fontFamily: 'monospace',
+                      color: PartnerModernUi.textPrimary(context),
+                    ),
                   ),
-                ),
-                Text(
-                  _subtitle(v),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: dense ? 9 : 10,
-                    height: 1.25,
-                    color: PartnerModernUi.muted(context),
+                  Text(
+                    _subtitle(v),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: dense ? 9 : 10,
+                      height: 1.25,
+                      color: PartnerModernUi.muted(context),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(width: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: inspectionColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: inspectionColor.withValues(alpha: 0.28)),
+              ),
+              child: Text(
+                inspectionLabel,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: dense ? 9 : 10,
+                  fontWeight: FontWeight.w700,
+                  color: inspectionColor,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  String _inspectionLabel(PartnerVehicleInspection? last) {
+    if (last == null) return 'Ikke kontrollert';
+    final d = last.inspectedAt.toLocal();
+    final stamp =
+        '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+    if (last.hasDeviation) return 'Avvik · $stamp';
+    return 'OK · $stamp';
+  }
+
+  Color _inspectionColor(PartnerVehicleInspection? last, bool gray) {
+    if (gray) return const Color(0xFF9CA3AF);
+    if (last == null) return const Color(0xFFD97706);
+    if (last.hasDeviation) return const Color(0xFFDC2626);
+    return const Color(0xFF15803D);
   }
 }

@@ -20,6 +20,7 @@ import 'partner_fri_tab.dart';
 import 'partner_modern_ui.dart';
 import 'partner_overview_tab.dart';
 import 'partner_transport_licenses_tab.dart';
+import 'partner_ui.dart';
 import 'partner_vehicle_inspection_tab.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
@@ -184,37 +185,6 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
     await _reload();
   }
 
-  Future<void> _openSectionPicker() async {
-    final ctrl = _tabCtrl;
-    if (ctrl == null || _tabs.isEmpty) return;
-    final selected = await showModalBottomSheet<int>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) {
-        return SafeArea(
-          child: ListView.separated(
-            shrinkWrap: true,
-            itemCount: _tabs.length,
-            separatorBuilder: (_, _) => const Divider(height: 1),
-            itemBuilder: (_, i) {
-              final tab = _tabs[i];
-              final active = ctrl.index == i;
-              return ListTile(
-                leading: Icon(tab.icon),
-                title: Text(tab.label),
-                trailing: active ? const Icon(Icons.check_circle, color: Colors.green) : null,
-                onTap: () => Navigator.of(ctx).pop(i),
-              );
-            },
-          ),
-        );
-      },
-    );
-    if (selected != null && mounted && _tabCtrl != null) {
-      _tabCtrl!.animateTo(selected);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -225,111 +195,23 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(context),
-        Expanded(
-          child: _tabCtrl == null
-              ? const Center(child: Text('Ingen tilgang til detaljer'))
-              : NestedScrollView(
-                  controller: widget.scrollController,
-                  headerSliverBuilder: (context, _) => [
-                    SliverToBoxAdapter(
-                      child: AnimatedBuilder(
-                        animation: _tabCtrl!,
-                        builder: (context, _) => _sectionPickerBar(context),
-                      ),
-                    ),
-                  ],
-                  body: TabBarView(
-                    controller: _tabCtrl,
-                    children: _tabs.map(_tabChild).toList(),
-                  ),
-                ),
-        ),
+        if (_tabCtrl != null) ...[
+          PartnerDetailTabBar(
+            controller: _tabCtrl!,
+            tabs: _tabs.map((t) => (t.icon, t.label)).toList(),
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabCtrl,
+              children: _tabs.map(_tabChild).toList(),
+            ),
+          ),
+        ] else
+          const Expanded(
+            child: Center(child: Text('Ingen tilgang til detaljer')),
+          ),
       ],
     );
-  }
-
-  Widget _sectionPickerBar(BuildContext context) {
-    final ctrl = _tabCtrl!;
-    final tab = _tabs[ctrl.index];
-    final shortcuts = _preferredQuickTabs()
-        .where((t) => _tabs.indexOf(t) != ctrl.index)
-        .take(2)
-        .toList();
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: PartnerModernUi.surface(context),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: PartnerModernUi.border(context)),
-      ),
-      child: Row(
-        children: [
-          Icon(tab.icon, size: 18, color: PartnerModernUi.textPrimary(context)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              tab.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: PartnerModernUi.textPrimary(context),
-              ),
-            ),
-          ),
-          for (final shortcut in shortcuts) ...[
-            const SizedBox(width: 4),
-            OutlinedButton(
-              onPressed: () => ctrl.animateTo(_tabs.indexOf(shortcut)),
-              style: OutlinedButton.styleFrom(
-                visualDensity: VisualDensity.compact,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                minimumSize: const Size(0, 32),
-                textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
-              ),
-              child: Text(shortcut.label),
-            ),
-          ],
-          const SizedBox(width: 4),
-          FilledButton.icon(
-            onPressed: _openSectionPicker,
-            icon: const Icon(Icons.grid_view_rounded, size: 16),
-            label: const Text('Bytt'),
-            style: FilledButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              minimumSize: const Size(0, 32),
-              textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  List<PartnerDetailTabDef> _preferredQuickTabs() {
-    final preferred = <String>[
-      AccessKeys.partnersTabOversikt,
-      AccessKeys.partnersTabRuter,
-      AccessKeys.partnersTabDokumenter,
-      AccessKeys.partnersTabBilkontroll,
-    ];
-    final ranked = <PartnerDetailTabDef>[];
-    for (final key in preferred) {
-      for (final tab in _tabs) {
-        if (tab.accessKey == key) {
-          ranked.add(tab);
-          break;
-        }
-      }
-    }
-    for (final tab in _tabs) {
-      if (!ranked.contains(tab)) ranked.add(tab);
-    }
-    return ranked.take(3).toList();
   }
 
   Widget _header(BuildContext context) {

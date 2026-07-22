@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/auth/session_sign_out.dart';
+import '../../../core/services/hms/hms_pdf_export_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/vehicle_inspection_pdf.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/vehicle_inspection.dart';
 import '../widgets/partner_portal_page_shell.dart';
@@ -35,6 +37,18 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
         _loading = false;
       });
     }
+  }
+
+  Future<void> _exportPdf(PartnerVehicleInspection inspection) async {
+    await HmsPdfExportService.runWithFeedback(
+      context,
+      fileName: VehicleInspectionPdf.fileNameFor(inspection),
+      generate: () => VehicleInspectionPdf.generate(
+        inspection: inspection,
+        partner: widget.partner,
+        inspectorName: inspection.inspectedByName,
+      ),
+    );
   }
 
   @override
@@ -108,6 +122,11 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
                               '${ins.hasDeviation ? (ins.deviationNotes ?? "Avvik") : "OK"}',
                             ),
                             isThreeLine: true,
+                            trailing: IconButton(
+                              tooltip: 'Last ned PDF-rapport',
+                              icon: const Icon(Icons.picture_as_pdf_outlined),
+                              onPressed: () => _exportPdf(ins),
+                            ),
                           ),
                         );
                       }),

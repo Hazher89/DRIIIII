@@ -93,13 +93,18 @@ class MobileShellScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!DriftProClient.isMobile) {
+      final hasAppBar = _showHeader || bottom != null;
       return Scaffold(
         backgroundColor: backgroundColor,
-        appBar: _showHeader || bottom != null
+        appBar: hasAppBar
             ? AppBar(
                 title: title != null ? Text(title!) : null,
                 actions: actions,
                 bottom: bottom,
+                // Unngå tom toolbar-høyde når kun faner vises (store gap under logo).
+                toolbarHeight: _showHeader ? kToolbarHeight : 0,
+                automaticallyImplyLeading: false,
+                scrolledUnderElevation: 0,
               )
             : null,
         body: body,

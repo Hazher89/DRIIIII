@@ -2772,9 +2772,38 @@ class PartnerService {
     try {
       final data = await _client
           .from('partner_vehicle_inspections')
-          .select('*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name)')
+          .select(
+            '*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name), '
+            'partners(name, trade_name)',
+          )
           .eq('partner_id', partnerId)
           .order('inspected_at', ascending: false) as List<dynamic>;
+      return data
+          .map((e) => PartnerVehicleInspection.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Alle bilkontroller for hele selskapet (alle samarbeidsbedrifter).
+  static Future<List<PartnerVehicleInspection>> fetchCompanyVehicleInspections(
+    String companyId, {
+    String? partnerId,
+  }) async {
+    if (!_ok) return const [];
+    try {
+      var q = _client
+          .from('partner_vehicle_inspections')
+          .select(
+            '*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name), '
+            'partners(name, trade_name)',
+          )
+          .eq('company_id', companyId);
+      if (partnerId != null && partnerId.isNotEmpty) {
+        q = q.eq('partner_id', partnerId);
+      }
+      final data = await q.order('inspected_at', ascending: false) as List<dynamic>;
       return data
           .map((e) => PartnerVehicleInspection.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -2816,7 +2845,7 @@ class PartnerService {
     final row = await _client
         .from('partner_vehicle_inspections')
         .insert(draft.toInsertJson(inspectedBy: uid))
-        .select()
+        .select('*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name)')
         .single();
     return PartnerVehicleInspection.fromJson(row);
   }
