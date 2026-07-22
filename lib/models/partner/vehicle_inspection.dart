@@ -51,6 +51,9 @@ class PartnerVehicleInspection {
   final bool isArchived;
   final DateTime createdAt;
 
+  /// Lagret PDF i documents-bucket (genereres automatisk ved arkivering).
+  final String? pdfStoragePath;
+
   /// Joined fra profiles ved henting.
   final String? inspectedByName;
 
@@ -79,6 +82,7 @@ class PartnerVehicleInspection {
     this.inspectedByName,
     this.partnerName,
     this.partnerTradeName,
+    this.pdfStoragePath,
   });
 
   factory PartnerVehicleInspection.fromJson(Map<String, dynamic> json) {
@@ -114,6 +118,7 @@ class PartnerVehicleInspection {
           : null,
       isArchived: json['is_archived'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
+      pdfStoragePath: json['pdf_storage_path'] as String?,
       inspectedByName: json['profiles'] != null
           ? json['profiles']['full_name'] as String?
           : null,
@@ -215,4 +220,32 @@ class PartnerVehicleInspection {
 
   bool get followUpOverdue =>
       followUpOpen && followUpDueAt!.isBefore(DateTime.now());
+
+  PartnerVehicleInspection copyWith({
+    String? pdfStoragePath,
+  }) {
+    return PartnerVehicleInspection(
+      id: id,
+      partnerId: partnerId,
+      companyId: companyId,
+      partnerVehicleId: partnerVehicleId,
+      registrationNumber: registrationNumber,
+      unitCode: unitCode,
+      inspectedAt: inspectedAt,
+      inspectedBy: inspectedBy,
+      checklist: checklist,
+      hasDeviation: hasDeviation,
+      deviationNotes: deviationNotes,
+      deviationAssignee: deviationAssignee,
+      nextInspectionAt: nextInspectionAt,
+      followUpDueAt: followUpDueAt,
+      followUpAcknowledgedAt: followUpAcknowledgedAt,
+      isArchived: isArchived,
+      createdAt: createdAt,
+      inspectedByName: inspectedByName,
+      partnerName: partnerName,
+      partnerTradeName: partnerTradeName,
+      pdfStoragePath: pdfStoragePath ?? this.pdfStoragePath,
+    );
+  }
 }

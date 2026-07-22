@@ -32,6 +32,7 @@ import 'route_pdf_auto_assign.dart';
 import 'route_pdf_bytes_cache.dart';
 import 'route_shift_resolver.dart';
 import 'fleet_mavi_day_sync.dart';
+import 'vehicle_inspection_pdf.dart';
 
 class PartnerLifecycleReport {
   final int vehicles;
@@ -2837,8 +2838,10 @@ class PartnerService {
   }
 
   static Future<PartnerVehicleInspection> saveVehicleInspection(
-    PartnerVehicleInspection draft,
-  ) async {
+    PartnerVehicleInspection draft, {
+    Partner? partner,
+    String? inspectorName,
+  }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
     final uid = _client.auth.currentUser?.id;
     if (uid == null) throw StateError('Ikke innlogget');
@@ -2847,7 +2850,49 @@ class PartnerService {
         .insert(draft.toInsertJson(inspectedBy: uid))
         .select('*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name)')
         .single();
-    return PartnerVehicleInspection.fromJson(row);
+    var saved = PartnerVehicleInspection.fromJson(row);
+
+    final p = partner ?? await fetchPartner(saved.partnerId);
+    if (p != null) {
+      try {
+        saved = await _archiveVehicleInspectionPdf(
+          saved,
+          partner: p,
+          inspectorName: inspectorName ?? saved.inspectedByName,
+        );
+      } catch (_) {
+        // Kontrollen er lagret — PDF-arkiv kan regenereres ved nedlasting.
+      }
+    }
+    return saved;
+  }
+
+  static Future<PartnerVehicleInspection> _archiveVehicleInspectionPdf(
+    PartnerVehicleInspection inspection, {
+    required Partner partner,
+    String? inspectorName,
+  }) async {
+    final bytes = await VehicleInspectionPdf.generate(
+      inspection: inspection,
+      partner: partner,
+      inspectorName: inspectorName,
+    );
+    final fileName = '${VehicleInspectionPdf.fileNameFor(inspection)}.pdf';
+    final path = StoragePathSanitizer.storagePath(
+      '${inspection.companyId}/partners/bilkontroll/${inspection.partnerId}/${inspection.id}/$fileName',
+    );
+    final ref = await uploadPartnerDocumentPdf(storagePath: path, bytes: bytes);
+    await _client.from('partner_vehicle_inspections').update({
+      'pdf_storage_path': ref,
+    }).eq('id', inspection.id);
+    return inspection.copyWith(pdfStoragePath: ref);
+  }
+
+  static Future<Uint8List?> downloadInspectionPdfBytes(
+    String storagePath, {
+    String? companyId,
+  }) {
+    return StorageFileAccess.downloadBytes(storagePath, companyId: companyId);
   }
 
   static Future<void> acknowledgeInspectionFollowUp(String inspectionId) async {

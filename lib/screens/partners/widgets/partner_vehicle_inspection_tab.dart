@@ -43,6 +43,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   DateTime? _followUpDue;
   bool _saving = false;
   String? _inspectorName;
+  String? _lastSavedInspectionId;
 
   static final _stampFmt = DateFormat('dd.MM.yyyy HH:mm');
 
@@ -195,14 +196,27 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
         followUpDueAt: (_hasDeviation || implied) ? _followUpDue : null,
         createdAt: DateTime.now(),
       );
-      final saved = await PartnerService.saveVehicleInspection(draft);
-      _resetChecklist();
+      final saved = await PartnerService.saveVehicleInspection(
+        draft,
+        partner: widget.partner,
+        inspectorName: _inspectorName,
+      );
+      if (!mounted) return;
+      setState(() {
+        _resetChecklist();
+        _selectedVehicleId = null;
+        _lastSavedInspectionId = saved.id;
+      });
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Kontroll lagret. ${_formatStamp(stampedAt, name: _inspectorName)}',
+            'Kontroll arkivert med PDF. ${_formatStamp(stampedAt, name: _inspectorName)}',
+          ),
+          action: SnackBarAction(
+            label: 'Last ned PDF',
+            onPressed: () => _exportPdf(saved),
           ),
         ),
       );
@@ -222,11 +236,21 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
     await HmsPdfExportService.runWithFeedback(
       context,
       fileName: VehicleInspectionPdf.fileNameFor(inspection),
-      generate: () => VehicleInspectionPdf.generate(
-        inspection: inspection,
-        partner: widget.partner,
-        inspectorName: inspection.inspectedByName ?? _inspectorName,
-      ),
+      generate: () async {
+        final stored = inspection.pdfStoragePath?.trim();
+        if (stored != null && stored.isNotEmpty) {
+          final bytes = await PartnerService.downloadInspectionPdfBytes(
+            stored,
+            companyId: inspection.companyId,
+          );
+          if (bytes != null && bytes.isNotEmpty) return bytes;
+        }
+        return VehicleInspectionPdf.generate(
+          inspection: inspection,
+          partner: widget.partner,
+          inspectorName: inspection.inspectedByName ?? _inspectorName,
+        );
+      },
     );
   }
 
@@ -237,12 +261,14 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
       builder: (ctx) => AlertDialog(
         title: const Text('Kontroll arkivert'),
         content: const Text(
-          'Vil du laste ned hele bilkontrollrapporten som PDF?',
+          'PDF-rapporten er registrert for denne bilen og datoen, '
+          'og kan lastes ned når som helst under Arkiv.\n\n'
+          'Vil du laste den ned nå?',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Ikke nå'),
+            child: const Text('Senere'),
           ),
           FilledButton.icon(
             onPressed: () => Navigator.pop(ctx, true),
@@ -682,19 +708,41 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
       return Container(
         margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
-          color: PartnerModernUi.border(context).withValues(alpha: 0.12),
+          color: a.id == _lastSavedInspectionId
+              ? DriftProTheme.primaryGreen.withValues(alpha: 0.1)
+              : PartnerModernUi.border(context).withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: PartnerModernUi.border(context)),
+          border: Border.all(
+            color: a.id == _lastSavedInspectionId
+                ? DriftProTheme.primaryGreen.withValues(alpha: 0.45)
+                : PartnerModernUi.border(context),
+            width: a.id == _lastSavedInspectionId ? 1.5 : 1,
+          ),
         ),
         child: ListTile(
           dense: true,
-          title: Text(
-            a.vehicleLabel,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 13,
-              color: PartnerModernUi.textPrimary(context),
-            ),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  a.vehicleLabel,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                    color: PartnerModernUi.textPrimary(context),
+                  ),
+                ),
+              ),
+              if (a.pdfStoragePath?.trim().isNotEmpty == true)
+                Tooltip(
+                  message: 'PDF arkivert',
+                  child: Icon(
+                    Icons.verified_outlined,
+                    size: 16,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+                ),
+            ],
           ),
           subtitle: Text(
             '${a.stampLine}\n${a.hasDeviation ? a.deviationNotes ?? "Avvik registrert" : "Ingen avvik"}',

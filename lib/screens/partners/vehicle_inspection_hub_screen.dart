@@ -153,11 +153,21 @@ class _VehicleInspectionHubScreenState extends State<VehicleInspectionHubScreen>
     await HmsPdfExportService.runWithFeedback(
       context,
       fileName: VehicleInspectionPdf.fileNameFor(inspection),
-      generate: () => VehicleInspectionPdf.generate(
-        inspection: inspection,
-        partner: partner,
-        inspectorName: inspection.inspectedByName,
-      ),
+      generate: () async {
+        final stored = inspection.pdfStoragePath?.trim();
+        if (stored != null && stored.isNotEmpty) {
+          final bytes = await PartnerService.downloadInspectionPdfBytes(
+            stored,
+            companyId: inspection.companyId,
+          );
+          if (bytes != null && bytes.isNotEmpty) return bytes;
+        }
+        return VehicleInspectionPdf.generate(
+          inspection: inspection,
+          partner: partner,
+          inspectorName: inspection.inspectedByName,
+        );
+      },
     );
   }
 

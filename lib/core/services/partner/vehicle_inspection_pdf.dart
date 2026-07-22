@@ -27,17 +27,21 @@ abstract final class VehicleInspectionPdf {
     required Partner partner,
     String? inspectorName,
   }) async {
+    final inspectedLocal = inspection.inspectedAt.toLocal();
     final b = HmsPdfBuilder()
-      ..brandHeader = 'DRIFTPRO'
-      ..footerLeft = 'DriftPro — bilkontrollrapport · konfidensielt';
+      ..brandHeader = 'MAVI LOGISTIKK AS'
+      ..footerLeft = 'MAVI Logistikk AS · DriftPro bilkontroll · konfidensielt'
+      ..watermarkPrimary = 'MAVI Logistikk AS'
+      ..watermarkSecondary = _df.format(inspectedLocal)
+      ..watermarkOpacity = 0.14;
 
     final vehicle = _vehicleLabel(inspection);
     final partnerName = _partnerDisplayName(partner);
-    final status = inspection.hasDeviation ? 'AVVIK REGISTRERT' : 'OK — ingen avvik';
+    final status = inspection.hasDeviation ? 'AVVIK REGISTRERT' : 'OK — INGEN AVVIK';
     final who = (inspectorName ?? inspection.inspectedByName)?.trim();
     final ref = inspection.id.isNotEmpty && inspection.id.length >= 8
         ? 'BK-${inspection.id.substring(0, 8).toUpperCase()}'
-        : 'BK-${_fileStamp.format(inspection.inspectedAt.toLocal())}';
+        : 'BK-${_fileStamp.format(inspectedLocal)}';
 
     b.drawDocumentHeader(
       documentType: 'Bilkontrollrapport',
@@ -47,13 +51,33 @@ abstract final class VehicleInspectionPdf {
       documentDate: inspection.inspectedAt,
     );
 
+    b.section('Oppsummering');
+    b.keyValueGrid([
+      ('Bedrift', partnerName),
+      (
+        'Registreringsnummer',
+        (inspection.registrationNumber ?? '').trim().isEmpty
+            ? '—'
+            : inspection.registrationNumber!.trim(),
+      ),
+      (
+        'MAVI-nummer',
+        (inspection.unitCode ?? '').trim().isEmpty
+            ? '—'
+            : inspection.unitCode!.trim(),
+      ),
+      ('Kontrolldato', _dtf.format(inspectedLocal)),
+      ('Kontrollør', (who == null || who.isEmpty) ? 'Ukjent' : who),
+      ('Resultat', status),
+    ]);
+
     b.section('Kjøretøy og bedrift');
     b.keyValueGrid([
       ('Bedrift', partnerName),
       if ((partner.orgNumber ?? '').trim().isNotEmpty)
         ('Org.nr', partner.orgNumber!.trim()),
       if ((partner.ownerName ?? '').trim().isNotEmpty)
-        ('Bileier', partner.ownerName!.trim()),
+        ('Bedriftsansvarlig', partner.ownerName!.trim()),
       (
         'Reg.nr',
         (inspection.registrationNumber ?? '').trim().isEmpty
@@ -66,13 +90,13 @@ abstract final class VehicleInspectionPdf {
             ? '—'
             : inspection.unitCode!.trim(),
       ),
-      ('Status', status),
     ]);
 
     b.section('Kontrollstempling');
     b.keyValueGrid([
-      ('Utført', _dtf.format(inspection.inspectedAt.toLocal())),
+      ('Utført', _dtf.format(inspectedLocal)),
       ('Kontrollør', (who == null || who.isEmpty) ? 'Ukjent' : who),
+      ('Referanse', ref),
       if (inspection.nextInspectionAt != null)
         ('Neste kontroll', _df.format(inspection.nextInspectionAt!)),
       if (inspection.followUpDueAt != null)
@@ -84,7 +108,7 @@ abstract final class VehicleInspectionPdf {
         ),
     ]);
 
-    b.section('Sjekkliste');
+    b.section('Sjekkliste — avkryssing');
     final rows = <List<String>>[];
     for (final field in VehicleInspectionTemplate.items) {
       final raw = inspection.checklist[field.key];
@@ -95,12 +119,12 @@ abstract final class VehicleInspectionPdf {
       ]);
     }
     b.table(
-      headers: const ['Punkt', 'Verdi', 'Resultat'],
+      headers: const ['Kontrollpunkt', 'Registrert', 'Status'],
       rows: rows,
     );
 
     final summary = _summaryCounts(inspection);
-    b.section('Oppsummering');
+    b.section('Telling');
     b.keyValueGrid([
       ('OK', '${summary.ok}'),
       ('Avvik', '${summary.avvik}'),
@@ -110,12 +134,12 @@ abstract final class VehicleInspectionPdf {
 
     if (inspection.hasDeviation ||
         (inspection.deviationNotes ?? '').trim().isNotEmpty) {
-      b.section('Avvik og oppfølging');
+      b.section('Avvik og kommentarer');
       b.field(
-        'Status',
-        inspection.hasDeviation ? 'Avvik registrert' : 'Merknad uten flagg',
+        'Avvik registrert',
+        inspection.hasDeviation ? 'Ja' : 'Nei',
       );
-      b.field('Beskrivelse', inspection.deviationNotes ?? '—');
+      b.field('Beskrivelse / kommentar', inspection.deviationNotes ?? '—');
       if (inspection.followUpDueAt != null) {
         b.field(
           'Oppfølging innen',
@@ -136,17 +160,20 @@ abstract final class VehicleInspectionPdf {
       }
     }
 
-    b.section('Bekreftelse');
+    b.section('Bekreftelse og stempel');
     b.paragraph(
       'Denne rapporten dokumenterer utført bilkontroll for '
       '$partnerName'
       '${vehicle.isEmpty ? '' : ' · $vehicle'}. '
-      'Rapporten er generert automatisk i DriftPro ved arkivering av kontrollen.',
+      'Rapporten er arkivert i DriftPro og stemplet av MAVI Logistikk AS.',
     );
     b.paragraph(
       who != null && who.isNotEmpty
-          ? 'Kontroll stempling · $who · ${_dtf.format(inspection.inspectedAt.toLocal())}'
+          ? 'Kontroll stempling · $who · ${_dtf.format(inspectedLocal)}'
           : inspection.stampLine,
+    );
+    b.paragraph(
+      'MAVI Logistikk AS · ${_df.format(inspectedLocal)} · $ref',
     );
 
     return b.build();

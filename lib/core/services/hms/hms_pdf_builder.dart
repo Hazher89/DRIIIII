@@ -40,6 +40,11 @@ class HmsPdfBuilder {
   /// Venstre sidetekst i footer.
   String footerLeft = 'DriftPro HMS — konfidensielt internt dokument';
 
+  /// Valgfritt vannmerke (f.eks. «MAVI Logistikk AS») på alle sider.
+  String? watermarkPrimary;
+  String? watermarkSecondary;
+  double watermarkOpacity = 0.12;
+
   final DateFormat _df = DateFormat('dd.MM.yyyy');
   final DateFormat _dtf = DateFormat('dd.MM.yyyy HH:mm');
 
@@ -415,7 +420,59 @@ class HmsPdfBuilder {
     }
   }
 
+  void _drawPageWatermarks() {
+    final primary = watermarkPrimary?.trim();
+    if (primary == null || primary.isEmpty) return;
+
+    final secondary = watermarkSecondary?.trim();
+    final wmFont = PdfStandardFont(PdfFontFamily.helvetica, 32, style: PdfFontStyle.bold);
+    final wmSubFont = PdfStandardFont(PdfFontFamily.helvetica, 14, style: PdfFontStyle.bold);
+    final alpha = (255 * watermarkOpacity.clamp(0.04, 0.35)).round();
+    final brush = PdfSolidBrush(PdfColor(33, 115, 70, alpha));
+
+    for (var i = 0; i < doc.pages.count; i++) {
+      final p = doc.pages[i];
+      final size = p.getClientSize();
+      final g = p.graphics;
+      final cx = size.width / 2;
+      final cy = size.height / 2;
+
+      g.save();
+      g.translateTransform(cx, cy);
+      g.rotateTransform(-38);
+      g.drawString(
+        primary,
+        wmFont,
+        brush: brush,
+        bounds: Rect.fromCenter(center: Offset.zero, width: size.width * 0.95, height: 40),
+        format: PdfStringFormat(alignment: PdfTextAlignment.center),
+      );
+      if (secondary != null && secondary.isNotEmpty) {
+        g.drawString(
+          secondary,
+          wmSubFont,
+          brush: brush,
+          bounds: Rect.fromCenter(center: const Offset(0, 28), width: size.width * 0.8, height: 20),
+          format: PdfStringFormat(alignment: PdfTextAlignment.center),
+        );
+      }
+      g.restore();
+
+      // Ekstra diskret gjennomskinn i hjørner
+      final cornerFont = PdfStandardFont(PdfFontFamily.helvetica, 10, style: PdfFontStyle.bold);
+      final cornerBrush = PdfSolidBrush(PdfColor(33, 115, 70, (alpha * 0.65).round()));
+      g.drawString(
+        primary,
+        cornerFont,
+        brush: cornerBrush,
+        bounds: Rect.fromLTWH(margin, size.height - 52, size.width - margin * 2, 12),
+        format: PdfStringFormat(alignment: PdfTextAlignment.center),
+      );
+    }
+  }
+
   Future<Uint8List> build() async {
+    _drawPageWatermarks();
     _stampFooters();
     final bytes = Uint8List.fromList(await doc.save());
     doc.dispose();
