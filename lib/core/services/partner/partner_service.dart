@@ -2815,6 +2815,7 @@ class PartnerService {
 
   static Future<List<PartnerVehicleInspection>> fetchOpenInspectionFollowUps({
     required String companyId,
+    String? partnerId,
     String? assigneeProfileId,
   }) async {
     if (!_ok) return const [];
@@ -2824,6 +2825,9 @@ class PartnerService {
           .select('*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name)')
           .eq('company_id', companyId)
           .eq('has_deviation', true);
+      if (partnerId != null && partnerId.isNotEmpty) {
+        q = q.eq('partner_id', partnerId);
+      }
       if (assigneeProfileId != null) {
         q = q.eq('deviation_assignee', assigneeProfileId);
       }

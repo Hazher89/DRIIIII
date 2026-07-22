@@ -140,11 +140,11 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
     setState(() => _loading = true);
     final vehicles = await PartnerService.fetchVehicles(widget.partner.id);
     final archive = await PartnerService.fetchVehicleInspections(widget.partner.id);
-    final uid = Supabase.instance.client.auth.currentUser?.id;
-    final followUps = await PartnerService.fetchOpenInspectionFollowUps(
-      companyId: widget.partner.companyId,
-      assigneeProfileId: uid,
-    );
+    final followUps = archive.where((i) => i.followUpOpen).toList()
+      ..sort(
+        (a, b) => (a.followUpDueAt ?? DateTime(2100))
+            .compareTo(b.followUpDueAt ?? DateTime(2100)),
+      );
     if (mounted) {
       setState(() {
         _vehicles = vehicles;
@@ -254,6 +254,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
           content: Text(
             'Kontroll arkivert med PDF. ${_formatStamp(stampedAt, name: _inspectorName)}',
           ),
+          duration: const Duration(seconds: 5),
           action: SnackBarAction(
             label: 'Last ned PDF',
             onPressed: () => _exportPdf(saved),
