@@ -235,12 +235,13 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
         followUpDueAt: (_hasDeviation || implied) ? _followUpDue : null,
         createdAt: DateTime.now(),
       );
-      final saved = await PartnerService.saveVehicleInspection(
+      final result = await PartnerService.saveVehicleInspection(
         draft,
         partner: widget.partner,
         inspectorName: _inspectorName,
         pendingPhotos: _pendingPhotos.map((p) => p.bytes).toList(),
       );
+      final saved = result.inspection;
       if (!mounted) return;
       setState(() {
         _resetChecklist();
@@ -249,19 +250,16 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
       });
       await _load();
       if (!mounted) return;
+      // Kun dialog for PDF — ingen sticky snackbar med «Last ned PDF» (forsvinner ikke på web).
+      await _offerPdfExport(saved);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).clearSnackBars();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'Kontroll arkivert med PDF. ${_formatStamp(stampedAt, name: _inspectorName)}',
-          ),
+          content: Text('Kontroll arkivert. ${result.notifySummary}'),
           duration: const Duration(seconds: 5),
-          action: SnackBarAction(
-            label: 'Last ned PDF',
-            onPressed: () => _exportPdf(saved),
-          ),
         ),
       );
-      await _offerPdfExport(saved);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

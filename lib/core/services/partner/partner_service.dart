@@ -2841,7 +2841,9 @@ class PartnerService {
     }
   }
 
-  static Future<PartnerVehicleInspection> saveVehicleInspection(
+  /// Lagrer bilkontroll, arkiverer PDF og varsler bedriftsansvarlig (SMS/push/e-post).
+  static Future<({PartnerVehicleInspection inspection, String notifySummary})>
+      saveVehicleInspection(
     PartnerVehicleInspection draft, {
     Partner? partner,
     String? inspectorName,
@@ -2879,17 +2881,47 @@ class PartnerService {
       }
     }
 
-    if (saved.hasDeviation) {
+    final notifySummary = await _notifyVehicleInspectionCompleted(saved.id);
+    return (inspection: saved, notifySummary: notifySummary);
+  }
+
+  static Future<String> _notifyVehicleInspectionCompleted(String inspectionId) async {
+    try {
+      final raw = await _client.rpc(
+        'notify_partner_vehicle_inspection_completed',
+        params: {'p_inspection_id': inspectionId},
+      );
+      return _formatInspectionNotifySummary(raw);
+    } catch (_) {
       try {
-        await _client.rpc(
+        final legacy = await _client.rpc(
           'notify_partner_vehicle_inspection_deviation',
-          params: {'p_inspection_id': saved.id},
+          params: {'p_inspection_id': inspectionId},
         );
-      } catch (_) {
-        // Kontroll lagret — varsel kan sendes på nytt senere.
+        return _formatInspectionNotifySummary(legacy);
+      } catch (e) {
+        return 'Varsel ikke sendt — kjør SQL-migrasjon for bilkontroll-varsler i Supabase.';
       }
     }
-    return saved;
+  }
+
+  static String _formatInspectionNotifySummary(dynamic raw) {
+    if (raw is! Map) return 'Varsel: ukjent svar fra server.';
+    final m = Map<String, dynamic>.from(raw);
+    if (m['ok'] == false) {
+      return 'Varsel ikke sendt (${m['reason'] ?? 'feil'}).';
+    }
+    final sms = (m['sms_to_owners'] as num?)?.toInt() ?? 0;
+    final push = (m['push_to_owners'] as num?)?.toInt() ?? 0;
+    final email = (m['email_to_owners'] as num?)?.toInt() ?? 0;
+    final parts = <String>[];
+    if (sms > 0) parts.add('SMS ($sms)');
+    if (push > 0) parts.add('push ($push)');
+    if (email > 0) parts.add('e-post ($email)');
+    if (parts.isEmpty) {
+      return 'Ingen SMS/push sendt — sjekk telefonnummer på bedriftsansvarlig og at varselkanal er på.';
+    }
+    return 'Bedriftsansvarlig varslet: ${parts.join(' · ')}.';
   }
 
   static Future<PartnerVehicleInspection> _uploadInspectionPhotos(
