@@ -2878,6 +2878,17 @@ class PartnerService {
         // Kontrollen er lagret — PDF-arkiv kan regenereres ved nedlasting.
       }
     }
+
+    if (saved.hasDeviation) {
+      try {
+        await _client.rpc(
+          'notify_partner_vehicle_inspection_deviation',
+          params: {'p_inspection_id': saved.id},
+        );
+      } catch (_) {
+        // Kontroll lagret — varsel kan sendes på nytt senere.
+      }
+    }
     return saved;
   }
 

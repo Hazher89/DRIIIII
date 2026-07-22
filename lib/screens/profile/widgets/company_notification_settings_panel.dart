@@ -150,7 +150,8 @@ class _CompanyNotificationSettingsPanelState
                 onChanged: (v) => _patch((x) => x.copyWith(chPartnerRouteOwner: v)),
               ),
               NotificationChannelTile(
-                title: 'Møte / oppfølging',
+                title: 'Møte / oppfølging / bilkontroll-avvik',
+                subtitle: 'SMS/e-post til bedriftsansvarlig ved avvik etter bilkontroll.',
                 value: s.chPartnerMeeting,
                 onChanged: (v) => _patch((x) => x.copyWith(chPartnerMeeting: v)),
               ),
