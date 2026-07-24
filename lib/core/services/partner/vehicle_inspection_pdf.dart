@@ -132,9 +132,9 @@ abstract final class VehicleInspectionPdf {
       final mark = _rowMark(field, raw);
       final result = _resultLabel(field, raw);
       rows.add([
-        mark == 'alert' ? '● ${field.label}' : field.label,
+        mark == 'alert' ? '* ${field.label}' : field.label,
         _formatChecklistValue(field, raw),
-        mark == 'alert' ? '⚠ $result' : result,
+        mark == 'alert' ? 'AVVIK: $result' : result,
       ]);
       rowMarks.add(mark);
     }
