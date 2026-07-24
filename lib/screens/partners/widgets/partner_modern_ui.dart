@@ -784,8 +784,10 @@ class PartnerMaviVehicleOverview extends StatelessWidget {
     final gray = muted || !v.isActive;
     final accent = gray ? const Color(0xFF9CA3AF) : const Color(0xFF15803D);
     final last = v.id.isNotEmpty ? lastInspectionByVehicleId[v.id] : null;
-    final inspectionLabel = _inspectionLabel(last);
-    final inspectionColor = _inspectionColor(last, gray);
+    // Vis kun badge når bilen faktisk er kontrollert (skjul «Ikke kontrollert»).
+    final showInspection = last != null;
+    final inspectionLabel = showInspection ? _inspectionLabel(last) : null;
+    final inspectionColor = showInspection ? _inspectionColor(last, gray) : null;
 
     return Padding(
       padding: EdgeInsets.only(bottom: dense ? 4 : 6),
@@ -850,32 +852,33 @@ class PartnerMaviVehicleOverview extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: inspectionColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: inspectionColor.withValues(alpha: 0.28)),
-              ),
-              child: Text(
-                inspectionLabel,
-                textAlign: TextAlign.right,
-                style: TextStyle(
-                  fontSize: dense ? 9 : 10,
-                  fontWeight: FontWeight.w700,
-                  color: inspectionColor,
+            if (showInspection && inspectionLabel != null && inspectionColor != null) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: inspectionColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: inspectionColor.withValues(alpha: 0.28)),
+                ),
+                child: Text(
+                  inspectionLabel,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: dense ? 9 : 10,
+                    fontWeight: FontWeight.w700,
+                    color: inspectionColor,
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  String _inspectionLabel(PartnerVehicleInspection? last) {
-    if (last == null) return 'Ikke kontrollert';
+  String _inspectionLabel(PartnerVehicleInspection last) {
     final d = last.inspectedAt.toLocal();
     final stamp =
         '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
@@ -883,9 +886,8 @@ class PartnerMaviVehicleOverview extends StatelessWidget {
     return 'OK · $stamp';
   }
 
-  Color _inspectionColor(PartnerVehicleInspection? last, bool gray) {
+  Color _inspectionColor(PartnerVehicleInspection last, bool gray) {
     if (gray) return const Color(0xFF9CA3AF);
-    if (last == null) return const Color(0xFFD97706);
     if (last.hasDeviation) return const Color(0xFFDC2626);
     return const Color(0xFF15803D);
   }
