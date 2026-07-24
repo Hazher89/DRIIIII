@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -12,6 +13,7 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/vehicle_inspection_pdf.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/bytes_download.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/vehicle_inspection.dart';
@@ -59,8 +61,12 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   String? _lastSavedInspectionId;
   final List<_PendingInspectionPhoto> _pendingPhotos = [];
   final ImagePicker _imagePicker = ImagePicker();
+  bool _archiveSelectMode = false;
+  final Set<String> _selectedArchiveIds = {};
+  bool _massDownloading = false;
 
   static final _stampFmt = DateFormat('dd.MM.yyyy HH:mm');
+  static final _zipStampFmt = DateFormat('yyyyMMdd_HHmm');
 
   int _countNotChecked(PartnerVehicleInspection ins) {
     var c = 0;
@@ -265,23 +271,171 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
     await HmsPdfExportService.runWithFeedback(
       context,
       fileName: VehicleInspectionPdf.fileNameFor(inspection),
-      generate: () async {
-        final stored = inspection.pdfStoragePath?.trim();
-        if (stored != null && stored.isNotEmpty) {
-          final bytes = await PartnerService.downloadInspectionPdfBytes(
-            stored,
-            companyId: inspection.companyId,
-          );
-          if (bytes != null && bytes.isNotEmpty) return bytes;
-        }
-        return VehicleInspectionPdf.generate(
-          inspection: inspection,
-          partner: widget.partner,
-          inspectorName: inspection.inspectedByName ?? _inspectorName,
-          photoBytes: await _photoBytesForExport(inspection),
-        );
-      },
+      generate: () => _pdfBytesFor(inspection),
     );
+  }
+
+  Future<Uint8List> _pdfBytesFor(PartnerVehicleInspection inspection) async {
+    final stored = inspection.pdfStoragePath?.trim();
+    if (stored != null && stored.isNotEmpty) {
+      final bytes = await PartnerService.downloadInspectionPdfBytes(
+        stored,
+        companyId: inspection.companyId,
+      );
+      if (bytes != null && bytes.isNotEmpty) return bytes;
+    }
+    return VehicleInspectionPdf.generate(
+      inspection: inspection,
+      partner: widget.partner,
+      inspectorName: inspection.inspectedByName ?? _inspectorName,
+      photoBytes: await _photoBytesForExport(inspection),
+    );
+  }
+
+  List<PartnerVehicleInspection> _filteredArchive() {
+    final q = _archiveSearch.text.trim().toLowerCase();
+    if (q.isEmpty) return List<PartnerVehicleInspection>.from(_archive);
+    return _archive.where((a) {
+      final hay = [
+        a.registrationNumber ?? '',
+        a.unitCode ?? '',
+        a.inspectedByName ?? '',
+        a.deviationNotes ?? '',
+        a.stampLine,
+      ].join(' ').toLowerCase();
+      return hay.contains(q);
+    }).toList();
+  }
+
+  void _toggleArchiveSelectMode() {
+    setState(() {
+      _archiveSelectMode = !_archiveSelectMode;
+      if (!_archiveSelectMode) _selectedArchiveIds.clear();
+    });
+  }
+
+  void _selectAllFilteredArchive() {
+    setState(() {
+      _selectedArchiveIds
+        ..clear()
+        ..addAll(_filteredArchive().map((a) => a.id));
+    });
+  }
+
+  Future<void> _exportSelectedPdfs() async {
+    final selected = _filteredArchive()
+        .where((a) => _selectedArchiveIds.contains(a.id))
+        .toList();
+    if (selected.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Velg minst én kontroll først.')),
+      );
+      return;
+    }
+    await _exportPdfZip(selected);
+  }
+
+  Future<void> _exportAllFilteredPdfs() async {
+    final list = _filteredArchive();
+    if (list.isEmpty) return;
+    await _exportPdfZip(list);
+  }
+
+  Future<void> _exportPdfZip(List<PartnerVehicleInspection> items) async {
+    if (_massDownloading || items.isEmpty) return;
+    setState(() => _massDownloading = true);
+    try {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Pakker PDF-er…'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final archive = Archive();
+      var ok = 0;
+      final usedNames = <String>{};
+      for (final ins in items) {
+        try {
+          final bytes = await _pdfBytesFor(ins);
+          var name = '${VehicleInspectionPdf.fileNameFor(ins)}.pdf';
+          if (usedNames.contains(name)) {
+            name = '${VehicleInspectionPdf.fileNameFor(ins)}_${ins.id.substring(0, 6)}.pdf';
+          }
+          usedNames.add(name);
+          archive.addFile(ArchiveFile(name, bytes.length, bytes));
+          ok++;
+        } catch (_) {
+          // Skip failed single PDF; continue with the rest.
+        }
+      }
+
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+
+      if (ok == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Kunne ikke hente PDF-er.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      final zipped = ZipEncoder().encode(archive);
+      if (zipped == null || zipped.isEmpty) {
+        throw Exception('ZIP feilet');
+      }
+      final partnerLabel = widget.partner.tradeName?.trim().isNotEmpty == true
+          ? widget.partner.tradeName!.trim()
+          : widget.partner.name;
+      final partnerSafe = partnerLabel
+          .replaceAll(RegExp(r'[^A-Za-z0-9ÆØÅæøå\-]+'), '_')
+          .replaceAll(RegExp(r'_+'), '_')
+          .replaceAll(RegExp(r'^_|_$'), '');
+      final zipName =
+          'Bilkontroller_${partnerSafe.isEmpty ? 'partner' : partnerSafe}_${_zipStampFmt.format(DateTime.now())}.zip';
+      await downloadBytes(
+        Uint8List.fromList(zipped),
+        zipName,
+        mime: 'application/zip',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$ok PDF-er lastet ned ($zipName)')),
+      );
+      setState(() {
+        _archiveSelectMode = false;
+        _selectedArchiveIds.clear();
+      });
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Massenedlasting feilet: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _massDownloading = false);
+    }
   }
 
   Future<List<Uint8List>> _photoBytesForExport(PartnerVehicleInspection inspection) async {
@@ -484,7 +638,9 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'SMS og push inneholder skiltnummer på bilen. Ingenting sendes før du velger og trykker Utfør.',
+                  inspection.hasDeviation
+                      ? 'SMS/push varsler om avvik og inkluderer skiltnummer. Ingenting sendes før du velger og trykker Utfør.'
+                      : 'Ved OK-kontroll får bedriftsansvarlig en profesjonell bekreftelse: bilen har vært i kontroll og alt ser bra ut. Ingenting sendes før du velger og trykker Utfør.',
                   style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(ctx)),
                 ),
                 RadioListTile<int>(
@@ -591,8 +747,12 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
             children: [
               Text(
                 plateHint.isEmpty
-                    ? 'Velg hvordan bedriftsansvarlig skal varsles om kontrollen.'
-                    : 'Varsel om kontroll på $plateHint. SMS/push inkluderer skiltnummer.',
+                    ? (inspection.hasDeviation
+                        ? 'Velg hvordan bedriftsansvarlig skal varsles om avvik.'
+                        : 'Velg hvordan bedriftsansvarlig skal varsles. Ved OK sendes en positiv bekreftelse.')
+                    : (inspection.hasDeviation
+                        ? 'Varsel om avvik på $plateHint. SMS/push inkluderer skiltnummer.'
+                        : 'Varsel om OK-kontroll på $plateHint: bilen har vært i kontroll og alt ser bra ut.'),
                 style: TextStyle(color: PartnerModernUi.textPrimary(ctx)),
               ),
               RadioListTile<int>(
@@ -810,9 +970,37 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
         PartnerModernSection(
           title: 'Arkiv',
           subtitle: 'Alle lagrede kontroller for bedriften',
-          trailing: Text(
-            '${_archive.length}',
-            style: TextStyle(fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context)),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_archive.isNotEmpty) ...[
+                IconButton(
+                  tooltip: _archiveSelectMode ? 'Avbryt valg' : 'Velg for massenedlasting',
+                  onPressed: _massDownloading ? null : _toggleArchiveSelectMode,
+                  icon: Icon(
+                    _archiveSelectMode ? Icons.close : Icons.checklist_rtl,
+                    size: 20,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Last ned alle PDF-er (ZIP)',
+                  onPressed: _massDownloading || _archive.isEmpty
+                      ? null
+                      : _exportAllFilteredPdfs,
+                  icon: _massDownloading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: DriftProLoadingIndicator(size: 18),
+                        )
+                      : const Icon(Icons.folder_zip_outlined, size: 20),
+                ),
+              ],
+              Text(
+                '${_archive.length}',
+                style: TextStyle(fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context)),
+              ),
+            ],
           ),
           children: [
             if (_archive.isEmpty)
@@ -841,6 +1029,47 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
                 ),
                 onChanged: (_) => setState(() {}),
               ),
+              if (_archiveSelectMode) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.28),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${_selectedArchiveIds.length} valgt',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _selectAllFilteredArchive,
+                        child: const Text('Velg alle'),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _massDownloading || _selectedArchiveIds.isEmpty
+                            ? null
+                            : _exportSelectedPdfs,
+                        icon: const Icon(Icons.download_outlined, size: 18),
+                        label: const Text('Last ned ZIP'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: DriftProTheme.primaryGreen,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 10),
               ..._archiveCards(context),
             ],
@@ -1044,19 +1273,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   }
 
   List<Widget> _archiveCards(BuildContext context) {
-    final q = _archiveSearch.text.trim().toLowerCase();
-    final filtered = q.isEmpty
-        ? _archive
-        : _archive.where((a) {
-            final hay = [
-              a.registrationNumber ?? '',
-              a.unitCode ?? '',
-              a.inspectedByName ?? '',
-              a.deviationNotes ?? '',
-              a.stampLine,
-            ].join(' ').toLowerCase();
-            return hay.contains(q);
-          }).toList();
+    final filtered = _filteredArchive();
     if (filtered.isEmpty) {
       return [
         Padding(
@@ -1080,6 +1297,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
           : notCheckedCount > 0
               ? '$notCheckedCount ikke sjekket'
               : 'OK';
+      final selected = _selectedArchiveIds.contains(a.id);
 
       return Container(
         margin: const EdgeInsets.only(bottom: 6),
@@ -1089,14 +1307,30 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
               : PartnerModernUi.border(context).withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: a.id == _lastSavedInspectionId
-                ? DriftProTheme.primaryGreen.withValues(alpha: 0.45)
-                : PartnerModernUi.border(context),
-            width: a.id == _lastSavedInspectionId ? 1.5 : 1,
+            color: selected
+                ? DriftProTheme.primaryGreen
+                : a.id == _lastSavedInspectionId
+                    ? DriftProTheme.primaryGreen.withValues(alpha: 0.45)
+                    : PartnerModernUi.border(context),
+            width: selected || a.id == _lastSavedInspectionId ? 1.5 : 1,
           ),
         ),
         child: ListTile(
           dense: true,
+          leading: _archiveSelectMode
+              ? Checkbox(
+                  value: selected,
+                  onChanged: (v) {
+                    setState(() {
+                      if (v == true) {
+                        _selectedArchiveIds.add(a.id);
+                      } else {
+                        _selectedArchiveIds.remove(a.id);
+                      }
+                    });
+                  },
+                )
+              : null,
           title: Row(
             children: [
               Expanded(
@@ -1131,7 +1365,19 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
             '${a.photoPaths.isNotEmpty ? "\n${a.photoPaths.length} bilde(r)" : ""}',
             style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
           ),
-          onTap: a.photoPaths.isNotEmpty ? () => _showSavedPhotos(a) : null,
+          onTap: _archiveSelectMode
+              ? () {
+                  setState(() {
+                    if (selected) {
+                      _selectedArchiveIds.remove(a.id);
+                    } else {
+                      _selectedArchiveIds.add(a.id);
+                    }
+                  });
+                }
+              : a.photoPaths.isNotEmpty
+                  ? () => _showSavedPhotos(a)
+                  : null,
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -1146,34 +1392,36 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
                   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: statusColor),
                 ),
               ),
-              PopupMenuButton<String>(
-                tooltip: 'Varsle bedriftsansvarlig',
-                padding: EdgeInsets.zero,
-                icon: const Icon(Icons.campaign_outlined, size: 20),
-                onSelected: (choice) async {
-                  switch (choice) {
-                    case 'sms':
-                      await _sendOwnerNotify(a, sms: true, push: false);
-                    case 'push':
-                      await _sendOwnerNotify(a, sms: false, push: true);
-                    case 'both':
-                      await _sendOwnerNotify(a, sms: true, push: true);
-                    case 'choose':
-                      await _offerNotifyOwners(a);
-                  }
-                },
-                itemBuilder: (ctx) => const [
-                  PopupMenuItem(value: 'sms', child: Text('Send SMS')),
-                  PopupMenuItem(value: 'push', child: Text('Send push-varsel')),
-                  PopupMenuItem(value: 'both', child: Text('Send SMS + push')),
-                  PopupMenuItem(value: 'choose', child: Text('Velg…')),
-                ],
-              ),
-              IconButton(
-                tooltip: 'Last ned PDF',
-                icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
-                onPressed: () => _exportPdf(a),
-              ),
+              if (!_archiveSelectMode) ...[
+                PopupMenuButton<String>(
+                  tooltip: 'Varsle bedriftsansvarlig',
+                  padding: EdgeInsets.zero,
+                  icon: const Icon(Icons.campaign_outlined, size: 20),
+                  onSelected: (choice) async {
+                    switch (choice) {
+                      case 'sms':
+                        await _sendOwnerNotify(a, sms: true, push: false);
+                      case 'push':
+                        await _sendOwnerNotify(a, sms: false, push: true);
+                      case 'both':
+                        await _sendOwnerNotify(a, sms: true, push: true);
+                      case 'choose':
+                        await _offerNotifyOwners(a);
+                    }
+                  },
+                  itemBuilder: (ctx) => const [
+                    PopupMenuItem(value: 'sms', child: Text('Send SMS')),
+                    PopupMenuItem(value: 'push', child: Text('Send push-varsel')),
+                    PopupMenuItem(value: 'both', child: Text('Send SMS + push')),
+                    PopupMenuItem(value: 'choose', child: Text('Velg…')),
+                  ],
+                ),
+                IconButton(
+                  tooltip: 'Last ned PDF',
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                  onPressed: () => _exportPdf(a),
+                ),
+              ],
             ],
           ),
         ),

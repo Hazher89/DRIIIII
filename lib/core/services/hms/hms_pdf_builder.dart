@@ -35,6 +35,12 @@ class HmsPdfBuilder {
   final PdfBrush whiteBrush = PdfSolidBrush(PdfColor(255, 255, 255));
   final PdfBrush brandBrush = PdfSolidBrush(PdfColor(33, 115, 70));
   final PdfBrush brandLightBrush = PdfSolidBrush(PdfColor(232, 245, 236));
+  final PdfBrush dangerBrush = PdfSolidBrush(PdfColor(185, 28, 28));
+  final PdfBrush dangerLightBrush = PdfSolidBrush(PdfColor(254, 226, 226));
+  final PdfBrush okBrush = PdfSolidBrush(PdfColor(21, 128, 61));
+  final PdfBrush okLightBrush = PdfSolidBrush(PdfColor(220, 252, 231));
+  final PdfBrush warnLightBrush = PdfSolidBrush(PdfColor(254, 243, 199));
+  final PdfBrush warnBrush = PdfSolidBrush(PdfColor(146, 64, 14));
 
   /// Header-merke (f.eks. «DRIFTPRO» eller «DRIFTPRO HMS»).
   String brandHeader = 'DRIFTPRO HMS';
@@ -149,6 +155,41 @@ class HmsPdfBuilder {
     y += 28;
   }
 
+  /// Tydelig statusstripe (f.eks. AVVIK / OK) under dokumentheader.
+  void statusBanner({
+    required String title,
+    String? detail,
+    bool isAlert = false,
+  }) {
+    ensureSpace(detail == null || detail.trim().isEmpty ? 34 : 48);
+    final bg = isAlert ? dangerLightBrush : okLightBrush;
+    final fg = isAlert ? dangerBrush : okBrush;
+    final h = detail == null || detail.trim().isEmpty ? 28.0 : 42.0;
+    page.graphics.drawRectangle(
+      brush: bg,
+      bounds: Rect.fromLTWH(margin, y, _contentWidth, h),
+    );
+    page.graphics.drawRectangle(
+      brush: fg,
+      bounds: Rect.fromLTWH(margin, y, 4, h),
+    );
+    page.graphics.drawString(
+      title.toUpperCase(),
+      sectionFont,
+      brush: fg,
+      bounds: Rect.fromLTWH(margin + 12, y + 6, _contentWidth - 20, 14),
+    );
+    if (detail != null && detail.trim().isNotEmpty) {
+      page.graphics.drawString(
+        detail.trim(),
+        smallFont,
+        brush: darkBrush,
+        bounds: Rect.fromLTWH(margin + 12, y + 22, _contentWidth - 20, 14),
+      );
+    }
+    y += h + 10;
+  }
+
   void field(String label, String? value) {
     final v = (value ?? '').trim();
     if (v.isEmpty) return;
@@ -260,6 +301,8 @@ class HmsPdfBuilder {
     required List<String> headers,
     required List<List<String>> rows,
     PdfPageOrientation? landscapeIfWide,
+    /// Per rad: `alert` = avvik (rød), `warn` = advarsel (gul), ellers normal.
+    List<String?>? rowMarks,
   }) {
     if (headers.isEmpty || rows.isEmpty) return;
 
@@ -296,12 +339,30 @@ class HmsPdfBuilder {
 
     drawHeaderRow();
 
-    for (final row in rows) {
+    for (var r = 0; r < rows.length; r++) {
+      final row = rows[r];
+      final mark = (rowMarks != null && r < rowMarks.length) ? rowMarks[r] : null;
+      final isAlert = mark == 'alert';
+      final isWarn = mark == 'warn';
+      final rowBrush = isAlert
+          ? dangerLightBrush
+          : isWarn
+              ? warnLightBrush
+              : null;
+      final textBrush = isAlert
+          ? dangerBrush
+          : isWarn
+              ? warnBrush
+              : darkBrush;
+      final cellFont = isAlert
+          ? PdfStandardFont(PdfFontFamily.helvetica, 7, style: PdfFontStyle.bold)
+          : tableCellFont;
+
       var rowH = lineH + pad * 2;
       final cellLines = <int>[];
       for (var c = 0; c < colCount; c++) {
         final val = c < row.length ? row[c] : '';
-        final lines = _wrapLines(val, tableCellFont, colW - pad * 2);
+        final lines = _wrapLines(val, cellFont, colW - pad * 2);
         cellLines.add(lines.length);
       }
       final maxLines = cellLines.fold<int>(1, (a, b) => a > b ? a : b);
@@ -312,15 +373,25 @@ class HmsPdfBuilder {
       for (var c = 0; c < colCount; c++) {
         final val = c < row.length ? row[c] : '';
         final rect = Rect.fromLTWH(x, y, colW, rowH);
+        if (rowBrush != null) {
+          page.graphics.drawRectangle(brush: rowBrush, bounds: rect);
+        }
         page.graphics.drawRectangle(
-          pen: PdfPen(PdfColor(220, 220, 220), width: 0.3),
+          pen: PdfPen(
+            isAlert
+                ? PdfColor(248, 113, 113)
+                : isWarn
+                    ? PdfColor(251, 191, 36)
+                    : PdfColor(220, 220, 220),
+            width: isAlert || isWarn ? 0.7 : 0.3,
+          ),
           bounds: rect,
         );
         _drawWrappedAt(
           x: x + pad,
           text: val,
-          font: tableCellFont,
-          brush: darkBrush,
+          font: cellFont,
+          brush: textBrush,
           startY: y + pad,
           width: colW - pad * 2,
           lineHeight: lineH,

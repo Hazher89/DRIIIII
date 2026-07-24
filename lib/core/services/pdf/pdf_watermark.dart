@@ -1,9 +1,11 @@
-import 'dart:ui' show Rect;
+import 'dart:ui' show Rect, Size;
 
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
-/// Gjennomsiktig logo-vannmerke på alle PDF-sider (under tekst).
+/// Gjennomsiktig MAVI-logo som bakgrunnsvannmerke på alle PDF-sider (under tekst).
+///
+/// Stil inspirert av klassisk «DRAFT»-vannmerke: stort, diagonal, lesbart under innhold.
 abstract final class PdfWatermark {
   PdfWatermark._();
 
@@ -27,12 +29,39 @@ abstract final class PdfWatermark {
     return null;
   }
 
+  /// Tegner logo sentrert og litt på skrå, med lav opacity.
+  static void paintLogo(
+    PdfGraphics graphics, {
+    required PdfBitmap bitmap,
+    required Size size,
+    double opacity = 0.14,
+    double widthFactor = 0.58,
+    double angleDegrees = -32,
+  }) {
+    final aspect = bitmap.width / bitmap.height;
+    if (aspect <= 0 || !aspect.isFinite) return;
+
+    final drawW = size.width * widthFactor.clamp(0.35, 0.85);
+    final drawH = drawW / aspect;
+
+    final state = graphics.save();
+    graphics.setTransparency(opacity.clamp(0.06, 0.28));
+    graphics.translateTransform(size.width / 2, size.height / 2);
+    graphics.rotateTransform(angleDegrees);
+    graphics.drawImage(
+      bitmap,
+      Rect.fromLTWH(-drawW / 2, -drawH / 2, drawW, drawH),
+    );
+    graphics.restore(state);
+  }
+
   /// Legger logo bak alt innhold på alle sider (og nye sider).
   static Future<void> applyLogoBackground(
     PdfDocument doc, {
     PdfBitmap? logo,
-    double opacity = 0.10,
-    double widthFactor = 0.48,
+    double opacity = 0.14,
+    double widthFactor = 0.58,
+    double angleDegrees = -32,
   }) async {
     final bitmap = logo ?? await loadLogo();
     if (bitmap == null || doc.pages.count == 0) return;
@@ -42,16 +71,16 @@ abstract final class PdfWatermark {
       Rect.fromLTWH(0, 0, size.width, size.height),
     );
     stamp.background = true;
+    stamp.dock = PdfDockStyle.fill;
 
-    final aspect = bitmap.width / bitmap.height;
-    final drawW = size.width * widthFactor;
-    final drawH = drawW / aspect;
-    final x = (size.width - drawW) / 2;
-    final y = (size.height - drawH) / 2;
-
-    stamp.graphics.setTransparency(opacity.clamp(0.04, 0.25));
-    stamp.graphics.drawImage(bitmap, Rect.fromLTWH(x, y, drawW, drawH));
-    stamp.graphics.setTransparency(1.0);
+    paintLogo(
+      stamp.graphics,
+      bitmap: bitmap,
+      size: size,
+      opacity: opacity,
+      widthFactor: widthFactor,
+      angleDegrees: angleDegrees,
+    );
 
     doc.template.stamps.add(stamp);
   }

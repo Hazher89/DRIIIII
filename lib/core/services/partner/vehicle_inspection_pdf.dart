@@ -49,6 +49,24 @@ abstract final class VehicleInspectionPdf {
       documentDate: inspection.inspectedAt,
     );
 
+    final summary = _summaryCounts(inspection);
+    if (inspection.hasDeviation || summary.avvik > 0) {
+      b.statusBanner(
+        title: 'Avvik registrert',
+        detail: summary.avvik > 0
+            ? '${summary.avvik} punkt med avvik'
+                '${(inspection.deviationNotes ?? '').trim().isNotEmpty ? ' · se kommentar nedenfor' : ''}'
+            : 'Avvik er flagget på denne kontrollen',
+        isAlert: true,
+      );
+    } else {
+      b.statusBanner(
+        title: 'OK — ingen avvik',
+        detail: 'Alle sjekkede punkter er innenfor krav',
+        isAlert: false,
+      );
+    }
+
     b.section('Oppsummering');
     b.keyValueGrid([
       ('Bedrift', partnerName),
@@ -108,20 +126,24 @@ abstract final class VehicleInspectionPdf {
 
     b.section('Sjekkliste — avkryssing');
     final rows = <List<String>>[];
+    final rowMarks = <String?>[];
     for (final field in VehicleInspectionTemplate.items) {
       final raw = inspection.checklist[field.key];
+      final mark = _rowMark(field, raw);
+      final result = _resultLabel(field, raw);
       rows.add([
-        field.label,
+        mark == 'alert' ? '● ${field.label}' : field.label,
         _formatChecklistValue(field, raw),
-        _resultLabel(field, raw),
+        mark == 'alert' ? '⚠ $result' : result,
       ]);
+      rowMarks.add(mark);
     }
     b.table(
       headers: const ['Kontrollpunkt', 'Registrert', 'Status'],
       rows: rows,
+      rowMarks: rowMarks,
     );
 
-    final summary = _summaryCounts(inspection);
     b.section('Telling');
     b.keyValueGrid([
       ('OK', '${summary.ok}'),
@@ -131,11 +153,21 @@ abstract final class VehicleInspectionPdf {
     ]);
 
     if (inspection.hasDeviation ||
-        (inspection.deviationNotes ?? '').trim().isNotEmpty) {
+        (inspection.deviationNotes ?? '').trim().isNotEmpty ||
+        summary.avvik > 0) {
       b.section('Avvik og kommentarer');
+      b.statusBanner(
+        title: summary.avvik > 0
+            ? '${summary.avvik} avvikspunkt markert i rødt i sjekklisten'
+            : 'Avvik registrert',
+        detail: (inspection.deviationNotes ?? '').trim().isNotEmpty
+            ? null
+            : 'Se sjekkliste for detaljer',
+        isAlert: true,
+      );
       b.field(
         'Avvik registrert',
-        inspection.hasDeviation ? 'Ja' : 'Nei',
+        (inspection.hasDeviation || summary.avvik > 0) ? 'Ja' : 'Nei',
       );
       b.field('Beskrivelse / kommentar', inspection.deviationNotes ?? '—');
       if (inspection.followUpDueAt != null) {
@@ -235,6 +267,25 @@ abstract final class VehicleInspectionPdf {
         return 'OK';
       case InspectionFieldType.text:
         return 'Notert';
+    }
+  }
+
+  /// `alert` = rød avviksrad, `warn` = gul (kan ikke sjekkes), ellers null.
+  static String? _rowMark(VehicleInspectionField field, dynamic raw) {
+    if (raw == null) return null;
+    final text = '$raw'.trim();
+    if (text.isEmpty) return null;
+    switch (field.type) {
+      case InspectionFieldType.okAvvik:
+        if (text == 'avvik') return 'alert';
+        if (text == 'not_checked') return 'warn';
+        return null;
+      case InspectionFieldType.number:
+        final mm = double.tryParse(text.replaceAll(',', '.'));
+        if (mm != null && mm < 3.0) return 'alert';
+        return null;
+      case InspectionFieldType.text:
+        return null;
     }
   }
 
