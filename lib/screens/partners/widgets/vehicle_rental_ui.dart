@@ -80,14 +80,18 @@ String vehicleRentalPeriodLabel(VehicleRental r) {
   if (r.rentalStartAt != null && r.rentalEndAt != null) {
     return '${fmtTs.format(r.rentalStartAt!.toLocal())} – ${fmtTs.format(r.rentalEndAt!.toLocal())}';
   }
-  if (r.rentalStartAt != null) return 'Fra ${fmtTs.format(r.rentalStartAt!.toLocal())}';
+  if (r.rentalStartAt != null) {
+    return 'Fra ${fmtTs.format(r.rentalStartAt!.toLocal())} · sluttdato ikke avklart';
+  }
   if (r.rentalEndAt != null) return 'Til ${fmtTs.format(r.rentalEndAt!.toLocal())}';
   if (r.rentalStart == null && r.rentalEnd == null) return 'Periode ikke satt';
   final fmt = DateFormat('d.M.y', 'nb');
   if (r.rentalStart != null && r.rentalEnd != null) {
     return '${fmt.format(r.rentalStart!)} – ${fmt.format(r.rentalEnd!)}';
   }
-  if (r.rentalStart != null) return 'Fra ${fmt.format(r.rentalStart!)}';
+  if (r.rentalStart != null) {
+    return 'Fra ${fmt.format(r.rentalStart!)} · sluttdato ikke avklart';
+  }
   return 'Til ${fmt.format(r.rentalEnd!)}';
 }
 

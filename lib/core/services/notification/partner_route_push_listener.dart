@@ -4,11 +4,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/driftpro_client.dart';
 import 'push_notification_service.dart';
+import '../native_permissions_service.dart';
 
 /// Realtime-fallback: vis lokalt varsel når ny rute sendes mens appen kjører.
 abstract final class PartnerRoutePushListener {
   static RealtimeChannel? _channel;
   static String? _partnerId;
+  static bool _askedNotifications = false;
 
   static void start({
     required String partnerId,
@@ -17,6 +19,10 @@ abstract final class PartnerRoutePushListener {
     if (!DriftProClient.isMobile || partnerVehicleId == null) return;
     stop();
     _partnerId = partnerId;
+    _askedNotifications = false;
+
+    // Varsler trengs for rute-tildeling — be kun når sjåførportal brukes.
+    unawaited(_ensureNotificationsOnce());
 
     final client = Supabase.instance.client;
     _channel = client
@@ -44,6 +50,12 @@ abstract final class PartnerRoutePushListener {
           callback: (payload) => _maybeNotify(payload.newRecord),
         )
         .subscribe();
+  }
+
+  static Future<void> _ensureNotificationsOnce() async {
+    if (_askedNotifications) return;
+    _askedNotifications = true;
+    await NativePermissionsService.ensureNotifications();
   }
 
   static void stop() {

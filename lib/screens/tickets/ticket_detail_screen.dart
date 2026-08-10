@@ -395,7 +395,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           HmsPdfExportButton(
             fileName: _ticket.ticketNumber != null
                 ? 'avvik_${_ticket.ticketNumber}'
-                : 'avvik_${_ticket.id.substring(0, 8)}',
+                : 'avvik_${_ticket.id.length >= 8 ? _ticket.id.substring(0, 8) : _ticket.id}',
             onGenerate: () => HmsPdfGenerators.ticket(
               _ticket,
               comments: _comments,
@@ -912,6 +912,8 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     final ts = comment.createdAt != null
         ? _stampFmt.format(comment.createdAt!.toLocal())
         : '';
+    final name = (comment.userName ?? '').trim();
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -920,11 +922,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         children: [
           CircleAvatar(
             radius: 16,
-            child: Text(
-              (comment.userName ?? '?').isNotEmpty
-                  ? (comment.userName![0]).toUpperCase()
-                  : '?',
-            ),
+            child: Text(initial),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/permissions/access_presets.dart';
+import '../../core/permissions/access_catalog.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
@@ -83,7 +83,7 @@ class _AccessControlScreenState extends State<AccessControlScreen> {
 
   void _showAccessSettings(UserProfile user) {
     Map<String, dynamic> settings = Map<String, dynamic>.from(
-      user.accessSettings ?? AccessPresets.forRole(user.role),
+      AccessCatalog.normalizeV2(user.accessSettings, user.role),
     );
 
     showModalBottomSheet(
@@ -119,6 +119,7 @@ class _AccessControlScreenState extends State<AccessControlScreen> {
                     children: [
                       PermissionMatrixEditor(
                         settings: settings,
+                        roleForPresets: user.role,
                         onChanged: (s) => setModalState(() => settings = s),
                       ),
                     ],

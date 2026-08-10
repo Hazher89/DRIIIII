@@ -69,6 +69,8 @@ Future<void> _initSupabase() async {
     authOptions: const FlutterAuthClientOptions(
       autoRefreshToken: true,
       authFlowType: AuthFlowType.pkce,
+      // Matcher deep link: no.driftpro.driftpro://login-callback/
+      detectSessionInUri: true,
     ),
   );
 }
@@ -86,15 +88,13 @@ class _DriftProAppState extends State<DriftProApp> {
 
   @override
   Widget build(BuildContext context) {
-    final themeNotifier = context.watch<ThemeNotifier>();
-
     return SystemUiSync(
       child: MaterialApp.router(
         title: DriftProClient.displayName,
         debugShowCheckedModeBanner: false,
         theme: DriftProTheme.lightTheme,
-        darkTheme: DriftProTheme.darkTheme,
-        themeMode: themeNotifier.themeMode,
+        darkTheme: DriftProTheme.lightTheme,
+        themeMode: ThemeMode.light,
         routerConfig: _router,
       ),
     );

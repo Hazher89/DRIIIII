@@ -347,15 +347,27 @@ class _TicketAdminDashboardScreenState extends State<TicketAdminDashboardScreen>
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => TicketDetailScreen(
-                ticket: t,
-                coordinatorProfile: _profile,
+          try {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TicketDetailScreen(
+                  ticket: t,
+                  coordinatorProfile: _profile,
+                ),
               ),
-            ),
-          ).then((_) => _load());
+            ).then((_) {
+              if (mounted) _load();
+            });
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Kunne ikke åpne avvik: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         },
         leading: CircleAvatar(
           backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.15),

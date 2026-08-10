@@ -190,15 +190,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
               isDark,
               subtitle: 'Policy, rettigheter og slett konto',
             ),
-            _buildActionTile(
-              Icons.delete_forever_outlined,
-              'Slett konto',
-              () => showDeleteOwnAccountDialog(context),
-              isDark,
-              subtitle: 'Fjerner innlogging og personopplysninger',
-            ),
           ]),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: DriftProTheme.error.withValues(alpha: isDark ? 0.12 : 0.06),
+              borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
+              border: Border.all(
+                color: DriftProTheme.error.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Slett konto',
+                  style: DriftProTheme.headingSm.copyWith(
+                    color: DriftProTheme.error,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'DriftPro er kun for ${DriftProPlatformCatalog.companyName}. '
+                  'Du kan slette din egen innlogging og personopplysninger her. '
+                  'Bedriften kan fortsatt være lovpålagt å beholde enkelte HMS-/HR-data uten din identitet.',
+                  style: DriftProTheme.bodySm.copyWith(height: 1.4),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => showDeleteOwnAccountDialog(context),
+                  icon: const Icon(Icons.delete_forever_outlined),
+                  label: const Text('Slett konto permanent'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DriftProTheme.error,
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(

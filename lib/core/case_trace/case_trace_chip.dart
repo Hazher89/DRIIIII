@@ -20,55 +20,54 @@ class CaseTraceChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final code = CaseTrace.codeFromId(id);
-    final label = compact ? '$traceRef · $code' : traceRef;
+    final label = compact ? '$traceRef · $code' : '$traceRef  $code';
 
-    return InkWell(
-      onTap: () {
-        Clipboard.setData(ClipboardData(text: '$traceRef ($code)'));
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sporings-ID kopiert: $traceRef')),
-        );
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 8 : 10,
-          vertical: compact ? 4 : 6,
-        ),
-        decoration: BoxDecoration(
-          color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.25)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.fingerprint, size: compact ? 12 : 14, color: DriftProTheme.primaryGreen),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                style: TextStyle(
-                  fontSize: compact ? 10 : 12,
-                  fontWeight: FontWeight.w800,
-                  color: DriftProTheme.primaryGreen,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Clipboard.setData(ClipboardData(text: '$traceRef ($code)'));
+          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+            SnackBar(content: Text('Sporings-ID kopiert: $traceRef')),
+          );
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 10,
+            vertical: compact ? 4 : 6,
+          ),
+          decoration: BoxDecoration(
+            color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: DriftProTheme.primaryGreen.withValues(alpha: 0.25),
             ),
-            if (!compact) ...[
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.fingerprint,
+                size: compact ? 12 : 14,
+                color: DriftProTheme.primaryGreen,
+              ),
               const SizedBox(width: 6),
-              Text(
-                code,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.8),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: compact ? 160 : 220),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: compact ? 10 : 12,
+                    fontWeight: FontWeight.w800,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
-          ],
+          ),
         ),
       ),
     );

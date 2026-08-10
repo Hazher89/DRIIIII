@@ -147,7 +147,7 @@ class _HmsScreenState extends State<HmsScreen> {
         onTap: () => context.push(AppPaths.hmsKompetanse),
       ));
     }
-    if (a?.canHms == true) {
+    if (a?.canHmsTraining == true) {
       modules.add(_buildModuleCard(
         context,
         icon: Icons.school_rounded,

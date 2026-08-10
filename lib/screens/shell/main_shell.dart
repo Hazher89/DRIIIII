@@ -17,6 +17,7 @@ import '../../core/services/native_permissions_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/permissions/access_keys.dart';
+import '../../core/permissions/access_session_cache.dart';
 import '../../core/permissions/partner_access.dart';
 import '../../core/permissions/user_access.dart';
 import '../../widgets/driftpro_brand_bar.dart';
@@ -109,6 +110,7 @@ class _MainShellState extends State<MainShell> {
       if (_scheduleProfileGate(real)) return;
 
       setState(() => _profile = real);
+      AccessSessionCache.setProfile(real);
 
       if (mounted && i >= 1) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -151,7 +153,11 @@ class _MainShellState extends State<MainShell> {
 
       final hasPortalAccount =
           await SupabaseService.currentSessionHasActivePortalAccount();
-      if (hasPortalAccount) {
+      if (hasPortalAccount &&
+          !SupabaseService.isInternalStaffSession(
+            profile: profile,
+            email: portalEmail,
+          )) {
         if (!mounted) return;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
@@ -161,7 +167,11 @@ class _MainShellState extends State<MainShell> {
       }
 
       var portalKind = _portalAccountKind;
-      if (profile.isPartnerPortalUser) {
+      if (profile.isPartnerPortalUser &&
+          !SupabaseService.isInternalStaffSession(
+            profile: profile,
+            email: portalEmail,
+          )) {
         await SupabaseService.ensureSessionLinkedToCompany();
         profile = await SupabaseService.fetchCurrentUserProfile() ?? profile;
         final session = await PartnerService.resolvePortalSession();
@@ -179,6 +189,7 @@ class _MainShellState extends State<MainShell> {
         _portalAccountKind = portalKind;
         _isLoadingAccess = false;
       });
+      AccessSessionCache.setProfile(profile);
 
       unawaited(NativePermissionsService.bootstrapAfterLogin(
         mounted ? context : null,

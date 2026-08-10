@@ -7,7 +7,6 @@ import '../../core/constants/app_strings.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/driftpro_theme_context.dart';
-import '../../widgets/common/theme_appearance_picker.dart';
 import '../../core/auth/session_sign_out.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
@@ -219,7 +218,6 @@ class _MoreScreenState extends State<MoreScreen> {
               'Min profil',
               isDark,
             ),
-          const ThemeAppearancePicker(),
           if (DriftProPlatformCatalog.canAccessDropboxSettings(
             email: _profile?.email,
             employeeNumber: _profile?.employeeNumber,

@@ -124,8 +124,10 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     final access = profile?.access;
     final companies = _canCompaniesList(access);
     final routes = access?.canPartnerRoutePlanning == true;
-    final sms = PartnerAccess.canOpenPartnersModule(access);
-    final botTrekk = PartnerAccess.canOpenPartnersModule(access);
+    final sms = access?.canPartnersTabSms == true ||
+        access?.canPartnersAdmin == true;
+    final botTrekk = access?.canPartnersTabBotTrekk == true ||
+        access?.canPartnersAdmin == true;
     final rental = _canManageVehicleRentals(access);
     final inspections = access?.canPartnersTabBilkontroll == true ||
         access?.canPartnersAdmin == true ||

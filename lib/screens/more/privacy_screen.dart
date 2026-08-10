@@ -58,10 +58,9 @@ class PrivacyScreen extends StatelessWidget {
           title: 'Behandlingsansvarlig',
           icon: Icons.business_outlined,
           paragraphs: [
-            '${DriftProPlatformCatalog.companyName} er behandlingsansvarlig for '
-            'personopplysninger som behandles i ${AppStrings.appName} på vegne av '
-            'kundens bedrift. Den enkelte bedrift (arbeidsgiver) er ansvarlig for '
-            'at bruk av plattformen er i tråd med interne rutiner og lovverk.',
+            '${DriftProPlatformCatalog.companyName} er behandlingsansvarlig. '
+            '${AppStrings.appName} er en lukket arbeidsapp kun for denne bedriften '
+            'og dens samarbeidspartnere — ikke en offentlig tjeneste for flere kunder.',
           ],
         ),
         const InfoSection(
@@ -85,7 +84,7 @@ class PrivacyScreen extends StatelessWidget {
             'HMS: avvikstekst, bilder, GPS ved innrapportering, ROS og SJA-data',
             'Kompetanse: kursbevis, sertifikater og utløpsdatoer',
             'Teknisk: innloggingstidspunkt, enhetstype og logger via Supabase Auth',
-            'Filer: PDF, bilder og dokumenter lagret sikkert per bedrift',
+            'Filer: PDF, bilder og dokumenter lagret sikkert for bedriften',
           ],
         ),
         const InfoSection(
@@ -113,12 +112,12 @@ class PrivacyScreen extends StatelessWidget {
           title: 'Slett konto',
           icon: Icons.person_off_outlined,
           paragraphs: [
-            '${AppStrings.appName} er en bedriftsapp. Konto opprettes vanligvis av '
-            'administrator. Du kan likevel slette din egen innlogging og '
+            '${AppStrings.appName} er kun for ${DriftProPlatformCatalog.companyName}. '
+            'Konto opprettes av administrator. Du kan selv slette innloggingen og '
             'personopplysninger direkte i appen (App Store-krav).',
           ],
           bullets: const [
-            'Gå til Min profil → Slett konto, eller bruk knappen under',
+            'Min profil → Slett konto permanent, eller knappen under',
             'Skriv SLETT for å bekrefte',
             'Lovpålagt HMS-/HR-historikk kan oppbevares uten din identitet',
           ],
@@ -139,7 +138,7 @@ class PrivacyScreen extends StatelessWidget {
           title: 'Sikkerhetstiltak',
           icon: Icons.shield_outlined,
           bullets: [
-            'Row Level Security — hver bedrift isoleres i databasen',
+            'Row Level Security i databasen',
             'Rollebasert tilgang (superadmin, admin, leder, ansatt)',
             'Kryptering i transitt (HTTPS/TLS) og hos underleverandører',
             'Sikker fillagring med OAuth der dette er aktivert',
@@ -154,8 +153,7 @@ class PrivacyScreen extends StatelessWidget {
           paragraphs: [
             'Data lagres så lenge arbeidsforholdet består og det er nødvendig for '
             'formålet. HMS- og fraværsdata kan ha lengre oppbevaring etter lov og '
-            'interne rutiner. Ved avsluttet kundeforhold slettes eller anonymiseres '
-            'data etter avtale.',
+            'interne rutiner hos ${DriftProPlatformCatalog.companyName}.',
           ],
           bullets: [
             'Filer lagres i bedriftens godkjente skylagring',
@@ -180,7 +178,7 @@ class PrivacyScreen extends StatelessWidget {
           paragraphs: [
             'Webversjonen bruker nødvendige sesjonskapsler for innlogging via Supabase Auth. '
             'Vi bruker ikke tredjeparts reklamekapsler. Lokal lagring kan brukes for '
-            'tema (mørk modus) og brukerpreferanser.',
+            'brukerpreferanser som er nødvendige for appen.',
           ],
         ),
         const InfoSection(

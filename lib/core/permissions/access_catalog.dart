@@ -1,8 +1,8 @@
 import '../../models/user_profile.dart';
 import 'access_keys.dart';
-import 'access_presets.dart';
+import 'access_normalize.dart';
 
-/// Gruppering av alle DriftPro-tilganger for superadmin-matrise.
+/// Gruppering av alle DriftPro-tilganger for superadmin-matrise (legacy seksjoner).
 class AccessSection {
   final String id;
   final String title;
@@ -150,23 +150,24 @@ class AccessCatalog {
 
   static const varslerSectionId = 'varsler';
 
+  /// Normaliser til flat bool-map (legacy) — for eksisterende kallsteder.
   static Map<String, dynamic> normalize(
     Map<String, dynamic>? raw,
     UserRole role,
-  ) {
-    final preset = AccessPresets.forRole(role);
-    final out = <String, dynamic>{};
-    for (final key in AccessKeys.allKeys) {
-      if (raw != null && raw.containsKey(key)) {
-        out[key] = raw[key] == true;
-      } else {
-        out[key] = preset[key] == true;
-      }
-    }
-    out[AccessKeys.more] = true;
-    return out;
-  }
+  ) =>
+      AccessNormalize.toLegacy(raw, role);
 
-  static int countEnabled(Map<String, dynamic> settings) =>
-      AccessKeys.allKeys.where((k) => settings[k] == true).length;
+  /// Normaliser til v2 area/action JSON (for lagring og ny matrise).
+  static Map<String, dynamic> normalizeV2(
+    Map<String, dynamic>? raw,
+    UserRole role,
+  ) =>
+      AccessNormalize.toV2(raw, role);
+
+  static int countEnabled(Map<String, dynamic> settings) {
+    if (settings['version'] == 2) {
+      return AccessSettingsDoc.fromJson(settings).countEnabledActions();
+    }
+    return AccessKeys.allKeys.where((k) => settings[k] == true).length;
+  }
 }

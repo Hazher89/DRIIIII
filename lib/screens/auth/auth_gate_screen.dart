@@ -3,9 +3,11 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/auth/employee_oauth_sign_in.dart';
+import '../../core/config/driftpro_client.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/services/employee_auth_service.dart';
 import '../../core/services/partner/partner_service.dart';
@@ -37,7 +39,7 @@ class AuthGateScreen extends StatelessWidget {
           _GateCard(
             icon: Icons.groups_rounded,
             title: 'MAVI ansatte',
-            subtitle: 'Ansattnummer + passord, eller Google / Apple.',
+            subtitle: 'Ansattnummer + passord, eller Apple.',
             color: DriftProTheme.primaryGreen,
             onTap: () {
               Navigator.of(context).push(
@@ -242,7 +244,22 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
             backgroundColor: DriftProTheme.error,
           ),
         );
+        return;
       }
+      // Native Apple fullfører synkront; OAuth (Google/web) via deep link + auth listener.
+      if (Supabase.instance.client.auth.currentSession != null) {
+        await SupabaseService.ensureSessionLinkedToCompany();
+        if (mounted) _leaveLoginScreen();
+      }
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (!mounted) return;
+      if (e.code == AuthorizationErrorCode.canceled) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Apple-innlogging feilet: ${e.message}'),
+          backgroundColor: DriftProTheme.error,
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -267,7 +284,8 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
           Text('MAVI ansatte', style: authTitleStyle(context)),
           const SizedBox(height: 8),
           Text(
-            'Logg inn med ansattnummer, eller fortsett med Google/Apple. '
+            'Logg inn med ansattnummer, eller fortsett med Apple'
+            '${DriftProClient.isMobile ? '' : ' / Google'}. '
             'Nye kontoer får standard ansatt-tilgang.',
             textAlign: TextAlign.center,
             style: authMutedStyle(context, size: 12),
@@ -339,15 +357,17 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
             ],
           ),
           const SizedBox(height: 20),
-          _AuthButton(
-            loading: _loading,
-            onTap: () => _oauth(OAuthProvider.google),
-            background: isDark ? Colors.white : Colors.grey[900]!,
-            foreground: isDark ? Colors.black : Colors.white,
-            icon: Icons.g_mobiledata_rounded,
-            label: 'Fortsett med Google',
-          ),
-          const SizedBox(height: 12),
+          if (!DriftProClient.isMobile) ...[
+            _AuthButton(
+              loading: _loading,
+              onTap: () => _oauth(OAuthProvider.google),
+              background: isDark ? Colors.white : Colors.grey[900]!,
+              foreground: isDark ? Colors.black : Colors.white,
+              icon: Icons.g_mobiledata_rounded,
+              label: 'Fortsett med Google',
+            ),
+            const SizedBox(height: 12),
+          ],
           _AuthButton(
             loading: _loading,
             onTap: () => _oauth(OAuthProvider.apple),

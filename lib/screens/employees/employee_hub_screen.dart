@@ -368,7 +368,7 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
   }
 
   Widget _tile(UserProfile user, bool isDark, {bool pending = false}) {
-    final settings = AccessCatalog.normalize(user.accessSettings, user.role);
+    final settings = AccessCatalog.normalizeV2(user.accessSettings, user.role);
     final enabled = AccessCatalog.countEnabled(settings);
 
     return Material(

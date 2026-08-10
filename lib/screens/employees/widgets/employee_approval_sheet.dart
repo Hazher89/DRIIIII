@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/permissions/access_catalog.dart';
-import '../../../core/permissions/access_keys.dart';
 import '../../../core/permissions/access_presets.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/department.dart';
@@ -62,7 +61,7 @@ class _EmployeeApprovalSheetState extends State<EmployeeApprovalSheet> {
   UserRole _role = UserRole.ansatt;
   String? _departmentId;
   Map<String, dynamic> _settings =
-      AccessCatalog.normalize(null, UserRole.ansatt);
+      AccessCatalog.normalizeV2(null, UserRole.ansatt);
   bool _saving = false;
 
   @override
@@ -75,7 +74,7 @@ class _EmployeeApprovalSheetState extends State<EmployeeApprovalSheet> {
   }
 
   void _applyRolePreset() {
-    setState(() => _settings = AccessCatalog.normalize(null, _role));
+    setState(() => _settings = AccessCatalog.normalizeV2(null, _role));
   }
 
   Future<void> _submit() async {
@@ -209,13 +208,14 @@ class _EmployeeApprovalSheetState extends State<EmployeeApprovalSheet> {
                         if (r == null) return;
                         setState(() {
                           _role = r;
-                          _settings = AccessCatalog.normalize(null, r);
+                          _settings = AccessCatalog.normalizeV2(null, r);
                         });
                       },
                     ),
                     const SizedBox(height: 16),
                     PermissionMatrixEditor(
                       settings: _settings,
+                      roleForPresets: _role,
                       onChanged: (s) => setState(() => _settings = s),
                     ),
                   ],
@@ -300,7 +300,7 @@ class _EmployeeApprovalSheetState extends State<EmployeeApprovalSheet> {
   }
 
   Widget _summaryBox() {
-    final enabled = AccessKeys.allKeys.where((k) => _settings[k] == true).length;
+    final enabled = AccessCatalog.countEnabled(_settings);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(

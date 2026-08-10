@@ -64,10 +64,25 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
       var profile = await SupabaseService.fetchCurrentUserProfile();
       var portalKind = _portalAccountKind;
 
-      final hasPortalAccount =
-          await SupabaseService.currentSessionHasActivePortalAccount();
       final email =
           SupabaseService.currentUser?.email?.trim().toLowerCase() ?? '';
+
+      // MAVI-ansatt / superadmin (f.eks. #25) skal aldri inn i partnerportal.
+      if (SupabaseService.isInternalStaffSession(
+        profile: profile,
+        email: email,
+      )) {
+        if (!mounted) return;
+        setState(() {
+          _profile = profile;
+          _portalAccountKind = null;
+          _loading = false;
+        });
+        return;
+      }
+
+      final hasPortalAccount =
+          await SupabaseService.currentSessionHasActivePortalAccount();
       final looksLikePortal = SupabaseService.emailLooksLikePortal(email);
 
       if (hasPortalAccount ||

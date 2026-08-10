@@ -201,10 +201,10 @@ class VehicleRentalService {
     required String borrowerPartnerId,
     required PartnerVehicle vehicle,
     required DateTime rentalStartAt,
-    required DateTime rentalEndAt,
+    DateTime? rentalEndAt,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
-    if (!rentalEndAt.isAfter(rentalStartAt)) {
+    if (rentalEndAt != null && !rentalEndAt.isAfter(rentalStartAt)) {
       throw StateError('Sluttid må være etter starttid.');
     }
 
@@ -239,9 +239,9 @@ class VehicleRentalService {
       'vehicle_make': vehicleMakeFrom(vehicle),
       'unit_code': vehicle.unitCode,
       'rental_start': rentalStartAt.toIso8601String().split('T').first,
-      'rental_end': rentalEndAt.toIso8601String().split('T').first,
+      'rental_end': rentalEndAt?.toIso8601String().split('T').first,
       'rental_start_at': rentalStartAt.toUtc().toIso8601String(),
-      'rental_end_at': rentalEndAt.toUtc().toIso8601String(),
+      'rental_end_at': rentalEndAt?.toUtc().toIso8601String(),
       'status': 'pending_owner',
       if (uid != null) 'created_by': uid,
     };

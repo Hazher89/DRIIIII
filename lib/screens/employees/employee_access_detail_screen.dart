@@ -60,7 +60,7 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
     _role = widget.employee.role;
     _departmentId = widget.employee.departmentId;
     _approved = widget.employee.isApproved;
-    _settings = AccessCatalog.normalize(widget.employee.accessSettings, _role);
+    _settings = AccessCatalog.normalizeV2(widget.employee.accessSettings, _role);
   }
 
   Future<void> _loadCurrentUser() async {
@@ -88,7 +88,7 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
   void _applyPreset(UserRole role) {
     setState(() {
       _role = role;
-      _settings = Map<String, dynamic>.from(AccessPresets.forRole(role));
+      _settings = Map<String, dynamic>.from(AccessPresets.forRoleV2(role));
     });
   }
 
@@ -376,6 +376,7 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
                 const SizedBox(height: 8),
                 PermissionMatrixEditor(
                   settings: _settings,
+                  roleForPresets: _role,
                   onChanged: (s) => setState(() => _settings = s),
                 ),
                 ],

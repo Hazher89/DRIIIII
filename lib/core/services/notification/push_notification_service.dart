@@ -17,10 +17,18 @@ abstract final class PushNotificationService {
   static bool _localReady = false;
   static bool _firebaseReady = false;
 
+  /// Klargjør kanaler uten å spørre om varsel-tillatelse (Apple: kun ved behov).
   static Future<void> bootstrapAfterLogin() async {
     if (!DriftProClient.isMobile || kIsWeb) return;
     await _ensureLocalNotifications();
-    await _ensureFirebaseMessaging();
+    await _ensureFirebaseMessaging(requestPermission: false);
+  }
+
+  /// Kall etter at brukeren har gitt varsel-tillatelse (eller allerede har den).
+  static Future<void> registerAfterPermissionGranted() async {
+    if (!DriftProClient.isMobile || kIsWeb) return;
+    await _ensureLocalNotifications();
+    await _ensureFirebaseMessaging(requestPermission: true);
   }
 
   static Future<void> deactivateOnLogout() async {
@@ -63,7 +71,12 @@ abstract final class PushNotificationService {
   static Future<void> _ensureLocalNotifications() async {
     if (_localReady) return;
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const ios = DarwinInitializationSettings();
+    // Ikke be om iOS-tillatelse her — det skjer via NativePermissionsService.
+    const ios = DarwinInitializationSettings(
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
+    );
     await _local.initialize(
       settings: const InitializationSettings(android: android, iOS: ios),
     );
@@ -83,35 +96,49 @@ abstract final class PushNotificationService {
     _localReady = true;
   }
 
-  static Future<void> _ensureFirebaseMessaging() async {
-    if (_firebaseReady || !FirebaseConfig.isConfigured) return;
+  static Future<void> _ensureFirebaseMessaging({
+    required bool requestPermission,
+  }) async {
+    if (!FirebaseConfig.isConfigured) return;
     try {
-      await Firebase.initializeApp(
-        options: FirebaseOptions(
-          apiKey: FirebaseConfig.apiKey,
-          appId: FirebaseConfig.appId,
-          messagingSenderId: FirebaseConfig.messagingSenderId,
-          projectId: FirebaseConfig.projectId,
-        ),
-      );
-      FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+      if (!_firebaseReady) {
+        await Firebase.initializeApp(
+          options: FirebaseOptions(
+            apiKey: FirebaseConfig.apiKey,
+            appId: FirebaseConfig.appId,
+            messagingSenderId: FirebaseConfig.messagingSenderId,
+            projectId: FirebaseConfig.projectId,
+          ),
+        );
+        FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
+        FirebaseMessaging.onMessage.listen((message) {
+          final n = message.notification;
+          if (n == null) return;
+          unawaited(showRouteAssigned(
+            title: n.title ?? 'DriftPro',
+            body: n.body ?? '',
+            routeShareId: message.data['route_share_id'] as String?,
+          ));
+        });
+        FirebaseMessaging.instance.onTokenRefresh.listen(_persistToken);
+        _firebaseReady = true;
+      }
+
       final messaging = FirebaseMessaging.instance;
-      await messaging.requestPermission(alert: true, badge: true, sound: true);
+      if (requestPermission) {
+        await messaging.requestPermission(alert: true, badge: true, sound: true);
+      }
+
+      final settings = await messaging.getNotificationSettings();
+      final allowed =
+          settings.authorizationStatus == AuthorizationStatus.authorized ||
+              settings.authorizationStatus == AuthorizationStatus.provisional;
+      if (!allowed) return;
+
       final token = await messaging.getToken();
       if (token != null) {
         await _persistToken(token);
       }
-      messaging.onTokenRefresh.listen(_persistToken);
-      FirebaseMessaging.onMessage.listen((message) {
-        final n = message.notification;
-        if (n == null) return;
-        unawaited(showRouteAssigned(
-          title: n.title ?? 'DriftPro',
-          body: n.body ?? '',
-          routeShareId: message.data['route_share_id'] as String?,
-        ));
-      });
-      _firebaseReady = true;
     } catch (e) {
       debugPrint('Firebase messaging init: $e');
     }

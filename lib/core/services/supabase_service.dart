@@ -68,11 +68,34 @@ class SupabaseService {
     return e.endsWith('.portal') || e.endsWith('@portal.driftpro.no');
   }
 
+  /// Intern MAVI-/eier-sesjon — aldri partnerportal, selv om samme person har bedrift.
+  static bool isInternalStaffSession({UserProfile? profile, String? email}) {
+    final em = (email ?? currentUser?.email)?.trim().toLowerCase() ?? '';
+    if (_isMaviEmployeeEmail(em) || _isSuperadminEmail(em)) return true;
+    if (profile != null) {
+      if (_isMaviEmployeeEmail(profile.email) || _isSuperadminEmail(profile.email)) {
+        return true;
+      }
+      final no = profile.employeeNumber?.trim();
+      if (no != null &&
+          no.isNotEmpty &&
+          superadminEmployeeNumbers.contains(no)) {
+        return true;
+      }
+      if (profile.role == UserRole.superadmin || profile.role == UserRole.admin) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Sjekker om innlogget bruker har aktiv rad i partner_portal_accounts.
   static Future<bool> currentSessionHasActivePortalAccount() async {
     if (!isConfigured) return false;
     final user = currentUser;
     if (user == null) return false;
+    // Ansattnummer-innlogging (f.eks. #25) vinner alltid over portal-kobling.
+    if (isInternalStaffSession(email: user.email)) return false;
     if (emailLooksLikePortal(user.email)) return true;
     try {
       final byProfile = await client
@@ -82,7 +105,14 @@ class SupabaseService {
           .eq('profile_id', user.id)
           .maybeSingle()
           .timeout(_rpcTimeout);
-      if (byProfile != null) return true;
+      if (byProfile != null) {
+        // Dobbeltsjekk: profil kan være MAVI-ansatt selv om e-post ikke matcher mønsteret.
+        final profile = await fetchCurrentUserProfile();
+        if (isInternalStaffSession(profile: profile, email: user.email)) {
+          return false;
+        }
+        return true;
+      }
       final email = user.email?.trim().toLowerCase() ?? '';
       if (email.isEmpty) return false;
       final byEmail = await client
@@ -104,7 +134,13 @@ class SupabaseService {
       return true;
     }
     final no = profile.employeeNumber?.trim();
-    return no != null && no.isNotEmpty && superadminEmployeeNumbers.contains(no);
+    if (no != null && no.isNotEmpty && superadminEmployeeNumbers.contains(no)) {
+      return true;
+    }
+    final em = (sessionEmail ?? profile.email)?.trim().toLowerCase() ?? '';
+    // Ansatt 25 sitt faste login-alias.
+    if (em == 'e25@mavi-employees.driftpro.no') return true;
+    return false;
   }
 
   /// Når DB/RPC feiler: tillat innlogging for whitelisted eier-e-post (superadmin i minnet).
@@ -149,10 +185,12 @@ class SupabaseService {
     if (user == null) return null;
 
     final email = user.email?.trim().toLowerCase() ?? '';
-    final hasPortalAccount = await currentSessionHasActivePortalAccount();
-    final isPortal = emailLooksLikePortal(email) || hasPortalAccount;
+    final isStaff = isInternalStaffSession(email: email);
+    final hasPortalAccount =
+        !isStaff && await currentSessionHasActivePortalAccount();
+    final isPortal = !isStaff && (emailLooksLikePortal(email) || hasPortalAccount);
 
-    if (_isMaviEmployeeEmail(email)) {
+    if (_isMaviEmployeeEmail(email) || isStaff) {
       try {
         await client.rpc('restore_mavi_employee_profile').timeout(_rpcTimeout);
       } catch (e) {
@@ -168,7 +206,7 @@ class SupabaseService {
       await rpcEnsureInternalProfileMissing();
     }
 
-    if (!_isMaviEmployeeEmail(email)) {
+    if (!isStaff && !_isMaviEmployeeEmail(email)) {
       await _silentRpcTimeout('apply_partner_bootstrap_to_profile');
     }
 
@@ -260,6 +298,22 @@ department:departments!department_id(name)
   }) async {
     if (!isConfigured) return const [];
 
+    List<Ticket> parseRows(List<dynamic> data) {
+      final out = <Ticket>[];
+      for (final e in data) {
+        try {
+          if (e is Map<String, dynamic>) {
+            out.add(Ticket.fromJson(e));
+          } else if (e is Map) {
+            out.add(Ticket.fromJson(Map<String, dynamic>.from(e)));
+          }
+        } catch (err) {
+          debugPrint('ticket parse skipped: $err');
+        }
+      }
+      return out;
+    }
+
     try {
       dynamic query = client
           .from('tickets')
@@ -269,18 +323,14 @@ department:departments!department_id(name)
       }
       final data =
           await query.order('created_at', ascending: false) as List<dynamic>;
-      return data
-          .map((e) => Ticket.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return parseRows(data);
     } catch (_) {
       dynamic q2 = client.from('tickets').select();
       if (companyId != null) {
         q2 = q2.eq('company_id', companyId);
       }
       final data = await q2.order('created_at', ascending: false) as List<dynamic>;
-      return data
-          .map((e) => Ticket.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return parseRows(data);
     }
   }
 
@@ -337,18 +387,30 @@ department:departments!department_id(name)
 
   static Future<Ticket?> fetchTicketById(String id) async {
     if (!isConfigured) return null;
+    Ticket? parse(dynamic row) {
+      if (row == null) return null;
+      try {
+        if (row is Map<String, dynamic>) return Ticket.fromJson(row);
+        if (row is Map) {
+          return Ticket.fromJson(Map<String, dynamic>.from(row));
+        }
+      } catch (e) {
+        debugPrint('fetchTicketById parse: $e');
+      }
+      return null;
+    }
+
     try {
       final row = await client
           .from('tickets')
           .select(ticketSelectEmbed)
           .eq('id', id)
           .maybeSingle();
-      if (row == null) return null;
-      return Ticket.fromJson(row);
+      return parse(row);
     } catch (_) {
-      final row = await client.from('tickets').select().eq('id', id).maybeSingle();
-      if (row == null) return null;
-      return Ticket.fromJson(row);
+      final row =
+          await client.from('tickets').select().eq('id', id).maybeSingle();
+      return parse(row);
     }
   }
 
@@ -376,7 +438,19 @@ department:departments!department_id(name)
         .select('*, profiles(full_name, avatar_url)')
         .eq('ticket_id', ticketId)
         .order('created_at', ascending: true) as List<dynamic>;
-    return data.map((e) => TicketComment.fromJson(e)).toList();
+    final out = <TicketComment>[];
+    for (final e in data) {
+      try {
+        if (e is Map<String, dynamic>) {
+          out.add(TicketComment.fromJson(e));
+        } else if (e is Map) {
+          out.add(TicketComment.fromJson(Map<String, dynamic>.from(e)));
+        }
+      } catch (err) {
+        debugPrint('ticket comment parse: $err');
+      }
+    }
+    return out;
   }
 
   static Future<void> addTicketComment({
@@ -1249,7 +1323,7 @@ department:departments!department_id(name)
     if (user == null) return null;
 
     final email = user.email?.trim().toLowerCase() ?? '';
-    if (_isMaviEmployeeEmail(email)) {
+    if (_isMaviEmployeeEmail(email) || isInternalStaffSession(email: email)) {
       try {
         await client.rpc('restore_mavi_employee_profile').timeout(_rpcTimeout);
       } catch (e) {
@@ -1260,7 +1334,9 @@ department:departments!department_id(name)
     }
 
     var existing = await fetchCurrentUserProfile();
-    if (existing == null) {
+    if (existing == null &&
+        !_isMaviEmployeeEmail(email) &&
+        !isInternalStaffSession(email: email)) {
       try {
         await client.rpc('ensure_partner_profile_from_portal').timeout(_rpcTimeout);
         existing = await fetchCurrentUserProfile();
@@ -1348,21 +1424,27 @@ department:departments!department_id(name)
     return null;
   }
 
-  /// Løfter eier-e-post til superadmin hvis DB-trigger hadde feil e-post.
+  /// Løfter eier-e-post / ansatt 25 til superadmin. Rydder eventuell partner-blanding.
   static Future<UserProfile> _ensureSuperadminIfOwner(UserProfile profile) async {
-    if (profile.partnerId != null || profile.role == UserRole.samarbeidspartner) {
+    final sessionEmail = currentUser?.email;
+    // Ren portal-e-post uten MAVI-/eier-identitet → ikke rør.
+    if (emailLooksLikePortal(sessionEmail) &&
+        !isInternalStaffSession(profile: profile, email: sessionEmail)) {
       return profile;
     }
-    final sessionEmail = currentUser?.email;
-    if (emailLooksLikePortal(sessionEmail)) return profile;
     if (!_shouldElevateToSuperadmin(profile, sessionEmail: sessionEmail)) {
       return profile;
     }
     final needsNameFix = profile.fullName.trim() != superadminDisplayName;
+    final needsPartnerClear =
+        profile.partnerId != null ||
+        profile.partnerVehicleId != null ||
+        profile.role == UserRole.samarbeidspartner;
     if (profile.role == UserRole.superadmin &&
         profile.isApproved &&
         profile.isOnboarded &&
-        !needsNameFix) {
+        !needsNameFix &&
+        !needsPartnerClear) {
       return profile;
     }
     try {
@@ -1379,19 +1461,35 @@ department:departments!department_id(name)
           })
           .eq('id', profile.id)
           .timeout(_writeTimeout);
+      // Løsne portal-konto fra denne profilen (portal beholder egen innlogging).
+      try {
+        await client
+            .from('partner_portal_accounts')
+            .update({'profile_id': null})
+            .eq('profile_id', profile.id)
+            .eq('is_active', true)
+            .timeout(_writeTimeout);
+      } catch (e) {
+        debugPrint('unlink partner_portal_accounts profile_id: $e');
+      }
       final refreshed = await fetchCurrentUserProfile();
-      return refreshed ?? profile.copyWith(
-        role: UserRole.superadmin,
-        fullName: superadminDisplayName,
-        isApproved: true,
-        isOnboarded: true,
-        isActive: true,
-      );
+      return refreshed ??
+          profile.copyWith(
+            role: UserRole.superadmin,
+            fullName: superadminDisplayName,
+            partnerId: null,
+            partnerVehicleId: null,
+            isApproved: true,
+            isOnboarded: true,
+            isActive: true,
+          );
     } catch (e) {
       debugPrint('ensureSuperadminIfOwner: $e');
       return profile.copyWith(
         role: UserRole.superadmin,
         fullName: superadminDisplayName,
+        partnerId: null,
+        partnerVehicleId: null,
         isApproved: true,
         isOnboarded: true,
         isActive: true,

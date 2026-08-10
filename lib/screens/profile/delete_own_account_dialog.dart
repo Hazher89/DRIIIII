@@ -6,8 +6,10 @@ import '../../core/routing/app_paths.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../more/driftpro_platform_catalog.dart';
 
-/// App Store: slett egen konto (krever bekreftelse SLETT).
+/// App Store 5.1.1(v): slett egen konto (krever bekreftelse SLETT).
+/// DriftPro er kun for ${DriftProPlatformCatalog.companyName}.
 Future<void> showDeleteOwnAccountDialog(BuildContext context) async {
   final controller = TextEditingController();
   final ok = await showDialog<bool>(
@@ -16,29 +18,35 @@ Future<void> showDeleteOwnAccountDialog(BuildContext context) async {
     builder: (ctx) {
       return AlertDialog(
         title: const Text('Slett konto permanent'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Dette sletter innloggingen din og personopplysninger i DriftPro. '
-              'HMS-/HR-data som bedriften er lovpålagt å oppbevare kan beholdes '
-              'uten din identitet der det er nødvendig.\n\n'
-              'Skriv SLETT for å bekrefte:',
-              style: TextStyle(height: 1.4),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              textCapitalization: TextCapitalization.characters,
-              decoration: const InputDecoration(
-                labelText: 'Bekreftelse',
-                border: OutlineInputBorder(),
-                hintText: 'SLETT',
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'DriftPro er arbeidsappen til ${DriftProPlatformCatalog.companyName}. '
+                'Når du sletter kontoen:\n\n'
+                '• Innloggingen din fjernes\n'
+                '• Personopplysninger i profilen anonymiseres\n'
+                '• Du mister tilgang til appen med en gang\n\n'
+                'HMS-/HR-data som bedriften er lovpålagt å oppbevare kan beholdes '
+                'uten din identitet der det er nødvendig.\n\n'
+                'Skriv SLETT for å bekrefte:',
+                style: const TextStyle(height: 1.4),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Bekreftelse',
+                  border: OutlineInputBorder(),
+                  hintText: 'SLETT',
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(

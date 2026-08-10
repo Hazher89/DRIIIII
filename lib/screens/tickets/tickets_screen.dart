@@ -561,16 +561,28 @@ class _TicketsScreenState extends State<TicketsScreen> {
       ),
       child: InkWell(
         onTap: () {
-          Navigator.of(context)
-              .push(
-            MaterialPageRoute(
-              builder: (_) => TicketDetailScreen(
-                ticket: t,
-                coordinatorProfile: _profile,
+          try {
+            Navigator.of(context)
+                .push(
+              MaterialPageRoute(
+                builder: (_) => TicketDetailScreen(
+                  ticket: t,
+                  coordinatorProfile: _profile,
+                ),
               ),
-            ),
-          )
-              .then((_) => _loadTickets());
+            )
+                .then((_) {
+              if (mounted) _loadTickets();
+            });
+          } catch (e) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Kunne ikke åpne avvik: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
         },
         borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
         child: Padding(
@@ -592,8 +604,17 @@ class _TicketsScreenState extends State<TicketsScreen> {
                   _badge(sev.label, sc),
                   const SizedBox(width: 8),
                   _statusBadge(stat.label, stc, _statIcon(stat)),
-                  const Spacer(),
-                  CaseTraceChip(traceRef: t.displayTraceRef, id: t.id, compact: true),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: CaseTraceChip(
+                        traceRef: t.displayTraceRef,
+                        id: t.id,
+                        compact: true,
+                      ),
+                    ),
+                  ),
                 ],
               ),
               if (t.isDeleted) ...[

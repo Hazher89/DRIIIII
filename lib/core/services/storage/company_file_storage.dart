@@ -24,7 +24,7 @@ class StoredFileResult {
   bool get isDropbox => provider == 'dropbox';
 }
 
-/// Feil når Dropbox er koblet men opplasting feilet (ingen stille Supabase-fallback).
+/// Feil når Dropbox mangler eller opplasting feilet (ingen stille Supabase-fallback).
 class DropboxUploadException implements Exception {
   DropboxUploadException(this.message);
   final String message;
@@ -33,8 +33,8 @@ class DropboxUploadException implements Exception {
   String toString() => message;
 }
 
-/// All filopplasting går til Dropbox når bedriften er koblet (web, iOS, Android).
-/// Supabase brukes kun når Dropbox ikke er satt opp ennå.
+/// All nye filopplastinger går til Dropbox (web, iOS, Android).
+/// Supabase er backend (auth/DB); Supabase Storage brukes ikke for nye filer.
 class CompanyFileStorage {
   static const int defaultThresholdBytes = 0;
 
@@ -169,10 +169,10 @@ class CompanyFileStorage {
     await _client.rpc('reactivate_company_dropbox');
   }
 
-  /// Lagre fil — Dropbox når koblet (påkrevd), ellers Supabase.
+  /// Lagre fil i Dropbox (påkrevd).
   ///
-  /// Når Dropbox er koblet, feiler opplasting synlig hvis skylagring ikke
-  /// svarer — ingen stille fallback til Supabase.
+  /// Feiler synlig hvis Dropbox ikke er koblet eller opplasting feiler.
+  /// `allowSupabaseFallback` er kun for eksplisitte intern/test-kall.
   static Future<StoredFileResult> upload({
     required String supabaseBucket,
     required String storagePath,
@@ -186,13 +186,15 @@ class CompanyFileStorage {
     final name = fileName ?? safePath.split('/').last;
 
     if (!connected) {
-      if (kDebugMode) {
+      if (allowSupabaseFallback) {
         debugPrint(
-          'Dropbox ikke koblet — lagrer i Supabase ($category). '
-          'Koble under Mer → Fillagring.',
+          'Dropbox ikke koblet — tillater Supabase-fallback ($category).',
         );
+        return _uploadSupabase(supabaseBucket, safePath, bytes);
       }
-      return _uploadSupabase(supabaseBucket, storagePath, bytes);
+      throw DropboxUploadException(
+        'Dropbox er ikke koblet. Koble under Mer → Fillagring før du laster opp filer.',
+      );
     }
 
     final safeName = StoragePathSanitizer.fileName(name);
@@ -245,6 +247,7 @@ class CompanyFileStorage {
     );
   }
 
+  /// Kun for eksplisitt `allowSupabaseFallback` (test/intern) — ikke nye prod-opplastinger.
   static Future<StoredFileResult> _uploadSupabase(
     String bucket,
     String path,

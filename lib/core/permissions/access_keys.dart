@@ -146,6 +146,8 @@ class AccessKeys {
     partnersCreate,
     partnersDelete,
     partnersEdit,
+    partnersVehicleRental,
+    partnersVehicleRentalApprove,
     partnersTabOversikt,
     partnersTabBilkontroll,
     partnersTabRuter,

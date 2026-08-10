@@ -59,7 +59,6 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
     super.initState();
     _loadHandlers();
     _loadTemplates();
-    _captureGps();
   }
 
   Future<void> _loadTemplates() async {

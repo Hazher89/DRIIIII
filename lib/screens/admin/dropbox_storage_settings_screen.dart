@@ -159,7 +159,7 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
         content: const Text(
           'Tilkoblingen slettes ikke — refresh-token beholdes. '
           'Du kan reaktivere uten ny innlogging. '
-          'Nye filer går til Supabase til Dropbox er aktiv igjen.',
+          'Nye filopplastinger vil feile til Dropbox er aktiv igjen.',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
@@ -339,8 +339,9 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                         ),
                         const SizedBox(height: 12),
                         Text(
-                          'Når Dropbox er koblet, lagrer DriftPro (web, iOS og Android) '
-                          'alle filer, bilder og PDF-er der — ikke i Supabase. '
+                          'Nye filer krever aktiv Dropbox-tilkobling. DriftPro (web, iOS og Android) '
+                          'lagrer alle filer, bilder og PDF-er der — ikke i Supabase Storage. '
+                          'Supabase forblir backend for data og brukere. '
                           'Filene ligger under Apps/DriftPro/company_…/kategori/dato/.',
                           style: DriftProTheme.bodyMd.copyWith(
                             color: isDark ? Colors.white70 : Colors.grey[700],
@@ -416,7 +417,8 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
                             leading: Icon(Icons.cloud_off_outlined),
                             title: Text('Ikke aktiv'),
                             subtitle: Text(
-                              'Koble skylagring, eller reaktiver lagret tilkobling.',
+                              'Koble skylagring, eller reaktiver lagret tilkobling. '
+                              'Uten aktiv Dropbox kan ingen nye filer lastes opp.',
                             ),
                           ),
                           FilledButton.icon(

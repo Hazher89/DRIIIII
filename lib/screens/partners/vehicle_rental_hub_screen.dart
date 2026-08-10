@@ -126,6 +126,7 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     DateTime? end;
     TimeOfDay? startTime;
     TimeOfDay? endTime;
+    var endUnconfirmed = false;
 
     final ok = await showModalBottomSheet<bool>(
       context: context,
@@ -272,7 +273,7 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                                         final holder = activeRental?.borrowerPartnerName ?? 'ukjent låntaker';
                                         final until = activeRental?.rentalEndAt;
                                         final untilLabel = until == null
-                                            ? 'ukjent slutttid'
+                                            ? 'sluttdato ikke avklart'
                                             : DateFormat('d.M.y HH:mm', 'nb').format(until.toLocal());
                                         return Padding(
                                           padding: const EdgeInsets.only(bottom: 4),
@@ -291,6 +292,11 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                           ),
                   ),
                   const SizedBox(height: 12),
+                  const Text(
+                    'Utlevering',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Expanded(
@@ -298,14 +304,14 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                           onPressed: () async {
                             final d = await showDatePicker(
                               context: ctx,
-                              initialDate: DateTime.now(),
+                              initialDate: start ?? DateTime.now(),
                               firstDate: DateTime.now().subtract(const Duration(days: 1)),
                               lastDate: DateTime.now().add(const Duration(days: 365)),
                             );
                             if (d != null) setDlg(() => start = d);
                           },
                           icon: const Icon(Icons.event, size: 18),
-                          label: Text(start == null ? 'Start' : DateFormat('d.M.y').format(start!)),
+                          label: Text(start == null ? 'Startdato' : DateFormat('d.M.y').format(start!)),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -328,52 +334,99 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                           label: Text(startTime == null ? 'Starttid' : _formatTime24(startTime!)),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final d = await showDatePicker(
-                              context: ctx,
-                              initialDate: start ?? DateTime.now(),
-                              firstDate: DateTime.now().subtract(const Duration(days: 1)),
-                              lastDate: DateTime.now().add(const Duration(days: 365)),
-                            );
-                            if (d != null) setDlg(() => end = d);
-                          },
-                          icon: const Icon(Icons.event, size: 18),
-                          label: Text(end == null ? 'Slutt' : DateFormat('d.M.y').format(end!)),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            final t = await showTimePicker(
-                              context: ctx,
-                              initialTime: endTime ?? const TimeOfDay(hour: 16, minute: 0),
-                              builder: (context, child) {
-                                return MediaQuery(
-                                  data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-                                  child: child!,
-                                );
-                              },
-                            );
-                            if (t != null) setDlg(() => endTime = t);
-                          },
-                          icon: const Icon(Icons.schedule, size: 18),
-                          label: Text(endTime == null ? 'Sluttid' : _formatTime24(endTime!)),
-                        ),
-                      ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Planlagt retur',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text(
+                      'Sluttdato ikke avklart',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+                    ),
+                    subtitle: const Text(
+                      'Brukes når returtidspunktet ikke er bestemt. '
+                      'Leieperioden avsluttes når bilen returneres og retur er godkjent.',
+                      style: TextStyle(fontSize: 12, height: 1.35),
+                    ),
+                    value: endUnconfirmed,
+                    onChanged: (v) => setDlg(() {
+                      endUnconfirmed = v;
+                      if (v) {
+                        end = null;
+                        endTime = null;
+                      }
+                    }),
+                  ),
+                  if (!endUnconfirmed) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final d = await showDatePicker(
+                                context: ctx,
+                                initialDate: end ?? start ?? DateTime.now(),
+                                firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (d != null) setDlg(() => end = d);
+                            },
+                            icon: const Icon(Icons.event, size: 18),
+                            label: Text(end == null ? 'Sluttdato' : DateFormat('d.M.y').format(end!)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                              final t = await showTimePicker(
+                                context: ctx,
+                                initialTime: endTime ?? const TimeOfDay(hour: 16, minute: 0),
+                                builder: (context, child) {
+                                  return MediaQuery(
+                                    data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+                                    child: child!,
+                                  );
+                                },
+                              );
+                              if (t != null) setDlg(() => endTime = t);
+                            },
+                            icon: const Icon(Icons.schedule, size: 18),
+                            label: Text(endTime == null ? 'Sluttid' : _formatTime24(endTime!)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 4),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.blueGrey.shade200),
+                      ),
+                      child: const Text(
+                        'Ingen planlagt sluttdato registreres. '
+                        'Avtalen gjelder fra starttidspunkt til faktisk retur.',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, height: 1.35),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   FilledButton.icon(
                     onPressed: borrowerId != null &&
                             vehicleId != null &&
                             start != null &&
-                            end != null &&
                             startTime != null &&
-                            endTime != null
+                            (endUnconfirmed || (end != null && endTime != null))
                         ? () => Navigator.pop(ctx, true)
                         : null,
                     style: FilledButton.styleFrom(
@@ -396,16 +449,15 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
         borrowerId == null ||
         vehicleId == null ||
         start == null ||
-        end == null ||
         startTime == null ||
-        endTime == null) {
+        (!endUnconfirmed && (end == null || endTime == null))) {
       return;
     }
     final selectedBorrowerId = borrowerId!;
     final selectedStart = start!;
-    final selectedEnd = end!;
     final selectedStartTime = startTime!;
-    final selectedEndTime = endTime!;
+    final selectedEnd = endUnconfirmed ? null : end;
+    final selectedEndTime = endUnconfirmed ? null : endTime;
 
     PartnerVehicle? vehicle;
     for (final list in _vehiclesByPartner.values) {
@@ -424,20 +476,26 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
       selectedStartTime.hour,
       selectedStartTime.minute,
     );
-    final endAt = DateTime(
-      selectedEnd.year,
-      selectedEnd.month,
-      selectedEnd.day,
-      selectedEndTime.hour,
-      selectedEndTime.minute,
-    );
-    if (!endAt.isAfter(startAt)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sluttdato/tid må være etter startdato/tid.'), backgroundColor: Colors.red),
-        );
+    DateTime? endAt;
+    if (selectedEnd != null && selectedEndTime != null) {
+      endAt = DateTime(
+        selectedEnd.year,
+        selectedEnd.month,
+        selectedEnd.day,
+        selectedEndTime.hour,
+        selectedEndTime.minute,
+      );
+      if (!endAt.isAfter(startAt)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Sluttdato/tid må være etter startdato/tid.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
       }
-      return;
     }
 
     try {

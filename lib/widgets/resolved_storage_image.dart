@@ -30,12 +30,20 @@ class ResolvedStorageImage extends StatelessWidget {
             child: const Icon(Icons.broken_image_outlined),
           );
         }
-        final url = snap.data;
-        if (url == null || snap.connectionState != ConnectionState.done) {
+        final url = (snap.data ?? '').trim();
+        if (url.isEmpty || snap.connectionState != ConnectionState.done) {
           return SizedBox(
             width: width,
             height: height,
             child: const DriftProLoadingCenter(),
+          );
+        }
+        final isHttp = url.startsWith('http://') || url.startsWith('https://');
+        if (!isHttp) {
+          return SizedBox(
+            width: width,
+            height: height,
+            child: const Icon(Icons.broken_image_outlined),
           );
         }
         return Image.network(

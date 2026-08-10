@@ -2,10 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Driftpro</string>
+	<string>DriftPro</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,16 +15,57 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>driftpro</string>
+	<string>DriftPro</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>no.driftpro.driftpro</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>no.driftpro.driftpro</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>FlutterDeepLinkingEnabled</key>
+	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>http</string>
+		<string>mailto</string>
+		<string>tel</string>
+		<string>sms</string>
+		<string>maps</string>
+		<string>comgooglemaps</string>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Eksempel: Når du tar bilde til et avvik, skanner en GM &amp; STORO-etikett eller dokumenterer bilutleie, brukes kameraet kun i det øyeblikket. DriftPro tar ikke bilder i bakgrunnen.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>DriftPro kan koble til bedriftens lokale tjenester (for eksempel IP-kamera eller lokal vision-tjeneste) på godkjent bedriftsnettverk — kun når du eller bedriften aktiverer denne funksjonen.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Eksempel: Når du trykker «Oppdater posisjon» på et avvik, eller følger en levering/sjåføroppgave, brukes posisjonen din mens appen er i bruk. DriftPro ber ikke om bakgrunnssporing.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Eksempel: Mikrofon brukes bare hvis du tar video med lyd som dokumentasjon. Vanlige stillbilder og strekkodeskanning krever ikke mikrofon.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Eksempel: Når du eksporterer eller lagrer dokumentasjon, kan DriftPro lagre filen i Foto-appen — kun når du selv velger det.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Eksempel: Når du velger et vedlegg til avvik, HMS eller personalmappe, får DriftPro tilgang til bildene du plukker. Vi laster ikke opp bilder uten at du velger dem.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
@@ -39,47 +82,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-		<string>remote-notification</string>
-	</array>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>DriftPro bruker posisjonen din mens appen er åpen for å knytte sted til avvik, følge leveringsoppgaver og støtte sjåførfunksjoner når du selv aktiverer dette.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>DriftPro kan bruke posisjon i bakgrunnen kun under aktiv rute- eller leveringssporing når arbeidsgiver har aktivert dette for jobben din.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>DriftPro trenger kameraet for å ta bilder til avvik, bilutleie, HMS-dokumentasjon, strekkodeskanning og GM &amp; STORO-etiketter — kun når du velger å ta bilde.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>DriftPro trenger tilgang til bildebiblioteket når du velger vedlegg til avvik, HMS, personalmappe eller andre dokumenter. Vi laster ikke opp bilder uten at du velger dem.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>DriftPro kan lagre eksporterte bilder og dokumentasjon i Foto-appen når du velger å lagre eller eksportere.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>DriftPro kan bruke mikrofonen når du tar video med lyd som dokumentasjon. Stillbilder krever ikke mikrofon.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>DriftPro kobler til IP-kamera og lokal vision-tjeneste på bedriftens nettverk for uniform-monitor og live visning — kun på godkjent bedriftsnett.</string>
-	<key>NSUserTrackingUsageDescription</key>
-	<string>DriftPro bruker ikke sporing på tvers av apper eller nettsteder til reklame.</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
-	<key>FlutterDeepLinkingEnabled</key>
-	<true/>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLName</key>
-			<string>no.driftpro.driftpro</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>no.driftpro.driftpro</string>
-			</array>
-		</dict>
-	</array>
 </dict>
 </plist>

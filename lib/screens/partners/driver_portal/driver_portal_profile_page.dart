@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/user_profile.dart';
 import '../../more/driftpro_platform_catalog.dart';
 import '../../more/widgets/info_page_scaffold.dart';
+import '../../profile/delete_own_account_dialog.dart';
 import '../widgets/partner_ui.dart';
 
 class DriverPortalProfilePage extends StatelessWidget {
@@ -64,6 +65,50 @@ class DriverPortalProfilePage extends StatelessWidget {
                   trailing: const Icon(Icons.open_in_new, size: 18),
                   onTap: () =>
                       launchInfoUrl(DriftProPlatformCatalog.privacyPolicyUrl),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: DriftProTheme.error.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: DriftProTheme.error.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Slett konto',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: DriftProTheme.error,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'DriftPro er kun for ${DriftProPlatformCatalog.companyName}. '
+                  'Du kan slette innloggingen og personopplysninger her.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    color: PartnerUi.mutedText(context),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: () => showDeleteOwnAccountDialog(context),
+                  icon: const Icon(Icons.delete_forever_outlined),
+                  label: const Text('Slett konto permanent'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DriftProTheme.error,
+                    minimumSize: const Size(double.infinity, 48),
+                  ),
                 ),
               ],
             ),

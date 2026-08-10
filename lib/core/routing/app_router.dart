@@ -46,8 +46,24 @@ import '../../screens/surveys/survey_list_screen.dart';
 import '../../screens/surveys/survey_player_screen.dart';
 import '../../screens/tickets/tickets_screen.dart';
 import '../services/supabase_service.dart';
+import '../permissions/access_keys.dart';
+import '../permissions/access_session_cache.dart';
+import '../permissions/permission_gate.dart';
+import '../permissions/route_access_map.dart';
 import 'app_paths.dart';
 import 'auth_refresh_listenable.dart';
+
+Widget _guardPath(String path, Widget child) {
+  final req = RouteAccessMap.requirementFor(path);
+  if (req == null) return child;
+  return PermissionGuard(
+    profile: AccessSessionCache.profile,
+    areaId: req.areaId,
+    accessKey: req.legacyAccessKey ?? AccessKeys.more,
+    action: req.action,
+    child: child,
+  );
+}
 
 DmsExplorerSection? _dmsSectionFromQuery(String? value) {
   switch (value) {
@@ -124,6 +140,23 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
       if (state.uri.queryParameters['dropbox'] == 'connected' &&
           path != AppPaths.moreDropbox) {
         return '${AppPaths.moreDropbox}?dropbox=connected';
+      }
+
+      // Tilgangsjekk for deep links (bruk cache — oppdateres etter login/shell).
+      if (!looksLikePortal &&
+          path != AppPaths.login &&
+          !path.startsWith('${AppPaths.portal}/') &&
+          path != AppPaths.portal) {
+        final access = AccessSessionCache.access;
+        final req = RouteAccessMap.requirementFor(path);
+        if (access != null && req != null) {
+          final ok = access.canArea(req.areaId, req.action) ||
+              (req.legacyAccessKey != null &&
+                  access.can(req.legacyAccessKey!));
+          if (!ok) {
+            return AppPaths.more;
+          }
+        }
       }
       return null;
     },
@@ -226,58 +259,82 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   GoRoute(
                     path: 'avvik',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const TicketsScreen(),
+                    builder: (context, state) =>
+                        _guardPath(AppPaths.hmsAvvik, const TicketsScreen()),
                   ),
                   GoRoute(
                     path: 'risiko',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => RiskAssessmentListScreen(
-                      initialTab: state.uri.queryParameters['tab'],
+                    builder: (context, state) => _guardPath(
+                      AppPaths.hmsRisiko,
+                      RiskAssessmentListScreen(
+                        initialTab: state.uri.queryParameters['tab'],
+                      ),
                     ),
                   ),
                   GoRoute(
                     path: 'risikomatrise',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const RiskMatrixScreen(),
+                    builder: (context, state) => _guardPath(
+                      AppPaths.hmsRisikomatrise,
+                      const RiskMatrixScreen(),
+                    ),
                   ),
                   GoRoute(
                     path: 'sja',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const SjaListScreen(),
+                    builder: (context, state) =>
+                        _guardPath(AppPaths.hmsSja, const SjaListScreen()),
                   ),
                   GoRoute(
                     path: 'vernerunde',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const SafetyRoundListScreen(),
+                    builder: (context, state) => _guardPath(
+                      AppPaths.hmsVernerunde,
+                      const SafetyRoundListScreen(),
+                    ),
                   ),
                   GoRoute(
                     path: 'utstyr',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => EquipmentHubScreen(
-                      initialTab: state.uri.queryParameters['tab'],
+                    builder: (context, state) => _guardPath(
+                      AppPaths.hmsUtstyr,
+                      EquipmentHubScreen(
+                        initialTab: state.uri.queryParameters['tab'],
+                      ),
                     ),
                   ),
                   GoRoute(
                     path: 'kompetanse',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => CompetenceHubScreen(
-                      initialTab: state.uri.queryParameters['tab'],
+                    builder: (context, state) => _guardPath(
+                      AppPaths.hmsKompetanse,
+                      CompetenceHubScreen(
+                        initialTab: state.uri.queryParameters['tab'],
+                      ),
                     ),
                   ),
                   GoRoute(
                     path: 'opplaering',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const SopTrainingScreen(),
+                    builder: (context, state) => _guardPath(
+                      AppPaths.hmsOpplaering,
+                      const SopTrainingScreen(),
+                    ),
                   ),
                   GoRoute(
                     path: 'dms',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => DmsScreen(
-                      initialSection: _dmsSectionFromQuery(
-                        state.uri.queryParameters['section'],
+                    builder: (context, state) => _guardPath(
+                      AppPaths.hmsDms,
+                      DmsScreen(
+                        initialSection: _dmsSectionFromQuery(
+                          state.uri.queryParameters['section'],
+                        ),
+                        initialFolderId: state.uri.queryParameters['folder'],
+                        initialFolderName:
+                            state.uri.queryParameters['folderName'],
                       ),
-                      initialFolderId: state.uri.queryParameters['folder'],
-                      initialFolderName: state.uri.queryParameters['folderName'],
                     ),
                   ),
                 ],

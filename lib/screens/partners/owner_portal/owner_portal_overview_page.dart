@@ -13,6 +13,8 @@ import '../widgets/eco_driving_badge.dart';
 import 'owner_portal_common.dart';
 import '../../../widgets/auth_legal_links.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../more/driftpro_platform_catalog.dart';
+import '../../profile/delete_own_account_dialog.dart';
 
 class OwnerPortalOverviewPage extends StatefulWidget {
   final Partner partner;
@@ -240,6 +242,52 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                   const Padding(
                     padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
                     child: AuthLegalLinks(compact: true),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: DriftProTheme.error.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: DriftProTheme.error.withValues(alpha: 0.35),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text(
+                            'Slett konto',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: DriftProTheme.error,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'DriftPro er kun for ${DriftProPlatformCatalog.companyName}. '
+                            'Slett innlogging og personopplysninger her.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.35,
+                              color: PartnerUi.mutedText(context),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            onPressed: () => showDeleteOwnAccountDialog(context),
+                            icon: const Icon(Icons.delete_forever_outlined, size: 18),
+                            label: const Text('Slett konto permanent'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: DriftProTheme.error,
+                              side: const BorderSide(color: DriftProTheme.error),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 24),
                 ],

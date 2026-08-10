@@ -161,78 +161,47 @@ class Ticket {
 
   factory Ticket.fromJson(Map<String, dynamic> json) {
     return Ticket(
-      id: json['id'] as String,
-      companyId: json['company_id'] as String,
-      departmentId: json['department_id'] as String?,
-      reportedBy: json['reported_by'] as String,
-      assignedTo: json['assigned_to'] as String?,
-      ticketNumber: json['ticket_number'] as int?,
-      traceRef: json['trace_ref'] as String?,
-      title: json['title'] as String,
-      description: json['description'] as String,
-      category: json['category'] as String?,
-      severity: TicketSeverity.fromDb(json['severity'] as String? ?? 'middels'),
-      status: TicketStatus.fromDb(json['status'] as String? ?? 'aapen'),
-      imageUrls: (json['image_urls'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
-      annotatedImageUrls: (json['annotated_image_urls'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
-      gpsLatitude: (json['gps_latitude'] as num?)?.toDouble(),
-      gpsLongitude: (json['gps_longitude'] as num?)?.toDouble(),
-      gpsAddress: json['gps_address'] as String?,
-      locationDescription: json['location_description'] as String?,
-      dueDate: json['due_date'] != null
-          ? DateTime.parse(json['due_date'] as String)
-          : null,
-      resolvedAt: json['resolved_at'] != null
-          ? DateTime.parse(json['resolved_at'] as String)
-          : null,
-      resolvedBy: json['resolved_by'] as String?,
-      resolutionComment: json['resolution_comment'] as String?,
-      isAnonymous: json['is_anonymous'] as bool? ?? false,
-      rootCause: json['root_cause'] as String?,
-      actionPlan: (json['action_plan'] as List<dynamic>?)?.map((e) => e as Map<String, dynamic>).toList() ?? [],
-      internalNotes: json['internal_notes'] as String?,
-      hmsDomain: HmsDomainDb.fromDb(json['hms_domain'] as String?),
-      videoUrls: (json['video_urls'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
-      observedAt: json['observed_at'] != null
-          ? DateTime.parse(json['observed_at'] as String)
-          : null,
-      hasPersonalInjury: json['has_personal_injury'] as bool? ?? false,
-      completedMeasures: json['completed_measures'] as String?,
-      escalationReason: json['escalation_reason'] as String?,
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : null,
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
-          : null,
-      deletedAt: json['deleted_at'] != null
-          ? DateTime.parse(json['deleted_at'] as String)
-          : null,
-      deletionComment: json['deletion_comment'] as String?,
-      reporterName: json['reporter'] != null
-          ? json['reporter']['full_name'] as String?
-          : null,
-      reporterAvatarUrl: json['reporter'] != null
-          ? json['reporter']['avatar_url'] as String?
-          : null,
-      assigneeName: json['assignee'] != null
-          ? json['assignee']['full_name'] as String?
-          : null,
-      resolvedByName: json['resolver'] != null
-          ? json['resolver']['full_name'] as String?
-          : null,
-      departmentName: json['department'] != null
-          ? json['department']['name'] as String?
-          : null,
+      id: _asString(json['id']) ?? '',
+      companyId: _asString(json['company_id']) ?? '',
+      departmentId: _asString(json['department_id']),
+      reportedBy: _asString(json['reported_by']) ?? '',
+      assignedTo: _asString(json['assigned_to']),
+      ticketNumber: _asInt(json['ticket_number']),
+      traceRef: _asString(json['trace_ref']),
+      title: _asString(json['title']) ?? 'Uten tittel',
+      description: _asString(json['description']) ?? '',
+      category: _asString(json['category']),
+      severity: TicketSeverity.fromDb(_asString(json['severity']) ?? 'middels'),
+      status: TicketStatus.fromDb(_asString(json['status']) ?? 'aapen'),
+      imageUrls: _asStringList(json['image_urls']),
+      annotatedImageUrls: _asStringList(json['annotated_image_urls']),
+      gpsLatitude: _asDouble(json['gps_latitude']),
+      gpsLongitude: _asDouble(json['gps_longitude']),
+      gpsAddress: _asString(json['gps_address']),
+      locationDescription: _asString(json['location_description']),
+      dueDate: _asDateTime(json['due_date']),
+      resolvedAt: _asDateTime(json['resolved_at']),
+      resolvedBy: _asString(json['resolved_by']),
+      resolutionComment: _asString(json['resolution_comment']),
+      isAnonymous: _asBool(json['is_anonymous']),
+      rootCause: _asString(json['root_cause']),
+      actionPlan: _asMapList(json['action_plan']),
+      internalNotes: _asString(json['internal_notes']),
+      hmsDomain: HmsDomainDb.fromDb(_asString(json['hms_domain'])),
+      videoUrls: _asStringList(json['video_urls']),
+      observedAt: _asDateTime(json['observed_at']),
+      hasPersonalInjury: _asBool(json['has_personal_injury']),
+      completedMeasures: _asString(json['completed_measures']),
+      escalationReason: _asString(json['escalation_reason']),
+      createdAt: _asDateTime(json['created_at']),
+      updatedAt: _asDateTime(json['updated_at']),
+      deletedAt: _asDateTime(json['deleted_at']),
+      deletionComment: _asString(json['deletion_comment']),
+      reporterName: _embedField(json['reporter'], 'full_name'),
+      reporterAvatarUrl: _embedField(json['reporter'], 'avatar_url'),
+      assigneeName: _embedField(json['assignee'], 'full_name'),
+      resolvedByName: _embedField(json['resolver'], 'full_name'),
+      departmentName: _embedField(json['department'], 'name'),
     );
   }
 
@@ -366,30 +335,96 @@ class TicketComment {
 
   factory TicketComment.fromJson(Map<String, dynamic> json) {
     return TicketComment(
-      id: json['id'] as String,
-      ticketId: json['ticket_id'] as String,
-      userId: json['user_id'] as String,
-      comment: json['comment'] as String,
-      imageUrls: (json['image_urls'] as List<dynamic>?)
-              ?.map((e) => e as String)
-              .toList() ??
-          [],
-      oldStatus: json['old_status'] != null
-          ? TicketStatus.fromDb(json['old_status'] as String)
+      id: _asString(json['id']) ?? '',
+      ticketId: _asString(json['ticket_id']) ?? '',
+      userId: _asString(json['user_id']) ?? '',
+      comment: _asString(json['comment']) ?? '',
+      imageUrls: _asStringList(json['image_urls']),
+      oldStatus: _asString(json['old_status']) != null
+          ? TicketStatus.fromDb(_asString(json['old_status'])!)
           : null,
-      newStatus: json['new_status'] != null
-          ? TicketStatus.fromDb(json['new_status'] as String)
+      newStatus: _asString(json['new_status']) != null
+          ? TicketStatus.fromDb(_asString(json['new_status'])!)
           : null,
       isStatusChange: json['is_status_change'] as bool? ?? false,
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : null,
-      userName: json['profiles'] != null
-          ? json['profiles']['full_name'] as String?
-          : null,
-      userAvatarUrl: json['profiles'] != null
-          ? json['profiles']['avatar_url'] as String?
-          : null,
+      createdAt: _asDateTime(json['created_at']),
+      userName: _embedField(json['profiles'], 'full_name'),
+      userAvatarUrl: _embedField(json['profiles'], 'avatar_url'),
     );
   }
+}
+
+String? _asString(dynamic v) {
+  if (v == null) return null;
+  if (v is String) {
+    final t = v.trim();
+    return t.isEmpty ? null : t;
+  }
+  return v.toString();
+}
+
+bool _asBool(dynamic v, {bool fallback = false}) {
+  if (v == null) return fallback;
+  if (v is bool) return v;
+  if (v is num) return v != 0;
+  final s = v.toString().trim().toLowerCase();
+  if (s == 'true' || s == 't' || s == '1' || s == 'yes') return true;
+  if (s == 'false' || s == 'f' || s == '0' || s == 'no') return false;
+  return fallback;
+}
+
+int? _asInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString());
+}
+
+double? _asDouble(dynamic v) {
+  if (v == null) return null;
+  if (v is double) return v;
+  if (v is num) return v.toDouble();
+  return double.tryParse(v.toString());
+}
+
+DateTime? _asDateTime(dynamic v) {
+  if (v == null) return null;
+  if (v is DateTime) return v;
+  final s = _asString(v);
+  if (s == null) return null;
+  return DateTime.tryParse(s);
+}
+
+List<String> _asStringList(dynamic v) {
+  if (v is! List) return const [];
+  return v
+      .map(_asString)
+      .whereType<String>()
+      .where((s) => s.isNotEmpty)
+      .toList();
+}
+
+List<Map<String, dynamic>> _asMapList(dynamic v) {
+  if (v is! List) return const [];
+  final out = <Map<String, dynamic>>[];
+  for (final e in v) {
+    if (e is Map<String, dynamic>) {
+      out.add(e);
+    } else if (e is Map) {
+      out.add(Map<String, dynamic>.from(e));
+    }
+  }
+  return out;
+}
+
+String? _embedField(dynamic embed, String key) {
+  if (embed == null) return null;
+  if (embed is Map) {
+    return _asString(embed[key]);
+  }
+  if (embed is List && embed.isNotEmpty) {
+    final first = embed.first;
+    if (first is Map) return _asString(first[key]);
+  }
+  return null;
 }

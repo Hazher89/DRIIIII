@@ -126,7 +126,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     if (_tabController == null || _tabController!.indexIsChanging || !mounted) return;
     final profile = _profile;
     if (profile == null) return;
-    final isManager = profile.role == UserRole.leder || profile.isAdmin;
+    final isManager = profile.access.canApproveLeave ||
+        profile.access.canRegisterLeaveForOthers ||
+        profile.isAdmin;
     _syncAbsenceUrl(isManager);
   }
 
@@ -232,7 +234,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
     final mine = results[0] as List<Absence>;
     final scoped = results[1] as List<Absence>;
-    final canHandleOthers = profile.role == UserRole.leder || profile.isAdmin;
+    final canHandleOthers = profile.access.canApproveLeave ||
+        profile.access.canRegisterLeaveForOthers ||
+        profile.isAdmin;
     final pending = canHandleOthers
         ? scoped
             .where((a) =>
@@ -293,7 +297,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       final mine = results[0] as List<Absence>;
       final scoped = results[1] as List<Absence>;
       final depts = results[3] as List<Department>;
-      final canHandleOthers = profile.role == UserRole.leder || profile.isAdmin;
+      final canHandleOthers = profile.access.canApproveLeave ||
+        profile.access.canRegisterLeaveForOthers ||
+        profile.isAdmin;
       final pending = canHandleOthers
           ? scoped
               .where((a) =>
@@ -392,7 +398,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
   Future<void> _loadTeamOverview(UserProfile profile) async {
     if (profile.companyId == null) return;
-    final canHandleOthers = profile.role == UserRole.leder || profile.isAdmin;
+    final canHandleOthers = profile.access.canApproveLeave ||
+        profile.access.canRegisterLeaveForOthers ||
+        profile.isAdmin;
     if (!canHandleOthers) {
       final peers = await SupabaseService.fetchScopedProfiles(profile);
       final deptPeers = profile.departmentId != null
@@ -501,7 +509,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final access = _profile?.access;
     final profile = _profile!;
-    final isManager = profile.role == UserRole.leder || profile.isAdmin;
+    final isManager = profile.access.canApproveLeave ||
+        profile.access.canRegisterLeaveForOthers ||
+        profile.isAdmin;
     final canAdmin = profile.isAdmin && profile.access.canVacationAdmin;
 
     return PermissionGuard(
@@ -986,8 +996,8 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       );
       return;
     }
-    final allowPick =
-        profile != null && (profile.role == UserRole.leder || profile.isAdmin);
+    final allowPick = profile != null &&
+        (profile.access.canRegisterLeaveForOthers || profile.isAdmin);
     Navigator.push(
       context,
       MaterialPageRoute(

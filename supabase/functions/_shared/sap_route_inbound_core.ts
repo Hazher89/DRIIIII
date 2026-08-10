@@ -142,9 +142,7 @@ export async function processSapInboundEmail(
 
     const hash = await sha256Hex(bytes);
     const safeName = att.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-    let storagePath =
-      `company_${companyId}/sap_inbox/${Date.now()}_${safeName}`;
-    let stored = false;
+    let storagePath = "";
 
     try {
       const dropbox = await tryUploadToDropbox(supabase, companyId, {
@@ -152,29 +150,18 @@ export async function processSapInboundEmail(
         category: "sap_inbox",
         bytes,
       });
-      if (dropbox) {
-        storagePath = dropbox.path.startsWith("dropbox://")
-          ? dropbox.path
-          : `dropbox://${dropbox.path}`;
-        stored = true;
-      }
-    } catch (e) {
-      console.error("Dropbox SAP upload failed, fallback to Supabase", e);
-    }
-
-    if (!stored) {
-      const { error: upErr } = await supabase.storage
-        .from("documents")
-        .upload(storagePath, bytes, {
-          contentType: "application/pdf",
-          upsert: false,
-        });
-      if (upErr) {
-        console.error("Supabase storage upload failed", upErr);
-        result.skipped.push(`${att.filename}:storage`);
+      if (!dropbox) {
+        console.error("Dropbox ikke koblet for SAP-opplasting", companyId);
+        result.skipped.push(`${att.filename}:dropbox_not_connected`);
         continue;
       }
-      stored = true;
+      storagePath = dropbox.path.startsWith("dropbox://")
+        ? dropbox.path
+        : `dropbox://${dropbox.path}`;
+    } catch (e) {
+      console.error("Dropbox SAP upload failed (no Supabase fallback)", e);
+      result.skipped.push(`${att.filename}:dropbox`);
+      continue;
     }
 
     const { data: dup } = await supabase

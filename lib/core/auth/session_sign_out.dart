@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../permissions/access_session_cache.dart';
 import '../routing/app_paths.dart';
 import '../services/notification/push_notification_service.dart';
 
@@ -14,6 +15,7 @@ Future<void> signOutFromPortal(BuildContext context) async {
   }
   await Future<void>.delayed(Duration.zero);
 
+  AccessSessionCache.clear();
   final auth = Supabase.instance.client.auth;
   try {
     await auth.signOut(scope: SignOutScope.local);
