@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../../core/layout/mobile_shell_scaffold.dart';
+import '../../../core/constants/vehicle_rental_agreement.dart';
 import '../../../core/services/partner/vehicle_rental_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/vehicle_rental.dart';
@@ -137,6 +138,61 @@ class _VehicleRentalCheckoutFlowScreenState
         padding: const EdgeInsets.all(16),
         children: [
           VehicleRentalMobileCard(rental: rental, showBlockedBanner: false),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.rule_folder_outlined, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Prosedyre før utlevering og retur',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  VehicleRentalAgreement.approverPriorityText,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, height: 1.35),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Før utlevering',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                ...VehicleRentalAgreement.handoutChecklist.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('• $item', style: const TextStyle(fontSize: 12, height: 1.35)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Ved retur',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 4),
+                ...VehicleRentalAgreement.returnChecklist.map(
+                  (item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text('• $item', style: const TextStyle(fontSize: 12, height: 1.35)),
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(14),

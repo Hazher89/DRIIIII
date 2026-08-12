@@ -16,15 +16,16 @@ class DriftProBrandBar extends StatelessWidget {
 
     return Material(
       color: drift.surface,
+      clipBehavior: Clip.none,
       child: SafeArea(
         bottom: false,
         child: Container(
           width: double.infinity,
           padding: EdgeInsets.fromLTRB(
             DriftProClient.isMobile ? 12 : 16,
-            DriftProClient.isMobile ? 4 : 4,
+            DriftProClient.isMobile ? 8 : 8,
             DriftProClient.isMobile ? 12 : 16,
-            DriftProClient.isMobile ? 6 : 6,
+            DriftProClient.isMobile ? 8 : 8,
           ),
           decoration: BoxDecoration(
             color: drift.surface,
@@ -34,16 +35,16 @@ class DriftProBrandBar extends StatelessWidget {
             message: 'Gå til dashboard',
             child: Material(
               color: Colors.transparent,
+              clipBehavior: Clip.none,
               child: InkWell(
                 onTap: () => context.go(AppPaths.dashboard),
                 borderRadius: BorderRadius.circular(10),
                 mouseCursor: SystemMouseCursors.click,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  padding: const EdgeInsets.symmetric(vertical: 4),
                   child: DriftProBrandLogo(
-                    density: DriftProClient.isMobile
-                        ? DriftProBrandDensity.compact
-                        : DriftProBrandDensity.header,
+                    // Samme 3D-maskot som på login (ikke for liten kompakt).
+                    density: DriftProBrandDensity.header,
                     showSubtitle: !DriftProClient.isMobile,
                   ),
                 ),

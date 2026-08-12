@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'driftpro_colors.dart';
@@ -283,6 +284,17 @@ class DriftProTheme {
         titleTextStyle: headingMd.copyWith(color: drift.textPrimary),
         iconTheme: IconThemeData(color: drift.iconPrimary),
         actionsIconTheme: IconThemeData(color: drift.iconPrimary),
+        systemOverlayStyle: isDark
+            ? const SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: Brightness.light,
+                statusBarBrightness: Brightness.dark,
+              )
+            : const SystemUiOverlayStyle(
+                statusBarColor: Colors.transparent,
+                statusBarIconBrightness: Brightness.dark,
+                statusBarBrightness: Brightness.light,
+              ),
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: drift.navBar,

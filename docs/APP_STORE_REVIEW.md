@@ -33,7 +33,7 @@ Primary login (recommended for review):
 2. Employee number: 25
 3. Password: [sett midlertidig review-passord før innsending]
 
-Also available: Sign in with Apple (native on iOS).
+Also available: employee number login only on mobile (Google on web).
 
 Partner portal uses a separate username/password (admin-provisioned) — not needed for core review.
 
@@ -85,7 +85,7 @@ supabase functions deploy delete-own-account
 1. Signing Team: `644LC648DB` (eller aktivt team)
 2. Capabilities: **Sign in with Apple** (på)
 3. Push/FCM: bevisst utsatt — ikke krev remote notifications i denne innsendingen
-4. Test på fysisk iPhone: ansattnummer-login + Fortsett med Apple + Slett konto-flyt
+4. Test på fysisk iPhone: ansattnummer-login + Slett konto-flyt
 
 ## Oppdater Privacy-side (hazher.no) før innsending
 

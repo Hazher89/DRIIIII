@@ -30,9 +30,8 @@ void main() async {
     ]);
   }
 
-  if (!DriftProClient.isDesktop) {
-    // SystemUiSync oppdaterer status-/nav-linje etter valgt tema.
-  }
+  // Sett mørke statusikoner før første frame (unngår hvite ikoner ved start).
+  SystemUiSync.applyLight();
 
   await _initSupabase();
   await _initDateLocales();
@@ -88,15 +87,16 @@ class _DriftProAppState extends State<DriftProApp> {
 
   @override
   Widget build(BuildContext context) {
-    return SystemUiSync(
-      child: MaterialApp.router(
-        title: DriftProClient.displayName,
-        debugShowCheckedModeBanner: false,
-        theme: DriftProTheme.lightTheme,
-        darkTheme: DriftProTheme.lightTheme,
-        themeMode: ThemeMode.light,
-        routerConfig: _router,
-      ),
+    return MaterialApp.router(
+      title: DriftProClient.displayName,
+      debugShowCheckedModeBanner: false,
+      theme: DriftProTheme.lightTheme,
+      darkTheme: DriftProTheme.lightTheme,
+      themeMode: ThemeMode.light,
+      routerConfig: _router,
+      // Inne i MaterialApp slik at Theme.of fungerer (utenfor → hvite iOS-ikoner).
+      builder: (context, child) =>
+          SystemUiSync(child: child ?? const SizedBox.shrink()),
     );
   }
 }

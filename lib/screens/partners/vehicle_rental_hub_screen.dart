@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/services/partner/mavi_unit_codes.dart';
+import '../../core/constants/vehicle_rental_agreement.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/partner/vehicle_rental_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -46,6 +47,83 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
 
   String _formatTime24(TimeOfDay time) =>
       '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+
+  VehicleRental? _activeRentalForVehicle(String vehicleId) {
+    for (final r in _rentals) {
+      if (r.partnerVehicleId == vehicleId &&
+          VehicleRentalService.activeStatuses.contains(r.status)) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  bool _canRemoveOpenRental(VehicleRental rental) =>
+      widget.canForceDeleteRentals ||
+      (widget.canApproveRentals &&
+          (rental.isPendingOwner ||
+              rental.isPendingMavi ||
+              rental.isApproved ||
+              rental.isPendingReturnMavi));
+
+  Future<void> _removeOpenRental(
+    VehicleRental rental, {
+    bool silent = false,
+  }) async {
+    final permanent = widget.canForceDeleteRentals &&
+        (rental.isApproved || rental.isPendingReturnMavi);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(permanent ? 'Slett åpen avtale?' : 'Kanseller åpen avtale?'),
+        content: Text(
+          permanent
+              ? 'Dette sletter den åpne avtalen permanent og frigjør bilen for ny utleie.'
+              : 'Dette kansellerer den åpne avtalen og frigjør bilen for ny utleie.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Avbryt'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: permanent ? Colors.red : DriftProTheme.primaryGreen,
+            ),
+            child: Text(permanent ? 'Slett avtale' : 'Kanseller avtale'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+
+    try {
+      if (permanent) {
+        await VehicleRentalService.superadminForceDeleteRental(
+          rentalId: rental.id,
+          reason: 'Frigjort før ny bilutleie',
+        );
+      } else {
+        await VehicleRentalService.cancel(rental.id);
+      }
+      await _load();
+      if (mounted && !silent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Åpen avtale ble fjernet og bilen er frigjort.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Kunne ikke fjerne avtale: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -169,6 +247,62 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                   const SizedBox(height: 16),
                   const Text('Ny bilutleie', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
                   const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.rule_folder_outlined, size: 18),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Prosedyre før utlevering og retur',
+                                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          VehicleRentalAgreement.approverPriorityText,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, height: 1.35),
+                        ),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'Før utlevering',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 4),
+                        ...VehicleRentalAgreement.handoutChecklist.map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text('• $item', style: const TextStyle(fontSize: 12, height: 1.35)),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Ved retur',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 4),
+                        ...VehicleRentalAgreement.returnChecklist.map(
+                          (item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Text('• $item', style: const TextStyle(fontSize: 12, height: 1.35)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   InputDecorator(
                     decoration: const InputDecoration(
                       labelText: 'Utleier (alltid)',
@@ -262,25 +396,54 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                                       ),
                                       const SizedBox(height: 6),
                                       ...blockedBorrowerVehicles.map((vehicle) {
-                                        VehicleRental? activeRental;
-                                        for (final r in _rentals) {
-                                          if (r.partnerVehicleId == vehicle.id &&
-                                              VehicleRentalService.activeStatuses.contains(r.status)) {
-                                            activeRental = r;
-                                            break;
-                                          }
-                                        }
+                                        final activeRental = _activeRentalForVehicle(vehicle.id);
                                         final holder = activeRental?.borrowerPartnerName ?? 'ukjent låntaker';
                                         final until = activeRental?.rentalEndAt;
                                         final untilLabel = until == null
                                             ? 'sluttdato ikke avklart'
                                             : DateFormat('d.M.y HH:mm', 'nb').format(until.toLocal());
-                                        return Padding(
-                                          padding: const EdgeInsets.only(bottom: 4),
-                                          child: Text(
-                                            '• ${MaviUnitCodes.normalize(vehicle.unitCode)} · ${vehicle.registrationNumber} '
-                                            '— har bilen: $holder, til: $untilLabel',
-                                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                        return Container(
+                                          margin: const EdgeInsets.only(bottom: 8),
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(color: Colors.orange.shade200),
+                                          ),
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                '${MaviUnitCodes.normalize(vehicle.unitCode)} · ${vehicle.registrationNumber}',
+                                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                                              ),
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                'Har bilen: $holder · til: $untilLabel',
+                                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                                              ),
+                                              if (activeRental != null && _canRemoveOpenRental(activeRental)) ...[
+                                                const SizedBox(height: 8),
+                                                Align(
+                                                  alignment: Alignment.centerLeft,
+                                                  child: OutlinedButton.icon(
+                                                    onPressed: () async {
+                                                      await _removeOpenRental(activeRental);
+                                                      if (mounted) {
+                                                        setDlg(() {
+                                                          vehicleId = null;
+                                                        });
+                                                      }
+                                                    },
+                                                    icon: const Icon(Icons.delete_outline, size: 18),
+                                                    label: const Text('Fjern åpen avtale og frigjør bil'),
+                                                    style: OutlinedButton.styleFrom(
+                                                      foregroundColor: Colors.red.shade700,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ],
                                           ),
                                         );
                                       }),
@@ -742,85 +905,6 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     }
   }
 
-  Future<void> _forceDeleteRental(VehicleRental rental) async {
-    final reasonCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Superadmin: slett utleieavtale'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Dette sletter avtalen permanent og frigjør blokkering på bilen ${rental.registrationNumber ?? '—'}.',
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: reasonCtrl,
-              maxLines: 2,
-              decoration: const InputDecoration(
-                labelText: 'Årsak (valgfritt)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: confirmCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Skriv SLETT for å bekrefte',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-          FilledButton(
-            onPressed: () {
-              if (confirmCtrl.text.trim().toUpperCase() != 'SLETT') {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Skriv SLETT for å bekrefte permanent sletting.'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-              Navigator.pop(ctx, true);
-            },
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Slett avtale'),
-          ),
-        ],
-      ),
-    );
-    final reasonText = reasonCtrl.text.trim();
-    reasonCtrl.dispose();
-    confirmCtrl.dispose();
-    if (ok != true || !mounted) return;
-
-    try {
-      await VehicleRentalService.superadminForceDeleteRental(
-        rentalId: rental.id,
-        reason: reasonText.isEmpty ? null : reasonText,
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Utleieavtale slettet. Bil er frigjort fra blokkering.')),
-        );
-        await _load();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke slette avtale: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
   Future<void> _openCheckout(VehicleRental rental) async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -875,17 +959,21 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                     label: const Text('Godkjenn retur'),
                   ),
                 ],
-                if (widget.canForceDeleteRentals &&
-                    VehicleRentalService.activeStatuses.contains(rental.status)) ...[
+                if (_canRemoveOpenRental(rental)) ...[
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: () {
                       Navigator.pop(context);
-                      _forceDeleteRental(rental);
+                      _removeOpenRental(rental);
                     },
                     icon: const Icon(Icons.delete_forever, color: Colors.red),
                     style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                    label: const Text('Superadmin: Slett avtale og frigjør bil'),
+                    label: Text(
+                      widget.canForceDeleteRentals &&
+                              (rental.isApproved || rental.isPendingReturnMavi)
+                          ? 'Slett åpen avtale og frigjør bil'
+                          : 'Kanseller åpen avtale og frigjør bil',
+                    ),
                   ),
                 ],
               ],

@@ -3,17 +3,18 @@ import 'package:flutter/material.dart';
 import '../core/constants/driftpro_brand.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/driftpro_theme_context.dart';
-import 'driftpro_animated_icon.dart';
+import 'driftpro_mascot_mark.dart';
 
 enum DriftProBrandDensity { compact, header, comfortable, hero }
 
-/// DriftPro-logo: animert D-ikon + ordmerke + undertekst.
+/// DriftPro-logo: maskot ved siden av ordmerke.
 class DriftProBrandLogo extends StatelessWidget {
   const DriftProBrandLogo({
     super.key,
     this.density = DriftProBrandDensity.compact,
     this.showSubtitle = true,
     this.alignment = Alignment.centerLeft,
+    @Deprecated('Animert D er fjernet — parameter beholdes for API-kompatibilitet')
     this.animateIcon = true,
   });
 
@@ -25,13 +26,13 @@ class DriftProBrandLogo extends StatelessWidget {
   double get _iconSize {
     switch (density) {
       case DriftProBrandDensity.compact:
-        return 34;
+        return 56;
       case DriftProBrandDensity.header:
-        return 54;
+        return 60;
       case DriftProBrandDensity.comfortable:
-        return 52;
+        return 72;
       case DriftProBrandDensity.hero:
-        return 68;
+        return 88;
     }
   }
 
@@ -67,59 +68,48 @@ class DriftProBrandLogo extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final subtitleColor = isDark ? drift.textMuted : Colors.grey[600];
     final driftColor = isDark ? Colors.white : const Color(0xFF2D3436);
+    final centered = alignment == Alignment.center;
+
+    final wordmark = RichText(
+      textAlign: centered ? TextAlign.center : TextAlign.start,
+      text: TextSpan(
+        style: TextStyle(
+          fontSize: _wordmarkSize,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.6,
+          height: 1,
+        ),
+        children: [
+          TextSpan(text: 'Drift', style: TextStyle(color: driftColor)),
+          TextSpan(
+            text: 'Pro',
+            style: TextStyle(color: DriftProTheme.primaryGreen),
+          ),
+        ],
+      ),
+    );
 
     return Align(
       alignment: alignment,
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: alignment == Alignment.center
-            ? CrossAxisAlignment.center
-            : CrossAxisAlignment.start,
+        crossAxisAlignment:
+            centered ? CrossAxisAlignment.center : CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              animateIcon
-                  ? DriftProAnimatedIcon(
-                      size: _iconSize,
-                      motion: DriftProIconMotion.ambient,
-                    )
-                  : Image.asset(
-                      DriftProBrand.logoMark,
-                      width: _iconSize,
-                      height: _iconSize,
-                      fit: BoxFit.contain,
-                      filterQuality: FilterQuality.high,
-                    ),
+              DriftProMascotMark(size: _iconSize),
               SizedBox(width: density == DriftProBrandDensity.header ? 10 : 8),
-              RichText(
-                text: TextSpan(
-                  style: TextStyle(
-                    fontSize: _wordmarkSize,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.6,
-                    height: 1,
-                  ),
-                  children: [
-                    TextSpan(
-                      text: 'Drift',
-                      style: TextStyle(color: driftColor),
-                    ),
-                    TextSpan(
-                      text: 'Pro',
-                      style: TextStyle(color: DriftProTheme.primaryGreen),
-                    ),
-                  ],
-                ),
-              ),
+              wordmark,
             ],
           ),
           if (showSubtitle) ...[
             SizedBox(height: density == DriftProBrandDensity.header ? 4 : 3),
             Text(
               DriftProBrand.subtitle,
-              textAlign: alignment == Alignment.center ? TextAlign.center : TextAlign.start,
+              textAlign: centered ? TextAlign.center : TextAlign.start,
               style: DriftProTheme.caption.copyWith(
                 fontSize: _subtitleSize,
                 height: 1.2,

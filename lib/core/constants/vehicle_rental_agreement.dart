@@ -2,6 +2,27 @@
 class VehicleRentalAgreement {
   VehicleRentalAgreement._();
 
+  static const String approverPriorityText =
+      'Jassy signerer/godkjenner først. Hvis Jassy er borte, overtar Herish. '
+      'Hvis Herish er borte, overtar Julie. Hvis alle er borte, overtar Karwan. '
+      'Samme rekkefølge gjelder ved retur.';
+
+  static const List<String> handoutChecklist = [
+    'Kontroller at riktig bil, periode og låntaker er valgt.',
+    'Gå gjennom leieavtalen med låntaker før bilen utleveres.',
+    'Dokumenter bilen med 6 bilder: front, bak, høyre, venstre, last/skap og dashboard.',
+    'Registrer drivstoff-/ladenivå, kilometerstand og eventuelle merknader.',
+    'Sjekk at bilen er ryddet, nøkler er klare og synlige skader er kommentert.',
+    'Send deretter avtalen til MAVI for godkjenning i riktig rekkefølge.',
+  ];
+
+  static const List<String> returnChecklist = [
+    'Sammenlign retur mot bilder og data fra utlevering.',
+    'Ta 6 nye bilder ved retur og registrer drivstoff-/ladenivå og kilometerstand.',
+    'Noter nye skader, avvik, manglende vask eller annet som må følges opp.',
+    'Retur godkjennes av MAVI i samme rekkefølge som ved utlevering.',
+  ];
+
   static String body({
     required String registrationNumber,
     required String vehicleMake,
@@ -96,6 +117,7 @@ Tilstandsrapport (6 bilder: front, bak, begge sider, inne i skap og dashboard) r
 Kilometerstand, drivstoff og kommentarer lagres digitalt.
 Når bileier trykker «akseptert» og sender inn, regnes avtalen som digitalt signert av leietaker/partnerbruker.
 Alt arkiveres automatisk i DriftPro for sporbarhet for både utleier og system.
+MAVI godkjenner i denne rekkefølgen: $approverPriorityText
 
 14. Personvern
 Kun autoriserte brukere hos utleier, leietaker og MAVI har tilgang til avtale, bilder og historikk.

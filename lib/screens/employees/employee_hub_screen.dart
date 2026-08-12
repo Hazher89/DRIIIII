@@ -11,6 +11,7 @@ import '../../models/user_profile.dart';
 import '../admin/company_sms_settings_screen.dart';
 import 'employee_access_detail_screen.dart';
 import 'employee_edit_screen.dart';
+import 'widgets/create_employee_sheet.dart';
 import 'widgets/employee_approval_sheet.dart';
 import 'widgets/employee_display.dart';
 import 'widgets/employee_birthdays_tab.dart';
@@ -204,6 +205,27 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
     if (ok == true) await _load();
   }
 
+  Future<void> _createEmployee() async {
+    final me = _me;
+    if (me == null || !_canEditEmployees) return;
+    final companyId =
+        me.companyId ?? await SupabaseService.getCurrentCompanyId();
+    if (!mounted) return;
+    if (companyId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fant ikke bedrift')),
+      );
+      return;
+    }
+    final created = await CreateEmployeeSheet.show(
+      context,
+      departments: _departments,
+      companyId: companyId,
+      requester: me,
+    );
+    if (created != null) await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -211,6 +233,15 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
     return Scaffold(
       backgroundColor:
           isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+      floatingActionButton: _canEditEmployees && !_loading
+          ? FloatingActionButton.extended(
+              onPressed: _createEmployee,
+              icon: const Icon(Icons.person_add_alt_1),
+              label: const Text('Ny ansatt'),
+              backgroundColor: DriftProTheme.primaryGreen,
+              foregroundColor: Colors.white,
+            )
+          : null,
       appBar: AppBar(
         title: const Text('Ansatte & tilganger'),
         bottom: TabBar(
@@ -323,8 +354,10 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
               children: [
                 Text(
                   _isSuperAdmin
-                      ? 'Superadmin – alle moduler'
-                      : 'Ansattoversikt (lesetilgang)',
+                      ? 'Superadmin – alle moduler. Trykk «Ny ansatt» for å registrere.'
+                      : _canEditEmployees
+                          ? 'Du kan registrere ansatte og styre tilganger.'
+                          : 'Ansattoversikt (lesetilgang)',
                   style: DriftProTheme.labelLg.copyWith(color: Colors.white),
                 ),
                 Text(

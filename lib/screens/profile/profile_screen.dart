@@ -14,6 +14,7 @@ import 'employee_change_password_sheet.dart';
 import 'widgets/profile_children_under_12_card.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
+/// Profil — iOS-vennlig Settings-layout: konto, personvern/vilkår og sletting tydelig.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -62,8 +63,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     if (_isLoading) {
       return const DriftProLoadingPage();
     }
@@ -73,230 +72,315 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     return Scaffold(
-      backgroundColor:
-          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+      backgroundColor: const Color(0xFFF2F2F7),
       appBar: AppBar(
-        title: const Text('Min Profil'),
+        title: const Text('Profil'),
         centerTitle: true,
+        backgroundColor: const Color(0xFFF2F2F7),
       ),
-      body: _buildProfileBody(isDark),
+      body: _buildProfileBody(),
     );
   }
 
-  Widget _buildProfileBody(bool isDark) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        children: [
-          Center(
-            child: Column(
-              children: [
-                CircleAvatar(
-                  radius: 50,
-                  backgroundColor:
-                      DriftProTheme.primaryGreen.withValues(alpha: 0.15),
-                  backgroundImage: _profile!.avatarUrl != null
-                      ? NetworkImage(_profile!.avatarUrl!)
-                      : null,
-                  child: _profile!.avatarUrl == null
-                      ? Text(
-                          _profile!.initials,
-                          style: DriftProTheme.headingXl.copyWith(
-                            color: DriftProTheme.primaryGreen,
-                            fontSize: 32,
-                          ),
-                        )
-                      : null,
-                ),
-                const SizedBox(height: 16),
-                Text(_profile!.fullName, style: DriftProTheme.headingLg),
-                const SizedBox(height: 4),
-                Text(
-                  _profile!.jobTitle ?? 'Ansatt',
-                  style: DriftProTheme.bodyMd.copyWith(color: Colors.grey[600]),
-                ),
-                if (_profile!.isSuperAdmin) ...[
-                  const SizedBox(height: 8),
-                  Chip(
-                    avatar: const Icon(Icons.admin_panel_settings, size: 18),
-                    label: const Text('Superadmin'),
-                    backgroundColor:
-                        DriftProTheme.primaryGreen.withValues(alpha: 0.12),
-                  ),
-                ],
-              ],
-            ),
+  Widget _buildProfileBody() {
+    final p = _profile!;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
+      children: [
+        _ProfileHeader(profile: p),
+        const SizedBox(height: 20),
+        if (p.partnerId == null) ...[
+          ProfileChildrenUnder12Card(
+            profile: p,
+            onSaved: _loadProfile,
           ),
+          const SizedBox(height: 20),
+        ],
+        _SectionLabel('Konto'),
+        _SettingsGroup(
+          children: [
+            _InfoRow(
+              icon: AppIcons.profile,
+              label: 'E-post',
+              value: p.email,
+            ),
+            _InfoRow(
+              icon: Icons.phone_rounded,
+              label: 'Telefon',
+              value: p.phone ?? 'Ikke satt',
+            ),
+            _InfoRow(
+              icon: Icons.badge_rounded,
+              label: 'Ansattnummer',
+              value: p.employeeNumber ?? 'Ikke satt',
+            ),
+            _InfoRow(
+              icon: AppIcons.department,
+              label: 'Avdeling',
+              value: _departmentName ??
+                  (p.departmentId != null ? 'Ukjent avdeling' : 'Ingen avdeling'),
+              showDivider: false,
+            ),
+          ],
+        ),
+        if (p.partnerId == null) ...[
           const SizedBox(height: 24),
-          if (_profile!.partnerId == null)
-            ProfileChildrenUnder12Card(
-              profile: _profile!,
-              onSaved: _loadProfile,
-            ),
-          const SizedBox(height: 32),
-          _buildInfoSection(isDark, [
-            _buildInfoTile(
-              AppIcons.profile,
-              'E-post',
-              _profile!.email,
-              isDark,
-            ),
-            _buildInfoTile(
-              Icons.phone_rounded,
-              'Telefon',
-              _profile!.phone ?? 'Ikke satt',
-              isDark,
-            ),
-            _buildInfoTile(
-              Icons.badge_rounded,
-              'Ansattnummer',
-              _profile!.employeeNumber ?? 'Ikke satt',
-              isDark,
-            ),
-            _buildInfoTile(
-              AppIcons.department,
-              'Avdeling',
-              _departmentName ?? (_profile!.departmentId != null ? 'Ukjent avdeling' : 'Ingen avdeling'),
-              isDark,
-            ),
-          ]),
-          const SizedBox(height: 24),
-          _buildInfoSection(isDark, [
-            if (_profile!.partnerId == null)
-              _buildActionTile(
-                Icons.lock_outline_rounded,
-                'Bytt passord (SMS bekreftelse)',
-                () => showEmployeeChangePasswordSheet(context),
-                isDark,
+          _SectionLabel('Sikkerhet'),
+          _SettingsGroup(
+            children: [
+              _ActionRow(
+                icon: Icons.lock_outline_rounded,
+                title: 'Bytt passord',
+                subtitle: 'SMS-bekreftelse kreves',
+                onTap: () => showEmployeeChangePasswordSheet(context),
+                showDivider: false,
               ),
-            _buildActionTile(
-              Icons.description_outlined,
-              'Vilkår for bruk',
-              () => launchInfoUrl(DriftProPlatformCatalog.termsOfUseUrl),
-              isDark,
-              subtitle: 'Åpner hazher.no (norsk)',
-            ),
-            _buildActionTile(
-              Icons.privacy_tip_outlined,
-              'Personvernerklæring',
-              () => launchInfoUrl(DriftProPlatformCatalog.privacyPolicyUrl),
-              isDark,
-              subtitle: 'Åpner hazher.no (norsk)',
-            ),
-            _buildActionTile(
-              Icons.shield_outlined,
-              'Personvern i appen',
-              () => context.push(AppPaths.morePersonvern),
-              isDark,
-              subtitle: 'Policy, rettigheter og slett konto',
-            ),
-          ]),
-          const SizedBox(height: 24),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: DriftProTheme.error.withValues(alpha: isDark ? 0.12 : 0.06),
-              borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-              border: Border.all(
-                color: DriftProTheme.error.withValues(alpha: 0.35),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Slett konto',
-                  style: DriftProTheme.headingSm.copyWith(
-                    color: DriftProTheme.error,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'DriftPro er kun for ${DriftProPlatformCatalog.companyName}. '
-                  'Du kan slette din egen innlogging og personopplysninger her. '
-                  'Bedriften kan fortsatt være lovpålagt å beholde enkelte HMS-/HR-data uten din identitet.',
-                  style: DriftProTheme.bodySm.copyWith(height: 1.4),
-                ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: () => showDeleteOwnAccountDialog(context),
-                  icon: const Icon(Icons.delete_forever_outlined),
-                  label: const Text('Slett konto permanent'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: DriftProTheme.error,
-                    minimumSize: const Size(double.infinity, 48),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () async {
-                await signOutFromPortal(context);
-              },
-              icon: const Icon(AppIcons.logout),
-              label: const Text('Logg ut'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: DriftProTheme.error,
-                side: const BorderSide(color: DriftProTheme.error),
-              ),
-            ),
+            ],
           ),
         ],
+        const SizedBox(height: 24),
+        _SectionLabel('Personvern og vilkår'),
+        _SettingsGroup(
+          children: [
+            _ActionRow(
+              icon: Icons.privacy_tip_outlined,
+              title: 'Personvernerklæring',
+              subtitle: 'Åpner hazher.no',
+              onTap: () => launchInfoUrl(DriftProPlatformCatalog.privacyPolicyUrl),
+            ),
+            _ActionRow(
+              icon: Icons.description_outlined,
+              title: 'Vilkår for bruk',
+              subtitle: 'Åpner hazher.no',
+              onTap: () => launchInfoUrl(DriftProPlatformCatalog.termsOfUseUrl),
+            ),
+            _ActionRow(
+              icon: Icons.shield_outlined,
+              title: 'Personvern i appen',
+              subtitle: 'Rettigheter, lagring og kontakt',
+              onTap: () => context.push(AppPaths.morePersonvern),
+              showDivider: false,
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _SectionLabel('Kontoen din'),
+        _SettingsGroup(
+          children: [
+            _ActionRow(
+              icon: Icons.delete_forever_outlined,
+              title: 'Slett konto',
+              subtitle: 'Fjern innlogging og personopplysninger',
+              titleColor: DriftProTheme.error,
+              iconColor: DriftProTheme.error,
+              onTap: () => showDeleteOwnAccountDialog(context),
+              showDivider: false,
+            ),
+          ],
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 10, 4, 0),
+          child: Text(
+            'DriftPro er kun for ${DriftProPlatformCatalog.companyName}. '
+            'Bedriften kan fortsatt være lovpålagt å beholde enkelte HMS-/HR-data '
+            'uten din identitet.',
+            style: DriftProTheme.caption.copyWith(
+              color: Colors.grey[600],
+              height: 1.35,
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
+        SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: FilledButton(
+            onPressed: () async => signOutFromPortal(context),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: DriftProTheme.error,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Colors.grey.shade300),
+              ),
+            ),
+            child: const Text(
+              'Logg ut',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({required this.profile});
+
+  final UserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        CircleAvatar(
+          radius: 44,
+          backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+          backgroundImage: profile.avatarUrl != null
+              ? NetworkImage(profile.avatarUrl!)
+              : null,
+          child: profile.avatarUrl == null
+              ? Text(
+                  profile.initials,
+                  style: DriftProTheme.headingXl.copyWith(
+                    color: DriftProTheme.primaryGreen,
+                    fontSize: 28,
+                  ),
+                )
+              : null,
+        ),
+        const SizedBox(height: 12),
+        Text(profile.fullName, style: DriftProTheme.headingLg),
+        const SizedBox(height: 4),
+        Text(
+          profile.jobTitle ?? 'Ansatt',
+          style: DriftProTheme.bodyMd.copyWith(color: Colors.grey[600]),
+        ),
+        if (profile.isSuperAdmin) ...[
+          const SizedBox(height: 8),
+          Chip(
+            avatar: const Icon(Icons.admin_panel_settings, size: 18),
+            label: const Text('Superadmin'),
+            backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        text.toUpperCase(),
+        style: DriftProTheme.caption.copyWith(
+          color: Colors.grey[600],
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.4,
+        ),
       ),
     );
   }
+}
 
-  Widget _buildInfoSection(bool isDark, List<Widget> children) {
+class _SettingsGroup extends StatelessWidget {
+  const _SettingsGroup({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-        border: Border.all(
-          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100,
-        ),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(children: children),
     );
   }
+}
 
-  Widget _buildInfoTile(
-    IconData icon,
-    String label,
-    String value,
-    bool isDark,
-  ) {
-    return ListTile(
-      leading: Icon(icon, color: DriftProTheme.primaryGreen, size: 22),
-      title: Text(label, style: DriftProTheme.caption),
-      subtitle: Text(
-        value,
-        style: DriftProTheme.bodyMd.copyWith(fontWeight: FontWeight.w600),
-      ),
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.showDivider = true,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        ListTile(
+          leading: Icon(icon, color: DriftProTheme.primaryGreen, size: 22),
+          title: Text(label, style: DriftProTheme.caption),
+          subtitle: Text(
+            value,
+            style: DriftProTheme.bodyMd.copyWith(fontWeight: FontWeight.w600),
+          ),
+        ),
+        if (showDivider)
+          Divider(height: 1, indent: 56, color: Colors.grey.shade200),
+      ],
     );
   }
+}
 
-  Widget _buildActionTile(
-    IconData icon,
-    String label,
-    VoidCallback onTap,
-    bool isDark, {
-    String? subtitle,
-  }) {
-    return ListTile(
-      onTap: onTap,
-      leading: Icon(
-        icon,
-        color: isDark ? Colors.grey[400] : Colors.grey[600],
-        size: 22,
-      ),
-      title: Text(label, style: DriftProTheme.bodyMd),
-      subtitle: subtitle != null ? Text(subtitle, style: DriftProTheme.caption) : null,
-      trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+class _ActionRow extends StatelessWidget {
+  const _ActionRow({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+    this.titleColor,
+    this.iconColor,
+    this.showDivider = true,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final VoidCallback onTap;
+  final Color? titleColor;
+  final Color? iconColor;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        ListTile(
+          onTap: onTap,
+          leading: Icon(
+            icon,
+            color: iconColor ?? Colors.grey[700],
+            size: 22,
+          ),
+          title: Text(
+            title,
+            style: DriftProTheme.bodyMd.copyWith(
+              fontWeight: FontWeight.w500,
+              color: titleColor,
+            ),
+          ),
+          subtitle: subtitle != null
+              ? Text(subtitle!, style: DriftProTheme.caption)
+              : null,
+          trailing: Icon(
+            Icons.chevron_right_rounded,
+            color: Colors.grey[400],
+          ),
+        ),
+        if (showDivider)
+          Divider(height: 1, indent: 56, color: Colors.grey.shade200),
+      ],
     );
   }
 }
