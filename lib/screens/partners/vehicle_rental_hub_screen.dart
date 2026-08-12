@@ -1010,27 +1010,62 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                 ('Arkiv', '${_count('returned')}'),
               ],
             ),
-            PartnerSmartActionsPanel(
-              title: 'Anbefalte handlinger',
-              actions: [
-                const PartnerSmartAction(
-                  label: 'Opprett ny utleie',
-                  hint: 'Start med låntaker, bil og periode',
-                  icon: Icons.add_circle_outline,
-                ),
-                if (_count('pending_owner') > 0)
-                  const PartnerSmartAction(
-                    label: 'Dokumenter før utleie',
-                    hint: 'Ta alle 6 bildene, drivstoff og km',
-                    icon: Icons.photo_camera_outlined,
+            // Prosedyreboks (samme tekst som i "Ny bilutleie" og checkout-flow).
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.blue.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.rule_folder_outlined, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Prosedyre før utlevering og retur',
+                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                        ),
+                      ),
+                    ],
                   ),
-                if (_count('pending_mavi') > 0)
-                  const PartnerSmartAction(
-                    label: 'Godkjenn ventende utlån',
-                    hint: 'Sjekk bilder og detaljer før godkjenning',
-                    icon: Icons.task_alt_outlined,
+                  const SizedBox(height: 10),
+                  Text(
+                    VehicleRentalAgreement.approverPriorityText,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, height: 1.35),
                   ),
-              ],
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Før utlevering',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  ...VehicleRentalAgreement.handoutChecklist.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text('• $item', style: const TextStyle(fontSize: 12, height: 1.35)),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Ved retur',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 4),
+                  ...VehicleRentalAgreement.returnChecklist.map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text('• $item', style: const TextStyle(fontSize: 12, height: 1.35)),
+                    ),
+                  ),
+                ],
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
@@ -1169,8 +1204,28 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
   }
 
   Widget? _buildCardAction(VehicleRental r) {
+    final removalPossible = _canRemoveOpenRental(r) && (widget.canApproveRentals || widget.canForceDeleteRentals);
+
+    // Viktig: bruk samme knapp-logikk som i detail-sheet, men synlig på kortet
+    // så du ser hvordan du sletter åpne avtaler uten å åpne detalj.
+    Widget? removalButton;
+    if (removalPossible) {
+      removalButton = OutlinedButton.icon(
+        onPressed: () async {
+          await _removeOpenRental(r);
+        },
+        icon: const Icon(Icons.delete_forever, color: Colors.red),
+        style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+        label: Text(
+          widget.canForceDeleteRentals && (r.isApproved || r.isPendingReturnMavi)
+              ? 'Slett åpen avtale og frigjør bil'
+              : 'Kanseller åpen avtale og frigjør bil',
+        ),
+      );
+    }
+
     if (r.isPendingOwner) {
-      return FilledButton.icon(
+      final docButton = FilledButton.icon(
         onPressed: () => _openCheckout(r),
         style: FilledButton.styleFrom(
           backgroundColor: DriftProTheme.accentBlue,
@@ -1179,6 +1234,18 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
         icon: const Icon(Icons.photo_camera_outlined, size: 18),
         label: const Text('Dokumenter utleie (6 bilder)'),
       );
+
+      if (removalButton != null) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            removalButton!,
+            const SizedBox(height: 8),
+            docButton,
+          ],
+        );
+      }
+      return docButton;
     }
     if (r.isApproved) {
       return FilledButton.icon(
@@ -1193,7 +1260,7 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     }
     if (!widget.canApproveRentals) return null;
     if (r.isPendingMavi) {
-      return FilledButton.icon(
+      final approveButton = FilledButton.icon(
         onPressed: () => _showDetail(r),
         style: FilledButton.styleFrom(
           backgroundColor: DriftProTheme.primaryGreen,
@@ -1202,9 +1269,20 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
         icon: const Icon(Icons.visibility_outlined, size: 18),
         label: const Text('Se bilder før godkjenning'),
       );
+      if (removalButton != null) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            removalButton!,
+            const SizedBox(height: 8),
+            approveButton,
+          ],
+        );
+      }
+      return approveButton;
     }
     if (r.isPendingReturnMavi) {
-      return FilledButton.icon(
+      final approveReturnButton = FilledButton.icon(
         onPressed: () => _showDetail(r),
         style: FilledButton.styleFrom(
           backgroundColor: DriftProTheme.success,
@@ -1213,8 +1291,19 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
         icon: const Icon(Icons.visibility_outlined, size: 18),
         label: const Text('Se retur før godkjenning'),
       );
+      if (removalButton != null) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            removalButton!,
+            const SizedBox(height: 8),
+            approveReturnButton,
+          ],
+        );
+      }
+      return approveReturnButton;
     }
-    return null;
+    return removalButton;
   }
 }
 

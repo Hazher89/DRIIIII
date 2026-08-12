@@ -24,6 +24,25 @@ class _DriftProMascotMarkState extends State<DriftProMascotMark> {
   bool get _use3d => DriftProMascotMark.isSupported;
 
   @override
+  void initState() {
+    super.initState();
+    // Fallback: iOS/WebView can sometimes miss the JS ready signal
+    // (especially when rendered inside headers). If that happens,
+    // we still want the 3D to appear smoothly.
+    Future<void>.delayed(const Duration(milliseconds: 1800)).then((_) {
+      if (mounted && !_viewerReady) {
+        setState(() => _viewerReady = true);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    // No-op: timer uses mounted check above.
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final w = widget.size;
     final h = widget.size * 1.5;
@@ -104,7 +123,8 @@ class _CatViewer3D extends StatelessWidget {
       alt: 'DriftPro Porter Cat',
       backgroundColor: const Color(0x00000000),
       loading: Loading.eager,
-      reveal: Reveal.auto,
+      // Use always to avoid "stuck at poster" behavior in constrained headers.
+      reveal: Reveal.always,
       autoPlay: true,
       animationName: 'Armature|ArmatureAction',
       autoRotate: false,
