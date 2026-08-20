@@ -7,6 +7,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../models/hms/stakeholder_risk_assessment.dart';
 import 'stakeholder_risk_widgets.dart';
 import '../../../../widgets/driftpro_loading_indicator.dart';
+import '../../../../core/layout/web_layout.dart';
 
 class StakeholderRiskEditorScreen extends StatefulWidget {
   final String assessmentId;
@@ -276,7 +277,7 @@ class _StakeholderRiskEditorScreenState extends State<StakeholderRiskEditorScree
                       children: [
                         StakeholderRiskSummary(assessment: _assessment!),
                         Expanded(
-                          child: TabBarView(
+                          child: DriftProTabView(
                             controller: _tabController,
                             children: [
                               for (var i = 0; i < _assessment!.content.sections.length; i++)

@@ -5,6 +5,7 @@ import '../../../core/routing/route_url_sync.dart';
 import '../../../core/theme/app_theme.dart';
 import 'employee_notification_recipients_panel.dart';
 import 'unified_notification_settings_panel.dart';
+import '../../../core/layout/web_layout.dart';
 
 /// Varsel-hub: mottakere per ansatt | firmakanaler | samarbeid.
 class NotificationSettingsSplitTab extends StatefulWidget {
@@ -66,7 +67,7 @@ class _NotificationSettingsSplitTabState extends State<NotificationSettingsSplit
           ),
         ),
         Expanded(
-          child: TabBarView(
+          child: DriftProTabView(
             controller: _tabs,
             children: const [
               EmployeeNotificationRecipientsPanel(),

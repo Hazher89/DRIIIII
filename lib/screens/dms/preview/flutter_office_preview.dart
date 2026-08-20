@@ -7,6 +7,7 @@ import 'package:spreadsheet_decoder/spreadsheet_decoder.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/office_file_type.dart';
+import '../../../core/layout/web_layout.dart';
 
 /// Leser Office-filer direkte i Flutter (uten Google/ekstern viser).
 class FlutterOfficePreview extends StatelessWidget {
@@ -108,7 +109,7 @@ class _XlsxPreview extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: TabBarView(
+            child: DriftProTabView(
               children: names.map((name) {
                 final sheet = book.tables[name]!;
                 return _ScrollableSheetTable(
@@ -150,7 +151,7 @@ class _XlsPreview extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: TabBarView(
+            child: DriftProTabView(
               children: tables.map((name) {
                 final table = decoder.tables[name]!;
                 return _ScrollableSheetTable.fromMatrix(

@@ -12,6 +12,7 @@ import '../../../models/user_profile.dart';
 import 'equipment_form_screen.dart';
 import 'equipment_service_book_screen.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../../core/layout/web_layout.dart';
 
 /// Truck-profil: mal (gaffel/klem), bilder, kontroll og SMS-planlegging.
 class EquipmentTruckProfileScreen extends StatefulWidget {
@@ -353,7 +354,7 @@ class _EquipmentTruckProfileScreenState extends State<EquipmentTruckProfileScree
       ),
       body: _saving
           ? const DriftProLoadingCenter()
-          : TabBarView(
+          : DriftProTabView(
               controller: _tabs,
               children: [
                 _overviewTab(e),

@@ -16,6 +16,7 @@ import '../../../models/gm_storo_scan.dart';
 import '../../../models/user_profile.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 import 'gm_storo_admin_panel.dart';
+import '../../../core/layout/web_layout.dart';
 
 /// GM & STORO — rask skanning av hub-etiketter.
 class GmStoroHubScreen extends StatefulWidget {
@@ -118,7 +119,7 @@ class _GmStoroHubScreenState extends State<GmStoroHubScreen>
           : _batch == null
               ? const Center(child: Text('Kunne ikke starte skanning'))
               : _isAdmin && _tabs != null
-                  ? TabBarView(
+                  ? DriftProTabView(
                       controller: _tabs,
                       children: [
                         _GmStoroScanPanel(

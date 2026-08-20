@@ -40,6 +40,7 @@ import 'widgets/partner_portal_bottom_nav.dart';
 import 'widgets/partner_route_pdf_actions.dart';
 import 'widgets/partner_ui.dart' show PartnerStatusBadge;
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../core/layout/web_layout.dart';
 
 DateTime _routeCalendarDay(PartnerRouteShare r) {
   final t = r.routeStartAt ?? r.shareDate;
@@ -745,7 +746,7 @@ class _PartnerRoutesPageState extends State<_PartnerRoutesPage> with SingleTicke
           ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _load,
-              child: TabBarView(
+              child: DriftProTabView(
                 controller: _tab,
                 children: [
                   _active.isEmpty

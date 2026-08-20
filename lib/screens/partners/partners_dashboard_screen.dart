@@ -25,6 +25,7 @@ import 'vehicle_inspection_hub_screen.dart';
 import 'widgets/partner_companies_ui.dart';
 import 'widgets/partner_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../core/layout/web_layout.dart';
 
 /// Oversikt over samarbeidspartnere (interne brukere).
 class PartnersDashboardScreen extends StatefulWidget {
@@ -325,12 +326,14 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       );
     }
 
-    final nested = !DriftProClient.isMobile;
+    final canvas = WebLayout.prefersPointerNav
+        ? WebLayout.canvasColor(context)
+        : (isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight);
 
     return MobileShellScaffold(
       title: DriftProClient.isMobile ? 'Partnere' : null,
-      backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-      // Web: faner ligger i NestedScrollView og skroller med innholdet (ikke fast AppBar).
+      backgroundColor: canvas,
+      // Mobil: faner i AppBar. Web/desktop: sticky fanerad over innhold (ingen NestedScroll-swipe).
       bottom: _tabs == null || !DriftProClient.isMobile
           ? null
           : _buildPartnerTabBar(context),
@@ -353,23 +356,32 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
               ? (_loading
                   ? const DriftProLoadingCenter()
                   : _buildPartnerTabView(nestedScroll: false))
-              : NestedScrollView(
-                  headerSliverBuilder: (context, innerBoxIsScrolled) => [
-                    SliverOverlapAbsorber(
-                      handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-                      sliver: SliverAppBar(
-                        pinned: false,
-                        floating: false,
-                        snap: false,
-                        toolbarHeight: 0,
-                        forceElevated: innerBoxIsScrolled,
-                        bottom: _buildPartnerTabBar(context),
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Material(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? const Color(0xFF151820)
+                          : Colors.white,
+                      elevation: 0,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: Colors.black.withValues(alpha: 0.06),
+                            ),
+                          ),
+                        ),
+                        child: _buildPartnerTabBar(context),
                       ),
                     ),
+                    Expanded(
+                      child: _loading
+                          ? const DriftProLoadingCenter()
+                          // nestedScroll krever NestedScrollView — ikke bruk her.
+                          : _buildPartnerTabView(nestedScroll: false),
+                    ),
                   ],
-                  body: _loading
-                      ? const DriftProLoadingCenter()
-                      : _buildPartnerTabView(nestedScroll: nested),
                 ),
     );
   }
@@ -380,11 +392,16 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       isScrollable: DriftProClient.isMobile,
       tabAlignment: DriftProClient.isMobile ? TabAlignment.start : TabAlignment.fill,
       indicatorColor: DriftProTheme.primaryGreen,
+      indicatorWeight: 3,
       labelColor: DriftProTheme.primaryGreenDark,
       unselectedLabelColor: PartnerUi.mutedText(context),
       labelStyle: TextStyle(
-        fontSize: DriftProClient.isMobile ? 12 : 14,
-        fontWeight: FontWeight.w700,
+        fontSize: DriftProClient.isMobile ? 12 : 13.5,
+        fontWeight: FontWeight.w800,
+      ),
+      unselectedLabelStyle: TextStyle(
+        fontSize: DriftProClient.isMobile ? 12 : 13.5,
+        fontWeight: FontWeight.w600,
       ),
       tabs: [
         if (_showCompaniesTab)
@@ -422,7 +439,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   }
 
   Widget _buildPartnerTabView({required bool nestedScroll}) {
-    return TabBarView(
+    return DriftProTabView(
       controller: _tabs,
       children: [
         if (_showCompaniesTab)

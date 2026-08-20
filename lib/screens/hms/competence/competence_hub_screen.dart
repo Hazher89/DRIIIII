@@ -13,6 +13,7 @@ import '../../../models/hms_document.dart';
 import '../../../models/user_profile.dart';
 import 'competence_matrix_screen.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../../core/layout/web_layout.dart';
 
 /// Kompetanse: kurskatalog, dokumenter/bevis, matrise.
 class CompetenceHubScreen extends StatefulWidget {
@@ -353,7 +354,7 @@ class _CompetenceHubScreenState extends State<CompetenceHubScreen>
           : null,
       body: _loading
           ? const DriftProLoadingCenter()
-          : TabBarView(
+          : DriftProTabView(
               controller: _tabs,
               children: [
                 _coursesTab(),

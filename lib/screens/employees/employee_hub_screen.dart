@@ -17,6 +17,7 @@ import 'widgets/employee_display.dart';
 import 'widgets/employee_birthdays_tab.dart';
 import 'widgets/employee_move_department_sheet.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../core/layout/web_layout.dart';
 
 /// Ansattadministrasjon – superadmin styrer alle DriftPro-tilganger per bruker.
 class EmployeeHubScreen extends StatefulWidget {
@@ -317,7 +318,7 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                       },
                     ),
                     Expanded(
-                      child: TabBarView(
+                      child: DriftProTabView(
                         controller: _tabs,
                         children: [
                           _employeeList(_visible, isDark),

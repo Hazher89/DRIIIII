@@ -4,6 +4,7 @@ import '../../core/theme/driftpro_theme_context.dart';
 import '../../models/survey/survey.dart';
 import 'survey_analyze_view.dart';
 import 'survey_responses_screen.dart';
+import '../../core/layout/web_layout.dart';
 
 /// Samlet resultat-hub — statistikk + individuelle svar i én ryddig visning.
 class SurveyResultsHub extends StatefulWidget {
@@ -64,7 +65,7 @@ class _SurveyResultsHubState extends State<SurveyResultsHub> with SingleTickerPr
           ),
         ),
         Expanded(
-          child: TabBarView(
+          child: DriftProTabView(
             controller: _tab,
             children: [
               SurveyAnalyzeView(survey: widget.survey, embedded: true),

@@ -10,6 +10,7 @@ import '../../models/partner/partner_links.dart';
 import 'fleet_route_overview_tab.dart';
 import 'widgets/partner_modern_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../core/layout/web_layout.dart';
 
 /// MAVI rute-statistikk: rettferdig fordeling + ruteoversikt.
 class FleetRouteDriverStatsScreen extends StatefulWidget {
@@ -195,7 +196,7 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
                   children: [
                     if (_tabs.index == 0) _headerPanel(),
                     Expanded(
-                      child: TabBarView(
+                      child: DriftProTabView(
                         controller: _tabs,
                         children: [
                           _fairnessTab(),

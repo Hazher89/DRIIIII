@@ -16,6 +16,7 @@ import 'widgets/department_absence_stats.dart';
 import 'widgets/department_member_leave_card.dart';
 import 'widgets/department_ui_helpers.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../core/layout/web_layout.dart';
 
 class DepartmentDetailsScreen extends StatefulWidget {
   final Department department;
@@ -149,7 +150,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
       ),
       body: _isLoading
           ? const DriftProLoadingCenter()
-          : TabBarView(
+          : DriftProTabView(
               controller: _tabController,
               children: [
                 _buildOverviewTab(isDark),

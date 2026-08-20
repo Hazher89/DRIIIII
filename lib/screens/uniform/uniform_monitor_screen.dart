@@ -15,6 +15,7 @@ import '../../models/vision_camera.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 import 'widgets/uniform_live_viewport.dart';
 import 'widgets/uniform_violations_gallery.dart';
+import '../../core/layout/web_layout.dart';
 
 /// Live uniform-monitor: MAVI-logo på bryst + vernesko.
 class UniformMonitorScreen extends StatefulWidget {
@@ -233,7 +234,7 @@ class _UniformMonitorScreenState extends State<UniformMonitorScreen>
           ? const DriftProLoadingCenter()
           : ColoredBox(
               color: Theme.of(context).colorScheme.surface,
-              child: TabBarView(
+              child: DriftProTabView(
                 controller: _tabs,
                 children: [
                   UniformLiveViewport(

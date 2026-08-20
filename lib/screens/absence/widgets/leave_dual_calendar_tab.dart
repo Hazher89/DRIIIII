@@ -10,6 +10,7 @@ import 'leave_calendar_rules_section.dart';
 import 'leave_employee_timeline.dart';
 import 'leave_public_holidays_panel.dart';
 import 'team_leave_calendar.dart';
+import '../../../core/layout/web_layout.dart';
 
 /// To kalendere: ferie og øvrig fravær — avansert oversikt for hele teamet.
 class LeaveDualCalendarTab extends StatefulWidget {
@@ -118,7 +119,7 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab>
           ),
         ),
         Expanded(
-          child: TabBarView(
+          child: DriftProTabView(
             controller: _inner,
             children: [
               _calendarPane(vacationOnly: true, types: _vacationTypes),

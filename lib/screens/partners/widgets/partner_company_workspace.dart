@@ -25,6 +25,7 @@ import 'partner_transport_licenses_tab.dart';
 import 'partner_ui.dart';
 import 'partner_vehicle_inspection_tab.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../../core/layout/web_layout.dart';
 
 /// Åpner arbeidsflate for én bedrift — panel eller full skjerm.
 class PartnerCompanyWorkspace {
@@ -214,7 +215,7 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
             tabs: _tabs.map((t) => (t.icon, t.label)).toList(),
           ),
           Expanded(
-            child: TabBarView(
+            child: DriftProTabView(
               controller: _tabCtrl,
               children: _tabs.map(_tabChild).toList(),
             ),

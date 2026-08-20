@@ -11,6 +11,8 @@ import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/partner_access.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
+import '../../core/routing/app_paths.dart';
+import '../../core/routing/route_url_sync.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -18,6 +20,7 @@ import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
 import '../../models/user_profile.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
+import '../../core/layout/web_layout.dart';
 import 'widgets/partner_assigned_routes_tab.dart';
 import 'widgets/partner_compliance_tab.dart';
 import 'widgets/partner_deduction_tab.dart';
@@ -83,9 +86,36 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
     final tabs = _tabs;
     if (tabs == null || tabs.indexIsChanging) return;
     if (tabs.index >= _visibleTabs.length) return;
+    _syncDetailUrl();
     if (_visibleTabs[tabs.index].accessKey == AccessKeys.partnersTabBilkontroll) {
       unawaited(_reload());
     }
+  }
+
+  void _syncDetailUrl() {
+    if (!mounted || _tabs == null) return;
+    final i = _tabs!.index;
+    if (i < 0 || i >= _visibleTabs.length) return;
+    final slug = _slugForAccessKey(_visibleTabs[i].accessKey);
+    RouteUrlSync.goIfChanged(
+      context,
+      AppPaths.partnerDetailPath(_p.id, tab: slug),
+    );
+  }
+
+  String _slugForAccessKey(String key) {
+    const map = <String, String>{
+      AccessKeys.partnersTabOversikt: 'oversikt',
+      AccessKeys.partnersTabBilkontroll: 'bilkontroll',
+      AccessKeys.partnersTabRuter: 'ruter',
+      AccessKeys.partnersTabDokumenter: 'dokumenter',
+      AccessKeys.partnersTabLoyver: 'loyver',
+      AccessKeys.partnersTabOppfolging: 'oppfolging',
+      AccessKeys.partnersTabBotTrekk: 'bot-trekk',
+      AccessKeys.partnersTabOppsummering: 'oppsummering',
+      AccessKeys.partnersTabFri: 'fri',
+    };
+    return map[key] ?? 'oversikt';
   }
 
   int _indexForTabSlug(List<PartnerDetailTabDef> tabs, String? slug) {
@@ -206,14 +236,10 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
         .join(' · ');
 
     return Scaffold(
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? DriftProTheme.surfaceDark
-          : const Color(0xFFF5F5F7),
+      backgroundColor: WebLayout.canvasColor(context),
       appBar: AppBar(
         title: Text(_p.name, style: DriftProTheme.headingSm),
-        backgroundColor: Theme.of(context).brightness == Brightness.dark
-            ? DriftProTheme.surfaceDark
-            : const Color(0xFFF5F5F7),
+        backgroundColor: WebLayout.canvasColor(context),
         surfaceTintColor: Colors.transparent,
         actions: [
           IconButton(
@@ -255,7 +281,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
           Expanded(
             child: _tabs == null
                 ? const SizedBox.shrink()
-                : TabBarView(
+                : DriftProTabView(
                     controller: _tabs,
                     children: _visibleTabs.map(_buildTabBody).toList(),
                   ),

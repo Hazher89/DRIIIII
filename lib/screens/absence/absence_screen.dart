@@ -34,6 +34,7 @@ import 'widgets/leave_saldo_panel.dart';
 import 'widgets/leave_team_table.dart';
 import 'widgets/leave_unified_team_view.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../core/layout/web_layout.dart';
 
 enum _MineStatusFilter { alle, ventende, godkjent, avvist }
 
@@ -558,7 +559,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
                 label: const Text('Ny registrering'),
               )
             : null,
-      body: TabBarView(
+      body: DriftProTabView(
         controller: _tabController,
         children: _buildTabBodies(isDark, isManager, canAdmin),
       ),

@@ -13,6 +13,7 @@ import 'fleet_route_driver_stats_screen.dart';
 import 'fleet_shift_admin_screen.dart';
 import 'widgets/fleet_dashboard_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../core/layout/web_layout.dart';
 
 /// Flåte & rutesporing — live oversikt, avansert statistikk, rangering og skift.
 class FleetRouteDashboardScreen extends StatefulWidget {
@@ -1184,7 +1185,7 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
           ? const DriftProLoadingCenter()
           : _error != null
               ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!)))
-              : TabBarView(
+              : DriftProTabView(
                   controller: _tabs,
                   children: [
                     _overviewTab(),

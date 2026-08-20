@@ -12,6 +12,7 @@ import 'core/routing/auth_refresh_listenable.dart';
 import 'core/theme/app_theme.dart';
 import 'core/config/driftpro_client.dart';
 import 'core/config/supabase_config.dart';
+import 'core/layout/web_layout.dart';
 import 'core/theme/system_ui_sync.dart';
 import 'core/theme/theme_notifier.dart';
 
@@ -93,6 +94,7 @@ class _DriftProAppState extends State<DriftProApp> {
       theme: DriftProTheme.lightTheme,
       darkTheme: DriftProTheme.lightTheme,
       themeMode: ThemeMode.light,
+      scrollBehavior: const DriftProScrollBehavior(),
       routerConfig: _router,
       // Inne i MaterialApp slik at Theme.of fungerer (utenfor → hvite iOS-ikoner).
       builder: (context, child) =>

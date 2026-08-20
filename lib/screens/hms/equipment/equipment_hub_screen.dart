@@ -14,6 +14,7 @@ import 'equipment_service_book_screen.dart';
 import 'equipment_truck_profile_screen.dart';
 import 'equipment_settings_screen.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../../core/layout/web_layout.dart';
 
 /// Smart utstyrssenter — truck, elektronikk, service, arkiv.
 class EquipmentHubScreen extends StatefulWidget {
@@ -157,7 +158,7 @@ class _EquipmentHubScreenState extends State<EquipmentHubScreen>
       ),
       body: _loading
           ? const DriftProLoadingCenter()
-          : TabBarView(
+          : DriftProTabView(
               controller: _tabs,
               children: [
                 _buildOverview(isDark),

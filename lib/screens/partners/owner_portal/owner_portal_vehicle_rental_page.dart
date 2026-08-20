@@ -11,6 +11,7 @@ import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/vehicle_rental_checkout_flow.dart';
 import '../widgets/vehicle_rental_ui.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../../core/layout/web_layout.dart';
 
 /// Bil-eier og låntaker: utleie, retur, arkiv.
 class OwnerPortalVehicleRentalPage extends StatefulWidget {
@@ -121,7 +122,7 @@ class _OwnerPortalVehicleRentalPageState extends State<OwnerPortalVehicleRentalP
       ),
       body: _loading
           ? const DriftProLoadingCenter()
-          : TabBarView(
+          : DriftProTabView(
               controller: _tabs,
               children: [
                 _LenderTab(rentals: mineRentals, onOpen: _openLenderFlow, onRefresh: _load),

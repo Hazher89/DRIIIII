@@ -2,21 +2,29 @@ import '../routing/app_paths.dart';
 import 'access_actions.dart';
 import 'access_area_catalog.dart';
 import 'access_keys.dart';
+import 'partner_access.dart';
+import 'user_access.dart';
 
 /// Krav for å åpne en rute.
 class RouteAccessRequirement {
   final String areaId;
   final AccessAction action;
   final String? legacyAccessKey;
+  /// Alternativ: minst én av disse legacy-nøklene (ELLER).
+  final List<String>? anyOfLegacyKeys;
+  /// Egendefinert sjekk (f.eks. partner-detalj / fane).
+  final bool Function(UserAccess access)? customCheck;
 
   const RouteAccessRequirement({
     required this.areaId,
     this.action = AccessAction.view,
     this.legacyAccessKey,
+    this.anyOfLegacyKeys,
+    this.customCheck,
   });
 }
 
-/// Path → tilgangskrav (deep links).
+/// Path/URI → tilgangskrav (deep links + faner).
 class RouteAccessMap {
   RouteAccessMap._();
 
@@ -148,20 +156,186 @@ class RouteAccessMap {
     AppPaths.moreVisionEvents: const RouteAccessRequirement(
       areaId: 'more.vision_events',
     ),
+    AppPaths.moreHjelp: const RouteAccessRequirement(
+      areaId: 'more',
+      legacyAccessKey: AccessKeys.more,
+    ),
+    AppPaths.morePersonvern: const RouteAccessRequirement(
+      areaId: 'more',
+      legacyAccessKey: AccessKeys.more,
+    ),
+    AppPaths.moreOm: const RouteAccessRequirement(
+      areaId: 'more',
+      legacyAccessKey: AccessKeys.more,
+    ),
+    AppPaths.moreOrganisasjonskart: const RouteAccessRequirement(
+      areaId: 'more.ansatte',
+      legacyAccessKey: AccessKeys.ansatte,
+    ),
   };
+
+  static final _partnerDetailPath =
+      RegExp(r'^/partners/bedrift/[^/]+$', caseSensitive: false);
+
+  /// Evaluer om [access] oppfyller [req].
+  static bool isAllowed(UserAccess access, RouteAccessRequirement req) {
+    if (req.customCheck != null) return req.customCheck!(access);
+    if (access.canArea(req.areaId, req.action)) return true;
+    if (req.legacyAccessKey != null && access.can(req.legacyAccessKey!)) {
+      return true;
+    }
+    if (req.anyOfLegacyKeys != null && access.canAny(req.anyOfLegacyKeys!)) {
+      return true;
+    }
+    return false;
+  }
+
+  /// True hvis URI ikke krever tilgang, eller brukeren har tilgang.
+  static bool allowsUri(UserAccess access, Uri uri) {
+    final req = requirementForUri(uri);
+    if (req == null) return true;
+    return isAllowed(access, req);
+  }
+
+  /// Krav for full URI (inkl. `?tab=` for partnere).
+  static RouteAccessRequirement? requirementForUri(Uri uri) {
+    final path = uri.path.isEmpty ? AppPaths.dashboard : uri.path;
+    final tab = uri.queryParameters['tab']?.trim().toLowerCase();
+
+    if (path == AppPaths.accessDenied ||
+        path == AppPaths.login ||
+        path == AppPaths.portal ||
+        path.startsWith('${AppPaths.portal}/')) {
+      return null;
+    }
+
+    if (_partnerDetailPath.hasMatch(path)) {
+      return _partnerDetailRequirement(tab);
+    }
+
+    if (path == AppPaths.partners || path == AppPaths.morePartnere) {
+      return _partnersHubTabRequirement(tab);
+    }
+
+    return requirementFor(path);
+  }
+
+  static RouteAccessRequirement _partnersHubTabRequirement(String? tab) {
+    switch (tab) {
+      case 'ruter':
+        return RouteAccessRequirement(
+          areaId: 'partners.fleet',
+          legacyAccessKey: AccessKeys.fleetRuter,
+          anyOfLegacyKeys: const [
+            AccessKeys.fleetRuter,
+            AccessKeys.partnersTabRuter,
+            AccessKeys.partnersAdmin,
+          ],
+          customCheck: (a) => a.canPartnerRoutePlanning,
+        );
+      case 'sms':
+        return RouteAccessRequirement(
+          areaId: 'partners.tabs.sms',
+          customCheck: (a) => a.canPartnersTabSms || a.canPartnersAdmin,
+        );
+      case 'bot-trekk':
+        return RouteAccessRequirement(
+          areaId: 'partners.tabs.bot_trekk',
+          legacyAccessKey: AccessKeys.partnersTabBotTrekk,
+          customCheck: (a) => a.canPartnersTabBotTrekk || a.canPartnersAdmin,
+        );
+      case 'utleie':
+        return RouteAccessRequirement(
+          areaId: 'partners.vehicle_rental',
+          legacyAccessKey: AccessKeys.partnersVehicleRental,
+          customCheck: (a) =>
+              a.canPartnersVehicleRental ||
+              a.canPartnerRoutePlanning ||
+              a.canPartnersAdmin,
+        );
+      case 'bilkontroll':
+        return RouteAccessRequirement(
+          areaId: 'partners.tabs.bilkontroll',
+          legacyAccessKey: AccessKeys.partnersTabBilkontroll,
+          customCheck: (a) =>
+              a.canPartnersTabBilkontroll ||
+              a.canPartnersAdmin ||
+              PartnerAccess.canOpenPartnersModule(a),
+        );
+      case 'bedrifter':
+      case null:
+      case '':
+        return RouteAccessRequirement(
+          areaId: 'partners',
+          legacyAccessKey: AccessKeys.partners,
+          customCheck: (a) => PartnerAccess.canOpenPartnersModule(a),
+        );
+      default:
+        return RouteAccessRequirement(
+          areaId: 'partners',
+          legacyAccessKey: AccessKeys.partners,
+          customCheck: (a) => PartnerAccess.canOpenPartnersModule(a),
+        );
+    }
+  }
+
+  static RouteAccessRequirement _partnerDetailRequirement(String? tab) {
+    final key = _partnerDetailTabKey(tab);
+    if (key != null) {
+      return RouteAccessRequirement(
+        areaId: 'partners',
+        legacyAccessKey: key,
+        customCheck: (a) {
+          if (key == AccessKeys.partnersTabOppsummering) {
+            return a.profile.isSuperAdmin;
+          }
+          return a.can(key);
+        },
+      );
+    }
+    return RouteAccessRequirement(
+      areaId: 'partners',
+      legacyAccessKey: AccessKeys.partners,
+      customCheck: (a) => PartnerAccess.canOpenPartnerDetail(a),
+    );
+  }
+
+  static String? _partnerDetailTabKey(String? tab) {
+    if (tab == null || tab.isEmpty) return null;
+    const map = <String, String>{
+      'oversikt': AccessKeys.partnersTabOversikt,
+      'bilkontroll': AccessKeys.partnersTabBilkontroll,
+      'ruter': AccessKeys.partnersTabRuter,
+      'dokumenter': AccessKeys.partnersTabDokumenter,
+      'loyver': AccessKeys.partnersTabLoyver,
+      'løyver': AccessKeys.partnersTabLoyver,
+      'oppfolging': AccessKeys.partnersTabOppfolging,
+      'oppfølging': AccessKeys.partnersTabOppfolging,
+      'bot-trekk': AccessKeys.partnersTabBotTrekk,
+      'bot_trekk': AccessKeys.partnersTabBotTrekk,
+      'oppsummering': AccessKeys.partnersTabOppsummering,
+      'fri': AccessKeys.partnersTabFri,
+    };
+    return map[tab];
+  }
 
   /// Finn krav for [path] (uten query). Returnerer null hvis offentlig/ukjent.
   static RouteAccessRequirement? requirementFor(String path) {
     final normalized = path.split('?').first;
     if (normalized == AppPaths.login ||
+        normalized == AppPaths.accessDenied ||
         normalized == AppPaths.portal ||
         normalized.startsWith('${AppPaths.portal}/')) {
       return null;
     }
+
+    if (_partnerDetailPath.hasMatch(normalized)) {
+      return _partnerDetailRequirement(null);
+    }
+
     final exact = _exact[normalized];
     if (exact != null) return exact;
 
-    // Prefix match for nested routes (longest first).
     final keys = _exact.keys.toList()
       ..sort((a, b) => b.length.compareTo(a.length));
     for (final key in keys) {
@@ -170,7 +344,6 @@ class RouteAccessMap {
       }
     }
 
-    // Catalog routePath fallback
     for (final area in AccessAreaCatalog.areas) {
       final rp = area.routePath;
       if (rp == null || rp.isEmpty) continue;

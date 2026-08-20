@@ -18,6 +18,17 @@ abstract final class AppPaths {
   static const live = '/live';
   static const portal = '/portal';
 
+  /// Vises når bruker mangler tilgang til en delt/sikker lenke.
+  static const accessDenied = '/ingen-tilgang';
+
+  static String accessDeniedPath({String? from}) {
+    if (from == null || from.isEmpty) return accessDenied;
+    return Uri(
+      path: accessDenied,
+      queryParameters: {'from': from},
+    ).toString();
+  }
+
   /// Partnerportal — eier
   static const portalOwnerTabs = [
     'oversikt',

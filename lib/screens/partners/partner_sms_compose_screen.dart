@@ -11,6 +11,7 @@ import 'widgets/partner_sms_message_section.dart';
 import 'widgets/partner_sms_route_customers_tab.dart';
 import 'widgets/partner_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../core/layout/web_layout.dart';
 
 class PartnerSmsContact {
   final String id;
@@ -770,7 +771,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
           ],
         ),
         Expanded(
-          child: TabBarView(
+          child: DriftProTabView(
             controller: _tabs,
             children: [
               _buildContactsTab(isDark, totalRecipients, manualCount, selectedCount),

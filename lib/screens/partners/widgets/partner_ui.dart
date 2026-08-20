@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/layout/web_layout.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// Delte UI-komponenter for bedrifter / samarbeidspartnere.
@@ -448,6 +449,70 @@ class PartnerStickySaveBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Web/desktop: sticky handlingsrad øverst i stack (admin-stil).
+    if (WebLayout.prefersPointerNav && WebLayout.isWide(context, minWidth: 720)) {
+      return Positioned(
+        left: 0,
+        right: 0,
+        top: 0,
+        child: Material(
+          elevation: 2,
+          color: Theme.of(context).brightness == Brightness.dark
+              ? const Color(0xFF151820)
+              : Colors.white,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Colors.black.withValues(alpha: 0.06)),
+              ),
+            ),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (secondary != null) ...[
+                      secondary!,
+                      const SizedBox(width: 10),
+                    ],
+                    FilledButton.icon(
+                      onPressed: loading ? null : onPressed,
+                      icon: loading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.check_rounded, size: 18),
+                      label: Text(
+                        label,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: DriftProTheme.primaryGreen,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(0, 42),
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Positioned(
       left: 0,
       right: 0,
@@ -526,9 +591,38 @@ class PartnerDetailTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final web = WebLayout.prefersPointerNav;
+
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
+        if (web) {
+          return Container(
+            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF151820) : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (var i = 0; i < tabs.length; i++)
+                    _WebTab(
+                      icon: tabs[i].$1,
+                      label: tabs[i].$2,
+                      selected: controller.index == i,
+                      onTap: () => controller.animateTo(i),
+                    ),
+                ],
+              ),
+            ),
+          );
+        }
+
         return Container(
           margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
           padding: const EdgeInsets.all(5),
@@ -557,6 +651,61 @@ class PartnerDetailTabBar extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _WebTab extends StatelessWidget {
+  const _WebTab({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: selected ? DriftProTheme.primaryGreen : Colors.transparent,
+              width: 2.5,
+            ),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected
+                  ? DriftProTheme.primaryGreen
+                  : PartnerUi.mutedText(context),
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                color: selected
+                    ? DriftProTheme.primaryGreenDark
+                    : PartnerUi.mutedText(context),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

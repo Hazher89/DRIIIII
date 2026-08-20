@@ -13,6 +13,7 @@ import 'risk_assessment_detail_screen.dart';
 import 'stakeholder_risk/stakeholder_risk_hub_tab.dart';
 import 'package:intl/intl.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../../core/layout/web_layout.dart';
 
 class RiskAssessmentListScreen extends StatefulWidget {
   const RiskAssessmentListScreen({super.key, this.initialTab});
@@ -136,7 +137,7 @@ class _RiskAssessmentListScreenState extends State<RiskAssessmentListScreen>
           ],
         ),
       ),
-      body: TabBarView(
+      body: DriftProTabView(
         controller: _tabController,
         children: [
           _buildClassicTab(isDark),

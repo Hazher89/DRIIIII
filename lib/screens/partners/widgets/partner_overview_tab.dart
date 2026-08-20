@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../../core/services/sms/sms_phone_utils.dart';
 import '../../../core/utils/portal_credentials.dart';
 import '../../../core/constants/mavi_fleet_roles.dart';
+import '../../../core/layout/web_layout.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -1443,7 +1444,12 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     return Stack(
       children: [
         ListView(
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 100),
+          padding: EdgeInsets.fromLTRB(
+            12,
+            WebLayout.prefersPointerNav && wide ? 64 : 4,
+            12,
+            WebLayout.prefersPointerNav && wide ? 28 : 100,
+          ),
           children: [
             if (wide)
               Row(

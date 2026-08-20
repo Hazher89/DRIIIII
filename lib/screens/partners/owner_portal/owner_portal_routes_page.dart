@@ -12,6 +12,7 @@ import '../widgets/partner_portal_route_list_tile.dart';
 import 'owner_portal_route_history.dart';
 import 'owner_portal_routes_focus.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../../core/layout/web_layout.dart';
 
 class OwnerPortalRoutesPage extends StatefulWidget {
   final Partner partner;
@@ -134,7 +135,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
             ),
       body: _loading || _data == null
           ? const DriftProLoadingCenter()
-          : TabBarView(
+          : DriftProTabView(
               controller: _tab,
               children: [
                 _tabBody(_data!.routesToday, 'Ingen ruter i dag.'),

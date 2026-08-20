@@ -6,6 +6,7 @@ import '../../screens/absence/absence_screen.dart';
 import '../../screens/admin/access_control_screen.dart';
 import '../../screens/admin/dropbox_storage_settings_screen.dart';
 import '../../screens/admin/kiosk_settings_screen.dart';
+import '../../screens/auth/access_denied_screen.dart';
 import '../../screens/auth/auth_gate_screen.dart';
 import '../../screens/dashboard/dashboard_screen.dart';
 import '../../screens/departments/departments_screen.dart';
@@ -53,14 +54,16 @@ import '../permissions/route_access_map.dart';
 import 'app_paths.dart';
 import 'auth_refresh_listenable.dart';
 
-Widget _guardPath(String path, Widget child) {
-  final req = RouteAccessMap.requirementFor(path);
+Widget _guardPath(GoRouterState state, Widget child) {
+  final req = RouteAccessMap.requirementForUri(state.uri);
   if (req == null) return child;
   return PermissionGuard(
     profile: AccessSessionCache.profile,
     areaId: req.areaId,
     accessKey: req.legacyAccessKey ?? AccessKeys.more,
     action: req.action,
+    requirement: req,
+    guardUri: state.uri,
     child: child,
   );
 }
@@ -125,6 +128,7 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
           path != AppPaths.portal &&
           !path.startsWith('${AppPaths.portal}/') &&
           path != AppPaths.login &&
+          path != AppPaths.accessDenied &&
           !AppPaths.isPublicPath(path)) {
         final tab = state.uri.queryParameters['tab'];
         return AppPaths.portalPath(tab: tab);
@@ -143,19 +147,15 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
       }
 
       // Tilgangsjekk for deep links (bruk cache — oppdateres etter login/shell).
+      // Mangler tilgang → egen «Ingen tilgang»-side (ikke innhold bak lenken).
       if (!looksLikePortal &&
           path != AppPaths.login &&
+          path != AppPaths.accessDenied &&
           !path.startsWith('${AppPaths.portal}/') &&
           path != AppPaths.portal) {
         final access = AccessSessionCache.access;
-        final req = RouteAccessMap.requirementFor(path);
-        if (access != null && req != null) {
-          final ok = access.canArea(req.areaId, req.action) ||
-              (req.legacyAccessKey != null &&
-                  access.can(req.legacyAccessKey!));
-          if (!ok) {
-            return AppPaths.more;
-          }
+        if (access != null && !RouteAccessMap.allowsUri(access, state.uri)) {
+          return AppPaths.accessDeniedPath(from: state.uri.toString());
         }
       }
       return null;
@@ -164,6 +164,12 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
       GoRoute(
         path: AppPaths.login,
         builder: (context, state) => const AuthGateScreen(),
+      ),
+      GoRoute(
+        path: AppPaths.accessDenied,
+        builder: (context, state) => AccessDeniedScreen(
+          attemptedPath: state.uri.queryParameters['from'],
+        ),
       ),
       GoRoute(
         path: '/s/:surveyId',
@@ -215,11 +221,14 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.dashboard,
-                builder: (context, state) => DashboardScreen(
-                  onNavigateByAccess: (accessKey) {
-                    final path = AppPaths.pathForAccess(accessKey);
-                    if (path != null) context.go(path);
-                  },
+                builder: (context, state) => _guardPath(
+                  state,
+                  DashboardScreen(
+                    onNavigateByAccess: (accessKey) {
+                      final path = AppPaths.pathForAccess(accessKey);
+                      if (path != null) context.go(path);
+                    },
+                  ),
                 ),
               ),
             ],
@@ -228,7 +237,9 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.surveys,
-                builder: (context, state) => const SurveyListScreen(),
+                builder: (context, state) => _guardPath(
+                  state,
+                  const SurveyListScreen()),
               ),
             ],
           ),
@@ -236,8 +247,11 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.absence,
-                builder: (context, state) => AbsenceScreen(
-                  initialTab: state.uri.queryParameters['tab'],
+                builder: (context, state) => _guardPath(
+                  state,
+                  AbsenceScreen(
+                    initialTab: state.uri.queryParameters['tab'],
+                  ),
                 ),
               ),
             ],
@@ -246,7 +260,9 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.tickets,
-                builder: (context, state) => const TicketsScreen(),
+                builder: (context, state) => _guardPath(
+                  state,
+                  const TicketsScreen()),
               ),
             ],
           ),
@@ -254,20 +270,20 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.hms,
-                builder: (context, state) => const HmsScreen(),
+                builder: (context, state) => _guardPath(
+                  state,
+                  const HmsScreen()),
                 routes: [
                   GoRoute(
                     path: 'avvik',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) =>
-                        _guardPath(AppPaths.hmsAvvik, const TicketsScreen()),
+                        _guardPath(state, const TicketsScreen()),
                   ),
                   GoRoute(
                     path: 'risiko',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => _guardPath(
-                      AppPaths.hmsRisiko,
-                      RiskAssessmentListScreen(
+                    builder: (context, state) => _guardPath(state, RiskAssessmentListScreen(
                         initialTab: state.uri.queryParameters['tab'],
                       ),
                     ),
@@ -275,31 +291,25 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   GoRoute(
                     path: 'risikomatrise',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => _guardPath(
-                      AppPaths.hmsRisikomatrise,
-                      const RiskMatrixScreen(),
+                    builder: (context, state) => _guardPath(state, const RiskMatrixScreen(),
                     ),
                   ),
                   GoRoute(
                     path: 'sja',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) =>
-                        _guardPath(AppPaths.hmsSja, const SjaListScreen()),
+                        _guardPath(state, const SjaListScreen()),
                   ),
                   GoRoute(
                     path: 'vernerunde',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => _guardPath(
-                      AppPaths.hmsVernerunde,
-                      const SafetyRoundListScreen(),
+                    builder: (context, state) => _guardPath(state, const SafetyRoundListScreen(),
                     ),
                   ),
                   GoRoute(
                     path: 'utstyr',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => _guardPath(
-                      AppPaths.hmsUtstyr,
-                      EquipmentHubScreen(
+                    builder: (context, state) => _guardPath(state, EquipmentHubScreen(
                         initialTab: state.uri.queryParameters['tab'],
                       ),
                     ),
@@ -307,9 +317,7 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   GoRoute(
                     path: 'kompetanse',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => _guardPath(
-                      AppPaths.hmsKompetanse,
-                      CompetenceHubScreen(
+                    builder: (context, state) => _guardPath(state, CompetenceHubScreen(
                         initialTab: state.uri.queryParameters['tab'],
                       ),
                     ),
@@ -317,17 +325,13 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   GoRoute(
                     path: 'opplaering',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => _guardPath(
-                      AppPaths.hmsOpplaering,
-                      const SopTrainingScreen(),
+                    builder: (context, state) => _guardPath(state, const SopTrainingScreen(),
                     ),
                   ),
                   GoRoute(
                     path: 'dms',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => _guardPath(
-                      AppPaths.hmsDms,
-                      DmsScreen(
+                    builder: (context, state) => _guardPath(state, DmsScreen(
                         initialSection: _dmsSectionFromQuery(
                           state.uri.queryParameters['section'],
                         ),
@@ -345,7 +349,9 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.uniform,
-                builder: (context, state) => const UniformMonitorScreen(),
+                builder: (context, state) => _guardPath(
+                  state,
+                  const UniformMonitorScreen()),
               ),
             ],
           ),
@@ -353,16 +359,22 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.partners,
-                builder: (context, state) => PartnersDashboardScreen(
-                  initialTab: state.uri.queryParameters['tab'],
+                builder: (context, state) => _guardPath(
+                  state,
+                  PartnersDashboardScreen(
+                    initialTab: state.uri.queryParameters['tab'],
+                  ),
                 ),
                 routes: [
                   GoRoute(
                     path: 'bedrift/:partnerId',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => PartnerDetailRoute(
-                      partnerId: state.pathParameters['partnerId']!,
-                      initialTab: state.uri.queryParameters['tab'],
+                    builder: (context, state) => _guardPath(
+                      state,
+                      PartnerDetailRoute(
+                        partnerId: state.pathParameters['partnerId']!,
+                        initialTab: state.uri.queryParameters['tab'],
+                      ),
                     ),
                   ),
                 ],
@@ -373,8 +385,11 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.stempling,
-                builder: (context, state) => StemplingScreen(
-                  initialTab: state.uri.queryParameters['tab'],
+                builder: (context, state) => _guardPath(
+                  state,
+                  StemplingScreen(
+                    initialTab: state.uri.queryParameters['tab'],
+                  ),
                 ),
               ),
             ],
@@ -383,109 +398,153 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
             routes: [
               GoRoute(
                 path: AppPaths.more,
-                builder: (context, state) => const MoreScreen(),
+                builder: (context, state) => _guardPath(
+                  state,
+                  const MoreScreen()),
                 routes: [
                   GoRoute(
                     path: 'profil',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const ProfileScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const ProfileScreen()),
                   ),
                   GoRoute(
                     path: 'avdelinger',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const DepartmentsScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const DepartmentsScreen()),
                   ),
                   GoRoute(
                     path: 'ansatte',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const EmployeesScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const EmployeesScreen()),
                   ),
                   GoRoute(
                     path: 'organisasjonskart',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const OrganizationChartScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const OrganizationChartScreen()),
                   ),
                   GoRoute(
                     path: 'partnere',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => PartnersDashboardScreen(
-                      initialTab: state.uri.queryParameters['tab'],
+                    builder: (context, state) => _guardPath(
+                      state,
+                      PartnersDashboardScreen(
+                        initialTab: state.uri.queryParameters['tab'],
+                      ),
                     ),
                   ),
                   GoRoute(
                     path: 'personalmappe',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const EmployeePersonalFolderScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const EmployeePersonalFolderScreen(),
+                    ),
                   ),
                   GoRoute(
                     path: 'varsler',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => NotificationsHubScreen(
-                      initialTab: state.uri.queryParameters['tab'],
-                      initialSettingsTab: state.uri.queryParameters['settings'],
+                    builder: (context, state) => _guardPath(
+                      state,
+                      NotificationsHubScreen(
+                        initialTab: state.uri.queryParameters['tab'],
+                        initialSettingsTab: state.uri.queryParameters['settings'],
+                      ),
                     ),
                   ),
                   GoRoute(
                     path: 'undersokelser',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const SurveyListScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const SurveyListScreen()),
                   ),
                   GoRoute(
                     path: 'tilgangskontroll',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const AccessControlScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const AccessControlScreen()),
                   ),
                   GoRoute(
                     path: 'brukergodkjenning',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => EmployeeHubScreen(
-                      initialTab: state.uri.queryParameters['tab'],
+                    builder: (context, state) => _guardPath(
+                      state,
+                      EmployeeHubScreen(
+                        initialTab: state.uri.queryParameters['tab'],
+                      ),
                     ),
                   ),
                   GoRoute(
                     path: 'infoskjerm',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const KioskSettingsScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const KioskSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'whistleblowing',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const WhistleblowingScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const WhistleblowingScreen()),
                   ),
                   GoRoute(
                     path: 'dropbox',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const DropboxStorageSettingsScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const DropboxStorageSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'hjelp',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const HelpSupportScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const HelpSupportScreen()),
                   ),
                   GoRoute(
                     path: 'personvern',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const PrivacyScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const PrivacyScreen()),
                   ),
                   GoRoute(
                     path: 'om',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const AboutDriftProScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const AboutDriftProScreen()),
                   ),
                   GoRoute(
                     path: 'gm-storo',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const GmStoroHubScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const GmStoroHubScreen()),
                   ),
                   GoRoute(
                     path: 'vision-cameras',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const VisionCamerasScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const VisionCamerasScreen()),
                   ),
                   GoRoute(
                     path: 'vision-events',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (context, state) => const VisionEventsScreen(),
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const VisionEventsScreen()),
                   ),
                 ],
               ),

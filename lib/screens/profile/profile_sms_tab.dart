@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import 'widgets/company_sms_settings_panel.dart';
 import 'widgets/sms_outbox_log_panel.dart';
+import '../../core/layout/web_layout.dart';
 
 /// Superadmin: SMS-logg + innstillinger i profil.
 class ProfileSmsTab extends StatelessWidget {
@@ -33,7 +34,7 @@ class ProfileSmsTab extends StatelessWidget {
             ),
           ),
           const Expanded(
-            child: TabBarView(
+            child: DriftProTabView(
               children: [
                 SmsOutboxLogPanel(),
                 CompanySmsSettingsPanel(),

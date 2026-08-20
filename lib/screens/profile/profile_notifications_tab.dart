@@ -7,6 +7,7 @@ import 'widgets/email_outbox_log_panel.dart';
 import 'widgets/notification_audit_panel.dart';
 import 'widgets/notification_settings_split_tab.dart';
 import 'widgets/sms_outbox_log_panel.dart';
+import '../../core/layout/web_layout.dart';
 
 /// Superadmin: logg + innstillinger (MAVI og samarbeid adskilt).
 class ProfileNotificationsTab extends StatefulWidget {
@@ -75,7 +76,7 @@ class _ProfileNotificationsTabState extends State<ProfileNotificationsTab>
           ),
         ),
         Expanded(
-          child: TabBarView(
+          child: DriftProTabView(
             controller: _tabs,
             children: [
               const SmsOutboxLogPanel(),

@@ -15,6 +15,7 @@ import 'tabs/time_clock_mobile_tab.dart';
 import 'tabs/time_clock_presence_tab.dart';
 import 'tabs/time_clock_settings_tab.dart';
 import 'tabs/time_clock_timesheet_tab.dart';
+import '../../core/layout/web_layout.dart';
 
 class StemplingScreen extends StatefulWidget {
   const StemplingScreen({super.key, this.initialTab});
@@ -171,7 +172,7 @@ class _StemplingScreenState extends State<StemplingScreen> with SingleTickerProv
           tabs: tabs.map((t) => Tab(text: t.label)).toList(),
         ),
         backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
-        body: TabBarView(
+        body: DriftProTabView(
           controller: _tabController,
           children: tabs.map((t) => t.child).toList(),
         ),

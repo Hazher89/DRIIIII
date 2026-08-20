@@ -8,6 +8,7 @@ import '../../models/partner/fleet_shift.dart';
 import '../../models/partner/partner_links.dart';
 import 'widgets/partner_route_pdf_actions.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../core/layout/web_layout.dart';
 
 /// Administrer skift + arkiv med tilhørende rute-PDF-er.
 class FleetShiftAdminScreen extends StatefulWidget {
@@ -175,7 +176,7 @@ class _FleetShiftAdminScreenState extends State<FleetShiftAdminScreen>
       ),
       body: _loading
           ? const DriftProLoadingCenter()
-          : TabBarView(
+          : DriftProTabView(
               controller: _tabs,
               children: [
                 _activeTab(),

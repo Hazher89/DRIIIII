@@ -13,6 +13,7 @@ import 'widgets/employee_department_leadership_editor.dart';
 import 'widgets/employee_files_panel.dart';
 import 'widgets/permission_matrix_editor.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../core/layout/web_layout.dart';
 
 /// Full tilgangskonfigurasjon for én ansatt (superadmin).
 class EmployeeAccessDetailScreen extends StatefulWidget {
@@ -258,7 +259,7 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
         children: [
           Expanded(
             child: _tabs != null
-                ? TabBarView(
+                ? DriftProTabView(
                     controller: _tabs,
                     children: [
                       _accessTab(e, isDark),
