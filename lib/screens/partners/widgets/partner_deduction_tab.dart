@@ -97,22 +97,40 @@ class _PartnerDeductionTabState extends State<PartnerDeductionTab> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [const Color(0xFF9A3412), const Color(0xFFEA580C)],
-            ),
+            color: PartnerModernUi.surface(context),
             borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFEA580C).withValues(alpha: 0.25)),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              const Text(
-                'Bot / Trekk',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18),
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEA580C).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.gavel_rounded, color: Color(0xFFEA580C)),
               ),
-              const SizedBox(height: 6),
-              Text(
-                '${open.length} åpne · ${money.format(openSum)}',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.9)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Bot / Trekk',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        fontSize: 17,
+                        color: PartnerModernUi.textPrimary(context),
+                      ),
+                    ),
+                    Text(
+                      '${open.length} åpne · ${money.format(openSum)}',
+                      style: TextStyle(color: PartnerModernUi.muted(context), fontSize: 13),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -120,8 +138,12 @@ class _PartnerDeductionTabState extends State<PartnerDeductionTab> {
         const SizedBox(height: 12),
         FilledButton.icon(
           onPressed: () => setState(() => _showRegister = true),
-          icon: const Icon(Icons.gavel_rounded),
+          icon: const Icon(Icons.add_rounded),
           label: const Text('Registrer nytt trekk'),
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xFFEA580C),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
         ),
         const SizedBox(height: 16),
         Text('Historikk', style: DriftProTheme.labelLg),
@@ -135,9 +157,11 @@ class _PartnerDeductionTabState extends State<PartnerDeductionTab> {
   }
 
   Widget _caseCard(PartnerDeductionCase c, NumberFormat money) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+    return Material(
+      color: PartnerModernUi.surface(context),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
+        borderRadius: BorderRadius.circular(12),
         onTap: () => PartnerDeductionCaseSheet.show(
           context,
           caseRow: c,
@@ -147,8 +171,13 @@ class _PartnerDeductionTabState extends State<PartnerDeductionTab> {
             widget.onChanged();
           },
         ),
-        child: Padding(
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: PartnerModernUi.border(context)),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -157,13 +186,23 @@ class _PartnerDeductionTabState extends State<PartnerDeductionTab> {
                   Expanded(
                     child: Text(c.caseNumber, style: const TextStyle(fontWeight: FontWeight.w800)),
                   ),
-                  Text(money.format(c.amountNok), style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: c.isInvoiced ? Colors.grey : DriftProTheme.error,
-                  )),
+                  Text(
+                    money.format(c.amountNok),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: c.isInvoiced ? Colors.grey : DriftProTheme.error,
+                    ),
+                  ),
                 ],
               ),
-              Text(c.templateTitle, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+              Text(
+                c.templateTitle,
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12.5,
+                  color: PartnerModernUi.muted(context),
+                ),
+              ),
               if (c.evidenceCount > 0) ...[
                 const SizedBox(height: 8),
                 PartnerDeductionEvidenceGallery(caseId: c.id, compact: true),

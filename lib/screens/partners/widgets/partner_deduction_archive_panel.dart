@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/case_trace/case_trace.dart';
+import '../../../core/layout/web_layout.dart';
 import '../../../core/services/partner/partner_deduction_access.dart';
 import '../../../core/services/partner/partner_deduction_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -208,6 +209,8 @@ class _PartnerDeductionArchivePanelState extends State<PartnerDeductionArchivePa
     final openSelectable = visible.where((c) => !c.isInvoiced && !c.isDeleted).toList();
     final allSelected = openSelectable.isNotEmpty &&
         openSelectable.every((c) => _selected.contains(c.id));
+    final wide = WebLayout.isWide(context, minWidth: 900);
+    final showCheckbox = _canInvoice && _filter == 'open';
 
     final slivers = <Widget>[
       if (widget.nestedScroll)
@@ -246,12 +249,15 @@ class _PartnerDeductionArchivePanelState extends State<PartnerDeductionArchivePa
           deletedCount: _deletedTotal,
           showDeletedFilter: _canUnlock,
           partnerLabel: _partnerLabel,
+          wide: WebLayout.isWide(context, minWidth: 800),
           partnerMenu: widget.partners.isEmpty
               ? const SizedBox.shrink()
               : PopupMenuButton<String?>(
                   tooltip: 'Filtrer bedrift',
                   icon: Icon(
-                    _partnerFilterId == null ? Icons.filter_list_rounded : Icons.filter_alt_rounded,
+                    _partnerFilterId == null
+                        ? Icons.filter_list_rounded
+                        : Icons.filter_alt_rounded,
                     size: 22,
                     color: _partnerFilterId == null
                         ? PartnerModernUi.muted(context)
@@ -272,7 +278,7 @@ class _PartnerDeductionArchivePanelState extends State<PartnerDeductionArchivePa
           child: PartnerDeductionHubUi.summaryLine(
             context: context,
             text: _selected.isEmpty
-                ? 'Superadmin og Nico kan markere åpne saker som fakturert/trukket'
+                ? 'Velg åpne saker for å markere som fakturert/trukket'
                 : '${_selected.length} sak(er) valgt · ${money.format(_selectedAmount)}',
             highlight: _selected.isNotEmpty,
           ),
@@ -281,7 +287,14 @@ class _PartnerDeductionArchivePanelState extends State<PartnerDeductionArchivePa
         SliverToBoxAdapter(
           child: PartnerDeductionHubUi.summaryLine(
             context: context,
-            text: 'Kun superadmin og Nico (økonomi) kan markere som fakturert',
+            text: 'Kun økonomi/superadmin kan markere som fakturert',
+          ),
+        ),
+      if (visible.isNotEmpty)
+        SliverToBoxAdapter(
+          child: PartnerDeductionHubUi.tableHeader(
+            context,
+            showCheckbox: showCheckbox,
           ),
         ),
       if (visible.isEmpty)
@@ -302,12 +315,15 @@ class _PartnerDeductionArchivePanelState extends State<PartnerDeductionArchivePa
                       'deleted' => 'Ingen slettede saker',
                       _ => 'Ingen saker i arkivet',
                     },
-                    style: TextStyle(fontWeight: FontWeight.w600, color: PartnerModernUi.textPrimary(context)),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: PartnerModernUi.textPrimary(context),
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Registrer et nytt trekk med knappen «Nytt»',
-                    style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)),
+                    'Opprett trekk med «Nytt trekk»',
+                    style: TextStyle(fontSize: 12.5, color: PartnerModernUi.muted(context)),
                   ),
                 ],
               ),
@@ -324,7 +340,7 @@ class _PartnerDeductionArchivePanelState extends State<PartnerDeductionArchivePa
                 dateLabel: df.format(c.createdAt),
                 amountLabel: money.format(c.amountNok),
                 selected: _selected.contains(c.id),
-                showCheckbox: _canInvoice && _filter == 'open',
+                showCheckbox: showCheckbox,
                 showDeletionAudit: _canUnlock,
                 onTap: () async {
                   await PartnerDeductionCaseSheet.show(
@@ -355,6 +371,21 @@ class _PartnerDeductionArchivePanelState extends State<PartnerDeductionArchivePa
             childCount: visible.length,
           ),
         ),
+      if (wide && visible.isNotEmpty)
+        SliverToBoxAdapter(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+            height: 12,
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(color: PartnerModernUi.border(context).withValues(alpha: 0.8)),
+                right: BorderSide(color: PartnerModernUi.border(context).withValues(alpha: 0.8)),
+                bottom: BorderSide(color: PartnerModernUi.border(context).withValues(alpha: 0.8)),
+              ),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+            ),
+          ),
+        ),
       if (_canInvoice && _selected.isNotEmpty)
         SliverToBoxAdapter(
           child: PartnerDeductionHubUi.bulkBar(
@@ -370,15 +401,18 @@ class _PartnerDeductionArchivePanelState extends State<PartnerDeductionArchivePa
             onMarkInvoiced: () => _markInvoiced(),
           ),
         ),
-      const SliverToBoxAdapter(child: SizedBox(height: 16)),
+      const SliverToBoxAdapter(child: SizedBox(height: 24)),
     ];
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      color: DriftProTheme.primaryGreen,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: slivers,
+    return PartnerDeductionHubUi.pageShell(
+      context: context,
+      child: RefreshIndicator(
+        onRefresh: _load,
+        color: DriftProTheme.primaryGreen,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: slivers,
+        ),
       ),
     );
   }

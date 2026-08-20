@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/layout/web_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import '../../models/user_profile.dart';
@@ -75,12 +76,18 @@ class _PartnerDeductionHubScreenState extends State<PartnerDeductionHubScreen> {
       onChanged: () => setState(() => _refreshKey++),
     );
 
-    if (widget.embedded) return body;
+    final canvas = WebLayout.prefersPointerNav
+        ? WebLayout.canvasColor(context)
+        : (Theme.of(context).brightness == Brightness.dark
+            ? DriftProTheme.surfaceDark
+            : DriftProTheme.surfaceLight);
+
+    if (widget.embedded) {
+      return ColoredBox(color: canvas, child: body);
+    }
 
     return Scaffold(
-      backgroundColor: Theme.of(context).brightness == Brightness.dark
-          ? DriftProTheme.surfaceDark
-          : DriftProTheme.surfaceLight,
+      backgroundColor: canvas,
       appBar: AppBar(title: const Text('Bot / Trekk')),
       body: body,
     );
