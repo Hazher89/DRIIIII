@@ -506,38 +506,48 @@ class PartnerDetailTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
       decoration: BoxDecoration(
         color: PartnerUi.surface(context),
-        borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.14)),
-        boxShadow: DriftProTheme.cardShadow,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? Colors.white12 : const Color(0xFFE5E7EB),
+        ),
       ),
       child: TabBar(
         controller: controller,
         isScrollable: true,
         tabAlignment: TabAlignment.start,
-        dividerHeight: 0,
-        indicatorSize: TabBarIndicatorSize.tab,
-        indicator: BoxDecoration(
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(DriftProTheme.radiusSm),
-          border: Border.all(color: Colors.grey.withValues(alpha: 0.25)),
+        dividerColor: Colors.transparent,
+        indicatorSize: TabBarIndicatorSize.label,
+        indicator: UnderlineTabIndicator(
+          borderSide: const BorderSide(width: 3, color: DriftProTheme.primaryGreen),
+          borderRadius: BorderRadius.circular(2),
+          insets: const EdgeInsets.symmetric(horizontal: 4),
         ),
-        labelColor: Theme.of(context).colorScheme.onSurface,
+        labelColor: DriftProTheme.primaryGreen,
         unselectedLabelColor: PartnerUi.mutedText(context),
-        labelPadding: const EdgeInsets.symmetric(horizontal: 6),
-        padding: const EdgeInsets.all(6),
-        labelStyle: DriftProTheme.labelSm,
+        labelPadding: const EdgeInsets.symmetric(horizontal: 10),
+        labelStyle: const TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.1,
+        ),
+        unselectedLabelStyle: const TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+        ),
         tabs: tabs
             .map(
               (t) => Tab(
-                height: 40,
+                height: 44,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(t.$1, size: 16),
+                    Icon(t.$1, size: 17),
                     const SizedBox(width: 6),
                     Text(t.$2),
                   ],

@@ -14,7 +14,6 @@ import '../../../core/services/vegvesen/vehicle_registry_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
-import '../../../models/partner/vehicle_inspection.dart';
 import 'partner_companies_ui.dart';
 import 'eco_driving_badge.dart';
 import 'partner_modern_ui.dart';
@@ -162,14 +161,36 @@ class _OwnerPortalRowState {
 }
 
 enum _OverviewSection {
-  profile('Bedrift'),
-  routing('Ruter'),
-  ownerPortal('Bedriftsansvarlig'),
-  registrations('Skiltnummer'),
-  maviDrivers('MAVI Nummer');
+  profile(
+    'Bedrift',
+    'Kontakt, notat og ECO',
+    Icons.business_outlined,
+  ),
+  routing(
+    'Ruter',
+    'Hvem får rutevarsler',
+    Icons.alt_route_rounded,
+  ),
+  ownerPortal(
+    'Bedriftsansvarlig',
+    'Portal og SMS-innlogging',
+    Icons.manage_accounts_outlined,
+  ),
+  registrations(
+    'Skiltnummer',
+    'Reg.nr og EU-kontroll',
+    Icons.directions_car_outlined,
+  ),
+  maviDrivers(
+    'MAVI',
+    'Biler og sjåførportaler',
+    Icons.local_shipping_outlined,
+  );
 
-  const _OverviewSection(this.label);
+  const _OverviewSection(this.label, this.hint, this.icon);
   final String label;
+  final String hint;
+  final IconData icon;
 }
 
 class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
@@ -198,7 +219,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   Map<String, PartnerPortalAccount> _portalByVehicle = {};
   final List<_OwnerPortalRowState> _ownerRows = [];
   _OverviewSection _activeSection = _OverviewSection.profile;
-  List<PartnerVehicleInspection> _inspections = [];
 
   @override
   void initState() {
@@ -222,18 +242,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _ownerRows.add(_OwnerPortalRowState(phone: widget.partner.phone));
     _resetVehicles(widget.vehicles);
     _loadPortals();
-    _loadInspections();
     _loadCurrentUser();
   }
-
-  Future<void> _loadInspections() async {
-    final list = await PartnerService.fetchVehicleInspections(widget.partner.id);
-    if (!mounted) return;
-    setState(() => _inspections = list);
-  }
-
-  Map<String, PartnerVehicleInspection> get _inspectionByVehicleId =>
-      PartnerVehicleInspection.latestByVehicleId(widget.vehicles, _inspections);
 
   Future<void> _loadCurrentUser() async {
     final profile = await SupabaseService.fetchEffectiveUserProfile();
@@ -1165,122 +1175,23 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       ...maviRows.map((r) => r.portalPhone.text.trim()).where((v) => v.isNotEmpty),
     };
     final activeOwnerCount = _ownerRows.where((r) => r.hasPortalAccount).length;
+    final wide = MediaQuery.sizeOf(context).width >= 960;
 
-    return Stack(
-      children: [
-        ListView(
-          padding: const EdgeInsets.fromLTRB(0, 8, 0, 100),
+    int countFor(_OverviewSection s) => switch (s) {
+          _OverviewSection.profile => 1,
+          _OverviewSection.routing => _routesOwnerOnly ? 1 : 2,
+          _OverviewSection.ownerPortal => activeOwnerCount,
+          _OverviewSection.registrations => regRows.length,
+          _OverviewSection.maviDrivers => maviRows.length,
+        };
+
+    final sectionBody = switch (_activeSection) {
+      _OverviewSection.profile => Column(
           children: [
-            PartnerModernPageHeader(
-              title: p.tradeName?.isNotEmpty == true ? p.tradeName! : p.name,
-              subtitle: [
-                if (p.orgNumber != null) 'Org.nr ${p.orgNumber}',
-                if (p.ownerName?.isNotEmpty == true) p.ownerName!,
-                '${maviRows.length} MAVI · ${regRows.length} reg.nr',
-              ].join(' · '),
-            ),
-            if (maviRows.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: PartnerModernUi.surface(context),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: PartnerModernUi.border(context)),
-                  ),
-                  child: PartnerMaviVehicleOverview(
-                    vehicles: PartnerMaviVehicleOverview.filterMavi(
-                      maviRows
-                          .map(
-                            (r) => PartnerVehicle(
-                              id: r.id ?? '',
-                              partnerId: widget.partner.id,
-                              companyId: widget.partner.companyId,
-                              unitCode: MaviUnitCodes.normalize(r.mavi.text),
-                              registrationNumber: r.reg.text.trim(),
-                              driverName: r.driverName.text.trim().isEmpty
-                                  ? null
-                                  : r.driverName.text.trim(),
-                              fleetRoles: r.fleetRoles.toList(),
-                              isActive: r.isActive,
-                              createdAt: DateTime.now(),
-                            ),
-                          )
-                          .where((v) => v.unitCode.isNotEmpty)
-                          .toList(),
-                    ),
-                    lastInspectionByVehicleId: _inspectionByVehicleId,
-                  ),
-                ),
-              ),
-            if (regRows.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: PartnerModernUi.surface(context),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: PartnerModernUi.border(context)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        'Registrerte skilt (${regRows.length})',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: PartnerModernUi.textPrimary(context).withValues(alpha: 0.78),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: regRows.map((r) {
-                          final plate = r.reg.text.trim().toUpperCase();
-                          return Chip(
-                            label: Text(
-                              plate,
-                              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-                            ),
-                            visualDensity: VisualDensity.compact,
-                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Skilt vises under Bilkontroll etter at du har trykket Lagre endringer.',
-                        style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            PartnerModernKpiGrid(
-              items: [
-                ('MAVI', '${maviRows.length}'),
-                ('Reg.nr', '${regRows.length}'),
-                ('SMS', '${smsPhones.length}'),
-                ('Portal', activeOwnerCount == 0 ? 'Mangler' : '$activeOwnerCount'),
-              ],
-            ),
-            const SizedBox(height: 8),
-            PartnerModernSegmented<_OverviewSection>(
-              options: _OverviewSection.values,
-              selected: _activeSection,
-              labelOf: (s) => s.label,
-              onSelected: (s) => setState(() => _activeSection = s),
-            ),
-            const SizedBox(height: 8),
-            if (_activeSection == _OverviewSection.profile)
-              PartnerModernSection(
-              title: 'Kommentar',
-              subtitle: 'Intern notat',
+            PartnerModernSection(
+              title: 'Intern notat',
+              subtitle: 'Kun synlig for MAVI',
+              initiallyExpanded: true,
               children: [
                 TextField(
                   controller: _notes,
@@ -1288,17 +1199,17 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                   decoration: const InputDecoration(
                     labelText: 'Kommentar / notater',
                     hintText: 'F.eks. avtaler, spesielle forhold, kontaktperson …',
+                    border: OutlineInputBorder(),
                   ),
                 ),
               ],
             ),
-            if (_activeSection == _OverviewSection.profile)
-              PartnerModernSection(
+            PartnerModernSection(
               title: 'Kontakt & bedrift',
               subtitle: 'Org.nr ${p.orgNumber ?? "—"}',
               initiallyExpanded: true,
               children: [
-                  _field('Bedriftsansvarlig', _owner),
+                _field('Bedriftsansvarlig', _owner),
                 _field('Telefon (SMS-varsler)', _phone),
                 _field('E-post', _email),
                 _field('Adresse', _address),
@@ -1318,10 +1229,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
-            if (_activeSection == _OverviewSection.profile)
-              PartnerModernSection(
+            PartnerModernSection(
               title: 'ECO Driving Kurs',
-              subtitle: 'Grønn badge på bedriftskort når kurset er tatt',
+              subtitle: 'Synlig på bedriftskort når kurset er tatt',
               initiallyExpanded: true,
               children: [
                 EcoDrivingCourseEditor(
@@ -1342,134 +1252,223 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
-            if (_activeSection == _OverviewSection.routing)
-              PartnerModernSection(
-              title: 'Ruter og varsler',
-              subtitle: 'Styr hvem som mottar ruter fra DriftPro',
-              initiallyExpanded: true,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    'Del ruter og godkjenning i portal (GDPR).',
-                    style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)),
-                  ),
-                ),
-                Column(
-                  children: [
-                    RadioListTile<int>(
-                      value: 1,
-                      groupValue: _routesOwnerOnly ? 1 : 2,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Kun bedriftsansvarlig', style: TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: const Text('Sjåfører ser ikke ruter · bedriftsansvarlig håndterer ruter'),
-                      onChanged: _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(true),
-                    ),
-                    RadioListTile<int>(
-                      value: 2,
-                      groupValue: _routesOwnerOnly ? 1 : 2,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Bedriftsansvarlig og sjåfør', style: TextStyle(fontWeight: FontWeight.w800)),
-                      subtitle: const Text('Sjåfører ser ruter for sin egen bil og kan godkjenne/avvise'),
-                      onChanged: _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(false),
-                    ),
-                    RadioListTile<int>(
-                      value: 3,
-                      groupValue: _routesOwnerOnly ? 1 : 2,
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('Sjåfører ser ruter, men kan ikke godkjenne'),
-                      subtitle: const Text('Kommer snart: krever ny backend-styring for akseptrettigheter'),
-                      enabled: false,
-                      onChanged: null,
-                    ),
-                  ],
-                ),
-                if (_routesOwnerOnlySaving)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 4),
-                    child: LinearProgressIndicator(minHeight: 2),
-                  ),
-              ],
-            ),
-            if (_activeSection == _OverviewSection.ownerPortal)
-              PartnerModernSection(
-              title: 'Portal for bedriftsansvarlig',
-              subtitle:
-                  'Auto-generert brukernavn og passord registreres i Supabase og sendes på SMS. '
-                  'Bedriftsansvarlig får tilgang til dokumenter, møter og revisjon — ikke sjåfører. '
-                  'Ved bytte av telefonnummer slettes gammel konto automatisk.',
-              trailing: Text(
-                '${_ownerRows.where((r) => r.hasPortalAccount).length}/${_ownerRows.length}',
-                style: TextStyle(fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context)),
+          ],
+        ),
+      _OverviewSection.routing => PartnerModernSection(
+          title: 'Ruter og varsler',
+          subtitle: 'Styr hvem som mottar ruter fra DriftPro',
+          initiallyExpanded: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(
+                'Del ruter og godkjenning i portal (GDPR).',
+                style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)),
               ),
+            ),
+            RadioListTile<int>(
+              value: 1,
+              groupValue: _routesOwnerOnly ? 1 : 2,
+              contentPadding: EdgeInsets.zero,
+              title: const Text(
+                'Kun bedriftsansvarlig',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: const Text(
+                'Sjåfører ser ikke ruter · bedriftsansvarlig håndterer ruter',
+              ),
+              onChanged:
+                  _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(true),
+            ),
+            RadioListTile<int>(
+              value: 2,
+              groupValue: _routesOwnerOnly ? 1 : 2,
+              contentPadding: EdgeInsets.zero,
+              title: const Text(
+                'Bedriftsansvarlig og sjåfør',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: const Text(
+                'Sjåfører ser ruter for sin egen bil og kan godkjenne/avvise',
+              ),
+              onChanged:
+                  _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(false),
+            ),
+            const RadioListTile<int>(
+              value: 3,
+              groupValue: -1,
+              contentPadding: EdgeInsets.zero,
+              title: Text('Sjåfører ser ruter, men kan ikke godkjenne'),
+              subtitle: Text(
+                'Kommer snart: krever ny backend-styring for akseptrettigheter',
+              ),
+              enabled: false,
+              onChanged: null,
+            ),
+            if (_routesOwnerOnlySaving)
+              const Padding(
+                padding: EdgeInsets.only(top: 4),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
+          ],
+        ),
+      _OverviewSection.ownerPortal => PartnerModernSection(
+          title: 'Portal for bedriftsansvarlig',
+          subtitle:
+              'Brukernavn/passord genereres og sendes på SMS. '
+              'Ved bytte av telefon slettes gammel konto automatisk.',
+          initiallyExpanded: true,
+          trailing: Text(
+            '$activeOwnerCount/${_ownerRows.length}',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: PartnerModernUi.muted(context),
+            ),
+          ),
+          children: [
+            ..._ownerRows.map(_ownerPortalCard),
+            OutlinedButton.icon(
+              onPressed: _portalSaving ? null : _addOwnerPortalRow,
+              icon: const Icon(Icons.person_add_outlined),
+              label: const Text('Legg til bil-eier'),
+            ),
+          ],
+        ),
+      _OverviewSection.registrations => PartnerModernSection(
+          title: 'Registrerte skiltnummer',
+          subtitle:
+              'Skiltnummer, årsmodell, nyttelast og EU-kontroll. '
+              'EU-dato hentes automatisk fra Vegvesen.',
+          initiallyExpanded: true,
+          trailing: Text(
+            '${regRows.length}',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: PartnerModernUi.muted(context),
+            ),
+          ),
+          children: [
+            if (regRows.isEmpty)
+              PartnerEmptyState(
+                icon: Icons.add_road_outlined,
+                title: 'Ingen reg.nr registrert',
+                subtitle: 'Legg til alle registreringsnummer uavhengig av MAVI.',
+              )
+            else
+              ...regRows.map(_regCard),
+            OutlinedButton.icon(
+              onPressed: _addRegRow,
+              icon: const Icon(Icons.add),
+              label: const Text('Legg til reg.nr'),
+            ),
+          ],
+        ),
+      _OverviewSection.maviDrivers => PartnerModernSection(
+          title: 'MAVI & sjåfør',
+          subtitle: 'Auto brukernavn · SMS ved opprettelse',
+          initiallyExpanded: true,
+          trailing: Text(
+            '${maviRows.length}',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              color: PartnerModernUi.muted(context),
+            ),
+          ),
+          children: [
+            if (maviRows.isEmpty)
+              PartnerEmptyState(
+                icon: Icons.add_box_outlined,
+                title: 'Ingen MAVI-nummer ennå',
+                subtitle: 'Legg til MAVI og koble valgfritt til reg.nr.',
+              )
+            else
+              ...maviRows.map(_vehicleCard),
+            Row(
               children: [
-                ..._ownerRows.map(_ownerPortalCard),
-                OutlinedButton.icon(
-                  onPressed: _portalSaving ? null : _addOwnerPortalRow,
-                  icon: const Icon(Icons.person_add_outlined),
-                  label: const Text('Legg til bil-eier'),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _addMaviRow,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Legg til MAVI'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _bulkAddMavi,
+                    icon: const Icon(Icons.playlist_add),
+                    label: const Text('Lim inn flere'),
+                  ),
                 ),
               ],
             ),
-            if (_activeSection == _OverviewSection.registrations)
-              PartnerModernSection(
-              title: 'Registrerte skiltnummer på dette firmaet',
-              subtitle:
-                  'Skiltnummer, årsmodell, nyttelast og EU-kontroll. '
-                  'EU-dato hentes automatisk fra Vegvesen når du skriver skiltnummer.',
-              trailing: Text('${regRows.length}', style: TextStyle(fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context))),
-              children: [
-                if (regRows.isEmpty)
-                  PartnerEmptyState(
-                    icon: Icons.add_road_outlined,
-                    title: 'Ingen reg.nr registrert',
-                    subtitle: 'Legg til alle registreringsnummer uavhengig av MAVI.',
-                  )
-                else
-                  ...regRows.map(_regCard),
-                OutlinedButton.icon(
-                  onPressed: _addRegRow,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Legg til reg.nr'),
-                ),
-              ],
-            ),
-            if (_activeSection == _OverviewSection.maviDrivers)
-              PartnerModernSection(
-              title: 'MAVI & sjåfør',
-              subtitle: 'Auto brukernavn · SMS ved opprettelse',
-              initiallyExpanded: true,
-              trailing: Text('${maviRows.length}', style: TextStyle(fontWeight: FontWeight.w600, color: PartnerModernUi.muted(context))),
-              children: [
-                if (maviRows.isEmpty)
-                  PartnerEmptyState(
-                    icon: Icons.add_box_outlined,
-                    title: 'Ingen MAVI-nummer ennå',
-                    subtitle: 'Legg til MAVI og koble valgfritt til reg.nr fra listen over.',
-                  )
-                else
-                  ...maviRows.map(_vehicleCard),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _addMaviRow,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Legg til MAVI'),
-                      ),
+          ],
+        ),
+    };
+
+    final nav = _OverviewSectionNav(
+      selected: _activeSection,
+      countFor: countFor,
+      onSelected: (s) => setState(() => _activeSection = s),
+      vertical: wide,
+    );
+
+    return Stack(
+      children: [
+        ListView(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: PartnerModernUi.surface(context),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: PartnerModernUi.border(context)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Rediger bedrift',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                      color: PartnerModernUi.textPrimary(context),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _bulkAddMavi,
-                        icon: const Icon(Icons.playlist_add),
-                        label: const Text('Lim inn flere'),
-                      ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Velg område under · ${smsPhones.length} SMS-nummer · '
+                    '${activeOwnerCount == 0 ? 'mangler portal' : '$activeOwnerCount portal'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: PartnerModernUi.muted(context),
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(height: 10),
+            if (wide)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(width: 232, child: nav),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 760),
+                      child: sectionBody,
+                    ),
+                  ),
+                ],
+              )
+            else ...[
+              nav,
+              const SizedBox(height: 10),
+              sectionBody,
+            ],
           ],
         ),
         PartnerStickySaveBar(
@@ -1974,6 +1973,150 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               ),
           ],
         ),
+    );
+  }
+}
+
+/// Seksjonsvelger for Oversikt — tydelige kort med ikon, tittel og antall.
+class _OverviewSectionNav extends StatelessWidget {
+  const _OverviewSectionNav({
+    required this.selected,
+    required this.onSelected,
+    required this.countFor,
+    this.vertical = false,
+  });
+
+  final _OverviewSection selected;
+  final ValueChanged<_OverviewSection> onSelected;
+  final int Function(_OverviewSection) countFor;
+  final bool vertical;
+
+  @override
+  Widget build(BuildContext context) {
+    final tiles = _OverviewSection.values.map((s) {
+      final sel = s == selected;
+      final count = countFor(s);
+      return Material(
+        color: sel
+            ? DriftProTheme.primaryGreen.withValues(alpha: 0.1)
+            : PartnerModernUi.surface(context),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => onSelected(s),
+          child: Container(
+            width: vertical ? double.infinity : null,
+            padding: EdgeInsets.symmetric(
+              horizontal: vertical ? 12 : 10,
+              vertical: vertical ? 12 : 10,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: sel
+                    ? DriftProTheme.primaryGreen.withValues(alpha: 0.55)
+                    : PartnerModernUi.border(context),
+                width: sel ? 1.4 : 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: vertical ? MainAxisSize.max : MainAxisSize.min,
+              children: [
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: sel
+                        ? DriftProTheme.primaryGreen.withValues(alpha: 0.16)
+                        : PartnerModernUi.border(context).withValues(alpha: 0.35),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    s.icon,
+                    size: 18,
+                    color: sel
+                        ? DriftProTheme.primaryGreen
+                        : PartnerModernUi.muted(context),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        s.label,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: sel
+                              ? DriftProTheme.primaryGreen
+                              : PartnerModernUi.textPrimary(context),
+                        ),
+                      ),
+                      Text(
+                        s.hint,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: PartnerModernUi.muted(context),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (vertical || count > 0) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: sel
+                          ? DriftProTheme.primaryGreen
+                          : PartnerModernUi.border(context).withValues(alpha: 0.45),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '$count',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: sel
+                            ? Colors.white
+                            : PartnerModernUi.textPrimary(context),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      );
+    }).toList();
+
+    if (vertical) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < tiles.length; i++) ...[
+            if (i > 0) const SizedBox(height: 8),
+            tiles[i],
+          ],
+        ],
+      );
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < tiles.length; i++) ...[
+            if (i > 0) const SizedBox(width: 8),
+            tiles[i],
+          ],
+        ],
+      ),
     );
   }
 }

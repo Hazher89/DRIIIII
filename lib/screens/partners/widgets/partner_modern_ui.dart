@@ -368,6 +368,10 @@ class PartnerModernDetailHeader extends StatelessWidget {
     required this.onActiveChanged,
     this.canToggleActive = true,
     this.ecoDrivingStatus,
+    this.ecoDrivingDeadline,
+    this.ecoDrivingCompletedAt,
+    this.smsCount,
+    this.portalCount,
   });
 
   final String title;
@@ -378,15 +382,20 @@ class PartnerModernDetailHeader extends StatelessWidget {
   final ValueChanged<bool>? onActiveChanged;
   final bool canToggleActive;
   final EcoDrivingStatus? ecoDrivingStatus;
+  final DateTime? ecoDrivingDeadline;
+  final DateTime? ecoDrivingCompletedAt;
+  final int? smsCount;
+  final int? portalCount;
 
   @override
   Widget build(BuildContext context) {
+    final muted = PartnerModernUi.muted(context);
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       decoration: BoxDecoration(
         color: PartnerModernUi.surface(context),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: PartnerModernUi.border(context)),
       ),
       child: Column(
@@ -402,53 +411,123 @@ class PartnerModernDetailHeader extends StatelessWidget {
                     Text(
                       title,
                       style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
+                        height: 1.2,
                         color: PartnerModernUi.textPrimary(context),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(subtitle, style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context))),
+                    if (subtitle.trim().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(fontSize: 12.5, height: 1.35, color: muted),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(isActive ? 'Aktiv' : 'Av', style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context))),
-                  Switch(
-                    value: isActive,
-                    onChanged: canToggleActive ? onActiveChanged : null,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: (isActive ? const Color(0xFF22C55E) : const Color(0xFF9CA3AF))
+                      .withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  isActive ? 'Aktiv' : 'Deaktivert',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: isActive ? const Color(0xFF15803D) : const Color(0xFF6B7280),
                   ),
-                ],
+                ),
+              ),
+              if (canToggleActive && onActiveChanged != null) ...[
+                const SizedBox(width: 4),
+                Switch(
+                  value: isActive,
+                  onChanged: onActiveChanged,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _kpi(context, 'MAVI', '$maviCount', const Color(0xFF15803D))),
+              const SizedBox(width: 6),
+              Expanded(child: _kpi(context, 'Skilt', '$regCount', const Color(0xFF2563EB))),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _kpi(
+                  context,
+                  'SMS',
+                  '${smsCount ?? '—'}',
+                  const Color(0xFF7C3AED),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _kpi(
+                  context,
+                  'Portal',
+                  portalCount == null
+                      ? '—'
+                      : (portalCount == 0 ? '0' : '$portalCount'),
+                  const Color(0xFF0F766E),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              _pill(context, '$maviCount MAVI'),
-              _pill(context, '$regCount reg.nr'),
-              if (ecoDrivingStatus != null)
-                EcoDrivingBadge(status: ecoDrivingStatus!, compact: true),
-            ],
-          ),
+          if (ecoDrivingStatus != null) ...[
+            const SizedBox(height: 10),
+            EcoDrivingBadge(
+              status: ecoDrivingStatus!,
+              prominent: true,
+              deadline: ecoDrivingDeadline,
+              completedAt: ecoDrivingCompletedAt,
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _pill(BuildContext context, String text) {
+  Widget _kpi(BuildContext context, String label, String value, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
-        color: PartnerModernUi.border(context).withValues(alpha: 0.35),
-        borderRadius: BorderRadius.circular(6),
+        color: PartnerModernUi.border(context).withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: PartnerModernUi.border(context).withValues(alpha: 0.55)),
       ),
-      child: Text(text, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: PartnerModernUi.textPrimary(context))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: PartnerModernUi.muted(context),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.3,
+              color: color,
+              height: 1.05,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -138,6 +138,23 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
 
   int get _regCount => _vehicles.length - _maviCount;
 
+  int get _smsCount {
+    final phones = <String>{};
+    final p = _p.phone?.trim();
+    if (p != null && p.isNotEmpty) phones.add(p);
+    for (final a in _portalAccounts) {
+      final ph = a.phone?.trim();
+      if (ph != null && ph.isNotEmpty) phones.add(ph);
+    }
+    for (final v in _vehicles) {
+      final ph = v.phone?.trim();
+      if (ph != null && ph.isNotEmpty) phones.add(ph);
+    }
+    return phones.length;
+  }
+
+  int get _portalCount => _portalAccounts.where((a) => a.isActive).length;
+
   Widget _buildTabBody(PartnerDetailTabDef tab) {
     final child = switch (tab.accessKey) {
       AccessKeys.partnersTabOversikt =>
@@ -214,10 +231,14 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
             ].join(' · '),
             maviCount: _maviCount,
             regCount: _regCount,
+            smsCount: _smsCount,
+            portalCount: _portalCount,
             isActive: _p.isActive,
             canToggleActive: false,
             onActiveChanged: null,
             ecoDrivingStatus: _p.ecoDrivingStatus,
+            ecoDrivingDeadline: _p.ecoDrivingDeadline,
+            ecoDrivingCompletedAt: _p.ecoDrivingCompletedAt,
           ),
           PartnerCompanyLifecyclePanel(
             partner: _p,
