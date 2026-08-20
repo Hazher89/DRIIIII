@@ -17,6 +17,7 @@ import '../../../core/utils/bytes_download.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/vehicle_inspection.dart';
+import 'partner_inspection_hub_ui.dart';
 import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
@@ -849,21 +850,24 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
           ].join(' · '),
           trailing: IconButton(
             tooltip: 'Oppdater',
-            icon: const Icon(Icons.refresh_outlined),
+            icon: const Icon(Icons.refresh_rounded),
             onPressed: _load,
           ),
         ),
-        PartnerModernKpiGrid(
-          items: [
-            ('Kontroller', '${_archive.length}'),
-            ('Avvik', '$deviationCount'),
-            ('Oppfølging', _followUps.isEmpty ? 'Ingen' : '${_followUps.length}'),
-            ('Biler', '${vehicleOptions.length}'),
-          ],
+        Padding(
+          padding: const EdgeInsets.fromLTRB(0, 0, 0, 4),
+          child: PartnerInspectionHubUi.kpiStrip(
+            context: context,
+            total: _archive.length,
+            withDeviation: deviationCount,
+            openFollowUp: _followUps.length,
+            companies: null,
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         if (_followUps.isNotEmpty) _followUpSection(context),
         PartnerModernSection(
+          icon: Icons.directions_car_outlined,
           title: 'Velg bil',
           subtitle: vehicleOptions.isEmpty
               ? 'Registrer MAVI eller reg.nr under Oversikt først'
@@ -882,6 +886,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
         ),
         if (_selectedVehicle != null) ...[
           PartnerModernSection(
+            icon: Icons.checklist_rtl_rounded,
             title: 'Kontrollskjema',
             subtitle: _vehicleLabel(_selectedVehicle!),
             initiallyExpanded: true,
@@ -968,6 +973,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
           ),
         ],
         PartnerModernSection(
+          icon: Icons.archive_outlined,
           title: 'Arkiv',
           subtitle: 'Alle lagrede kontroller for bedriften',
           trailing: Row(

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/layout/web_layout.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/services/hms/hms_pdf_export_service.dart';
 import '../../core/services/partner/partner_service.dart';
@@ -12,6 +13,8 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/vehicle_inspection.dart';
+import 'widgets/partner_inspection_hub_ui.dart';
+import 'widgets/partner_modern_ui.dart';
 import 'widgets/partner_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
@@ -38,6 +41,7 @@ class VehicleInspectionHubScreen extends StatefulWidget {
 class _VehicleInspectionHubScreenState extends State<VehicleInspectionHubScreen> {
   final _search = TextEditingController();
   final _df = DateFormat('dd.MM.yyyy HH:mm');
+  final _dfShort = DateFormat('dd.MM.yy');
 
   bool _loading = true;
   String? _error;
@@ -49,6 +53,7 @@ class _VehicleInspectionHubScreenState extends State<VehicleInspectionHubScreen>
   @override
   void initState() {
     super.initState();
+    _search.addListener(() => setState(() {}));
     _load();
   }
 
@@ -192,16 +197,25 @@ class _VehicleInspectionHubScreenState extends State<VehicleInspectionHubScreen>
 
   @override
   Widget build(BuildContext context) {
-    final body = _buildBody();
+    final canvas = WebLayout.prefersPointerNav
+        ? WebLayout.canvasColor(context)
+        : (Theme.of(context).brightness == Brightness.dark
+            ? DriftProTheme.surfaceDark
+            : DriftProTheme.surfaceLight);
+
+    final body = ColoredBox(color: canvas, child: _buildBody());
     if (widget.embedded) return body;
     return Scaffold(
+      backgroundColor: canvas,
       appBar: AppBar(
-        title: const Text('Bilkontroll-arkiv'),
+        title: const Text('Bilkontroll'),
+        backgroundColor: canvas,
+        surfaceTintColor: Colors.transparent,
         actions: [
           IconButton(
             tooltip: 'Oppdater',
             onPressed: _loading ? null : _load,
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_rounded),
           ),
         ],
       ),
@@ -233,262 +247,121 @@ class _VehicleInspectionHubScreenState extends State<VehicleInspectionHubScreen>
     final total = _filtered.length;
     final withDev = _filtered.where((i) => i.hasDeviation).length;
     final openFu = _filtered.where((i) => i.followUpOpen).length;
+    final wide = WebLayout.isWide(context, minWidth: 900);
+    final partnerOptions = widget.partners
+        .map((p) => (p.id, p.displayLabel))
+        .toList()
+      ..sort((a, b) => a.$2.toLowerCase().compareTo(b.$2.toLowerCase()));
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      color: DriftProTheme.primaryGreen,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          if (widget.nestedScroll)
-            SliverOverlapInjector(
-              handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+    return PartnerInspectionHubUi.pageShell(
+      context: context,
+      child: RefreshIndicator(
+        onRefresh: _load,
+        color: DriftProTheme.primaryGreen,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            if (widget.nestedScroll)
+              SliverOverlapInjector(
+                handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
+              ),
+            SliverToBoxAdapter(
+              child: PartnerInspectionHubUi.header(
+                context: context,
+                subtitle: 'Arkiv for alle samarbeidsbedrifter · søk, filtrer, PDF',
+                onRefresh: _load,
+              ),
             ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  PartnerHeroBanner(
-                    compact: true,
-                    title: 'Bilkontroll-arkiv',
-                    subtitle:
-                        'Alle lagrede kontroller for alle samarbeidsbedrifter. '
-                        'Søk, filtrer og last ned PDF.',
-                    leading: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.14),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(
-                        Icons.fact_check_outlined,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _KpiChip(
-                          label: 'Kontroller',
-                          value: '$total',
-                          color: DriftProTheme.accentBlue,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _KpiChip(
-                          label: 'Med avvik',
-                          value: '$withDev',
-                          color: withDev > 0
-                              ? DriftProTheme.warning
-                              : DriftProTheme.primaryGreen,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _KpiChip(
-                          label: 'Åpen oppf.',
-                          value: '$openFu',
-                          color: openFu > 0
-                              ? DriftProTheme.error
-                              : DriftProTheme.primaryGreen,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _search,
-                    decoration: InputDecoration(
-                      hintText: 'Søk bedrift, reg.nr, MAVI, kontrollør…',
-                      prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _search.text.isEmpty
-                          ? null
-                          : IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                _search.clear();
-                                setState(() {});
-                              },
-                            ),
-                      border: const OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<String?>(
-                    value: _partnerFilterId,
-                    decoration: const InputDecoration(
-                      labelText: 'Bedrift',
-                      border: OutlineInputBorder(),
-                      isDense: true,
-                    ),
-                    items: [
-                      const DropdownMenuItem<String?>(
-                        value: null,
-                        child: Text('Alle bedrifter'),
-                      ),
-                      ...widget.partners.map(
-                        (p) => DropdownMenuItem<String?>(
-                          value: p.id,
-                          child: Text(p.displayLabel),
-                        ),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _partnerFilterId = v),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _FilterChip(
-                        label: 'Alle',
-                        selected: _filter == _InspectionFilter.all,
-                        onTap: () =>
-                            setState(() => _filter = _InspectionFilter.all),
-                      ),
-                      _FilterChip(
-                        label: 'Avvik',
-                        selected: _filter == _InspectionFilter.deviation,
-                        onTap: () => setState(
-                          () => _filter = _InspectionFilter.deviation,
-                        ),
-                      ),
-                      _FilterChip(
-                        label: 'Åpen oppfølging',
-                        selected: _filter == _InspectionFilter.openFollowUp,
-                        onTap: () => setState(
-                          () => _filter = _InspectionFilter.openFollowUp,
-                        ),
-                      ),
-                      _FilterChip(
-                        label: 'OK',
-                        selected: _filter == _InspectionFilter.ok,
-                        onTap: () =>
-                            setState(() => _filter = _InspectionFilter.ok),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${grouped.length} bedrift(er) · $total kontroll(er)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+            SliverToBoxAdapter(
+              child: PartnerInspectionHubUi.kpiStrip(
+                context: context,
+                total: total,
+                withDeviation: withDev,
+                openFollowUp: openFu,
+                companies: grouped.length,
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: PartnerInspectionHubUi.filterBar(
+                context: context,
+                search: _search,
+                partnerFilterId: _partnerFilterId,
+                onPartnerChanged: (v) => setState(() => _partnerFilterId = v),
+                partners: partnerOptions,
+                selectedFilter: _filter.index,
+                onFilter: (i) => setState(() => _filter = _InspectionFilter.values[i]),
+                filters: const [
+                  ('Alle', 0),
+                  ('Avvik', 1),
+                  ('Åpen oppfølging', 2),
+                  ('OK', 3),
                 ],
               ),
             ),
-          ),
-          if (grouped.isEmpty)
-            const SliverToBoxAdapter(
-              child: PartnerEmptyState(
-                icon: Icons.inventory_2_outlined,
-                title: 'Ingen kontroller funnet',
-                subtitle:
-                    'Lagrede bilkontroller for alle bedrifter vises her. '
-                    'Prøv et annet søk eller filter.',
-              ),
-            )
-          else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final partnerId = grouped.keys.elementAt(index);
-                  final list = grouped[partnerId]!;
-                  final partner = _partnerFor(list.first);
-                  final expanded = _expandedPartnerIds.contains(partnerId);
-                  final devCount = list.where((i) => i.hasDeviation).length;
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                    child: Material(
-                      color: Theme.of(context).cardColor,
-                      borderRadius:
-                          BorderRadius.circular(DriftProTheme.radiusMd),
-                      child: InkWell(
-                        borderRadius:
-                            BorderRadius.circular(DriftProTheme.radiusMd),
-                        onTap: () {
-                          setState(() {
-                            if (expanded) {
-                              _expandedPartnerIds.remove(partnerId);
-                            } else {
-                              _expandedPartnerIds.add(partnerId);
-                            }
-                          });
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-                          child: Column(
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    expanded
-                                        ? Icons.expand_less
-                                        : Icons.expand_more,
-                                    color: DriftProTheme.primaryGreen,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          partner.displayLabel,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          '${list.length} kontroll(er)'
-                                          '${devCount > 0 ? ' · $devCount med avvik' : ''}',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  TextButton(
-                                    onPressed: () => _openPartner(partnerId),
-                                    child: const Text('Åpne'),
-                                  ),
-                                ],
-                              ),
-                              if (expanded) ...[
-                                const Divider(height: 16),
-                                ...list.map((ins) => _InspectionRow(
-                                      inspection: ins,
-                                      dateLabel:
-                                          _df.format(ins.inspectedAt.toLocal()),
-                                      onPdf: () => _exportPdf(ins),
-                                    )),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-                childCount: grouped.length,
+            SliverToBoxAdapter(
+              child: PartnerInspectionHubUi.summaryLine(
+                context,
+                '${grouped.length} bedrift(er) · $total kontroll(er)',
               ),
             ),
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
-        ],
+            if (grouped.isEmpty)
+              const SliverToBoxAdapter(
+                child: PartnerEmptyState(
+                  icon: Icons.inventory_2_outlined,
+                  title: 'Ingen kontroller funnet',
+                  subtitle:
+                      'Lagrede bilkontroller for alle bedrifter vises her. '
+                      'Prøv et annet søk eller filter.',
+                ),
+              )
+            else
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final partnerId = grouped.keys.elementAt(index);
+                    final list = grouped[partnerId]!;
+                    final partner = _partnerFor(list.first);
+                    final expanded = _expandedPartnerIds.contains(partnerId);
+                    final devCount = list.where((i) => i.hasDeviation).length;
+                    final openCount = list.where((i) => i.followUpOpen).length;
+                    return _PartnerGroupCard(
+                      wide: wide,
+                      partnerName: partner.displayLabel,
+                      count: list.length,
+                      deviationCount: devCount,
+                      openFollowUpCount: openCount,
+                      expanded: expanded,
+                      onToggle: () {
+                        setState(() {
+                          if (expanded) {
+                            _expandedPartnerIds.remove(partnerId);
+                          } else {
+                            _expandedPartnerIds.add(partnerId);
+                          }
+                        });
+                      },
+                      onOpenPartner: () => _openPartner(partnerId),
+                      children: [
+                        if (wide && expanded) const _InspectionTableHeader(),
+                        ...list.map(
+                          (ins) => _InspectionRow(
+                            wide: wide,
+                            inspection: ins,
+                            dateLabel: wide
+                                ? _dfShort.format(ins.inspectedAt.toLocal())
+                                : _df.format(ins.inspectedAt.toLocal()),
+                            onPdf: () => _exportPdf(ins),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                  childCount: grouped.length,
+                ),
+              ),
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
+          ],
+        ),
       ),
     );
   }
@@ -502,66 +375,135 @@ extension on Partner {
   }
 }
 
-class _KpiChip extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color color;
-
-  const _KpiChip({
-    required this.label,
-    required this.value,
-    required this.color,
+class _PartnerGroupCard extends StatelessWidget {
+  const _PartnerGroupCard({
+    required this.wide,
+    required this.partnerName,
+    required this.count,
+    required this.deviationCount,
+    required this.openFollowUpCount,
+    required this.expanded,
+    required this.onToggle,
+    required this.onOpenPartner,
+    required this.children,
   });
+
+  final bool wide;
+  final String partnerName;
+  final int count;
+  final int deviationCount;
+  final int openFollowUpCount;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final VoidCallback onOpenPartner;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      margin: EdgeInsets.fromLTRB(wide ? 20 : 14, 0, wide ? 20 : 14, 10),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        color: PartnerModernUi.surface(context),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: PartnerModernUi.border(context)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            value,
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 18,
-              color: color,
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+              child: Row(
+                children: [
+                  Icon(
+                    expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                    color: PartnerInspectionHubUi.accent,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          partnerName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: PartnerModernUi.textPrimary(context),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          [
+                            '$count kontroll${count == 1 ? '' : 'er'}',
+                            if (deviationCount > 0) '$deviationCount avvik',
+                            if (openFollowUpCount > 0) '$openFollowUpCount åpen oppf.',
+                          ].join(' · '),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: PartnerModernUi.muted(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: onOpenPartner,
+                    child: const Text('Åpne bedrift'),
+                  ),
+                ],
+              ),
             ),
           ),
-          Text(
-            label,
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-          ),
+          if (expanded) ...[
+            Divider(height: 1, color: PartnerModernUi.border(context)),
+            ...children,
+            const SizedBox(height: 6),
+          ],
         ],
       ),
     );
   }
 }
 
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _FilterChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+class _InspectionTableHeader extends StatelessWidget {
+  const _InspectionTableHeader();
 
   @override
   Widget build(BuildContext context) {
-    return FilterChip(
-      label: Text(label),
-      selected: selected,
-      onSelected: (_) => onTap(),
-      selectedColor: DriftProTheme.primaryGreen.withValues(alpha: 0.18),
-      checkmarkColor: DriftProTheme.primaryGreen,
+    final muted = PartnerModernUi.muted(context);
+    Widget col(String t, {int flex = 1}) => Expanded(
+          flex: flex,
+          child: Text(
+            t,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.3,
+              color: muted,
+            ),
+          ),
+        );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 6),
+      child: Row(
+        children: [
+          const SizedBox(width: 28),
+          col('Kjøretøy', flex: 3),
+          col('Dato', flex: 1),
+          col('Kontrollør', flex: 2),
+          col('Status', flex: 2),
+          const SizedBox(width: 44),
+        ],
+      ),
     );
   }
 }
@@ -570,29 +512,85 @@ class _InspectionRow extends StatelessWidget {
   final PartnerVehicleInspection inspection;
   final String dateLabel;
   final VoidCallback onPdf;
+  final bool wide;
 
   const _InspectionRow({
     required this.inspection,
     required this.dateLabel,
     required this.onPdf,
+    required this.wide,
   });
 
   @override
   Widget build(BuildContext context) {
     final statusColor = inspection.hasDeviation
-        ? Colors.orange.shade700
-        : Colors.green.shade700;
+        ? (inspection.followUpOpen ? DriftProTheme.error : const Color(0xFFEA580C))
+        : DriftProTheme.primaryGreen;
     final statusText = inspection.hasDeviation
-        ? (inspection.followUpOpen
-            ? 'Avvik · åpen oppfølging'
-            : 'Avvik')
+        ? (inspection.followUpOpen ? 'Avvik · oppfølging' : 'Avvik')
         : 'OK';
+
+    if (wide) {
+      return InkWell(
+        onTap: onPdf,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+          child: Row(
+            children: [
+              Icon(
+                inspection.hasDeviation ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
+                color: statusColor,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 3,
+                child: Text(
+                  inspection.vehicleLabel,
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Expanded(
+                flex: 1,
+                child: Text(
+                  dateLabel,
+                  style: TextStyle(fontSize: 12.5, color: PartnerModernUi.muted(context)),
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Text(
+                  inspection.inspectedByName ?? 'Ukjent',
+                  style: TextStyle(fontSize: 12.5, color: PartnerModernUi.muted(context)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Expanded(
+                flex: 2,
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _StatusPill(label: statusText, color: statusColor),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Last ned PDF',
+                icon: const Icon(Icons.picture_as_pdf_outlined, size: 20),
+                onPressed: onPdf,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return ListTile(
       dense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       leading: Icon(
-        inspection.hasDeviation ? Icons.warning_amber : Icons.check_circle,
+        inspection.hasDeviation ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
         color: statusColor,
       ),
       title: Text(
@@ -608,6 +606,28 @@ class _InspectionRow extends StatelessWidget {
         tooltip: 'Last ned PDF',
         icon: const Icon(Icons.picture_as_pdf_outlined),
         onPressed: onPdf,
+      ),
+    );
+  }
+}
+
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: color),
       ),
     );
   }
