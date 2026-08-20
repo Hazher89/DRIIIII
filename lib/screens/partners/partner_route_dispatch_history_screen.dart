@@ -91,10 +91,11 @@ class _PartnerRouteDispatchHistoryScreenState
       initialDate: _day,
       firstDate: DateTime(2024),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      locale: const Locale('nb', 'NO'),
       helpText: 'Velg rutedato',
+      cancelText: 'Avbryt',
+      confirmText: 'Velg',
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
     setState(() {
       _day = DateTime(picked.year, picked.month, picked.day);
     });
