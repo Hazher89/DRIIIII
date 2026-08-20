@@ -256,39 +256,59 @@ class EcoDrivingCourseEditor extends StatelessWidget {
         : '${deadline!.day.toString().padLeft(2, '0')}.'
             '${deadline!.month.toString().padLeft(2, '0')}.'
             '${deadline!.year}';
+    final accent = completed ? const Color(0xFF166534) : const Color(0xFFB45309);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: completed,
-          onChanged: onCompletedChanged,
-          secondary: Icon(
-            completed ? Icons.eco_rounded : Icons.eco_outlined,
-            color: completed ? const Color(0xFF166534) : Colors.grey[600],
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: completed,
+            onChanged: onCompletedChanged,
+            secondary: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                completed ? Icons.eco_rounded : Icons.eco_outlined,
+                color: accent,
+              ),
+            ),
+            title: Text(
+              dense ? 'ECO Driving Kurs' : 'Har tatt ECO Driving Kurs',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: accent,
+              ),
+            ),
+            subtitle: Text(
+              completed
+                  ? 'Kurset er registrert som gjennomført'
+                  : deadlineLabel != null
+                      ? 'Frist: $deadlineLabel (3 måneder)'
+                      : 'Må tas innen 3 måneder',
+            ),
           ),
-          title: Text(
-            dense ? 'ECO Driving Kurs' : 'Har tatt ECO Driving Kurs',
-            style: const TextStyle(fontWeight: FontWeight.w700),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: EcoDrivingBadge(
+              status: status,
+              compact: true,
+              deadline: deadline,
+            ),
           ),
-          subtitle: Text(
-            completed
-                ? 'Kurset er registrert som gjennomført'
-                : deadlineLabel != null
-                    ? 'Frist: $deadlineLabel (3 måneder)'
-                    : 'Må tas innen 3 måneder',
-          ),
-        ),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: EcoDrivingBadge(
-            status: status,
-            compact: true,
-            deadline: deadline,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
-import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Delte UI-komponenter for bedrifter / samarbeidspartnere.
 class PartnerUi {
@@ -453,39 +452,59 @@ class PartnerStickySaveBar extends StatelessWidget {
       left: 0,
       right: 0,
       bottom: 0,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          color: PartnerUi.surface(context).withValues(alpha: 0.96),
-          border: Border(top: BorderSide(color: Colors.grey.withValues(alpha: 0.18))),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 12,
-              offset: const Offset(0, -4),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-            child: Row(
-              children: [
-                if (secondary != null) ...[secondary!, const SizedBox(width: 10)],
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: loading ? null : onPressed,
-                    icon: loading
-                        ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
-                        : const Icon(Icons.save_outlined),
-                    label: Text(label),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: DriftProTheme.primaryGreen,
-                      minimumSize: const Size(0, 48),
-                    ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Material(
+                elevation: 10,
+                shadowColor: Colors.black.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(16),
+                color: DriftProTheme.primaryGreen,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                  child: Row(
+                    children: [
+                      if (secondary != null) ...[
+                        secondary!,
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: loading ? null : onPressed,
+                          icon: loading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.check_rounded, size: 20),
+                          label: Text(
+                            label,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: DriftProTheme.primaryGreen,
+                            disabledBackgroundColor: Colors.white70,
+                            minimumSize: const Size(0, 48),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              ),
             ),
           ),
         ),
@@ -507,54 +526,93 @@ class PartnerDetailTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-      padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
-      decoration: BoxDecoration(
-        color: PartnerUi.surface(context),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: isDark ? Colors.white12 : const Color(0xFFE5E7EB),
-        ),
-      ),
-      child: TabBar(
-        controller: controller,
-        isScrollable: true,
-        tabAlignment: TabAlignment.start,
-        dividerColor: Colors.transparent,
-        indicatorSize: TabBarIndicatorSize.label,
-        indicator: UnderlineTabIndicator(
-          borderSide: const BorderSide(width: 3, color: DriftProTheme.primaryGreen),
-          borderRadius: BorderRadius.circular(2),
-          insets: const EdgeInsets.symmetric(horizontal: 4),
-        ),
-        labelColor: DriftProTheme.primaryGreen,
-        unselectedLabelColor: PartnerUi.mutedText(context),
-        labelPadding: const EdgeInsets.symmetric(horizontal: 10),
-        labelStyle: const TextStyle(
-          fontSize: 12.5,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.1,
-        ),
-        unselectedLabelStyle: const TextStyle(
-          fontSize: 12.5,
-          fontWeight: FontWeight.w600,
-        ),
-        tabs: tabs
-            .map(
-              (t) => Tab(
-                height: 44,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(t.$1, size: 17),
-                    const SizedBox(width: 6),
-                    Text(t.$2),
-                  ],
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
+        return Container(
+          margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+          padding: const EdgeInsets.all(5),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                for (var i = 0; i < tabs.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 4),
+                  _TabChip(
+                    icon: tabs[i].$1,
+                    label: tabs[i].$2,
+                    selected: controller.index == i,
+                    onTap: () => controller.animateTo(i),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TabChip extends StatelessWidget {
+  const _TabChip({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Material(
+      color: selected
+          ? (isDark ? Colors.white.withValues(alpha: 0.1) : Colors.white)
+          : Colors.transparent,
+      elevation: selected && !isDark ? 1.5 : 0,
+      shadowColor: Colors.black26,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: selected
+                    ? DriftProTheme.primaryGreen
+                    : PartnerUi.mutedText(context),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  color: selected
+                      ? DriftProTheme.primaryGreen
+                      : PartnerUi.mutedText(context),
                 ),
               ),
-            )
-            .toList(),
+            ],
+          ),
+        ),
       ),
     );
   }

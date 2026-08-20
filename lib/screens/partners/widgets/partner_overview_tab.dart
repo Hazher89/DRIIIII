@@ -1189,50 +1189,77 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       _OverviewSection.profile => Column(
           children: [
             PartnerModernSection(
+              icon: Icons.sticky_note_2_outlined,
               title: 'Intern notat',
               subtitle: 'Kun synlig for MAVI',
-              initiallyExpanded: true,
               children: [
-                TextField(
+                PartnerWorkspaceField(
+                  label: 'Kommentar / notater',
                   controller: _notes,
                   maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Kommentar / notater',
-                    hintText: 'F.eks. avtaler, spesielle forhold, kontaktperson …',
-                    border: OutlineInputBorder(),
-                  ),
+                  hint: 'Avtaler, spesielle forhold, kontaktperson …',
                 ),
               ],
             ),
             PartnerModernSection(
+              icon: Icons.apartment_outlined,
               title: 'Kontakt & bedrift',
               subtitle: 'Org.nr ${p.orgNumber ?? "—"}',
-              initiallyExpanded: true,
               children: [
-                _field('Bedriftsansvarlig', _owner),
-                _field('Telefon (SMS-varsler)', _phone),
-                _field('E-post', _email),
-                _field('Adresse', _address),
-                Row(
-                  children: [
-                    Expanded(child: _field('Postnr', _postal)),
-                    const SizedBox(width: 8),
-                    Expanded(child: _field('Sted', _city)),
-                  ],
-                ),
-                Row(
-                  children: [
-                    Expanded(child: _field('Ant. kjøretøy (bedrift)', _veh)),
-                    const SizedBox(width: 8),
-                    Expanded(child: _field('Ant. ansatte', _employees)),
-                  ],
-                ),
+                if (wide) ...[
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _field('Bedriftsansvarlig', _owner)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field('Telefon (SMS-varsler)', _phone)),
+                    ],
+                  ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _field('E-post', _email)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field('Adresse', _address)),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Expanded(child: _field('Postnr', _postal)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field('Sted', _city)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field('Ant. kjøretøy', _veh)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _field('Ant. ansatte', _employees)),
+                    ],
+                  ),
+                ] else ...[
+                  _field('Bedriftsansvarlig', _owner),
+                  _field('Telefon (SMS-varsler)', _phone),
+                  _field('E-post', _email),
+                  _field('Adresse', _address),
+                  Row(
+                    children: [
+                      Expanded(child: _field('Postnr', _postal)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _field('Sted', _city)),
+                    ],
+                  ),
+                  Row(
+                    children: [
+                      Expanded(child: _field('Ant. kjøretøy (bedrift)', _veh)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _field('Ant. ansatte', _employees)),
+                    ],
+                  ),
+                ],
               ],
             ),
             PartnerModernSection(
-              title: 'ECO Driving Kurs',
+              icon: Icons.eco_outlined,
+              title: 'ECO Driving',
               subtitle: 'Synlig på bedriftskort når kurset er tatt',
-              initiallyExpanded: true,
               children: [
                 EcoDrivingCourseEditor(
                   completed: _ecoDrivingCompleted,
@@ -1255,9 +1282,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           ],
         ),
       _OverviewSection.routing => PartnerModernSection(
+          icon: Icons.alt_route_rounded,
           title: 'Ruter og varsler',
           subtitle: 'Styr hvem som mottar ruter fra DriftPro',
-          initiallyExpanded: true,
           children: [
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
@@ -1313,11 +1340,11 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           ],
         ),
       _OverviewSection.ownerPortal => PartnerModernSection(
+          icon: Icons.manage_accounts_outlined,
           title: 'Portal for bedriftsansvarlig',
           subtitle:
               'Brukernavn/passord genereres og sendes på SMS. '
               'Ved bytte av telefon slettes gammel konto automatisk.',
-          initiallyExpanded: true,
           trailing: Text(
             '$activeOwnerCount/${_ownerRows.length}',
             style: TextStyle(
@@ -1335,11 +1362,11 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           ],
         ),
       _OverviewSection.registrations => PartnerModernSection(
+          icon: Icons.directions_car_outlined,
           title: 'Registrerte skiltnummer',
           subtitle:
               'Skiltnummer, årsmodell, nyttelast og EU-kontroll. '
               'EU-dato hentes automatisk fra Vegvesen.',
-          initiallyExpanded: true,
           trailing: Text(
             '${regRows.length}',
             style: TextStyle(
@@ -1364,9 +1391,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           ],
         ),
       _OverviewSection.maviDrivers => PartnerModernSection(
+          icon: Icons.local_shipping_outlined,
           title: 'MAVI & sjåfør',
           subtitle: 'Auto brukernavn · SMS ved opprettelse',
-          initiallyExpanded: true,
           trailing: Text(
             '${maviRows.length}',
             style: TextStyle(
@@ -1416,56 +1443,61 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     return Stack(
       children: [
         ListView(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 100),
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 100),
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: PartnerModernUi.surface(context),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: PartnerModernUi.border(context)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Rediger bedrift',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.2,
-                      color: PartnerModernUi.textPrimary(context),
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    'Velg område under · ${smsPhones.length} SMS-nummer · '
-                    '${activeOwnerCount == 0 ? 'mangler portal' : '$activeOwnerCount portal'}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: PartnerModernUi.muted(context),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
             if (wide)
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(width: 232, child: nav),
-                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 248,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 4, 4, 10),
+                          child: Text(
+                            'Innhold',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.2,
+                              color: PartnerModernUi.muted(context),
+                            ),
+                          ),
+                        ),
+                        nav,
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 760),
-                      child: sectionBody,
+                      constraints: const BoxConstraints(maxWidth: 820),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _SectionPageHeader(
+                            section: _activeSection,
+                            meta:
+                                '${smsPhones.length} SMS · ${activeOwnerCount == 0 ? 'mangler portal' : '$activeOwnerCount portal'}',
+                          ),
+                          const SizedBox(height: 12),
+                          sectionBody,
+                        ],
+                      ),
                     ),
                   ),
                 ],
               )
             else ...[
               nav,
+              const SizedBox(height: 12),
+              _SectionPageHeader(
+                section: _activeSection,
+                meta:
+                    '${smsPhones.length} SMS · ${activeOwnerCount == 0 ? 'mangler portal' : '$activeOwnerCount portal'}',
+              ),
               const SizedBox(height: 10),
               sectionBody,
             ],
@@ -1604,13 +1636,10 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   }
 
   Widget _field(String label, TextEditingController c, {int maxLines = 1}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextField(
-        controller: c,
-        maxLines: maxLines,
-        decoration: InputDecoration(labelText: label),
-      ),
+    return PartnerWorkspaceField(
+      label: label,
+      controller: c,
+      maxLines: maxLines,
     );
   }
 
@@ -1977,6 +2006,51 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   }
 }
 
+class _SectionPageHeader extends StatelessWidget {
+  const _SectionPageHeader({
+    required this.section,
+    required this.meta,
+  });
+
+  final _OverviewSection section;
+  final String meta;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(section.icon, size: 22, color: DriftProTheme.primaryGreen),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                section.label,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.5,
+                  color: PartnerModernUi.textPrimary(context),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '${section.hint} · $meta',
+          style: TextStyle(
+            fontSize: 13,
+            height: 1.35,
+            color: PartnerModernUi.muted(context),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Seksjonsvelger for Oversikt — tydelige kort med ikon, tittel og antall.
 class _OverviewSectionNav extends StatelessWidget {
   const _OverviewSectionNav({
@@ -1998,8 +2072,8 @@ class _OverviewSectionNav extends StatelessWidget {
       final count = countFor(s);
       return Material(
         color: sel
-            ? DriftProTheme.primaryGreen.withValues(alpha: 0.1)
-            : PartnerModernUi.surface(context),
+            ? DriftProTheme.primaryGreen.withValues(alpha: 0.12)
+            : Colors.transparent,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           borderRadius: BorderRadius.circular(12),
@@ -2008,36 +2082,25 @@ class _OverviewSectionNav extends StatelessWidget {
             width: vertical ? double.infinity : null,
             padding: EdgeInsets.symmetric(
               horizontal: vertical ? 12 : 10,
-              vertical: vertical ? 12 : 10,
+              vertical: vertical ? 11 : 9,
             ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: sel
-                    ? DriftProTheme.primaryGreen.withValues(alpha: 0.55)
-                    : PartnerModernUi.border(context),
-                width: sel ? 1.4 : 1,
+                    ? DriftProTheme.primaryGreen.withValues(alpha: 0.35)
+                    : Colors.transparent,
               ),
             ),
             child: Row(
               mainAxisSize: vertical ? MainAxisSize.max : MainAxisSize.min,
               children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: sel
-                        ? DriftProTheme.primaryGreen.withValues(alpha: 0.16)
-                        : PartnerModernUi.border(context).withValues(alpha: 0.35),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Icon(
-                    s.icon,
-                    size: 18,
-                    color: sel
-                        ? DriftProTheme.primaryGreen
-                        : PartnerModernUi.muted(context),
-                  ),
+                Icon(
+                  s.icon,
+                  size: 18,
+                  color: sel
+                      ? DriftProTheme.primaryGreen
+                      : PartnerModernUi.muted(context),
                 ),
                 const SizedBox(width: 10),
                 Flexible(
@@ -2047,47 +2110,37 @@ class _OverviewSectionNav extends StatelessWidget {
                       Text(
                         s.label,
                         style: TextStyle(
-                          fontSize: 13,
+                          fontSize: 13.5,
                           fontWeight: FontWeight.w800,
                           color: sel
                               ? DriftProTheme.primaryGreen
                               : PartnerModernUi.textPrimary(context),
                         ),
                       ),
-                      Text(
-                        s.hint,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: PartnerModernUi.muted(context),
+                      if (vertical)
+                        Text(
+                          s.hint,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: PartnerModernUi.muted(context),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),
-                if (vertical || count > 0) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: sel
-                          ? DriftProTheme.primaryGreen
-                          : PartnerModernUi.border(context).withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '$count',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: sel
-                            ? Colors.white
-                            : PartnerModernUi.textPrimary(context),
-                      ),
-                    ),
+                const SizedBox(width: 8),
+                Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: sel
+                        ? DriftProTheme.primaryGreen
+                        : PartnerModernUi.muted(context),
                   ),
-                ],
+                ),
               ],
             ),
           ),

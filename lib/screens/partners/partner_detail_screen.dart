@@ -208,9 +208,13 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
     return Scaffold(
       backgroundColor: Theme.of(context).brightness == Brightness.dark
           ? DriftProTheme.surfaceDark
-          : DriftProTheme.surfaceLight,
+          : const Color(0xFFF5F5F7),
       appBar: AppBar(
         title: Text(_p.name, style: DriftProTheme.headingSm),
+        backgroundColor: Theme.of(context).brightness == Brightness.dark
+            ? DriftProTheme.surfaceDark
+            : const Color(0xFFF5F5F7),
+        surfaceTintColor: Colors.transparent,
         actions: [
           IconButton(
             tooltip: 'Oppdater',

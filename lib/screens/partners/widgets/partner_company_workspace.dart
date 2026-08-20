@@ -228,16 +228,16 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
   }
 
   Widget _header(BuildContext context) {
-    final loc = [_p.city, _p.postalCode].whereType<String>().where((s) => s.isNotEmpty).join(' ');
+    final loc = [_p.city, _p.postalCode].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: PartnerModernUi.border(context))),
-      ),
+      padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
+      color: isDark ? null : const Color(0xFFF5F5F7),
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.close),
+            tooltip: 'Lukk',
+            icon: const Icon(Icons.close_rounded),
             onPressed: () => widget.onClose(null),
           ),
           Expanded(
@@ -245,30 +245,37 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _p.name,
+                  _p.tradeName?.isNotEmpty == true ? _p.tradeName! : _p.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: PartnerModernUi.textPrimary(context)),
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    letterSpacing: -0.3,
+                    color: PartnerModernUi.textPrimary(context),
+                  ),
                 ),
                 Text(
                   [
-                    if (_p.orgNumber != null) _p.orgNumber!,
+                    if (_p.orgNumber != null) 'Org.nr ${_p.orgNumber}',
                     if (loc.isNotEmpty) loc,
                     '$_maviCount MAVI',
                   ].join(' · '),
-                  style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, color: PartnerModernUi.muted(context)),
                 ),
               ],
             ),
           ),
           IconButton(
             tooltip: 'Oppdater',
-            icon: const Icon(Icons.refresh_outlined, size: 20),
+            icon: const Icon(Icons.refresh_rounded, size: 20),
             onPressed: _reload,
           ),
           IconButton(
             tooltip: 'Full skjerm',
-            icon: const Icon(Icons.open_in_full, size: 20),
+            icon: const Icon(Icons.open_in_full_rounded, size: 20),
             onPressed: _openFullScreen,
           ),
         ],

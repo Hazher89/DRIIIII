@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/driftpro_theme_context.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -390,13 +391,23 @@ class PartnerModernDetailHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted = PartnerModernUi.muted(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
       decoration: BoxDecoration(
         color: PartnerModernUi.surface(context),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: PartnerModernUi.border(context)),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: PartnerModernUi.border(context).withValues(alpha: 0.85),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -411,37 +422,51 @@ class PartnerModernDetailHeader extends StatelessWidget {
                     Text(
                       title,
                       style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
-                        height: 1.2,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.5,
+                        height: 1.15,
                         color: PartnerModernUi.textPrimary(context),
                       ),
                     ),
                     if (subtitle.trim().isNotEmpty) ...[
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 5),
                       Text(
                         subtitle,
-                        style: TextStyle(fontSize: 12.5, height: 1.35, color: muted),
+                        style: TextStyle(fontSize: 13, height: 1.35, color: muted),
                       ),
                     ],
                   ],
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
                   color: (isActive ? const Color(0xFF22C55E) : const Color(0xFF9CA3AF))
                       .withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                child: Text(
-                  isActive ? 'Aktiv' : 'Deaktivert',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    color: isActive ? const Color(0xFF15803D) : const Color(0xFF6B7280),
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isActive ? const Color(0xFF16A34A) : const Color(0xFF9CA3AF),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      isActive ? 'Aktiv' : 'Deaktivert',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w800,
+                        color: isActive ? const Color(0xFF15803D) : const Color(0xFF6B7280),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               if (canToggleActive && onActiveChanged != null) ...[
@@ -454,13 +479,13 @@ class PartnerModernDetailHeader extends StatelessWidget {
               ],
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(child: _kpi(context, 'MAVI', '$maviCount', const Color(0xFF15803D))),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Expanded(child: _kpi(context, 'Skilt', '$regCount', const Color(0xFF2563EB))),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Expanded(
                 child: _kpi(
                   context,
@@ -469,7 +494,7 @@ class PartnerModernDetailHeader extends StatelessWidget {
                   const Color(0xFF7C3AED),
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 8),
               Expanded(
                 child: _kpi(
                   context,
@@ -483,7 +508,7 @@ class PartnerModernDetailHeader extends StatelessWidget {
             ],
           ),
           if (ecoDrivingStatus != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             EcoDrivingBadge(
               status: ecoDrivingStatus!,
               prominent: true,
@@ -497,12 +522,15 @@ class PartnerModernDetailHeader extends StatelessWidget {
   }
 
   Widget _kpi(BuildContext context, String label, String value, Color color) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       decoration: BoxDecoration(
-        color: PartnerModernUi.border(context).withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: PartnerModernUi.border(context).withValues(alpha: 0.55)),
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.04)
+            : color.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -510,18 +538,19 @@ class PartnerModernDetailHeader extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontSize: 10,
+              fontSize: 10.5,
               fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
               color: PartnerModernUi.muted(context),
             ),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(
             value,
             style: TextStyle(
-              fontSize: 17,
+              fontSize: 18,
               fontWeight: FontWeight.w900,
-              letterSpacing: -0.3,
+              letterSpacing: -0.4,
               color: color,
               height: 1.05,
             ),
@@ -538,6 +567,7 @@ class PartnerModernSection extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.trailing,
+    this.icon,
     this.initiallyExpanded = false,
     required this.children,
   });
@@ -545,30 +575,153 @@ class PartnerModernSection extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget? trailing;
+  final IconData? icon;
+  /// Beholdt for bakoverkompatibilitet — paneler er alltid synlige.
   final bool initiallyExpanded;
   final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
+    final muted = PartnerModernUi.muted(context);
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: PartnerModernUi.surface(context),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: PartnerModernUi.border(context)),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: PartnerModernUi.border(context).withValues(alpha: 0.9),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          initiallyExpanded: initiallyExpanded,
-          tilePadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
-          childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
-          title: Text(title, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: PartnerModernUi.textPrimary(context))),
-          subtitle: subtitle != null
-              ? Text(subtitle!, style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)))
-              : null,
-          trailing: trailing,
-          children: children,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 14, 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (icon != null) ...[
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, size: 18, color: DriftProTheme.primaryGreen),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                          letterSpacing: -0.2,
+                          color: PartnerModernUi.textPrimary(context),
+                        ),
+                      ),
+                      if (subtitle != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.35,
+                            color: muted,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (trailing != null) trailing!,
+              ],
+            ),
+          ),
+          Divider(
+            height: 1,
+            color: PartnerModernUi.border(context).withValues(alpha: 0.7),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Konsistent tekstfelt for partner-workspace (tettere, tydeligere).
+class PartnerWorkspaceField extends StatelessWidget {
+  const PartnerWorkspaceField({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.maxLines = 1,
+    this.keyboardType,
+    this.hint,
+    this.onChanged,
+  });
+
+  final String label;
+  final TextEditingController controller;
+  final int maxLines;
+  final TextInputType? keyboardType;
+  final String? hint;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: controller,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        onChanged: onChanged,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
+          color: PartnerModernUi.textPrimary(context),
+        ),
+        decoration: InputDecoration(
+          labelText: label,
+          hintText: hint,
+          filled: true,
+          fillColor: isDark
+              ? Colors.white.withValues(alpha: 0.04)
+              : const Color(0xFFF8FAFC),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: PartnerModernUi.border(context)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: PartnerModernUi.border(context)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: DriftProTheme.primaryGreen, width: 1.5),
+          ),
         ),
       ),
     );
