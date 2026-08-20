@@ -146,10 +146,11 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
 
   double _childAspectRatio(double width) {
     final cols = _crossAxisCount(width);
-    if (cols >= 4) return 0.78;
-    if (cols >= 3) return 0.75;
-    if (cols >= 2) return 0.72;
-    return 0.68;
+    // Litt høyere kort for ECO-stripe + KPI-rad.
+    if (cols >= 4) return 0.70;
+    if (cols >= 3) return 0.68;
+    if (cols >= 2) return 0.64;
+    return 0.58;
   }
 
   Future<void> _openNew() async {
@@ -394,6 +395,8 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
                     isActive: hit.partner.isActive,
                     routesOwnerOnly: hit.partner.routesOwnerOnly,
                     ecoDrivingStatus: hit.partner.ecoDrivingStatus,
+                    ecoDrivingDeadline: hit.partner.ecoDrivingDeadline,
+                    ecoDrivingCompletedAt: hit.partner.ecoDrivingCompletedAt,
                     ownerAccounts: widget.portalAccountsByPartner[hit.partner.id]
                             ?.where((a) => a.isOwner)
                             .length ??

@@ -115,9 +115,9 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: EcoDrivingBadge.forPartner(widget.partner),
+                    child: EcoDrivingBadge.forPartner(
+                      widget.partner,
+                      prominent: true,
                     ),
                   ),
                   if (_data!.pendingAckTotal > 0) ...[

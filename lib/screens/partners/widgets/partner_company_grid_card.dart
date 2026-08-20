@@ -5,7 +5,7 @@ import '../../../models/partner/partner_links.dart';
 import 'eco_driving_badge.dart';
 import 'partner_modern_ui.dart';
 
-/// Kompakt, moderne bedriftskort for rutenett.
+/// Bedriftskort: tydelig oversikt + ekstra synlig ECO Driving.
 class PartnerCompanyGridCard extends StatelessWidget {
   const PartnerCompanyGridCard({
     super.key,
@@ -23,6 +23,8 @@ class PartnerCompanyGridCard extends StatelessWidget {
     this.ownerName,
     this.onActivate,
     this.ecoDrivingStatus = EcoDrivingStatus.required,
+    this.ecoDrivingDeadline,
+    this.ecoDrivingCompletedAt,
   });
 
   final String name;
@@ -39,8 +41,11 @@ class PartnerCompanyGridCard extends StatelessWidget {
   final String? ownerName;
   final VoidCallback? onActivate;
   final EcoDrivingStatus ecoDrivingStatus;
+  final DateTime? ecoDrivingDeadline;
+  final DateTime? ecoDrivingCompletedAt;
 
   bool get _ecoDone => ecoDrivingStatus == EcoDrivingStatus.completed;
+  bool get _ecoOverdue => ecoDrivingStatus == EcoDrivingStatus.overdue;
 
   @override
   Widget build(BuildContext context) {
@@ -51,70 +56,69 @@ class PartnerCompanyGridCard extends StatelessWidget {
     );
     const ecoGreen = Color(0xFF166534);
     const accent = Color(0xFF15803D);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     final surface = !isActive
         ? PartnerModernUi.border(context).withValues(alpha: 0.22)
         : _ecoDone
-            ? const Color(0xFFF0FDF4)
-            : PartnerModernUi.surface(context);
+            ? (isDark ? const Color(0xFF14532D).withValues(alpha: 0.28) : const Color(0xFFF0FDF4))
+            : _ecoOverdue
+                ? (isDark ? const Color(0xFF7C2D12).withValues(alpha: 0.22) : const Color(0xFFFFF7ED))
+                : PartnerModernUi.surface(context);
+
     final borderColor = !isActive
         ? const Color(0xFF9CA3AF)
         : _ecoDone
-            ? const Color(0xFF86EFAC)
-            : PartnerModernUi.border(context).withValues(alpha: 0.85);
+            ? const Color(0xFF4ADE80)
+            : _ecoOverdue
+                ? const Color(0xFFFDBA74)
+                : PartnerModernUi.border(context).withValues(alpha: 0.9);
 
     return Opacity(
       opacity: isActive ? 1 : 0.78,
       child: Material(
         color: Colors.transparent,
-        elevation: 0,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           onTap: onTap,
           child: Ink(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  surface,
-                  Color.lerp(surface, Colors.white, 0.35) ?? surface,
-                ],
-              ),
+              borderRadius: BorderRadius.circular(16),
+              color: surface,
               border: Border.all(
                 color: borderColor,
-                width: _ecoDone && isActive ? 1.4 : 1,
+                width: (_ecoDone || _ecoOverdue) && isActive ? 1.5 : 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: (_ecoDone && isActive ? ecoGreen : const Color(0xFF0F172A))
-                      .withValues(alpha: _ecoDone && isActive ? 0.12 : 0.06),
-                  blurRadius: _ecoDone && isActive ? 18 : 14,
-                  offset: const Offset(0, 6),
+                  color: (_ecoDone && isActive
+                          ? ecoGreen
+                          : const Color(0xFF0F172A))
+                      .withValues(alpha: _ecoDone && isActive ? 0.12 : 0.05),
+                  blurRadius: _ecoDone && isActive ? 16 : 12,
+                  offset: const Offset(0, 5),
                   spreadRadius: -2,
                 ),
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Container(
-                    height: 3,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: !isActive
-                            ? const [Color(0xFF9CA3AF), Color(0xFFD1D5DB)]
-                            : _ecoDone
-                                ? const [Color(0xFF16A34A), Color(0xFF86EFAC)]
-                                : [accent.withValues(alpha: 0.75), accent.withValues(alpha: 0.25)],
-                      ),
-                    ),
+                    height: 4,
+                    color: !isActive
+                        ? const Color(0xFF9CA3AF)
+                        : _ecoDone
+                            ? const Color(0xFF16A34A)
+                            : _ecoOverdue
+                                ? const Color(0xFFEA580C)
+                                : accent,
                   ),
                   Expanded(
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+                      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -122,32 +126,21 @@ class PartnerCompanyGridCard extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Container(
-                                width: 42,
-                                height: 42,
+                                width: 40,
+                                height: 40,
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: _ecoDone && isActive
-                                        ? const [Color(0xFFDCFCE7), Color(0xFFBBF7D0)]
-                                        : [
-                                            PartnerModernUi.border(context).withValues(alpha: 0.55),
-                                            PartnerModernUi.border(context).withValues(alpha: 0.28),
-                                          ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: (_ecoDone && isActive ? ecoGreen : PartnerModernUi.border(context))
-                                        .withValues(alpha: 0.35),
-                                  ),
+                                  color: _ecoDone && isActive
+                                      ? const Color(0xFFDCFCE7)
+                                      : PartnerModernUi.border(context)
+                                          .withValues(alpha: 0.35),
+                                  borderRadius: BorderRadius.circular(11),
                                 ),
                                 child: Text(
                                   initial,
                                   style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 17,
-                                    letterSpacing: -0.3,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
                                     color: _ecoDone && isActive
                                         ? ecoGreen
                                         : PartnerModernUi.textPrimary(context),
@@ -165,80 +158,67 @@ class PartnerCompanyGridCard extends StatelessWidget {
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontWeight: FontWeight.w800,
-                                        fontSize: 13.5,
+                                        fontSize: 14,
                                         height: 1.2,
-                                        letterSpacing: -0.2,
+                                        letterSpacing: -0.25,
                                         color: PartnerModernUi.textPrimary(context),
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
-                                    Wrap(
-                                      spacing: 5,
-                                      runSpacing: 4,
-                                      children: [
-                                        _statusPill(context),
-                                        if (maviCount > 0) _miniPill(context, '$maviCount MAVI'),
-                                        EcoDrivingBadge(
-                                          status: ecoDrivingStatus,
-                                          compact: true,
-                                        ),
-                                      ],
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      [
+                                        if ((orgNumber ?? '').trim().isNotEmpty)
+                                          orgNumber!.trim(),
+                                        if ((ownerName ?? '').trim().isNotEmpty)
+                                          ownerName!.trim(),
+                                      ].where((e) => e.isNotEmpty).join(' · '),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: PartnerModernUi.muted(context),
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                              Icon(
-                                Icons.arrow_forward_ios_rounded,
-                                size: 14,
-                                color: PartnerModernUi.muted(context).withValues(alpha: 0.7),
-                              ),
+                              _statusPill(context),
                             ],
                           ),
-                          if ((orgNumber ?? '').trim().isNotEmpty ||
-                              (ownerName ?? '').trim().isNotEmpty) ...[
-                            const SizedBox(height: 10),
-                            Text(
-                              [
-                                if ((orgNumber ?? '').trim().isNotEmpty) orgNumber!.trim(),
-                                if ((ownerName ?? '').trim().isNotEmpty) ownerName!.trim(),
-                              ].join(' · '),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                height: 1.2,
-                                color: PartnerModernUi.muted(context),
-                              ),
-                            ),
-                          ],
                           const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
+                          EcoDrivingBadge(
+                            status: ecoDrivingStatus,
+                            prominent: true,
+                            deadline: ecoDrivingDeadline,
+                            completedAt: ecoDrivingCompletedAt,
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
                             children: [
-                              _metaChip(
-                                context,
-                                icon: Icons.badge_outlined,
-                                label: '$ownerAccounts+$driverAccounts',
-                                tip: '$ownerAccounts bedriftsansvarlig · $driverAccounts sjåfør',
+                              Expanded(
+                                child: _Kpi(
+                                  label: 'MAVI',
+                                  value: '$maviCount',
+                                  color: accent,
+                                ),
                               ),
-                              _metaChip(
-                                context,
-                                icon: routesOwnerOnly
-                                    ? Icons.person_outline_rounded
-                                    : Icons.groups_2_outlined,
-                                label: routesOwnerOnly ? 'Kun BA' : 'BA+sjåfør',
-                                tip: routesOwnerOnly
-                                    ? 'Rute-SMS kun til bedriftsansvarlig'
-                                    : 'Rute-SMS til bedriftsansvarlig og sjåfør',
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: _Kpi(
+                                  label: 'Portaler',
+                                  value: '${ownerAccounts + driverAccounts}',
+                                  hint: '$ownerAccounts BA · $driverAccounts sjåfør',
+                                  color: const Color(0xFF2563EB),
+                                ),
                               ),
-                              _metaChip(
-                                context,
-                                icon: Icons.sms_outlined,
-                                label: smsPhones.isEmpty ? '0 SMS' : '${smsPhones.length} SMS',
-                                tip: smsPhones.isEmpty
-                                    ? 'Ingen SMS-nummer'
-                                    : smsPhones.take(3).join(' · '),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: _Kpi(
+                                  label: 'SMS',
+                                  value: '${smsPhones.length}',
+                                  hint: routesOwnerOnly ? 'Kun BA' : 'BA+sjåfør',
+                                  color: const Color(0xFF7C3AED),
+                                ),
                               ),
                             ],
                           ),
@@ -253,6 +233,16 @@ class PartnerCompanyGridCard extends StatelessWidget {
                               ),
                             ),
                           ),
+                          if (regCount > 0) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              '$regCount registrering${regCount == 1 ? '' : 'er'} (kun skilt)',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: PartnerModernUi.muted(context),
+                              ),
+                            ),
+                          ],
                           if (onActivate != null) ...[
                             const SizedBox(height: 8),
                             FilledButton.icon(
@@ -262,16 +252,6 @@ class PartnerCompanyGridCard extends StatelessWidget {
                               style: FilledButton.styleFrom(
                                 minimumSize: const Size(double.infinity, 36),
                                 backgroundColor: accent,
-                              ),
-                            ),
-                          ],
-                          if (regCount > 0) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              '$regCount registrering${regCount == 1 ? '' : 'er'} (kun skilt)',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: PartnerModernUi.muted(context),
                               ),
                             ),
                           ],
@@ -290,72 +270,84 @@ class PartnerCompanyGridCard extends StatelessWidget {
 
   Widget _statusPill(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: (isActive ? const Color(0xFF22C55E) : const Color(0xFF9CA3AF)).withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
+        color: (isActive ? const Color(0xFF22C55E) : const Color(0xFF9CA3AF))
+            .withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        isActive ? 'Aktiv' : 'Deaktivert',
+        isActive ? 'Aktiv' : 'Av',
         style: TextStyle(
           fontSize: 10,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
           color: isActive ? const Color(0xFF15803D) : const Color(0xFF6B7280),
         ),
       ),
     );
   }
+}
 
-  Widget _miniPill(BuildContext context, String t) {
+class _Kpi extends StatelessWidget {
+  const _Kpi({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.hint,
+  });
+
+  final String label;
+  final String value;
+  final String? hint;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
       decoration: BoxDecoration(
-        color: PartnerModernUi.border(context).withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        t,
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-          color: PartnerModernUi.muted(context),
+        color: PartnerModernUi.border(context).withValues(alpha: 0.22),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: PartnerModernUi.border(context).withValues(alpha: 0.55),
         ),
       ),
-    );
-  }
-
-  Widget _metaChip(
-    BuildContext context, {
-    required IconData icon,
-    required String label,
-    required String tip,
-  }) {
-    return Tooltip(
-      message: tip,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        decoration: BoxDecoration(
-          color: PartnerModernUi.border(context).withValues(alpha: 0.22),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: PartnerModernUi.border(context).withValues(alpha: 0.55),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9.5,
+              fontWeight: FontWeight.w700,
+              color: PartnerModernUi.muted(context),
+            ),
           ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 13, color: PartnerModernUi.muted(context)),
-            const SizedBox(width: 5),
+          const SizedBox(height: 1),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              height: 1.05,
+              letterSpacing: -0.3,
+              color: color,
+            ),
+          ),
+          if (hint != null) ...[
+            const SizedBox(height: 1),
             Text(
-              label,
+              hint!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w700,
-                color: PartnerModernUi.textPrimary(context).withValues(alpha: 0.82),
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: PartnerModernUi.muted(context),
               ),
             ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -372,31 +364,16 @@ class PartnerCompanyAddCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                PartnerModernUi.surface(context),
-                PartnerModernUi.border(context).withValues(alpha: 0.18),
-              ],
-            ),
+            borderRadius: BorderRadius.circular(16),
+            color: PartnerModernUi.surface(context),
             border: Border.all(
               color: PartnerModernUi.border(context),
               width: 1.4,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF0F172A).withValues(alpha: 0.05),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
-                spreadRadius: -2,
-              ),
-            ],
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,

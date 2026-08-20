@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../models/partner/partner.dart';
 
@@ -9,27 +10,45 @@ class EcoDrivingBadge extends StatelessWidget {
     required this.status,
     this.compact = false,
     this.showLabel = true,
+    this.prominent = false,
+    this.deadline,
+    this.completedAt,
   });
 
   final EcoDrivingStatus status;
   final bool compact;
   final bool showLabel;
+  /// Full-bredde stripe på bedriftskort — ekstra synlig når kurset er tatt.
+  final bool prominent;
+  final DateTime? deadline;
+  final DateTime? completedAt;
 
   factory EcoDrivingBadge.forPartner(
     Partner partner, {
     bool compact = false,
     bool showLabel = true,
+    bool prominent = false,
   }) {
     return EcoDrivingBadge(
       status: partner.ecoDrivingStatus,
       compact: compact,
       showLabel: showLabel,
+      prominent: prominent,
+      deadline: partner.ecoDrivingDeadline,
+      completedAt: partner.ecoDrivingCompletedAt,
     );
   }
 
+  static final _dateFmt = DateFormat('d. MMM yyyy', 'nb_NO');
+
   @override
   Widget build(BuildContext context) {
-    final style = _styleFor(status, compact: compact);
+    final style = _styleFor(status);
+    if (prominent) return _prominentBanner(style);
+    return _pill(style);
+  }
+
+  Widget _pill(_EcoStyle style) {
     final padH = compact ? 7.0 : 10.0;
     final padV = compact ? 4.0 : 6.0;
     final iconSize = compact ? 14.0 : 16.0;
@@ -49,11 +68,11 @@ class EcoDrivingBadge extends StatelessWidget {
           if (showLabel) ...[
             const SizedBox(width: 5),
             Text(
-              style.label,
+              _shortLabel(style),
               style: TextStyle(
                 fontSize: fontSize,
                 fontWeight: FontWeight.w800,
-                letterSpacing: 0.2,
+                letterSpacing: 0.15,
                 color: style.fg,
               ),
             ),
@@ -63,31 +82,134 @@ class EcoDrivingBadge extends StatelessWidget {
     );
   }
 
-  static _EcoStyle _styleFor(EcoDrivingStatus status, {required bool compact}) {
+  Widget _prominentBanner(_EcoStyle style) {
+    final done = status == EcoDrivingStatus.completed;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: done
+              ? const [Color(0xFFDCFCE7), Color(0xFFBBF7D0)]
+              : [style.bg, style.bg.withValues(alpha: 0.85)],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: style.border,
+          width: done ? 1.4 : 1,
+        ),
+        boxShadow: done
+            ? [
+                BoxShadow(
+                  color: style.fg.withValues(alpha: 0.14),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ]
+            : null,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.75),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(style.icon, size: 18, color: style.fg),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  style.label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.1,
+                    color: style.fg,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  _detailLine(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: style.fg.withValues(alpha: 0.85),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (done)
+            Icon(Icons.verified_rounded, size: 20, color: style.fg),
+        ],
+      ),
+    );
+  }
+
+  String _shortLabel(_EcoStyle style) {
+    if (!compact) return style.label;
+    return switch (status) {
+      EcoDrivingStatus.completed => 'ECO · tatt',
+      EcoDrivingStatus.overdue => 'ECO · forsinket',
+      EcoDrivingStatus.required => 'ECO · 3 mnd',
+    };
+  }
+
+  String _detailLine() {
+    switch (status) {
+      case EcoDrivingStatus.completed:
+        if (completedAt != null) {
+          return 'Gjennomført ${_dateFmt.format(completedAt!)}';
+        }
+        return 'Kurset er gjennomført';
+      case EcoDrivingStatus.overdue:
+        if (deadline != null) {
+          return 'Frist utløpt ${_dateFmt.format(deadline!)}';
+        }
+        return 'Fristen er overskredet — må tas snarest';
+      case EcoDrivingStatus.required:
+        if (deadline != null) {
+          return 'Frist ${_dateFmt.format(deadline!)}';
+        }
+        return 'Må tas innen 3 måneder';
+    }
+  }
+
+  static _EcoStyle _styleFor(EcoDrivingStatus status) {
     switch (status) {
       case EcoDrivingStatus.completed:
         return const _EcoStyle(
-          label: 'ECO Driving',
+          label: 'ECO Driving — gjennomført',
           icon: Icons.eco_rounded,
           fg: Color(0xFF166534),
           bg: Color(0xFFDCFCE7),
-          border: Color(0xFF86EFAC),
+          border: Color(0xFF4ADE80),
         );
       case EcoDrivingStatus.overdue:
-        return _EcoStyle(
-          label: compact ? 'ECO · forsinket' : 'ECO Driving — forsinket',
-          icon: Icons.eco_outlined,
-          fg: const Color(0xFF9A3412),
-          bg: const Color(0xFFFFEDD5),
-          border: const Color(0xFFFDBA74),
+        return const _EcoStyle(
+          label: 'ECO Driving — forsinket',
+          icon: Icons.warning_amber_rounded,
+          fg: Color(0xFF9A3412),
+          bg: Color(0xFFFFEDD5),
+          border: Color(0xFFFDBA74),
         );
       case EcoDrivingStatus.required:
-        return _EcoStyle(
-          label: compact ? 'ECO · 3 mnd' : 'ECO Driving — innen 3 mnd',
+        return const _EcoStyle(
+          label: 'ECO Driving — mangler',
           icon: Icons.eco_outlined,
-          fg: const Color(0xFF854D0E),
-          bg: const Color(0xFFFEF9C3),
-          border: const Color(0xFFFDE047),
+          fg: Color(0xFF854D0E),
+          bg: Color(0xFFFEF9C3),
+          border: Color(0xFFFDE047),
         );
     }
   }
@@ -160,7 +282,11 @@ class EcoDrivingCourseEditor extends StatelessWidget {
         ),
         Align(
           alignment: Alignment.centerLeft,
-          child: EcoDrivingBadge(status: status, compact: true),
+          child: EcoDrivingBadge(
+            status: status,
+            compact: true,
+            deadline: deadline,
+          ),
         ),
       ],
     );
