@@ -123,8 +123,8 @@ class _CatViewer3D extends StatelessWidget {
       alt: 'DriftPro Porter Cat',
       backgroundColor: const Color(0x00000000),
       loading: Loading.eager,
-      // Use always to avoid "stuck at poster" behavior in constrained headers.
-      reveal: Reveal.always,
+      // Reveal as soon as the model is ready (avoids stuck poster in headers).
+      reveal: Reveal.auto,
       autoPlay: true,
       animationName: 'Armature|ArmatureAction',
       autoRotate: false,
