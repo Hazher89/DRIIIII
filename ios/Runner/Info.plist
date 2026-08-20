@@ -54,17 +54,17 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Eksempel: Når du tar bilde til et avvik, skanner en GM &amp; STORO-etikett eller dokumenterer bilutleie, brukes kameraet kun i det øyeblikket. DriftPro tar ikke bilder i bakgrunnen.</string>
+	<string>DriftPro bruker kameraet når du tar bilde til avvik, skanner GM &amp; STORO-etiketter eller dokumenterer bilutleie. Kameraet brukes bare mens du tar bilde — ikke i bakgrunnen.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>DriftPro kan koble til bedriftens lokale tjenester (for eksempel IP-kamera eller lokal vision-tjeneste) på godkjent bedriftsnettverk — kun når du eller bedriften aktiverer denne funksjonen.</string>
+	<string>DriftPro kan koble til bedriftens lokale tjenester (for eksempel IP-kamera) på godkjent bedriftsnettverk — kun når du eller bedriften aktiverer funksjonen.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Eksempel: Når du trykker «Oppdater posisjon» på et avvik, eller følger en levering/sjåføroppgave, brukes posisjonen din mens appen er i bruk. DriftPro ber ikke om bakgrunnssporing.</string>
+	<string>DriftPro bruker posisjonen din når du velger å legge GPS på et avvik eller følge en leverings-/sjåføroppgave. Posisjon brukes bare mens appen er i bruk — ikke bakgrunnssporing.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Eksempel: Mikrofon brukes bare hvis du tar video med lyd som dokumentasjon. Vanlige stillbilder og strekkodeskanning krever ikke mikrofon.</string>
+	<string>Mikrofon brukes bare hvis du tar video med lyd som dokumentasjon. Stillbilder og strekkodeskanning krever ikke mikrofon.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Eksempel: Når du eksporterer eller lagrer dokumentasjon, kan DriftPro lagre filen i Foto-appen — kun når du selv velger det.</string>
+	<string>DriftPro kan lagre dokumentasjon i Foto-appen når du selv velger å eksportere eller lagre en fil.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Eksempel: Når du velger et vedlegg til avvik, HMS eller personalmappe, får DriftPro tilgang til bildene du plukker. Vi laster ikke opp bilder uten at du velger dem.</string>
+	<string>DriftPro får tilgang til bildene du selv velger som vedlegg til avvik, HMS eller personalmappe. Vi laster ikke opp bilder uten at du velger dem.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

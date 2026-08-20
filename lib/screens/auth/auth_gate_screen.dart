@@ -13,6 +13,8 @@ import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/auth_screen_shell.dart';
+import '../more/driftpro_platform_catalog.dart';
+import '../more/widgets/info_page_scaffold.dart';
 
 /// Første valg: MAVI-ansatte (ansattnummer) eller samarbeidspartner (brukernavn/passord).
 class AuthGateScreen extends StatelessWidget {
@@ -67,6 +69,45 @@ class AuthGateScreen extends StatelessWidget {
             'Eksterne partnere får ikke tilgang til interne moduler før konto er knyttet.',
             textAlign: TextAlign.center,
             style: authMutedStyle(context, size: 12),
+          ),
+          const SizedBox(height: 24),
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 4,
+            children: [
+              TextButton(
+                onPressed: () =>
+                    launchInfoUrl(DriftProPlatformCatalog.privacyPolicyUrl),
+                child: Text(
+                  'Personvern',
+                  style: authMutedStyle(context, size: 12).copyWith(
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+              Text('·', style: authMutedStyle(context, size: 12)),
+              TextButton(
+                onPressed: () =>
+                    launchInfoUrl(DriftProPlatformCatalog.termsOfUseUrl),
+                child: Text(
+                  'Vilkår',
+                  style: authMutedStyle(context, size: 12).copyWith(
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+              Text('·', style: authMutedStyle(context, size: 12)),
+              TextButton(
+                onPressed: () =>
+                    launchInfoUrl(DriftProPlatformCatalog.supportUrl),
+                child: Text(
+                  'Support',
+                  style: authMutedStyle(context, size: 12).copyWith(
+                    decoration: TextDecoration.underline,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

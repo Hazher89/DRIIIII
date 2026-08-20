@@ -160,11 +160,14 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
     return list;
   }
 
-  Future<void> _openDepartment(Department dept) async {
+  Future<void> _openDepartment(Department dept, {int tab = 0}) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => DepartmentDetailsScreen(department: dept),
+        builder: (context) => DepartmentDetailsScreen(
+          department: dept,
+          initialTabIndex: tab,
+        ),
       ),
     );
     if (mounted) await _loadData();
@@ -273,41 +276,32 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                       else
                         SliverPadding(
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-                          sliver: SliverLayoutBuilder(
-                            builder: (context, constraints) {
-                              final width = constraints.crossAxisExtent;
-                              final columns = width >= 1100
-                                  ? 3
-                                  : width >= 720
-                                      ? 2
-                                      : 1;
-                              if (columns == 1) {
-                                return SliverList(
-                                  delegate: SliverChildBuilderDelegate(
-                                    (context, index) {
-                                      final dept = _visibleDepartments[index];
-                                      return Padding(
-                                        padding: const EdgeInsets.only(bottom: 12),
+                          sliver: SliverToBoxAdapter(
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final width = constraints.maxWidth;
+                                final columns = width >= 1100
+                                    ? 3
+                                    : width >= 720
+                                        ? 2
+                                        : 1;
+                                final gap = 12.0;
+                                final cardWidth = columns == 1
+                                    ? width
+                                    : (width - gap * (columns - 1)) / columns;
+                                return Wrap(
+                                  spacing: gap,
+                                  runSpacing: gap,
+                                  children: [
+                                    for (final dept in _visibleDepartments)
+                                      SizedBox(
+                                        width: cardWidth,
                                         child: _departmentCard(dept),
-                                      );
-                                    },
-                                    childCount: _visibleDepartments.length,
-                                  ),
+                                      ),
+                                  ],
                                 );
-                              }
-                              return SliverGrid(
-                                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: columns,
-                                  mainAxisSpacing: 12,
-                                  crossAxisSpacing: 12,
-                                  childAspectRatio: columns == 3 ? 0.62 : 0.58,
-                                ),
-                                delegate: SliverChildBuilderDelegate(
-                                  (context, index) => _departmentCard(_visibleDepartments[index]),
-                                  childCount: _visibleDepartments.length,
-                                ),
-                              );
-                            },
+                              },
+                            ),
                           ),
                         ),
                     ],
@@ -328,7 +322,10 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
             members: members,
             allAbsences: _absences,
           ),
-      onTap: () => _openDepartment(dept),
+      onOpen: () => _openDepartment(dept),
+      onEdit: () => _openDepartment(dept, tab: 5),
+      onMembers: () => _openDepartment(dept, tab: 1),
+      onLeave: () => _openDepartment(dept, tab: 3),
     );
   }
 

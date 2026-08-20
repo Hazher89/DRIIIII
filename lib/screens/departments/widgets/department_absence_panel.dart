@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/absence_palette.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../absence/widgets/leave_absence_rate_widgets.dart';
-import 'department_absence_charts.dart';
+import '../../../models/absence.dart';
 import 'department_absence_stats.dart';
 
-/// Fraværsstripe inne i avdelingskort — kompakt og lesbar.
+/// Kompakt fraværspanel under KPI-raden — «i dag» + årstall.
 class DepartmentAbsencePanel extends StatelessWidget {
   final DepartmentAbsenceOverview stats;
   final Color accent;
@@ -22,204 +21,175 @@ class DepartmentAbsencePanel extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     if (stats.memberCount == 0) {
-      return _panelShell(
+      return _shell(
         isDark,
-        child: Row(
-          children: [
-            Icon(Icons.people_outline, size: 16, color: Colors.grey[500]),
-            const SizedBox(width: 8),
-            Text(
-              'Ingen ansatte — ingen fraværsdata',
-              style: DriftProTheme.caption.copyWith(
-                color: isDark ? Colors.grey[400] : Colors.grey[600],
-              ),
-            ),
-          ],
+        child: Text(
+          'Legg til ansatte for å se tilstedeværelse og fravær.',
+          style: DriftProTheme.caption.copyWith(
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+          ),
         ),
       );
     }
 
-    return _panelShell(
+    return _shell(
       isDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _todaySection(isDark),
-          if (stats.hasYtdInsights) ...[
-            const SizedBox(height: 12),
-            Divider(height: 1, color: AbsencePalette.panelBorder(isDark)),
-            const SizedBox(height: 12),
-            _registeredSection(isDark),
-            if (stats.topByAbsence.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              AbsenceLeaderboard(entries: stats.topByAbsence),
+          Row(
+            children: [
+              Icon(Icons.today_rounded, size: 14, color: accent),
+              const SizedBox(width: 6),
+              Text(
+                'I dag',
+                style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const Spacer(),
+              Text(
+                '${stats.presentPercent}% på jobb',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: AbsencePalette.attendanceFill(
+                    stats.presentPercent,
+                    accent: accent,
+                  ),
+                ),
+              ),
             ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(5),
+            child: LinearProgressIndicator(
+              value: (stats.presentCount / stats.memberCount).clamp(0.0, 1.0),
+              minHeight: 7,
+              backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
+              valueColor: AlwaysStoppedAnimation(
+                AbsencePalette.attendanceFill(
+                  stats.presentPercent,
+                  accent: accent,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _pill(
+                '${stats.presentCount} på jobb',
+                accent,
+                isDark,
+              ),
+              if (stats.onVacationToday > 0)
+                _pill('${stats.onVacationToday} ferie', AbsencePalette.sky, isDark),
+              if (stats.otherAbsenceToday > 0)
+                _pill(
+                  '${stats.otherAbsenceToday} fravær',
+                  AbsencePalette.violet,
+                  isDark,
+                ),
+              if (stats.pendingCount > 0)
+                _pill(
+                  '${stats.pendingCount} venter',
+                  DriftProTheme.warning,
+                  isDark,
+                ),
+              if (stats.upcomingWeek > 0)
+                _pill(
+                  '${stats.upcomingWeek} neste uke',
+                  AbsencePalette.slate,
+                  isDark,
+                ),
+            ],
+          ),
+          if (stats.hasYtdInsights) ...[
+            const SizedBox(height: 10),
+            Divider(height: 1, color: AbsencePalette.panelBorder(isDark)),
+            const SizedBox(height: 10),
+            Text(
+              'Registrert ${stats.ytdYear}',
+              style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _pill('${stats.totalDaysYtd} d totalt', AbsencePalette.indigo, isDark),
+                if (stats.registeredEgenDays > 0)
+                  _pill(
+                    '${stats.registeredEgenDays} d egen',
+                    AbsencePalette.violet,
+                    isDark,
+                  ),
+                if (stats.registeredSyktDays > 0)
+                  _pill(
+                    '${stats.registeredSyktDays} d sykt barn',
+                    AbsencePalette.rose,
+                    isDark,
+                  ),
+                if (stats.registeredFerieDays > 0)
+                  _pill(
+                    '${stats.registeredFerieDays} d ferie',
+                    AbsencePalette.sky,
+                    isDark,
+                  ),
+                if (stats.totalEgenTilfeller > 0)
+                  _pill(
+                    '${stats.totalEgenTilfeller} tilfeller',
+                    AbsencePalette.slate,
+                    isDark,
+                  ),
+                ..._typePills(isDark),
+              ],
+            ),
           ],
         ],
       ),
     );
   }
 
-  Widget _todaySection(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.today_rounded, size: 15, color: AbsencePalette.slateDark),
-            const SizedBox(width: 6),
-            Text(
-              'I dag',
-              style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const Spacer(),
-            _attendanceBadge(stats.presentPercent),
-          ],
-        ),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(6),
-          child: LinearProgressIndicator(
-            value: stats.memberCount > 0
-                ? (stats.presentCount / stats.memberCount).clamp(0.0, 1.0)
-                : 1,
-            minHeight: 6,
-            backgroundColor: isDark ? Colors.white10 : Colors.grey.shade200,
-            valueColor: AlwaysStoppedAnimation(
-              AbsencePalette.attendanceFill(stats.presentPercent, accent: accent),
-            ),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          stats.awayToday > 0
-              ? '${stats.presentCount} av ${stats.memberCount} på jobb · '
-                  '${stats.awayToday} borte'
-                  '${stats.onVacationToday > 0 ? ' (${stats.onVacationToday} ferie)' : ''}'
-                  '${stats.otherAbsenceToday > 0 ? ' (${stats.otherAbsenceToday} fravær)' : ''}'
-              : '${stats.presentCount} av ${stats.memberCount} på jobb',
-          style: DriftProTheme.caption.copyWith(
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.grey[400] : Colors.grey[700],
-          ),
-        ),
-        if (stats.pendingCount > 0) ...[
-          const SizedBox(height: 6),
-          _infoLine(
-            Icons.pending_actions_outlined,
-            '${stats.pendingCount} venter godkjenning',
-            AbsencePalette.indigo,
-          ),
-        ] else if (stats.upcomingWeek > 0) ...[
-          const SizedBox(height: 6),
-          _infoLine(
-            Icons.date_range_outlined,
-            '${stats.upcomingWeek} planlagt neste 7 dager',
-            accent,
-          ),
-        ],
-      ],
-    );
+  List<Widget> _typePills(bool isDark) {
+    final entries = stats.typeBreakdownYtd.entries
+        .where((e) => e.value > 0 && e.key != AbsenceType.egenmelding && e.key != AbsenceType.syktBarn && e.key != AbsenceType.ferie)
+        .toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return entries
+        .take(3)
+        .map((e) => _pill('${e.value} d ${e.key.label}', AbsencePalette.slateLight, isDark))
+        .toList();
   }
 
-  Widget _registeredSection(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Registrert fravær',
-                    style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${stats.totalDaysYtd} d · ${stats.totalEgenTilfeller} tilf. · '
-                    '${stats.registeredEgenDays} egen · ${stats.registeredSyktDays} sykt',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w500,
-                      color: isDark ? Colors.grey[500] : Colors.grey[600],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (stats.memberCount > 0)
-              AbsenceRateBadge(
-                percent: stats.averageAbsencePercent,
-                compact: true,
-              ),
-          ],
-        ),
-        if (stats.typeBreakdownYtd.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          AbsenceTypeBreakdownBar(
-            breakdown: stats.typeBreakdownYtd,
-            totalDays: stats.totalDaysYtd,
-          ),
-        ],
-        if (stats.registeredFerieDays > 0) ...[
-          const SizedBox(height: 8),
-          _infoLine(
-            Icons.beach_access_outlined,
-            '${stats.registeredFerieDays} feriedager registrert i ${stats.ytdYear}',
-            DriftProTheme.absenceVacation,
-          ),
-        ],
-      ],
-    );
-  }
-
-  Widget _infoLine(IconData icon, String text, Color color) {
-    return Row(
-      children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            text,
-            style: DriftProTheme.caption.copyWith(
-              fontWeight: FontWeight.w600,
-              color: color,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _panelShell(bool isDark, {required Widget child}) {
+  Widget _shell(bool isDark, {required Widget child}) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AbsencePalette.panelBackground(isDark),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AbsencePalette.panelBorder(isDark)),
       ),
       child: child,
     );
   }
 
-  Widget _attendanceBadge(int percent) {
-    final color = AbsencePalette.attendanceBadge(percent);
+  Widget _pill(String text, Color color, bool isDark) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        color: color.withValues(alpha: isDark ? 0.18 : 0.1),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        '$percent% tilstede',
+        text,
         style: TextStyle(
-          fontSize: 9,
-          fontWeight: FontWeight.w800,
-          color: color,
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: isDark ? color.withValues(alpha: 0.95) : color,
         ),
       ),
     );

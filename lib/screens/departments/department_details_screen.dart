@@ -20,11 +20,14 @@ import '../../widgets/driftpro_loading_indicator.dart';
 class DepartmentDetailsScreen extends StatefulWidget {
   final Department department;
   final bool isNew;
+  /// 0 Oversikt · 1 Ansatte · 2 Ledere · 3 Fravær · 4 Aktivitet · 5 Innstillinger
+  final int initialTabIndex;
 
   const DepartmentDetailsScreen({
     super.key,
     required this.department,
     this.isNew = false,
+    this.initialTabIndex = 0,
   });
 
   @override
@@ -52,7 +55,13 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(
+      length: 6,
+      vsync: this,
+      initialIndex: widget.isNew
+          ? 5
+          : widget.initialTabIndex.clamp(0, 5),
+    );
     _currentDept = widget.department;
     _nameController.text = _currentDept.name;
     _descController.text = _currentDept.description ?? '';
@@ -262,6 +271,36 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
         ),
         const SizedBox(height: 16),
         DepartmentAbsencePanel(stats: absenceStats, accent: color),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => _tabController.animateTo(5),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Rediger avdeling'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _tabController.animateTo(1),
+              icon: const Icon(Icons.groups_outlined, size: 18),
+              label: const Text('Administrer ansatte'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _tabController.animateTo(2),
+              icon: const Icon(Icons.verified_user_outlined, size: 18),
+              label: const Text('Ledere'),
+            ),
+            FilledButton.icon(
+              onPressed: () => _tabController.animateTo(3),
+              icon: const Icon(Icons.event_available_outlined, size: 18),
+              style: FilledButton.styleFrom(
+                backgroundColor: DriftProTheme.primaryGreen,
+              ),
+              label: const Text('Fravær per ansatt'),
+            ),
+          ],
+        ),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -293,15 +332,6 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
           AppIcons.absence,
           absenceStats.awayToday > 0 ? Colors.orange.shade700 : Colors.teal,
           isDark,
-        ),
-        const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: () => _tabController.animateTo(3),
-            icon: const Icon(Icons.analytics_outlined, size: 18),
-            label: const Text('Se fravær per ansatt'),
-          ),
         ),
         const SizedBox(height: 8),
         Row(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/absence/department_leave_conflict_service.dart';
+import '../../../core/theme/absence_palette.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/absence.dart';
 import 'department_leave_tip_card.dart';
@@ -171,59 +172,65 @@ class _LeaveTeamOverviewTabState extends State<LeaveTeamOverviewTab> {
   }
 
   Widget _summaryBanner(bool isDark, int pending, int overlap, int shown) {
+    final border = isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0);
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isDark
-              ? [const Color(0xFF1A2E1A), const Color(0xFF0F1F0F)]
-              : [const Color(0xFFE8F5E9), const Color(0xFFF1F8E9)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.25)),
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Teamoversikt', style: DriftProTheme.headingSm),
-          const SizedBox(height: 6),
           Text(
-            'Alle søknader og registreringer i ditt ansvarsområde. '
-            'Se hvem som søker ferie i samme periode i avdelingen.',
-            style: DriftProTheme.bodySm,
+            'Teamoversikt',
+            style: DriftProTheme.headingSm.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Alle søknader i ditt ansvarsområde — godkjenn, avvis og se overlapp.',
+            style: DriftProTheme.bodySm.copyWith(
+              color: isDark ? Colors.grey[400] : Colors.grey[600],
+            ),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          Row(
             children: [
-              _statPill('$pending ventende', DriftProTheme.warning),
-              _statPill('$overlap med overlapp', Colors.orange.shade800),
-              _statPill('$shown vist', DriftProTheme.primaryGreen),
+              Expanded(
+                child: _KpiMini(
+                  value: '$pending',
+                  label: 'Ventende',
+                  color: DriftProTheme.warning,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _KpiMini(
+                  value: '$overlap',
+                  label: 'Med overlapp',
+                  color: Colors.orange.shade800,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _KpiMini(
+                  value: '$shown',
+                  label: 'Vist nå',
+                  color: DriftProTheme.primaryGreen,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _KpiMini(
+                  value: '${widget.absences.length}',
+                  label: 'Totalt',
+                  color: AbsencePalette.indigo,
+                ),
+              ),
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _statPill(String label, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
       ),
     );
   }
@@ -248,37 +255,40 @@ class _LeaveTeamOverviewTabState extends State<LeaveTeamOverviewTab> {
     final overlaps = widget.overlapsByAbsenceId[a.id] ?? [];
     final hasOverlap = overlaps.isNotEmpty;
     final dept = a.departmentId != null ? widget.departmentNames[a.departmentId!] : null;
+    final border = hasOverlap && a.status == AbsenceStatus.ventende
+        ? Colors.orange.shade400
+        : (isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0));
+    final canAct = a.status == AbsenceStatus.ventende &&
+        widget.onApprove != null &&
+        widget.onReject != null;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: hasOverlap && a.status == AbsenceStatus.ventende
-              ? Colors.orange.shade400
-              : (isDark ? DriftProTheme.dividerDark : Colors.grey.shade100),
+          color: border,
           width: hasOverlap && a.status == AbsenceStatus.ventende ? 1.5 : 1,
         ),
-        boxShadow: DriftProTheme.cardShadow,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 48,
-                  height: 48,
+                  width: 46,
+                  height: 46,
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(widget.iconForType(a.type), color: color),
+                  child: Icon(widget.iconForType(a.type), color: color, size: 22),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -290,29 +300,41 @@ class _LeaveTeamOverviewTabState extends State<LeaveTeamOverviewTab> {
                           Expanded(
                             child: Text(
                               a.userName ?? 'Ansatt',
-                              style: DriftProTheme.labelLg,
+                              style: DriftProTheme.labelLg.copyWith(
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                           _statusBadge(a.status),
                         ],
                       ),
-                      if (dept != null)
-                        Text(dept, style: DriftProTheme.caption),
                       const SizedBox(height: 4),
-                      Text(
-                        '${a.type.label} · '
-                        '${DateFormat('d. MMM').format(a.startDate)} – '
-                        '${DateFormat('d. MMM').format(a.endDate)} ($days d.)',
-                        style: DriftProTheme.bodySm,
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          _metaChip(a.type.label, color),
+                          _metaChip('$days dager', AbsencePalette.slate),
+                          if (dept != null) _metaChip(dept, AbsencePalette.indigo),
+                        ],
                       ),
-                      if (a.comment != null && a.comment!.isNotEmpty)
+                      const SizedBox(height: 6),
+                      Text(
+                        '${DateFormat('EEE d. MMM', 'nb_NO').format(a.startDate)}'
+                        ' – '
+                        '${DateFormat('EEE d. MMM yyyy', 'nb_NO').format(a.endDate)}',
+                        style: DriftProTheme.bodySm.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (a.comment != null && a.comment!.trim().isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.only(top: 6),
                           child: Text(
-                            '"${a.comment!}"',
+                            a.comment!.trim(),
                             style: DriftProTheme.bodySm.copyWith(
-                              fontStyle: FontStyle.italic,
-                              color: Colors.grey.shade600,
+                              color: isDark ? Colors.grey[400] : Colors.grey[700],
+                              height: 1.35,
                             ),
                           ),
                         ),
@@ -329,34 +351,57 @@ class _LeaveTeamOverviewTabState extends State<LeaveTeamOverviewTab> {
               compact: true,
               isApprovalContext: a.status == AbsenceStatus.ventende,
             ),
-          if (a.status == AbsenceStatus.ventende &&
-              widget.onApprove != null &&
-              widget.onReject != null)
+          if (canAct)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
               child: Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton(
+                    child: OutlinedButton.icon(
                       onPressed: () => widget.onReject!(a),
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                      child: const Text('Avvis'),
+                      icon: const Icon(Icons.close_rounded, size: 18),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red.shade700,
+                        minimumSize: const Size(0, 42),
+                      ),
+                      label: const Text('Avvis'),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: FilledButton(
+                    flex: 2,
+                    child: FilledButton.icon(
                       onPressed: () => widget.onApprove!(a),
+                      icon: const Icon(Icons.check_rounded, size: 18),
                       style: FilledButton.styleFrom(
                         backgroundColor: DriftProTheme.success,
+                        minimumSize: const Size(0, 42),
                       ),
-                      child: const Text('Godkjenn'),
+                      label: const Text('Godkjenn'),
                     ),
                   ),
                 ],
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _metaChip(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }
@@ -375,11 +420,60 @@ class _LeaveTeamOverviewTabState extends State<LeaveTeamOverviewTab> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         status.label,
-        style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold),
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+}
+
+class _KpiMini extends StatelessWidget {
+  const _KpiMini({
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.16 : 0.08),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              color: color,
+              height: 1.05,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: isDark ? Colors.grey[400] : Colors.grey[700],
+            ),
+          ),
+        ],
       ),
     );
   }
