@@ -7,6 +7,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'fleet_route_driver_stats_screen.dart';
 import 'fleet_shift_admin_screen.dart';
+import 'partner_route_dispatch_history_screen.dart';
 import 'widgets/partner_available_vehicles_bar.dart';
 import 'widgets/partner_route_master_scheduler.dart';
 import 'widgets/partner_route_pdf_search_panel.dart';
@@ -79,6 +80,14 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
     PartnerRoutePdfSearchPanel.show(context, fleet: _fleet);
   }
 
+  void _openHistory() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => const PartnerRouteDispatchHistoryScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -128,6 +137,12 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
                           label: const Text('MAVI-statistikk'),
                         ),
                         const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: _openHistory,
+                          icon: const Icon(Icons.history_rounded, size: 18),
+                          label: const Text('Rutehistorikk'),
+                        ),
+                        const SizedBox(height: 8),
                         Row(
                           children: [
                             Expanded(
@@ -160,6 +175,12 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
                           ),
                         ),
                         const SizedBox(width: 6),
+                        OutlinedButton.icon(
+                          onPressed: _openHistory,
+                          icon: const Icon(Icons.history_rounded, size: 18),
+                          label: const Text('Historikk'),
+                        ),
+                        const SizedBox(width: 6),
                         TextButton.icon(
                           onPressed: _openShiftAdmin,
                           icon: const Icon(Icons.schedule_outlined, size: 18),
@@ -183,6 +204,11 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
       appBar: AppBar(
         title: const Text('Ruter & planlegging'),
         actions: [
+          IconButton(
+            tooltip: 'Rutehistorikk',
+            onPressed: _openHistory,
+            icon: const Icon(Icons.history_rounded),
+          ),
           IconButton(
             tooltip: 'Søk i rute-PDF',
             onPressed: _openPdfSearch,

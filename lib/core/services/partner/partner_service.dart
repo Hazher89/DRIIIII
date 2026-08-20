@@ -14,6 +14,8 @@ import '../../../models/partner/vehicle_inspection.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/mavi_driver_day_assignment.dart';
 import '../../../models/partner/route_ack_nudge_result.dart';
+import '../../../models/partner/partner_route_dispatch_history.dart';
+import '../../../models/partner/route_notify_prefs.dart';
 import '../../../models/partner/route_reminder_flag.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import '../../utils/portal_credentials.dart';
@@ -819,6 +821,77 @@ class PartnerService {
     }
   }
 
+  /// Leveringsstatus App/SMS/e-post per rute (inkl. «trenger oppmerksomhet»).
+  static Future<Map<String, RouteNotifyDelivery>> fetchRouteNotifyDelivery({
+    required String companyId,
+    Iterable<String>? shareIds,
+  }) async {
+    if (!_ok) return {};
+    final ids = shareIds?.where((id) => id.isNotEmpty).toSet().toList();
+    try {
+      final data = await _client.rpc(
+        'get_partner_route_notify_delivery',
+        params: {
+          'p_company_id': companyId,
+          if (ids != null && ids.isNotEmpty) 'p_share_ids': ids,
+        },
+      );
+      final map = <String, RouteNotifyDelivery>{};
+      for (final row in data as List) {
+        final d = RouteNotifyDelivery.fromJson(
+          Map<String, dynamic>.from(row as Map),
+        );
+        map[d.shareId] = d;
+      }
+      return map;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Historikk: hvem sendte / når PDF ble lest for rutedato(er).
+  static Future<List<PartnerRouteDispatchHistoryRow>> fetchRouteDispatchHistory({
+    required String companyId,
+    required DateTime fromDate,
+    DateTime? toDate,
+  }) async {
+    if (!_ok) return const [];
+    String day(DateTime d) =>
+        '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+    try {
+      final data = await _client.rpc(
+        'get_partner_route_dispatch_history',
+        params: {
+          'p_company_id': companyId,
+          'p_from_date': day(fromDate),
+          'p_to_date': day(toDate ?? fromDate),
+        },
+      );
+      return (data as List)
+          .map(
+            (e) => PartnerRouteDispatchHistoryRow.fromJson(
+              Map<String, dynamic>.from(e as Map),
+            ),
+          )
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Marker at rute-PDF er åpnet/lest (første gang + teller).
+  static Future<void> markRoutePdfOpened(String routeShareId) async {
+    if (!_ok || routeShareId.isEmpty) return;
+    try {
+      await _client.rpc(
+        'mark_partner_route_pdf_opened',
+        params: {'p_route_share_id': routeShareId},
+      );
+    } catch (_) {}
+  }
+
   static Future<PartnerRouteShare> addRouteShare(PartnerRouteShare r) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
     final row = await _client.from('partner_route_shares').insert(r.toInsertJson()).select().single();
@@ -1264,20 +1337,27 @@ class PartnerService {
   }
 
   /// Send staged ruter — hver rute kan ha eget skift og starttid.
+  /// [notifyPrefs] styrer App/SMS/e-post når [notifyDriver] er true.
   static Future<void> dispatchRouteShares({
     required String companyId,
     required Map<String, String> shareIdToShiftId,
     required DateTime date,
     Map<String, DateTime?> shareIdToStartAt = const {},
     bool notifyDriver = true,
+    RouteNotifyPrefs notifyPrefs = RouteNotifyPrefs.all,
     bool flushOutbox = false,
   }) async {
     if (!_ok) throw StateError('Supabase er ikke konfigurert');
     if (shareIdToShiftId.isEmpty) return;
 
-    final status = notifyDriver ? 'sent' : 'registered';
+    final effectiveNotify = notifyDriver && notifyPrefs.anyEnabled;
+    final status = effectiveNotify ? 'sent' : 'registered';
     final sentAt = DateTime.now().toUtc().toIso8601String();
+    final sentBy = _client.auth.currentUser?.id;
     final cachedShifts = await fetchFleetShifts(companyId);
+    final channels = effectiveNotify
+        ? notifyPrefs.dbChannels
+        : const <String>[];
 
     for (final entry in shareIdToShiftId.entries) {
       final startAt = shareIdToStartAt[entry.key];
@@ -1289,18 +1369,24 @@ class PartnerService {
         'dispatch_status': status,
         'shift_id': entry.value,
         'share_date': d,
+        'notify_channels': channels.isEmpty
+            ? const ['app', 'sms', 'email']
+            : channels,
       };
+      if (sentBy != null) {
+        patch['sent_by'] = sentBy;
+      }
       if (startAt != null) {
         patch['route_start_at'] = startAt.toUtc().toIso8601String();
       }
-      if (notifyDriver) {
-        patch['sent_at'] = sentAt;
+      // sent_at = publiseringstid (også uten varsel) — historikk / oversikt.
+      patch['sent_at'] = sentAt;
+      if (effectiveNotify) {
         patch['ack_status'] = 'pending';
         patch['ack_at'] = null;
         patch['ack_by'] = null;
         patch['ack_comment'] = null;
       } else {
-        patch['sent_at'] = null;
         patch['ack_status'] = 'not_required';
         patch['ack_at'] = null;
         patch['ack_by'] = null;
@@ -1336,9 +1422,9 @@ class PartnerService {
         notes: note,
         shifts: cachedShifts,
       );
-      // SMS/e-post køes via trg_partner_route_sms_on_sent ved dispatch_status = sent.
+      // SMS/e-post/push køes via trg_partner_route_sms_on_sent ved dispatch_status = sent.
     }
-    if (notifyDriver) {
+    if (effectiveNotify) {
       if (flushOutbox) {
         await flushSmsOutbox();
       } else {

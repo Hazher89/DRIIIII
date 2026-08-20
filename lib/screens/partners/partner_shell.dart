@@ -102,6 +102,10 @@ class _PartnerShellState extends State<PartnerShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(NativePermissionsService.bootstrapAfterLogin(context));
+      // Sjåfør-portal: be om varsel-tillatelse slik at FCM-token lagres (Android/iOS).
+      if (widget.portalAccountKind == 'driver') {
+        unawaited(NativePermissionsService.ensureNotifications(context: context));
+      }
     });
   }
 

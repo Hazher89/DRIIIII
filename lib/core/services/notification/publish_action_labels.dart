@@ -1,5 +1,5 @@
 import '../../../models/notification_channel.dart';
-import '../../../models/partner_notification_settings.dart';
+import '../../../models/partner/route_notify_prefs.dart';
 import 'partner_notification_settings_service.dart';
 
 /// Knappetekster for publisering basert på varselinnstillinger.
@@ -32,6 +32,10 @@ class PublishActionLabels {
     }
   }
 
+  static String publishLabelForPrefs(RouteNotifyPrefs prefs) => prefs.publishLabel;
+
+  static String publishShortLabelForPrefs(RouteNotifyPrefs prefs) => prefs.shortLabel;
+
   static Future<String> singleRoutePublishLabel(String companyId) async {
     final s = await PartnerNotificationSettingsService.fetch(companyId);
     return publishLabel(s.chPartnerRoute);
@@ -52,11 +56,29 @@ class PublishActionLabels {
     return s.chPartnerMassRoute;
   }
 
+  /// Map firmakanal til RouteNotifyPrefs (app alltid på når det varsles).
+  static RouteNotifyPrefs prefsFromChannel(NotificationChannel channel) {
+    switch (channel) {
+      case NotificationChannel.none:
+        return RouteNotifyPrefs.none;
+      case NotificationChannel.sms:
+        return const RouteNotifyPrefs(app: true, sms: true, email: false);
+      case NotificationChannel.email:
+        return const RouteNotifyPrefs(app: true, sms: false, email: true);
+      case NotificationChannel.both:
+        return RouteNotifyPrefs.all;
+    }
+  }
+
   static String successMessage({
     required int routeCount,
     required NotificationChannel channel,
     required bool notifyDriver,
+    RouteNotifyPrefs? prefs,
   }) {
+    if (prefs != null) {
+      return prefs.successMessage(routeCount);
+    }
     if (!notifyDriver || channel == NotificationChannel.none) {
       return 'Publisert $routeCount rute(r) uten varsel.';
     }

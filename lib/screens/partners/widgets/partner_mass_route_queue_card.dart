@@ -33,6 +33,7 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
   final ValueChanged<String> onShiftChanged;
   final ValueChanged<TimeOfDay> onStartChanged;
   final VoidCallback? onOpenDetails;
+  final Widget? notifyBadge;
 
   const PartnerMassRouteQueueCard({
     super.key,
@@ -58,6 +59,7 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
     required this.onShiftChanged,
     required this.onStartChanged,
     this.onOpenDetails,
+    this.notifyBadge,
   });
 
   String get _fileLabel =>
@@ -185,6 +187,10 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
                           )
                           .toList(),
                     ),
+                    if (notifyBadge != null) ...[
+                      const SizedBox(height: 6),
+                      notifyBadge!,
+                    ],
                     const SizedBox(height: 4),
                     Text(
                       _fileLabel,

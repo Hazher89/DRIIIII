@@ -22,6 +22,7 @@ import '../../../core/services/partner/staged_route_duplicate_helper.dart';
 import '../../../core/services/notification/publish_action_labels.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../models/notification_channel.dart';
+import '../../../models/partner/route_notify_prefs.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
@@ -33,6 +34,7 @@ import 'partner_route_pdf_actions.dart';
 import 'partner_route_pdf_thumbnail.dart';
 import 'partner_route_publish_review_dialog.dart';
 import 'partner_route_workflow_ui.dart';
+import 'route_dispatch/route_notify_channel_toggles.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 class _PdfAssignmentRow {
@@ -95,14 +97,15 @@ String _friendlyImportError(Object error) {
 
 enum PartnerRouteMassSource { manual, sap }
 
-enum _MassTab { skipped, duplicates, drivers, missingShift, allRoutes }
-
-/// Fanerekkefølge: Manuell → Duplikater → Flere last → Mangler skift → Ruter.
-const _kTabManual = 0;
-const _kTabDuplicates = 1;
-const _kTabMultiLoad = 2;
-const _kTabMissingShift = 3;
-const _kTabRoutes = 4;
+/// Enkel filtervisning (erstatter 5-stegs faner).
+enum _QueueViewFilter {
+  all,
+  manual,
+  duplicates,
+  missingShift,
+  ready,
+  notNotified,
+}
 
 enum _RouteQueueFilter { all, missingShift, ready, selected }
 
@@ -167,7 +170,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   late DateTime _routeDate;
   final Map<String, DateTime> _dateByShare = {};
   DateTime? _filterDay;
-  _MassTab _sheetTab = _MassTab.skipped;
+  _QueueViewFilter _viewFilter = _QueueViewFilter.all;
   _RouteQueueFilter _queueFilter = _RouteQueueFilter.all;
   bool _sapSyncing = false;
   int _sapPendingInbox = 0;
@@ -177,11 +180,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   bool _showAllDrivers = false;
   bool _guideExpanded = false;
   bool _fillingShifts = false;
-  bool _initialTabSet = false;
+  bool _initialFilterSet = false;
   List<FleetPartnerVehicleRow> _expandedMaviFleet = const [];
   bool _selectionInitialized = false;
-  String _withNotifyLabel = 'Med varsel';
-  NotificationChannel _massChannel = NotificationChannel.both;
+  RouteNotifyPrefs _notifyPrefs = RouteNotifyPrefs.all;
+  Map<String, RouteNotifyDelivery> _deliveryByShare = {};
+  Set<String> _appReadyVehicleIds = {};
 
   bool get _isSap => widget.source == PartnerRouteMassSource.sap;
 
@@ -275,15 +279,68 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final cid = await SupabaseService.getCurrentCompanyId();
     if (cid == null || !mounted) return;
     try {
-      final label = await PublishActionLabels.massRoutePublishLabel(cid);
       final ch = await PublishActionLabels.massRouteChannel(cid);
       if (mounted) {
         setState(() {
-          _withNotifyLabel = PublishActionLabels.publishShortLabel(ch);
-          _massChannel = ch;
+          _notifyPrefs = PublishActionLabels.prefsFromChannel(ch);
+          if (_notifyPrefs.noneEnabled) {
+            _notifyPrefs = RouteNotifyPrefs.all;
+          }
         });
       }
     } catch (_) {}
+  }
+
+  Future<void> _refreshDeliveryStatus() async {
+    final cid = await SupabaseService.getCurrentCompanyId();
+    if (cid == null || !mounted) return;
+    final ids = _staged.map((s) => s.id);
+    final map = await PartnerService.fetchRouteNotifyDelivery(
+      companyId: cid,
+      shareIds: ids,
+    );
+    final appReady = <String>{};
+    for (final e in _portalByVehicle.entries) {
+      final d = map.values.where((x) {
+        final share = _staged.where((s) => s.id == x.shareId).firstOrNull;
+        return share?.partnerVehicleId == e.key;
+      }).firstOrNull;
+      if (d?.driverHasAppToken == true) appReady.add(e.key);
+    }
+    // Also mark vehicles whose portal account has known token via delivery scan
+    for (final s in _staged) {
+      final d = map[s.id];
+      if (d?.driverHasAppToken == true && s.partnerVehicleId != null) {
+        appReady.add(s.partnerVehicleId!);
+      }
+    }
+    if (mounted) {
+      setState(() {
+        _deliveryByShare = map;
+        _appReadyVehicleIds = appReady;
+      });
+    }
+  }
+
+  int get _notNotifiedCount {
+    var n = 0;
+    for (final s in _staged) {
+      final d = _deliveryByShare[s.id];
+      if (d?.needsAttention == true) {
+        n++;
+        continue;
+      }
+      final portal = s.partnerVehicleId == null
+          ? null
+          : _portalByVehicle[s.partnerVehicleId!];
+      final missingPhone = (portal?.phone ?? '').trim().isEmpty;
+      final missingApp = !_appReadyVehicleIds.contains(s.partnerVehicleId);
+      if ((_notifyPrefs.sms && missingPhone) ||
+          (_notifyPrefs.app && missingApp)) {
+        n++;
+      }
+    }
+    return n;
   }
 
   Future<void> _bindSapLive() async {
@@ -395,7 +452,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ),
           );
         } else if (result.imported == 0 && (result.skipped > 0 || _skipped.isNotEmpty)) {
-          setState(() => _sheetTab = _MassTab.skipped);
+          setState(() => _viewFilter = _QueueViewFilter.manual);
         }
         if (result.imported > 0 || result.skipped > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -801,7 +858,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 alignment: WrapAlignment.end,
                 children: [
                   OutlinedButton(
-                    onPressed: _busyUpload || _publishing ? null : () => _setTabIndex(_kTabDuplicates),
+                    onPressed: _busyUpload || _publishing ? null : () => _setViewFilter(_QueueViewFilter.duplicates),
                     child: const Text('Se duplikater'),
                   ),
                   FilledButton.tonal(
@@ -911,22 +968,22 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       _routeDate = groups.keys.first;
     }
     if (preferRoutesTab && staged.isNotEmpty) {
-      _sheetTab = _MassTab.allRoutes;
+      _viewFilter = _QueueViewFilter.all;
       _queueFilter = _RouteQueueFilter.all;
-    } else if (!_initialTabSet) {
+    } else if (!_initialFilterSet) {
       if (_skipped.isNotEmpty) {
-        _sheetTab = _MassTab.skipped;
+        _viewFilter = _QueueViewFilter.manual;
       } else if (_duplicateExtraCount > 0) {
-        _sheetTab = _MassTab.duplicates;
+        _viewFilter = _QueueViewFilter.duplicates;
       } else if (_routesMissingShift.isNotEmpty) {
-        _sheetTab = _MassTab.missingShift;
+        _viewFilter = _QueueViewFilter.missingShift;
         _queueFilter = _RouteQueueFilter.missingShift;
       } else if (staged.isNotEmpty) {
-        _sheetTab = _MassTab.allRoutes;
+        _viewFilter = _QueueViewFilter.all;
         _queueFilter = _RouteQueueFilter.all;
       }
     }
-    _initialTabSet = true;
+    _initialFilterSet = true;
   }
 
   Future<void> _reload({bool preferRoutesTab = false, int expectedMinStaged = 0}) async {
@@ -979,6 +1036,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         preferRoutesTab: preferRoutesTab,
         preserveSelection: true,
       ));
+      unawaited(_refreshDeliveryStatus());
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
@@ -1209,7 +1267,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       entries: entries,
       driverCount: driverIds.length,
       notifyDriver: notifyDriver,
-      confirmLabel: notifyDriver ? _withNotifyLabel : 'Publiser uten varsel',
+      confirmLabel: notifyDriver
+          ? _notifyPrefs.shortLabel
+          : 'Publiser uten varsel',
       dateSyncSummary: dateSyncSummary,
       multiLoadNote: multiLoadNote,
       extraSummary: [
@@ -1264,14 +1324,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         final day = _routeDayFor(id);
         starts[id] = DateTime(day.year, day.month, day.day, t.hour, t.minute);
       }
-      final sendNotify =
-          notifyDriver && _massChannel != NotificationChannel.none;
+      final sendNotify = notifyDriver && _notifyPrefs.anyEnabled;
       await PartnerService.dispatchRouteShares(
         companyId: cid,
         shareIdToShiftId: map,
         date: routeIds.isNotEmpty ? _routeDayFor(routeIds.first) : _routeDate,
         shareIdToStartAt: starts,
         notifyDriver: sendNotify,
+        notifyPrefs: sendNotify ? _notifyPrefs : RouteNotifyPrefs.none,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1279,8 +1339,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             content: Text(
               PublishActionLabels.successMessage(
                 routeCount: map.length,
-                channel: _massChannel,
+                channel: NotificationChannel.both,
                 notifyDriver: sendNotify,
+                prefs: sendNotify ? _notifyPrefs : RouteNotifyPrefs.none,
               ),
             ),
           ),
@@ -1334,7 +1395,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             backgroundColor: Colors.orange.shade800,
           ),
         );
-        _setTabIndex(_kTabMissingShift);
+        _setViewFilter(_QueueViewFilter.missingShift);
         return;
       }
 
@@ -1877,7 +1938,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ),
           );
         } else if (newSkipped.isNotEmpty && ok == 0) {
-          setState(() => _sheetTab = _MassTab.skipped);
+          setState(() => _viewFilter = _QueueViewFilter.manual);
         }
         final skippedMsg = newSkipped.isEmpty
             ? ''
@@ -2027,11 +2088,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ];
           if (_skipped.isEmpty) {
             if (_duplicateExtraCount > 0) {
-              _sheetTab = _MassTab.duplicates;
+              _viewFilter = _QueueViewFilter.duplicates;
             } else if (_missingShiftCount > 0) {
-              _sheetTab = _MassTab.missingShift;
+              _viewFilter = _QueueViewFilter.missingShift;
             } else {
-              _sheetTab = _MassTab.allRoutes;
+              _viewFilter = _QueueViewFilter.all;
             }
           }
         });
@@ -2338,7 +2399,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           backgroundColor: Colors.orange.shade800,
         ),
       );
-      _setTabIndex(_kTabMissingShift);
+      _setViewFilter(_QueueViewFilter.missingShift);
       return;
     }
 
@@ -2351,128 +2412,63 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     await _executePublish(routeIds: routeIds, notifyDriver: notifyDriver);
   }
 
-  int get _tabIndex => switch (_sheetTab) {
-        _MassTab.skipped => _kTabManual,
-        _MassTab.duplicates => _kTabDuplicates,
-        _MassTab.drivers => _kTabMultiLoad,
-        _MassTab.missingShift => _kTabMissingShift,
-        _MassTab.allRoutes => _kTabRoutes,
-      };
 
-  int get _currentWorkflowStepNumber => switch (_sheetTab) {
-        _MassTab.skipped => 1,
-        _MassTab.duplicates => 2,
-        _MassTab.drivers => 3,
-        _MassTab.missingShift => 4,
-        _MassTab.allRoutes => 5,
-      };
+  static const _filterOrder = [
+    _QueueViewFilter.all,
+    _QueueViewFilter.manual,
+    _QueueViewFilter.duplicates,
+    _QueueViewFilter.missingShift,
+    _QueueViewFilter.ready,
+    _QueueViewFilter.notNotified,
+  ];
 
-  void _setTabIndex(int i) {
+  int get _tabIndex {
+    final i = _filterOrder.indexOf(_viewFilter);
+    return i < 0 ? 0 : i;
+  }
+
+  void _setViewFilter(_QueueViewFilter filter) {
     setState(() {
-      _sheetTab = switch (i) {
-        _kTabManual => _MassTab.skipped,
-        _kTabDuplicates => _MassTab.duplicates,
-        _kTabMultiLoad => _MassTab.drivers,
-        _kTabMissingShift => _MassTab.missingShift,
-        _kTabRoutes => _MassTab.allRoutes,
-        _ => _MassTab.allRoutes,
+      _viewFilter = filter;
+      _queueFilter = switch (filter) {
+        _QueueViewFilter.missingShift => _RouteQueueFilter.missingShift,
+        _QueueViewFilter.ready => _RouteQueueFilter.ready,
+        _ => _RouteQueueFilter.all,
       };
-      if (_sheetTab == _MassTab.allRoutes) {
-        _queueFilter = _RouteQueueFilter.all;
-      } else if (_sheetTab == _MassTab.missingShift) {
-        _queueFilter = _RouteQueueFilter.missingShift;
-      }
     });
   }
 
-  void _goToNextWorkflowStep() {
-    if (_skipped.isNotEmpty) {
-      _setTabIndex(_kTabManual);
-      return;
-    }
-    if (_duplicateExtraCount > 0) {
-      _setTabIndex(_kTabDuplicates);
-      return;
-    }
-    if (_multiLoadDriverCount > 0) {
-      _setTabIndex(_kTabMultiLoad);
-      return;
-    }
-    if (_missingShiftCount > 0) {
-      _setTabIndex(_kTabMissingShift);
-      return;
-    }
-    _setTabIndex(_kTabRoutes);
+  void _setTabIndex(int i) {
+    if (i < 0 || i >= _filterOrder.length) return;
+    _setViewFilter(_filterOrder[i]);
   }
 
-  Widget _buildWorkflowStepBanner(_MassUi ui) {
-    const steps = ['Manuell', 'Duplikater', '2+ last', 'Skift', 'Del ruter'];
-    final current = _currentWorkflowStepNumber;
-  final issues = <String>[
+  Widget _buildUploadStatusBanner(_MassUi ui) {
+    final issues = <String>[
       if (_skipped.isNotEmpty) '${_skipped.length} manuell',
       if (_duplicateExtraCount > 0) '$_duplicateExtraCount duplikat',
       if (_multiLoadDriverCount > 0) '$_multiLoadDriverCount med 2+ last',
       if (_missingShiftCount > 0) '$_missingShiftCount mangler skift',
+      if (_notNotifiedCount > 0) '$_notNotifiedCount uten fullt varsel',
     ];
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: ui.accent.withValues(alpha: 0.35)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Text(
-                'Steg $current av 5',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: ui.accentDark),
-              ),
-              const Spacer(),
-              if (current < 5)
-                TextButton(
-                  onPressed: _goToNextWorkflowStep,
-                  child: const Text('Neste steg'),
-                ),
-            ],
+          Text(
+            'Last opp PDF-er, rydd duplikater og del ut med App / SMS / e-post.',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: ui.accentDark),
           ),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 4,
-            children: List.generate(steps.length, (i) {
-              final n = i + 1;
-              final active = n == current;
-              final done = n < current;
-              return ActionChip(
-                label: Text(
-                  '${n}. ${steps[i]}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: active ? FontWeight.w800 : FontWeight.w600,
-                    color: active ? ui.accentDark : done ? Colors.green.shade800 : Colors.grey.shade700,
-                  ),
-                ),
-                backgroundColor: active
-                    ? ui.surfaceTint
-                    : done
-                        ? Colors.green.shade50
-                        : Colors.grey.shade100,
-                side: BorderSide(
-                  color: active ? ui.accentDark : Colors.grey.shade300,
-                ),
-                padding: EdgeInsets.zero,
-                visualDensity: VisualDensity.compact,
-                onPressed: () => _setTabIndex(i),
-              );
-            }),
-          ),
-          if (issues.isNotEmpty && current < 5) ...[
+          if (issues.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
-              'Gjenstår: ${issues.join(' · ')}',
+              'Trenger handling: ${issues.join(' · ')}',
               style: TextStyle(fontSize: 11, color: Colors.orange.shade900, fontWeight: FontWeight.w600),
             ),
           ],
@@ -2510,7 +2506,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         routeInfoChip(
           '$_missingShiftCount mangler skift',
           color: Colors.red.shade800,
-          onTap: () => _setTabIndex(_kTabMissingShift),
+          onTap: () => _setViewFilter(_QueueViewFilter.missingShift),
         ),
       );
     }
@@ -2521,7 +2517,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           color: Colors.green.shade800,
           onTap: () {
             setState(() {
-              _sheetTab = _MassTab.allRoutes;
+              _viewFilter = _QueueViewFilter.all;
               _queueFilter = _RouteQueueFilter.ready;
             });
           },
@@ -2567,7 +2563,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              _setTabIndex(_kTabMultiLoad);
+              _setViewFilter(_QueueViewFilter.all);
             },
             child: const Text('Se flere last/rute'),
           ),
@@ -2664,22 +2660,31 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       guidePanel: _buildWorkflowGuideContent(ui),
       guideExpanded: _guideExpanded,
       onGuideToggle: () => setState(() => _guideExpanded = !_guideExpanded),
-      topBanner: DriftProClient.isMobile ? null : _buildWorkflowStepBanner(ui),
+      topBanner: DriftProClient.isMobile ? null : _buildUploadStatusBanner(ui),
       showTabCaption: !DriftProClient.isMobile,
-      tabLabels: const ['Manuell', 'Duplikater', 'Flere last/rute', 'Mangler skift', 'Ruter'],
+      tabLabels: const [
+        'Alle',
+        'Manuell',
+        'Duplikater',
+        'Mangler skift',
+        'Klar',
+        'Ikke varslet',
+      ],
       tabBadges: [
+        _staged.isNotEmpty ? _staged.length : null,
         _skipped.isNotEmpty ? _skipped.length : null,
         _duplicatesTabCount > 0 ? _duplicatesTabCount : null,
-        _multiLoadDriverCount > 0 ? _multiLoadDriverCount : null,
         missingShift > 0 ? missingShift : null,
-        _staged.isNotEmpty ? _staged.length : null,
+        _readyShiftCount > 0 ? _readyShiftCount : null,
+        _notNotifiedCount > 0 ? _notNotifiedCount : null,
       ],
       tabBadgeColors: [
+        ui.accentDark,
         Colors.orange.shade800,
         Colors.deepPurple.shade800,
-        _multiLoadDriverCount > 0 ? Colors.orange.shade900 : ui.accentDark,
         Colors.red.shade700,
-        ui.accentDark,
+        Colors.green.shade700,
+        Colors.orange.shade900,
       ],
       selectedTabIndex: _tabIndex,
       onTabSelected: _setTabIndex,
@@ -2939,26 +2944,26 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             text: '$_multiLoadDriverCount bil(er) med 2+ last/rute — trykk for liste',
             onTap: _showMultiLoadDetails,
           ),
-        if (_orphanShares.isNotEmpty && _sheetTab == _MassTab.allRoutes)
+        if (_orphanShares.isNotEmpty && _viewFilter == _QueueViewFilter.all || _viewFilter == _QueueViewFilter.ready)
           _buildCompactAlert(
             icon: Icons.link_off_outlined,
             color: Colors.blue.shade800,
             text: '${_orphanShares.length} rute(r) uten sjåfør — koble fra MAVI i filnavn',
             onTap: _relinkAllOrphanShares,
           ),
-        if (_skipped.isNotEmpty && _sheetTab != _MassTab.skipped)
+        if (_skipped.isNotEmpty && _viewFilter != _QueueViewFilter.manual)
           _buildCompactAlert(
             icon: Icons.pan_tool_alt_outlined,
             color: Colors.orange.shade900,
             text: '${_skipped.length} PDF krever manuell tildeling',
-            onTap: () => _setTabIndex(_kTabManual),
+            onTap: () => _setViewFilter(_QueueViewFilter.manual),
           ),
-        if (_missingShiftCount > 0 && _sheetTab != _MassTab.missingShift)
+        if (_missingShiftCount > 0 && _viewFilter != _QueueViewFilter.missingShift)
           _buildCompactAlert(
             icon: Icons.warning_amber_rounded,
             color: Colors.red.shade800,
             text: '$_missingShiftCount rute(r) mangler skift',
-            onTap: () => _setTabIndex(_kTabMissingShift),
+            onTap: () => _setViewFilter(_QueueViewFilter.missingShift),
           ),
         if (_staged.isNotEmpty)
           Padding(
@@ -3017,30 +3022,101 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   String _tabHint() {
-    return switch (_sheetTab) {
-      _MassTab.skipped =>
-        'Steg 1: Tildel sjåfør og skift på PDF-er som ikke ble auto-fordelt. Trykk OK når valgt.',
-      _MassTab.duplicates =>
-        'Steg 2: Kun identisk PDF er duplikat. Rydd bort ekstra kopier før du deler ruter.',
-      _MassTab.drivers =>
-        _multiLoadDriverCount > 0
-            ? 'Steg 3: $_multiLoadDriverCount bil(er) med 2+ last — sjekk at fordelingen er rettferdig.'
-            : 'Steg 3: Ingen biler med flere last akkurat nå.',
-      _MassTab.missingShift =>
-        'Steg 4: Velg skift på ruter uten skiftplan før publisering.',
-      _MassTab.allRoutes =>
-        'Steg 5: Velg ruter og del med SMS + e-post eller uten varsel.',
+    return switch (_viewFilter) {
+      _QueueViewFilter.manual =>
+        'Tildel sjåfør og skift på PDF-er som ikke ble auto-fordelt.',
+      _QueueViewFilter.duplicates =>
+        'Kun identisk PDF er duplikat. Behold én og slett resten før utsending.',
+      _QueueViewFilter.missingShift =>
+        'Velg skift på ruter uten skiftplan før publisering.',
+      _QueueViewFilter.ready =>
+        'Ruter som er klare for utsending (skift satt).',
+      _QueueViewFilter.notNotified =>
+        'Ruter som mangler telefon/app-token eller ikke fikk varsel.',
+      _QueueViewFilter.all =>
+        'Velg ruter og del ut med App, SMS og/eller e-post — eller uten varsel.',
     };
   }
 
   Widget _buildTabContent(_MassUi ui) {
-    return switch (_sheetTab) {
-      _MassTab.skipped => _buildSkippedList(ui),
-      _MassTab.duplicates => _buildDuplicatesTab(ui),
-      _MassTab.drivers => _buildDriverCentricList(ui),
-      _MassTab.missingShift => _buildRoutesOverview(ui, forceMissingOnly: true),
-      _MassTab.allRoutes => _buildRoutesOverview(ui),
+    return switch (_viewFilter) {
+      _QueueViewFilter.manual => _buildSkippedList(ui),
+      _QueueViewFilter.duplicates => _buildDuplicatesTab(ui),
+      _QueueViewFilter.missingShift =>
+        _buildRoutesOverview(ui, forceMissingOnly: true),
+      _QueueViewFilter.ready => _buildRoutesOverview(ui),
+      _QueueViewFilter.notNotified => _buildNotNotifiedList(ui),
+      _QueueViewFilter.all => _buildRoutesOverview(ui),
     };
+  }
+
+  Widget _buildNotNotifiedList(_MassUi ui) {
+    final rows = _staged.where((s) {
+      final d = _deliveryByShare[s.id];
+      if (d?.needsAttention == true) return true;
+      final portal = s.partnerVehicleId == null
+          ? null
+          : _portalByVehicle[s.partnerVehicleId!];
+      final missingPhone = (portal?.phone ?? '').trim().isEmpty;
+      final missingApp = !_appReadyVehicleIds.contains(s.partnerVehicleId);
+      return (_notifyPrefs.sms && missingPhone) ||
+          (_notifyPrefs.app && missingApp);
+    }).toList();
+    if (rows.isEmpty && _skipped.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Ingen ruter mangler varsel akkurat nå.',
+            style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600),
+          ),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+      children: [
+        if (_skipped.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              '${_skipped.length} manuell(e) PDF venter tildeling.',
+              style: TextStyle(fontWeight: FontWeight.w700, color: Colors.orange.shade900),
+            ),
+          ),
+        ...rows.map((share) {
+          final d = _deliveryByShare[share.id];
+          final row = _rowForShare(share);
+          final appReady = share.partnerVehicleId != null &&
+              _appReadyVehicleIds.contains(share.partnerVehicleId);
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            child: ListTile(
+              title: Text(
+                share.title ?? share.pdfStoragePath.split('/').last,
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              ),
+              subtitle: Text(
+                [
+                  if (row != null)
+                    MaviUnitCodes.fleetDriverLabel(row.vehicle.unitCode, row.partner.name),
+                  d?.badgeLabel ?? (appReady ? 'App-klar' : 'Mangler app-token'),
+                ].join(' · '),
+                style: const TextStyle(fontSize: 12),
+              ),
+              trailing: RouteNotifyDeliveryBadge(
+                delivery: d,
+                driverAppReady: appReady,
+              ),
+              onTap: () => setState(() {
+                _viewFilter = _QueueViewFilter.all;
+                _selected.add(share.id);
+              }),
+            ),
+          );
+        }),
+      ],
+    );
   }
 
   Widget _buildQueueSummaryStrip(_MassUi ui) {
@@ -3269,6 +3345,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       routeShifts: _routeShifts,
       maviFleet: _maviFleet,
       noteController: noteCtrl,
+      notifyBadge: RouteNotifyDeliveryBadge(
+        delivery: _deliveryByShare[share.id],
+        driverAppReady: share.partnerVehicleId != null &&
+            _appReadyVehicleIds.contains(share.partnerVehicleId),
+      ),
       onOpenDetails: () => _showRouteEditSheet(share, row, ui),
       onChecked: (v) => setState(() {
         if (v == true) {
@@ -3337,13 +3418,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   )
                 else
                   OutlinedButton.icon(
-                    onPressed: () => _setTabIndex(_kTabManual),
+                    onPressed: () => _setViewFilter(_QueueViewFilter.manual),
                     icon: const Icon(Icons.pan_tool_alt_outlined, size: 18),
                     label: const Text('Gå til manuell tildeling'),
                   ),
                 const SizedBox(height: 6),
                 TextButton.icon(
-                  onPressed: () => _setTabIndex(_kTabDuplicates),
+                  onPressed: () => _setViewFilter(_QueueViewFilter.duplicates),
                   icon: const Icon(Icons.copy_all_outlined, size: 16),
                   label: const Text('Se i Duplikater'),
                 ),
@@ -3361,27 +3442,30 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final canPublish = _staged.isNotEmpty &&
         _selected.isNotEmpty &&
         selectedMissing == 0 &&
-        _skipped.isEmpty;
+        _skipped.isEmpty &&
+        _duplicateExtraCount == 0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final stacked = constraints.maxWidth < 640;
+        final stacked = constraints.maxWidth < 720;
         final statusText = _staged.isEmpty
-            ? 'Steg 5: Ingen ruter i kø ennå'
+            ? 'Ingen ruter i kø ennå — last opp PDF eller hent fra SAP'
             : _skipped.isNotEmpty
-                ? 'Fullfør steg 1 (manuell) før du deler ruter'
-                : selectedMissing > 0
-                    ? 'Steg 4: $selectedMissing valgte rute(r) mangler skift'
-                    : canPublish
-                        ? 'Steg 5: Klar — ${_selected.length} rute(r) valgt for utsending'
-                        : 'Steg 5: Huk av ruter du vil dele';
+                ? 'Fullfør manuell tildeling før du deler ruter'
+                : _duplicateExtraCount > 0
+                    ? 'Rydd $_duplicateExtraCount duplikat før utsending'
+                    : selectedMissing > 0
+                        ? '$selectedMissing valgte rute(r) mangler skift'
+                        : canPublish
+                            ? 'Klar — ${_selected.length} rute(r) · ${_notifyPrefs.shortLabel}'
+                            : 'Huk av ruter du vil dele';
 
         final status = Text(
           statusText,
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: _skipped.isNotEmpty
+            color: _skipped.isNotEmpty || _duplicateExtraCount > 0
                 ? Colors.orange.shade900
                 : selectedMissing > 0
                     ? Colors.red.shade800
@@ -3391,29 +3475,42 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ),
         );
 
+        final toggles = RouteNotifyChannelToggles(
+          value: _notifyPrefs,
+          dense: true,
+          onChanged: (v) => setState(() => _notifyPrefs = v),
+        );
+
         final btnGrey = FilledButton.icon(
-          onPressed: _publishing || !canPublish ? null : () => _publish(notifyDriver: false),
+          onPressed: _publishing || !canPublish
+              ? null
+              : () => _publish(notifyDriver: false),
           icon: _publishing
-              ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
+              ? const SizedBox(
+                  width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
               : const Icon(Icons.notifications_off_outlined, size: 20),
           label: Text('Uten varsel (${_selected.length})'),
           style: FilledButton.styleFrom(
-            backgroundColor: RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
+            backgroundColor:
+                RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
             minimumSize: const Size(0, 48),
-            padding: const EdgeInsets.symmetric(horizontal: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
           ),
         );
 
-        final btnSms = FilledButton.icon(
-          onPressed: _publishing || !canPublish ? null : () => _publish(notifyDriver: true),
+        final btnNotify = FilledButton.icon(
+          onPressed: _publishing || !canPublish || !_notifyPrefs.anyEnabled
+              ? null
+              : () => _publish(notifyDriver: true),
           icon: _publishing
-              ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
-              : const Icon(Icons.sms_outlined, size: 20),
-          label: Text('SMS + e-post (${_selected.length})'),
+              ? const SizedBox(
+                  width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
+              : const Icon(Icons.send_outlined, size: 20),
+          label: Text('${_notifyPrefs.publishLabel} (${_selected.length})'),
           style: FilledButton.styleFrom(
             backgroundColor: ui.accentDark,
             minimumSize: const Size(0, 48),
-            padding: const EdgeInsets.symmetric(horizontal: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
           ),
         );
 
@@ -3423,20 +3520,34 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             children: [
               status,
               const SizedBox(height: 10),
+              toggles,
+              const SizedBox(height: 10),
               btnGrey,
               const SizedBox(height: 8),
-              btnSms,
+              btnNotify,
             ],
           );
         }
 
-        return Row(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(child: status),
-            const SizedBox(width: 12),
-            btnGrey,
-            const SizedBox(width: 10),
-            btnSms,
+            Row(
+              children: [
+                Expanded(child: status),
+                const SizedBox(width: 12),
+                toggles,
+              ],
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Spacer(),
+                btnGrey,
+                const SizedBox(width: 10),
+                btnNotify,
+              ],
+            ),
           ],
         );
       },
@@ -4230,11 +4341,9 @@ class _MassUi {
         tagline: 'Importer manuelt, kontroller sjåfører og PDF-er, publiser når alt stemmer',
         icon: Icons.mark_email_read_outlined,
         steps: [
-          'Importer/lag opp PDF-er — systemet fordeler automatisk der MAVI finnes.',
-          'Manuell: velg sjåfør + skift, trykk OK.',
-          'Duplikater: behold én per identisk PDF.',
-          'Sjekk 2+ last og manglende skift.',
-          'Velg ruter og del med SMS + e-post eller uten varsel.',
+          'Importer/last opp PDF-er — systemet fordeler automatisk der MAVI finnes.',
+          'Rydd manuell tildeling, duplikater og manglende skift via filtrene.',
+          'Velg App / SMS / e-post og del ut — eller registrer uten varsel.',
         ],
         emptyHint:
             'Ingen SAP-ruter i kø.\n\n'
@@ -4252,10 +4361,8 @@ class _MassUi {
       icon: Icons.auto_awesome,
       steps: [
         'Last opp PDF-er — MAVI leses automatisk fra filen.',
-        'Manuell: velg sjåfør + skift, trykk OK.',
-        'Duplikater: behold én per identisk PDF.',
-        'Sjekk 2+ last og manglende skift.',
-        'Velg ruter og del med SMS + e-post eller uten varsel.',
+        'Rydd manuell tildeling, duplikater og manglende skift via filtrene.',
+        'Velg App / SMS / e-post og del ut — eller registrer uten varsel.',
       ],
       emptyHint:
           'Ingen ruter i kø.\n\nLast opp PDF-er med knappen over. '

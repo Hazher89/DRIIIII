@@ -359,6 +359,13 @@ class PartnerRouteShare {
   final String? stagedImportSource;
   final String? pdfSearchText;
   final int? customerCount;
+  /// app / sms / email — brukes når dispatch_status = sent
+  final List<String> notifyChannels;
+  final DateTime? sentAt;
+  final String? sentBy;
+  final DateTime? pdfOpenedAt;
+  final String? pdfOpenedBy;
+  final int pdfOpenCount;
   final DateTime createdAt;
 
   PartnerRouteShare({
@@ -381,10 +388,24 @@ class PartnerRouteShare {
     this.stagedImportSource,
     this.pdfSearchText,
     this.customerCount,
+    this.notifyChannels = const ['app', 'sms', 'email'],
+    this.sentAt,
+    this.sentBy,
+    this.pdfOpenedAt,
+    this.pdfOpenedBy,
+    this.pdfOpenCount = 0,
     required this.createdAt,
   });
 
   factory PartnerRouteShare.fromJson(Map<String, dynamic> json) {
+    final rawChannels = json['notify_channels'];
+    final channels = rawChannels is List
+        ? rawChannels.map((e) => '$e').toList()
+        : const ['app', 'sms', 'email'];
+    DateTime? parseTs(dynamic v) {
+      if (v == null) return null;
+      return DateTime.tryParse(v.toString());
+    }
     return PartnerRouteShare(
       id: json['id'] as String,
       partnerId: json['partner_id'] as String,
@@ -395,18 +416,22 @@ class PartnerRouteShare {
       isDailyShare: json['is_daily_share'] as bool? ?? false,
       notes: json['notes'] as String?,
       ackStatus: (json['ack_status'] as String?) ?? 'pending',
-      ackAt: json['ack_at'] != null ? DateTime.parse(json['ack_at'] as String) : null,
+      ackAt: parseTs(json['ack_at']),
       ackBy: json['ack_by'] as String?,
       ackComment: json['ack_comment'] as String?,
       shiftId: json['shift_id'] as String?,
       partnerVehicleId: json['partner_vehicle_id'] as String?,
-      routeStartAt: json['route_start_at'] != null
-          ? DateTime.parse(json['route_start_at'] as String)
-          : null,
+      routeStartAt: parseTs(json['route_start_at']),
       dispatchStatus: (json['dispatch_status'] as String?) ?? 'sent',
       stagedImportSource: json['staged_import_source'] as String?,
       pdfSearchText: json['pdf_search_text'] as String?,
       customerCount: json['customer_count'] as int?,
+      notifyChannels: channels,
+      sentAt: parseTs(json['sent_at']),
+      sentBy: json['sent_by'] as String?,
+      pdfOpenedAt: parseTs(json['pdf_opened_at']),
+      pdfOpenedBy: json['pdf_opened_by'] as String?,
+      pdfOpenCount: json['pdf_open_count'] as int? ?? 0,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -416,6 +441,8 @@ class PartnerRouteShare {
   bool get isRegistered => dispatchStatus == 'registered';
 
   bool get isSentWithNotify => dispatchStatus == 'sent';
+
+  bool get pdfWasOpened => pdfOpenedAt != null;
 
   /// Kun varslede ruter (sent) kan kreve aksept eller purring.
   bool get requiresAck => isSentWithNotify && ackStatus == 'pending';

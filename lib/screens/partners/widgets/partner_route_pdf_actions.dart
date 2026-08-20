@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -48,6 +49,7 @@ class PartnerRoutePdfActions {
       messenger?.hideCurrentSnackBar();
       if (!context.mounted) return;
       if (bytes != null && bytes.isNotEmpty) {
+        unawaited(PartnerService.markRoutePdfOpened(share.id));
         await openPdfBytes(context, bytes: bytes, title: title);
         return;
       }
