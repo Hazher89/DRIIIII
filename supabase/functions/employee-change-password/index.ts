@@ -74,13 +74,9 @@ Deno.serve(async (req) => {
 
     const phoneRaw = profile.phone as string | null;
     const normalizedPhone = phoneRaw ? normalizePhoneNo(phoneRaw) : null;
-    if (!normalizedPhone) {
-      return new Response(
-        JSON.stringify({ error: "Ingen mobilnummer på profilen — kan ikke sende SMS" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    const skipIfNoPhone = body?.skip_if_no_phone === true;
 
+    // Passord kan allerede være oppdatert av klienten — admin-oppdatering er idempotent.
     const { error: updateErr } = await admin.auth.admin.updateUserById(uid, {
       password: newPassword,
     });
@@ -89,6 +85,23 @@ Deno.serve(async (req) => {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
+    }
+
+    await admin
+      .from("employee_login_accounts")
+      .update({ must_change_password: false, updated_at: new Date().toISOString() })
+      .eq("profile_id", uid);
+
+    if (!normalizedPhone) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          sms_sent: false,
+          sms_error: skipIfNoPhone ? null : "Ingen mobilnummer på profilen",
+          message: "Passord oppdatert.",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const employeeNumber = String(profile.employee_number ?? "").trim() || "—";
@@ -124,11 +137,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    await admin
-      .from("employee_login_accounts")
-      .update({ must_change_password: false, updated_at: new Date().toISOString() })
-      .eq("profile_id", uid);
-
     return new Response(
       JSON.stringify({
         ok: true,
@@ -136,7 +144,7 @@ Deno.serve(async (req) => {
         sms_error: smsError,
         message: smsSent
           ? "Passord oppdatert. Nytt passord er sendt på SMS."
-          : "Passord oppdatert. SMS-kø opprettet eller Sveve ikke konfigurert.",
+          : "Passord oppdatert.",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

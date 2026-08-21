@@ -9,6 +9,10 @@ const corsHeaders = {
 
 const DEFAULT_PASSWORD = "000000";
 
+function employeeLoginEmail(employeeNumber: string): string {
+  return `e${employeeNumber.trim().toLowerCase()}@mavi-employees.driftpro.no`;
+}
+
 async function findAuthUserIdByEmail(
   admin: ReturnType<typeof createClient>,
   emailNorm: string,
@@ -60,15 +64,20 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const companyId = String(body.company_id ?? "");
     const fullName = String(body.full_name ?? "").trim();
+    const employeeNumber = String(body.employee_number ?? "").trim();
     const departmentId = body.department_id ? String(body.department_id) : null;
     const jobTitle = body.job_title ? String(body.job_title).trim() : null;
+    const phone = body.phone ? String(body.phone).trim() : null;
     const role = String(body.role ?? "ansatt");
 
-    if (!companyId || !fullName) {
-      return new Response(JSON.stringify({ error: "company_id og full_name er påkrevd" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!companyId || !fullName || !employeeNumber) {
+      return new Response(
+        JSON.stringify({ error: "company_id, full_name og employee_number er påkrevd" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
     const { data: requester, error: profErr } = await admin
@@ -114,9 +123,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    const base = fullName.toLowerCase().replace(/[^a-z0-9]+/g, ".");
-    const email = `${base || "employee"}.${Date.now()}@internal.driftpro.no`;
-
+    const email = employeeLoginEmail(employeeNumber);
     let userId = await findAuthUserIdByEmail(admin, email);
     if (!userId) {
       const { data: createdUser, error: createErr } = await admin.auth.admin.createUser({
@@ -127,8 +134,10 @@ Deno.serve(async (req) => {
           employee_provision: true,
           company_id: companyId,
           department_id: departmentId,
+          employee_number: employeeNumber,
           full_name: fullName,
           job_title: jobTitle,
+          phone,
           internal_org_chart: true,
         },
       });
@@ -144,12 +153,20 @@ Deno.serve(async (req) => {
     }
 
     const accessSettings = {
-      hms: true,
+      dashboard: true,
+      more: true,
       fravaer: true,
       avvik: true,
+      whistleblowing: true,
+      profil: true,
+      stempling: true,
+      hms: true,
       avdelinger: true,
       ansatte: true,
     };
+
+    const resolvedRole =
+      role === "leder" || role === "admin" || role === "superadmin" ? role : "ansatt";
 
     const { data: profile, error: upsertErr } = await admin
       .from("profiles")
@@ -160,7 +177,9 @@ Deno.serve(async (req) => {
         company_id: companyId,
         department_id: departmentId,
         job_title: jobTitle,
-        role: role === "leder" || role === "admin" || role === "superadmin" ? role : "ansatt",
+        phone,
+        employee_number: employeeNumber,
+        role: resolvedRole,
         access_settings: accessSettings,
         is_onboarded: true,
         is_approved: true,
@@ -170,6 +189,36 @@ Deno.serve(async (req) => {
       .single();
 
     if (upsertErr) throw upsertErr;
+
+    const nameParts = fullName.split(/\s+/);
+    const firstName = nameParts[0] || fullName;
+    const lastName = nameParts.slice(1).join(" ") || firstName;
+    let departmentSlug = "intern";
+    if (departmentId) {
+      const { data: dept } = await admin
+        .from("departments")
+        .select("name")
+        .eq("id", departmentId)
+        .maybeSingle();
+      if (dept?.name) {
+        departmentSlug = String(dept.name).toLowerCase().replace(/[^a-z0-9]+/g, "") || "intern";
+      }
+    }
+
+    await admin.from("employee_login_accounts").upsert({
+      company_id: companyId,
+      employee_number: employeeNumber,
+      login_email: email,
+      profile_id: userId,
+      first_name: firstName,
+      last_name: lastName,
+      phone,
+      department_slug: departmentSlug,
+      department_id: departmentId,
+      is_active: true,
+      must_change_password: true,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "company_id,employee_number" });
 
     await admin.rpc("ensure_absence_quota", {
       p_user_id: userId,
@@ -182,6 +231,7 @@ Deno.serve(async (req) => {
         profile,
         default_password: DEFAULT_PASSWORD,
         login_email: email,
+        employee_number: employeeNumber,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

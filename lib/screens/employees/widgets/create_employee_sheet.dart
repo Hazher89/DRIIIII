@@ -63,6 +63,8 @@ class _CreateEmployeeSheetState extends State<CreateEmployeeSheet> {
       widget.requester.isSuperAdmin ||
       widget.requester.role == UserRole.admin;
 
+  static const _defaultPassword = '000000';
+
   @override
   void initState() {
     super.initState();
@@ -95,20 +97,17 @@ class _CreateEmployeeSheetState extends State<CreateEmployeeSheet> {
     });
 
     try {
+      final empNo = _employeeNoCtrl.text.trim();
       final created = await SupabaseService.createEmployeeProfile(
         companyId: widget.companyId,
         fullName: _nameCtrl.text.trim(),
+        employeeNumber: empNo,
         departmentId: _departmentId,
         jobTitle: _jobTitleCtrl.text.trim().isEmpty
             ? null
             : _jobTitleCtrl.text.trim(),
-        role: _canPickRole ? _role : UserRole.ansatt,
-      );
-
-      await SupabaseService.updateEmployeeProfile(
-        created.id,
-        employeeNumber: _employeeNoCtrl.text.trim(),
         phone: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        role: _canPickRole ? _role : UserRole.ansatt,
       );
 
       if (!mounted) return;
@@ -119,9 +118,9 @@ class _CreateEmployeeSheetState extends State<CreateEmployeeSheet> {
           title: const Text('Ansatt opprettet'),
           content: Text(
             '${created.fullName} er registrert.\n\n'
-            'Innlogging: ansattnummer ${_employeeNoCtrl.text.trim()}\n'
-            'Standardpassord: 000000\n\n'
-            'Be den ansatte bytte passord etter første innlogging.',
+            'Innlogging: ansattnummer $empNo\n'
+            'Standardpassord: $_defaultPassword\n\n'
+            'Den ansatte kan bytte passord selv under Profil → Bytt passord.',
           ),
           actions: [
             TextButton(
@@ -129,7 +128,7 @@ class _CreateEmployeeSheetState extends State<CreateEmployeeSheet> {
                 Clipboard.setData(
                   ClipboardData(
                     text:
-                        'Ansattnr: ${_employeeNoCtrl.text.trim()}\nPassord: 000000',
+                        'Ansattnr: $empNo\nPassord: $_defaultPassword',
                   ),
                 );
                 Navigator.pop(ctx);
@@ -149,7 +148,7 @@ class _CreateEmployeeSheetState extends State<CreateEmployeeSheet> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
           _saving = false;
         });
       }
@@ -190,7 +189,8 @@ class _CreateEmployeeSheetState extends State<CreateEmployeeSheet> {
               const SizedBox(height: 6),
               Text(
                 'Oppretter bruker med ansattnummer for innlogging. '
-                'Standardpassord er 000000.',
+                'Standardpassord er $_defaultPassword. '
+                'Den ansatte kan bytte passord selv under Profil.',
                 style: DriftProTheme.bodySm.copyWith(color: Colors.grey[600]),
               ),
               const SizedBox(height: 20),

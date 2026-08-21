@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/services/employee_auth_service.dart';
 import '../../core/theme/app_theme.dart';
 
-/// Bytt passord for MAVI-ansatt — nytt passord sendes på SMS.
+/// Bytt passord for MAVI-ansatt (lagres direkte i Supabase Auth).
 Future<void> showEmployeeChangePasswordSheet(BuildContext context) async {
   if (!context.mounted) return;
   final newPw = TextEditingController();
@@ -35,9 +35,13 @@ Future<void> showEmployeeChangePasswordSheet(BuildContext context) async {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Nytt passord lagres i Supabase og sendes på SMS til mobilnummeret på profilen din. '
-                  'Minst 6 tegn.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.35),
+                  'Velg et nytt passord (minst 6 tegn). '
+                  'Du kan bruke det neste gang du logger inn med ansattnummer.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade700,
+                    height: 1.35,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -47,7 +51,9 @@ Future<void> showEmployeeChangePasswordSheet(BuildContext context) async {
                     labelText: 'Nytt passord',
                     border: const OutlineInputBorder(),
                     suffixIcon: IconButton(
-                      icon: Icon(obscure ? Icons.visibility_off : Icons.visibility),
+                      icon: Icon(
+                        obscure ? Icons.visibility_off : Icons.visibility,
+                      ),
                       onPressed: () => setLocal(() => obscure = !obscure),
                     ),
                   ),
@@ -70,32 +76,34 @@ Future<void> showEmployeeChangePasswordSheet(BuildContext context) async {
                           final b = confirmPw.text.trim();
                           if (a.length < 6) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('Passord må være minst 6 tegn')),
+                              const SnackBar(
+                                content: Text('Passord må være minst 6 tegn'),
+                              ),
                             );
                             return;
                           }
                           if (a != b) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
-                              const SnackBar(content: Text('Passordene er ikke like')),
+                              const SnackBar(
+                                content: Text('Passordene er ikke like'),
+                              ),
                             );
                             return;
                           }
                           setLocal(() => loading = true);
                           try {
-                            final result = await EmployeeAuthService.changePasswordAndNotifySms(
+                            final result =
+                                await EmployeeAuthService.changePassword(
                               newPassword: a,
                             );
-                            try {
-                              await EmployeeAuthService.flushSmsOutbox();
-                            } catch (_) {}
                             if (!ctx.mounted) return;
                             Navigator.of(ctx).pop();
                             if (context.mounted) {
-                              final messenger = ScaffoldMessenger.maybeOf(context);
-                              messenger?.showSnackBar(
+                              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
                                 SnackBar(
                                   content: Text(
-                                    result['message']?.toString() ?? 'Passord oppdatert.',
+                                    result['message']?.toString() ??
+                                        'Passord oppdatert.',
                                   ),
                                 ),
                               );
@@ -108,14 +116,19 @@ Future<void> showEmployeeChangePasswordSheet(BuildContext context) async {
                                   content: Text(
                                     msg.contains('session_not_found')
                                         ? 'Økten er utløpt. Logg ut og inn igjen, og prøv på nytt.'
-                                        : msg,
+                                        : msg.replaceFirst(
+                                            RegExp(r'^Exception:\s*'),
+                                            '',
+                                          ),
                                   ),
                                   backgroundColor: DriftProTheme.error,
                                 ),
                               );
                             }
                           } finally {
-                            if (ctx.mounted) setLocal(() => loading = false);
+                            if (ctx.mounted) {
+                              setLocal(() => loading = false);
+                            }
                           }
                         },
                   style: FilledButton.styleFrom(
@@ -126,9 +139,15 @@ Future<void> showEmployeeChangePasswordSheet(BuildContext context) async {
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
-                      : const Text('Lagre og send SMS', style: TextStyle(fontWeight: FontWeight.w800)),
+                      : const Text(
+                          'Lagre nytt passord',
+                          style: TextStyle(fontWeight: FontWeight.w800),
+                        ),
                 ),
               ],
             ),

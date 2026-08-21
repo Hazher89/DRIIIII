@@ -1665,41 +1665,69 @@ department:departments!department_id(name)
     return normalized;
   }
 
-  /// Oppretter intern ansatt via Edge Function (auth.users + profiles + feriekvote).
+  /// Oppretter intern ansatt (RPC: auth.users + profiles + login-konto + feriekvote).
   static Future<UserProfile> createEmployeeProfile({
     required String companyId,
     required String fullName,
+    required String employeeNumber,
     String? departmentId,
     String? jobTitle,
+    String? phone,
     UserRole role = UserRole.ansatt,
   }) async {
-    final token = client.auth.currentSession?.accessToken;
-    if (token == null || token.isEmpty) {
-      throw StateError('Økten er utløpt. Logg inn på nytt.');
+    final empNo = employeeNumber.trim();
+    if (empNo.isEmpty) {
+      throw ArgumentError('Ansattnummer er påkrevd');
     }
-    final res = await client.functions.invoke(
-      'create-internal-employee',
-      body: {
-        'company_id': companyId,
-        'full_name': fullName.trim(),
-        'department_id': departmentId,
-        'job_title': jobTitle?.trim().isEmpty == true ? null : jobTitle?.trim(),
-        'role': role.name,
-      },
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    final data = res.data;
-    if (data is Map && data['error'] != null) {
-      throw Exception('${data['error']}');
+
+    try {
+      final data = await client.rpc(
+        'create_internal_employee',
+        params: {
+          'p_company_id': companyId,
+          'p_full_name': fullName.trim(),
+          'p_employee_number': empNo,
+          'p_department_id': departmentId,
+          'p_job_title':
+              jobTitle?.trim().isEmpty == true ? null : jobTitle?.trim(),
+          'p_phone': phone?.trim().isEmpty == true ? null : phone?.trim(),
+          'p_role': role.name,
+        },
+      );
+      final map = data is Map<String, dynamic>
+          ? data
+          : data is Map
+              ? Map<String, dynamic>.from(data)
+              : null;
+      if (map == null) {
+        throw StateError('Kunne ikke opprette ansatt i Supabase.');
+      }
+      if (map['error'] != null) {
+        throw Exception('${map['error']}');
+      }
+      final profile = map['profile'];
+      if (profile is Map<String, dynamic>) {
+        return UserProfile.fromJson(profile);
+      }
+      if (profile is Map) {
+        return UserProfile.fromJson(Map<String, dynamic>.from(profile));
+      }
+      throw StateError('Kunne ikke opprette ansatt i Supabase.');
+    } on PostgrestException catch (e) {
+      final msg = e.message.trim();
+      final details = '${e.details ?? ''} ${e.hint ?? ''} $msg'.toLowerCase();
+      if (details.contains('create_internal_employee') &&
+          (details.contains('does not exist') ||
+              details.contains('could not find') ||
+              details.contains('schema cache'))) {
+        throw Exception(
+          'Database-funksjonen mangler. Kjør migrasjonen '
+          '20260821120000_create_internal_employee_rpc.sql i Supabase SQL Editor.',
+        );
+      }
+      if (msg.isNotEmpty) throw Exception(msg);
+      rethrow;
     }
-    final profile = data is Map ? data['profile'] : null;
-    if (profile is Map<String, dynamic>) {
-      return UserProfile.fromJson(profile);
-    }
-    if (profile is Map) {
-      return UserProfile.fromJson(Map<String, dynamic>.from(profile));
-    }
-    throw StateError('Kunne ikke opprette ansatt i Supabase.');
   }
 
   /// Deaktiverer ansatt (beholder historikk). Ledere: egen avdeling. Admin: hele selskapet.

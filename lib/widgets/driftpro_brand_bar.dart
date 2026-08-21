@@ -13,6 +13,7 @@ class DriftProBrandBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final drift = context.driftColors;
+    final isMobile = DriftProClient.isMobile;
 
     return Material(
       color: drift.surface,
@@ -22,10 +23,10 @@ class DriftProBrandBar extends StatelessWidget {
         child: Container(
           width: double.infinity,
           padding: EdgeInsets.fromLTRB(
-            DriftProClient.isMobile ? 12 : 16,
-            DriftProClient.isMobile ? 8 : 8,
-            DriftProClient.isMobile ? 12 : 16,
-            DriftProClient.isMobile ? 8 : 8,
+            isMobile ? 12 : 14,
+            isMobile ? 4 : 4,
+            isMobile ? 12 : 14,
+            isMobile ? 4 : 4,
           ),
           decoration: BoxDecoration(
             color: drift.surface,
@@ -38,14 +39,13 @@ class DriftProBrandBar extends StatelessWidget {
               clipBehavior: Clip.none,
               child: InkWell(
                 onTap: () => context.go(AppPaths.dashboard),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
                 mouseCursor: SystemMouseCursors.click,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 2),
                   child: DriftProBrandLogo(
-                    // Samme 3D-maskot som på login (ikke for liten kompakt).
-                    density: DriftProBrandDensity.header,
-                    showSubtitle: !DriftProClient.isMobile,
+                    density: DriftProBrandDensity.bar,
+                    showSubtitle: false,
                   ),
                 ),
               ),

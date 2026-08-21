@@ -5,7 +5,7 @@ import '../core/theme/app_theme.dart';
 import '../core/theme/driftpro_theme_context.dart';
 import 'driftpro_mascot_mark.dart';
 
-enum DriftProBrandDensity { compact, header, comfortable, hero }
+enum DriftProBrandDensity { bar, compact, header, comfortable, hero }
 
 /// DriftPro-logo: maskot ved siden av ordmerke.
 class DriftProBrandLogo extends StatelessWidget {
@@ -25,6 +25,8 @@ class DriftProBrandLogo extends StatelessWidget {
 
   double get _iconSize {
     switch (density) {
+      case DriftProBrandDensity.bar:
+        return 28;
       case DriftProBrandDensity.compact:
         return 56;
       case DriftProBrandDensity.header:
@@ -38,6 +40,8 @@ class DriftProBrandLogo extends StatelessWidget {
 
   double get _wordmarkSize {
     switch (density) {
+      case DriftProBrandDensity.bar:
+        return 15;
       case DriftProBrandDensity.compact:
         return 18;
       case DriftProBrandDensity.header:
@@ -51,6 +55,8 @@ class DriftProBrandLogo extends StatelessWidget {
 
   double get _subtitleSize {
     switch (density) {
+      case DriftProBrandDensity.bar:
+        return 9;
       case DriftProBrandDensity.compact:
         return 9;
       case DriftProBrandDensity.header:

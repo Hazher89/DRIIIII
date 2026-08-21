@@ -131,7 +131,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _ActionRow(
                 icon: Icons.lock_outline_rounded,
                 title: 'Bytt passord',
-                subtitle: 'SMS-bekreftelse kreves',
+                subtitle: 'Endre innloggingspassordet ditt',
                 onTap: () => showEmployeeChangePasswordSheet(context),
                 showDivider: false,
               ),
