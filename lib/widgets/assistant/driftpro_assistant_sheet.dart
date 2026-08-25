@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -19,6 +20,39 @@ Future<void> showDriftProAssistantSheet(
   BuildContext context, {
   String title = 'Spør DriftPro',
 }) {
+  if (kIsWeb) {
+    return showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Lukk assistent',
+      barrierColor: Colors.black.withValues(alpha: 0.35),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (ctx, animation, secondaryAnimation) {
+        final width = MediaQuery.sizeOf(ctx).width;
+        final panelWidth = width < 520 ? width : 420.0;
+        return Align(
+          alignment: Alignment.centerRight,
+          child: Material(
+            elevation: 12,
+            color: Theme.of(ctx).scaffoldBackgroundColor,
+            child: SizedBox(
+              width: panelWidth,
+              height: MediaQuery.sizeOf(ctx).height,
+              child: DriftProAssistantSheet(title: title),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (ctx, animation, secondaryAnimation, child) {
+        final offset = Tween<Offset>(
+          begin: const Offset(1, 0),
+          end: Offset.zero,
+        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+        return SlideTransition(position: offset, child: child);
+      },
+    );
+  }
+
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
@@ -106,7 +140,9 @@ class _DriftProAssistantSheetState extends State<DriftProAssistantSheet> {
   Widget build(BuildContext context) {
     final drift = context.driftColors;
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    final height = MediaQuery.sizeOf(context).height * 0.88;
+    final height = kIsWeb
+        ? MediaQuery.sizeOf(context).height
+        : MediaQuery.sizeOf(context).height * 0.88;
 
     return SizedBox(
       height: height,

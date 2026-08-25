@@ -84,9 +84,11 @@ DmsExplorerSection? _dmsSectionFromQuery(String? value) {
   }
 }
 
-GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
-  final rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
+/// Delt root-navigator — brukes bl.a. av web-chat (utenfor shell-treet).
+final GlobalKey<NavigatorState> driftProRootNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'root');
 
+GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
   Duration infoskjermRefreshInterval(Uri uri) {
     final sec = int.tryParse(uri.queryParameters['refresh'] ?? '');
     if (sec != null && sec >= 30 && sec <= 900) {
@@ -96,7 +98,7 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
   }
 
   return GoRouter(
-    navigatorKey: rootNavigatorKey,
+    navigatorKey: driftProRootNavigatorKey,
     refreshListenable: authRefresh,
     initialLocation: AppPaths.initialLocationFromUri(Uri.base),
     redirect: (context, state) {
@@ -277,13 +279,13 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                 routes: [
                   GoRoute(
                     path: 'avvik',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) =>
                         _guardPath(state, const TicketsScreen()),
                   ),
                   GoRoute(
                     path: 'risiko',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(state, RiskAssessmentListScreen(
                         initialTab: state.uri.queryParameters['tab'],
                       ),
@@ -291,25 +293,25 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   ),
                   GoRoute(
                     path: 'risikomatrise',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(state, const RiskMatrixScreen(),
                     ),
                   ),
                   GoRoute(
                     path: 'sja',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) =>
                         _guardPath(state, const SjaListScreen()),
                   ),
                   GoRoute(
                     path: 'vernerunde',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(state, const SafetyRoundListScreen(),
                     ),
                   ),
                   GoRoute(
                     path: 'utstyr',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(state, EquipmentHubScreen(
                         initialTab: state.uri.queryParameters['tab'],
                       ),
@@ -317,7 +319,7 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   ),
                   GoRoute(
                     path: 'kompetanse',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(state, CompetenceHubScreen(
                         initialTab: state.uri.queryParameters['tab'],
                       ),
@@ -325,13 +327,13 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   ),
                   GoRoute(
                     path: 'opplaering',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(state, const SopTrainingScreen(),
                     ),
                   ),
                   GoRoute(
                     path: 'dms',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(state, DmsScreen(
                         initialSection: _dmsSectionFromQuery(
                           state.uri.queryParameters['section'],
@@ -369,7 +371,7 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                 routes: [
                   GoRoute(
                     path: 'bedrift/:partnerId',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       PartnerDetailRoute(
@@ -405,35 +407,35 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                 routes: [
                   GoRoute(
                     path: 'profil',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const ProfileScreen()),
                   ),
                   GoRoute(
                     path: 'avdelinger',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const DepartmentsScreen()),
                   ),
                   GoRoute(
                     path: 'ansatte',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const EmployeesScreen()),
                   ),
                   GoRoute(
                     path: 'organisasjonskart',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const OrganizationChartScreen()),
                   ),
                   GoRoute(
                     path: 'partnere',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       PartnersDashboardScreen(
@@ -443,7 +445,7 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   ),
                   GoRoute(
                     path: 'personalmappe',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const EmployeePersonalFolderScreen(),
@@ -451,7 +453,7 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   ),
                   GoRoute(
                     path: 'varsler',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       NotificationsHubScreen(
@@ -462,21 +464,21 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   ),
                   GoRoute(
                     path: 'undersokelser',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const SurveyListScreen()),
                   ),
                   GoRoute(
                     path: 'tilgangskontroll',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const AccessControlScreen()),
                   ),
                   GoRoute(
                     path: 'brukergodkjenning',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       EmployeeHubScreen(
@@ -486,70 +488,70 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                   ),
                   GoRoute(
                     path: 'infoskjerm',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const KioskSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'whistleblowing',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const WhistleblowingScreen()),
                   ),
                   GoRoute(
                     path: 'dropbox',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const DropboxStorageSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'hjelp',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const HelpSupportScreen()),
                   ),
                   GoRoute(
                     path: 'assistent',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const AssistantSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'personvern',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const PrivacyScreen()),
                   ),
                   GoRoute(
                     path: 'om',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const AboutDriftProScreen()),
                   ),
                   GoRoute(
                     path: 'gm-storo',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const GmStoroHubScreen()),
                   ),
                   GoRoute(
                     path: 'vision-cameras',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const VisionCamerasScreen()),
                   ),
                   GoRoute(
                     path: 'vision-events',
-                    parentNavigatorKey: rootNavigatorKey,
+                    parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
                       state,
                       const VisionEventsScreen()),

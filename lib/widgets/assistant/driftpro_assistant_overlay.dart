@@ -4,12 +4,16 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/routing/app_router.dart';
 import '../../core/services/assistant/assistant_flag_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'driftpro_assistant_sheet.dart';
 
-/// Global chat-FAB over hele appen — **kun web**, når assistenten er slått på.
+/// Global chat-knapp — **kun web**, når assistenten er slått på.
+///
+/// Plassert øverst til høyre (over brand-bar) så den ikke dekker
+/// bunnnavigasjon (avvik, fravær, osv.).
 class DriftProAssistantOverlay extends StatefulWidget {
   const DriftProAssistantOverlay({super.key, required this.child});
 
@@ -100,11 +104,13 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
   }
 
   Future<void> _openChat() async {
-    if (_sheetOpen || !mounted) return;
+    if (_sheetOpen) return;
+    final navContext = driftProRootNavigatorKey.currentContext;
+    if (navContext == null || !navContext.mounted) return;
     _sheetOpen = true;
     try {
       await showDriftProAssistantSheet(
-        context,
+        navContext,
         title: _flag.displayTitle,
       );
     } finally {
@@ -133,34 +139,66 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
         widget.child,
         if (_showFab)
           Positioned(
-            right: 20,
-            bottom: 96,
+            top: 6,
+            right: 10,
             child: SafeArea(
-              child: Material(
-                elevation: 8,
-                shadowColor: Colors.black38,
-                shape: const CircleBorder(),
-                color: DriftProTheme.primaryGreen,
-                child: InkWell(
-                  customBorder: const CircleBorder(),
-                  onTap: _openChat,
-                  child: Tooltip(
-                    message: _flag.displayTitle,
-                    child: const SizedBox(
-                      width: 58,
-                      height: 58,
-                      child: Icon(
-                        Icons.chat_bubble_rounded,
-                        color: Colors.white,
-                        size: 26,
-                      ),
-                    ),
-                  ),
-                ),
+              bottom: false,
+              left: false,
+              right: false,
+              child: _AssistantLaunchChip(
+                title: _flag.displayTitle,
+                onPressed: _openChat,
               ),
             ),
           ),
       ],
+    );
+  }
+}
+
+class _AssistantLaunchChip extends StatelessWidget {
+  const _AssistantLaunchChip({
+    required this.title,
+    required this.onPressed,
+  });
+
+  final String title;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      elevation: 3,
+      shadowColor: Colors.black26,
+      color: DriftProTheme.primaryGreen,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(22),
+        mouseCursor: SystemMouseCursors.click,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.chat_bubble_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                title.length > 18 ? '${title.substring(0, 17)}…' : title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
