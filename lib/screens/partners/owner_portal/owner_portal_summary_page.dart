@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
@@ -55,13 +54,6 @@ class _OwnerPortalSummaryPageState extends State<OwnerPortalSummaryPage> {
     return PartnerPortalPageShell(
       backgroundColor: bg,
       title: 'Oppsummering',
-      actions: [
-        IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : RefreshIndicator(

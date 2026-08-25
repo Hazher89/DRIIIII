@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/layout/mobile_layout.dart';
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
@@ -417,10 +416,6 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
     return PartnerPortalPageShell(
       title: pageTitle,
       leading: backLeading,
-      actions: [
-        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
-      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : Column(
@@ -463,6 +458,7 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
 
   Widget _homeBody() {
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       children: [
         Card(

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/partner_workforce_service.dart';
 import '../../../core/services/sms/sms_phone_utils.dart';
@@ -495,14 +494,6 @@ class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
 
     return PartnerPortalPageShell(
       title: 'Ansatte',
-      actions: [
-        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(
-          tooltip: 'Logg ut',
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
       floatingActionButton: _enabled
           ? FloatingActionButton.extended(
               onPressed: _addStaff,
@@ -513,33 +504,38 @@ class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
       body: _loading
           ? const DriftProLoadingCenter()
           : !_enabled
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24),
-                    child: Text(
-                      'Stempling / ansatte er ikke aktivert.\n'
-                      'Kontakt DriftPro-superadmin.',
-                      textAlign: TextAlign.center,
-                    ),
+              ? RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(24),
+                    children: const [
+                      SizedBox(height: 80),
+                      Text(
+                        'Stempling / ansatte er ikke aktivert.\n'
+                        'Kontakt DriftPro-superadmin.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
                   ),
                 )
               : _error != null
-                  ? Center(child: Text(_error!))
+                  ? RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(height: 80),
+                          Center(child: Text(_error!)),
+                        ],
+                      ),
+                    )
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 110),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
                         children: [
-                          Text(
-                            'Oversikt · ${widget.partner.name}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: muted,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
                           Row(
                             children: [
                               _OverviewChip(

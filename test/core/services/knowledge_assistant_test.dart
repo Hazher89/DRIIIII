@@ -3,6 +3,8 @@ import 'package:driftpro/core/services/assistant/assistant_corpus.dart';
 import 'package:driftpro/core/services/assistant/knowledge_assistant_engine.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('rental and help corpus answers common questions', () async {
     final chunks = await AssistantCorpus.build();
     expect(chunks, isNotEmpty);

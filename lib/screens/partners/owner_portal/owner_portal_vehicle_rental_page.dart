@@ -112,7 +112,6 @@ class _OwnerPortalVehicleRentalPageState extends State<OwnerPortalVehicleRentalP
 
     return PartnerPortalPageShell(
       title: 'Utleie av bil',
-      actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
       bottom: TabBar(
         controller: _tabs,
         tabs: [

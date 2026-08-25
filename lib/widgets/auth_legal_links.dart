@@ -53,6 +53,16 @@ class AuthLegalLinks extends StatelessWidget {
           ),
           child: Text('Personvernerklæring', style: linkStyle),
         ),
+        Text('·', style: TextStyle(color: muted, fontSize: compact ? 12 : 13)),
+        TextButton(
+          onPressed: () => launchInfoUrl(DriftProPlatformCatalog.supportUrl),
+          style: TextButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: Text('Support', style: linkStyle),
+        ),
       ],
     );
 

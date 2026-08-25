@@ -77,15 +77,7 @@ class DriftProAssistantSheet extends StatefulWidget {
 class _DriftProAssistantSheetState extends State<DriftProAssistantSheet> {
   final _ctrl = TextEditingController();
   final _scroll = ScrollController();
-  final _messages = <_ChatMessage>[
-    _ChatMessage(
-      text:
-          'Hei! Jeg bruker MAVI/DriftPro-dokumentasjon (SOP, bilutleie, hjelp) '
-          'og Gemini når det er satt opp. Spør fritt — svarene skal følge '
-          'dere sine regler, ikke generelle internett-svar.',
-      isUser: false,
-    ),
-  ];
+  final _messages = <_ChatMessage>[];
   bool _busy = false;
   bool _ready = false;
 
@@ -173,12 +165,6 @@ class _DriftProAssistantSheetState extends State<DriftProAssistantSheet> {
                           widget.title,
                           style: DriftProTheme.headingSm,
                         ),
-                        Text(
-                          'Basert på opplæring og hjelpetekster',
-                          style: DriftProTheme.bodySm.copyWith(
-                            color: drift.textMuted,
-                          ),
-                        ),
                       ],
                     ),
                   ),
@@ -194,30 +180,44 @@ class _DriftProAssistantSheetState extends State<DriftProAssistantSheet> {
             else
               const Divider(height: 1),
             Expanded(
-              child: ListView.builder(
-                controller: _scroll,
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                itemCount: _messages.length + (_busy ? 1 : 0),
-                itemBuilder: (context, i) {
-                  if (_busy && i == _messages.length) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text('Søker i kunnskapsbasen…'),
+              child: _messages.isEmpty && !_busy
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          'Spør om rutiner, HMS, fravær, bilutleie og mer.',
+                          textAlign: TextAlign.center,
+                          style: DriftProTheme.bodySm.copyWith(
+                            color: drift.textMuted,
+                            height: 1.4,
+                          ),
+                        ),
                       ),
-                    );
-                  }
-                  final m = _messages[i];
-                  return _Bubble(
-                    message: m,
-                    onOpenSource: (path) {
-                      Navigator.pop(context);
-                      context.push(path);
-                    },
-                  );
-                },
-              ),
+                    )
+                  : ListView.builder(
+                      controller: _scroll,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      itemCount: _messages.length + (_busy ? 1 : 0),
+                      itemBuilder: (context, i) {
+                        if (_busy && i == _messages.length) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text('Søker i kunnskapsbasen…'),
+                            ),
+                          );
+                        }
+                        final m = _messages[i];
+                        return _Bubble(
+                          message: m,
+                          onOpenSource: (path) {
+                            Navigator.pop(context);
+                            context.push(path);
+                          },
+                        );
+                      },
+                    ),
             ),
             SizedBox(
               height: 44,
@@ -314,7 +314,9 @@ class _Bubble extends StatelessWidget {
                 runSpacing: 6,
                 children: [
                   for (final hit in message.answer!.hits)
-                    if (hit.chunk.routePath != null)
+                    if (hit.chunk.routePath != null &&
+                        !hit.chunk.title.contains('<') &&
+                        hit.chunk.title.trim().isNotEmpty)
                       ActionChip(
                         avatar: Icon(
                           _iconFor(hit.chunk.source),

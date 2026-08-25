@@ -87,9 +87,6 @@ class _OwnerPortalDeductionsPageState extends State<OwnerPortalDeductionsPage> {
           ? const Color(0xFF0F1419)
           : const Color(0xFFF3F4F6),
       title: 'Trekk',
-      actions: [
-        IconButton(tooltip: 'Oppdater', icon: const Icon(Icons.refresh), onPressed: _load),
-      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : _error != null

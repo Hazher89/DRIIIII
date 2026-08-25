@@ -1,4 +1,5 @@
 import 'assistant_corpus.dart';
+import 'assistant_text_utils.dart';
 
 class KnowledgeHit {
   const KnowledgeHit({
@@ -49,6 +50,11 @@ class KnowledgeAssistantEngine {
       'fravær', 'ferie', 'egenmelding', 'sykmelding', 'permisjon', 'sykt barn',
     ],
     'hms': ['hms', 'avvik', 'sja', 'vernerunde', 'risiko', 'kompetanse'],
+    'avvik': [
+      'avvik', 'registrere', 'registere', 'melde', 'melding', 'deviation',
+      'meld avvik', 'nytt avvik', 'kritisk',
+    ],
+    'ferie': ['ferie', 'fravær', 'fravaer', 'egenmelding', 'permisjon', 'sykmelding'],
     'partner': ['partner', 'rute', 'sjåfør', 'brreg', 'sap', 'sms'],
     'undelivered': [
       'undelivered', 'ulevert', 'uleverte', 'ikke levert', 'kolli',
@@ -83,31 +89,60 @@ class KnowledgeAssistantEngine {
         found: false,
         hits: [],
         text:
-            'Fant ikke dette i opplæring, bilutleie-regler eller hjelpetekstene. '
-            'Prøv å omformulere, eller kontakt support på hazher@mavilogistikk.no.',
+            'Jeg fant ikke dette i DriftPro-opplæringen ennå. '
+            'Prøv å omformulere (f.eks. «Hvordan melder jeg avvik?»), '
+            'eller kontakt hazher@mavilogistikk.no.',
       );
     }
 
     final top = hits.take(3).toList();
-    final buf = StringBuffer();
     final primary = top.first;
-    buf.writeln('Ifølge ${primary.chunk.sourceLabel}:');
-    buf.writeln();
-    buf.writeln(_clip(primary.chunk.body, 700));
-
-    if (top.length > 1) {
-      buf.writeln();
-      buf.writeln('Relatert:');
-      for (final h in top.skip(1)) {
-        buf.writeln('• ${h.chunk.title} (${h.chunk.sourceLabel})');
-      }
-    }
+    final text = _composeAnswer(primary, top.skip(1).toList());
 
     return KnowledgeAnswer(
       found: true,
       hits: top,
-      text: buf.toString().trim(),
+      text: text,
     );
+  }
+
+  String _composeAnswer(KnowledgeHit primary, List<KnowledgeHit> related) {
+    final body = primary.chunk.body.trim();
+    if (body.isEmpty) {
+      return 'Se «${primary.chunk.title}» i ${primary.chunk.sourceLabel}.';
+    }
+
+    // Steg-for-steg guider: vis innholdet direkte uten «Ifølge …».
+    if (RegExp(r'(^|\n)\s*\d+\.\s').hasMatch(body)) {
+      final buf = StringBuffer();
+      if (primary.chunk.id.contains('avvik')) {
+        buf.writeln('Slik registrerer du avvik i DriftPro:');
+      } else if (body.length > 900) {
+        buf.writeln('${primary.chunk.title}:');
+      }
+      buf.write(_clip(body, 1200));
+      return buf.toString().trim();
+    }
+
+    final buf = StringBuffer(_clip(body, 900));
+    final extras = related
+        .where((h) => h.chunk.id != primary.chunk.id)
+        .where(
+          (h) =>
+              !AssistantTextUtils.looksLikeHtml(h.chunk.title) &&
+              h.chunk.title.trim().isNotEmpty,
+        )
+        .take(2)
+        .toList();
+    if (extras.isNotEmpty) {
+      buf.writeln();
+      buf.writeln();
+      buf.writeln('Se også:');
+      for (final h in extras) {
+        buf.writeln('• ${h.chunk.title}');
+      }
+    }
+    return buf.toString().trim();
   }
 
   List<KnowledgeHit> search(String query, {int limit = 12}) {
@@ -188,6 +223,17 @@ class KnowledgeAssistantEngine {
       }
     }
 
+    final asksRentalPrice = asksRental &&
+        (q.contains('pris') ||
+            q.contains('koster') ||
+            q.contains('gebyr') ||
+            (q.contains('dag') && q.contains('bil')));
+    if (asksRentalPrice) {
+      if (chunk.id == 'rental:price') boost += 200;
+      if (chunk.source == KnowledgeSourceKind.rental) boost += 40;
+      if (chunk.id.contains('fravaer') || chunk.id.contains('ferie')) boost -= 80;
+    }
+
     final asksWho = q.contains('hvem') ||
         q.contains('kan lane') ||
         q.contains('kan låne') ||
@@ -210,6 +256,27 @@ class KnowledgeAssistantEngine {
           hay.contains('pris')) {
         boost += chunk.id == 'rental:price' ? 120 : 60;
       }
+    }
+
+    if ((q.contains('avvik') ||
+            q.contains('registrer') ||
+            q.contains('melde avvik')) &&
+        (chunk.id.contains('avvik') || hay.contains('meld nytt avvik'))) {
+      boost += chunk.id.contains('avvik') ? 160 : 80;
+    }
+    if ((q.contains('avvik') || q.contains('registrer')) &&
+        chunk.id == 'help:hms') {
+      boost -= 50;
+    }
+    if ((q.contains('ferie') || q.contains('fravær') || q.contains('fravaer')) &&
+        chunk.id.contains('fravaer')) {
+      boost += 120;
+    }
+    if (q.contains('hvordan') &&
+        chunk.source == KnowledgeSourceKind.sop &&
+        chunk.id.startsWith('sop:') &&
+        !chunk.id.contains('_err')) {
+      boost += 20;
     }
 
     if ((q.contains('passord') || q.contains('logg inn') || q.contains('innlogging')) &&

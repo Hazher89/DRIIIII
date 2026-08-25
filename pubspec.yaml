@@ -64,3 +64,4 @@ flutter:
     - assets/hms/stakeholder_risk_template.json
     - assets/hms/sop_hub_driftsrutiner_v4_8.docx
     - assets/hms/training/
+    - assets/hms/training/guides/

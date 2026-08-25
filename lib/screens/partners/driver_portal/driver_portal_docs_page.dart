@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -31,7 +30,12 @@ class _DriverPortalDocsPageState extends State<DriverPortalDocsPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final d = await PartnerService.fetchDriverPortalDocuments(widget.partner.id);
-    if (mounted) setState(() { _docs = d; _loading = false; });
+    if (mounted) {
+      setState(() {
+        _docs = d;
+        _loading = false;
+      });
+    }
   }
 
   Future<void> _open(PartnerDocument doc) async {
@@ -42,7 +46,9 @@ class _DriverPortalDocsPageState extends State<DriverPortalDocsPage> {
       await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke åpne: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kunne ikke åpne: $e')),
+      );
     }
   }
 
@@ -51,7 +57,9 @@ class _DriverPortalDocsPageState extends State<DriverPortalDocsPage> {
     if (q.isEmpty) return _docs;
     return _docs.where((d) {
       return d.title.toLowerCase().contains(q) ||
-          PartnerDocument.documentTypeLabel(d.documentType).toLowerCase().contains(q);
+          PartnerDocument.documentTypeLabel(d.documentType)
+              .toLowerCase()
+              .contains(q);
     }).toList();
   }
 
@@ -59,10 +67,6 @@ class _DriverPortalDocsPageState extends State<DriverPortalDocsPage> {
   Widget build(BuildContext context) {
     return PartnerPortalPageShell(
       title: 'Felles dokumenter',
-      actions: [
-        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
-      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : Column(
@@ -80,32 +84,54 @@ class _DriverPortalDocsPageState extends State<DriverPortalDocsPage> {
                   ),
                 ),
                 Expanded(
-                  child: _filtered.isEmpty
-                      ? Center(
-                          child: Text(
-                            'Ingen felles dokumenter er delt med sjåfører ennå.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: PartnerUi.mutedText(context)),
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _filtered.length,
-                          separatorBuilder: (_, index) => const SizedBox(height: 8),
-                          itemBuilder: (_, i) {
-                            final doc = _filtered[i];
-                            return Card(
-                              elevation: 0,
-                              child: ListTile(
-                                leading: const Icon(Icons.description_outlined),
-                                title: Text(doc.title, style: const TextStyle(fontWeight: FontWeight.w700)),
-                                subtitle: Text(PartnerDocument.documentTypeLabel(doc.documentType)),
-                                trailing: const Icon(Icons.open_in_new),
-                                onTap: () => _open(doc),
+                  child: RefreshIndicator(
+                    onRefresh: _load,
+                    child: _filtered.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(24),
+                            children: [
+                              const SizedBox(height: 48),
+                              Text(
+                                'Ingen felles dokumenter er delt med sjåfører ennå.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: PartnerUi.mutedText(context),
+                                ),
                               ),
-                            );
-                          },
-                        ),
+                            ],
+                          )
+                        : ListView.separated(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _filtered.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (_, i) {
+                              final doc = _filtered[i];
+                              return Card(
+                                elevation: 0,
+                                child: ListTile(
+                                  leading:
+                                      const Icon(Icons.description_outlined),
+                                  title: Text(
+                                    doc.title,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    PartnerDocument.documentTypeLabel(
+                                      doc.documentType,
+                                    ),
+                                  ),
+                                  trailing: const Icon(Icons.open_in_new),
+                                  onTap: () => _open(doc),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
                 ),
               ],
             ),

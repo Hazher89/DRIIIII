@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/partner_workforce_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
@@ -136,32 +135,14 @@ class _StaffPortalPunchPageState extends State<StaffPortalPunchPage> {
 
     return PartnerPortalPageShell(
       title: 'Stempling',
-      actions: [
-        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(
-          tooltip: 'Logg ut',
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : RefreshIndicator(
               onRefresh: _load,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                 children: [
-                  Text(
-                    widget.partner.name.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.8,
-                      color: muted,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
                   _StatusHero(
                     clockedIn: clockedIn,
                     elapsed: elapsed,

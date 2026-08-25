@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -58,14 +57,6 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
     return PartnerPortalPageShell(
       backgroundColor: surface,
       title: 'Mine ruter',
-      actions: [
-        IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(
-          tooltip: 'Logg ut',
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
       body: _loading || _data == null
           ? const DriftProLoadingCenter()
           : Column(

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -50,13 +49,6 @@ class _OwnerPortalMeetingsPageState extends State<OwnerPortalMeetingsPage> {
     final muted = PartnerUi.mutedText(context);
     return PartnerPortalPageShell(
       title: 'Møter & revisjon',
-      actions: [
-        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : RefreshIndicator(

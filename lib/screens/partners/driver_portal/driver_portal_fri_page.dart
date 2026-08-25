@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/utils/business_days.dart';
@@ -158,59 +157,62 @@ class _DriverPortalFriPageState extends State<DriverPortalFriPage> {
   Widget build(BuildContext context) {
     return PartnerPortalPageShell(
       title: 'Fri',
-      actions: [
-        IconButton(tooltip: 'Søk fri', onPressed: _requestFri, icon: const Icon(Icons.add)),
-        IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
-      ],
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _requestFri,
+        icon: const Icon(Icons.add),
+        label: const Text('Søk fri'),
+      ),
       body: _loading
           ? const DriftProLoadingCenter()
-          : _mine.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text('Ingen fri-forespørsler ennå.', textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _requestFri,
-                          icon: const Icon(Icons.beach_access),
-                          label: const Text('Søk fri'),
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: _mine.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(24),
+                      children: const [
+                        SizedBox(height: 80),
+                        Text(
+                          'Ingen fri-forespørsler ennå.',
+                          textAlign: TextAlign.center,
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Dra ned for å oppdatere, eller trykk «Søk fri».',
+                          textAlign: TextAlign.center,
                         ),
                       ],
-                    ),
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _mine.length + 1,
-                    separatorBuilder: (_, index) => const SizedBox(height: 8),
-                    itemBuilder: (_, i) {
-                      if (i == 0) {
-                        return _FriSummaryRow(counts: _friCounts());
-                      }
-                      final r = _mine[i - 1];
-                      Color c = Colors.orange;
-                      if (r.status == 'approved') c = Colors.green;
-                      if (r.status == 'rejected') c = Colors.red;
-                      return Card(
-                        elevation: 0,
-                        child: ListTile(
-                          title: Text(
-                            NbDateFormat.format(r.requestDate, 'd. MMM yyyy'),
-                            style: const TextStyle(fontWeight: FontWeight.w800),
+                    )
+                  : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _mine.length + 1,
+                      separatorBuilder: (_, index) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) {
+                        if (i == 0) {
+                          return _FriSummaryRow(counts: _friCounts());
+                        }
+                        final r = _mine[i - 1];
+                        Color c = Colors.orange;
+                        if (r.status == 'approved') c = Colors.green;
+                        if (r.status == 'rejected') c = Colors.red;
+                        return Card(
+                          elevation: 0,
+                          child: ListTile(
+                            title: Text(
+                              NbDateFormat.format(r.requestDate, 'd. MMM yyyy'),
+                              style: const TextStyle(fontWeight: FontWeight.w800),
+                            ),
+                            subtitle: Text(r.reason ?? '—'),
+                            trailing: Text(
+                              r.status,
+                              style: TextStyle(color: c, fontWeight: FontWeight.w800),
+                            ),
                           ),
-                          subtitle: Text(r.reason ?? '—'),
-                          trailing: Text(r.status, style: TextStyle(color: c, fontWeight: FontWeight.w800)),
-                        ),
-                      );
-                    },
-                  ),
-                ),
+                        );
+                      },
+                    ),
+            ),
     );
   }
 }

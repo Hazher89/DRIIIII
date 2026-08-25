@@ -3,6 +3,7 @@ import '../../routing/app_paths.dart';
 import '../hms/sop_training_models.dart';
 import '../hms/training_library_service.dart';
 import '../../../screens/more/driftpro_platform_catalog.dart';
+import 'assistant_text_utils.dart';
 
 enum KnowledgeSourceKind { sop, rental, help }
 
@@ -58,7 +59,31 @@ class AssistantCorpus {
       // Opplæringsassets kan mangle lokalt — resten av corpus fungerer fortsatt.
     }
 
-    return chunks;
+    return _sanitize(chunks);
+  }
+
+  static List<KnowledgeChunk> _sanitize(List<KnowledgeChunk> raw) {
+    final out = <KnowledgeChunk>[];
+    for (final c in raw) {
+      if (!AssistantTextUtils.isUsefulChunk(
+        id: c.id,
+        title: c.title,
+        body: c.body,
+      )) {
+        continue;
+      }
+      out.add(
+        KnowledgeChunk(
+          id: c.id,
+          source: c.source,
+          title: AssistantTextUtils.cleanTitle(c.title),
+          body: AssistantTextUtils.cleanBody(c.body),
+          routePath: c.routePath,
+          tags: c.tags,
+        ),
+      );
+    }
+    return out;
   }
 
   static List<KnowledgeChunk> _sopChunks(SopTrainingDocument doc) {

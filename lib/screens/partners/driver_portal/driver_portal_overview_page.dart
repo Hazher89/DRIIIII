@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
 import '../owner_portal/owner_portal_common.dart';
-import '../partner_shell.dart';
 import '../widgets/partner_ui.dart';
 import 'driver_portal_common.dart';
 import '../widgets/partner_portal_page_shell.dart';
@@ -70,14 +68,6 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
     return PartnerPortalPageShell(
       backgroundColor: surface,
       title: widget.partner.name,
-      actions: [
-        IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(
-          tooltip: 'Logg ut',
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
       body: _loading || _data == null
           ? const DriftProLoadingCenter()
           : RefreshIndicator(

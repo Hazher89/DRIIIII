@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/partner_deduction_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
@@ -72,38 +71,39 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
   Widget build(BuildContext context) {
     return PartnerPortalPageShell(
       title: widget.partner.name,
-      actions: [
-        IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(
-          tooltip: 'Logg ut',
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : _loadError != null
-              ? Center(
-                  child: Padding(
+              ? RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline, size: 48, color: Colors.orange),
-                        const SizedBox(height: 12),
-                        Text(_loadError!, textAlign: TextAlign.center),
-                        const SizedBox(height: 16),
-                        FilledButton.icon(
-                          onPressed: _load,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Prøv igjen'),
-                        ),
-                      ],
-                    ),
+                    children: [
+                      const SizedBox(height: 48),
+                      const Icon(Icons.error_outline, size: 48, color: Colors.orange),
+                      const SizedBox(height: 12),
+                      Text(_loadError!, textAlign: TextAlign.center),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Prøv igjen'),
+                      ),
+                    ],
                   ),
                 )
               : _data == null
-                  ? const Center(child: Text('Ingen data'))
+                  ? RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: const [
+                          SizedBox(height: 80),
+                          Center(child: Text('Ingen data')),
+                        ],
+                      ),
+                    )
                   : RefreshIndicator(
               onRefresh: _load,
               child: ListView(

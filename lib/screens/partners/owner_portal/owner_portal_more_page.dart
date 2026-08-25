@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../widgets/partner_portal_page_shell.dart';
@@ -82,26 +81,13 @@ class OwnerPortalMorePage extends StatelessWidget {
 
     return PartnerPortalPageShell(
       title: 'Mer',
-      actions: [
-        IconButton(
-          tooltip: 'Logg ut',
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        children: [
-          Text(
-            'Verktøy for ${partner.name}',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: muted,
-            ),
-          ),
-          const SizedBox(height: 12),
-          ...items.map((item) {
+      body: RefreshIndicator(
+        onRefresh: () async {},
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+          children: [
+            ...items.map((item) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Material(
@@ -157,7 +143,8 @@ class OwnerPortalMorePage extends StatelessWidget {
               ),
             );
           }),
-        ],
+          ],
+        ),
       ),
     );
   }

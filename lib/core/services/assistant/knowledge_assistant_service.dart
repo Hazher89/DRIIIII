@@ -1,4 +1,5 @@
 import 'assistant_corpus.dart';
+import 'assistant_text_utils.dart';
 import 'knowledge_assistant_engine.dart';
 import '../supabase_service.dart';
 
@@ -12,15 +13,14 @@ class KnowledgeAssistantService {
   bool _loading = false;
 
   static const suggestedQueries = [
+    'Hvordan melder jeg avvik?',
     'Hvordan behandle kolli Undelivered?',
     'Hva koster bilutleie per dag?',
     'Hvordan bytter jeg passord?',
     'Hvem godkjenner bilutleie?',
-    'Hvem kan låne ut bil?',
     'Hvordan søker jeg ferie?',
     'Hva er sjekklisten ved retur av bil?',
     'Morgenrutine plukking',
-    'Hvordan melder jeg avvik?',
   ];
 
   Future<void> ensureReady() async {
@@ -77,13 +77,18 @@ class KnowledgeAssistantService {
 
     final contexts = <Map<String, String>>[
       for (final h in hits)
-        {
-          'title': h.chunk.title,
-          'source': h.chunk.sourceLabel,
-          'body': h.chunk.body.length > 1600
-              ? h.chunk.body.substring(0, 1600)
-              : h.chunk.body,
-        },
+        if (AssistantTextUtils.isUsefulChunk(
+          id: h.chunk.id,
+          title: h.chunk.title,
+          body: h.chunk.body,
+        ))
+          {
+            'title': AssistantTextUtils.cleanTitle(h.chunk.title),
+            'source': h.chunk.sourceLabel,
+            'body': AssistantTextUtils.cleanBody(h.chunk.body).length > 1600
+                ? AssistantTextUtils.cleanBody(h.chunk.body).substring(0, 1600)
+                : AssistantTextUtils.cleanBody(h.chunk.body),
+          },
     ];
 
     if (contexts.isEmpty) {

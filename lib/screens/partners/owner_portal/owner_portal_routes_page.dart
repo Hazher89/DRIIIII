@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
@@ -113,14 +112,6 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
   Widget build(BuildContext context) {
     return PartnerPortalPageShell(
       title: 'Alle ruter',
-      actions: [
-        IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(
-          tooltip: 'Logg ut',
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
       bottom: _data == null
           ? null
           : TabBar(

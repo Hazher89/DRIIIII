@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/hms/hms_pdf_export_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
@@ -76,10 +75,6 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
 
     return PartnerPortalPageShell(
       title: 'Bilkontroll',
-      actions: [
-        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(icon: const Icon(Icons.logout), onPressed: () => signOutFromPortal(context)),
-      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : RefreshIndicator(

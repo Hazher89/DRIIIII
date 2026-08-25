@@ -38,15 +38,9 @@ class PartnerPortalProfilePage extends StatelessWidget {
 
     return PartnerPortalPageShell(
       title: 'Profil',
-      actions: [
-        IconButton(
-          tooltip: 'Logg ut',
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
         children: [
           Center(
             child: CircleAvatar(

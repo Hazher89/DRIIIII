@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/auth/session_sign_out.dart';
 import '../../../core/services/partner/partner_workforce_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -254,40 +253,50 @@ class _OwnerPortalTimesheetPageState extends State<OwnerPortalTimesheetPage> {
 
     return PartnerPortalPageShell(
       title: 'Timer',
-      actions: [
-        if (_enabled)
-          IconButton(
-            tooltip: 'Eksporter Excel',
-            onPressed: _entries.isEmpty ? null : _exportExcel,
-            icon: const Icon(Icons.file_download_outlined),
-          ),
-        IconButton(
-          tooltip: _showAudit ? 'Skjul logg' : 'Endringslogg',
-          onPressed: () => setState(() => _showAudit = !_showAudit),
-          icon: Icon(
-            Icons.history,
-            color: _showAudit ? DriftProTheme.primaryGreen : null,
-          ),
-        ),
-        IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-        IconButton(
-          tooltip: 'Logg ut',
-          icon: const Icon(Icons.logout),
-          onPressed: () => signOutFromPortal(context),
-        ),
-      ],
       body: _loading
           ? const DriftProLoadingCenter()
           : !_enabled
-              ? const Center(
-                  child: Text('Timer er ikke aktivert for denne bedriften.'),
+              ? RefreshIndicator(
+                  onRefresh: _load,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(24),
+                    children: const [
+                      SizedBox(height: 80),
+                      Center(
+                        child: Text('Timer er ikke aktivert for denne bedriften.'),
+                      ),
+                    ],
+                  ),
                 )
               : RefreshIndicator(
                   onRefresh: _load,
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
                     children: [
+                      Row(
+                        children: [
+                          if (_enabled)
+                            IconButton(
+                              tooltip: 'Eksporter Excel',
+                              onPressed: _entries.isEmpty ? null : _exportExcel,
+                              icon: const Icon(Icons.file_download_outlined),
+                            ),
+                          IconButton(
+                            tooltip: _showAudit ? 'Skjul logg' : 'Endringslogg',
+                            onPressed: () =>
+                                setState(() => _showAudit = !_showAudit),
+                            icon: Icon(
+                              Icons.history,
+                              color: _showAudit
+                                  ? DriftProTheme.primaryGreen
+                                  : null,
+                            ),
+                          ),
+                          const Spacer(),
+                        ],
+                      ),
                       Row(
                         children: [
                           _StatPill(
