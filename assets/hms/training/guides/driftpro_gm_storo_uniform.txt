@@ -1,0 +1,23 @@
+GM & STORO, UNIFORM OG KAMERA
+
+GM & STORO:
+Hvor: Mer → Hub → GM & STORO.
+Brukes til skanning/etikettflyt for GM og STORO-label.
+1. Åpne GM & STORO.
+2. Følg skanneinstruks på skjermen (kamera/skanner).
+3. Bekreft treff og fullfør stegene i hub-flyten.
+4. Ved feil: sjekk belysning, fokus og at koden er gyldig.
+
+Uniform (bunnnavigasjon):
+Overvåkings-/monitorfunksjon for uniform der det er aktivert.
+Åpne Uniform-fanen. Start live/monitor etter instruks på skjermen.
+Admin-tilgang kreves for kameraoppsett.
+
+Kameraer:
+Hvor: Mer → Kameraer (krever uniform monitor admin).
+Legg til og administrer kameraer knyttet til uniform/monitor.
+
+Kamerahendelser:
+Hvor: Mer → Kamerahendelser.
+Se hendelser fanget av kamera/vision-pipeline.
+Bruk filter på tid og type. Åpne detalj for bilde/klipp når tilgjengelig.

@@ -1,0 +1,20 @@
+UNDERSØKELSER — HVORDAN BRUKE
+
+Hvor: Bunnnavigasjon → Undersøkelser, eller Mer → Undersøkelser (admin).
+
+Svare på undersøkelse (ansatt):
+1. Gå til Undersøkelser.
+2. Åpne tildelt undersøkelse i listen.
+3. Les instruksjonene. Svar på hvert spørsmål.
+4. Send inn når ferdig. Du kan ikke alltid endre etter innsending.
+
+Opprette og publisere (admin):
+1. Gå til Undersøkelser / Mer → Undersøkelser.
+2. Opprett ny undersøkelse. Sett tittel og spørsmål.
+3. Velg mottakere / målgruppe.
+4. Bruk Publiser & Del for å sende ut.
+5. Følg svarprosent og resultater i oversikten.
+
+Når brukes det:
+Kulturundersøkelser, HMS-spørsmål, medarbeiderinvolvering og kort feedback.
+Del offentlig lenke (/s/…) når undersøkelsen er satt opp for det.

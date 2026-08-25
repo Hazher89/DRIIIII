@@ -1,0 +1,24 @@
+AVVIK — FULL STEG-FOR-STEG
+
+Hvor: Bunnnavigasjon → Avvik, eller HMS → Avvik.
+
+Meld nytt avvik:
+1. Trykk Nytt avvik / Meld avvik (også fra Dashboard → Nytt avvik).
+2. Velg hurtigmal hvis den passer, ellers fyll manuelt.
+3. Skriv hva som skjedde, hvor og når.
+4. Sett alvorlighetsgrad.
+5. Ta/legg ved bilder. Tillat GPS hvis bedt om det.
+6. Tildel oppfølgingsansvarlig hvis feltet finnes.
+7. Send inn. Status blir åpen.
+
+Behandle avvik:
+1. Åpne listen. Filtrer på åpen / under behandling / lukket / kritisk.
+2. Les beskrivelse og media.
+3. Oppdater status og legg intern kommentar/tiltak.
+4. Koble til risikoanalyse når hendelsen krever ROS.
+5. Lukk først når tiltak er verifisert.
+
+Lederdaglig rutine:
+Start på Dashboard — kritiske avvik.
+Gå deretter til Avvik-listen og tøm køen.
+Eskaler gjentakende hendelser til risiko/SJA.

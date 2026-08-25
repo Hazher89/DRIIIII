@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/auth/session_sign_out.dart';
+import '../../core/config/driftpro_client.dart';
 import '../../core/layout/mobile_shell_nav.dart';
 import '../../core/layout/web_layout.dart';
 import '../../core/routing/app_paths.dart';
@@ -33,21 +34,27 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   UserProfile? _profile;
   String? _portalAccountKind;
   bool _isLoadingAccess = true;
   StreamSubscription<AuthState>? _authSub;
   String? _sessionUserId;
+  RealtimeChannel? _profileChannel;
+  String? _realtimeUserId;
+  bool _accessReloadInFlight = false;
+  DateTime? _lastAccessReloadAt;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _sessionUserId = Supabase.instance.client.auth.currentUser?.id;
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
       final nextId = event.session?.user.id;
       if (nextId == _sessionUserId) return;
       _sessionUserId = nextId;
+      _unsubscribeProfileRealtime();
       if (!mounted) return;
       setState(() {
         _profile = null;
@@ -63,8 +70,49 @@ class _MainShellState extends State<MainShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _unsubscribeProfileRealtime();
     _authSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _sessionUserId != null) {
+      unawaited(_loadAccess(silent: true));
+    }
+  }
+
+  void _unsubscribeProfileRealtime() {
+    final channel = _profileChannel;
+    _profileChannel = null;
+    _realtimeUserId = null;
+    if (channel != null) {
+      unawaited(Supabase.instance.client.removeChannel(channel));
+    }
+  }
+
+  void _subscribeProfileRealtime(String userId) {
+    if (_profileChannel != null && _realtimeUserId == userId) return;
+    _unsubscribeProfileRealtime();
+    _realtimeUserId = userId;
+    _profileChannel = Supabase.instance.client
+        .channel('profile-access-$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'profiles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: userId,
+          ),
+          callback: (_) {
+            if (!mounted) return;
+            unawaited(_loadAccess(silent: true));
+          },
+        )
+        .subscribe();
   }
 
   /// true = vi forlater MainShell (onboarding / ventende godkjenning).
@@ -125,9 +173,26 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
-  Future<void> _loadAccess() async {
+  Future<void> _loadAccess({bool silent = false}) async {
+    if (_accessReloadInFlight) return;
+    if (silent &&
+        _lastAccessReloadAt != null &&
+        DateTime.now().difference(_lastAccessReloadAt!) <
+            const Duration(seconds: 2)) {
+      return;
+    }
+    _accessReloadInFlight = true;
     try {
-      var profile = await SupabaseService.fetchOrCreateCurrentUserProfile();
+      if (!silent || _profile == null) {
+        if (mounted && !silent) {
+          setState(() => _isLoadingAccess = true);
+        }
+      }
+
+      var profile = silent
+          ? await SupabaseService.fetchCurrentUserProfile() ??
+              await SupabaseService.fetchOrCreateCurrentUserProfile()
+          : await SupabaseService.fetchOrCreateCurrentUserProfile();
       final portalEmail = Supabase.instance.client.auth.currentUser?.email?.trim().toLowerCase() ?? '';
       final looksLikePortal = SupabaseService.emailLooksLikePortal(portalEmail);
       if (profile != null &&
@@ -191,12 +256,16 @@ class _MainShellState extends State<MainShell> {
         _isLoadingAccess = false;
       });
       AccessSessionCache.setProfile(profile);
+      _subscribeProfileRealtime(profile.id);
+      _lastAccessReloadAt = DateTime.now();
 
-      unawaited(NativePermissionsService.bootstrapAfterLogin(
-        mounted ? context : null,
-      ));
+      if (!silent) {
+        unawaited(NativePermissionsService.bootstrapAfterLogin(
+          mounted ? context : null,
+        ));
+      }
 
-      if (profile.isRecoverySession) {
+      if (!silent && profile.isRecoverySession) {
         unawaited(_syncDbProfileAfterRecovery());
       }
     } catch (e) {
@@ -204,14 +273,18 @@ class _MainShellState extends State<MainShell> {
         setState(() {
           _isLoadingAccess = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Kunne ikke laste profil etter innlogging: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 8),
-          ),
-        );
+        if (!silent) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Kunne ikke laste profil etter innlogging: $e'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 8),
+            ),
+          );
+        }
       }
+    } finally {
+      _accessReloadInFlight = false;
     }
   }
 
@@ -244,12 +317,12 @@ class _MainShellState extends State<MainShell> {
     final branch = widget.navigationShell.currentIndex;
     if (branch < 0 || branch >= AppPaths.shellTabs.length) return;
     final currentAccess = AppPaths.shellTabs[branch].access;
-    final allowed = visibleScreens.any((s) => s['access'] == currentAccess);
-    if (!allowed) {
-      final first = visibleScreens.first['access'] as String;
-      final path = AppPaths.pathForAccess(first) ?? AppPaths.dashboard;
-      context.go(path);
-    }
+    // Dock kan skjule faner på mobil, men tilgangsstyrte ruter (f.eks. Partnere via Mer)
+    // skal fortsatt fungere — sjekk tilgang, ikke bare dock-synlighet.
+    if (_hasAccess(currentAccess)) return;
+    final first = visibleScreens.first['access'] as String;
+    final path = AppPaths.pathForAccess(first) ?? AppPaths.dashboard;
+    context.go(path);
   }
 
   bool _hasAccess(String key) {
@@ -301,56 +374,87 @@ class _MainShellState extends State<MainShell> {
     }
 
     final drift = context.driftColors;
+    final isMobile = DriftProClient.isMobile;
 
-    final allScreens = [
-      {
-        'icon': AppIcons.dashboard,
-        'label': AppStrings.navDashboard,
-        'access': AccessKeys.dashboard,
-      },
-      {
-        'icon': AppIcons.survey,
-        'label': AppStrings.navSurveys,
-        'access': AccessKeys.surveys,
-      },
-      {
-        'icon': AppIcons.absence,
-        'label': AppStrings.navAbsence,
-        'access': AccessKeys.fravaer,
-      },
-      {
-        'icon': AppIcons.ticket,
-        'label': AppStrings.navTickets,
-        'access': AccessKeys.avvik,
-      },
-      {
-        'icon': AppIcons.hms,
-        'label': AppStrings.navHMS,
-        'access': AccessKeys.hms,
-      },
-      {
-        'icon': Icons.verified_user_outlined,
-        'label': AppStrings.navUniform,
-        'access': AccessKeys.uniformMonitor,
-      },
-      {
-        'icon': Icons.handshake_outlined,
-        'label': AppStrings.navPartners,
-        'access': AccessKeys.partners,
-      },
-      {
-        'icon': AppIcons.clock,
-        'label': AppStrings.navStempling,
-        'access': AccessKeys.stempling,
-      },
-      {
-        'icon': AppIcons.more,
-        'label': AppStrings.navMore,
-        'access': AccessKeys.more,
-      },
-    ];
+    // Web/desktop: full dock. Mobil: Hjem · Fravær · Avvik · Arbeid · Mer.
+    final allScreens = isMobile
+        ? [
+            {
+              'icon': AppIcons.dashboard,
+              'label': AppStrings.navDashboard,
+              'access': AccessKeys.dashboard,
+            },
+            {
+              'icon': AppIcons.absence,
+              'label': AppStrings.navAbsence,
+              'access': AccessKeys.fravaer,
+            },
+            {
+              'icon': AppIcons.ticket,
+              'label': AppStrings.navTickets,
+              'access': AccessKeys.avvik,
+            },
+            {
+              'icon': AppIcons.work,
+              'label': AppStrings.navWork,
+              'access': AccessKeys.hms,
+            },
+            {
+              'icon': AppIcons.more,
+              'label': AppStrings.navMore,
+              'access': AccessKeys.more,
+            },
+          ]
+        : [
+            {
+              'icon': AppIcons.dashboard,
+              'label': AppStrings.navDashboard,
+              'access': AccessKeys.dashboard,
+            },
+            {
+              'icon': AppIcons.survey,
+              'label': AppStrings.navSurveys,
+              'access': AccessKeys.surveys,
+            },
+            {
+              'icon': AppIcons.absence,
+              'label': AppStrings.navAbsence,
+              'access': AccessKeys.fravaer,
+            },
+            {
+              'icon': AppIcons.ticket,
+              'label': AppStrings.navTickets,
+              'access': AccessKeys.avvik,
+            },
+            {
+              'icon': AppIcons.hms,
+              'label': AppStrings.navHMS,
+              'access': AccessKeys.hms,
+            },
+            {
+              'icon': Icons.verified_user_outlined,
+              'label': AppStrings.navUniform,
+              'access': AccessKeys.uniformMonitor,
+            },
+            {
+              'icon': Icons.handshake_outlined,
+              'label': AppStrings.navPartners,
+              'access': AccessKeys.partners,
+            },
+            {
+              'icon': AppIcons.clock,
+              'label': AppStrings.navStempling,
+              'access': AccessKeys.stempling,
+            },
+            {
+              'icon': AppIcons.more,
+              'label': AppStrings.navMore,
+              'access': AccessKeys.more,
+            },
+          ];
 
-    final visibleScreens = allScreens.where((s) => _hasAccess(s['access'] as String)).toList();
+    final visibleScreens =
+        allScreens.where((s) => _hasAccess(s['access'] as String)).toList();
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureAllowedRoute(visibleScreens));
     final navIndex = _visibleIndexForCurrentBranch(visibleScreens);
 

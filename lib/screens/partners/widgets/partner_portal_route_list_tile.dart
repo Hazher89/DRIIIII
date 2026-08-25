@@ -86,6 +86,14 @@ class PartnerPortalRouteListTile extends StatelessWidget {
                       NbDateFormat.format(day, 'EEE d. MMM'),
                       style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                     ),
+                    Text(
+                      pending ? 'Trykk for å åpne og akseptere' : 'Trykk for å åpne',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: pending ? Colors.orange.shade900 : Colors.grey.shade600,
+                      ),
+                    ),
                     if (vehicleLabel != null)
                       Text(
                         vehicleLabel!,

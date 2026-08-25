@@ -1,0 +1,24 @@
+STEMPLING — FULL BRUKERVEILEDNING
+
+Hvor: Bunnnavigasjon → Stempling.
+
+Faner:
+Oversikt — status og nøkkelinfo for stempling.
+Timeliste — registrerte tider over perioder.
+Min dag — dagens stemplinger for deg.
+Innstillinger — lokale/kiosk-innstillinger der du har tilgang.
+
+Stemple inn/ut:
+1. Gå til Stempling → Min dag (eller kiosk-modus).
+2. Stemple inn ved arbeidsstart.
+3. Stemple ut ved slutt / pause etter lokal rutine.
+4. Kontroller at tidspunktet er lagret i timelisten.
+
+Kiosk / stemple-skjerm:
+Egne URL-er /stemple og /kiosk brukes på felles enheter.
+Infoskjerm under Mer kan vise drift uten personnavn.
+Ikke logg inn med personlig admin på åpen kiosk — bruk kiosk-modus.
+
+Timeliste for leder:
+Åpne Timeliste. Filtrer på ansatt/periode.
+Følg opp manglende stemplinger med den ansatte.

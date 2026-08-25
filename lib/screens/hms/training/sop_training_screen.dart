@@ -115,6 +115,46 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
         return Icons.assignment_return_rounded;
       case 'local_shipping':
         return Icons.local_shipping_rounded;
+      case 'apps':
+        return Icons.apps_rounded;
+      case 'list_alt':
+        return Icons.list_alt_rounded;
+      case 'dashboard':
+        return Icons.dashboard_rounded;
+      case 'poll':
+        return Icons.poll_rounded;
+      case 'badge':
+        return Icons.badge_rounded;
+      case 'grid_view':
+        return Icons.grid_view_rounded;
+      case 'schedule':
+        return Icons.schedule_rounded;
+      case 'notifications':
+        return Icons.notifications_active_rounded;
+      case 'admin_panel':
+        return Icons.admin_panel_settings_rounded;
+      case 'qr_code':
+        return Icons.qr_code_scanner_rounded;
+      case 'route':
+        return Icons.route_rounded;
+      case 'touch_app':
+        return Icons.touch_app_rounded;
+      case 'beach_access':
+        return Icons.beach_access_rounded;
+      case 'report':
+        return Icons.report_problem_rounded;
+      case 'car_rental':
+        return Icons.car_rental_rounded;
+      case 'sms':
+        return Icons.sms_rounded;
+      case 'assignment':
+        return Icons.assignment_turned_in_rounded;
+      case 'folder':
+        return Icons.folder_shared_rounded;
+      case 'fact_check':
+        return Icons.fact_check_rounded;
+      case 'more_horiz':
+        return Icons.more_horiz_rounded;
       default:
         return Icons.menu_book_rounded;
     }
@@ -236,7 +276,7 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'SOP Hub + arbeidsinstrukser — spør på norsk og få stegvise svar',
+                  'Alle DriftPro-funksjoner steg for steg — søk f.eks. ferie, SMS, SJA eller publiser rute',
                   style: DriftProTheme.bodyMd.copyWith(
                     color: Colors.white.withValues(alpha: 0.9),
                     fontWeight: FontWeight.w600,

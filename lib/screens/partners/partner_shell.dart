@@ -36,6 +36,9 @@ import 'owner_portal/owner_portal_routes_page.dart';
 import 'owner_portal/owner_portal_routes_focus.dart';
 import 'owner_portal/owner_portal_vehicle_rental_page.dart';
 import 'owner_portal/owner_portal_summary_page.dart';
+import 'owner_portal/owner_portal_staff_page.dart';
+import 'owner_portal/owner_portal_timesheet_page.dart';
+import 'staff_portal/staff_portal_punch_page.dart';
 import 'widgets/partner_portal_bottom_nav.dart';
 import 'widgets/partner_route_pdf_actions.dart';
 import 'widgets/partner_ui.dart' show PartnerStatusBadge;
@@ -103,8 +106,9 @@ class _PartnerShellState extends State<PartnerShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(NativePermissionsService.bootstrapAfterLogin(context));
-      // Sjåfør-portal: be om varsel-tillatelse slik at FCM-token lagres (Android/iOS).
-      if (widget.portalAccountKind == 'driver') {
+      // Portal: be om varsel-tillatelse (sjåfør og bil-eier).
+      if (widget.portalAccountKind == 'driver' ||
+          widget.portalAccountKind == 'owner') {
         unawaited(NativePermissionsService.ensureNotifications(context: context));
       }
     });
@@ -116,20 +120,30 @@ class _PartnerShellState extends State<PartnerShell> {
     super.dispose();
   }
 
-  void _startDriverPushListener() {
-    if (widget.portalAccountKind != 'driver') return;
+  void _startPartnerPushListener() {
     final pid = widget.profile.partnerId;
     if (pid == null) return;
-    PartnerRoutePushListener.start(
-      partnerId: pid,
-      partnerVehicleId: widget.profile.partnerVehicleId,
-    );
+    if (widget.portalAccountKind == 'driver') {
+      PartnerRoutePushListener.start(
+        partnerId: pid,
+        partnerVehicleId: widget.profile.partnerVehicleId,
+      );
+      return;
+    }
+    if (widget.portalAccountKind == 'owner') {
+      PartnerRoutePushListener.start(partnerId: pid);
+    }
   }
 
   void _syncUrl() {
     if (!mounted) return;
     final isOwner = widget.portalAccountKind == 'owner';
-    final slugs = isOwner ? AppPaths.portalOwnerTabs : AppPaths.portalDriverTabs;
+    final isStaff = widget.portalAccountKind == 'staff';
+    final slugs = isStaff
+        ? AppPaths.portalStaffTabs
+        : isOwner
+            ? AppPaths.portalOwnerTabs
+            : AppPaths.portalDriverTabs;
     RouteUrlSync.syncTab(
       context,
       basePath: AppPaths.portal,
@@ -160,7 +174,7 @@ class _PartnerShellState extends State<PartnerShell> {
         _partner = p;
         _loading = false;
       });
-      _startDriverPushListener();
+      _startPartnerPushListener();
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
@@ -230,6 +244,7 @@ class _PartnerShellState extends State<PartnerShell> {
 
     final p = _partner!;
     final isOwner = widget.portalAccountKind == 'owner';
+    final isStaff = widget.portalAccountKind == 'staff';
     void goToRoutes({int tabIndex = 1, String? vehicleId}) {
       setState(() {
         _index = 4;
@@ -238,37 +253,44 @@ class _PartnerShellState extends State<PartnerShell> {
       _syncUrl();
     }
 
-    final pages = isOwner
+    final pages = isStaff
         ? [
-            OwnerPortalOverviewPage(
-              partner: p,
-              onGoToRoutes: goToRoutes,
-              onGoToTrekk: () => _selectTab(2),
-            ),
-            OwnerPortalSummaryPage(partner: p),
-            OwnerPortalDeductionsPage(partner: p),
-            OwnerPortalDocsPage(partner: p),
-            OwnerPortalRoutesPage(
-              partner: p,
-              launchFocus: _routesFocus,
-              onLaunchFocusConsumed: () {
-                if (_routesFocus != null) {
-                  setState(() => _routesFocus = null);
-                }
-              },
-            ),
-            OwnerPortalVehicleRentalPage(partner: p),
-            OwnerPortalMeetingsPage(partner: p),
-            OwnerPortalInspectionsPage(partner: p),
-            _PartnerProfilePage(profile: widget.profile, isOwner: true),
-          ]
-        : [
-            DriverPortalOverviewPage(partner: p, profile: widget.profile),
-            DriverPortalRoutesPage(partner: p, profile: widget.profile),
-            DriverPortalDocsPage(partner: p),
-            DriverPortalFriPage(partner: p, profile: widget.profile),
+            StaffPortalPunchPage(partner: p, profile: widget.profile),
             DriverPortalProfilePage(profile: widget.profile),
-          ];
+          ]
+        : isOwner
+            ? [
+                OwnerPortalOverviewPage(
+                  partner: p,
+                  onGoToRoutes: goToRoutes,
+                  onGoToTrekk: () => _selectTab(2),
+                ),
+                OwnerPortalSummaryPage(partner: p),
+                OwnerPortalDeductionsPage(partner: p),
+                OwnerPortalDocsPage(partner: p),
+                OwnerPortalRoutesPage(
+                  partner: p,
+                  launchFocus: _routesFocus,
+                  onLaunchFocusConsumed: () {
+                    if (_routesFocus != null) {
+                      setState(() => _routesFocus = null);
+                    }
+                  },
+                ),
+                OwnerPortalVehicleRentalPage(partner: p),
+                OwnerPortalMeetingsPage(partner: p),
+                OwnerPortalInspectionsPage(partner: p),
+                OwnerPortalStaffPage(partner: p),
+                OwnerPortalTimesheetPage(partner: p),
+                _PartnerProfilePage(profile: widget.profile, isOwner: true),
+              ]
+            : [
+                DriverPortalOverviewPage(partner: p, profile: widget.profile),
+                DriverPortalRoutesPage(partner: p, profile: widget.profile),
+                DriverPortalDocsPage(partner: p),
+                DriverPortalFriPage(partner: p, profile: widget.profile),
+                DriverPortalProfilePage(profile: widget.profile),
+              ];
     final ownerNavItems = const [
       PartnerPortalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
       PartnerPortalNavItem(icon: Icons.summarize_outlined, selectedIcon: Icons.summarize, label: 'Oppsummering'),
@@ -278,7 +300,22 @@ class _PartnerShellState extends State<PartnerShell> {
       PartnerPortalNavItem(icon: Icons.car_rental_outlined, selectedIcon: Icons.car_rental, label: 'Utleie'),
       PartnerPortalNavItem(icon: Icons.event_note_outlined, selectedIcon: Icons.event_note, label: 'Møter'),
       PartnerPortalNavItem(icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check, label: 'Bilkontroll'),
+      PartnerPortalNavItem(icon: Icons.groups_outlined, selectedIcon: Icons.groups, label: 'Ansatte'),
+      PartnerPortalNavItem(icon: Icons.schedule_outlined, selectedIcon: Icons.schedule, label: 'Timer'),
       PartnerPortalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
+    ];
+
+    final staffDestinations = const [
+      NavigationDestination(
+        icon: Icon(Icons.fingerprint_outlined),
+        selectedIcon: Icon(Icons.fingerprint),
+        label: 'Stempling',
+      ),
+      NavigationDestination(
+        icon: Icon(Icons.person_outlined),
+        selectedIcon: Icon(Icons.person),
+        label: 'Profil',
+      ),
     ];
 
     final driverDestinations = const [
@@ -290,23 +327,34 @@ class _PartnerShellState extends State<PartnerShell> {
     ];
 
     final pageIndex = _index.clamp(0, pages.length - 1);
-    final navIndex = _index.clamp(0, (isOwner ? ownerNavItems.length : driverDestinations.length) - 1);
+    final navCount = isStaff
+        ? staffDestinations.length
+        : isOwner
+            ? ownerNavItems.length
+            : driverDestinations.length;
+    final navIndex = _index.clamp(0, navCount - 1);
 
     return DriftProBrandedScaffold(
-      // IndexedStack + nested Scaffold gir grå tom flate på Flutter web (Safari).
       body: pages[pageIndex],
-      bottomNavigationBar: isOwner
-          ? PartnerPortalBottomNav(
-              selectedIndex: navIndex,
-              onSelected: _selectTab,
-              items: ownerNavItems,
-            )
-          : NavigationBar(
+      bottomNavigationBar: isStaff
+          ? NavigationBar(
               selectedIndex: navIndex,
               onDestinationSelected: _selectTab,
               labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
-              destinations: driverDestinations,
-            ),
+              destinations: staffDestinations,
+            )
+          : isOwner
+              ? PartnerPortalBottomNav(
+                  selectedIndex: navIndex,
+                  onSelected: _selectTab,
+                  items: ownerNavItems,
+                )
+              : NavigationBar(
+                  selectedIndex: navIndex,
+                  onDestinationSelected: _selectTab,
+                  labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+                  destinations: driverDestinations,
+                ),
     );
   }
 }

@@ -1,0 +1,28 @@
+BILKONTROLL OG KJØRETØY
+
+Hvor:
+Bunnnavigasjon → Partnere → Bilkontroll (på mobil: Kontroll).
+Også under partnerens kjøretøyfaner og HMS → Maskiner & utstyr der det gjelder.
+
+Bilkontroll / inspeksjon:
+1. Gå til Partnere → Bilkontroll.
+2. Finn kjøretøy eller planlagt kontroll.
+3. Start/registrer kontroll med sjekkpunkter.
+4. Ta bilder av avvik. Noter funn.
+5. Lagre. Følg opp frister (f.eks. EU-kontroll).
+6. Send SMS-varsel til ansvarlig når frist nærmer seg (Send SMS-varsel), hvis du har tilgang.
+
+EU-kontroll og compliance:
+På partner/bedrift ser du compliance-status for kjøretøy.
+Hold dokumentasjon oppdatert (kontrollbevis, forsikring, avtaler).
+Bruk varsler slik at partnere får fristpåminnelse i tide.
+
+Maskiner & utstyr (HMS):
+Registrer utstyr, serviceintervaller og inspeksjoner.
+Last opp kvittering og servicehefte der det støttes.
+Sett varsler på service slik at vedlikehold ikke glemmes.
+
+Gode vaner:
+Ikke la en bil gå i trafikk med utløpt EU-kontroll.
+Dokumenter skader ved utleie og retur (se bilutleie-opplæringen).
+Koble alvorlige kjøretøyfunn til avvik når HMS krever det.

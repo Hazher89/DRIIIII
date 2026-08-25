@@ -1,0 +1,48 @@
+ALLE DRIFTPRO-FUNKSJONER — HURTIGINDEKS
+
+Denne indeksen peker til hvordan hver funksjon brukes. Søk også på funksjonsnavnet i Opplæring.
+
+Dashboard: se KPI, varsler og hurtighandlinger (Nytt avvik, Ny SJA, Fravær).
+Undersøkelser: svar på tildelte skjema; admin publiserer med Publiser & Del.
+Fravær Dashboard: oversikt i fraværsmodulen.
+Fravær Mine: Ny søknad for ferie/egenmelding/permisjon/sykmelding.
+Fravær Godkjenn: leder trykker Godkjenn eller Avvis.
+Fravær Team: kalender og dekning.
+Fravær Roster: bemanning der aktivert.
+Avvik: Meld avvik med bilder/GPS; behandle og lukk; koble ROS.
+HMS Avvik: samme avvik via HMS-hub.
+HMS Risikoanalyse: opprett ROS, tiltak, vedlegg, interessepart.
+HMS Risikomatrise: 5×5 sannsynlighet/konsekvens.
+HMS SJA: Ny SJA, mal, PPE, farepunkter, signatur.
+HMS Vernerunde: planlegg, sjekkliste, bilder, PDF-arkiv.
+HMS Maskiner & utstyr: register, service, truck, arkiv.
+HMS Kompetanse & kurs: kurs, PDF-bevis, matrise, utløp.
+HMS Opplæring: smart søk i alle veiledninger + SOP.
+HMS Dokumenter DMS: mapper, opplasting, håndbok.
+Uniform: monitor/live der aktivert.
+Partnere Bedrifter: partnerregister og detaljkort.
+Partnere Ruter: import, tildel, publiser, AUTO MASS.
+Partnere SMS: partner-SMS og SMS til kunder fra kjøreliste.
+Partnere Bot/Trekk: bøter og trekk-saker.
+Partnere Utleie: ny bilutleie, godkjenning, retur.
+Partnere Bilkontroll: inspeksjon og EU-frister.
+Stempling Oversikt/Timeliste/Min dag/Innstillinger: inn/ut og timer.
+Mer Profil: opplysninger og bytt passord.
+Mer Avdelinger: organisasjonsstruktur.
+Mer Ansatte: HR-register og redigering.
+Mer Organisasjonskart: hierarki.
+Mer Personalmappe: egne dokumenter.
+Mer Varsler: SMS/e-post-logg og innstillinger.
+Mer Undersøkelser: admin for undersøkelser.
+Mer Tilgangskontroll: roller og moduler.
+Mer Brukergodkjenning: godkjenn nye brukere.
+Mer Infoskjerm: kiosk/infoskjerm.
+Mer DriftPro-assistent: slå chat på/av.
+Mer Anonym anmeldelse: whistleblowing.
+Mer GM & STORO: label-skann.
+Mer Kameraer / Kamerahendelser: vision-oppsett og hendelser.
+Mer Fillagring: Dropbox for operatører.
+Mer Hjelp / Personvern / Om: info og support.
+Sjåførportal: ruter, dokumenter, fri, profil.
+Eierportal: oppsummering, trekk, utleie, bilkontroll m.m.
+Hub Inventory / Returmottak / 1701 / SOP Hub: lagerdriftsrutiner.

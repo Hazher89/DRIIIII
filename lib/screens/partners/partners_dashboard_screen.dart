@@ -15,6 +15,7 @@ import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
 import '../../models/user_profile.dart';
 import 'bulk_partners_screen.dart';
+import 'create_test_partner_screen.dart';
 import 'new_partner_screen.dart';
 import 'partner_route_planner_screen.dart';
 import 'widgets/partner_companies_board.dart';
@@ -292,6 +293,16 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     }
   }
 
+  Future<void> _openTestPartner() async {
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const CreateTestPartnerScreen()),
+    );
+    if (created == true) {
+      await _load();
+      _routesKey.currentState?.reload();
+    }
+  }
+
   Future<void> _openRegisterMenu() async {
     if (_profile?.access.canPartnersCreate != true &&
         _profile?.access.canPartnersAdmin != true) {
@@ -304,6 +315,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       context,
       onSingle: _openNew,
       onBulkBrreg: _openBulkImport,
+      onTestPartner: _profile?.isSuperAdmin == true ? _openTestPartner : null,
     );
   }
 

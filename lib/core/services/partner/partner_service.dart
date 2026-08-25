@@ -1716,17 +1716,24 @@ class PartnerService {
     String? orgNumber,
     String? portalAccountId,
     String? ownerDisplayName,
+    String? usernameOverride,
+    String? passwordOverride,
+    bool sendCredentialsSms = true,
     bool regeneratePassword = false,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
     final normalizedPhone = normalizePhoneNo(phone.trim()) ?? phone.trim();
-    final username = PortalCredentials.ownerUsername(
-      partnerName: partnerName,
-      orgNumber: orgNumber,
-      partnerId: partnerId,
-      phone: normalizedPhone,
-    );
-    final password = PortalCredentials.generatePassword();
+    final username = (usernameOverride?.trim().isNotEmpty == true)
+        ? usernameOverride!.trim().toLowerCase()
+        : PortalCredentials.ownerUsername(
+            partnerName: partnerName,
+            orgNumber: orgNumber,
+            partnerId: partnerId,
+            phone: normalizedPhone,
+          );
+    final password = (passwordOverride?.trim().isNotEmpty == true)
+        ? passwordOverride!.trim()
+        : PortalCredentials.generatePassword();
     final loginEmail = PortalCredentials.loginEmail(
       partnerId: partnerId,
       isOwner: true,
@@ -1742,10 +1749,40 @@ class PartnerService {
       password: password,
       driverName: ownerDisplayName,
       accountKind: 'owner',
-      sendCredentialsSms: true,
+      sendCredentialsSms: sendCredentialsSms,
       regeneratePassword: regeneratePassword,
     );
   }
+
+  /// Offentlig wrapper for portal-provision (brukes bl.a. av partner workforce / staff).
+  static Future<PortalProvisionResult> invokePortalProvisionRaw({
+    required String partnerId,
+    required String companyId,
+    String? partnerVehicleId,
+    String? portalAccountId,
+    required String username,
+    required String loginEmail,
+    required String phone,
+    required String password,
+    String? driverName,
+    required String accountKind,
+    bool sendCredentialsSms = true,
+    bool regeneratePassword = false,
+  }) =>
+      _invokePortalProvision(
+        partnerId: partnerId,
+        companyId: companyId,
+        partnerVehicleId: partnerVehicleId,
+        portalAccountId: portalAccountId,
+        username: username,
+        loginEmail: loginEmail,
+        phone: phone,
+        password: password,
+        driverName: driverName,
+        accountKind: accountKind,
+        sendCredentialsSms: sendCredentialsSms,
+        regeneratePassword: regeneratePassword,
+      );
 
   static Future<PortalProvisionResult> _invokePortalProvision({
     required String partnerId,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/case_trace/case_trace.dart';
 import '../../core/case_trace/case_trace_chip.dart';
+import '../../core/config/driftpro_client.dart';
 import '../../core/layout/mobile_layout.dart';
 import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/constants/app_icons.dart';
@@ -171,7 +172,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
       child: MobileShellScaffold(
       title: AppStrings.navTickets,
       actions: [
-          if (coord || ticketAdmin)
+          if ((coord || ticketAdmin) && !DriftProClient.isMobile)
             IconButton(
               icon: const Icon(Icons.dashboard_customize_outlined),
               tooltip: 'Kontrollsenter',
@@ -196,41 +197,44 @@ class _TicketsScreenState extends State<TicketsScreen> {
             SliverToBoxAdapter(
               child: _buildHubHeader(stats, isDark),
             ),
-            SliverToBoxAdapter(
-              child: _buildQuickActions(coord, isDark),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: 'Søk på avvik-ID (#123), tittel eller beskrivelse…',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear_rounded),
-                            onPressed: () {
-                              _searchController.clear();
-                              setState(() {});
-                            },
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
+            if (!DriftProClient.isMobile)
+              SliverToBoxAdapter(
+                child: _buildQuickActions(coord, isDark),
+              ),
+            if (!DriftProClient.isMobile)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText:
+                          'Søk på avvik-ID (#123), tittel eller beskrivelse…',
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear_rounded),
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {});
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      isDense: true,
                     ),
-                    isDense: true,
                   ),
                 ),
               ),
-            ),
             SliverToBoxAdapter(
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text(
-                  'Filter',
+                  DriftProClient.isMobile ? 'Mine / åpne avvik' : 'Filter',
                   style: DriftProTheme.labelSm.copyWith(
                     color: Colors.grey[600],
                     fontWeight: FontWeight.w600,
@@ -255,7 +259,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
                         () => setState(() => _filterStatus = s),
                       ),
                     ),
-                    if (_profile?.isAdmin == true)
+                    if (_profile?.isAdmin == true && !DriftProClient.isMobile)
                       _chip(
                         'Slettet',
                         _showDeleted,
@@ -335,6 +339,25 @@ class _TicketsScreenState extends State<TicketsScreen> {
   }
 
   Widget _buildHubHeader(TicketDashboardStats s, bool isDark) {
+    if (DriftProClient.isMobile) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Meld og følg opp avvik', style: DriftProTheme.headingSm),
+            const SizedBox(height: 4),
+            Text(
+              s.aapen > 0
+                  ? '${s.aapen} åpne · trykk under for å melde nytt'
+                  : 'Ingen åpne avvik — meld når noe skjer',
+              style: DriftProTheme.bodySm,
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       padding: const EdgeInsets.all(18),
@@ -426,6 +449,24 @@ class _TicketsScreenState extends State<TicketsScreen> {
   }
 
   Widget _buildQuickActions(bool coordinator, bool isDark) {
+    if (DriftProClient.isMobile) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _openNewTicket,
+            style: FilledButton.styleFrom(
+              backgroundColor: DriftProTheme.primaryGreen,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+            icon: const Icon(Icons.add_alert_outlined),
+            label: const Text(AppStrings.reportDeviation),
+          ),
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -477,34 +518,38 @@ class _TicketsScreenState extends State<TicketsScreen> {
           Text(
             _searchController.text.trim().isNotEmpty
                 ? 'Prøv avvik-ID (f.eks. #42), tittel eller beskrivelse.'
-                : s.total == 0
-                    ? 'Start ved å melde en observasjon med tekst og bilder. Saken får automatisk avvik-ID og havner hos valgt leder.'
-                    : 'Prøv et annet filter, eller opprett et nytt avvik.',
+                : DriftProClient.isMobile
+                    ? 'Bruk «Meld avvik» nede til høyre for å registrere.'
+                    : s.total == 0
+                        ? 'Start ved å melde en observasjon med tekst og bilder. Saken får automatisk avvik-ID og havner hos valgt leder.'
+                        : 'Prøv et annet filter, eller opprett et nytt avvik.',
             style: DriftProTheme.bodyMd.copyWith(
               color: isDark ? Colors.grey[400] : Colors.grey[700],
               height: 1.4,
             ),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 24),
-          Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _featureChip(Icons.photo_camera_outlined, 'Bilder'),
-              _featureChip(Icons.timeline, 'Statusløype'),
-              _featureChip(Icons.person_search, 'Tildeling'),
-              _featureChip(Icons.event_note, 'Frister'),
-              if (coord) _featureChip(Icons.dashboard, 'KPI‑dash'),
-            ],
-          ),
-          const SizedBox(height: 28),
-          FilledButton.icon(
-            onPressed: _openNewTicket,
-            icon: const Icon(Icons.add),
-            label: const Text('Meld første avvik'),
-          ),
+          if (!DriftProClient.isMobile) ...[
+            const SizedBox(height: 24),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _featureChip(Icons.photo_camera_outlined, 'Bilder'),
+                _featureChip(Icons.timeline, 'Statusløype'),
+                _featureChip(Icons.person_search, 'Tildeling'),
+                _featureChip(Icons.event_note, 'Frister'),
+                if (coord) _featureChip(Icons.dashboard, 'KPI‑dash'),
+              ],
+            ),
+            const SizedBox(height: 28),
+            FilledButton.icon(
+              onPressed: _openNewTicket,
+              icon: const Icon(Icons.add),
+              label: const Text('Meld første avvik'),
+            ),
+          ],
         ],
       ),
     );

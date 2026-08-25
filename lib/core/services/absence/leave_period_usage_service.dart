@@ -6,27 +6,35 @@ import 'absence_service.dart';
 class LeavePeriodUsageService {
   LeavePeriodUsageService._();
 
-  /// Beregner godkjent bruk i perioden som inneholder [referenceDate].
+  /// Beregner bruk i perioden som inneholder [referenceDate].
+  /// [includePending] teller også ventende søknader (for oversikt / forhindre overforbruk).
   static LeavePeriodUsage compute({
     required List<Absence> absences,
     DateTime? hireDate,
     DateTime? referenceDate,
+    bool includePending = false,
   }) {
     final window = LeavePeriodWindow.forReference(
       hireDate: hireDate,
       referenceDate: referenceDate,
     );
 
-    final approved = absences.where((a) => a.status == AbsenceStatus.godkjent);
+    bool counts(Absence a) =>
+        a.status == AbsenceStatus.godkjent ||
+        (includePending && a.status == AbsenceStatus.ventende);
 
-    final egen = approved
+    final egen = absences
         .where((a) =>
-            a.type == AbsenceType.egenmelding && window.contains(a.startDate))
+            counts(a) &&
+            a.type == AbsenceType.egenmelding &&
+            window.contains(a.startDate))
         .toList();
 
-    final sykt = approved
+    final sykt = absences
         .where((a) =>
-            a.type == AbsenceType.syktBarn && window.contains(a.startDate))
+            counts(a) &&
+            a.type == AbsenceType.syktBarn &&
+            window.contains(a.startDate))
         .toList();
 
     int daysFor(List<Absence> list) => list.fold(

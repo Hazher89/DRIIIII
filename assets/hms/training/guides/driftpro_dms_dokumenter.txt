@@ -1,0 +1,30 @@
+DMS OG DOKUMENTER — OPPRETTE OG FINNE
+
+Hvor:
+HMS → DMS (dokumentstyring), og Mer → Personalmappe for personlige filer.
+
+Opprette / laste opp dokument i DMS:
+1. Gå til HMS → DMS.
+2. Velg mappe (f.eks. hjem, delt, stjernemerket eller nylig — etter tilgang).
+3. Last opp fil eller opprett/legg inn nytt dokument i mappen.
+4. Sett tittel, kategori og tilganger etter bedriftens rutine.
+5. Lagre. Dokumentet får versjon/sporbarhet i systemet.
+
+Finne dokumenter:
+Bruk søk og mapper i DMS-utforskeren.
+Stjernemerk viktige styrende dokumenter.
+Åpne forhåndsvisning før du laster ned.
+
+Personalmappe (Mer → Personalmappe):
+Her ligger kursbevis, arbeidsavtaler, sertifikater og filer bedriften har delt med deg.
+Du kan laste opp egne dokumenter (f.eks. privat kursbevis) og oppdatere metadata.
+Kategorier: kursbevis, sertifikat, arbeidsavtale, HMS, annet.
+Se etter utløpsvarsler på kompetansebevis.
+
+Felles rutiner for partnere:
+Under Partnere finnes også felles rutiner/prosedyrer som kan deles på tvers av partnere.
+Bruk dem for standardiserte arbeidsinstrukser mot transportører.
+
+Tips:
+Ikke lagre personsensitive filer i feil mappe — følg tilgangsnivå.
+Oppdater utgåtte prosedyrer; ikke la gamle PDF-er ligge som «gjeldende» uten merking.

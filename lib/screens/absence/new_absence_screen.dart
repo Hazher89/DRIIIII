@@ -5,7 +5,6 @@ import '../../core/constants/vacation_year_window.dart';
 import '../../core/services/absence/absence_service.dart';
 import '../../core/services/absence/leave_eligibility.dart';
 import '../../core/services/absence/leave_period_usage_service.dart';
-import 'widgets/leave_egenmelding_blocked_sheet.dart';
 import '../../models/leave_period_usage.dart';
 import '../../core/utils/business_days.dart';
 import '../../core/services/absence/department_leave_conflict_service.dart';
@@ -15,6 +14,7 @@ import '../../models/absence.dart';
 import '../../models/user_profile.dart';
 import 'widgets/department_leave_tip_card.dart';
 import 'widgets/leave_rules_panel.dart';
+import 'widgets/leave_usage_meter.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
 class NewAbsenceScreen extends StatefulWidget {
@@ -126,6 +126,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
         absences: absences,
         hireDate: _selectedEmployee!.hireDate,
         referenceDate: _startDate,
+        includePending: true,
       );
       if (mounted) {
         setState(() {
@@ -217,13 +218,17 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
 
   Future<void> _pickDateRange() async {
     final now = DateTime.now();
+    final maxConsec = _companySettings.effectiveEgenmeldingConsecutiveMax;
     final picked = await showDateRangePicker(
       context: context,
       firstDate: VacationYearWindow.earliestSelectableDate,
       lastDate: VacationYearWindow.latestSelectableDate,
       initialDateRange: _startDate != null && _endDate != null
           ? DateTimeRange(start: _startDate!, end: _endDate!)
-          : null,
+          : DateTimeRange(start: now, end: now),
+      helpText: widget.type == AbsenceType.egenmelding
+          ? 'Egenmelding: maks $maxConsec dager'
+          : 'Velg periode',
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -238,9 +243,27 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
     );
 
     if (picked != null) {
+      var start = picked.start;
+      var end = picked.end;
+      if (widget.type == AbsenceType.egenmelding) {
+        final days = AbsenceService.dayCount(start, end);
+        if (days > maxConsec) {
+          end = start.add(Duration(days: maxConsec - 1));
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Egenmelding begrenset til maks $maxConsec dager. Perioden er justert.',
+                ),
+              ),
+            );
+          }
+        }
+      }
       setState(() {
-        _startDate = picked.start;
-        _endDate = picked.end;
+        _startDate = start;
+        _endDate = end;
+        _error = null;
       });
       await _loadQuotaForSelected();
       _checkConflicts();
@@ -319,6 +342,11 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
     }
   }
 
+  bool get _canSeeRules =>
+      _profile?.isAdmin == true ||
+      _profile?.isLeader == true ||
+      _profile?.role == UserRole.superadmin;
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -327,12 +355,13 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
             ? AbsenceService.vacationDayCount(_startDate!, _endDate!)
             : AbsenceService.dayCount(_startDate!, _endDate!))
         : 0;
+    final maxConsec = _companySettings.effectiveEgenmeldingConsecutiveMax;
 
     return Scaffold(
       backgroundColor:
           isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       appBar: AppBar(
-        title: Text('Registrer ${widget.type.label.toLowerCase()}'),
+        title: Text('Søk ${widget.type.label.toLowerCase()}'),
       ),
       body: _isLoadingContext
           ? const DriftProLoadingCenter()
@@ -347,14 +376,45 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                     _sectionHeader('Gjelder ansatt', isDark),
                     const SizedBox(height: 12),
                     _buildEmployeeSelector(isDark),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 20),
+                  ],
+                  if (widget.type == AbsenceType.egenmelding &&
+                      _periodUsage != null) ...[
+                    LeaveUsageMeter(
+                      title: 'Egenmelding i perioden',
+                      used: _periodUsage!.egenmeldingDaysUsed,
+                      max: _companySettings.egenmeldingDaysPerYear,
+                      subtitle:
+                          '${_periodUsage!.window.formatRange()} · maks $maxConsec dager per søknad',
+                      icon: Icons.sick_outlined,
+                    ),
+                    const SizedBox(height: 16),
                   ],
                   if (widget.type == AbsenceType.ferie && _quota != null)
                     _buildQuotaInfo(isDark, totalDays),
-                  if (widget.type == AbsenceType.syktBarn)
+                  if (widget.type == AbsenceType.syktBarn) ...[
+                    LeaveUsageMeter(
+                      title: 'Sykt barn i perioden',
+                      used: _periodUsage?.syktBarnDaysUsed ?? 0,
+                      max: _companySettings.syktBarnDaysLimit(
+                        childrenUnder12: _childrenUnder12,
+                      ),
+                      subtitle: _periodUsage?.window.formatRange(),
+                      icon: Icons.child_care_rounded,
+                    ),
+                    const SizedBox(height: 12),
                     _buildSyktBarnProfileInfo(isDark),
-                  _sectionHeader('Tidsperiode', isDark),
-                  const SizedBox(height: 12),
+                  ],
+                  _sectionHeader('Periode', isDark),
+                  const SizedBox(height: 8),
+                  if (widget.type == AbsenceType.egenmelding)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'Velg inntil $maxConsec sammenhengende dager.',
+                        style: DriftProTheme.caption,
+                      ),
+                    ),
                   _buildDatePickerCard(isDark, totalDays),
                   if (_overlaps.isNotEmpty) ...[
                     const SizedBox(height: 16),
@@ -365,8 +425,10 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                           _directRegister && widget.type == AbsenceType.ferie,
                     ),
                   ],
-                  const SizedBox(height: 20),
-                  LeaveRulesPanel(highlightType: widget.type, compact: true),
+                  if (_canSeeRules) ...[
+                    const SizedBox(height: 20),
+                    LeaveRulesPanel(highlightType: widget.type, compact: true),
+                  ],
                   const SizedBox(height: 20),
                   _sectionHeader('Kommentar (valgfritt)', isDark),
                   const SizedBox(height: 12),
@@ -374,7 +436,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                     controller: _commentController,
                     maxLines: 3,
                     decoration: InputDecoration(
-                      hintText: 'Utfyllende informasjon…',
+                      hintText: 'Kort merknad til leder…',
                       fillColor: isDark ? DriftProTheme.cardDark : Colors.white,
                     ),
                   ),
@@ -382,21 +444,31 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                     const SizedBox(height: 16),
                     Text(_error!, style: const TextStyle(color: DriftProTheme.error)),
                   ],
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
-                    height: 56,
-                    child: ElevatedButton(
+                    height: 54,
+                    child: FilledButton(
                       onPressed: (_isSubmitting || _leaderSelfBlocked)
                           ? null
                           : _submit,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: DriftProTheme.primaryGreen,
+                      ),
                       child: _isSubmitting
-                          ? const CircularProgressIndicator(color: Colors.white)
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
                           : Text(
-                              _submitButtonLabel.toUpperCase(),
+                              _submitButtonLabel,
                               style: const TextStyle(
-                                letterSpacing: 1.2,
-                                fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
                               ),
                             ),
                     ),
@@ -461,20 +533,9 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
             icon: const Icon(Icons.medical_services_outlined),
             label: const Text('Registrer sykmelding'),
           ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () => showLeaveEgenmeldingBlockedSheet(
-              context,
-              periodUsage: usage,
-              maxDays: _companySettings.egenmeldingDaysPerYear,
-            ),
-            icon: const Icon(Icons.info_outline),
-            label: const Text('Les mer om rutiner og Lovdata'),
-          ),
           const SizedBox(height: 16),
           Text(
-            'Nærmeste leder eller HR kan registrere sykmelding manuelt på dine vegne '
-            'når du har legeerklæring.',
+            'Leder eller HR kan hjelpe deg når du har sykmelding fra lege.',
             style: DriftProTheme.caption,
           ),
         ],

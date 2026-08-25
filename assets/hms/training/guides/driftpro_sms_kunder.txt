@@ -1,0 +1,31 @@
+SMS TIL KUNDER PÅ KJØRELISTE
+
+Hvor:
+Bunnnavigasjon → Partnere → SMS → Send SMS / fanen Send SMS til kunder.
+
+Automatisk kunde-SMS fra rute-PDF:
+1. Gå til Partnere → SMS.
+2. Velg Send SMS (steg: 1 Velg MAVI · 2 Velg mottakere · 3 Skriv melding · 4 Send).
+3. Åpne fanen Send SMS til kunder.
+4. Velg dag/dato for kjørelisten.
+5. Velg MAVI/rute slik at kundene hentes fra rute-PDF.
+6. Kryss av kundene som skal varsles (eller marker alle aktuelle).
+7. Trykk Gå videre til melding.
+8. Skriv melding eller velg mal.
+9. Trykk Send SMS og bekreft. Bekreft dialogen.
+10. SMS legges i kø. Sjekk SMS-logg og fanen Ikke sendt hvis noe feiler.
+
+Krav for at det skal fungere:
+Kunden må ha gyldig telefonnummer i PDF/data.
+Du må ha SMS-tilgang på partnersiden.
+Bedriftens SMS-oppsett må være aktivt.
+
+Tips:
+Bruk samme melding til mange kunder når innholdet er likt (forsinkelse, ETA, hentested).
+Ikke send før du har kontrollert at riktig rute/dato er valgt.
+Se SMS-logg for dokumentasjon av hva som ble sendt.
+
+Andre SMS-bruk:
+Fra Bedrifter/partnerkort kan du sende SMS direkte til partnerkontakt.
+Compliance/EU-kontroll kan ha Send SMS-varsel for frister.
+Varselinnstillinger styrer også fraværs-SMS og andre systemvarsler.

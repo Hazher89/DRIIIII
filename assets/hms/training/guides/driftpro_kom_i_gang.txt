@@ -1,0 +1,45 @@
+DRIFTPRO — KOM I GANG (ALLE MODULER)
+
+Bunnnavigasjon (venstre → høyre):
+Dashboard — daglig oversikt og hurtighandlinger.
+Undersøkelser — svar på og administrer undersøkelser.
+Fravær — søke ferie/fravær, godkjenne, teamkalender.
+Avvik — melde og behandle HMS-avvik.
+HMS — risiko, SJA, vernerunde, utstyr, kompetanse, opplæring, DMS.
+Uniform — uniform/monitor der aktivert.
+Partnere — bedrifter, ruter, SMS, bot/trekk, utleie, bilkontroll.
+Stempling — inn/ut og timeliste.
+Mer — profil, admin, hub-verktøy, hjelp.
+
+Innlogging:
+Ansattnummer + passord, eller partner-brukernavn.
+Admin oppretter konto. Bytt passord under Mer → Min profil.
+Standardpassord ved ny bruker er ofte 000000.
+
+Roller:
+Superadmin — alt inkl. brukergodkjenning og tilgangskontroll.
+Admin — bred administrasjon.
+Leder — godkjenne fravær, følge HMS/team.
+Ansatt — egne søknader, avvik, mappe, profil.
+Partner sjåfør/eier — portal med begrenset meny.
+
+DriftPro-assistent (web):
+Grønn knapp øverst til høyre når assistenten er på.
+Spør om alle opplæringsemner. Admin styrer under Mer → DriftPro-assistent.
+
+Opplæring:
+HMS → Opplæring. Søk på norsk i alle veiledninger + SOP Hub.
+Filtrer på dokumentkort eller skriv spørsmål i søkefeltet.
+
+Hvor finner jeg hver funksjon?
+Ferie/fravær → Fravær.
+Godkjenne ferie → Fravær → Godkjenn.
+Avvik → Avvik eller HMS → Avvik.
+SJA → HMS → SJA.
+Vernerunde → HMS → Vernerunde.
+Dokumenter → HMS → Dokumenter (DMS) eller Mer → Personalmappe.
+Ruter til sjåfør → Partnere → Ruter & planlegging → tildel → publiser.
+SMS kunder → Partnere → SMS → Send SMS til kunder.
+Bilutleie → Partnere → Utleie av bil.
+Bilkontroll → Partnere → Bilkontroll.
+Ansatte/avdelinger → Mer.

@@ -6,9 +6,9 @@ import '../../core/services/partner/route_pdf_text_service.dart';
 import '../../core/services/sms/sms_phone_utils.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
-import '../../models/partner/partner.dart';
 import 'widgets/partner_sms_message_section.dart';
 import 'widgets/partner_sms_route_customers_tab.dart';
+import 'widgets/partner_sms_hub_ui.dart';
 import 'widgets/partner_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 import '../../core/layout/web_layout.dart';
@@ -645,6 +645,14 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     );
   }
 
+  /// 0=MAVI, 1=mottakere, 2=melding, 3=klar til send.
+  int get _hubContactsStep {
+    if (_selectedVehicleId == null && _selectedMaviGroup == null) return 0;
+    if (_selected.isEmpty && _manualPhones.isEmpty) return 1;
+    if (_messageCtrl.text.trim().isEmpty) return 2;
+    return 3;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -668,19 +676,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
             )
           else ...[
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Text(
-                'Steg 1 · Velg MAVI',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
-                  color: DriftProTheme.primaryGreenDark,
-                ),
-              ),
-            ),
-            _buildSharedMaviPicker(padding: const EdgeInsets.fromLTRB(16, 0, 16, 8)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: SegmentedButton<int>(
                 segments: const [
                   ButtonSegment(
@@ -698,18 +694,17 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                 onSelectionChanged: (s) => setState(() => _hubTab = s.first),
               ),
             ),
+            if (_hubTab == 0) PartnerSmsStepStrip(currentStep: _hubContactsStep),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: _hubTab == 0
                   ? KeyedSubtree(
                       key: const ValueKey('contacts'),
-                      child: _buildContactsTab(
+                      child: _buildHubContactsFlow(
                         isDark,
                         totalRecipients,
                         manualCount,
                         selectedCount,
-                        scrollable: true,
-                        hideMaviPicker: true,
                       ),
                     )
                   : KeyedSubtree(
@@ -727,11 +722,15 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                               onSend: _sendRouteCustomers,
                               scrollable: true,
                               selectedVehicleId: _selectedVehicleId,
-                              hideMaviPicker: true,
+                              hideMaviPicker: false,
+                              hubChrome: true,
                               onVehicleChanged: (v) => setState(() {
                                 _selectedVehicleId = v;
                                 _syncMaviFromVehicle();
                               }),
+                              onStepChanged: (_) {
+                                if (mounted) setState(() {});
+                              },
                             ),
                     ),
             ),
@@ -797,6 +796,159 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
       backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       appBar: AppBar(title: const Text('Partner-SMS')),
       body: content,
+    );
+  }
+
+  Widget _buildHubContactsFlow(
+    bool isDark,
+    int totalRecipients,
+    int manualCount,
+    int selectedCount,
+  ) {
+    final step = _hubContactsStep;
+    final groupContacts = _activeMaviContacts;
+    final maviLabel = _selectedMaviCode != null
+        ? MaviUnitCodes.compactLabel(_selectedMaviCode!)
+        : 'MAVI';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PartnerSmsSectionCard(
+          step: 1,
+          title: 'Velg MAVI',
+          subtitle: 'Hvilken bil/sjåfør skal SMS-en gjelde?',
+          active: step == 0,
+          child: _buildSharedMaviPicker(padding: EdgeInsets.zero),
+        ),
+        PartnerSmsSectionCard(
+          step: 2,
+          title: 'Velg mottakere',
+          subtitle: '$maviLabel · ${groupContacts.length} kontakt(er)',
+          active: step == 1,
+          child: _buildHubContactPicker(groupContacts, maviLabel),
+        ),
+        PartnerSmsSectionCard(
+          step: 3,
+          title: 'Skriv melding',
+          subtitle: 'Mal eller egen tekst',
+          active: step == 2,
+          child: PartnerSmsMessageSection(
+            messageCtrl: _messageCtrl,
+            onChanged: () => setState(() {}),
+            minLines: 3,
+          ),
+        ),
+        PartnerSmsSectionCard(
+          step: 4,
+          title: 'Send',
+          subtitle: 'Kontroller mottakere og send',
+          active: step == 3,
+          child: _buildContactsSendSection(
+            isDark,
+            totalRecipients,
+            manualCount,
+            selectedCount,
+            hideMaviPicker: true,
+            compactHub: true,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHubContactPicker(
+    List<PartnerSmsContact> groupContacts,
+    String maviLabel,
+  ) {
+    if (groupContacts.isEmpty) {
+      return Column(
+        children: [
+          Icon(Icons.phone_disabled_outlined, size: 36, color: Colors.grey.shade500),
+          const SizedBox(height: 8),
+          Text(
+            'Ingen telefon registrert for $maviLabel.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Legg inn telefon under Samarbeidspartner → bil, bedrift eller sjåfør-portal.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context), height: 1.35),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            TextButton(
+              onPressed: () =>
+                  setState(() => _selected.addAll(groupContacts.map((c) => c.id))),
+              child: const Text('Velg alle'),
+            ),
+            TextButton(
+              onPressed: groupContacts.every((c) => !_selected.contains(c.id))
+                  ? null
+                  : () => setState(() {
+                        for (final c in groupContacts) {
+                          _selected.remove(c.id);
+                        }
+                      }),
+              child: const Text('Fjern'),
+            ),
+            const Spacer(),
+            Text(
+              '${groupContacts.where((c) => _selected.contains(c.id)).length} valgt',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: PartnerUi.mutedText(context),
+              ),
+            ),
+          ],
+        ),
+        for (final c in groupContacts)
+          Card(
+            margin: const EdgeInsets.only(bottom: 6),
+            child: ListTile(
+              dense: true,
+              leading: Checkbox(
+                value: _selected.contains(c.id),
+                activeColor: DriftProTheme.primaryGreen,
+                onChanged: (v) => setState(() {
+                  if (v == true) {
+                    _selected.add(c.id);
+                  } else {
+                    _selected.remove(c.id);
+                  }
+                }),
+              ),
+              title: Text(
+                _contactRoleLabel(c),
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text('${c.label}\n${c.phone}'),
+              isThreeLine: true,
+              trailing: IconButton(
+                tooltip: 'Send kun til denne',
+                icon: const Icon(Icons.send_outlined),
+                onPressed: _sending ? null : () => _sendOne(c),
+              ),
+              onTap: () => setState(() {
+                if (_selected.contains(c.id)) {
+                  _selected.remove(c.id);
+                } else {
+                  _selected.add(c.id);
+                }
+              }),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1045,6 +1197,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     int manualCount,
     int selectedCount, {
     bool hideMaviPicker = false,
+    bool compactHub = false,
   }) {
     final selectedContacts =
         _contacts.where((c) => _selected.contains(c.id)).toList(growable: false);
@@ -1053,27 +1206,42 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: 4),
-        Text(
-          'Egne nummer (ikke registrert i systemet)',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            color: isDark ? Colors.grey[200] : Colors.grey[900],
+        if (!compactHub) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Egne nummer (ikke registrert i systemet)',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: isDark ? Colors.grey[200] : Colors.grey[900],
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          'Skriv ett nummer per linje, eller flere adskilt med komma, semikolon eller mellomrom. '
-          'Systemet finner alle gyldige norske nummer (8 siffer).',
-          style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context)),
-        ),
-        const SizedBox(height: 8),
+          const SizedBox(height: 6),
+          Text(
+            'Skriv ett nummer per linje, eller flere adskilt med komma, semikolon eller mellomrom. '
+            'Systemet finner alle gyldige norske nummer (8 siffer).',
+            style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context)),
+          ),
+          const SizedBox(height: 8),
+        ] else ...[
+          Text(
+            'Egne nummer (valgfritt)',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              color: isDark ? Colors.grey[200] : Colors.grey[900],
+            ),
+          ),
+          const SizedBox(height: 6),
+        ],
         TextField(
           controller: _manualPhonesCtrl,
           decoration: InputDecoration(
-            hintText: 'F.eks.\n91234567\n93456789, 99887766',
+            hintText: compactHub
+                ? 'Ett nummer per linje, eller komma-separert'
+                : 'F.eks.\n91234567\n93456789, 99887766',
             border: const OutlineInputBorder(),
             alignLabelWithHint: true,
+            isDense: compactHub,
             suffixIcon: manualPhones.isNotEmpty
                 ? IconButton(
                     tooltip: 'Tøm nummer',
@@ -1082,8 +1250,8 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                   )
                 : null,
           ),
-          minLines: 4,
-          maxLines: 8,
+          minLines: compactHub ? 2 : 4,
+          maxLines: compactHub ? 5 : 8,
           keyboardType: TextInputType.phone,
         ),
         if (manualPhones.isNotEmpty) ...[
@@ -1114,18 +1282,25 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
             style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context)),
           ),
         ],
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: _sending || manualPhones.isEmpty || _messageCtrl.text.trim().isEmpty
-              ? null
-              : _sendManualPhones,
-          icon: const Icon(Icons.dialpad),
-          label: Text('Send til egne nummer (${manualPhones.length})'),
-        ),
-        const SizedBox(height: 20),
-        const Divider(),
-        const SizedBox(height: 12),
+        if (!compactHub) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _sending || manualPhones.isEmpty || _messageCtrl.text.trim().isEmpty
+                ? null
+                : _sendManualPhones,
+            icon: const Icon(Icons.dialpad),
+            label: Text('Send til egne nummer (${manualPhones.length})'),
+          ),
+          const SizedBox(height: 20),
+          const Divider(),
+          const SizedBox(height: 12),
+        ] else
+          const SizedBox(height: 12),
         Card(
+          elevation: 0,
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.04)
+              : const Color(0xFFF8FAFC),
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Column(
@@ -1140,7 +1315,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
                       'Velg kontakter over og/eller skriv egne nummer. '
-                      'For rute-kunder fra PDF, bytt til «Rute-kunder» over.',
+                      'For rute-kunder fra PDF, bytt til «Rute-kunder».',
                       style: TextStyle(color: PartnerUi.mutedText(context)),
                     ),
                   )
@@ -1169,16 +1344,18 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
             ),
           ),
         ),
-        const SizedBox(height: 16),
-        Text(
-          hideMaviPicker ? 'Steg 4 · Send' : 'Send',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 13,
-            color: hideMaviPicker ? DriftProTheme.primaryGreenDark : null,
+        const SizedBox(height: 14),
+        if (!compactHub && hideMaviPicker) ...[
+          const Text(
+            'Steg 4 · Send',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              color: DriftProTheme.primaryGreenDark,
+            ),
           ),
-        ),
-        const SizedBox(height: 10),
+          const SizedBox(height: 10),
+        ],
         FilledButton.icon(
           onPressed: _sending || totalRecipients == 0 || _messageCtrl.text.trim().isEmpty
               ? null
@@ -1200,6 +1377,16 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                 : () => _send(targets: selectedContacts),
             icon: const Icon(Icons.contacts_outlined),
             label: Text('Kun valgte kontakter ($selectedCount)'),
+          ),
+        ],
+        if (compactHub && manualPhones.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: _sending || _messageCtrl.text.trim().isEmpty
+                ? null
+                : _sendManualPhones,
+            icon: const Icon(Icons.dialpad),
+            label: Text('Kun egne nummer (${manualPhones.length})'),
           ),
         ],
       ],

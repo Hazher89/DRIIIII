@@ -1,0 +1,39 @@
+STEMPLING, UNDERSØKELSER OG MER
+
+Stempling:
+Bunnnavigasjon → Stempling.
+Brukes for tidsregistrering / kiosk der bedriften har det aktivert.
+På felles skjerm kan infoskjerm/kiosk kjøre i personvernmodus uten navn.
+Følg lokal rutine for inn/ut-stempling.
+
+Undersøkelser:
+Bunnnavigasjon → Undersøkelser.
+Åpne tildelt undersøkelse og svar på spørsmålene.
+Administratorer kan bygge undersøkelser og bruke Publiser & Del for utsending.
+Brukes til kultur, HMS og medarbeiderinvolvering.
+
+Online & tilstedeværelse:
+Se hvem som er på jobb og planlegg dekning (der modulen er åpen for deg).
+
+Uniform:
+Bunnnavigasjon → Uniform for uniform/monitor-funksjoner der det er aktivert.
+
+Profil og varsler (Mer):
+Mer → Min profil: oppdater kontaktinfo og bytt passord.
+Varsler: velg SMS, e-post eller begge der det er tillatt.
+Varselhub viser hendelser og katalog over varseltyper.
+
+Ansatte og avdelinger (admin/HR):
+Under Mer/admin: ansatte, avdelinger og organisasjonskart.
+Superadmin kan redigere profiler og godkjenne nye brukere ved onboarding.
+
+Tilgangskontroll:
+Superadmin styrer roller og modulbasert tilgang under Tilgangskontroll.
+Har du ikke en fane (f.eks. SMS eller Utleie), mangler tilgang — spør admin.
+
+Support:
+Mer → Hjelp & støtte, eller e-post til hazher@mavilogistikk.no.
+Bruk også DriftPro-assistenten (web) og Opplæring for stegvise svar.
+
+
+Se også egne veiledninger: Stempling (detalj), Mer-administrasjon, Varsler, Dashboard, Undersøkelser.

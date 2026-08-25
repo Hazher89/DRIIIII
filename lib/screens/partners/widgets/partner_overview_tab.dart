@@ -9,6 +9,7 @@ import '../../../core/constants/mavi_fleet_roles.dart';
 import '../../../core/layout/web_layout.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/partner/partner_workforce_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/permissions/user_access.dart';
 import '../../../core/services/vegvesen/vehicle_registry_service.dart';
@@ -211,6 +212,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   bool _portalSaving = false;
   bool _routesOwnerOnly = false;
   bool _routesOwnerOnlySaving = false;
+  bool _workforceEnabled = false;
+  bool _workforceSaving = false;
+  bool _workforceAllSaving = false;
   bool _ecoDrivingCompleted = false;
   DateTime? _ecoDrivingDeadline;
   DateTime? _ecoDrivingCompletedAt;
@@ -237,6 +241,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _auditPlate = TextEditingController(text: p.auditPlate ?? '');
     _notes = TextEditingController(text: p.notes ?? '');
     _routesOwnerOnly = p.routesOwnerOnly;
+    _workforceEnabled = p.workforceEnabled;
     _ecoDrivingCompleted = p.ecoDrivingCompleted;
     _ecoDrivingDeadline = p.ecoDrivingDeadline;
     _ecoDrivingCompletedAt = p.ecoDrivingCompletedAt;
@@ -363,6 +368,64 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     );
   }
 
+  Future<void> _setWorkforceEnabled(bool value) async {
+    setState(() {
+      _workforceEnabled = value;
+      _workforceSaving = true;
+    });
+    try {
+      await PartnerWorkforceService.setPartnerEnabled(
+        partnerId: widget.partner.id,
+        enabled: value,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value
+                  ? 'Ansatte & stempling er på for denne bedriften'
+                  : 'Ansatte & stempling er av (data beholdes)',
+            ),
+          ),
+        );
+        await widget.onSaved();
+      }
+    } catch (e) {
+      if (mounted) setState(() => _workforceEnabled = !value);
+    } finally {
+      if (mounted) setState(() => _workforceSaving = false);
+    }
+  }
+
+  Future<void> _setWorkforceAll(bool value) async {
+    final cid = widget.partner.companyId;
+    setState(() => _workforceAllSaving = true);
+    try {
+      await PartnerWorkforceService.setCompanyWideEnabled(
+        companyId: cid,
+        enabled: value,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value
+                  ? 'Ansatte & stempling er på for ALLE partnere'
+                  : 'Felles-bryter av — per-bedrift gjelder fortsatt',
+            ),
+          ),
+        );
+        await widget.onSaved();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _workforceAllSaving = false);
+    }
+  }
+
   Future<void> _setRoutesOwnerOnly(bool value) async {
     setState(() {
       _routesOwnerOnly = value;
@@ -405,6 +468,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _phone.text = p.phone ?? '';
     _employees.text = p.employeeCount?.toString() ?? '';
     _routesOwnerOnly = p.routesOwnerOnly;
+    _workforceEnabled = p.workforceEnabled;
     _ecoDrivingCompleted = p.ecoDrivingCompleted;
     _ecoDrivingDeadline = p.ecoDrivingDeadline;
     _ecoDrivingCompletedAt = p.ecoDrivingCompletedAt;
@@ -1338,6 +1402,39 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 padding: EdgeInsets.only(top: 4),
                 child: LinearProgressIndicator(minHeight: 2),
               ),
+            const Divider(height: 28),
+            Text('Ansatte & stempling', style: DriftProTheme.labelLg),
+            const SizedBox(height: 4),
+            Text(
+              'Når på: eier kan registrere ansatte, generere innlogging, '
+              'og alle kan se/redigere timer med full endringslogg. '
+              'Av slår av funksjonen uten å slette historikk.',
+              style: DriftProTheme.caption,
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Aktiver for denne bedriften'),
+              value: _workforceEnabled,
+              onChanged: _workforceSaving ? null : _setWorkforceEnabled,
+            ),
+            if (_isSuperAdmin)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Aktiver for alle partnere'),
+                subtitle: const Text('Superadmin — felles bryter'),
+                trailing: _workforceAllSaving
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : TextButton(
+                        onPressed: () => _setWorkforceAll(true),
+                        child: const Text('Slå på alle'),
+                      ),
+              ),
+            if (_workforceSaving)
+              const LinearProgressIndicator(minHeight: 2),
           ],
         ),
       _OverviewSection.ownerPortal => PartnerModernSection(

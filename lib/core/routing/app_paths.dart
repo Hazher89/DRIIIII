@@ -39,6 +39,14 @@ abstract final class AppPaths {
     'utleie',
     'moteter',
     'bilkontroll',
+    'ansatte',
+    'timer',
+    'profil',
+  ];
+
+  /// Partnerportal — ansatt (stempling)
+  static const portalStaffTabs = [
+    'stempling',
     'profil',
   ];
 

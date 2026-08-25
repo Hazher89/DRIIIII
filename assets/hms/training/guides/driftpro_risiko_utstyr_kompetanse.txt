@@ -1,0 +1,36 @@
+RISIKO, UTSTYR OG KOMPETANSE
+
+Risikoanalyse (ROS):
+Hvor: HMS → Risikoanalyse.
+1. Åpne listen over risikovurderinger.
+2. Opprett ny vurdering. Fyll ISO-felter, fare, sted og behandling.
+3. Sett sannsynlighet og konsekvens (kobles til matrise).
+4. Legg tiltak, ansvarlig og frist.
+5. Last opp vedlegg ved behov.
+6. Lagre. Følg høy-risiko-funn fra HMS-dashboard.
+
+Interessepart / stakeholder-risiko:
+Under risiko finnes faner for risiko og interessepart der det er aktivert.
+Opprett interessepart-vurdering når eksterne parter påvirker risikoen.
+
+Risikomatrise:
+Hvor: HMS → Risikomatrise.
+Se 5×5-matrise for sannsynlighet × konsekvens.
+Bruk den til å prioritere tiltak og forstå fargekoder (lav/middels/høy).
+
+Maskiner & utstyr:
+Hvor: HMS → Maskiner & utstyr.
+Faner typisk: Oversikt, Alle, Truck, Arkiv.
+1. Registrer nytt utstyr med type, status og eier.
+2. Sett serviceintervall. Last opp kvittering og servicehefte PDF.
+3. Registrer service/inspeksjon når utført.
+4. Følg merkelappen «service» på HMS-kortet når noe haster.
+5. Truck-profil brukes for truck-spesifikk historikk og varsler.
+
+Kompetanse & kurs:
+Hvor: HMS → Kompetanse & kurs.
+Faner: Kurs, Dokumenter, Oversikt (kompetansematrise).
+1. Registrer kurs/bevis per ansatt.
+2. Last opp PDF-bevis.
+3. Se utløpsdatoer. Badge «utløper» på HMS-kortet viser antall som snart går ut.
+4. Bruk kompetansematrisen for å se hvem som mangler kompetanse.

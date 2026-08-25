@@ -1,0 +1,29 @@
+DASHBOARD — HVORDAN BRUKE DET
+
+Hvor: Bunnnavigasjon → Dashboard (første fanen).
+
+Hva dashboard viser:
+KPI-kort for åpne avvik, fravær i dag, høy risiko, åpne SJA og planlagte vernerunder — tilpasset din rolle.
+Varsler øverst: nye brukere som venter, fravær/ferie til godkjenning, kritiske avvik.
+Operativt vindu: bytt mellom I dag, 7 dager og 30 dager.
+Lister: På ferie nå, Fravær i dag, Venter på godkjenning, Åpne avvik.
+
+Hurtighandlinger:
+Se ferie/fravær — åpner Fravær.
+Se avvik — åpner Avvik.
+Ny registrering — start fravær/ferie.
+Nytt avvik — start avviksmelding.
+Ny SJA — start sikker jobbanalyse.
+Risiko — gå til risikoanalyse.
+Undersøkelser — åpne undersøkelser.
+
+Slik bruker du dashboard daglig:
+1. Åpne Dashboard ved oppstart.
+2. Les røde/kritiske varsler først.
+3. Godkjenn ventende fravær hvis du er leder (trykk på varselet).
+4. Følg opp kritiske avvik.
+5. Bruk hurtighandlinger i stedet for å lete i menyene.
+
+Tips:
+Pull-to-refresh oppdaterer tallene.
+Mangler du data: sjekk tilgang eller at du er koblet til riktig bedrift.

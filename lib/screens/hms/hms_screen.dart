@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/config/driftpro_client.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
@@ -55,10 +56,48 @@ class _HmsScreenState extends State<HmsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final isMobile = DriftProClient.isMobile;
     final a = _profile?.access;
     final modules = <Widget>[];
 
-    if (a?.canAvvik == true) {
+    // Mobil: prioriter opplæring og dokumenter først (ansatt-vennlig).
+    void addTraining() {
+      if (a?.canHmsTraining != true) return;
+      modules.add(_buildModuleCard(
+        context,
+        icon: Icons.school_rounded,
+        title: 'Opplæring',
+        subtitle: isMobile
+            ? 'Søk og lær — SOP og brukerveiledning'
+            : 'Smart søk — alle DriftPro-funksjoner + SOP Hub',
+        color: const Color(0xFF00695C),
+        isDark: isDark,
+        badge: isMobile ? null : 'Alle',
+        onTap: () => context.push(AppPaths.hmsOpplaering),
+      ));
+    }
+
+    void addDocuments() {
+      if (a?.canHmsDocuments != true) return;
+      modules.add(_buildModuleCard(
+        context,
+        icon: AppIcons.document,
+        title: AppStrings.documents,
+        subtitle: isMobile
+            ? 'Håndbok og styrende dokumenter'
+            : 'HMS-håndbok og styrende dokumenter (DMS)',
+        color: DriftProTheme.info,
+        isDark: isDark,
+        onTap: () => context.push(AppPaths.hmsDms),
+      ));
+    }
+
+    if (isMobile) {
+      addTraining();
+      addDocuments();
+    }
+
+    if (a?.canAvvik == true && !isMobile) {
       modules.add(_buildModuleCard(
         context,
         icon: Icons.report_problem_outlined,
@@ -147,35 +186,18 @@ class _HmsScreenState extends State<HmsScreen> {
         onTap: () => context.push(AppPaths.hmsKompetanse),
       ));
     }
-    if (a?.canHmsTraining == true) {
-      modules.add(_buildModuleCard(
-        context,
-        icon: Icons.school_rounded,
-        title: 'Opplæring',
-        subtitle: 'Søk i Hub Driftsrutiner — SOP-HUB-001',
-        color: const Color(0xFF00695C),
-        isDark: isDark,
-        badge: 'SOP',
-        onTap: () => context.push(AppPaths.hmsOpplaering),
-      ));
+    if (!isMobile) {
+      addTraining();
+      addDocuments();
     }
-    if (a?.canHmsDocuments == true) {
-      modules.add(_buildModuleCard(
-        context,
-        icon: AppIcons.document,
-        title: AppStrings.documents,
-        subtitle: 'HMS-håndbok og styrende dokumenter (DMS)',
-        color: DriftProTheme.info,
-        isDark: isDark,
-        onTap: () => context.push(AppPaths.hmsDms),
-      ));
-    }
+
+    final hubTitle = isMobile ? AppStrings.navWork : AppStrings.navHMS;
 
     return PermissionGuard(
       profile: _profile,
       accessKey: AccessKeys.hms,
       child: MobileShellScaffold(
-        title: AppStrings.navHMS,
+        title: hubTitle,
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -187,38 +209,77 @@ class _HmsScreenState extends State<HmsScreen> {
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
-                      child: Text(
-                        'Du har ikke tilgang til HMS-moduler.\n'
-                        'Kontakt superadmin.',
-                        textAlign: TextAlign.center,
-                        style: DriftProTheme.bodyMd
-                            .copyWith(color: Colors.grey),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            AppIcons.work,
+                            size: 48,
+                            color: Colors.grey.shade400,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            isMobile
+                                ? 'Ingen arbeidsmoduler ennå'
+                                : 'Du har ikke tilgang til HMS-moduler',
+                            textAlign: TextAlign.center,
+                            style: DriftProTheme.headingSm,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            isMobile
+                                ? 'Når leder eller admin gir deg tilgang til f.eks. opplæring, dokumenter eller SJA, dukker de opp her automatisk.'
+                                : 'Kontakt superadmin for tilgang.',
+                            textAlign: TextAlign.center,
+                            style: DriftProTheme.bodyMd
+                                .copyWith(color: Colors.grey),
+                          ),
+                        ],
                       ),
                     ),
                   )
                 : RefreshIndicator(
                     onRefresh: _load,
                     child: ListView(
-                      padding: const EdgeInsets.all(16),
+                      padding: EdgeInsets.all(isMobile ? 20 : 16),
                       physics: const AlwaysScrollableScrollPhysics(
                         parent: BouncingScrollPhysics(),
                       ),
                       children: [
-                        _buildVersionBanner(isDark),
-                        const SizedBox(height: 12),
-                        _buildKpiRow(isDark),
-                        const SizedBox(height: 20),
-                        Text('Moduler', style: DriftProTheme.headingSm),
-                        const SizedBox(height: 12),
+                        if (isMobile) ...[
+                          Text(
+                            'Opplæring, dokumenter og sikkerhet',
+                            style: DriftProTheme.bodyMd.copyWith(
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Flere kort vises når du får tilgang.',
+                            style: DriftProTheme.caption,
+                          ),
+                          const SizedBox(height: 16),
+                        ] else ...[
+                          _buildVersionBanner(isDark),
+                          const SizedBox(height: 12),
+                          _buildKpiRow(isDark),
+                          const SizedBox(height: 20),
+                          Text('Moduler', style: DriftProTheme.headingSm),
+                          const SizedBox(height: 12),
+                        ],
                         for (var i = 0; i < modules.length; i++) ...[
-                          if (i > 0) const SizedBox(height: 12),
+                          if (i > 0) SizedBox(height: isMobile ? 14 : 12),
                           modules[i],
                         ],
+                        if (!isMobile) ...[
+                          const SizedBox(height: 24),
+                          Text(
+                            'Maler er tilgjengelig når du oppretter risiko, SJA eller vernerunde — velg «Ny» og «Start fra mal».',
+                            style: DriftProTheme.caption,
+                          ),
+                        ],
                         const SizedBox(height: 24),
-                        Text(
-                          'Maler er tilgjengelig når du oppretter risiko, SJA eller vernerunde — velg «Ny» og «Start fra mal».',
-                          style: DriftProTheme.caption,
-                        ),
                       ],
                     ),
                   ),

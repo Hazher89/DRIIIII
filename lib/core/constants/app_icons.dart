@@ -19,8 +19,9 @@ class AppIcons {
   static const IconData newTicket = Icons.add_alert_rounded;
   static const IconData category = Icons.category_rounded;
   
-  // ── HMS ──
+  // ── HMS / Arbeid ──
   static const IconData hms = Icons.shield_rounded;
+  static const IconData work = Icons.work_outline_rounded;
   static const IconData riskAssessment = Icons.assessment_rounded;
   static const IconData sja = Icons.engineering_rounded;
   static const IconData safetyRound = Icons.fact_check_rounded;

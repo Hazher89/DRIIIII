@@ -9,12 +9,14 @@ import '../../core/routing/route_url_sync.dart';
 
 import '../../core/utils/nb_date_format.dart';
 
+import '../../core/config/driftpro_client.dart';
 import '../../core/constants/leave_rules.dart';
 import '../../core/constants/vacation_year_window.dart';
 import '../../core/services/absence/absence_service.dart';
 import '../../core/services/absence/leave_eligibility.dart';
 import '../../core/services/absence/leave_period_usage_service.dart';
 import 'widgets/leave_egenmelding_blocked_sheet.dart';
+import 'widgets/leave_usage_meter.dart';
 import '../../models/leave_period_usage.dart';
 import '../../core/services/absence/department_leave_conflict_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -38,6 +40,8 @@ import '../../core/layout/web_layout.dart';
 
 enum _MineStatusFilter { alle, ventende, godkjent, avvist }
 
+enum _MineTypeFilter { alle, ferie, egenmelding, syktBarn, annet }
+
 class AbsenceScreen extends StatefulWidget {
   const AbsenceScreen({super.key, this.initialTab});
 
@@ -53,6 +57,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   int _godkjennTabIndex = -1;
   int _teamCalendarTabIndex = 0;
   _MineStatusFilter _mineFilter = _MineStatusFilter.alle;
+  _MineTypeFilter _mineTypeFilter = _MineTypeFilter.alle;
 
   List<Absence> _myAbsences = [];
   List<Absence> _scopedAbsences = [];
@@ -91,6 +96,18 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
   int _indexForSlug(String? slug, int tabCount) {
     if (slug == null || slug.isEmpty) return 0;
+    if (DriftProClient.isMobile) {
+      switch (slug) {
+        case 'godkjenn':
+          return _godkjennTabIndex >= 0 ? _godkjennTabIndex : 0;
+        case 'mine':
+          return _godkjennTabIndex >= 0 ? 1 : 0;
+        case 'team':
+          return _teamCalendarTabIndex.clamp(0, tabCount - 1);
+        default:
+          return 0;
+      }
+    }
     switch (slug) {
       case 'dashboard':
         return 0;
@@ -108,6 +125,14 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   }
 
   String _slugForIndex(int index, bool isManager) {
+    if (DriftProClient.isMobile) {
+      if (isManager) {
+        if (index == _godkjennTabIndex) return 'godkjenn';
+        if (index == _teamCalendarTabIndex) return 'team';
+        return 'mine';
+      }
+      return 'mine';
+    }
     if (index == 0) return 'dashboard';
     if (index == 1) return 'mine';
     if (isManager && index == _godkjennTabIndex) return 'godkjenn';
@@ -137,37 +162,65 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     final previousIndex = _tabController?.index ?? 0;
     final previousLength = _tabController?.length ?? 0;
 
-    var idx = 0;
-    final tabs = <Tab>[
-      const Tab(icon: Icon(Icons.dashboard_outlined, size: 20), text: 'Dashboard'),
-      const Tab(icon: Icon(Icons.person_outline, size: 20), text: 'Mine'),
-    ];
-    idx = 2;
-    int godkjennIdx = -1;
-    if (isManager) {
-      godkjennIdx = idx;
+    late List<Tab> tabs;
+    late int godkjennIdx;
+    late int teamCalIdx;
+
+    if (DriftProClient.isMobile) {
+      if (isManager) {
+        godkjennIdx = 0;
+        teamCalIdx = 2;
+        tabs = [
+          Tab(
+            icon: const Icon(Icons.notifications_active_outlined, size: 20),
+            text: 'Inkommende (${_pendingApprovals.length})',
+          ),
+          const Tab(icon: Icon(Icons.person_outline, size: 20), text: 'Mine'),
+          const Tab(
+            icon: Icon(Icons.calendar_month_outlined, size: 20),
+            text: 'Team',
+          ),
+        ];
+      } else {
+        godkjennIdx = -1;
+        teamCalIdx = 0;
+        tabs = const [
+          Tab(icon: Icon(Icons.person_outline, size: 20), text: 'Mine søknader'),
+        ];
+      }
+    } else {
+      var idx = 0;
+      tabs = <Tab>[
+        const Tab(icon: Icon(Icons.dashboard_outlined, size: 20), text: 'Dashboard'),
+        const Tab(icon: Icon(Icons.person_outline, size: 20), text: 'Mine'),
+      ];
+      idx = 2;
+      godkjennIdx = -1;
+      if (isManager) {
+        godkjennIdx = idx;
+        tabs.add(
+          Tab(
+            icon: const Icon(Icons.fact_check_outlined, size: 20),
+            text: 'Godkjenn (${_pendingApprovals.length})',
+          ),
+        );
+        idx++;
+      }
+      teamCalIdx = idx;
       tabs.add(
-        Tab(
-          icon: const Icon(Icons.fact_check_outlined, size: 20),
-          text: 'Godkjenn (${_pendingApprovals.length})',
+        const Tab(
+          icon: Icon(Icons.calendar_month_outlined, size: 20),
+          text: 'Team & kalender',
         ),
       );
       idx++;
+      tabs.add(
+        Tab(
+          icon: const Icon(Icons.groups_outlined, size: 20),
+          text: isManager ? (canAdmin ? 'Ansatte' : 'Team') : 'Hjelp',
+        ),
+      );
     }
-    final teamCalIdx = idx;
-    tabs.add(
-      const Tab(
-        icon: Icon(Icons.calendar_month_outlined, size: 20),
-        text: 'Team & kalender',
-      ),
-    );
-    idx++;
-    tabs.add(
-      Tab(
-        icon: Icon(Icons.groups_outlined, size: 20),
-        text: isManager ? (canAdmin ? 'Ansatte' : 'Team') : 'Hjelp',
-      ),
-    );
 
     if (_tabController == null || previousLength != tabs.length) {
       _tabController?.removeListener(_onAbsenceTabChanged);
@@ -176,6 +229,10 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       if (_pendingTabSlug != null) {
         initialIndex = _indexForSlug(_pendingTabSlug, tabs.length);
         _pendingTabSlug = null;
+      } else if (DriftProClient.isMobile &&
+          isManager &&
+          _pendingApprovals.isNotEmpty) {
+        initialIndex = 0;
       }
       _tabController = TabController(
         length: tabs.length,
@@ -201,6 +258,16 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   }
 
   List<Widget> _buildTabBodies(bool isDark, bool isManager, bool canAdmin) {
+    if (DriftProClient.isMobile) {
+      if (isManager) {
+        return [
+          _buildHandlingTab(isDark),
+          _buildMineTab(isDark, isManager),
+          _buildTeamCalendarTab(isDark, isManager),
+        ];
+      }
+      return [_buildMineTab(isDark, isManager)];
+    }
     return [
       _buildDashboardTab(isDark, isManager),
       _buildMineTab(isDark, isManager),
@@ -377,6 +444,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       final periodUsage = LeavePeriodUsageService.compute(
         absences: _myAbsences,
         hireDate: profile.hireDate,
+        includePending: true,
       );
       if (mounted) {
         setState(() {
@@ -521,23 +589,24 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       child: MobileShellScaffold(
       title: 'Fravær & Ferie',
       actions: [
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            onPressed: () => showDialog(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text('Regler og hjelp'),
-                content: const SingleChildScrollView(child: LeaveRulesPanel()),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Lukk'),
-                  ),
-                ],
+          if (isManager)
+            IconButton(
+              icon: const Icon(Icons.help_outline),
+              onPressed: () => showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Regler og hjelp'),
+                  content: const SingleChildScrollView(child: LeaveRulesPanel()),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Lukk'),
+                    ),
+                  ],
+                ),
               ),
+              tooltip: 'Regler (Lovdata)',
             ),
-            tooltip: 'Regler (Lovdata)',
-          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadAllData,
@@ -556,7 +625,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
             ? FloatingActionButton.extended(
                 onPressed: () => _showRegisterOptions(context),
                 icon: const Icon(Icons.add_task),
-                label: const Text('Ny registrering'),
+                label: Text(
+                  DriftProClient.isMobile ? 'Ny søknad' : 'Ny registrering',
+                ),
               )
             : null,
       body: DriftProTabView(
@@ -851,7 +922,28 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         case _MineStatusFilter.avvist:
           return a.status == AbsenceStatus.avvist;
       }
+    }).where((a) {
+      switch (_mineTypeFilter) {
+        case _MineTypeFilter.alle:
+          return true;
+        case _MineTypeFilter.ferie:
+          return a.type == AbsenceType.ferie;
+        case _MineTypeFilter.egenmelding:
+          return a.type == AbsenceType.egenmelding;
+        case _MineTypeFilter.syktBarn:
+          return a.type == AbsenceType.syktBarn;
+        case _MineTypeFilter.annet:
+          return a.type != AbsenceType.ferie &&
+              a.type != AbsenceType.egenmelding &&
+              a.type != AbsenceType.syktBarn;
+      }
     }).toList();
+
+    final egenCount =
+        _myAbsences.where((a) => a.type == AbsenceType.egenmelding).length;
+    final syktLimit = _companySettings.syktBarnDaysLimit(
+      childrenUnder12: _profile?.childrenUnder12Count ?? 0,
+    );
 
     if (_myAbsences.isEmpty) {
       return Center(
@@ -865,16 +957,20 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
               Text('Ingen søknader ennå', style: DriftProTheme.headingSm),
               const SizedBox(height: 8),
               Text(
-                'Bruk hurtigvalg på Dashboard for å søke ferie, egenmelding eller sykt barn.',
+                DriftProClient.isMobile
+                    ? 'Bruk «Ny søknad» nede til høyre for å søke ferie eller fravær.'
+                    : 'Bruk hurtigvalg på Dashboard for å søke ferie, egenmelding eller sykt barn.',
                 textAlign: TextAlign.center,
                 style: DriftProTheme.bodySm,
               ),
-              const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: () => _openNewRequest(AbsenceType.ferie),
-                icon: const Icon(Icons.add),
-                label: const Text('Ny søknad'),
-              ),
+              if (!DriftProClient.isMobile) ...[
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: () => _openNewRequest(AbsenceType.ferie),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Ny søknad'),
+                ),
+              ],
             ],
           ),
         ),
@@ -884,28 +980,78 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.2)),
+        Text(
+          DriftProClient.isMobile ? 'Min oversikt' : 'Mine søknader',
+          style: DriftProTheme.headingSm,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          isManager
+              ? 'Dine egne søknader. Teamet finner du under Inkommende / Team.'
+              : 'Se status, egenmeldinger og ferie på ett sted.',
+          style: DriftProTheme.caption,
+        ),
+        const SizedBox(height: 14),
+        if (_periodUsage != null) ...[
+          LeaveUsageMeter(
+            title: 'Egenmelding',
+            used: _periodUsage!.egenmeldingDaysUsed,
+            max: _companySettings.egenmeldingDaysPerYear,
+            subtitle:
+                '${_periodUsage!.window.formatRange()} · $egenCount søknader totalt',
+            icon: Icons.sick_outlined,
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Mine søknader', style: DriftProTheme.labelLg),
-              const SizedBox(height: 4),
-              Text(
-                isManager
-                    ? 'Dette er kun dine egne søknader. Teamets oversikt finner du under Team & kalender og Godkjenn.'
-                    : 'Full oversikt over alt du har søkt — ventende, godkjent og avvist.',
-                style: DriftProTheme.bodySm,
-              ),
-            ],
+          const SizedBox(height: 10),
+          LeaveUsageMeter(
+            title: 'Sykt barn',
+            used: _periodUsage!.syktBarnDaysUsed,
+            max: syktLimit,
+            subtitle: _periodUsage!.window.formatRange(),
+            icon: Icons.child_care_rounded,
+          ),
+          if (_quota != null) ...[
+            const SizedBox(height: 10),
+            LeaveUsageMeter(
+              title: 'Ferie ${_quota!.year}',
+              used: _quota!.vacationDaysUsed,
+              max: _quota!.totalVacationDays,
+              subtitle: '${_quota!.vacationDaysRemaining} dager igjen',
+              icon: Icons.beach_access_outlined,
+            ),
+          ],
+          const SizedBox(height: 16),
+        ],
+        Text('Type', style: DriftProTheme.labelSm),
+        const SizedBox(height: 6),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: _MineTypeFilter.values.map((f) {
+              final selected = _mineTypeFilter == f;
+              final label = switch (f) {
+                _MineTypeFilter.alle => 'Alle',
+                _MineTypeFilter.ferie => 'Ferie',
+                _MineTypeFilter.egenmelding => 'Egenmelding',
+                _MineTypeFilter.syktBarn => 'Sykt barn',
+                _MineTypeFilter.annet => 'Annet',
+              };
+              return Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilterChip(
+                  label: Text(label),
+                  selected: selected,
+                  onSelected: (_) => setState(() => _mineTypeFilter = f),
+                  selectedColor:
+                      DriftProTheme.primaryGreen.withValues(alpha: 0.15),
+                  checkmarkColor: DriftProTheme.primaryGreen,
+                ),
+              );
+            }).toList(),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        Text('Status', style: DriftProTheme.labelSm),
+        const SizedBox(height: 6),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -923,25 +1069,28 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
                   label: Text(label),
                   selected: selected,
                   onSelected: (_) => setState(() => _mineFilter = f),
-                  selectedColor: DriftProTheme.primaryGreen.withValues(alpha: 0.15),
+                  selectedColor:
+                      DriftProTheme.primaryGreen.withValues(alpha: 0.15),
                   checkmarkColor: DriftProTheme.primaryGreen,
                 ),
               );
             }).toList(),
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         if (list.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 32),
-            child: Text(
-              'Ingen søknader med valgt filter.',
-              textAlign: TextAlign.center,
-              style: DriftProTheme.bodySm,
+            child: Center(
+              child: Text(
+                'Ingen treff med valgt filter',
+                style: DriftProTheme.bodySm,
+              ),
             ),
           )
         else
           ...list.map((a) => _buildAbsenceCard(a, _days(a), isDark)),
+        SizedBox(height: DriftProClient.isMobile ? 88 : 24),
       ],
     );
   }
@@ -1126,20 +1275,25 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     return ListView(
       padding: const EdgeInsets.all(16),
       children: const [
-        LeaveRulesPanel(),
-        SizedBox(height: 16),
         _InfoBox(
-          title: 'Automatisk registrering',
+          title: 'Slik fungerer søknader',
           body:
-              'Når du søker om fravær, får avdelingsleder og admin beskjed. '
-              'Ved godkjenning trekkes dager fra kvoten og fraværet vises i kalenderen.',
+              'Når du søker ferie eller fravær, får leder beskjed. '
+              'Du ser status under Mine søknader, og får varsel når saken er behandlet.',
         ),
         SizedBox(height: 12),
         _InfoBox(
-          title: 'Ferie over nyttår',
+          title: 'Egenmelding',
           body:
-              'Eksempel: 35 dager tildelt, 30 brukt → 5 dager kan overføres (maks '
-              '${LeaveRules.defaultMaxCarryoverDays} etter avtale). Neste år: 35 nye + 5 overført = 40 dager totalt.',
+              'Du kan søke egenmelding i inntil 5 dager om gangen. '
+              'Bruken vises i oversikten med farge fra gull til rødt etter hvert som kvoten fylles.',
+        ),
+        SizedBox(height: 12),
+        _InfoBox(
+          title: 'Ferie',
+          body:
+              'Feriedager trekkes fra kvoten når søknaden godkjennes. '
+              'Sjekk saldoen din i oversikten før du søker.',
         ),
       ],
     );

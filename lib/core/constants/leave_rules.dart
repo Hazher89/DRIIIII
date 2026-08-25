@@ -6,7 +6,8 @@ class LeaveRules {
   LeaveRules._();
 
   // ── Egenmelding (aml. § 4-3, praksis + folketrygd) ─────────────────────
-  static const int egenmeldingMaxConsecutiveDays = 3;
+  /// Maks kalenderdager per egenmeldingsperiode (hard tak i appen).
+  static const int egenmeldingMaxConsecutiveDays = 5;
   static const int egenmeldingMaxPeriodsPerYear = 4;
   static const int egenmeldingMaxDaysPerYear = 24;
 
@@ -28,8 +29,8 @@ class LeaveRules {
 
   static const String lovdataEgenmeldingTitle = 'Egenmelding';
   static const String lovdataEgenmeldingBody =
-      'Arbeidstaker kan melde egen sykdom uten sykmelding i inntil 3 kalenderdager '
-      'om gangen (tariff/HR-avtale kan gi mer). Maks 4 egenmeldingsperioder og '
+      'Arbeidstaker kan melde egen sykdom uten sykmelding i inntil 5 kalenderdager '
+      'om gangen (bedriftens HR-avtale kan være strengere). Maks 4 egenmeldingsperioder og '
       '24 dager i en 12-måneders periode fra ansettelsesdato (nullstilles ikke 1. januar). '
       'Ved lengre fravær kreves sykmelding fra lege. '
       'Kilde: arbeidsmiljøloven § 4-3, praksis under folketrygdloven.';
@@ -216,15 +217,22 @@ class CompanyLeaveSettings {
   });
 
   factory CompanyLeaveSettings.fromJson(Map<String, dynamic> json) {
+    final rawConsec =
+        json['egenmelding_consecutive_max'] as int? ?? LeaveRules.egenmeldingMaxConsecutiveDays;
     return CompanyLeaveSettings(
       egenmeldingDaysPerYear:
           json['egenmelding_days_per_year'] as int? ?? LeaveRules.egenmeldingMaxDaysPerYear,
+      // Hard tak: aldri mer enn appens maks (5 dager) per periode.
       egenmeldingConsecutiveMax:
-          json['egenmelding_consecutive_max'] as int? ?? LeaveRules.egenmeldingMaxConsecutiveDays,
+          rawConsec.clamp(1, LeaveRules.egenmeldingMaxConsecutiveDays),
       maxVacationCarryover:
           json['max_vacation_carryover'] as int? ?? LeaveRules.defaultMaxCarryoverDays,
     );
   }
+
+  /// Effektiv maks per egenmeldingsøkt (bedrift ∩ hard tak).
+  int get effectiveEgenmeldingConsecutiveMax =>
+      egenmeldingConsecutiveMax.clamp(1, LeaveRules.egenmeldingMaxConsecutiveDays);
 
   /// Maks sykt-barn-dager per periode (10 dager / 15 ved 2+ barn under 12).
   int syktBarnDaysLimit({int childrenUnder12 = 0}) =>

@@ -1,0 +1,24 @@
+VARSLER — SMS, E-POST OG INNSTILLINGER
+
+Hvor: Mer → Varsler.
+
+Faner:
+SMS — utgående SMS-logg for bedriften.
+E-post — e-postvarsler.
+Audit — hendelseslogg / katalog over varsler.
+Innstillinger — hva som skal sendes automatisk.
+
+Slik endrer du varselinnstillinger:
+1. Gå til Mer → Varsler → Innstillinger.
+2. Slå av/på typer (f.eks. fraværssøknad, fraværsbeslutning).
+3. Velg kanal preferanse der det støttes (SMS, e-post, begge).
+4. Lagre.
+
+Individuelle preferanser:
+Under Min profil / ansattprofil kan SMS-opt-in og e-post-opt-in styres.
+Systemmeldinger kan gå via ikkesvar@driftpro.no.
+
+Feilsøk SMS:
+Sjekk SMS-logg og «Ikke sendt».
+Kontroller telefonnummerformat og at personen har samtykket til SMS.
+Partnere → SMS har egen logg for samarbeids-SMS.

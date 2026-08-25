@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_icons.dart';
 import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/config/driftpro_client.dart';
+import '../../core/permissions/partner_access.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/driftpro_theme_context.dart';
@@ -20,19 +24,38 @@ class MoreScreen extends StatefulWidget {
   State<MoreScreen> createState() => _MoreScreenState();
 }
 
-class _MoreScreenState extends State<MoreScreen> {
+class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
   UserProfile? _profile;
   bool _isLoading = true;
   int _usersWaitingForApprovalCount = 0;
+  bool _profileReloadInFlight = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadProfile();
   }
 
-  Future<void> _loadProfile() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_loadProfile(silent: true));
+    }
+  }
+
+  Future<void> _loadProfile({bool silent = false}) async {
+    if (_profileReloadInFlight) return;
+    _profileReloadInFlight = true;
+    if (!silent) {
+      setState(() => _isLoading = true);
+    }
     try {
       final profile = await SupabaseService.fetchEffectiveUserProfile();
       int count = 0;
@@ -42,11 +65,13 @@ class _MoreScreenState extends State<MoreScreen> {
             .where((u) => u.isOnboarded && !u.isApproved && !u.isPartnerPortalUser)
             .length;
       }
+      if (!mounted) return;
       setState(() {
         _profile = profile;
         _usersWaitingForApprovalCount = count;
       });
     } finally {
+      _profileReloadInFlight = false;
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -121,6 +146,43 @@ class _MoreScreenState extends State<MoreScreen> {
           ),
           const SizedBox(height: 24),
 
+          if (DriftProClient.isMobile && _profile != null && _hasMobileModules) ...[
+            _buildSectionLabel(context, 'Moduler'),
+            if (PartnerAccess.canOpenPartnersModule(_profile!.access))
+              _buildModuleItem(
+                context,
+                Icons.handshake_outlined,
+                AppStrings.navPartners,
+                AppPaths.partners,
+                isDark,
+              ),
+            if (_profile!.access.canStempling)
+              _buildModuleItem(
+                context,
+                AppIcons.clock,
+                AppStrings.navStempling,
+                AppPaths.stempling,
+                isDark,
+              ),
+            if (_profile!.access.canUniformMonitor)
+              _buildModuleItem(
+                context,
+                Icons.verified_user_outlined,
+                AppStrings.navUniform,
+                AppPaths.uniform,
+                isDark,
+              ),
+            if (_profile!.access.canSurveys || _profile!.access.canSurveysMenu)
+              _buildModuleItem(
+                context,
+                AppIcons.survey,
+                AppStrings.navSurveys,
+                AppPaths.surveys,
+                isDark,
+              ),
+            const SizedBox(height: 20),
+          ],
+
           if (_profile != null && _hasAnyAdminMenu) ...[
             _buildSectionLabel(context, 'Administrasjon'),
             if (_profile!.access.canDepartments)
@@ -130,12 +192,13 @@ class _MoreScreenState extends State<MoreScreen> {
             if (_profile!.isSuperAdmin || _profile!.access.canEmployeesList)
               _buildMenuItem(context, Icons.account_tree_outlined, 'Organisasjonskart', isDark),
             if (_profile!.access.canPartnersMenu || _profile!.access.canPartnersTab)
-              _buildMenuItem(
-                context,
-                Icons.handshake_outlined,
-                'Samarbeidspartnere',
-                isDark,
-              ),
+              if (!DriftProClient.isMobile)
+                _buildMenuItem(
+                  context,
+                  Icons.handshake_outlined,
+                  'Samarbeidspartnere',
+                  isDark,
+                ),
             if (_profile!.access.canPersonalFolder)
               _buildMenuItem(context, AppIcons.folder, 'Personalmappe', isDark),
             if (_profile!.access.canNotifications)
@@ -146,12 +209,13 @@ class _MoreScreenState extends State<MoreScreen> {
                 isDark,
               ),
             if (_profile!.access.canSurveysMenu || _profile!.access.canSurveys)
-              _buildMenuItem(
-                context,
-                Icons.assignment_outlined,
-                'Undersøkelser',
-                isDark,
-              ),
+              if (!DriftProClient.isMobile)
+                _buildMenuItem(
+                  context,
+                  Icons.assignment_outlined,
+                  'Undersøkelser',
+                  isDark,
+                ),
             if (_profile!.access.canAccessControl)
               _buildMenuItem(
                 context,
@@ -285,6 +349,51 @@ class _MoreScreenState extends State<MoreScreen> {
         p.isSuperAdmin ||
         a.canKiosk ||
         a.canWhistleblowing;
+  }
+
+  bool get _hasMobileModules {
+    final p = _profile;
+    if (p == null) return false;
+    final a = p.access;
+    return PartnerAccess.canOpenPartnersModule(a) ||
+        a.canStempling ||
+        a.canUniformMonitor ||
+        a.canSurveys ||
+        a.canSurveysMenu;
+  }
+
+  Widget _buildModuleItem(
+    BuildContext context,
+    IconData icon,
+    String title,
+    String path,
+    bool isDark,
+  ) {
+    final drift = context.driftColors;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: drift.card,
+        borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+        border: Border.all(color: drift.borderSubtle),
+      ),
+      child: ListTile(
+        leading: Icon(icon, color: drift.iconMuted),
+        title: Text(
+          title,
+          style: DriftProTheme.bodyMd.copyWith(color: drift.textPrimary),
+        ),
+        trailing: Icon(
+          Icons.arrow_forward_ios_rounded,
+          size: 14,
+          color: drift.textMuted,
+        ),
+        onTap: () => context.go(path),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+        ),
+      ),
+    );
   }
 
   Widget _buildSectionLabel(BuildContext context, String label) {

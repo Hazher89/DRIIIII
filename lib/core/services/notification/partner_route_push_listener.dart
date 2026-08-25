@@ -6,50 +6,82 @@ import '../../config/driftpro_client.dart';
 import 'push_notification_service.dart';
 import '../native_permissions_service.dart';
 
-/// Realtime-fallback: vis lokalt varsel når ny rute sendes mens appen kjører.
+/// Realtime + lokal push når rute tildeles sjåfør eller bil-eier.
 abstract final class PartnerRoutePushListener {
   static RealtimeChannel? _channel;
   static String? _partnerId;
   static bool _askedNotifications = false;
 
+  /// [partnerVehicleId]: sjåfør — kun den bilen. Null: eier — alle biler for partneren.
   static void start({
     required String partnerId,
-    required String? partnerVehicleId,
+    String? partnerVehicleId,
   }) {
-    if (!DriftProClient.isMobile || partnerVehicleId == null) return;
+    if (!DriftProClient.isMobile) return;
     stop();
     _partnerId = partnerId;
     _askedNotifications = false;
 
-    // Varsler trengs for rute-tildeling — be kun når sjåførportal brukes.
     unawaited(_ensureNotificationsOnce());
 
     final client = Supabase.instance.client;
-    _channel = client
-        .channel('driver_routes_$partnerVehicleId')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'partner_route_shares',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'partner_vehicle_id',
-            value: partnerVehicleId,
-          ),
-          callback: (payload) => _maybeNotify(payload.newRecord),
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'partner_route_shares',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'partner_vehicle_id',
-            value: partnerVehicleId,
-          ),
-          callback: (payload) => _maybeNotify(payload.newRecord),
-        )
-        .subscribe();
+    final channelName = partnerVehicleId != null
+        ? 'driver_routes_$partnerVehicleId'
+        : 'owner_routes_$partnerId';
+
+    var channel = client.channel(channelName);
+
+    if (partnerVehicleId != null) {
+      channel = channel
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'partner_route_shares',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'partner_vehicle_id',
+              value: partnerVehicleId,
+            ),
+            callback: (payload) => _maybeNotify(payload.newRecord),
+          )
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'partner_route_shares',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'partner_vehicle_id',
+              value: partnerVehicleId,
+            ),
+            callback: (payload) => _maybeNotify(payload.newRecord),
+          );
+    } else {
+      channel = channel
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'partner_route_shares',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'partner_id',
+              value: partnerId,
+            ),
+            callback: (payload) => _maybeNotify(payload.newRecord),
+          )
+          .onPostgresChanges(
+            event: PostgresChangeEvent.update,
+            schema: 'public',
+            table: 'partner_route_shares',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'partner_id',
+              value: partnerId,
+            ),
+            callback: (payload) => _maybeNotify(payload.newRecord),
+          );
+    }
+
+    _channel = channel.subscribe();
   }
 
   static Future<void> _ensureNotificationsOnce() async {
@@ -75,8 +107,8 @@ abstract final class PartnerRoutePushListener {
     unawaited(PushNotificationService.showRouteAssigned(
       title: 'Ny rute i DriftPro',
       body: title != null && title.isNotEmpty
-          ? 'Ny rute: $title — åpne for PDF og godkjenning.'
-          : 'En ny rute er klar — åpne appen for PDF og godkjenning.',
+          ? 'Ny rute: $title — åpne for å se og akseptere.'
+          : 'En ny rute er klar — åpne appen for å se og akseptere.',
       routeShareId: row['id']?.toString(),
     ));
   }

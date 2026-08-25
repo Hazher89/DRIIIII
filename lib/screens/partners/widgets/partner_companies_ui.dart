@@ -17,6 +17,7 @@ class PartnerCompaniesUi {
     BuildContext context, {
     required VoidCallback onSingle,
     required VoidCallback onBulkBrreg,
+    VoidCallback? onTestPartner,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -58,6 +59,18 @@ class PartnerCompaniesUi {
                   onBulkBrreg();
                 },
               ),
+              if (onTestPartner != null) ...[
+                const SizedBox(height: 10),
+                _RegisterOptionCard(
+                  icon: Icons.science_outlined,
+                  title: 'Test-partner (superadmin)',
+                  subtitle: 'Org + brukernavn/passord du velger',
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    onTestPartner();
+                  },
+                ),
+              ],
             ],
           ),
         ),

@@ -54,6 +54,8 @@ class Partner {
 
   /// Unik kode i bot-/trekk-saksnummer (BOT-{caseCode}-2026-0001).
   final String? caseCode;
+  /// Partner workforce (ansatte + stempling) — per-bedrift (se også company-wide flag).
+  final bool workforceEnabled;
 
   Partner({
     required this.id,
@@ -89,6 +91,7 @@ class Partner {
     this.ecoDrivingCompletedAt,
     required this.createdAt,
     this.caseCode,
+    this.workforceEnabled = false,
   });
 
   EcoDrivingStatus get ecoDrivingStatus {
@@ -151,6 +154,7 @@ class Partner {
           : null,
       createdAt: DateTime.parse(json['created_at'] as String),
       caseCode: json['case_code'] as String?,
+      workforceEnabled: json['workforce_enabled'] as bool? ?? false,
     );
   }
 

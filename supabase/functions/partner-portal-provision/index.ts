@@ -79,8 +79,10 @@ Deno.serve(async (req) => {
       regenerate_password = false,
     } = body;
 
-    const kind = account_kind === "owner" ? "owner" : "driver";
+    const kind =
+      account_kind === "owner" ? "owner" : account_kind === "staff" ? "staff" : "driver";
     const isOwner = kind === "owner";
+    const isStaff = kind === "staff";
 
     if (!partner_id || !company_id) {
       return new Response(JSON.stringify({ error: "Missing partner_id or company_id" }), {
@@ -194,6 +196,10 @@ Deno.serve(async (req) => {
       existingQuery = existingQuery
         .eq("account_kind", "owner")
         .eq("phone", normalizedPhone);
+    } else if (isStaff) {
+      existingQuery = existingQuery
+        .eq("account_kind", "staff")
+        .eq("phone", normalizedPhone);
     } else {
       existingQuery = existingQuery.eq("partner_vehicle_id", partner_vehicle_id);
     }
@@ -218,7 +224,7 @@ Deno.serve(async (req) => {
       portal_provision: true,
       company_id,
       partner_id,
-      partner_vehicle_id: isOwner ? null : partner_vehicle_id ?? null,
+      partner_vehicle_id: isOwner || isStaff ? null : partner_vehicle_id ?? null,
       phone: normalizedPhone,
       full_name: displayName,
     };
@@ -268,7 +274,7 @@ Deno.serve(async (req) => {
         role: "samarbeidspartner",
         company_id,
         partner_id,
-        partner_vehicle_id: isOwner ? null : partner_vehicle_id,
+        partner_vehicle_id: isOwner || isStaff ? null : partner_vehicle_id,
         phone: normalizedPhone,
         is_onboarded: true,
         is_approved: true,
@@ -284,7 +290,7 @@ Deno.serve(async (req) => {
     const row = {
       partner_id,
       company_id,
-      partner_vehicle_id: isOwner ? null : partner_vehicle_id,
+      partner_vehicle_id: isOwner || isStaff ? null : partner_vehicle_id,
       username: user,
       login_email: authEmail,
       phone: normalizedPhone,

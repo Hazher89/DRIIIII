@@ -9,6 +9,8 @@ class AppStrings {
   static const String navAbsence = 'Fravær';
   static const String navTickets = 'Avvik';
   static const String navHMS = 'HMS';
+  /// Mobil bunnmeny / hub — bredere enn kun HMS (opplæring, dokumenter, SJA m.m.).
+  static const String navWork = 'Arbeid';
   static const String navUniform = 'Uniform';
   static const String navSurveys = 'Undersøkelser';
   static const String navPartners = 'Partnere';

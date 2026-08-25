@@ -1,0 +1,23 @@
+RUTER — DELE UT TIL SJÅFØRER (FULLSTENDIG)
+
+Hvor: Partnere → Ruter & planlegging.
+
+Steg for steg — én rute:
+1. Importer PDF eller hent fra kø (manuell / mass auto / AUTO MASS / SAP ruter@driftpro.no).
+2. Kontroller dato, MAVI-kode, stowing lane og innhold.
+3. Tildel partner/sjåfør/kjøretøy (Tildel/Assign).
+4. Lagre som kladd.
+5. Åpne Publiser kladd-ruter.
+6. Sjekk SMS-ikon (har telefon?) for varsel.
+7. Trykk Publiser nå eller Publiser og send varsel.
+8. Bekreft at sjåfør ser ruten i sjåførportalen.
+
+Mange ruter:
+Bruk AUTO MASS: last opp → kontroller treff → tildel → publiser.
+Master-scheduler planlegger flere dager i kø.
+Flåte-/rutedashboard viser kapasitet og tildeling per dag.
+
+Hvis sjåfør ikke ser ruten:
+Er den publisert (ikke bare kladd)?
+Riktig partner/dato?
+Sjåfør logget inn i riktig portal?

@@ -1,0 +1,36 @@
+SJA OG VERNERUNDE
+
+Hvor:
+Bunnnavigasjon → HMS.
+
+SJA — Sikker jobbanalyse:
+1. Gå til HMS → SJA.
+2. Trykk Ny SJA.
+3. Velg mal hvis det finnes for jobben, eller start blankt.
+4. Fyll inn jobb, sted, deltakere og farepunkter.
+5. Kryss av nødvendig PPE (verneutstyr).
+6. Beskriv tiltak for å redusere risiko.
+7. La aktuelle personer signere digitalt.
+8. Lagre. SJA er da dokumentert og søkbar.
+
+Når skal SJA brukes?
+Før uvanlig, risikofylt eller midlertidig arbeid.
+Når prosedyrer endres eller nye farer oppstår.
+Som del av opplæring / før oppstart på kritiske oppgaver.
+
+Vernerunde:
+1. Gå til HMS → Vernerunder.
+2. Planlegg eller start en vernerunde (ny/start).
+3. Gå gjennom sjekklisten punkt for punkt.
+4. Ta bilder av funn. Marker avvik og alvorlighet.
+5. Registrer tiltak og ansvarlig.
+6. Fullfør og arkiver. PDF kan genereres til arkiv.
+
+Etter vernerunde:
+Følg opp åpne funn til de er lukket.
+Koble alvorlige funn til avvik eller risikoanalyse ved behov.
+Bruk historikk/PDF ved revisjon.
+
+Risikoanalyse (ROS):
+Under HMS finner du også risikoanalyse med 5×5-matrise.
+Opprett vurdering, sett sannsynlighet og konsekvens, legg tiltak og lagre historikk.

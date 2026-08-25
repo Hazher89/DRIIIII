@@ -82,7 +82,7 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              '${pending.length} rute(r) venter — trykk på ruten, åpne PDF og aksepter',
+                              '${pending.length} nye ruter — trykk på en rute for å åpne, se PDF og akseptere',
                               style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 color: Colors.orange.shade900,
@@ -98,10 +98,23 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
                   child: SegmentedButton<int>(
                     segments: [
                       if (pending.isNotEmpty)
-                        ButtonSegment(value: -1, label: Text('Venter (${pending.length})')),
-                      ButtonSegment(value: 0, label: Text('I dag (${_data!.routesToday.length})')),
-                      ButtonSegment(value: 1, label: Text('Kommende (${_data!.routesUpcoming.length})')),
-                      ButtonSegment(value: 2, label: Text('Arkiv (${_data!.routesArchive.length})')),
+                        ButtonSegment(
+                          value: -1,
+                          label: Text('Nye (${pending.length})'),
+                          icon: const Icon(Icons.mark_email_unread, size: 18),
+                        ),
+                      ButtonSegment(
+                        value: 0,
+                        label: Text('I dag (${_data!.routesToday.length})'),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        label: Text('Kommende (${_data!.routesUpcoming.length})'),
+                      ),
+                      ButtonSegment(
+                        value: 2,
+                        label: Text('Tidligere (${_data!.routesArchive.length})'),
+                      ),
                     ],
                     selected: {_tab},
                     onSelectionChanged: (s) => setState(() => _tab = s.first),
@@ -109,10 +122,22 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
                 ),
                 Expanded(
                   child: switch (_tab) {
-                    -1 => _routeList(pending, 'Ingen ruter venter.'),
-                    0 => _routeList(_data!.routesToday, 'Ingen ruter i dag.'),
-                    1 => _routeList(_data!.routesUpcoming, 'Ingen kommende ruter.'),
-                    _ => _routeList(_data!.routesArchive, 'Ingen ruter i arkivet.'),
+                    -1 => _routeList(
+                        pending,
+                        'Ingen nye ruter. Du får varsel når noe tildeles.',
+                      ),
+                    0 => _routeList(
+                        _data!.routesToday,
+                        'Ingen ruter i dag. Sjekk «Nye» eller «Kommende».',
+                      ),
+                    1 => _routeList(
+                        _data!.routesUpcoming,
+                        'Ingen kommende ruter.',
+                      ),
+                    _ => _routeList(
+                        _data!.routesArchive,
+                        'Ingen tidligere ruter ennå.',
+                      ),
                   },
                 ),
               ],

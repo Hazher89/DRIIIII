@@ -1,0 +1,37 @@
+FRAVÆR OG FERIE — ALLE FANER OG STEG
+
+Hvor: Bunnnavigasjon → Fravær.
+
+Faner:
+Dashboard — oversikt for fraværsmodulen.
+Mine — dine egne søknader.
+Godkjenn — ventende søknader for leder (viser antall).
+Team & kalender — teamoversikt.
+Roster — bemannings-/turnusrelatert oversikt der aktivert.
+
+Søk ferie (ansatt):
+1. Fravær → Mine → Ny søknad / Ny registrering / Legg inn fravær / ferie.
+2. Velg type: ferie, egenmelding, sykt barn, permisjon, sykmelding.
+3. Velg fra- og tildato. Sjekk feriekvote/saldo.
+4. Kommentar ved behov → Lagre.
+5. Status blir «venter» til leder godkjenner.
+
+Send fravær (egenmelding m.m.):
+Samme flyt som ferie, men velg riktig type.
+Egenmelding følger bedriftens regler (se Regler og hjelp / Lovdata).
+
+Godkjenne (leder):
+1. Fravær → Godkjenn.
+2. Åpne søknad. Les periode og type.
+3. Godkjenn eller Avvis.
+4. Ved overlapp i avdelingen: Avbryt eller Godkjenn likevel.
+5. Ansatt varsles etter beslutning.
+
+Kalender:
+Bruk dobbel kalender (ferie + fravær) under Team.
+Planlegg uten å skape dekningshull.
+Regler og hjelp viser røde dager og regelhjelp.
+
+Superadmin:
+Kan registrere ferie direkte uten godkjenningskø ved behov.
+Kan oppdatere feriekvote der funksjonen finnes.

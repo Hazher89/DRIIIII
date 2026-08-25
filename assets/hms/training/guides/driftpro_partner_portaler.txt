@@ -1,0 +1,30 @@
+PARTNERPORTAL — SJÅFØR OG EIER
+
+Hvor: Egen portal-innlogging (/portal) for partnerbrukere.
+
+Sjåførportal — faner:
+Oversikt — dagens status.
+Ruter — publiserte ruter og PDF.
+Dokumenter — delte filer.
+Fri — fri/fravær for partner der det er aktivert.
+Profil — egne opplysninger.
+
+Slik henter sjåfør ruten:
+1. Logg inn i sjåførportal.
+2. Gå til Ruter.
+3. Åpne dagens rute. Last ned/vis PDF.
+4. Følg kjørelisten. Kontakt MAVI/drift ved feil tildeling.
+
+Eierportal — faner:
+Oversikt, Oppsummering, Trekk, Dokumenter, Ruter, Utleie, Møter, Bilkontroll, Profil.
+Eier følger økonomi/trekk, dokumenter, utleie og bilkontroll for sine biler.
+
+Bot/Trekk (internt i Partnere):
+Opprett og følg bøter/trekk-saker.
+Send SMS fra sak ved behov.
+Dokumenter årsak og beløp for sporbarhet.
+
+Partner bedriftsdetalj:
+Fra Partnere → Bedrifter → åpne bedrift.
+Se oversikt, kjøretøy, dokumenter, compliance, SMS-historikk.
+Oppdater Brreg-kobling og kontaktinfo når det endres.

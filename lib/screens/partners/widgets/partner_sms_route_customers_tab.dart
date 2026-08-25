@@ -5,6 +5,7 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/nb_date_format.dart';
+import 'partner_sms_hub_ui.dart';
 import 'partner_sms_message_section.dart';
 import 'partner_ui.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
@@ -20,6 +21,8 @@ class PartnerSmsRouteCustomersTab extends StatefulWidget {
   final String? selectedVehicleId;
   final ValueChanged<String?>? onVehicleChanged;
   final bool hideMaviPicker;
+  final bool hubChrome;
+  final ValueChanged<int>? onStepChanged;
 
   const PartnerSmsRouteCustomersTab({
     super.key,
@@ -32,6 +35,8 @@ class PartnerSmsRouteCustomersTab extends StatefulWidget {
     this.selectedVehicleId,
     this.onVehicleChanged,
     this.hideMaviPicker = false,
+    this.hubChrome = false,
+    this.onStepChanged,
   });
 
   @override
@@ -237,6 +242,18 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
     }
   }
 
+  int get _hubStep {
+    if (_step == _stepCompose) {
+      if (widget.messageCtrl.text.trim().isEmpty) return 2;
+      return 3;
+    }
+    if (_vehicleId == null) return 0;
+    if (_selectedKeys.isEmpty) return 1;
+    return 1;
+  }
+
+  void _emitStep() => widget.onStepChanged?.call(_hubStep);
+
   @override
   Widget build(BuildContext context) {
     if (widget.fleet.isEmpty) {
@@ -252,93 +269,186 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
       );
     }
 
-    if (_step == _stepCompose) {
-      return _buildComposeStep(context);
-    }
-    return _buildSelectStep(context);
+    final body = _step == _stepCompose
+        ? _buildComposeStep(context)
+        : _buildSelectStep(context);
+
+    if (!widget.hubChrome) return body;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PartnerSmsStepStrip(currentStep: _hubStep),
+        body,
+      ],
+    );
   }
 
   Widget _buildSelectStep(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final selectedCount = _selectedCustomers.length;
 
-    return Column(
+    final intro = widget.hubChrome
+        ? 'Velg dato og MAVI, hent kunder fra rute-PDF, marker mottakere og gå videre til melding.'
+        : 'Hent kunder fra MAVI-rute-PDF. Velg dato og sjåfør, marker kundene du vil sende SMS til, '
+            'og trykk «Gå videre» for å velge mal og sende.';
+
+    final selectBody = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: Text(
-            'Hent kunder fra MAVI-rute-PDF. Velg dato og sjåfør, marker kundene du vil sende SMS til, '
-            'og trykk «Gå videre» for å velge mal og sende.',
-            style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context), height: 1.35),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _loading
-                      ? null
-                      : () async {
-                          final d = await showDatePicker(
-                            context: context,
-                            initialDate: _day,
-                            firstDate: DateTime.now().subtract(const Duration(days: 90)),
-                            lastDate: DateTime.now().add(const Duration(days: 365)),
-                          );
-                          if (d != null) setState(() => _day = d);
-                        },
-                  icon: const Icon(Icons.calendar_today_outlined, size: 18),
-                  label: Text(NbDateFormat.format(_day, 'd. MMM yyyy')),
-                ),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: _loading || _vehicleId == null ? null : _loadCustomers,
-                style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-                icon: _loading
-                    ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
-                    : const Icon(Icons.refresh, size: 18),
-                label: const Text('Hent kunder'),
-              ),
-            ],
-          ),
-        ),
-        if (!widget.hideMaviPicker)
+        if (!widget.hubChrome)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Velg MAVI-nummer',
-                border: OutlineInputBorder(),
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _vehicleId,
-                  isExpanded: true,
-                  items: [
-                    for (final row in _sortedFleet)
-                      DropdownMenuItem(
-                        value: row.vehicle.id,
-                        child: Text(
-                          _maviOnlyLabel(row),
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontWeight: FontWeight.w800),
-                        ),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Text(
+              intro,
+              style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context), height: 1.35),
+            ),
+          ),
+        if (widget.hubChrome)
+          PartnerSmsSectionCard(
+            step: 1,
+            title: 'MAVI og dato',
+            subtitle: intro,
+            active: _hubStep == 0,
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _loading
+                            ? null
+                            : () async {
+                                final d = await showDatePicker(
+                                  context: context,
+                                  initialDate: _day,
+                                  firstDate: DateTime.now().subtract(const Duration(days: 90)),
+                                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                                );
+                                if (d != null) setState(() => _day = d);
+                              },
+                        icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                        label: Text(NbDateFormat.format(_day, 'd. MMM yyyy')),
                       ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: _loading || _vehicleId == null ? null : () async {
+                        await _loadCustomers();
+                        _emitStep();
+                      },
+                      style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+                      icon: _loading
+                          ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
+                          : const Icon(Icons.refresh, size: 18),
+                      label: const Text('Hent'),
+                    ),
                   ],
-                  onChanged: (v) {
-                    setState(() => _vehicleId = v);
-                    widget.onVehicleChanged?.call(v);
-                  },
+                ),
+                if (!widget.hideMaviPicker) ...[
+                  const SizedBox(height: 10),
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Velg MAVI-nummer',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _vehicleId,
+                        isExpanded: true,
+                        items: [
+                          for (final row in _sortedFleet)
+                            DropdownMenuItem(
+                              value: row.vehicle.id,
+                              child: Text(
+                                _maviOnlyLabel(row),
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                            ),
+                        ],
+                        onChanged: (v) {
+                          setState(() => _vehicleId = v);
+                          widget.onVehicleChanged?.call(v);
+                          _emitStep();
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () async {
+                            final d = await showDatePicker(
+                              context: context,
+                              initialDate: _day,
+                              firstDate: DateTime.now().subtract(const Duration(days: 90)),
+                              lastDate: DateTime.now().add(const Duration(days: 365)),
+                            );
+                            if (d != null) setState(() => _day = d);
+                          },
+                    icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                    label: Text(NbDateFormat.format(_day, 'd. MMM yyyy')),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: _loading || _vehicleId == null ? null : _loadCustomers,
+                  style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+                  icon: _loading
+                      ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
+                      : const Icon(Icons.refresh, size: 18),
+                  label: const Text('Hent kunder'),
+                ),
+              ],
+            ),
+          ),
+          if (!widget.hideMaviPicker)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Velg MAVI-nummer',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _vehicleId,
+                    isExpanded: true,
+                    items: [
+                      for (final row in _sortedFleet)
+                        DropdownMenuItem(
+                          value: row.vehicle.id,
+                          child: Text(
+                            _maviOnlyLabel(row),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                    ],
+                    onChanged: (v) {
+                      setState(() => _vehicleId = v);
+                      widget.onVehicleChanged?.call(v);
+                    },
+                  ),
                 ),
               ),
             ),
-          ),
+        ],
         if (_routeTitle != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -356,33 +466,99 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
             child: Text(_error!, style: TextStyle(color: Colors.orange.shade800, fontSize: 12)),
           ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-          child: Row(
-            children: [
-              TextButton.icon(
-                onPressed: _customers.isEmpty ? null : () => _toggleAll(true),
-                icon: const Icon(Icons.select_all, size: 18),
-                label: const Text('Velg alle'),
-              ),
-              TextButton.icon(
-                onPressed: _customers.isEmpty ? null : () => _toggleAll(false),
-                icon: const Icon(Icons.deselect, size: 18),
-                label: const Text('Fjern valg'),
-              ),
-              const Spacer(),
-              Text(
-                '$selectedCount valgt',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: PartnerUi.mutedText(context)),
-              ),
-            ],
+        if (widget.hubChrome)
+          PartnerSmsSectionCard(
+            step: 2,
+            title: 'Velg kunder',
+            subtitle: '$selectedCount valgt',
+            active: _hubStep == 1,
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: _customers.isEmpty
+                          ? null
+                          : () {
+                              _toggleAll(true);
+                              _emitStep();
+                            },
+                      icon: const Icon(Icons.select_all, size: 18),
+                      label: const Text('Velg alle'),
+                    ),
+                    TextButton.icon(
+                      onPressed: _customers.isEmpty
+                          ? null
+                          : () {
+                              _toggleAll(false);
+                              _emitStep();
+                            },
+                      icon: const Icon(Icons.deselect, size: 18),
+                      label: const Text('Fjern valg'),
+                    ),
+                  ],
+                ),
+                _buildCustomerList(context, isDark),
+                const SizedBox(height: 8),
+                FilledButton.icon(
+                  onPressed: selectedCount == 0
+                      ? null
+                      : () {
+                          _goToCompose();
+                          _emitStep();
+                        },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DriftProTheme.primaryGreen,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  icon: const Icon(Icons.arrow_forward),
+                  label: Text('Videre til melding ($selectedCount)'),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+            child: Row(
+              children: [
+                TextButton.icon(
+                  onPressed: _customers.isEmpty ? null : () => _toggleAll(true),
+                  icon: const Icon(Icons.select_all, size: 18),
+                  label: const Text('Velg alle'),
+                ),
+                TextButton.icon(
+                  onPressed: _customers.isEmpty ? null : () => _toggleAll(false),
+                  icon: const Icon(Icons.deselect, size: 18),
+                  label: const Text('Fjern valg'),
+                ),
+                const Spacer(),
+                Text(
+                  '$selectedCount valgt',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: PartnerUi.mutedText(context)),
+                ),
+              ],
+            ),
           ),
-        ),
-        _buildCustomerList(context, isDark),
-        if (!widget.scrollable)
-          SafeArea(
-            top: false,
-            child: Padding(
+          _buildCustomerList(context, isDark),
+          if (!widget.scrollable)
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: FilledButton.icon(
+                  onPressed: selectedCount == 0 ? null : _goToCompose,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DriftProTheme.primaryGreen,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  icon: const Icon(Icons.arrow_forward),
+                  label: Text('Gå videre til melding ($selectedCount)'),
+                ),
+              ),
+            )
+          else
+            Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: FilledButton.icon(
                 onPressed: selectedCount == 0 ? null : _goToCompose,
@@ -394,22 +570,11 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
                 label: Text('Gå videre til melding ($selectedCount)'),
               ),
             ),
-          )
-        else
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: FilledButton.icon(
-              onPressed: selectedCount == 0 ? null : _goToCompose,
-              style: FilledButton.styleFrom(
-                backgroundColor: DriftProTheme.primaryGreen,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              icon: const Icon(Icons.arrow_forward),
-              label: Text('Gå videre til melding ($selectedCount)'),
-            ),
-          ),
+        ],
       ],
     );
+
+    return selectBody;
   }
 
   Widget _buildCustomerList(BuildContext context, bool isDark) {
@@ -417,14 +582,14 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
       if (_loading) {
         return const Padding(
           padding: EdgeInsets.all(32),
-          child: const DriftProLoadingCenter(),
+          child: DriftProLoadingCenter(),
         );
       }
       if (_customers.isEmpty) {
         return Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'Trykk «Hent kunder» for å lese telefonnummer fra rute-PDF.',
+            'Trykk «Hent» for å lese telefonnummer fra rute-PDF.',
             textAlign: TextAlign.center,
             style: TextStyle(color: PartnerUi.mutedText(context)),
           ),
@@ -515,6 +680,85 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
   Widget _buildComposeStep(BuildContext context) {
     final selected = _selectedCustomers;
     final msgEmpty = widget.messageCtrl.text.trim().isEmpty;
+
+    if (widget.hubChrome) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          PartnerSmsSectionCard(
+            step: 3,
+            title: 'Skriv melding',
+            subtitle: '${selected.length} kunder valgt',
+            active: _hubStep == 2,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: widget.sending
+                      ? null
+                      : () {
+                          setState(() => _step = _stepSelect);
+                          _emitStep();
+                        },
+                  icon: const Icon(Icons.people_outline),
+                  label: const Text('Endre kundevalg'),
+                ),
+                const SizedBox(height: 12),
+                Card(
+                  elevation: 0,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Mottakere', style: TextStyle(fontWeight: FontWeight.w800)),
+                        const SizedBox(height: 8),
+                        ...selected.take(8).map(
+                              (c) => Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  '${c.sequence}. ${c.name} · ${c.phoneDisplay}',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                              ),
+                            ),
+                        if (selected.length > 8)
+                          Text('… og ${selected.length - 8} til', style: const TextStyle(fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                PartnerSmsMessageSection(
+                  messageCtrl: widget.messageCtrl,
+                  onChanged: () {
+                    setState(() {});
+                    _emitStep();
+                  },
+                ),
+              ],
+            ),
+          ),
+          PartnerSmsSectionCard(
+            step: 4,
+            title: 'Send',
+            subtitle: 'Bekreft og send SMS',
+            active: _hubStep == 3,
+            child: FilledButton.icon(
+              onPressed: widget.sending || msgEmpty ? null : _confirmAndSend,
+              style: FilledButton.styleFrom(
+                backgroundColor: DriftProTheme.primaryGreen,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              icon: widget.sending
+                  ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
+                  : const Icon(Icons.send),
+              label: Text('Send SMS (${selected.length})'),
+            ),
+          ),
+        ],
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -634,7 +878,7 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
           SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [

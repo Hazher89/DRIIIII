@@ -1,0 +1,28 @@
+PARTNERE — ALLE FANER OG KNAPPER FORKLART
+
+Hvor: Bunnnavigasjon → Partnere.
+
+Bedrifter:
+Liste/søk over samarbeidspartnere.
+Åpne kort for detaljer, kjøretøy, dokumenter, compliance.
+Opprett/oppdater partner. Brreg-oppslag der tilgjengelig.
+
+Ruter & planlegging:
+Import, tildeling, publisering, AUTO MASS, mass auto, master-scheduler.
+Knapper: Publiser, Publiser nå, Publiser og send varsel, Tildel, søk, dato-velger.
+
+SMS:
+Send SMS — stegvis: Velg MAVI → mottakere → melding → Send.
+Fanen Send SMS til kunder — kunder fra rute-PDF/kjøreliste.
+Gå videre til melding → Send SMS og bekreft.
+SMS-logg, E-post-logg, Ikke sendt, Varselinnstillinger.
+
+Bot/Trekk:
+Saker for bøter og trekk. Send SMS fra sak. Følg status til ferdig.
+
+Utleie av bil:
+Ny bilutleie, statuser Bileier / MAVI utleie / Utleid / Retur / Ferdig.
+Send til godkjenning. Fjern åpen avtale og frigjør bil.
+
+Bilkontroll:
+Inspeksjon, EU-frister, Send SMS-varsel, dokumentasjon av funn.

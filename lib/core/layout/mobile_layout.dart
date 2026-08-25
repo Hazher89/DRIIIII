@@ -52,12 +52,12 @@ abstract final class MobileLayout {
     );
   }
 
-  /// FAB med avstand fra bunn på mobil.
+  /// FAB med liten avstand over shell-dock (dock håndterer allerede safe area).
   static Widget? wrapFab(BuildContext context, Widget? fab) {
     if (fab == null) return null;
     if (!DriftProClient.isMobile) return fab;
     return Padding(
-      padding: EdgeInsets.only(bottom: shellBottomInset(context)),
+      padding: const EdgeInsets.only(bottom: 4),
       child: fab,
     );
   }

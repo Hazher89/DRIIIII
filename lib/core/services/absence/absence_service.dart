@@ -30,9 +30,9 @@ class AbsenceService {
 
     switch (type) {
       case AbsenceType.egenmelding:
-        if (days > company.egenmeldingConsecutiveMax) {
-          return 'Egenmelding kan maks være ${company.egenmeldingConsecutiveMax} '
-              'kalenderdager om gangen (Lovdata/AML).';
+        final maxConsec = company.effectiveEgenmeldingConsecutiveMax;
+        if (days > maxConsec) {
+          return 'Egenmelding kan maks være $maxConsec kalenderdager om gangen.';
         }
         if (periodUsage != null &&
             periodUsage.egenmeldingPeriodsUsed >=

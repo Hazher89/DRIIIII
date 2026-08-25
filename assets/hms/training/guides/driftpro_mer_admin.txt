@@ -1,0 +1,62 @@
+MER-MENYEN — ADMINISTRASJON OG INNSTILLINGER
+
+Hvor: Bunnnavigasjon → Mer.
+
+Min profil:
+1. Trykk profilkortet øverst eller Min profil.
+2. Oppdater navn, kontakt, bilde.
+3. Bytt passord (minst 6 tegn).
+4. Sjekk varselpreferanser.
+
+Avdelinger:
+Opprett og rediger avdelinger. Knytt ansatte til riktig avdeling.
+Brukes i fraværskalender, organisasjonskart og tilgang.
+
+Ansatte:
+1. Åpne Ansatte.
+2. Søk/filtrer. Åpne ansatt for detaljer.
+3. Superadmin kan redigere profil og e-post.
+4. Fødselsnummer kan gi automatisk fødselsdato.
+5. Opprett intern ansatt via admin-flyt der det er satt opp (RPC/create).
+
+Organisasjonskart:
+Se hierarki mellom avdelinger og roller.
+Brukes til oversikt, ikke daglig drift.
+
+Samarbeidspartnere (fra Mer):
+Snarvei til Partnere-modulen når du har menytilgang.
+
+Personalmappe:
+Se egen mappe: kursbevis, sertifikat, arbeidsavtale, HMS, annet.
+Last opp egne filer. Følg utløpsvarsler.
+
+Tilgangskontroll:
+Kun de med tilgang. Sett roller og modulrettigheter per bruker/gruppe.
+Typiske roller: superadmin, admin, leder, ansatt.
+
+Brukergodkjenning (superadmin):
+Faner: Alle, Venter, Bursdager.
+Godkjenn nye onboarding-brukere under Venter.
+Badge på Mer viser antall som venter.
+
+Infoskjerm:
+Sett opp digital infoskjerm/kiosk for lager/kontor.
+Personvernmodus kan skjule navn på felles skjerm.
+
+DriftPro-assistent:
+Admin/superadmin: slå assistent på/av for selskapet og sett tittel.
+På web vises chat-knapp øverst til høyre når den er på.
+
+Anonym anmeldelse (whistleblowing):
+Send sensitiv varsling adskilt fra ordinære avvik.
+Følg instruksjonene på skjermen — ikke bruk dette til vanlige HMS-avvik.
+
+Fillagring (Dropbox) — kun utvalgte operatører:
+Koble Dropbox for sikker fillagring av PDF-er og dokumenter.
+
+Hjelp & støtte / Personvern / Om DriftPro:
+Les veiledning, personvernerklæring og produktkatalog.
+Support: hazher@mavilogistikk.no.
+
+Logg ut:
+Nederst på Mer-skjermen. Bruk alltid Logg ut på delte enheter.

@@ -1,0 +1,36 @@
+BILUTLEIE — HVORDAN LEIE UT BIL
+
+Hvor:
+Bunnnavigasjon → Partnere → Utleie av bil (på mobil: Utleie).
+
+Ny bilutleie (utlevering):
+1. Åpne Utleie av bil.
+2. Trykk Ny bilutleie.
+3. Velg bil, låntaker (partner) og periode (startdato/starttid).
+4. Gå gjennom leieavtalen med låntaker.
+5. Ta 6 obligatoriske bilder: front, bak, høyre, venstre, last/skap og dashboard.
+6. Registrer drivstoff-/ladenivå, kilometerstand og merknader.
+7. Bekreft «Jeg har lest og aksepterer avtalen».
+8. Trykk Send til godkjenning.
+
+Godkjenning (MAVI):
+Godkjenningsrekkefølge: Jassy først, deretter Herish, Julie, til slutt Karwan hvis andre er borte.
+Samme rekkefølge gjelder ved retur.
+Status «MAVI utleie» betyr at avtalen venter godkjenning før bilen er formelt utleid.
+Når godkjent blir status «Utleid».
+
+Retur av bil:
+1. Åpne den aktive leieavtalen.
+2. Registrer retur: 6 nye bilder, drivstoff og kilometerstand.
+3. Noter nye skader eller avvik mot utlevering.
+4. Send retur til MAVI-godkjenning.
+5. Når godkjent blir status «Ferdig».
+
+Pris og regler (kort):
+Leiepris er 1.000,- pr påbegynte dag.
+Drivstoff skal etterfylles til samme nivå; mangler etterfylling gir administrasjonsgebyr 500,- ekskl. drivstoff.
+Bompenger, vask og service ved lang leie er inkludert etter avtalen.
+Fakturering skjer ved motregning på oppsummering.
+
+Feil startet avtale:
+Har du tilgang, kan du bruke Fjern åpen avtale og frigjør bil for å rydde en avtale som ikke skal fullføres.
