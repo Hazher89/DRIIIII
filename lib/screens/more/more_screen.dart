@@ -82,11 +82,16 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
 
     return MobileShellScaffold(
       title: AppStrings.navMore,
+      hideMobileTitleBar: DriftProClient.isMobile,
       backgroundColor: context.driftColors.scaffold,
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        physics: const BouncingScrollPhysics(),
-        children: [
+      body: RefreshIndicator(
+        onRefresh: () => _loadProfile(),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          children: [
           // Profil-kort
           GestureDetector(
             onTap: () => context.push(AppPaths.moreProfil),
@@ -323,6 +328,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
           _buildLogoutButton(isDark, context),
           const SizedBox(height: 40),
         ],
+        ),
       ),
     );
   }

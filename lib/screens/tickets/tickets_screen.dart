@@ -170,8 +170,9 @@ class _TicketsScreenState extends State<TicketsScreen> {
       profile: _profile,
       accessKey: AccessKeys.avvik,
       child: MobileShellScaffold(
-      title: AppStrings.navTickets,
-      actions: [
+        title: AppStrings.navTickets,
+        hideMobileTitleBar: DriftProClient.isMobile,
+        actions: [
           if ((coord || ticketAdmin) && !DriftProClient.isMobile)
             IconButton(
               icon: const Icon(Icons.dashboard_customize_outlined),

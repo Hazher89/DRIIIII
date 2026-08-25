@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/config/driftpro_client.dart';
 import '../../core/permissions/user_access.dart';
 import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/routing/app_paths.dart';
@@ -188,6 +189,7 @@ class _UniformMonitorScreenState extends State<UniformMonitorScreen>
 
     return MobileShellScaffold(
       title: 'Uniform-monitor',
+      hideMobileTitleBar: DriftProClient.isMobile,
       actions: [
         if (_canAdmin)
           IconButton(
@@ -195,15 +197,16 @@ class _UniformMonitorScreenState extends State<UniformMonitorScreen>
             icon: const Icon(Icons.settings_outlined),
             onPressed: () => context.push(AppPaths.moreVisionCameras),
           ),
-        IconButton(
-          tooltip: 'Oppdater',
-          icon: const Icon(Icons.refresh),
-          onPressed: () async {
-            await _reload();
-            await _refreshViolations();
-            if (!kIsWeb) await _pollLive();
-          },
-        ),
+        if (!DriftProClient.isMobile)
+          IconButton(
+            tooltip: 'Oppdater',
+            icon: const Icon(Icons.refresh),
+            onPressed: () async {
+              await _reload();
+              await _refreshViolations();
+              if (!kIsWeb) await _pollLive();
+            },
+          ),
       ],
       bottom: TabBar(
         controller: _tabs,
@@ -237,7 +240,13 @@ class _UniformMonitorScreenState extends State<UniformMonitorScreen>
               child: DriftProTabView(
                 controller: _tabs,
                 children: [
-                  UniformLiveViewport(
+                  MobilePullRefresh(
+                    onRefresh: () async {
+                      await _reload();
+                      await _refreshViolations();
+                      if (!kIsWeb) await _pollLive();
+                    },
+                    child: UniformLiveViewport(
                   cameras: _cameras,
                   activeCameraId: _activeCameraId,
                   liveFrame: _liveFrame,
@@ -257,10 +266,14 @@ class _UniformMonitorScreenState extends State<UniformMonitorScreen>
                   onRetry: () => unawaited(_pollLive()),
                   onStreamReady: _onStreamReady,
                 ),
-                UniformViolationsGallery(
+                  ),
+                  MobilePullRefresh(
+                    onRefresh: _refreshViolations,
+                    child: UniformViolationsGallery(
                   violations: _violations,
                   onRefresh: _refreshViolations,
                 ),
+                  ),
               ],
             ),
           ),

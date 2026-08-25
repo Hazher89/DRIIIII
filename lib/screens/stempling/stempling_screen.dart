@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/layout/mobile_shell_scaffold.dart';
+import '../../core/config/driftpro_client.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/user_access.dart';
 import '../../core/routing/app_paths.dart';
@@ -166,6 +167,7 @@ class _StemplingScreenState extends State<StemplingScreen> with SingleTickerProv
       accessKey: AccessKeys.stempling,
       child: MobileShellScaffold(
         title: 'Stempling',
+        hideMobileTitleBar: DriftProClient.isMobile,
         bottom: TabBar(
           controller: _tabController,
           isScrollable: tabs.length > 3,
@@ -174,7 +176,14 @@ class _StemplingScreenState extends State<StemplingScreen> with SingleTickerProv
         backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
         body: DriftProTabView(
           controller: _tabController,
-          children: tabs.map((t) => t.child).toList(),
+          children: tabs
+              .map(
+                (t) => MobilePullRefresh(
+                  onRefresh: _load,
+                  child: t.child,
+                ),
+              )
+              .toList(),
         ),
       ),
     );

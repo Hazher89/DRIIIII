@@ -4,6 +4,53 @@ import '../config/driftpro_client.dart';
 import '../theme/driftpro_theme_context.dart';
 import 'mobile_layout.dart';
 
+/// Pull-to-refresh for fane-innhold uten egen scroll (tomme tilstander).
+class MobilePullRefresh extends StatelessWidget {
+  const MobilePullRefresh({
+    super.key,
+    required this.onRefresh,
+    required this.child,
+  });
+
+  final Future<void> Function() onRefresh;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (child is ScrollView) {
+      return RefreshIndicator(onRefresh: onRefresh, child: child);
+    }
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        slivers: [
+          SliverFillRemaining(hasScrollBody: false, child: child),
+        ],
+      ),
+    );
+  }
+}
+
+bool _isRefreshIconButton(Widget widget) {
+  if (widget is! IconButton) return false;
+  final icon = widget.icon;
+  if (icon is! Icon || icon.icon == null) return false;
+  return {
+    Icons.refresh,
+    Icons.refresh_rounded,
+    Icons.refresh_outlined,
+  }.contains(icon.icon);
+}
+
+List<Widget>? _mobileActionsWithoutRefresh(List<Widget>? actions) {
+  if (actions == null || actions.isEmpty) return actions;
+  final filtered = actions.where((w) => !_isRefreshIconButton(w)).toList();
+  return filtered.isEmpty ? null : filtered;
+}
+
 /// Kompakt side-header under DriftPro-logo på native app (erstatter AppBar).
 class MobileShellPageHeader extends StatelessWidget implements PreferredSizeWidget {
   const MobileShellPageHeader({
@@ -73,6 +120,7 @@ class MobileShellScaffold extends StatelessWidget {
     this.floatingActionButtonLocation,
     this.backgroundColor,
     this.bottomNavigationBar,
+    this.hideMobileTitleBar = false,
   });
 
   final Widget body;
@@ -85,15 +133,21 @@ class MobileShellScaffold extends StatelessWidget {
   final Color? backgroundColor;
   final Widget? bottomNavigationBar;
 
-  bool get _showHeader =>
+  /// Skjuler tittel-/handlings-raden på mobil (faner under logo er nok).
+  final bool hideMobileTitleBar;
+
+  bool _showHeader(List<Widget>? effectiveActions) =>
       title != null && title!.isNotEmpty ||
-      (actions != null && actions!.isNotEmpty) ||
+      (effectiveActions != null && effectiveActions.isNotEmpty) ||
       leading != null;
 
   @override
   Widget build(BuildContext context) {
+    final mobileActions =
+        DriftProClient.isMobile ? _mobileActionsWithoutRefresh(actions) : actions;
+
     if (!DriftProClient.isMobile) {
-      final hasAppBar = _showHeader || bottom != null;
+      final hasAppBar = _showHeader(actions) || bottom != null;
       return Scaffold(
         backgroundColor: backgroundColor,
         appBar: hasAppBar
@@ -102,7 +156,7 @@ class MobileShellScaffold extends StatelessWidget {
                 actions: actions,
                 bottom: bottom,
                 // Unngå tom toolbar-høyde når kun faner vises (store gap under logo).
-                toolbarHeight: _showHeader ? kToolbarHeight : 0,
+                toolbarHeight: _showHeader(actions) ? kToolbarHeight : 0,
                 automaticallyImplyLeading: false,
                 scrolledUnderElevation: 0,
               )
@@ -114,15 +168,17 @@ class MobileShellScaffold extends StatelessWidget {
       );
     }
 
+    final showHeader = !hideMobileTitleBar && _showHeader(mobileActions);
+
     return Scaffold(
       backgroundColor: backgroundColor,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (_showHeader)
+          if (showHeader)
             MobileShellPageHeader(
               title: title ?? '',
-              actions: actions,
+              actions: mobileActions,
               leading: leading,
             ),
           if (bottom != null) bottom!,

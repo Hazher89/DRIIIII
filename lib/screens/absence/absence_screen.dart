@@ -261,12 +261,12 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     if (DriftProClient.isMobile) {
       if (isManager) {
         return [
-          _buildHandlingTab(isDark),
-          _buildMineTab(isDark, isManager),
-          _buildTeamCalendarTab(isDark, isManager),
+          _pullRefreshTab(_buildHandlingTab(isDark)),
+          _pullRefreshTab(_buildMineTab(isDark, isManager)),
+          _pullRefreshTab(_buildTeamCalendarTab(isDark, isManager)),
         ];
       }
-      return [_buildMineTab(isDark, isManager)];
+      return [_pullRefreshTab(_buildMineTab(isDark, isManager))];
     }
     return [
       _buildDashboardTab(isDark, isManager),
@@ -557,6 +557,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
           (_profile != null ? 'Kunne ikke laste innhold på fraværssiden.' : 'Fant ikke pålogget bruker eller bedrift.');
       return MobileShellScaffold(
         title: 'Fravær & Ferie',
+        hideMobileTitleBar: DriftProClient.isMobile,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -588,6 +589,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       accessKey: AccessKeys.fravaer,
       child: MobileShellScaffold(
       title: 'Fravær & Ferie',
+      hideMobileTitleBar: DriftProClient.isMobile,
       actions: [
           if (isManager)
             IconButton(
@@ -607,11 +609,12 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
               ),
               tooltip: 'Regler (Lovdata)',
             ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadAllData,
-            tooltip: 'Oppdater',
-          ),
+          if (!DriftProClient.isMobile)
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: _loadAllData,
+              tooltip: 'Oppdater',
+            ),
         ],
       bottom: TabBar(
         controller: _tabController,
@@ -909,6 +912,10 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     );
   }
 
+  Widget _pullRefreshTab(Widget child) {
+    return MobilePullRefresh(onRefresh: _loadAllData, child: child);
+  }
+
   Widget _buildMineTab(bool isDark, bool isManager) {
     var list = [..._myAbsences]..sort((a, b) => b.startDate.compareTo(a.startDate));
     list = list.where((a) {
@@ -946,38 +953,44 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     );
 
     if (_myAbsences.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.event_available, size: 64, color: Colors.grey.shade400),
-              const SizedBox(height: 16),
-              Text('Ingen søknader ennå', style: DriftProTheme.headingSm),
-              const SizedBox(height: 8),
-              Text(
-                DriftProClient.isMobile
-                    ? 'Bruk «Ny søknad» nede til høyre for å søke ferie eller fravær.'
-                    : 'Bruk hurtigvalg på Dashboard for å søke ferie, egenmelding eller sykt barn.',
-                textAlign: TextAlign.center,
-                style: DriftProTheme.bodySm,
-              ),
-              if (!DriftProClient.isMobile) ...[
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: () => _openNewRequest(AbsenceType.ferie),
-                  icon: const Icon(Icons.add),
-                  label: const Text('Ny søknad'),
-                ),
-              ],
-            ],
-          ),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
         ),
+        children: [
+          SizedBox(height: MediaQuery.sizeOf(context).height * 0.22),
+          Icon(Icons.event_available, size: 64, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text('Ingen søknader ennå', style: DriftProTheme.headingSm, textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              DriftProClient.isMobile
+                  ? 'Bruk «Ny søknad» nede til høyre for å søke ferie eller fravær.'
+                  : 'Bruk hurtigvalg på Dashboard for å søke ferie, egenmelding eller sykt barn.',
+              textAlign: TextAlign.center,
+              style: DriftProTheme.bodySm,
+            ),
+          ),
+          if (!DriftProClient.isMobile) ...[
+            const SizedBox(height: 20),
+            Center(
+              child: FilledButton.icon(
+                onPressed: () => _openNewRequest(AbsenceType.ferie),
+                icon: const Icon(Icons.add),
+                label: const Text('Ny søknad'),
+              ),
+            ),
+          ],
+        ],
       );
     }
 
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.all(16),
       children: [
         Text(
@@ -1163,9 +1176,20 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
   Widget _buildHandlingTab(bool isDark) {
     if (_pendingApprovals.isEmpty) {
-      return _empty('Ingen ventende forespørsler.');
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(
+          parent: BouncingScrollPhysics(),
+        ),
+        children: [
+          SizedBox(height: MediaQuery.sizeOf(context).height * 0.25),
+          Center(child: Text('Ingen ventende forespørsler.', style: DriftProTheme.bodyMd.copyWith(color: Colors.grey))),
+        ],
+      );
     }
     return ListView(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
       padding: const EdgeInsets.all(16),
       children: [
         Container(

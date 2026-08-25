@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/config/driftpro_client.dart';
 import '../../core/layout/mobile_layout.dart';
 import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/constants/build_info.dart';
@@ -155,6 +156,7 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
 
     return MobileShellScaffold(
       title: 'Undersøkelser',
+      hideMobileTitleBar: DriftProClient.isMobile,
       backgroundColor: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF5F7F8),
       actions: [
         IconButton(
@@ -166,10 +168,11 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
             );
           },
         ),
-        IconButton(
-          icon: const Icon(Icons.refresh),
-          onPressed: _loadSurveys,
-        ),
+        if (!DriftProClient.isMobile)
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadSurveys,
+          ),
       ],
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -178,19 +181,31 @@ class _SurveyListScreenState extends State<SurveyListScreen> {
           Expanded(
             child: _isLoading
                 ? const DriftProLoadingCenter()
-                : _surveys.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: MobileLayout.listBottomPadding(
-                          context,
-                          withFab: true,
-                        ).add(const EdgeInsets.all(16)),
-                        itemCount: _surveys.length,
-                        itemBuilder: (context, index) {
-                          final survey = _surveys[index];
-                          return _buildSurveyCard(survey, isDark);
-                        },
-                      ),
+                : RefreshIndicator(
+                    onRefresh: _loadSurveys,
+                    child: _surveys.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              SizedBox(
+                                height: MediaQuery.sizeOf(context).height * 0.12,
+                              ),
+                              _buildEmptyState(),
+                            ],
+                          )
+                        : ListView.builder(
+                            padding: MobileLayout.listBottomPadding(
+                              context,
+                              withFab: true,
+                            ).add(const EdgeInsets.all(16)),
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            itemCount: _surveys.length,
+                            itemBuilder: (context, index) {
+                              final survey = _surveys[index];
+                              return _buildSurveyCard(survey, isDark);
+                            },
+                          ),
+                  ),
           ),
         ],
       ),

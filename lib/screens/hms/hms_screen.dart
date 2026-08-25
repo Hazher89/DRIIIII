@@ -198,9 +198,12 @@ class _HmsScreenState extends State<HmsScreen> {
       accessKey: AccessKeys.hms,
       child: MobileShellScaffold(
         title: hubTitle,
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
-        ],
+        hideMobileTitleBar: isMobile,
+        actions: isMobile
+            ? null
+            : [
+                IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+              ],
         backgroundColor:
             isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
         body: _profile == null
