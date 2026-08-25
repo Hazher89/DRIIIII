@@ -29,6 +29,7 @@ import '../../screens/more/vision/vision_cameras_screen.dart';
 import '../../screens/more/vision/vision_events_screen.dart';
 import '../../screens/uniform/uniform_monitor_screen.dart';
 import '../../screens/more/help_support_screen.dart';
+import '../../screens/more/assistant_settings_screen.dart';
 import '../../screens/more/more_screen.dart';
 import '../../screens/more/organization_chart_screen.dart';
 import '../../screens/more/privacy_screen.dart';
@@ -510,6 +511,13 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     builder: (context, state) => _guardPath(
                       state,
                       const HelpSupportScreen()),
+                  ),
+                  GoRoute(
+                    path: 'assistent',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const AssistantSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'personvern',

@@ -160,6 +160,10 @@ class RouteAccessMap {
       areaId: 'more',
       legacyAccessKey: AccessKeys.more,
     ),
+    AppPaths.moreAssistent: const RouteAccessRequirement(
+      areaId: 'more',
+      legacyAccessKey: AccessKeys.more,
+    ),
     AppPaths.morePersonvern: const RouteAccessRequirement(
       areaId: 'more',
       legacyAccessKey: AccessKeys.more,

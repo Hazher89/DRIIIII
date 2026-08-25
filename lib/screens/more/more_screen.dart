@@ -176,6 +176,14 @@ class _MoreScreenState extends State<MoreScreen> {
                 'Infoskjerm',
                 isDark,
               ),
+            if (_profile!.isSuperAdmin ||
+                _profile!.role == UserRole.admin)
+              _buildMenuItem(
+                context,
+                Icons.smart_toy_outlined,
+                'DriftPro-assistent',
+                isDark,
+              ),
             if (_profile!.access.canWhistleblowing)
               _buildMenuItem(
                 context,
@@ -267,6 +275,8 @@ class _MoreScreenState extends State<MoreScreen> {
         a.canEditEmployees ||
         a.canPartnersMenu ||
         a.canPartnersTab ||
+        p.isSuperAdmin ||
+        p.role == UserRole.admin ||
         a.canPersonalFolder ||
         p.isSuperAdmin ||
         a.canSurveysMenu ||
@@ -350,6 +360,7 @@ class _MoreScreenState extends State<MoreScreen> {
             'Anonym anmeldelse' => AppPaths.moreWhistleblowing,
             'Brukergodkjenning' => AppPaths.moreBrukergodkjenning,
             'Infoskjerm' => AppPaths.moreInfoskjerm,
+            'DriftPro-assistent' => AppPaths.moreAssistent,
             'Fillagring' => AppPaths.moreDropbox,
             'Min profil' => AppPaths.moreProfil,
             'Personalmappe' => AppPaths.morePersonalmappe,
