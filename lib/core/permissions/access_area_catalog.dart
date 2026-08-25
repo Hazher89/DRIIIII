@@ -503,13 +503,6 @@ class AccessAreaCatalog {
       legacyViewKey: AccessKeys.brukergodkjenning,
     ),
     AccessAreaDef(
-      id: 'more.gm_storo',
-      title: 'GM & STORO',
-      parentId: 'more',
-      actions: viewCreate,
-      routePath: '/more/gm-storo',
-    ),
-    AccessAreaDef(
       id: 'more.dropbox',
       title: 'Fillagring (Dropbox)',
       parentId: 'more',

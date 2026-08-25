@@ -378,7 +378,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
             if (_workforceEnabled)
               StaffPortalPunchPage(partner: p, profile: widget.profile),
             if (_workforceEnabled && _staffCanManageRoutes)
-              OwnerPortalRoutesPage(partner: p),
+              OwnerPortalRoutesPage(partner: p, staffPortal: true),
             PartnerPortalProfilePage(
               profile: widget.profile,
               roleLabel: !_workforceEnabled
@@ -387,6 +387,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                       ? 'Ansatt (stempling + ruter)'
                       : 'Ansatt (kun stempling)',
               partnerName: p.name,
+              staffPortal: true,
             ),
           ]
         : isOwner
@@ -474,6 +475,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     final navIndex = _index.clamp(0, navCount - 1);
 
     return DriftProBrandedScaffold(
+      showBrandBar: !isStaff,
       body: pages[pageIndex],
       bottomNavigationBar: isStaff
           ? NavigationBar(

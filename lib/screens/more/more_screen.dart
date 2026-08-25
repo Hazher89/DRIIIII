@@ -257,29 +257,26 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
               ),
           ],
 
-          const SizedBox(height: 20),
-          _buildSectionLabel(context, 'Hub'),
-          _buildMenuItem(
-            context,
-            Icons.qr_code_scanner_rounded,
-            'GM & STORO',
-            isDark,
-          ),
-          if (_profile?.access.canUniformMonitorAdmin == true) ...[
-            _buildMenuItem(
-              context,
-              Icons.videocam_outlined,
-              'Kameraer',
-              isDark,
-            ),
+          if (_profile?.access.canUniformMonitorAdmin == true ||
+              _profile?.access.canUniformMonitor == true) ...[
+            const SizedBox(height: 20),
+            _buildSectionLabel(context, 'Hub'),
+            if (_profile?.access.canUniformMonitorAdmin == true) ...[
+              _buildMenuItem(
+                context,
+                Icons.videocam_outlined,
+                'Kameraer',
+                isDark,
+              ),
+            ],
+            if (_profile?.access.canUniformMonitor == true)
+              _buildMenuItem(
+                context,
+                Icons.photo_camera_front_outlined,
+                'Kamerahendelser',
+                isDark,
+              ),
           ],
-          if (_profile?.access.canUniformMonitor == true)
-            _buildMenuItem(
-              context,
-              Icons.photo_camera_front_outlined,
-              'Kamerahendelser',
-              isDark,
-            ),
 
           const SizedBox(height: 20),
           _buildSectionLabel(context, 'Innstillinger'),
@@ -477,7 +474,6 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Hjelp & støtte' => AppPaths.moreHjelp,
             'Personvern' => AppPaths.morePersonvern,
             'Om DriftPro' => AppPaths.moreOm,
-            'GM & STORO' => AppPaths.moreGmStoro,
             'Kameraer' => AppPaths.moreVisionCameras,
             'Kamerahendelser' => AppPaths.moreVisionEvents,
             _ => null,

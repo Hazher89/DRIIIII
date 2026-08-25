@@ -134,7 +134,7 @@ class _StaffPortalPunchPageState extends State<StaffPortalPunchPage> {
     final timeFmt = DateFormat('HH:mm');
 
     return PartnerPortalPageShell(
-      title: 'Stempling',
+      showMobileBackButton: false,
       body: _loading
           ? const DriftProLoadingCenter()
           : RefreshIndicator(

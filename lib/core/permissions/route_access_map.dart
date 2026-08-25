@@ -147,9 +147,6 @@ class RouteAccessMap {
     AppPaths.moreDropbox: const RouteAccessRequirement(
       areaId: 'more.dropbox',
     ),
-    AppPaths.moreGmStoro: const RouteAccessRequirement(
-      areaId: 'more.gm_storo',
-    ),
     AppPaths.moreVisionCameras: const RouteAccessRequirement(
       areaId: 'more.vision_cameras',
     ),

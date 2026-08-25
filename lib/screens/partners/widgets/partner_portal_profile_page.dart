@@ -18,11 +18,13 @@ class PartnerPortalProfilePage extends StatelessWidget {
     required this.profile,
     required this.roleLabel,
     this.partnerName,
+    this.staffPortal = false,
   });
 
   final UserProfile profile;
   final String roleLabel;
   final String? partnerName;
+  final bool staffPortal;
 
   Future<void> _mailSupport() async {
     final uri = Uri.parse(
@@ -37,11 +39,14 @@ class PartnerPortalProfilePage extends StatelessWidget {
     final muted = PartnerUi.mutedText(context);
 
     return PartnerPortalPageShell(
-      title: 'Profil',
-      body: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 40),
-        children: [
+      title: staffPortal ? null : 'Profil',
+      showMobileBackButton: !staffPortal,
+      body: RefreshIndicator(
+        onRefresh: () async {},
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(20, staffPortal ? 12 : 4, 20, 40),
+          children: [
           Center(
             child: CircleAvatar(
               radius: 44,
@@ -217,6 +222,7 @@ class PartnerPortalProfilePage extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: muted, height: 1.4),
           ),
         ],
+        ),
       ),
     );
   }

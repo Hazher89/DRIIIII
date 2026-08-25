@@ -24,7 +24,6 @@ import '../../screens/hms/risk_assessment/risk_matrix_screen.dart';
 import '../../screens/hms/safety_rounds/safety_round_list_screen.dart';
 import '../../screens/hms/sja/sja_list_screen.dart';
 import '../../screens/more/about_driftpro_screen.dart';
-import '../../screens/more/gm_storo/gm_storo_hub_screen.dart';
 import '../../screens/more/vision/vision_cameras_screen.dart';
 import '../../screens/more/vision/vision_events_screen.dart';
 import '../../screens/uniform/uniform_monitor_screen.dart';
@@ -534,13 +533,6 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     builder: (context, state) => _guardPath(
                       state,
                       const AboutDriftProScreen()),
-                  ),
-                  GoRoute(
-                    path: 'gm-storo',
-                    parentNavigatorKey: driftProRootNavigatorKey,
-                    builder: (context, state) => _guardPath(
-                      state,
-                      const GmStoroHubScreen()),
                   ),
                   GoRoute(
                     path: 'vision-cameras',

@@ -18,6 +18,7 @@ class PartnerPortalPageShell extends StatelessWidget {
     this.backgroundColor,
     this.floatingActionButton,
     this.hideMobileChrome = true,
+    this.showMobileBackButton = true,
   });
 
   final Widget body;
@@ -29,9 +30,12 @@ class PartnerPortalPageShell extends StatelessWidget {
   final Widget? floatingActionButton;
 
   /// Når true (standard): skjuler tittel/actions på mobil — unngår dobbel tekst
-  /// under statusbar. Tilbake-knapp vises kun hvis [leading] er satt eller
-  /// siden kan poppes.
+  /// under statusbar. Tilbake-knapp vises kun hvis [showMobileBackButton],
+  /// [leading] er satt, eller siden kan poppes.
   final bool hideMobileChrome;
+
+  /// Når false: ingen tilbake-rad på mobil — bruk iOS swipe-back i stedet.
+  final bool showMobileBackButton;
 
   bool get _hasChrome =>
       (title != null && title!.isNotEmpty) ||
@@ -44,7 +48,8 @@ class PartnerPortalPageShell extends StatelessWidget {
     final canPop = ModalRoute.of(context)?.canPop ?? false;
 
     if (DriftProClient.isMobile) {
-      final showBack = leading != null || (canPop && hideMobileChrome);
+      final showBack = showMobileBackButton &&
+          (leading != null || (canPop && hideMobileChrome));
       final back = leading ??
           (showBack
               ? IconButton(

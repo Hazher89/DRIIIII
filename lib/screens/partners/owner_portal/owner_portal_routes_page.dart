@@ -17,12 +17,14 @@ class OwnerPortalRoutesPage extends StatefulWidget {
   final Partner partner;
   final OwnerPortalRoutesFocus? launchFocus;
   final VoidCallback? onLaunchFocusConsumed;
+  final bool staffPortal;
 
   const OwnerPortalRoutesPage({
     super.key,
     required this.partner,
     this.launchFocus,
     this.onLaunchFocusConsumed,
+    this.staffPortal = false,
   });
 
   @override
@@ -111,7 +113,8 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
   @override
   Widget build(BuildContext context) {
     return PartnerPortalPageShell(
-      title: 'Alle ruter',
+      title: widget.staffPortal ? null : 'Alle ruter',
+      showMobileBackButton: !widget.staffPortal,
       bottom: _data == null
           ? null
           : TabBar(

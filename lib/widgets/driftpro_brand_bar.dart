@@ -64,15 +64,20 @@ class DriftProBrandedScaffold extends StatelessWidget {
     required this.body,
     this.bottomNavigationBar,
     this.backgroundColor,
+    this.showBrandBar = true,
   });
 
   final Widget body;
   final Widget? bottomNavigationBar;
   final Color? backgroundColor;
 
+  /// Når false: ingen logo-linje øverst (f.eks. ansatt-portal).
+  final bool showBrandBar;
+
   @override
   Widget build(BuildContext context) {
-    final content = DriftProClient.isMobile
+    final stripTopInset = DriftProClient.isMobile && showBrandBar;
+    final content = stripTopInset
         ? MediaQuery.removePadding(
             context: context,
             removeTop: true,
@@ -84,7 +89,7 @@ class DriftProBrandedScaffold extends StatelessWidget {
       backgroundColor: backgroundColor,
       body: Column(
         children: [
-          const DriftProBrandBar(),
+          if (showBrandBar) const DriftProBrandBar(),
           Expanded(child: content),
         ],
       ),
