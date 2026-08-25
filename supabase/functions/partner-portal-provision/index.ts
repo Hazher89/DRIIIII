@@ -36,12 +36,18 @@ function randomPassword(len = 10): string {
 
 /** Matcher `public.normalize_phone_no` / Dart `normalizePhoneNo`. */
 function normalizePhoneNo(phone: string): string | null {
-  const d = phone.replace(/[^0-9]/g, "");
+  let d = phone.replace(/[^0-9]/g, "");
   if (!d) return null;
+  if (d.startsWith("0047") && d.length >= 12) d = d.slice(4);
+  else if (d.startsWith("47") && d.length >= 10) d = d.slice(2);
   if (d.length === 8 && /^[49]/.test(d)) return `47${d}`;
+  // Vanlig tastefeil: ekstra siffer etter 8-sifret mobil
+  if ((d.length === 9 || d.length === 10) && /^[49]/.test(d)) {
+    const eight = d.slice(0, 8);
+    if (/^[49]\d{7}$/.test(eight)) return `47${eight}`;
+  }
   if (d.length === 10 && /^47[49]/.test(d)) return d;
   if (d.length === 11 && d.startsWith("047")) return d.slice(1);
-  if (d.length >= 10 && d.startsWith("47")) return d.slice(0, Math.min(d.length, 11));
   return null;
 }
 
@@ -167,15 +173,37 @@ Deno.serve(async (req) => {
       });
     }
 
-    const scopeId = isOwner ? String(partner_id) : String(partner_vehicle_id ?? partner_id);
+    const scopeId = isOwner
+      ? String(partner_id)
+      : isStaff
+      ? String(partner_vehicle_id ?? partner_id)
+      : String(partner_vehicle_id ?? partner_id);
     const scopeHex = scopeId.replace(/-/g, "");
     const scopeShort = scopeHex.length >= 8 ? scopeHex.slice(0, 8) : scopeHex.padEnd(8, "0");
     const email =
       login_email && String(login_email).includes("@")
         ? String(login_email).trim().toLowerCase()
-        : `${isOwner ? "o" : "d"}.${scopeShort}@portal.driftpro.no`;
+        : `${isOwner ? "o" : isStaff ? "s" : "d"}.${scopeShort}@portal.driftpro.no`;
 
-    if (!isOwner && partner_vehicle_id) {
+    // Unikt brukernavn: avvis hvis aktiv konto hos ANNET firma har samme username.
+    if (user) {
+      const { data: userClash } = await admin
+        .from("partner_portal_accounts")
+        .select("id, partner_id")
+        .eq("is_active", true)
+        .ilike("username", user)
+        .maybeSingle();
+      if (userClash && String(userClash.partner_id) !== String(partner_id)) {
+        return new Response(
+          JSON.stringify({
+            error: "Brukernavn er allerede i bruk. Velg et annet unikt brukernavn.",
+          }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
+
+    if (!isOwner && !isStaff && partner_vehicle_id) {
       await admin.from("partner_vehicles").update({
         phone: normalizedPhone,
         ...(driver_name && String(driver_name).trim()

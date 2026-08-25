@@ -206,9 +206,12 @@ class UserProfile {
   /// Intern MAVI-ansatt (ikke sjåfør, bil-eier eller annen samarbeidspartner).
   bool get isMaviEmployee => !isPartnerPortalUser;
 
-  /// Bil-eier-portal (hele bedriften); sjåfør har [partnerVehicleId] satt.
+  /// Bil-eier-portal (hele bedriften). Sjåfør har [partnerVehicleId];
+  /// partner-ansatt skiller via portal account_kind=staff (ikke denne getteren).
   bool get isPartnerPortalOwner =>
-      partnerId != null && partnerVehicleId == null;
+      partnerId != null &&
+      partnerVehicleId == null &&
+      role == UserRole.samarbeidspartner;
   bool get isLeader => role == UserRole.leder || isAdmin;
   bool get isAdmin =>
       role == UserRole.admin || role == UserRole.superadmin;

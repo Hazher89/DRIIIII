@@ -32,8 +32,18 @@ class PartnerPortalPageShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
+    final effectiveLeading = leading ??
+        (canPop
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: 'Tilbake',
+                onPressed: () => Navigator.of(context).maybePop(),
+              )
+            : null);
+
     if (DriftProClient.isMobile) {
-      if (!_hasChrome) {
+      if (!_hasChrome && effectiveLeading == null) {
         return Scaffold(
           backgroundColor: backgroundColor,
           body: body,
@@ -45,7 +55,7 @@ class PartnerPortalPageShell extends StatelessWidget {
         title: title,
         actions: actions,
         bottom: bottom,
-        leading: leading,
+        leading: effectiveLeading,
         floatingActionButton: floatingActionButton,
         body: body,
       );
@@ -53,11 +63,12 @@ class PartnerPortalPageShell extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: backgroundColor,
-      appBar: _hasChrome
+      appBar: _hasChrome || effectiveLeading != null
           ? AppBar(
               backgroundColor: backgroundColor,
               surfaceTintColor: Colors.transparent,
-              leading: leading,
+              leading: effectiveLeading,
+              automaticallyImplyLeading: effectiveLeading == null,
               title: title != null ? Text(title!) : null,
               actions: actions,
               bottom: bottom,

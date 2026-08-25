@@ -20,6 +20,7 @@ import 'partner_companies_ui.dart';
 import 'eco_driving_badge.dart';
 import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
+import 'partner_workforce_admin_panel.dart';
 
 String _friendlyPartnerSaveError(Object error) {
   final msg = error.toString();
@@ -215,6 +216,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   bool _workforceEnabled = false;
   bool _workforceSaving = false;
   bool _workforceAllSaving = false;
+  int _workforceStaffCount = 0;
   bool _ecoDrivingCompleted = false;
   DateTime? _ecoDrivingDeadline;
   DateTime? _ecoDrivingCompletedAt;
@@ -1243,7 +1245,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     final wide = MediaQuery.sizeOf(context).width >= 960;
 
     int countFor(_OverviewSection s) => switch (s) {
-          _OverviewSection.profile => 1,
+          _OverviewSection.profile =>
+            _workforceEnabled ? (_workforceStaffCount > 0 ? _workforceStaffCount : 1) : 1,
           _OverviewSection.routing => _routesOwnerOnly ? 1 : 2,
           _OverviewSection.ownerPortal => activeOwnerCount,
           _OverviewSection.registrations => regRows.length,
@@ -1344,6 +1347,55 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
+            PartnerModernSection(
+              icon: Icons.groups_outlined,
+              title: 'Ansatte & stempling',
+              subtitle: 'Registrering, innlogging, timer og arkiv',
+              children: [
+                Text(
+                  'Når på: eier kan registrere ansatte, generere innlogging, '
+                  'og alle med tilgang kan se/redigere timer med full endringslogg. '
+                  'Av slår av funksjonen uten å slette historikk.',
+                  style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Aktiver for denne bedriften'),
+                  value: _workforceEnabled,
+                  onChanged: _workforceSaving ? null : _setWorkforceEnabled,
+                ),
+                if (_isSuperAdmin)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Aktiver for alle partnere'),
+                    subtitle: const Text('Superadmin — felles bryter'),
+                    trailing: _workforceAllSaving
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : TextButton(
+                            onPressed: () => _setWorkforceAll(true),
+                            child: const Text('Slå på alle'),
+                          ),
+                  ),
+                if (_workforceSaving)
+                  const LinearProgressIndicator(minHeight: 2),
+                if (_workforceEnabled) ...[
+                  const Divider(height: 24),
+                  PartnerWorkforceAdminPanel(
+                    partner: widget.partner,
+                    enabled: _workforceEnabled,
+                    isSuperAdmin: _isSuperAdmin,
+                    onStaffCountChanged: (n) {
+                      if (mounted) setState(() => _workforceStaffCount = n);
+                    },
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       _OverviewSection.routing => PartnerModernSection(
@@ -1402,39 +1454,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 padding: EdgeInsets.only(top: 4),
                 child: LinearProgressIndicator(minHeight: 2),
               ),
-            const Divider(height: 28),
-            Text('Ansatte & stempling', style: DriftProTheme.labelLg),
-            const SizedBox(height: 4),
-            Text(
-              'Når på: eier kan registrere ansatte, generere innlogging, '
-              'og alle kan se/redigere timer med full endringslogg. '
-              'Av slår av funksjonen uten å slette historikk.',
-              style: DriftProTheme.caption,
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Aktiver for denne bedriften'),
-              value: _workforceEnabled,
-              onChanged: _workforceSaving ? null : _setWorkforceEnabled,
-            ),
-            if (_isSuperAdmin)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Aktiver for alle partnere'),
-                subtitle: const Text('Superadmin — felles bryter'),
-                trailing: _workforceAllSaving
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : TextButton(
-                        onPressed: () => _setWorkforceAll(true),
-                        child: const Text('Slå på alle'),
-                      ),
-              ),
-            if (_workforceSaving)
-              const LinearProgressIndicator(minHeight: 2),
           ],
         ),
       _OverviewSection.ownerPortal => PartnerModernSection(

@@ -95,7 +95,8 @@ class PartnerPortalScope {
     if (me.isSuperAdmin) return true;
     final session = await PartnerService.resolvePortalSession();
     if (session != null) return session.isOwner;
-    return me.isPartnerPortalOwner;
+    // Uten session: ikke anta eier (staff har også partner_id uten bil).
+    return false;
   }
 
   static Future<void> assertEconomicSummaryAccess({

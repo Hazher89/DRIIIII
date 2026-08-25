@@ -12,6 +12,8 @@ class PartnerStaff {
   final bool isActive;
   final DateTime? deactivatedAt;
   final String? notes;
+  /// Når true: ansatt kan se/godkjenne ruter for denne partneren.
+  final bool canManageRoutes;
   final DateTime createdAt;
 
   const PartnerStaff({
@@ -28,6 +30,7 @@ class PartnerStaff {
     this.isActive = true,
     this.deactivatedAt,
     this.notes,
+    this.canManageRoutes = false,
     required this.createdAt,
   });
 
@@ -48,6 +51,7 @@ class PartnerStaff {
           ? DateTime.parse(json['deactivated_at'] as String)
           : null,
       notes: json['notes'] as String?,
+      canManageRoutes: json['can_manage_routes'] as bool? ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -73,6 +77,39 @@ class PartnerStaff {
         .whereType<String>()
         .where((e) => e.trim().isNotEmpty);
     return parts.join(', ');
+  }
+
+  PartnerStaff copyWith({
+    String? fullName,
+    String? phone,
+    String? address,
+    String? postalCode,
+    String? city,
+    String? notes,
+    bool? isActive,
+    DateTime? deactivatedAt,
+    bool clearDeactivatedAt = false,
+    bool? canManageRoutes,
+  }) {
+    return PartnerStaff(
+      id: id,
+      partnerId: partnerId,
+      companyId: companyId,
+      fullName: fullName ?? this.fullName,
+      phone: phone ?? this.phone,
+      address: address ?? this.address,
+      postalCode: postalCode ?? this.postalCode,
+      city: city ?? this.city,
+      portalAccountId: portalAccountId,
+      profileId: profileId,
+      isActive: isActive ?? this.isActive,
+      deactivatedAt: clearDeactivatedAt
+          ? null
+          : (deactivatedAt ?? this.deactivatedAt),
+      notes: notes ?? this.notes,
+      canManageRoutes: canManageRoutes ?? this.canManageRoutes,
+      createdAt: createdAt,
+    );
   }
 }
 

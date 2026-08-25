@@ -54,7 +54,9 @@ class AuthGateScreen extends StatelessWidget {
           _GateCard(
             icon: Icons.handshake_outlined,
             title: 'Samarbeidspartner',
-            subtitle: 'Bil-eier og sjåfør: brukernavn og passord fra MAVI (SMS).',
+            subtitle:
+                'Bil-eier, sjåfør og partner-ansatte: brukernavn + passord '
+                '(ikke ansattnummer).',
             color: const Color(0xFF1565C0),
             onTap: () {
               Navigator.of(context).push(
@@ -66,7 +68,8 @@ class AuthGateScreen extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           Text(
-            'Eksterne partnere får ikke tilgang til interne moduler før konto er knyttet.',
+            'Samarbeidspartnere og deres ansatte er ikke MAVI-ansatte. '
+            'De logger alltid inn her under «Samarbeidspartner» og får kun partnerportalen.',
             textAlign: TextAlign.center,
             style: authMutedStyle(context, size: 12),
           ),
@@ -652,7 +655,8 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
           Text('Samarbeidspartner', style: authTitleStyle(context)),
           const SizedBox(height: 8),
           Text(
-            'Logg inn med kontoen bedriften din har fått',
+            'For bil-eier, sjåfør og ansatte hos samarbeidspartner.\n'
+            'Ikke bruk «MAVI ansatte» / ansattnummer.',
             textAlign: TextAlign.center,
             style: authMutedStyle(context),
           ),
@@ -662,7 +666,7 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
             keyboardType: TextInputType.text,
             decoration: const InputDecoration(
               labelText: 'Brukernavn',
-              hintText: 'f.eks. eierhaz8382 eller m71',
+              hintText: 'f.eks. eierhaz8382, m71 eller a…',
               border: OutlineInputBorder(),
             ),
           ),
@@ -708,8 +712,9 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Bruk brukernavn og passord fra SMS når MAVI oppretter kontoen din. '
-            'Har du glemt passordet, trykk «Glemt passord?» — nytt passord sendes på SMS.',
+            'Bruk brukernavn og passord fra bil-eier eller MAVI. '
+            'Dette er partnerportalen — ikke MAVI-ansatt-innlogging. '
+            'Har du glemt passordet, trykk «Glemt passord?»',
             textAlign: TextAlign.center,
             style: authMutedStyle(context, size: 12),
           ),

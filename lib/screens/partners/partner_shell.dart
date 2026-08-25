@@ -25,25 +25,21 @@ import '../../models/user_profile.dart';
 import 'driver_portal/driver_portal_docs_page.dart';
 import 'driver_portal/driver_portal_fri_page.dart';
 import 'driver_portal/driver_portal_overview_page.dart';
-import 'driver_portal/driver_portal_profile_page.dart';
 import 'driver_portal/driver_portal_routes_page.dart';
 import 'owner_portal/owner_portal_deductions_page.dart';
 import 'owner_portal/owner_portal_docs_page.dart';
-import 'owner_portal/owner_portal_inspections_page.dart';
-import 'owner_portal/owner_portal_meetings_page.dart';
 import 'owner_portal/owner_portal_overview_page.dart';
 import 'owner_portal/owner_portal_routes_page.dart';
 import 'owner_portal/owner_portal_routes_focus.dart';
-import 'owner_portal/owner_portal_vehicle_rental_page.dart';
-import 'owner_portal/owner_portal_summary_page.dart';
-import 'owner_portal/owner_portal_staff_page.dart';
-import 'owner_portal/owner_portal_timesheet_page.dart';
+import 'owner_portal/owner_portal_more_page.dart';
 import 'staff_portal/staff_portal_punch_page.dart';
 import 'widgets/partner_portal_bottom_nav.dart';
+import 'widgets/partner_portal_profile_page.dart';
 import 'widgets/partner_route_pdf_actions.dart';
 import 'widgets/partner_ui.dart' show PartnerStatusBadge;
 import '../../widgets/driftpro_loading_indicator.dart';
 import '../../core/layout/web_layout.dart';
+import '../../core/services/partner/partner_workforce_service.dart';
 
 DateTime _routeCalendarDay(PartnerRouteShare r) {
   final t = r.routeStartAt ?? r.shareDate;
@@ -91,15 +87,19 @@ class PartnerShell extends StatefulWidget {
   State<PartnerShell> createState() => _PartnerShellState();
 }
 
-class _PartnerShellState extends State<PartnerShell> {
+class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver {
   int _index = 0;
   Partner? _partner;
   bool _loading = true;
+  bool _workforceEnabled = false;
+  bool _staffCanManageRoutes = false;
   OwnerPortalRoutesFocus? _routesFocus;
+  RealtimeChannel? _workforceChannel;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _index = widget.initialTabIndex;
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
@@ -116,8 +116,17 @@ class _PartnerShellState extends State<PartnerShell> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_workforceChannel?.unsubscribe() ?? Future.value());
     PartnerRoutePushListener.stop();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshWorkforceFlag());
+    }
   }
 
   void _startPartnerPushListener() {
@@ -132,7 +141,88 @@ class _PartnerShellState extends State<PartnerShell> {
     }
     if (widget.portalAccountKind == 'owner') {
       PartnerRoutePushListener.start(partnerId: pid);
+      return;
     }
+    // Staff med rutetilgang: rute-push kun for samme partner (GDPR).
+    if (widget.portalAccountKind == 'staff' &&
+        _workforceEnabled &&
+        _staffCanManageRoutes) {
+      PartnerRoutePushListener.start(partnerId: pid);
+    }
+  }
+
+  void _listenWorkforceFlag(String partnerId) {
+    unawaited(_workforceChannel?.unsubscribe() ?? Future.value());
+    final client = Supabase.instance.client;
+    final companyId = _partner?.companyId ?? widget.profile.companyId;
+    var channel = client.channel('partner_workforce_dock_$partnerId');
+    channel = channel.onPostgresChanges(
+      event: PostgresChangeEvent.update,
+      schema: 'public',
+      table: 'partners',
+      filter: PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'id',
+        value: partnerId,
+      ),
+      callback: (_) => unawaited(_refreshWorkforceFlag()),
+    );
+    if (companyId != null && companyId.isNotEmpty) {
+      channel = channel.onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'companies',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'id',
+          value: companyId,
+        ),
+        callback: (_) => unawaited(_refreshWorkforceFlag()),
+      );
+    }
+    _workforceChannel = channel.subscribe();
+  }
+
+  Future<void> _refreshWorkforceFlag() async {
+    final pid = widget.profile.partnerId;
+    if (pid == null || !mounted) return;
+    try {
+      final enabled = await PartnerWorkforceService.isEnabled(pid);
+      var staffRoutes = _staffCanManageRoutes;
+      if (widget.portalAccountKind == 'staff') {
+        try {
+          final me = await PartnerWorkforceService.myStaffRecord();
+          staffRoutes = me?.canManageRoutes == true && enabled;
+        } catch (_) {
+          staffRoutes = false;
+        }
+      }
+      if (!mounted) return;
+      if (enabled == _workforceEnabled &&
+          staffRoutes == _staffCanManageRoutes) {
+        return;
+      }
+      setState(() {
+        _workforceEnabled = enabled;
+        _staffCanManageRoutes = staffRoutes;
+        // Hold indeks innenfor synlige faner når Ansatte/Timer/Stempling forsvinner.
+        final maxIdx = _visibleTabCount() - 1;
+        if (_index > maxIdx) _index = maxIdx.clamp(0, 99);
+      });
+      if (!enabled) PartnerRoutePushListener.stop();
+      _syncUrl();
+    } catch (_) {}
+  }
+
+  int _visibleTabCount() {
+    if (widget.portalAccountKind == 'staff') {
+      var n = 1; // profil
+      if (_workforceEnabled) n += 1; // stempling
+      if (_workforceEnabled && _staffCanManageRoutes) n += 1; // ruter
+      return n;
+    }
+    if (widget.portalAccountKind == 'owner') return 5;
+    return 5; // driver
   }
 
   void _syncUrl() {
@@ -140,7 +230,11 @@ class _PartnerShellState extends State<PartnerShell> {
     final isOwner = widget.portalAccountKind == 'owner';
     final isStaff = widget.portalAccountKind == 'staff';
     final slugs = isStaff
-        ? AppPaths.portalStaffTabs
+        ? [
+            if (_workforceEnabled) 'stempling',
+            if (_workforceEnabled && _staffCanManageRoutes) 'ruter',
+            'profil',
+          ]
         : isOwner
             ? AppPaths.portalOwnerTabs
             : AppPaths.portalDriverTabs;
@@ -155,6 +249,10 @@ class _PartnerShellState extends State<PartnerShell> {
   void _selectTab(int i) {
     setState(() => _index = i);
     _syncUrl();
+    // Oppdater feature-flag når eier åpner Mer (Ansatte/Timer synlighet).
+    if (widget.portalAccountKind == 'owner' && i == 3) {
+      unawaited(_refreshWorkforceFlag());
+    }
   }
 
   Future<void> _load() async {
@@ -169,11 +267,25 @@ class _PartnerShellState extends State<PartnerShell> {
         partnerVehicleId: widget.profile.partnerVehicleId,
       );
       final p = await PartnerService.fetchPartner(pid);
+      var workforce = false;
+      var staffRoutes = false;
+      try {
+        workforce = await PartnerWorkforceService.isEnabled(pid);
+      } catch (_) {}
+      if (widget.portalAccountKind == 'staff') {
+        try {
+          final me = await PartnerWorkforceService.myStaffRecord();
+          staffRoutes = me?.canManageRoutes == true;
+        } catch (_) {}
+      }
       if (!mounted) return;
       setState(() {
         _partner = p;
+        _workforceEnabled = workforce;
+        _staffCanManageRoutes = staffRoutes && workforce;
         _loading = false;
       });
+      _listenWorkforceFlag(pid);
       _startPartnerPushListener();
     } catch (e) {
       if (mounted) {
@@ -247,27 +359,45 @@ class _PartnerShellState extends State<PartnerShell> {
     final isStaff = widget.portalAccountKind == 'staff';
     void goToRoutes({int tabIndex = 1, String? vehicleId}) {
       setState(() {
-        _index = 4;
+        _index = 1;
         _routesFocus = OwnerPortalRoutesFocus(tabIndex: tabIndex, vehicleId: vehicleId);
       });
       _syncUrl();
     }
 
+    void openTrekk() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => OwnerPortalDeductionsPage(partner: p),
+        ),
+      );
+    }
+
     final pages = isStaff
         ? [
-            StaffPortalPunchPage(partner: p, profile: widget.profile),
-            DriverPortalProfilePage(profile: widget.profile),
+            if (_workforceEnabled)
+              StaffPortalPunchPage(partner: p, profile: widget.profile),
+            if (_workforceEnabled && _staffCanManageRoutes)
+              OwnerPortalRoutesPage(partner: p),
+            PartnerPortalProfilePage(
+              profile: widget.profile,
+              roleLabel: !_workforceEnabled
+                  ? 'Ansatt (stempling av)'
+                  : _staffCanManageRoutes
+                      ? 'Ansatt (stempling + ruter)'
+                      : 'Ansatt (kun stempling)',
+              partnerName: p.name,
+            ),
           ]
         : isOwner
             ? [
                 OwnerPortalOverviewPage(
                   partner: p,
                   onGoToRoutes: goToRoutes,
-                  onGoToTrekk: () => _selectTab(2),
+                  onGoToTrekk: openTrekk,
+                  onGoToDocs: () => _selectTab(2),
+                  onGoToMore: () => _selectTab(3),
                 ),
-                OwnerPortalSummaryPage(partner: p),
-                OwnerPortalDeductionsPage(partner: p),
-                OwnerPortalDocsPage(partner: p),
                 OwnerPortalRoutesPage(
                   partner: p,
                   launchFocus: _routesFocus,
@@ -277,41 +407,50 @@ class _PartnerShellState extends State<PartnerShell> {
                     }
                   },
                 ),
-                OwnerPortalVehicleRentalPage(partner: p),
-                OwnerPortalMeetingsPage(partner: p),
-                OwnerPortalInspectionsPage(partner: p),
-                OwnerPortalStaffPage(partner: p),
-                OwnerPortalTimesheetPage(partner: p),
-                _PartnerProfilePage(profile: widget.profile, isOwner: true),
+                OwnerPortalDocsPage(partner: p),
+                OwnerPortalMorePage(
+                  partner: p,
+                  workforceEnabled: _workforceEnabled,
+                ),
+                PartnerPortalProfilePage(
+                  profile: widget.profile,
+                  roleLabel: 'Bil-eier (hele bedriften)',
+                  partnerName: p.name,
+                ),
               ]
             : [
                 DriverPortalOverviewPage(partner: p, profile: widget.profile),
                 DriverPortalRoutesPage(partner: p, profile: widget.profile),
                 DriverPortalDocsPage(partner: p),
                 DriverPortalFriPage(partner: p, profile: widget.profile),
-                DriverPortalProfilePage(profile: widget.profile),
+                PartnerPortalProfilePage(
+                  profile: widget.profile,
+                  roleLabel: 'Sjåfør (MAVI-bil)',
+                  partnerName: p.name,
+                ),
               ];
     final ownerNavItems = const [
       PartnerPortalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
-      PartnerPortalNavItem(icon: Icons.summarize_outlined, selectedIcon: Icons.summarize, label: 'Oppsummering'),
-      PartnerPortalNavItem(icon: Icons.gavel_rounded, selectedIcon: Icons.gavel, label: 'Trekk'),
+      PartnerPortalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
       PartnerPortalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
-      PartnerPortalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Alle ruter'),
-      PartnerPortalNavItem(icon: Icons.car_rental_outlined, selectedIcon: Icons.car_rental, label: 'Utleie'),
-      PartnerPortalNavItem(icon: Icons.event_note_outlined, selectedIcon: Icons.event_note, label: 'Møter'),
-      PartnerPortalNavItem(icon: Icons.fact_check_outlined, selectedIcon: Icons.fact_check, label: 'Bilkontroll'),
-      PartnerPortalNavItem(icon: Icons.groups_outlined, selectedIcon: Icons.groups, label: 'Ansatte'),
-      PartnerPortalNavItem(icon: Icons.schedule_outlined, selectedIcon: Icons.schedule, label: 'Timer'),
+      PartnerPortalNavItem(icon: Icons.apps_outlined, selectedIcon: Icons.apps, label: 'Mer'),
       PartnerPortalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
     ];
 
-    final staffDestinations = const [
-      NavigationDestination(
-        icon: Icon(Icons.fingerprint_outlined),
-        selectedIcon: Icon(Icons.fingerprint),
-        label: 'Stempling',
-      ),
-      NavigationDestination(
+    final staffDestinations = [
+      if (_workforceEnabled)
+        const NavigationDestination(
+          icon: Icon(Icons.fingerprint_outlined),
+          selectedIcon: Icon(Icons.fingerprint),
+          label: 'Stempling',
+        ),
+      if (_workforceEnabled && _staffCanManageRoutes)
+        const NavigationDestination(
+          icon: Icon(Icons.map_outlined),
+          selectedIcon: Icon(Icons.map),
+          label: 'Ruter',
+        ),
+      const NavigationDestination(
         icon: Icon(Icons.person_outlined),
         selectedIcon: Icon(Icons.person),
         label: 'Profil',
@@ -1134,47 +1273,6 @@ class _PartnerFriPageState extends State<_PartnerFriPage> {
                     );
                   },
                 ),
-    );
-  }
-}
-
-class _PartnerProfilePage extends StatelessWidget {
-  final UserProfile profile;
-  final bool isOwner;
-  const _PartnerProfilePage({required this.profile, this.isOwner = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Profil'),
-        actions: _partnerLogoutActions(context),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          CircleAvatar(
-            radius: 36,
-            backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.2),
-            child: Text(profile.initials, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(height: 12),
-          Text(profile.fullName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-          Text(profile.email, style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 24),
-          ListTile(
-            leading: const Icon(Icons.badge_outlined),
-            title: const Text('Rolle'),
-            subtitle: Text(isOwner ? 'Bil-eier (hele bedriften)' : 'Sjåfør (MAVI-bil)'),
-          ),
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: () => signOutFromPortal(context),
-            icon: const Icon(Icons.logout),
-            label: const Text('Logg ut'),
-          ),
-        ],
-      ),
     );
   }
 }

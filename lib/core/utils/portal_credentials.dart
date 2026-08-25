@@ -56,13 +56,15 @@ class PortalCredentials {
     required bool isOwner,
     String? partnerVehicleId,
     String? ownerPhone,
+    bool isStaff = false,
+    String? staffId,
   }) {
     final scopeId = isOwner
         ? partnerId
-        : (partnerVehicleId ?? partnerId);
+        : (isStaff ? (staffId ?? partnerId) : (partnerVehicleId ?? partnerId));
     final hex = scopeId.replaceAll('-', '');
     final short = hex.length >= 8 ? hex.substring(0, 8) : hex.padRight(8, '0');
-    final prefix = isOwner ? 'o' : 'd';
+    final prefix = isOwner ? 'o' : (isStaff ? 's' : 'd');
     if (isOwner && ownerPhone != null) {
       final phoneDigits = ownerPhone.replaceAll(RegExp(r'\D'), '');
       if (phoneDigits.length >= 4) {
@@ -73,14 +75,57 @@ class PortalCredentials {
     return '$prefix.$short@$_portalDomain';
   }
 
+  /// Unikt brukernavn for partner-ansatt — knyttet til firma + person.
+  static String staffUsername({
+    required String partnerName,
+    required String fullName,
+    required String phone,
+    required String staffId,
+  }) {
+    final firm = _partnerInitials(partnerName, maxLen: 3);
+    final first = fullName.trim().split(RegExp(r'\s+')).first;
+    final person = (_slug(first).isNotEmpty ? _slug(first) : 'ans');
+    final personShort = person.length > 6 ? person.substring(0, 6) : person;
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    final phoneTail = digits.length >= 4
+        ? digits.substring(digits.length - 4)
+        : _idTail(staffId, 4);
+    final idTail = _idTail(staffId, 3);
+    return 'a$firm$personShort$phoneTail$idTail'.toLowerCase();
+  }
+
   static String displayLoginHint({
     required String username,
     required String password,
     required bool isOwner,
+    bool isStaff = false,
   }) {
-    return isOwner
-        ? 'Brukernavn: $username\nPassord: $password\n(Logg inn med brukernavn + passord på driftpro.no)'
-        : 'Brukernavn: $username\nPassord: $password\n(Kun dine tildelte ruter i portalen)';
+    if (isOwner) {
+      return 'Brukernavn: $username\nPassord: $password\n'
+          '(Logg inn med brukernavn + passord på driftpro.no)';
+    }
+    if (isStaff) {
+      return 'Brukernavn: $username\nPassord: $password\n'
+          '(Kun partnerportalen — stempling for din bedrift)';
+    }
+    return 'Brukernavn: $username\nPassord: $password\n'
+        '(Kun dine tildelte ruter i portalen)';
+  }
+
+  /// Klar tekst for å sende til ansatt (SMS/mail).
+  static String shareCredentialsMessage({
+    required String fullName,
+    required String username,
+    required String password,
+    required String partnerName,
+  }) {
+    return 'Hei $fullName!\n\n'
+        'Innlogging til DriftPro for $partnerName:\n'
+        'Brukernavn: $username\n'
+        'Passord: $password\n\n'
+        'Åpne DriftPro → velg «Samarbeidspartner» (ikke «MAVI ansatte»).\n'
+        'Logg inn med brukernavn og passord over.\n'
+        'Kontoen er kun for deg hos $partnerName — partnerportalen (stempling).';
   }
 
   static String _partnerInitials(String partnerName, {required int maxLen}) {

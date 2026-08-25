@@ -11,21 +11,22 @@ import '../widgets/partner_portal_route_detail_page.dart';
 import '../widgets/partner_ui.dart';
 import '../widgets/eco_driving_badge.dart';
 import 'owner_portal_common.dart';
-import '../../../widgets/auth_legal_links.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
-import '../../more/driftpro_platform_catalog.dart';
-import '../../profile/delete_own_account_dialog.dart';
 
 class OwnerPortalOverviewPage extends StatefulWidget {
   final Partner partner;
   final void Function({int tabIndex, String? vehicleId})? onGoToRoutes;
   final VoidCallback? onGoToTrekk;
+  final VoidCallback? onGoToDocs;
+  final VoidCallback? onGoToMore;
 
   const OwnerPortalOverviewPage({
     super.key,
     required this.partner,
     this.onGoToRoutes,
     this.onGoToTrekk,
+    this.onGoToDocs,
+    this.onGoToMore,
   });
 
   @override
@@ -125,34 +126,37 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     const SizedBox(height: 12),
                   ],
                   PartnerSmartActionsPanel(
-                    title: 'Anbefalte handlinger',
+                    title: 'Hurtigvalg',
                     actions: [
                       if (_data!.pendingAckTotal > 0)
                         PartnerSmartAction(
                           label: '${_data!.pendingAckTotal} rute(r) venter på aksept',
-                          hint: 'Åpner Kommende — vis PDF og aksepter',
+                          hint: 'Åpner ruter — vis PDF og aksepter',
                           icon: Icons.check_circle_outline,
                           onTap: _openPendingRoutes,
                         ),
                       PartnerSmartAction(
-                        label: 'Tidligere ruter med PDF og kunder',
-                        hint: 'Alle ruter → Tidligere — filtrer dag/uke/mnd/år og per bil',
-                        icon: Icons.history_edu_outlined,
+                        label: 'Se alle ruter',
+                        hint: 'Kommende, i dag og tidligere',
+                        icon: Icons.map_outlined,
+                        onTap: () => widget.onGoToRoutes?.call(tabIndex: 1),
                       ),
-                      const PartnerSmartAction(
-                        label: 'Se siste økonomiske oppsummering',
-                        hint: 'Fanen «Oppsummering» — beløp, arkiv og total per måned',
-                        icon: Icons.summarize_outlined,
-                      ),
-                      const PartnerSmartAction(
-                        label: 'Kontroller dokumenter og avtaler',
-                        hint: 'Avtaler og andre filer under «Dokumenter»',
+                      PartnerSmartAction(
+                        label: 'Dokumenter og avtaler',
+                        hint: 'Åpne dokumentarkivet',
                         icon: Icons.folder_open_outlined,
+                        onTap: widget.onGoToDocs,
+                      ),
+                      PartnerSmartAction(
+                        label: 'Flere verktøy',
+                        hint: 'Oppsummering, trekk, møter, bilkontroll m.m.',
+                        icon: Icons.apps_outlined,
+                        onTap: widget.onGoToMore,
                       ),
                       if (_trekkCount > 0)
                         PartnerSmartAction(
                           label: 'Se $_trekkCount trekk i arkivet',
-                          hint: 'Fanen «Trekk» — saksnummer, begrunnelse og bevis',
+                          hint: 'Under Mer → Trekk',
                           icon: Icons.gavel_rounded,
                           onTap: widget.onGoToTrekk,
                         ),
@@ -233,63 +237,12 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     _meetingPreview(_data!.meetings.first),
                   ],
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                     child: Text(
-                      'Du forblir innlogget til du trykker «Logg ut». SMS ved nye ruter til sjåfører og deg som bil-eier.',
+                      'SMS ved nye ruter. Vilkår, personvern og slett konto finner du under Profil.',
                       style: TextStyle(fontSize: 12, color: PartnerUi.mutedText(context), height: 1.4),
                     ),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: AuthLegalLinks(compact: true),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: DriftProTheme.error.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: DriftProTheme.error.withValues(alpha: 0.35),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const Text(
-                            'Slett konto',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              color: DriftProTheme.error,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'DriftPro er kun for ${DriftProPlatformCatalog.companyName}. '
-                            'Slett innlogging og personopplysninger her.',
-                            style: TextStyle(
-                              fontSize: 12,
-                              height: 1.35,
-                              color: PartnerUi.mutedText(context),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          OutlinedButton.icon(
-                            onPressed: () => showDeleteOwnAccountDialog(context),
-                            icon: const Icon(Icons.delete_forever_outlined, size: 18),
-                            label: const Text('Slett konto permanent'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: DriftProTheme.error,
-                              side: const BorderSide(color: DriftProTheme.error),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
                 ],
               ),
             ),

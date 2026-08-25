@@ -29,24 +29,19 @@ abstract final class AppPaths {
     ).toString();
   }
 
-  /// Partnerportal — eier
+  /// Partnerportal — eier (enkel bunnmeny; øvrige under «Mer»)
   static const portalOwnerTabs = [
     'oversikt',
-    'oppsummering',
-    'trekk',
-    'dokumenter',
     'ruter',
-    'utleie',
-    'moteter',
-    'bilkontroll',
-    'ansatte',
-    'timer',
+    'dokumenter',
+    'mer',
     'profil',
   ];
 
-  /// Partnerportal — ansatt (stempling)
+  /// Partnerportal — ansatt (stempling; ruter valgfritt)
   static const portalStaffTabs = [
     'stempling',
+    'ruter',
     'profil',
   ];
 

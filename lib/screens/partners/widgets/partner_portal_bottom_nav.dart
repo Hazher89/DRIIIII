@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 
-/// Bil-eier har 8 faner — [NavigationBar] skjuler ofte ikoner til de velges.
-/// Horisontal scroll viser alle ikoner (inkl. Oppsummering) hele tiden.
+/// Bil-eier har få hovedfaner — sekundære under «Mer».
+/// Horisontal scroll viser alle ikoner hele tiden.
 class PartnerPortalNavItem {
   const PartnerPortalNavItem({
     required this.icon,

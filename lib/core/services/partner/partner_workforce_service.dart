@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../models/partner/partner_workforce.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../utils/portal_credentials.dart';
+import '../sms/sms_phone_utils.dart';
 import 'partner_service.dart';
 
 /// Ansatte + stempling for samarbeidspartnere (feature-flagget).
@@ -110,6 +111,58 @@ class PartnerWorkforceService {
     return PartnerStaff.fromJson(Map<String, dynamic>.from(row));
   }
 
+  /// Deaktiver eller aktiver ansatt (stenger/åpner portal-innlogging).
+  static Future<PartnerStaff> setStaffActive({
+    required String staffId,
+    required bool active,
+  }) async {
+    final row = await _client.rpc(
+      'partner_staff_set_active',
+      params: {
+        'p_staff_id': staffId,
+        'p_active': active,
+      },
+    );
+    return PartnerStaff.fromJson(Map<String, dynamic>.from(row as Map));
+  }
+
+  /// Permanent sletting av ansatt + tilhørende timer/audit.
+  static Future<Map<String, dynamic>> hardDeleteStaff(String staffId) async {
+    final res = await _client.rpc(
+      'partner_staff_hard_delete',
+      params: {'p_staff_id': staffId},
+    );
+    return Map<String, dynamic>.from(res as Map);
+  }
+
+  static Future<PartnerStaff> setCanManageRoutes({
+    required String staffId,
+    required bool enabled,
+  }) async {
+    final row = await _client.rpc(
+      'partner_staff_set_can_manage_routes',
+      params: {
+        'p_staff_id': staffId,
+        'p_enabled': enabled,
+      },
+    );
+    return PartnerStaff.fromJson(Map<String, dynamic>.from(row as Map));
+  }
+
+  /// Innlogget brukers ansatt-rad (kun egen — GDPR).
+  static Future<PartnerStaff?> myStaffRecord() async {
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) return null;
+    final row = await _client
+        .from('partner_staff')
+        .select()
+        .eq('profile_id', uid)
+        .eq('is_active', true)
+        .maybeSingle();
+    if (row == null) return null;
+    return PartnerStaff.fromJson(Map<String, dynamic>.from(row));
+  }
+
   /// Oppretter portalbruker (brukernavn/passord) for ansatt via eksisterende provision.
   static Future<PortalProvisionResult> provisionStaffLogin({
     required PartnerStaff staff,
@@ -118,39 +171,72 @@ class PartnerWorkforceService {
     String? passwordOverride,
   }) async {
     final phone = staff.phone?.trim() ?? '';
-    if (phone.replaceAll(RegExp(r'\D'), '').length < 8) {
-      throw StateError('Ansatt må ha gyldig mobilnummer før innlogging opprettes.');
+    final normalized = normalizePhoneNo(phone);
+    if (normalized == null) {
+      throw StateError(
+        'Ansatt må ha gyldig norsk mobil (8 siffer, start 4/9) før innlogging opprettes.',
+      );
     }
-    final username = (usernameOverride?.trim().isNotEmpty == true)
+    final phoneForProvision = displayPhoneNo(normalized);
+
+    var username = (usernameOverride?.trim().isNotEmpty == true)
         ? usernameOverride!.trim().toLowerCase()
-        : 'ans${staff.fullName.split(RegExp(r'\s+')).first.toLowerCase()}${phone.replaceAll(RegExp(r'\D'), '').substring(phone.replaceAll(RegExp(r'\D'), '').length - 4)}';
+        : PortalCredentials.staffUsername(
+            partnerName: partnerName,
+            fullName: staff.fullName,
+            phone: phoneForProvision,
+            staffId: staff.id,
+          );
+
+    // Unikt aktivt brukernavn globalt (idx_partner_portal_username_active).
+    for (var i = 0; i < 5; i++) {
+      final clash = await _client
+          .from('partner_portal_accounts')
+          .select('id')
+          .eq('is_active', true)
+          .ilike('username', username)
+          .maybeSingle();
+      if (clash == null) break;
+      username = '${username}${i + 2}';
+      if (username.length > 28) {
+        username = PortalCredentials.staffUsername(
+          partnerName: partnerName,
+          fullName: staff.fullName,
+          phone: phoneForProvision,
+          staffId: '${staff.id}$i',
+        );
+      }
+    }
+
     final password = (passwordOverride?.trim().isNotEmpty == true)
         ? passwordOverride!.trim()
         : PortalCredentials.generatePassword();
     final loginEmail = PortalCredentials.loginEmail(
       partnerId: staff.partnerId,
       isOwner: false,
-      partnerVehicleId: staff.id,
+      isStaff: true,
+      staffId: staff.id,
     );
 
     final res = await PartnerService.invokePortalProvisionRaw(
       partnerId: staff.partnerId,
       companyId: staff.companyId,
+      partnerVehicleId: staff.id, // unik scope for auth-e-post (ikke kjøretøy)
       username: username,
       loginEmail: loginEmail,
-      phone: phone,
+      phone: phoneForProvision,
       password: password,
       driverName: staff.fullName,
       accountKind: 'staff',
       sendCredentialsSms: false,
     );
 
-    // Koble portal_account / profile til staff-rad
+    // Koble portal_account / profile til staff-rad (kun denne ansatte).
     final accounts = await PartnerService.fetchPortalAccounts(staff.partnerId);
     PartnerPortalAccount? match;
     for (final a in accounts) {
-      if (a.username.toLowerCase() == res.username.toLowerCase() ||
-          (a.phone != null && a.phone == phone)) {
+      if (a.accountKind == 'staff' &&
+          a.username.toLowerCase() == res.username.toLowerCase()) {
         match = a;
         break;
       }
@@ -164,6 +250,76 @@ class PartnerWorkforceService {
     }
 
     return res;
+  }
+
+  /// Nytt passord for eksisterende ansatt-innlogging (enkelt for bil-eier).
+  static Future<PortalProvisionResult> resetStaffPassword({
+    required PartnerStaff staff,
+    required String partnerName,
+  }) async {
+    if (staff.portalAccountId == null && staff.profileId == null) {
+      throw StateError('Ansatt har ingen innlogging ennå — bruk «Lag bruker» først.');
+    }
+    final phone = staff.phone?.trim() ?? '';
+    final normalized = normalizePhoneNo(phone);
+    if (normalized == null) {
+      throw StateError('Gyldig mobilnummer kreves for å lage nytt passord.');
+    }
+
+    String username = 'ansatt';
+    final accounts = await PartnerService.fetchPortalAccounts(staff.partnerId);
+    PartnerPortalAccount? match;
+    for (final a in accounts) {
+      if (staff.portalAccountId != null && a.id == staff.portalAccountId) {
+        match = a;
+        break;
+      }
+      if (a.accountKind == 'staff' &&
+          staff.profileId != null &&
+          a.profileId == staff.profileId) {
+        match = a;
+        break;
+      }
+    }
+    if (match != null) username = match.username;
+
+    final password = PortalCredentials.generatePassword();
+    final loginEmail = match?.loginEmail ??
+        PortalCredentials.loginEmail(
+          partnerId: staff.partnerId,
+          isOwner: false,
+          isStaff: true,
+          staffId: staff.id,
+        );
+
+    return PartnerService.invokePortalProvisionRaw(
+      partnerId: staff.partnerId,
+      companyId: staff.companyId,
+      partnerVehicleId: staff.id,
+      portalAccountId: match?.id ?? staff.portalAccountId,
+      username: username,
+      loginEmail: loginEmail,
+      phone: displayPhoneNo(normalized),
+      password: password,
+      driverName: staff.fullName,
+      accountKind: 'staff',
+      sendCredentialsSms: false,
+      regeneratePassword: true,
+    );
+  }
+
+  static String formatHours(Duration? d) {
+    if (d == null) return '—';
+    final h = d.inMinutes / 60.0;
+    if (h < 0.05) return '0 t';
+    return '${h.toStringAsFixed(h >= 10 ? 1 : 1)} t';
+  }
+
+  static String formatDurationClock(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    if (h <= 0) return '${m}m';
+    return '${h}t ${m.toString().padLeft(2, '0')}m';
   }
 
   static Future<List<PartnerTimeEntry>> listEntries({
