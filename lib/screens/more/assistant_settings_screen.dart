@@ -267,8 +267,17 @@ class _AssistantSettingsScreenState extends State<AssistantSettingsScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Assistenten søker i SOP-opplæring, bilutleie-regler og hjelpetekster '
-            '(gratis, uten betalt AI). Den svarer best når spørsmålet finnes i disse tekstene.',
+            'Hvordan Google «lærer» MAVI-reglene\n'
+            'Vi trener ikke en egen modell. Ved hvert spørsmål henter DriftPro '
+            'relevante utdrag (SOP, bilutleie, hjelp) og sender dem til Gemini '
+            'som kontekst. Da svarer Google ut fra MAVI sine tekster.\n\n'
+            'Gemini-oppsett (engangs):\n'
+            '1) Gå til aistudio.google.com → Get API key\n'
+            '2) Opprett nøkkel i et Google-prosjekt\n'
+            '3) I Supabase: Edge Functions → Secrets → GEMINI_API_KEY = nøkkelen\n'
+            '4) Deploy funksjonen driftpro-assistant\n'
+            '5) Valgfritt: GEMINI_MODEL = gemini-2.0-flash\n\n'
+            'Uten Gemini-nøkkel faller chatten tilbake til lokalt dokumentsøk.',
             style: DriftProTheme.bodySm.copyWith(color: drift.textMuted, height: 1.4),
           ),
         ],

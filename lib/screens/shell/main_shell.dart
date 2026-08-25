@@ -23,7 +23,6 @@ import '../../core/permissions/partner_access.dart';
 import '../../core/permissions/user_access.dart';
 import '../../widgets/driftpro_brand_bar.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
-import '../../widgets/assistant/driftpro_assistant_host.dart';
 
 class MainShell extends StatefulWidget {
   final StatefulNavigationShell navigationShell;
@@ -355,37 +354,34 @@ class _MainShellState extends State<MainShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureAllowedRoute(visibleScreens));
     final navIndex = _visibleIndexForCurrentBranch(visibleScreens);
 
-    return DriftProAssistantHost(
-      companyId: _profile?.companyId,
-      child: DriftProBrandedScaffold(
-        backgroundColor: WebLayout.prefersPointerNav
-            ? WebLayout.canvasColor(context)
-            : null,
-        body: widget.navigationShell,
-        bottomNavigationBar: Container(
-          decoration: BoxDecoration(
-            color: drift.navBar,
-            border: Border(top: BorderSide(color: drift.borderSubtle)),
-            boxShadow: drift.cardShadow,
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-              child: MobileShellNavBar(
-                itemCount: visibleScreens.length,
-                builder: (context, i, {required compact}) {
-                  final s = visibleScreens[i];
-                  return _buildNavItem(
-                    context,
-                    i,
-                    s['icon'] as IconData,
-                    s['label'] as String,
-                    navIndex: navIndex,
-                    visibleScreens: visibleScreens,
-                    compact: compact,
-                  );
-                },
-              ),
+    return DriftProBrandedScaffold(
+      backgroundColor: WebLayout.prefersPointerNav
+          ? WebLayout.canvasColor(context)
+          : null,
+      body: widget.navigationShell,
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          color: drift.navBar,
+          border: Border(top: BorderSide(color: drift.borderSubtle)),
+          boxShadow: drift.cardShadow,
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: MobileShellNavBar(
+              itemCount: visibleScreens.length,
+              builder: (context, i, {required compact}) {
+                final s = visibleScreens[i];
+                return _buildNavItem(
+                  context,
+                  i,
+                  s['icon'] as IconData,
+                  s['label'] as String,
+                  navIndex: navIndex,
+                  visibleScreens: visibleScreens,
+                  compact: compact,
+                );
+              },
             ),
           ),
         ),

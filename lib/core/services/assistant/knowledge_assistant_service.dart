@@ -1,7 +1,8 @@
 import 'assistant_corpus.dart';
 import 'knowledge_assistant_engine.dart';
+import '../supabase_service.dart';
 
-/// Facade for DriftPro kunnskaps-chat (100 % lokal, ingen betalt AI).
+/// DriftPro kunnskaps-chat: lokal søk + valgfri Gemini (RAG).
 class KnowledgeAssistantService {
   KnowledgeAssistantService._();
 
@@ -49,7 +50,80 @@ class KnowledgeAssistantService {
         text: 'Assistenten kunne ikke lastes. Prøv igjen.',
       );
     }
-    return engine.answer(query);
+
+    final hits = engine.search(query, limit: 6);
+    final local = engine.answer(query, limit: 4);
+
+    // Prøv Gemini med RAG-kontekst. Faller tilbake til lokalt svar.
+    try {
+      final gemini = await _askGemini(query, hits);
+      if (gemini != null && gemini.trim().isNotEmpty) {
+        return KnowledgeAnswer(
+          found: hits.isNotEmpty || local.found,
+          hits: hits.take(3).toList(),
+          text: gemini.trim(),
+        );
+      }
+    } catch (_) {
+      // Lokal fallback.
+    }
+
+    return local;
+  }
+
+  Future<String?> _askGemini(String question, List<KnowledgeHit> hits) async {
+    final token = SupabaseService.client.auth.currentSession?.accessToken;
+    if (token == null || token.isEmpty) return null;
+
+    final contexts = <Map<String, String>>[
+      for (final h in hits)
+        {
+          'title': h.chunk.title,
+          'source': h.chunk.sourceLabel,
+          'body': h.chunk.body.length > 1600
+              ? h.chunk.body.substring(0, 1600)
+              : h.chunk.body,
+        },
+    ];
+
+    if (contexts.isEmpty) {
+      for (final h in engineSearchFallback(question)) {
+        contexts.add({
+          'title': h.chunk.title,
+          'source': h.chunk.sourceLabel,
+          'body': h.chunk.body.length > 1200
+              ? h.chunk.body.substring(0, 1200)
+              : h.chunk.body,
+        });
+      }
+    }
+
+    final res = await SupabaseService.client.functions.invoke(
+      'driftpro-assistant',
+      body: {
+        'question': question,
+        'contexts': contexts,
+      },
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    final data = res.data;
+    if (data is Map && data['error'] != null) {
+      final err = '${data['error']}';
+      if (err.contains('gemini_not_configured') ||
+          err.contains('GEMINI_API_KEY')) {
+        return null;
+      }
+      throw Exception(data['message'] ?? err);
+    }
+    if (data is Map && data['answer'] is String) {
+      return data['answer'] as String;
+    }
+    return null;
+  }
+
+  List<KnowledgeHit> engineSearchFallback(String query) {
+    return _engine?.search(query, limit: 5) ?? const [];
   }
 
   Future<List<KnowledgeHit>> search(String query, {int limit = 8}) async {

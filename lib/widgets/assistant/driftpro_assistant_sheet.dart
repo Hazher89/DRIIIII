@@ -46,8 +46,9 @@ class _DriftProAssistantSheetState extends State<DriftProAssistantSheet> {
   final _messages = <_ChatMessage>[
     _ChatMessage(
       text:
-          'Hei! Jeg svarer ut fra DriftPros opplæring (SOP), bilutleie-regler '
-          'og hjelpetekster — uten betalt AI. Spør fritt.',
+          'Hei! Jeg bruker MAVI/DriftPro-dokumentasjon (SOP, bilutleie, hjelp) '
+          'og Gemini når det er satt opp. Spør fritt — svarene skal følge '
+          'dere sine regler, ikke generelle internett-svar.',
       isUser: false,
     ),
   ];
