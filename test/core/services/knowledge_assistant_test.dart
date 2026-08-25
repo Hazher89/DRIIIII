@@ -24,7 +24,12 @@ void main() {
     expect(pw.found, isTrue);
     expect(pw.text.toLowerCase(), anyOf(contains('passord'), contains('profil')));
 
-    final miss = engine.answer('xyzzy plugh qwerty asdfgh');
-    expect(miss.found, isFalse);
+    final who = engine.answer('hvem kan låne ut bil?');
+    expect(who.found, isTrue);
+    expect(who.hits.first.chunk.source, KnowledgeSourceKind.rental);
+    expect(
+      who.text.toLowerCase(),
+      anyOf(contains('jassy'), contains('godkjenn'), contains('herish')),
+    );
   });
 }

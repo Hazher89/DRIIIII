@@ -170,8 +170,15 @@ class KnowledgeAssistantEngine {
     final asksRental = q.contains('bilutleie') ||
         q.contains('leiebil') ||
         q.contains('leieavtale') ||
-        (q.contains('utleie') && q.contains('bil')) ||
-        (q.contains('leie') && (q.contains('bil') || q.contains('kjoretoy') || q.contains('kjøretøy')));
+        q.contains('lane bil') ||
+        q.contains('låne bil') ||
+        q.contains('lane ut') ||
+        q.contains('låne ut') ||
+        (q.contains('utleie') &&
+            (q.contains('bil') || q.contains('kjoretoy') || q.contains('kjøretøy'))) ||
+        (q.contains('leie') &&
+            (q.contains('bil') || q.contains('kjoretoy') || q.contains('kjøretøy'))) ||
+        ((q.contains('lane') || q.contains('låne')) && q.contains('bil'));
 
     if (asksRental) {
       if (chunk.source == KnowledgeSourceKind.rental) {
@@ -179,6 +186,20 @@ class KnowledgeAssistantEngine {
       } else {
         boost -= 40;
       }
+    }
+
+    final asksWho = q.contains('hvem') ||
+        q.contains('kan lane') ||
+        q.contains('kan låne') ||
+        q.contains('godkjenn') ||
+        q.contains('signerer');
+    if (asksWho &&
+        (asksRental || q.contains('bil')) &&
+        (chunk.id == 'rental:approvers' ||
+            hay.contains('jassy') ||
+            hay.contains('godkjenningsrekkefolge') ||
+            hay.contains('godkjenningsrekkefølge'))) {
+      boost += 140;
     }
 
     if ((q.contains('pris') || q.contains('koster') || q.contains('gebyr')) &&
@@ -195,8 +216,12 @@ class KnowledgeAssistantEngine {
         hay.contains('passord')) {
       boost += 50;
     }
-    if ((q.contains('godkjenn') || q.contains('hvem signerer') || q.contains('hvem godkjenner')) &&
-        (hay.contains('jassy') || hay.contains('godkjenningsrekkefolge') || hay.contains('godkjenningsrekkefølge'))) {
+    if ((q.contains('godkjenn') ||
+            q.contains('hvem signerer') ||
+            q.contains('hvem godkjenner')) &&
+        (hay.contains('jassy') ||
+            hay.contains('godkjenningsrekkefolge') ||
+            hay.contains('godkjenningsrekkefølge'))) {
       boost += 50;
     }
     if ((q.contains('undelivered') || q.contains('ulevert')) &&

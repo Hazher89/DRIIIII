@@ -90,9 +90,26 @@ class AssistantCorpus {
         id: 'rental:approvers',
         source: KnowledgeSourceKind.rental,
         title: 'Godkjenningsrekkefølge bilutleie',
-        body: VehicleRentalAgreement.approverPriorityText,
+        body:
+            'Hvem kan godkjenne / låne ut bil?\n'
+            '${VehicleRentalAgreement.approverPriorityText}\n\n'
+            'Partner (låntaker) ber om bil via bilutleie i DriftPro. '
+            'MAVI må godkjenne før bilen utleveres. '
+            'Samme rekkefølge gjelder ved retur.',
         routePath: AppPaths.partners,
-        tags: const ['bilutleie', 'godkjenning', 'jassy', 'herish', 'julie', 'karwan', 'retur'],
+        tags: const [
+          'bilutleie',
+          'godkjenning',
+          'jassy',
+          'herish',
+          'julie',
+          'karwan',
+          'retur',
+          'låne',
+          'låne ut',
+          'hvem',
+          'utleie',
+        ],
       ),
       KnowledgeChunk(
         id: 'rental:handout',
