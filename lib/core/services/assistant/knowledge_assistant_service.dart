@@ -15,6 +15,7 @@ class KnowledgeAssistantService {
     'Hva koster bilutleie per dag?',
     'Hvordan bytter jeg passord?',
     'Hvem godkjenner bilutleie?',
+    'Hvem kan låne ut bil?',
     'Hvordan søker jeg ferie?',
     'Hva er sjekklisten ved retur av bil?',
     'Morgenrutine plukking',
