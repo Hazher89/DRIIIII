@@ -1,0 +1,22 @@
+Arbeidsinstruks for Inventory management
+I Inventory management har vi 5 faner vi må gå igjennom daglig.
+1.Waiting area - Hub personnel
+2.Undelivered
+3.POD in ERP
+4.Local DC/outlet
+5.           Return store / cancellation
+Waiting area - Hub personnel: Er HU-er som er skannet som "levert" av sjåføren. Det Kan ikke ombookes eller avbestilles av butikk/CCC. Dette må sjekkes daglig.
+Action: Sende e-post til CCC og spør om kunden vil ha produktet. Hvis ja, så må HUB levere produktet manuelt til kunden etter avtale mellom kunde, CCC og HUB. Skal kunden ikke ha produktet, så må vi be CCC om å opprette en returordre. Da trengs det nytt etikett og gammelt kolli skal leveres ut via POD in ERP.
+Undelivered: Dette filteret viser ordre med siste status Ikke levert. Dette må sjekkes daglig.
+Action: Disse må skannes på HUB for å åpne dem for ombooking. Da kan CCC eller butikk kansellere eller booke om. Viktig at dette sjekkes daglig og ingen ordre skal ligge der mer enn 1 dag.
+POD in ERP: Dette filteret viser ordre som er ferdige i Blueberry og som ikke kan ombookes av butikk eller CCC. Det vil si at ordre som havner her har blitt levert i systemet og deretter skannet på HUB igjen.
+Action: Det må sendes mail til CCC for å spørre om kunden har fått produktet. Hvis ikke, så må det avtales mellom kunde, CCC og HUB sånn at ordren blir levert manuelt. Dersom produktet blir avtalt og blir levert som BUD (manuelt) så må ordren settes som levert med kommentar for eksempel «levert av M12 manuelt den 22.12.21». Viktig at dette sjekkes daglig og ingen ordre skal ligge der mer enn 1 dag.
+Local DC/outlet: Er ordre som er på vei til outlet. Dette må sjekkes daglig.
+Action: Her kan man se om en ordre har blitt planlagt for overføring til outlet eller ikke. Hvis ikke, så kan man lett endre dato rett fra HUB Dashboard. (ikke alle har tilgang). Merk at det er kun ordre som har blitt skannet på HUB som dukker opp her.
+Return store / cancellation: Er ordre som har blitt kansellert eller retur fra kunder.
+Action: Ordre som havner her må sjekkes for å se hvor mange dager ordren har vært på HUB. Har ordren blitt kansellert og ikke skannet på HUB i flere dager, så må det undersøkes. Er en order på HUB og er «Past delivery date» så kan det lett endres dato rett fra HUB Dashboard. (ikke alle har tilgang).
+Typiske farger på Return store / cancellation:
+Mørkegrønn boks - Planlagt i TM, fremtidig leveringsdato
+Lysegrønn boks – Ikke planlagt i TM, fremtidig leveringsdato
+Rød boks - Tidligere leveringsdato. Endre dato i TM og planlegg
+Andre filtre:

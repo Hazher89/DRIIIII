@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/hms/sop_training_models.dart';
-import '../../../core/services/hms/sop_training_service.dart';
+import '../../../core/services/hms/training_library_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 import 'sop_training_widgets.dart';
 
-/// Opplæring — intelligent søk i Hub Driftsrutiner (SOP-HUB-001).
+/// Opplæring — smart søk i SOP + arbeidsinstrukser.
 class SopTrainingScreen extends StatefulWidget {
   const SopTrainingScreen({super.key});
 
@@ -17,12 +17,12 @@ class SopTrainingScreen extends StatefulWidget {
 class _SopTrainingScreenState extends State<SopTrainingScreen> {
   final _searchCtrl = TextEditingController();
   final _searchFocus = FocusNode();
+  final _lib = TrainingLibraryService.instance;
 
-  SopTrainingDocument? _doc;
   bool _loading = true;
   String? _error;
   String _query = '';
-  String? _systemFilter;
+  String? _docFilter;
   List<SopSearchHit> _hits = const [];
 
   @override
@@ -46,12 +46,9 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
       _error = null;
     });
     try {
-      final doc = await SopTrainingService.instance.load();
+      await _lib.loadAll();
       if (!mounted) return;
-      setState(() {
-        _doc = doc;
-        _loading = false;
-      });
+      setState(() => _loading = false);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -65,25 +62,22 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
     final q = _searchCtrl.text.trim();
     setState(() {
       _query = q;
-      _hits = q.isEmpty ? const [] : SopTrainingService.instance.search(q);
-      if (_systemFilter != null && q.isEmpty) {
-        _applySystemFilter(_systemFilter!);
-      }
+      _hits = q.isEmpty ? const [] : _lib.search(q, docId: _docFilter);
     });
   }
 
-  void _applySystemFilter(String system) {
+  void _setDocFilter(String? docId) {
     setState(() {
-      _systemFilter = system;
-      _searchCtrl.text = system;
-      _query = system;
-      _hits = SopTrainingService.instance.search(system);
+      _docFilter = docId;
+      if (_query.isNotEmpty) {
+        _hits = _lib.search(_query, docId: docId);
+      }
     });
   }
 
   void _clearFilters() {
     setState(() {
-      _systemFilter = null;
+      _docFilter = null;
       _searchCtrl.clear();
       _query = '';
       _hits = const [];
@@ -102,12 +96,37 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
     );
   }
 
+  void _browseDoc(TrainingDocMeta meta) {
+    setState(() {
+      _docFilter = meta.id;
+      _searchCtrl.text = meta.title;
+      _query = meta.title;
+      _hits = _lib.search(meta.title, docId: meta.id);
+    });
+  }
+
+  IconData _iconFor(String name) {
+    switch (name) {
+      case 'hub':
+        return Icons.hub_rounded;
+      case 'inventory_2':
+        return Icons.inventory_2_rounded;
+      case 'assignment_return':
+        return Icons.assignment_return_rounded;
+      case 'local_shipping':
+        return Icons.local_shipping_rounded;
+      default:
+        return Icons.menu_book_rounded;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+      backgroundColor:
+          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       body: _loading
           ? const DriftProLoadingCenter()
           : _error != null
@@ -115,7 +134,7 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
               : CustomScrollView(
                   slivers: [
                     _buildHeroHeader(isDark),
-                    _buildSystemFilters(isDark),
+                    _buildDocFilters(isDark),
                     if (_query.isEmpty) ..._buildLandingSlivers(isDark),
                     if (_query.isNotEmpty) ..._buildResultsSlivers(isDark),
                   ],
@@ -132,9 +151,10 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
           children: [
             Icon(Icons.error_outline, size: 48, color: DriftProTheme.error),
             const SizedBox(height: 12),
-            Text('Kunne ikke laste SOP', style: DriftProTheme.headingSm),
+            Text('Kunne ikke laste opplæring', style: DriftProTheme.headingSm),
             const SizedBox(height: 8),
-            Text(_error!, textAlign: TextAlign.center, style: DriftProTheme.caption),
+            Text(_error!,
+                textAlign: TextAlign.center, style: DriftProTheme.caption),
             const SizedBox(height: 16),
             FilledButton(onPressed: _load, child: const Text('Prøv igjen')),
           ],
@@ -144,7 +164,6 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
   }
 
   SliverToBoxAdapter _buildHeroHeader(bool isDark) {
-    final doc = _doc!;
     return SliverToBoxAdapter(
       child: Container(
         decoration: BoxDecoration(
@@ -177,32 +196,34 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
                         children: [
                           Text(
                             'Opplæring',
-                            style: DriftProTheme.headingMd.copyWith(color: Colors.white),
+                            style: DriftProTheme.headingMd
+                                .copyWith(color: Colors.white),
                           ),
                           Text(
-                            doc.version.isNotEmpty
-                                ? '${doc.documentNumber} · v${doc.version}'
-                                : doc.documentNumber,
-                            style: DriftProTheme.caption.copyWith(color: Colors.white70),
+                            '${TrainingLibraryService.docs.length} dokumenter · ${_lib.totalEntries} emner',
+                            style: DriftProTheme.caption
+                                .copyWith(color: Colors.white70),
                           ),
                         ],
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: Colors.white24),
                       ),
-                      child: Row(
+                      child: const Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.auto_awesome, color: Colors.white, size: 16),
-                          const SizedBox(width: 6),
+                          Icon(Icons.auto_awesome,
+                              color: Colors.white, size: 16),
+                          SizedBox(width: 6),
                           Text(
-                            '${doc.entries.length} emner',
-                            style: const TextStyle(
+                            'Smart søk',
+                            style: TextStyle(
                               color: Colors.white,
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
@@ -215,7 +236,7 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  doc.subtitle,
+                  'SOP Hub + arbeidsinstrukser — spør på norsk og få stegvise svar',
                   style: DriftProTheme.bodyMd.copyWith(
                     color: Colors.white.withValues(alpha: 0.9),
                     fontWeight: FontWeight.w600,
@@ -231,7 +252,8 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
                     focusNode: _searchFocus,
                     style: DriftProTheme.bodyMd,
                     decoration: InputDecoration(
-                      hintText: 'Spør på norsk — f.eks. «Hvordan behandle kolli Undelivered?»',
+                      hintText:
+                          'Spør — f.eks. «Undelivered», «returmottak» eller «1701»',
                       prefixIcon: const Icon(Icons.search_rounded),
                       suffixIcon: _query.isNotEmpty
                           ? IconButton(
@@ -240,19 +262,21 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
                             )
                           : null,
                       filled: true,
-                      fillColor: isDark ? DriftProTheme.cardDark : Colors.white,
+                      fillColor:
+                          isDark ? DriftProTheme.cardDark : Colors.white,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: BorderSide.none,
                       ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                     ),
                     textInputAction: TextInputAction.search,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Smart søk forstår synonymer, engelske systemord og hele spørsmål',
+                  'Søker i alle dokumenter samtidig — synonymer og systemord støttes',
                   style: DriftProTheme.caption.copyWith(
                     color: Colors.white.withValues(alpha: 0.75),
                     fontSize: 11,
@@ -266,8 +290,7 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
     );
   }
 
-  SliverToBoxAdapter _buildSystemFilters(bool isDark) {
-    final doc = _doc!;
+  SliverToBoxAdapter _buildDocFilters(bool isDark) {
     return SliverToBoxAdapter(
       child: Container(
         color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF0F4F8),
@@ -276,7 +299,7 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Filtrer på system',
+              'Dokumenter',
               style: DriftProTheme.caption.copyWith(
                 fontWeight: FontWeight.w800,
                 color: DriftProTheme.primaryGreenDark,
@@ -287,26 +310,47 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
-                  for (final system in doc.systems)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: const Text('Alle'),
+                      selected: _docFilter == null,
+                      onSelected: (_) => _setDocFilter(null),
+                      selectedColor:
+                          DriftProTheme.primaryGreen.withValues(alpha: 0.18),
+                      checkmarkColor: DriftProTheme.primaryGreenDark,
+                      labelStyle: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: _docFilter == null
+                            ? DriftProTheme.primaryGreenDark
+                            : (isDark
+                                ? Colors.white
+                                : const Color(0xFF1A2B3C)),
+                      ),
+                    ),
+                  ),
+                  for (final meta in TrainingLibraryService.docs)
                     Padding(
                       padding: const EdgeInsets.only(right: 8),
-                      child: ActionChip(
-                        label: Text(system),
-                        onPressed: () => _applySystemFilter(system),
-                        backgroundColor: _systemFilter == system
-                            ? DriftProTheme.primaryGreen.withValues(alpha: 0.15)
-                            : (isDark ? DriftProTheme.cardDark : Colors.white),
-                        side: BorderSide(
-                          color: _systemFilter == system
-                              ? DriftProTheme.primaryGreen
-                              : Colors.grey.shade300,
+                      child: FilterChip(
+                        avatar: Icon(_iconFor(meta.iconName), size: 16),
+                        label: Text(meta.title),
+                        selected: _docFilter == meta.id,
+                        onSelected: (_) => _setDocFilter(
+                          _docFilter == meta.id ? null : meta.id,
                         ),
+                        selectedColor: DriftProTheme.primaryGreen
+                            .withValues(alpha: 0.18),
+                        checkmarkColor: DriftProTheme.primaryGreenDark,
                         labelStyle: TextStyle(
-                          color: _systemFilter == system
-                              ? DriftProTheme.primaryGreenDark
-                              : (isDark ? Colors.white : const Color(0xFF1A2B3C)),
                           fontWeight: FontWeight.w700,
                           fontSize: 12,
+                          color: _docFilter == meta.id
+                              ? DriftProTheme.primaryGreenDark
+                              : (isDark
+                                  ? Colors.white
+                                  : const Color(0xFF1A2B3C)),
                         ),
                       ),
                     ),
@@ -320,24 +364,49 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
   }
 
   List<Widget> _buildLandingSlivers(bool isDark) {
-    final doc = _doc!;
     return [
       SliverPadding(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
         sliver: SliverToBoxAdapter(
-          child: Text('Populære søk', style: DriftProTheme.headingSm),
+          child: Text('Bibliotek', style: DriftProTheme.headingSm),
         ),
       ),
       SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         sliver: SliverToBoxAdapter(
+          child: Column(
+            children: [
+              for (final meta in TrainingLibraryService.docs) ...[
+                _DocLibraryCard(
+                  meta: meta,
+                  entryCount: _lib.docById(meta.id)?.entries.length ?? 0,
+                  isDark: isDark,
+                  icon: _iconFor(meta.iconName),
+                  onTap: () => _browseDoc(meta),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ],
+          ),
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        sliver: SliverToBoxAdapter(
+          child: Text('Populære søk', style: DriftProTheme.headingSm),
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+        sliver: SliverToBoxAdapter(
           child: Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final q in SopTrainingService.suggestedQueries)
+              for (final q in TrainingLibraryService.suggestedQueries)
                 ActionChip(
-                  avatar: Icon(Icons.trending_up, size: 16, color: DriftProTheme.accentBlue),
+                  avatar: Icon(Icons.trending_up,
+                      size: 16, color: DriftProTheme.accentBlue),
                   label: Text(q),
                   onPressed: () {
                     _searchCtrl.text = q;
@@ -346,31 +415,6 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
                 ),
             ],
           ),
-        ),
-      ),
-      SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-        sliver: SliverToBoxAdapter(
-          child: Text('Seksjoner i SOP', style: DriftProTheme.headingSm),
-        ),
-      ),
-      SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-        sliver: SliverList.separated(
-          itemCount: doc.sections.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            final section = doc.sections[i];
-            final count = doc.entries.where((e) => e.section == section).length;
-            return _SectionCard(
-              isDark: isDark,
-              title: section,
-              count: count,
-              onTap: () {
-                _searchCtrl.text = section.split('—').first.trim();
-              },
-            );
-          },
         ),
       ),
     ];
@@ -392,18 +436,21 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
           ),
         ),
       SliverPadding(
-        padding: EdgeInsets.fromLTRB(16, topHit?.isHighConfidence == true ? 12 : 16, 16, 8),
+        padding: EdgeInsets.fromLTRB(
+            16, topHit?.isHighConfidence == true ? 12 : 16, 16, 8),
         sliver: SliverToBoxAdapter(
           child: Row(
             children: [
-              Icon(Icons.auto_awesome, size: 18, color: DriftProTheme.accentBlue),
+              Icon(Icons.auto_awesome,
+                  size: 18, color: DriftProTheme.accentBlue),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   topHit?.isHighConfidence == true
                       ? 'Flere relevante treff'
                       : '${_hits.length} treff for «$_query»',
-                  style: DriftProTheme.labelMd.copyWith(fontWeight: FontWeight.w800),
+                  style: DriftProTheme.labelMd
+                      .copyWith(fontWeight: FontWeight.w800),
                 ),
               ),
             ],
@@ -419,12 +466,13 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.search_off_rounded, size: 56, color: Colors.grey.shade400),
+                  Icon(Icons.search_off_rounded,
+                      size: 56, color: Colors.grey.shade400),
                   const SizedBox(height: 12),
                   Text('Ingen treff', style: DriftProTheme.headingSm),
                   const SizedBox(height: 6),
                   Text(
-                    'Prøv et annet søkeord — f.eks. Goran, FO Search eller returer.',
+                    'Prøv et annet søkeord — f.eks. 1701, Undelivered eller returmottak.',
                     textAlign: TextAlign.center,
                     style: DriftProTheme.caption,
                   ),
@@ -438,7 +486,7 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
           sliver: SliverList.separated(
             itemCount: _hits.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, _) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
               final hit = _hits[i];
               return _ResultCard(
@@ -451,6 +499,86 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
           ),
         ),
     ];
+  }
+}
+
+class _DocLibraryCard extends StatelessWidget {
+  const _DocLibraryCard({
+    required this.meta,
+    required this.entryCount,
+    required this.isDark,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final TrainingDocMeta meta;
+  final int entryCount;
+  final bool isDark;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: isDark ? DriftProTheme.cardDark : Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      elevation: isDark ? 0 : 1,
+      shadowColor: Colors.black12,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: DriftProTheme.primaryGreen.withValues(alpha: 0.15),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: DriftProTheme.primaryGreenDark),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      meta.title,
+                      style: DriftProTheme.labelLg
+                          .copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(meta.subtitle, style: DriftProTheme.caption),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: DriftProTheme.accentBlue.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '$entryCount',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 12),
+                ),
+              ),
+              const Icon(Icons.chevron_right),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -507,7 +635,7 @@ class _AiAnswerCard extends StatelessWidget {
                         Icon(Icons.auto_awesome, color: Colors.white, size: 16),
                         SizedBox(width: 6),
                         Text(
-                          'Anbefalt svar fra SOP',
+                          'Anbefalt svar',
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w800,
@@ -560,62 +688,6 @@ class _AiAnswerCard extends StatelessWidget {
                   const Icon(Icons.arrow_forward_rounded, size: 16),
                 ],
               ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({
-    required this.isDark,
-    required this.title,
-    required this.count,
-    required this.onTap,
-  });
-
-  final bool isDark;
-  final String title;
-  final int count;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: isDark ? DriftProTheme.cardDark : Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.12)),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(Icons.folder_open_rounded, color: DriftProTheme.primaryGreen),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: Text(title, style: DriftProTheme.labelMd)),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: DriftProTheme.accentBlue.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text('$count', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
-              ),
-              const Icon(Icons.chevron_right),
             ],
           ),
         ),
@@ -773,7 +845,7 @@ class _SopEntryDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final related = SopTrainingService.instance.relatedEntries(entry);
+    final related = TrainingLibraryService.instance.relatedEntries(entry);
 
     return DraggableScrollableSheet(
       initialChildSize: 0.88,

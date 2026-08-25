@@ -1,7 +1,7 @@
 import '../../constants/vehicle_rental_agreement.dart';
 import '../../routing/app_paths.dart';
 import '../hms/sop_training_models.dart';
-import '../hms/sop_training_service.dart';
+import '../hms/training_library_service.dart';
 import '../../../screens/more/driftpro_platform_catalog.dart';
 
 enum KnowledgeSourceKind { sop, rental, help }
@@ -50,10 +50,12 @@ class AssistantCorpus {
     ];
 
     try {
-      final doc = await SopTrainingService.instance.load();
-      chunks.addAll(_sopChunks(doc));
+      await TrainingLibraryService.instance.loadAll();
+      for (final doc in TrainingLibraryService.instance.allDocs) {
+        chunks.addAll(_sopChunks(doc));
+      }
     } catch (_) {
-      // SOP-asset kan mangle lokalt — resten av corpus fungerer fortsatt.
+      // Opplæringsassets kan mangle lokalt — resten av corpus fungerer fortsatt.
     }
 
     return chunks;
@@ -65,7 +67,9 @@ class AssistantCorpus {
       return KnowledgeChunk(
         id: 'sop:${e.id}',
         source: KnowledgeSourceKind.sop,
-        title: e.title.isEmpty ? (e.subsection.isEmpty ? e.section : e.subsection) : e.title,
+        title: e.title.isEmpty
+            ? (e.subsection.isEmpty ? e.section : e.subsection)
+            : e.title,
         body: body,
         routePath: AppPaths.hmsOpplaering,
         tags: [
@@ -74,6 +78,7 @@ class AssistantCorpus {
           e.section,
           e.subsection,
           e.kind.name,
+          doc.title,
         ],
       );
     }).toList();

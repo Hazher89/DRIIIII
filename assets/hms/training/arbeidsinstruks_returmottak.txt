@@ -1,0 +1,9 @@
+Arbeidsinstruks for Returmottak
+Vi bruker returskjema for å dokumentere og registrere produkter som kommer tilbake til HUB. I tillegg til Hubanero og Goran. Returskjemaet består av 4 gjennomslagspapirer. Side 1 (Hvit): Transporterens eksemplar. Side 2 (Blå): Varehusets eksemplar. Side 3 (Gul): Produktets eksemplar. Side 4 (Rosa): kundes eksemplar.
+Skriv bilagsnummeret. Det finner man enten på backup forumen (kjøreliste) eller i Goran appen. Et bilagsnummer begynner stort sett med 41 eller 39.
+Skriv varekode på produktet. Varekode på et produkt finner man ofte inni produktet eller på baksiden. Ellers finner man det ved å sjekke Goran eller backup forum.
+Her skal man velge årsak på hvorfor produktet er tilbake. (gjerne spør sjåfør).
+Her skal kunden skrive om det er eventuelt skader på produktet og signere.
+Her skal produktet sjekkes av lagermedarbeidere for skader og notere det ned før de signerer.
+Her skal butikk eller varehus sjekke om det er skader på produktet før de signerer.
+Når returskjemaet er ferdig utfylt, så skal man sjekke om produktet har etikett. Etikette skal ALLTID klistres på baksiden av produktet. Det skal heller ikke dekke noe typeskilt eller lignende. Ser alt riktig ut, så må man skanne «intake» med Hubanero og da får man også se hvilken felt produktet skal flyttes til. Produktet må da fysisk flyttes til riktig felt.

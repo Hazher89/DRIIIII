@@ -1,0 +1,10 @@
+Arbeidsinstruks for vareoverføring til 1701
+
+Etter varene har blitt satt på paller og etter du har sjekket om alle varene er riktige i forhold til returskjema og skannlapp så må du skrive dagens dato på alle skannelappene. Sørg for at ingen skannelapp er klistret på typeskilt, sørg for at alle bein til produktene er skrudd helt inn.
+
+Etter du har sjekket alt det, så må du hente en PDA og logge deg inn på Hubanero. Deretter trykker du på Ad-Hoc inventory. En skjerm skal dukke opp med info om varen du nettopp skannet. Skann alle varene som skal til 1701 og trykk på pilen helt øverst. Det dukker opp da et nytt vindu. Trykk på "finish and send report". Det blir sendt en excel-fil via BG-jobs til drift-mailen. Print ut den og gi den til en av de som jobber på 1701. Listen må vi få tilbake etter 1701 har signert og må arkiveres.
+
+Til slutt må du åpne excel-filen på PC-en og logge deg inn på HUB dash, deretter trykk på inventory management. Her skal du kopiere hver HU fra excel-filen og lime den inn i HUB dash / inventory management. Etter det trykk på ordren som da åpner et nytt vindu. I dette vinduet finnes det et kommentarfelt der du skal skrive "levert til 1701" med dagens dato og trykk på execute.
+
+Destinasjon: SP-1701 — varer som skal til 1701.
+System: Hubanero Ad-hoc inventory, HUB Dashboard Inventory management.

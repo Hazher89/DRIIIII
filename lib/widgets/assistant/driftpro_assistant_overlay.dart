@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -8,7 +9,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'driftpro_assistant_sheet.dart';
 
-/// Global chat-FAB over hele appen (alle sider) når assistenten er slått på.
+/// Global chat-FAB over hele appen — **kun web**, når assistenten er slått på.
 class DriftProAssistantOverlay extends StatefulWidget {
   const DriftProAssistantOverlay({super.key, required this.child});
 
@@ -28,9 +29,12 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
   AssistantFlag _flag = AssistantFlag.disabled;
   bool _sheetOpen = false;
 
+  bool get _showFab => kIsWeb && _flag.enabled;
+
   @override
   void initState() {
     super.initState();
+    if (!kIsWeb) return;
     WidgetsBinding.instance.addObserver(this);
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
       unawaited(_reloadProfile());
@@ -110,7 +114,9 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
+    if (kIsWeb) {
+      WidgetsBinding.instance.removeObserver(this);
+    }
     _authSub?.cancel();
     _flagSub?.cancel();
     _poll?.cancel();
@@ -119,17 +125,20 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
 
   @override
   Widget build(BuildContext context) {
+    if (!kIsWeb) return widget.child;
+
     return Stack(
       fit: StackFit.expand,
       children: [
         widget.child,
-        if (_flag.enabled)
+        if (_showFab)
           Positioned(
-            right: 16,
-            bottom: 80,
+            right: 20,
+            bottom: 96,
             child: SafeArea(
               child: Material(
-                elevation: 6,
+                elevation: 8,
+                shadowColor: Colors.black38,
                 shape: const CircleBorder(),
                 color: DriftProTheme.primaryGreen,
                 child: InkWell(
@@ -138,11 +147,12 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
                   child: Tooltip(
                     message: _flag.displayTitle,
                     child: const SizedBox(
-                      width: 56,
-                      height: 56,
+                      width: 58,
+                      height: 58,
                       child: Icon(
-                        Icons.chat_bubble_outline_rounded,
+                        Icons.chat_bubble_rounded,
                         color: Colors.white,
+                        size: 26,
                       ),
                     ),
                   ),
