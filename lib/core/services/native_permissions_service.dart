@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -72,6 +74,19 @@ abstract final class NativePermissionsService {
     BuildContext? context,
   }) async {
     if (!_native) return true;
+
+    if (kind == AppPermissionKind.notifications && Platform.isIOS) {
+      final ok = await PushNotificationService.registerAfterPermissionGranted();
+      if (!ok && context != null && context.mounted) {
+        _snack(
+          context,
+          'Push-varsler er ikke aktivert. Slå på varsler for DriftPro i Innstillinger.',
+          actionLabel: 'Innstillinger',
+          onAction: openAppSettings,
+        );
+      }
+      return ok;
+    }
 
     if (kind == AppPermissionKind.location) {
       final serviceOn = await Geolocator.isLocationServiceEnabled();

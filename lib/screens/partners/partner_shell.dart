@@ -13,6 +13,7 @@ import '../../core/services/partner/partner_portal_scope.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/partner/vehicle_inspection_pdf.dart';
 import '../../core/services/notification/partner_route_push_listener.dart';
+import '../../core/services/notification/push_notification_service.dart';
 import '../../core/services/native_permissions_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -103,13 +104,13 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     _index = widget.initialTabIndex;
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      unawaited(NativePermissionsService.bootstrapAfterLogin(context));
-      // Portal: be om varsel-tillatelse (sjåfør og bil-eier).
+      await NativePermissionsService.bootstrapAfterLogin(context);
+      if (!mounted) return;
       if (widget.portalAccountKind == 'driver' ||
           widget.portalAccountKind == 'owner') {
-        unawaited(NativePermissionsService.ensureNotifications(context: context));
+        await NativePermissionsService.ensureNotifications(context: context);
       }
     });
   }
@@ -126,6 +127,10 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshWorkforceFlag());
+      if (widget.portalAccountKind == 'driver' ||
+          widget.portalAccountKind == 'owner') {
+        unawaited(PushNotificationService.syncRegistration());
+      }
     }
   }
 

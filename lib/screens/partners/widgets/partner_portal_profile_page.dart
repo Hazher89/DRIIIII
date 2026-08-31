@@ -8,6 +8,7 @@ import '../../more/driftpro_platform_catalog.dart';
 import '../../more/widgets/info_page_scaffold.dart';
 import '../../profile/delete_own_account_dialog.dart';
 import '../widgets/partner_portal_page_shell.dart';
+import '../widgets/partner_push_status_card.dart';
 import '../widgets/partner_ui.dart';
 
 /// Apple App Store-klar profil for bil-eier, sjåfør og ansatt.
@@ -105,6 +106,10 @@ class PartnerPortalProfilePage extends StatelessWidget {
               ],
             ],
           ),
+          if (!staffPortal) ...[
+            const SizedBox(height: 12),
+            const PartnerPushStatusCard(),
+          ],
           const SizedBox(height: 12),
           Text(
             'Hjelp & juridisk',
