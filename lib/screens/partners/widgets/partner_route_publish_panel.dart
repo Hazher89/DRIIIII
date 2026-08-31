@@ -15,8 +15,10 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/route_notify_prefs.dart';
 import 'partner_route_pdf_actions.dart';
 import 'route_calendar_chip.dart';
+import 'route_publish_notify_buttons.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Én arbeidsflate: last opp PDF → kontroller alle sjåfører → publiser.
@@ -266,7 +268,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
     await _importPdfs(picked.files);
   }
 
-  Future<void> _publish() async {
+  Future<void> _publishWithPrefs(RouteNotifyPrefs? prefs) async {
     if (_selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ingen ruter valgt for publisering.')),
@@ -280,6 +282,9 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
       );
       return;
     }
+
+    final notifyPrefs = prefs ?? RouteNotifyPrefs.none;
+    final notify = notifyPrefs.anyEnabled;
 
     final lines = <String>[];
     final seenVehicle = <String>{};
@@ -303,18 +308,19 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Publiser ruter til sjåfører?'),
+        title: Text(notify ? 'Publiser med ${notifyPrefs.shortLabel}?' : 'Publiser uten varsel?'),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Du sender ${_selected.length} PDF til ${_selected.length} tildeling(er). '
-                'Sjåfører med telefon får SMS.',
+                notify
+                    ? 'Du sender ${_selected.length} rute(r) med varsel: ${notifyPrefs.shortLabel}.'
+                    : 'Du registrerer ${_selected.length} rute(r) uten varsel.',
                 style: const TextStyle(height: 1.35),
               ),
-              if (_missingPhoneCount > 0) ...[
+              if (notify && notifyPrefs.sms && _missingPhoneCount > 0) ...[
                 const SizedBox(height: 10),
                 Text(
                   '⚠ $_missingPhoneCount bil mangler telefon/portal — de får ikke SMS.',
@@ -358,10 +364,12 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
         shareIdToShiftId: map,
         date: _selected.isNotEmpty ? _routeDayFor(_selected.first) : _routeDate,
         shareIdToStartAt: starts,
+        notifyDriver: notify,
+        notifyPrefs: notifyPrefs,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Publisert ${map.length} rute(r). Sjåfører kan logge inn og akseptere.')),
+          SnackBar(content: Text(notifyPrefs.successMessage(map.length))),
         );
       }
       await _reload();
@@ -474,16 +482,9 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
               ..._buildReviewGroups(),
             ],
             const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _publishing || _staged.isEmpty || _selected.isEmpty ? null : _publish,
-              icon: _publishing
-                  ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
-                  : const Icon(Icons.rocket_launch_outlined),
-              label: Text('Publiser $selectedCount rute(r) til sjåfører'),
-              style: FilledButton.styleFrom(
-                backgroundColor: DriftProTheme.primaryGreen,
-                minimumSize: const Size(double.infinity, 52),
-              ),
+            RoutePublishNotifyButtons(
+              busy: _publishing,
+              onPublish: _selected.isEmpty ? (_) async {} : _publishWithPrefs,
             ),
           ],
         ),

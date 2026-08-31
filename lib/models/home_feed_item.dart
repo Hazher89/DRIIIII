@@ -1,3 +1,5 @@
+import 'home_feed_layout_config.dart';
+
 enum HomeFeedAudience {
   mavi('mavi', 'MAVI ansatte'),
   partner('partner', 'Partnere');
@@ -54,6 +56,7 @@ class HomeFeedItem {
     this.mimeType,
     this.sortOrder = 0,
     this.isActive = true,
+    this.layoutConfig = HomeFeedLayoutConfig.defaults,
     this.createdAt,
     this.updatedAt,
   });
@@ -69,6 +72,7 @@ class HomeFeedItem {
   final String? mimeType;
   final int sortOrder;
   final bool isActive;
+  final HomeFeedLayoutConfig layoutConfig;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -91,6 +95,9 @@ class HomeFeedItem {
       mimeType: (json['mime_type'] as String?)?.trim(),
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
       isActive: json['is_active'] != false,
+      layoutConfig: HomeFeedLayoutConfig.fromJson(
+        json['layout_config'] as Map<String, dynamic>?,
+      ),
       createdAt: _parseDate(json['created_at']),
       updatedAt: _parseDate(json['updated_at']),
     );
@@ -106,6 +113,7 @@ class HomeFeedItem {
         'mime_type': mimeType,
         'sort_order': sortOrder,
         'is_active': isActive,
+        'layout_config': layoutConfig.toJson(),
       };
 
   Map<String, dynamic> toUpdateJson() => {
@@ -113,6 +121,7 @@ class HomeFeedItem {
         'caption': caption,
         'sort_order': sortOrder,
         'is_active': isActive,
+        'layout_config': layoutConfig.toJson(),
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
 
@@ -121,6 +130,7 @@ class HomeFeedItem {
     String? caption,
     int? sortOrder,
     bool? isActive,
+    HomeFeedLayoutConfig? layoutConfig,
   }) {
     return HomeFeedItem(
       id: id,
@@ -134,6 +144,7 @@ class HomeFeedItem {
       mimeType: mimeType,
       sortOrder: sortOrder ?? this.sortOrder,
       isActive: isActive ?? this.isActive,
+      layoutConfig: layoutConfig ?? this.layoutConfig,
       createdAt: createdAt,
       updatedAt: updatedAt,
     );

@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/services/notification/publish_action_labels.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
-import '../../../models/notification_channel.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/route_shift_resolver.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/route_notify_prefs.dart';
 import 'partner_route_pdf_actions.dart';
 import 'route_calendar_chip.dart';
+import 'route_publish_notify_buttons.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Full oversikt over kladd-ruter før SMS/publisering til sjåfører.
@@ -43,8 +43,6 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
   final Map<String, TimeOfDay> _startByShare = {};
   final Map<String, DateTime> _dateByShare = {};
   final Map<String, TextEditingController> _noteCtrls = {};
-  String _publishLabel = 'Publiser og send varsel';
-  NotificationChannel _channel = NotificationChannel.both;
 
   DateTime _routeDayFor(String shareId) {
     final cached = _dateByShare[shareId];
@@ -67,20 +65,6 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
   void initState() {
     super.initState();
     _load();
-    _loadPublishLabels();
-  }
-
-  Future<void> _loadPublishLabels() async {
-    try {
-      final label = await PublishActionLabels.singleRoutePublishLabel(widget.companyId);
-      final ch = await PublishActionLabels.singleRouteChannel(widget.companyId);
-      if (mounted) {
-        setState(() {
-          _publishLabel = label;
-          _channel = ch;
-        });
-      }
-    } catch (_) {}
   }
 
   @override
@@ -168,7 +152,7 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
     return n;
   }
 
-  Future<void> _publish() async {
+  Future<void> _publishWithPrefs(RouteNotifyPrefs? prefs) async {
     if (_selected.isEmpty) return;
     final missingShift = _selected.where((id) => (_shiftByShare[id] ?? '').isEmpty);
     if (missingShift.isNotEmpty) {
@@ -177,6 +161,9 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
       );
       return;
     }
+
+    final notifyPrefs = prefs ?? RouteNotifyPrefs.none;
+    final notify = notifyPrefs.anyEnabled;
 
     final lines = <String>[];
     for (final id in _selected) {
@@ -193,17 +180,18 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('$_publishLabel?'),
+        title: Text(notify ? 'Publiser med ${notifyPrefs.shortLabel}?' : 'Publiser uten varsel?'),
         content: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                '${_selected.length} rute(r) sendes til sjåførportal. '
-                'Sjåfører får SMS og må logge inn for å akseptere.',
+                notify
+                    ? '${_selected.length} rute(r) sendes til partnerportal med varsel: ${notifyPrefs.shortLabel}.'
+                    : '${_selected.length} rute(r) registreres uten varsel til partner.',
               ),
-              if (_missingPhoneCount > 0) ...[
+              if (notify && notifyPrefs.sms && _missingPhoneCount > 0) ...[
                 const SizedBox(height: 8),
                 Text(
                   '⚠ $_missingPhoneCount bil mangler telefon — får ikke SMS.',
@@ -246,26 +234,19 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
         final day = _routeDayFor(id);
         starts[id] = DateTime(day.year, day.month, day.day, t.hour, t.minute);
       }
-      final notify = _channel != NotificationChannel.none;
+      final notify = notifyPrefs.anyEnabled;
       await PartnerService.dispatchRouteShares(
         companyId: widget.companyId,
         shareIdToShiftId: map,
         date: _selected.isNotEmpty ? _routeDayFor(_selected.first) : widget.routeDate,
         shareIdToStartAt: starts,
         notifyDriver: notify,
+        notifyPrefs: notifyPrefs,
       );
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              PublishActionLabels.successMessage(
-                routeCount: map.length,
-                channel: _channel,
-                notifyDriver: notify,
-              ),
-            ),
-          ),
+          SnackBar(content: Text(notifyPrefs.successMessage(map.length))),
         );
       }
     } catch (e) {
@@ -426,16 +407,9 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
               );
             }),
             const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: _publishing || _selected.isEmpty ? null : _publish,
-              style: FilledButton.styleFrom(
-                backgroundColor: DriftProTheme.primaryGreen,
-                minimumSize: const Size(double.infinity, 52),
-              ),
-              icon: _publishing
-                  ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
-                  : const Icon(Icons.rocket_launch_outlined),
-              label: Text('$_publishLabel (${_selected.length})'),
+            RoutePublishNotifyButtons(
+              busy: _publishing,
+              onPublish: _publishWithPrefs,
             ),
           ],
         ],

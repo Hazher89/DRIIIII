@@ -1,12 +1,12 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../core/services/home_feed_service.dart';
-import '../core/services/storage/storage_file_actions.dart';
 import '../core/theme/app_theme.dart';
 import '../models/home_feed_item.dart';
-import 'platform_media_view.dart';
+import '../models/home_feed_layout_config.dart';
+import 'home_feed/home_feed_item_view.dart';
 
 /// Live forside-innhold fra Supabase — oppdateres uten ny app-bygg.
 class HomeFeedBanner extends StatefulWidget {
@@ -14,10 +14,12 @@ class HomeFeedBanner extends StatefulWidget {
     super.key,
     required this.audience,
     this.compact = false,
+    this.previewPlatform = HomeFeedPreviewPlatform.auto,
   });
 
   final HomeFeedAudience audience;
   final bool compact;
+  final HomeFeedPreviewPlatform previewPlatform;
 
   @override
   State<HomeFeedBanner> createState() => _HomeFeedBannerState();
@@ -61,14 +63,40 @@ class _HomeFeedBannerState extends State<HomeFeedBanner> {
     }
   }
 
+  bool _resolveIsWeb(BuildContext context) {
+    switch (widget.previewPlatform) {
+      case HomeFeedPreviewPlatform.web:
+        return true;
+      case HomeFeedPreviewPlatform.app:
+        return false;
+      case HomeFeedPreviewPlatform.auto:
+        return kIsWeb || MediaQuery.sizeOf(context).width >= 900;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading || _items.isEmpty) return const SizedBox.shrink();
 
-    final height = widget.compact ? 180.0 : 220.0;
+    final isWeb = _resolveIsWeb(context);
+    final maxHeights = _items.map((item) {
+      final layout = item.layoutConfig;
+      return layout.resolveTotalHeight(
+        isWeb: isWeb,
+        hasTitle: item.title.isNotEmpty,
+        hasCaption: item.caption?.isNotEmpty ?? false,
+        compactPreview: widget.compact,
+      );
+    }).toList();
+    final height = maxHeights.reduce((a, b) => a > b ? a : b);
+    final padding = _items.isNotEmpty
+        ? _items.first.layoutConfig.resolvePadding(isWeb: isWeb)
+        : const EdgeInsets.symmetric(horizontal: 16);
 
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, widget.compact ? 8 : 12, 16, 8),
+      padding: widget.compact
+          ? const EdgeInsets.fromLTRB(0, 8, 0, 8)
+          : padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -78,10 +106,15 @@ class _HomeFeedBannerState extends State<HomeFeedBanner> {
               controller: _pageController,
               itemCount: _items.length,
               onPageChanged: (i) => setState(() => _page = i),
-              itemBuilder: (context, index) => _FeedCard(
-                item: _items[index],
-                compact: widget.compact,
-              ),
+              itemBuilder: (context, index) {
+                final item = _items[index];
+                return HomeFeedItemView(
+                  item: item,
+                  layout: item.layoutConfig,
+                  previewPlatform: widget.previewPlatform,
+                  compactPreview: widget.compact,
+                );
+              },
             ),
           ),
           if (_items.length > 1) ...[
@@ -89,14 +122,14 @@ class _HomeFeedBannerState extends State<HomeFeedBanner> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(_items.length, (i) {
-                final active = i == _page;
+                final activeDot = i == _page;
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.symmetric(horizontal: 3),
-                  width: active ? 18 : 7,
+                  width: activeDot ? 18 : 7,
                   height: 7,
                   decoration: BoxDecoration(
-                    color: active
+                    color: activeDot
                         ? DriftProTheme.primaryGreen
                         : Colors.grey.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(99),
@@ -108,160 +141,5 @@ class _HomeFeedBannerState extends State<HomeFeedBanner> {
         ],
       ),
     );
-  }
-}
-
-class _FeedCard extends StatefulWidget {
-  const _FeedCard({required this.item, required this.compact});
-
-  final HomeFeedItem item;
-  final bool compact;
-
-  @override
-  State<_FeedCard> createState() => _FeedCardState();
-}
-
-class _FeedCardState extends State<_FeedCard> {
-  String? _url;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _resolve();
-  }
-
-  @override
-  void didUpdateWidget(covariant _FeedCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.storagePath != widget.item.storagePath) {
-      _resolve();
-    }
-  }
-
-  Future<void> _resolve() async {
-    setState(() => _loading = true);
-    final url = await HomeFeedService.resolveDisplayUrl(widget.item.storagePath);
-    if (!mounted) return;
-    setState(() {
-      _url = url;
-      _loading = false;
-    });
-  }
-
-  Future<void> _openDocument() async {
-    await StorageFileActions.open(
-      context,
-      storagePath: widget.item.storagePath,
-      title: widget.item.title.isNotEmpty
-          ? widget.item.title
-          : widget.item.fileName ?? 'Dokument',
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final item = widget.item;
-
-    return Material(
-      color: isDark ? DriftProTheme.cardDark : DriftProTheme.cardLight,
-      elevation: 2,
-      shadowColor: Colors.black26,
-      borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: item.contentType == HomeFeedContentType.document
-            ? _openDocument
-            : _url != null
-                ? () => launchUrl(Uri.parse(_url!), mode: LaunchMode.externalApplication)
-                : null,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
-                  : _buildMedia(),
-            ),
-            if (item.title.isNotEmpty || (item.caption?.isNotEmpty ?? false))
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (item.title.isNotEmpty)
-                      Text(
-                        item.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: DriftProTheme.labelLg.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    if (item.caption?.isNotEmpty ?? false) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        item.caption!,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: DriftProTheme.bodySm.copyWith(
-                          color: isDark ? Colors.grey[400] : Colors.grey[700],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMedia() {
-    final item = widget.item;
-    final url = _url;
-
-    switch (item.contentType) {
-      case HomeFeedContentType.image:
-        if (url == null) {
-          return const Center(child: Icon(Icons.broken_image_outlined));
-        }
-        return Image.network(
-          url,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          errorBuilder: (_, __, ___) =>
-              const Center(child: Icon(Icons.broken_image_outlined)),
-        );
-      case HomeFeedContentType.video:
-        if (url == null) {
-          return const Center(child: Icon(Icons.videocam_off_outlined));
-        }
-        return PlatformMediaView(url: url);
-      case HomeFeedContentType.document:
-        return Container(
-          color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-          child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.picture_as_pdf_outlined,
-                  size: 48,
-                  color: DriftProTheme.primaryGreen,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  item.fileName ?? 'Trykk for å åpne dokument',
-                  style: DriftProTheme.bodySm,
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        );
-    }
   }
 }

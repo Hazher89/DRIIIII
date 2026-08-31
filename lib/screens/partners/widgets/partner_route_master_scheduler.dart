@@ -29,6 +29,7 @@ import 'partner_route_partner_status.dart';
 import 'route_calendar_chip.dart';
 import 'route_publish_notify_buttons.dart';
 import 'route_reminder_badge.dart';
+import 'partner_route_planner_ui.dart';
 import 'partner_route_single_assign_sheet.dart';
 import 'partner_route_auto_mass_sheet.dart';
 import 'partner_sap_routes_sheet.dart';
@@ -40,8 +41,6 @@ DateTime _monday(DateTime d) {
 }
 
 DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
-
-enum _PlannerViewMode { week, month }
 
 /// Løsemiddel-visning inspirert av arbeidsplan: MAVI-navigasjon til venstre, kalender til høyre.
 class PartnerRouteMasterScheduler extends StatefulWidget {
@@ -65,7 +64,7 @@ class PartnerRouteMasterScheduler extends StatefulWidget {
 class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterScheduler>
     with WidgetsBindingObserver {
   bool _busy = false;
-  _PlannerViewMode _mode = _PlannerViewMode.week;
+  RoutePlannerViewMode _mode = RoutePlannerViewMode.week;
   DateTime _weekStart = _monday(DateTime.now());
   DateTime _focusDay = _dayOnly(DateTime.now());
   late final TextEditingController _searchCtrl;
@@ -427,27 +426,63 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   String? _shiftName(String? shiftId) => shiftNameFor(_shifts, shiftId);
 
-  List<Widget> get _dispatchLegendChips => [
-        _dispatchLegendChip('Kladd', const Color(0xFFFF9800)),
-        _dispatchLegendChip('Uten varsel', const Color(0xFF78909C)),
-        _dispatchLegendChip('Varslet', const Color(0xFF2E7D32)),
-        _dispatchLegendChip('PDF lest', const Color(0xFF1565C0)),
-        _dispatchLegendChip('Akseptert', const Color(0xFF1B5E20)),
-      ];
+  List<RoutePlannerAction> _plannerActions() {
+    final hasQueue = _sapStagedCount > 0;
+    final hasInbox = _sapInboxPending > 0;
+    final sapActive = hasQueue || hasInbox;
+    String? sapBadge;
+    if (hasQueue && hasInbox) {
+      sapBadge = '$_sapStagedCount · $_sapInboxPending nye';
+    } else if (hasQueue) {
+      sapBadge = '$_sapStagedCount i kø';
+    } else if (hasInbox) {
+      sapBadge = '$_sapInboxPending nye';
+    }
 
-  Widget _dispatchLegendChip(String label, Color color) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3)),
-        ),
-        const SizedBox(width: 6),
-        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[700])),
-      ],
+    return [
+      RoutePlannerAction(
+        icon: Icons.add_circle_outline,
+        title: 'Ny rute',
+        subtitle: 'Last opp PDF og tildel én sjåfør',
+        color: DriftProTheme.accentBlue,
+        onPressed: _busy || _filteredFleet.isEmpty ? null : _openSingleAssign,
+      ),
+      RoutePlannerAction(
+        icon: Icons.auto_awesome,
+        title: 'Auto masse',
+        subtitle: 'Mange PDF-er — smart tildeling',
+        color: const Color(0xFF6A1B9A),
+        badge: _manualStagedCount > 0 ? '$_manualStagedCount' : null,
+        onPressed: _busy || _maviFleet.isEmpty ? null : _openAutoMass,
+      ),
+      RoutePlannerAction(
+        icon: sapActive ? Icons.notifications_active_rounded : Icons.inbox_outlined,
+        title: 'SAP-innboks',
+        subtitle: hasInbox ? 'Nye ruter fra SAP' : 'Importer og send SAP-ruter',
+        color: const Color(0xFF1565C0),
+        badge: sapBadge,
+        badgeColor: const Color(0xFFFFC107),
+        glow: sapActive,
+        onPressed: _busy || _maviFleet.isEmpty ? null : _openSapRoutes,
+      ),
+    ];
+  }
+
+  Future<void> _pickFocusDay() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _focusDay,
+      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
     );
+    if (d != null) {
+      setState(() {
+        _focusDay = _dayOnly(d);
+        _refreshSapPendingCount();
+        _jumpWeek(d);
+      });
+      await _reload();
+    }
   }
 
   Future<void> _openSapRoutes() async {
@@ -467,68 +502,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         await _reload(light: true);
       }
     }
-  }
-
-  Widget _sapInboxButton() {
-    final hasQueue = _sapStagedCount > 0;
-    final hasInbox = _sapInboxPending > 0;
-    final active = hasQueue || hasInbox;
-    return Badge(
-      isLabelVisible: hasInbox,
-      label: Text(
-        '$_sapInboxPending',
-        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
-      ),
-      backgroundColor: const Color(0xFFFFC107),
-      textColor: Colors.black87,
-      largeSize: 26,
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      offset: const Offset(10, -6),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeOut,
-        decoration: active
-            ? BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFFFC107).withValues(alpha: 0.75),
-                    blurRadius: 16,
-                    spreadRadius: 2,
-                  ),
-                  BoxShadow(
-                    color: const Color(0xFF1565C0).withValues(alpha: 0.45),
-                    blurRadius: 8,
-                  ),
-                ],
-              )
-            : null,
-        child: FilledButton.icon(
-          onPressed: _busy || _maviFleet.isEmpty ? null : _openSapRoutes,
-          style: FilledButton.styleFrom(
-            backgroundColor: active ? const Color(0xFF0D47A1) : const Color(0xFF1565C0),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          ),
-          icon: Icon(
-            active ? Icons.notifications_active_rounded : Icons.mark_email_read_outlined,
-            size: 20,
-          ),
-          label: Text(
-            hasQueue && hasInbox
-                ? 'SAP ($_sapStagedCount · $_sapInboxPending nye)'
-                : hasQueue
-                    ? 'SAP ($_sapStagedCount i kø)'
-                    : hasInbox
-                        ? 'SAP ($_sapInboxPending nye)'
-                        : 'SAP',
-            style: TextStyle(
-              fontWeight: active ? FontWeight.w800 : FontWeight.w600,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Future<void> _openAutoMass() async {
@@ -639,203 +612,115 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   Widget _buildToolbarContent(bool isDark, Color hdrBg, Color borderCol) {
     return Material(
-            color: hdrBg,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+      color: hdrBg,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            RoutePlannerUi.header(context: context, busy: _busy),
+            const SizedBox(height: 14),
+            RoutePlannerUi.dateNavigator(
+              weekStart: _weekStart,
+              weekEnd: _weekEnd,
+              focusDay: _focusDay,
+              mode: _mode,
+              onModeChanged: (m) => setState(() => _mode = m),
+              onPrevWeek: () {
+                setState(() => _weekStart = _weekStart.subtract(const Duration(days: 7)));
+                _reload();
+              },
+              onNextWeek: () {
+                setState(() => _weekStart = _weekStart.add(const Duration(days: 7)));
+                _reload();
+              },
+              onToday: () {
+                final now = _dayOnly(DateTime.now());
+                setState(() {
+                  _focusDay = now;
+                  _jumpWeek(now);
+                });
+                _reload();
+              },
+              onPickDay: _busy ? null : _pickFocusDay,
+            ),
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final sideBySide = constraints.maxWidth >= 720;
+                if (sideBySide) {
+                  return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.grid_view_rounded, color: DriftProTheme.primaryGreen, size: 26),
-                      const SizedBox(width: 10),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Rute-planlegger',
-                              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-                            ),
-                            Text(
-                              'Velg dag → «Ny rute» eller trykk tom celle. Sjåfør-rad åpner også opplasting for valgt dag.',
-                              style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-                            ),
-                          ],
+                        flex: 2,
+                        child: RoutePlannerUi.searchField(controller: _searchCtrl),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 3,
+                        child: RoutePlannerUi.focusDayActions(
+                          context: context,
+                          focusDay: _focusDay,
+                          pendingAck: _pendingAckCountForDay(_focusDay),
+                          routeCount: _weekRouteCount(_focusDay),
+                          onNudge: _busy ? null : () => _nudgePendingForDay(_focusDay),
+                          onClear: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
                         ),
-                      ),
-                      if (_busy) SizedBox(width: 24, height: 24, child: DriftProLoadingIndicator(size: 24)),
-                    ],
-                  ),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      SegmentedButton<_PlannerViewMode>(
-                        segments: const [
-                          ButtonSegment(value: _PlannerViewMode.week, label: Text('Uke'), icon: Icon(Icons.date_range)),
-                          ButtonSegment(value: _PlannerViewMode.month, label: Text('Måned'), icon: Icon(Icons.calendar_month)),
-                        ],
-                        selected: {_mode},
-                        onSelectionChanged: (s) => setState(() => _mode = s.first),
-                      ),
-                      IconButton.outlined(
-                        tooltip: 'Forrige uke',
-                        onPressed: () {
-                          setState(() => _weekStart = _weekStart.subtract(const Duration(days: 7)));
-                          _reload();
-                        },
-                        icon: const Icon(Icons.chevron_left),
-                      ),
-                      Text(
-                        '${DateFormat.MMMd('nb_NO').format(_weekStart)} – ${DateFormat.MMMd('nb_NO').format(_weekEnd)}',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      IconButton.outlined(
-                        tooltip: 'Neste uke',
-                        onPressed: () {
-                          setState(() => _weekStart = _weekStart.add(const Duration(days: 7)));
-                          _reload();
-                        },
-                        icon: const Icon(Icons.chevron_right),
-                      ),
-                      TextButton.icon(
-                        onPressed: () {
-                          final now = _dayOnly(DateTime.now());
-                          _focusDay = now;
-                          _jumpWeek(now);
-                          _reload();
-                        },
-                        icon: const Icon(Icons.today_outlined),
-                        label: const Text('I dag'),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _busy
-                            ? null
-                            : () async {
-                                final d = await showDatePicker(
-                                  context: context,
-                                  initialDate: _focusDay,
-                                  firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                                  lastDate: DateTime.now().add(const Duration(days: 365)),
-                                );
-                                if (d != null) {
-                                  setState(() {
-                                    _focusDay = _dayOnly(d);
-                                    _refreshSapPendingCount();
-                                    _jumpWeek(d);
-                                  });
-                                  await _reload();
-                                }
-                              },
-                        icon: const Icon(Icons.event_outlined, size: 18),
-                        label: Text('Dag: ${DateFormat('d.M.y', 'nb').format(_focusDay)}'),
-                      ),
-                      if (_pendingAckCountForDay(_focusDay) > 0)
-                        FilledButton.tonalIcon(
-                          onPressed: _busy ? null : () => _nudgePendingForDay(_focusDay),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.orange.shade50,
-                            foregroundColor: Colors.orange.shade900,
-                          ),
-                          icon: const Icon(Icons.notifications_active_outlined, size: 18),
-                          label: Text('Purr (${_pendingAckCountForDay(_focusDay)})'),
-                        ),
-                      if (_weekRouteCount(_focusDay) > 0)
-                        FilledButton.icon(
-                          onPressed: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.red.shade700,
-                            foregroundColor: Colors.white,
-                          ),
-                          icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-                          label: Text('Tøm (${_weekRouteCount(_focusDay)})'),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: SizedBox(
-                      width: 280,
-                      child: TextField(
-                        controller: _searchCtrl,
-                        decoration: InputDecoration(
-                          hintText: 'Søk MAVI / partner',
-                          prefixIcon: const Icon(Icons.search, size: 20),
-                          isDense: true,
-                          filled: true,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      FilledButton.icon(
-                        onPressed: _busy || _filteredFleet.isEmpty ? null : () => _openSingleAssign(),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: DriftProTheme.accentBlue,
-                          foregroundColor: Colors.white,
-                        ),
-                        icon: const Icon(Icons.add_circle_outline),
-                        label: const Text('Ny rute'),
-                      ),
-                      _sapInboxButton(),
-                      FilledButton.icon(
-                        onPressed: _busy || _maviFleet.isEmpty ? null : _openAutoMass,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF6A1B9A),
-                          foregroundColor: Colors.white,
-                        ),
-                        icon: const Icon(Icons.auto_awesome),
-                        label: Text(
-                          _manualStagedCount > 0 ? 'Auto ($_manualStagedCount)' : 'Auto',
-                        ),
-                      ),
-                      OutlinedButton.icon(
-                        onPressed: _busy ? null : _reload,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Oppdater'),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 16,
-                    runSpacing: 4,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: _dispatchLegendChips,
-                  ),
-                  const SizedBox(height: 10),
-                  if (_mode == _PlannerViewMode.month) ...[
-                    SizedBox(
-                      height: 300,
-                      child: CalendarDatePicker(
-                        initialDate: _weekStart,
-                        firstDate: DateTime(2023),
-                        lastDate: DateTime.now().add(const Duration(days: 540)),
-                        onDateChanged: (d) {
-                          setState(() {
-                            _focusDay = _dayOnly(d);
-                            _weekStart = _monday(d);
-                            _mode = _PlannerViewMode.week;
-                          });
-                          _reload();
-                        },
-                      ),
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    RoutePlannerUi.searchField(controller: _searchCtrl),
+                    const SizedBox(height: 10),
+                    RoutePlannerUi.focusDayActions(
+                      context: context,
+                      focusDay: _focusDay,
+                      pendingAck: _pendingAckCountForDay(_focusDay),
+                      routeCount: _weekRouteCount(_focusDay),
+                      onNudge: _busy ? null : () => _nudgePendingForDay(_focusDay),
+                      onClear: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
                     ),
                   ],
-                ],
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+            RoutePlannerUi.actionGrid(
+              context: context,
+              actions: _plannerActions(),
+              trailing: RoutePlannerUi.refreshButton(
+                onPressed: _busy ? null : _reload,
               ),
             ),
-          );
+            const SizedBox(height: 10),
+            RoutePlannerUi.statusLegend(),
+            if (_mode == RoutePlannerViewMode.month) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 300,
+                child: CalendarDatePicker(
+                  initialDate: _weekStart,
+                  firstDate: DateTime(2023),
+                  lastDate: DateTime.now().add(const Duration(days: 540)),
+                  onDateChanged: (d) {
+                    setState(() {
+                      _focusDay = _dayOnly(d);
+                      _weekStart = _monday(d);
+                      _mode = RoutePlannerViewMode.week;
+                    });
+                    _reload();
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildPinnedWeekHeader(Color borderCol, bool isDark) {
@@ -1023,119 +908,48 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Rute-planlegger',
-                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-                  ),
-                ),
-                if (_busy) const SizedBox(width: 24, height: 24, child: DriftProLoadingIndicator(size: 24)),
-                PopupMenuButton<String>(
-                  icon: const Icon(Icons.more_vert),
-                  onSelected: (v) async {
-                    switch (v) {
-                      case 'month':
-                        setState(() => _mode = _PlannerViewMode.month);
-                      case 'week':
-                        setState(() => _mode = _PlannerViewMode.week);
-                      case 'reload':
-                        await _reload();
-                      case 'today':
-                        final now = _dayOnly(DateTime.now());
-                        setState(() {
-                          _focusDay = now;
-                          _jumpWeek(now);
-                        });
-                        await _reload();
-                    }
-                  },
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: _mode == _PlannerViewMode.week ? 'month' : 'week',
-                      child: Text(_mode == _PlannerViewMode.week ? 'Månedsvisning' : 'Ukevisning'),
-                    ),
-                    const PopupMenuItem(value: 'today', child: Text('Gå til i dag')),
-                    const PopupMenuItem(value: 'reload', child: Text('Oppdater')),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                IconButton.outlined(
-                  onPressed: () {
-                    setState(() => _weekStart = _weekStart.subtract(const Duration(days: 7)));
-                    _reload();
-                  },
-                  icon: const Icon(Icons.chevron_left),
-                ),
-                Expanded(
-                  child: Text(
-                    '${DateFormat('d. MMM', 'nb_NO').format(_weekStart)} – ${DateFormat('d. MMM', 'nb_NO').format(_weekEnd)}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                  ),
-                ),
-                IconButton.outlined(
-                  onPressed: () {
-                    setState(() => _weekStart = _weekStart.add(const Duration(days: 7)));
-                    _reload();
-                  },
-                  icon: const Icon(Icons.chevron_right),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Søk MAVI / partner',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                isDense: true,
-                filled: true,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+            RoutePlannerUi.header(
+              context: context,
+              busy: _busy,
+              subtitle: 'Trykk på en sjåfør for å legge til eller administrere ruter.',
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _busy || _filteredFleet.isEmpty ? null : () => _openSingleAssign(),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: DriftProTheme.accentBlue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    icon: const Icon(Icons.add_circle_outline, size: 18),
-                    label: const Text('Ny rute'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                _sapInboxButton(),
-              ],
+            RoutePlannerUi.dateNavigator(
+              weekStart: _weekStart,
+              weekEnd: _weekEnd,
+              focusDay: _focusDay,
+              mode: _mode,
+              compact: true,
+              onModeChanged: (m) => setState(() => _mode = m),
+              onPrevWeek: () {
+                setState(() => _weekStart = _weekStart.subtract(const Duration(days: 7)));
+                _reload();
+              },
+              onNextWeek: () {
+                setState(() => _weekStart = _weekStart.add(const Duration(days: 7)));
+                _reload();
+              },
+              onToday: () {
+                final now = _dayOnly(DateTime.now());
+                setState(() {
+                  _focusDay = now;
+                  _jumpWeek(now);
+                });
+                _reload();
+              },
+              onPickDay: _busy ? null : _pickFocusDay,
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _busy || _maviFleet.isEmpty ? null : _openAutoMass,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF6A1B9A),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    icon: const Icon(Icons.auto_awesome, size: 18),
-                    label: Text(_manualStagedCount > 0 ? 'Auto ($_manualStagedCount)' : 'Auto'),
-                  ),
-                ),
-              ],
+            const SizedBox(height: 12),
+            RoutePlannerUi.searchField(controller: _searchCtrl),
+            const SizedBox(height: 12),
+            RoutePlannerUi.actionGrid(
+              context: context,
+              actions: _plannerActions(),
+              trailing: RoutePlannerUi.refreshButton(
+                onPressed: _busy ? null : _reload,
+              ),
             ),
-            if (_mode == _PlannerViewMode.month) ...[
+            if (_mode == RoutePlannerViewMode.month) ...[
               const SizedBox(height: 10),
               CalendarDatePicker(
                 initialDate: _weekStart,
@@ -1145,18 +959,14 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                   setState(() {
                     _focusDay = _dayOnly(d);
                     _weekStart = _monday(d);
-                    _mode = _PlannerViewMode.week;
+                    _mode = RoutePlannerViewMode.week;
                   });
                   _reload();
                 },
               ),
             ],
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: _dispatchLegendChips,
-            ),
+            RoutePlannerUi.statusLegend(scrollable: true),
           ],
         ),
       ),
@@ -1236,52 +1046,16 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   }
 
   Widget _buildMobileDayActions(bool isDark) {
-    final pendingAck = _pendingAckCountForDay(_focusDay);
-    final routeCount = _weekRouteCount(_focusDay);
-    if (pendingAck == 0 && routeCount == 0) return const SizedBox.shrink();
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          OutlinedButton.icon(
-            onPressed: () async {
-              final d = await showDatePicker(
-                context: context,
-                initialDate: _focusDay,
-                firstDate: DateTime.now().subtract(const Duration(days: 30)),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-              );
-              if (d != null) {
-                setState(() {
-                  _focusDay = _dayOnly(d);
-                  _jumpWeek(d);
-                });
-                await _reload();
-              }
-            },
-            icon: const Icon(Icons.event_outlined, size: 18),
-            label: Text(DateFormat('d. MMM', 'nb').format(_focusDay)),
-          ),
-          if (pendingAck > 0)
-            FilledButton.tonalIcon(
-              onPressed: _busy ? null : () => _nudgePendingForDay(_focusDay),
-              icon: const Icon(Icons.notifications_active_outlined, size: 18),
-              label: Text('Purr ($pendingAck)'),
-            ),
-          if (routeCount > 0)
-            FilledButton.icon(
-              onPressed: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
-              style: FilledButton.styleFrom(
-                backgroundColor: Colors.red.shade700,
-                foregroundColor: Colors.white,
-              ),
-              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-              label: Text('Tøm ($routeCount)'),
-            ),
-        ],
+      child: RoutePlannerUi.focusDayActions(
+        context: context,
+        focusDay: _focusDay,
+        pendingAck: _pendingAckCountForDay(_focusDay),
+        routeCount: _weekRouteCount(_focusDay),
+        compact: true,
+        onNudge: _busy ? null : () => _nudgePendingForDay(_focusDay),
+        onClear: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
       ),
     );
   }
@@ -1556,68 +1330,10 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                 ),
                 if (n > 0) ...[
                   const SizedBox(height: 3),
-                  Row(
-                    children: [
-                      if (pendingAck > 0)
-                        Expanded(
-                          child: Material(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(6),
-                            child: InkWell(
-                              onTap: _busy ? null : () => _nudgePendingForDay(d),
-                              borderRadius: BorderRadius.circular(6),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.notifications_active_outlined,
-                                        size: 12, color: Colors.orange.shade900),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      'Purr',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.orange.shade900,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      if (pendingAck > 0) const SizedBox(width: 3),
-                      Expanded(
-                        child: Material(
-                          color: Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(6),
-                          child: InkWell(
-                            onTap: _busy ? null : () => _clearAllRoutesForDay(d),
-                            borderRadius: BorderRadius.circular(6),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 3),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.delete_sweep_outlined, size: 12, color: Colors.red.shade800),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    'Tøm',
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.red.shade800,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+                  RoutePlannerUi.dayColumnActions(
+                    pendingAck: pendingAck,
+                    onNudge: _busy ? null : () => _nudgePendingForDay(d),
+                    onClear: _busy ? null : () => _clearAllRoutesForDay(d),
                   ),
                 ],
               ],

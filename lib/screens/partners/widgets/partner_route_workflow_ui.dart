@@ -242,13 +242,13 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
                     ],
                   ],
                 ),
-                if (subtitle != null && !compact) ...[
+                if (subtitle != null) ...[
                   const SizedBox(height: 4),
                   Text(
                     subtitle!,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.9),
-                      fontSize: 12,
+                      fontSize: compact ? 11 : 12,
                       height: 1.3,
                     ),
                     maxLines: 2,

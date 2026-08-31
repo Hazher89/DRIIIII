@@ -34,7 +34,8 @@ import 'partner_route_pdf_actions.dart';
 import 'partner_route_pdf_thumbnail.dart';
 import 'partner_route_publish_review_dialog.dart';
 import 'partner_route_workflow_ui.dart';
-import 'route_dispatch/route_notify_channel_toggles.dart';
+import 'partner_route_workflow_ui.dart';
+import 'route_publish_notify_buttons.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 class _PdfAssignmentRow {
@@ -1226,10 +1227,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Future<bool> _confirmPublish({
-    required bool notifyDriver,
+    required RouteNotifyPrefs notifyPrefs,
     required Set<String> routeIds,
     String? dateSyncSummary,
   }) async {
+    final notifyDriver = notifyPrefs.anyEnabled;
     final multiLoadNote = _multiLoadNoteFor(routeIds);
     final entries = <PartnerRoutePublishReviewEntry>[];
     final driverIds = <String>{};
@@ -1268,7 +1270,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       driverCount: driverIds.length,
       notifyDriver: notifyDriver,
       confirmLabel: notifyDriver
-          ? _notifyPrefs.shortLabel
+          ? notifyPrefs.shortLabel
           : 'Publiser uten varsel',
       dateSyncSummary: dateSyncSummary,
       multiLoadNote: multiLoadNote,
@@ -1301,7 +1303,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   Future<void> _executePublish({
     required Set<String> routeIds,
-    required bool notifyDriver,
+    required RouteNotifyPrefs notifyPrefs,
   }) async {
     final cid = await SupabaseService.getCurrentCompanyId();
     if (cid == null) return;
@@ -1324,27 +1326,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         final day = _routeDayFor(id);
         starts[id] = DateTime(day.year, day.month, day.day, t.hour, t.minute);
       }
-      final sendNotify = notifyDriver && _notifyPrefs.anyEnabled;
+      final sendNotify = notifyPrefs.anyEnabled;
       await PartnerService.dispatchRouteShares(
         companyId: cid,
         shareIdToShiftId: map,
         date: routeIds.isNotEmpty ? _routeDayFor(routeIds.first) : _routeDate,
         shareIdToStartAt: starts,
         notifyDriver: sendNotify,
-        notifyPrefs: sendNotify ? _notifyPrefs : RouteNotifyPrefs.none,
+        notifyPrefs: notifyPrefs,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              PublishActionLabels.successMessage(
-                routeCount: map.length,
-                channel: NotificationChannel.both,
-                notifyDriver: sendNotify,
-                prefs: sendNotify ? _notifyPrefs : RouteNotifyPrefs.none,
-              ),
-            ),
-          ),
+          SnackBar(content: Text(notifyPrefs.successMessage(map.length))),
         );
         Navigator.pop(context, true);
       }
@@ -1359,7 +1352,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
   }
 
-  Future<void> _smartPublishFromPdfs({required bool notifyDriver}) async {
+  Future<void> _smartPublishFromPdfs({required RouteNotifyPrefs notifyPrefs}) async {
     if (_selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Velg ruter du vil publisere først.')),
@@ -1401,12 +1394,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
       final routeIds = Set<String>.from(_selected);
       final confirmed = await _confirmPublish(
-        notifyDriver: notifyDriver,
+        notifyPrefs: notifyPrefs,
         routeIds: routeIds,
         dateSyncSummary: dateSyncSummary,
       );
       if (!confirmed || !mounted) return;
-      await _executePublish(routeIds: routeIds, notifyDriver: notifyDriver);
+      await _executePublish(routeIds: routeIds, notifyPrefs: notifyPrefs);
     } finally {
       if (mounted) setState(() => _busyUpload = false);
     }
@@ -1418,9 +1411,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     } else if (value is DateTime) {
       await _clearStagedForDay(value);
     } else if (value == _DateQueueAction.publishNoSms) {
-      await _smartPublishFromPdfs(notifyDriver: false);
+      await _smartPublishFromPdfs(notifyPrefs: RouteNotifyPrefs.none);
     } else if (value == _DateQueueAction.publishSms) {
-      await _smartPublishFromPdfs(notifyDriver: true);
+      await _smartPublishFromPdfs(notifyPrefs: RouteNotifyPrefs.smsAndEmail);
     }
   }
 
@@ -2378,7 +2371,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     return true;
   }
 
-  Future<void> _publish({required bool notifyDriver}) async {
+  Future<void> _publishWithPrefs(RouteNotifyPrefs? prefs) async {
     if (_selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Velg ruter du vil publisere etter kontroll.')),
@@ -2403,13 +2396,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       return;
     }
 
+    final notifyPrefs = prefs ?? RouteNotifyPrefs.none;
     final routeIds = Set<String>.from(_selected);
     final confirmed = await _confirmPublish(
-      notifyDriver: notifyDriver,
+      notifyPrefs: notifyPrefs,
       routeIds: routeIds,
     );
     if (!confirmed || !mounted) return;
-    await _executePublish(routeIds: routeIds, notifyDriver: notifyDriver);
+    await _executePublish(routeIds: routeIds, notifyPrefs: notifyPrefs);
   }
 
 
@@ -3447,7 +3441,6 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final stacked = constraints.maxWidth < 720;
         final statusText = _staged.isEmpty
             ? 'Ingen ruter i kø ennå — last opp PDF eller hent fra SAP'
             : _skipped.isNotEmpty
@@ -3457,7 +3450,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     : selectedMissing > 0
                         ? '$selectedMissing valgte rute(r) mangler skift'
                         : canPublish
-                            ? 'Klar — ${_selected.length} rute(r) · ${_notifyPrefs.shortLabel}'
+                            ? 'Klar — ${_selected.length} rute(r) · velg varsel nedenfor'
                             : 'Huk av ruter du vil dele';
 
         final status = Text(
@@ -3475,79 +3468,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ),
         );
 
-        final toggles = RouteNotifyChannelToggles(
-          value: _notifyPrefs,
-          dense: true,
-          onChanged: (v) => setState(() => _notifyPrefs = v),
+        final publishButtons = RoutePublishNotifyButtons(
+          busy: _publishing || !canPublish,
+          compact: true,
+          onPublish: canPublish ? _publishWithPrefs : (_) async {},
         );
-
-        final btnGrey = FilledButton.icon(
-          onPressed: _publishing || !canPublish
-              ? null
-              : () => _publish(notifyDriver: false),
-          icon: _publishing
-              ? const SizedBox(
-                  width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
-              : const Icon(Icons.notifications_off_outlined, size: 20),
-          label: Text('Uten varsel (${_selected.length})'),
-          style: FilledButton.styleFrom(
-            backgroundColor:
-                RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
-            minimumSize: const Size(0, 48),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-          ),
-        );
-
-        final btnNotify = FilledButton.icon(
-          onPressed: _publishing || !canPublish || !_notifyPrefs.anyEnabled
-              ? null
-              : () => _publish(notifyDriver: true),
-          icon: _publishing
-              ? const SizedBox(
-                  width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
-              : const Icon(Icons.send_outlined, size: 20),
-          label: Text('${_notifyPrefs.publishLabel} (${_selected.length})'),
-          style: FilledButton.styleFrom(
-            backgroundColor: ui.accentDark,
-            minimumSize: const Size(0, 48),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-          ),
-        );
-
-        if (stacked) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              status,
-              const SizedBox(height: 10),
-              toggles,
-              const SizedBox(height: 10),
-              btnGrey,
-              const SizedBox(height: 8),
-              btnNotify,
-            ],
-          );
-        }
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(child: status),
-                const SizedBox(width: 12),
-                toggles,
-              ],
-            ),
+            status,
             const SizedBox(height: 10),
-            Row(
-              children: [
-                const Spacer(),
-                btnGrey,
-                const SizedBox(width: 10),
-                btnNotify,
-              ],
-            ),
+            publishButtons,
           ],
         );
       },

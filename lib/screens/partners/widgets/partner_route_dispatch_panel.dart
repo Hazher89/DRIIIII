@@ -10,6 +10,8 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/route_notify_prefs.dart';
+import 'route_publish_notify_buttons.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Steg 2: Hver rute-PDF får eget skift før sending til sjåfør.
@@ -120,7 +122,7 @@ class _PartnerRouteDispatchPanelState extends State<PartnerRouteDispatchPanel> {
     return m;
   }
 
-  Future<void> _send() async {
+  Future<void> _sendWithPrefs(RouteNotifyPrefs? prefs) async {
     if (_selected.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Velg minst én rute å sende.')),
@@ -134,6 +136,7 @@ class _PartnerRouteDispatchPanelState extends State<PartnerRouteDispatchPanel> {
       );
       return;
     }
+    final notifyPrefs = prefs ?? RouteNotifyPrefs.none;
     final cid = await SupabaseService.getCurrentCompanyId();
     if (cid == null) return;
     setState(() => _sending = true);
@@ -157,10 +160,12 @@ class _PartnerRouteDispatchPanelState extends State<PartnerRouteDispatchPanel> {
         shareIdToShiftId: map,
         date: _sendDate,
         shareIdToStartAt: starts,
+        notifyDriver: notifyPrefs.anyEnabled,
+        notifyPrefs: notifyPrefs,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sendt ${map.length} rute(r) med individuelle skift.')),
+          SnackBar(content: Text(notifyPrefs.successMessage(map.length))),
         );
       }
       widget.onDispatched?.call();
@@ -352,16 +357,10 @@ class _PartnerRouteDispatchPanelState extends State<PartnerRouteDispatchPanel> {
               }),
             ],
             const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: _sending || _staged.isEmpty ? null : _send,
-              icon: _sending
-                  ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
-                  : const Icon(Icons.rocket_launch_outlined),
-              label: Text('Send ${_selected.length} rute(r) med egne skift'),
-              style: FilledButton.styleFrom(
-                backgroundColor: DriftProTheme.primaryGreen,
-                minimumSize: const Size(double.infinity, 48),
-              ),
+            RoutePublishNotifyButtons(
+              busy: _sending || _staged.isEmpty,
+              compact: true,
+              onPublish: _selected.isEmpty ? (_) async {} : _sendWithPrefs,
             ),
           ],
         ),

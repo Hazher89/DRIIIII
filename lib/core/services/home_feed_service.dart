@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/home_feed_item.dart';
+import '../../models/home_feed_layout_config.dart';
 import '../services/storage/company_file_storage.dart';
 import '../services/supabase_service.dart';
 import 'storage/storage_file_access.dart';
@@ -105,6 +106,7 @@ class HomeFeedService {
     String? fileName,
     String? mimeType,
     int sortOrder = 0,
+    HomeFeedLayoutConfig layoutConfig = HomeFeedLayoutConfig.defaults,
   }) async {
     final companyId = await SupabaseService.getCurrentCompanyId();
     if (companyId == null) {
@@ -122,6 +124,7 @@ class HomeFeedService {
       'mime_type': mimeType,
       'sort_order': sortOrder,
       'is_active': true,
+      'layout_config': layoutConfig.toJson(),
     };
 
     final res = await _client

@@ -1475,13 +1475,8 @@ class PartnerService {
         shifts: cachedShifts,
       );
 
-      if (effectiveNotify) {
-        try {
-          await _client.rpc('notify_partner_route_assigned_sms', params: {
-            'p_route_share_id': entry.key,
-          });
-        } catch (_) {}
-      }
+      // Varsling (SMS/e-post/push) kjøres av DB-trigger trg_partner_route_sms_on_sent
+      // når dispatch_status settes til sent — ikke kall RPC her (gir doble push).
     }
     if (effectiveNotify) {
       if (flushOutbox) {

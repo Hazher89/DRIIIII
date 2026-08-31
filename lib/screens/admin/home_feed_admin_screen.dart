@@ -8,7 +8,10 @@ import 'package:flutter/material.dart';
 import '../../core/services/home_feed_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/home_feed_item.dart';
+import '../../models/home_feed_layout_config.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../../widgets/home_feed/home_feed_design_editor.dart';
+import '../../widgets/home_feed/home_feed_dual_preview.dart';
 import '../../widgets/home_feed_banner.dart';
 
 /// Rediger live forside-innhold for MAVI ansatte eller partnere.
@@ -111,7 +114,7 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
         bytes: Uint8List.fromList(bytes),
       );
 
-      await HomeFeedService.createItem(
+      final created = await HomeFeedService.createItem(
         audience: _audience,
         contentType: contentType,
         storagePath: storagePath,
@@ -122,9 +125,11 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Publisert — vises live i app og web.')),
+        const SnackBar(content: Text('Publisert — tilpass utseende når du vil.')),
       );
       await _load();
+      if (!mounted) return;
+      await _openDesignEditor(created);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -141,6 +146,22 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
     return name.substring(0, dot);
   }
 
+  Future<void> _openDesignEditor(HomeFeedItem item) async {
+    final ok = await HomeFeedDesignEditor.open(
+      context,
+      item: item,
+      onSave: (updated) async {
+        await HomeFeedService.updateItem(updated);
+        await _load();
+      },
+    );
+    if (ok == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Lagret — vises live i app og web.')),
+      );
+    }
+  }
+
   Future<void> _toggleActive(HomeFeedItem item) async {
     try {
       await HomeFeedService.updateItem(item.copyWith(isActive: !item.isActive));
@@ -150,65 +171,6 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Kunne ikke lagre: $e')),
       );
-    }
-  }
-
-  Future<void> _editMeta(HomeFeedItem item) async {
-    final titleCtrl = TextEditingController(text: item.title);
-    final captionCtrl = TextEditingController(text: item.caption ?? '');
-
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Rediger tekst'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleCtrl,
-              decoration: const InputDecoration(labelText: 'Tittel'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: captionCtrl,
-              decoration: const InputDecoration(labelText: 'Undertekst (valgfritt)'),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Avbryt'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Lagre'),
-          ),
-        ],
-      ),
-    );
-
-    if (ok != true) return;
-
-    try {
-      await HomeFeedService.updateItem(
-        item.copyWith(
-          title: titleCtrl.text.trim(),
-          caption: captionCtrl.text.trim().isEmpty
-              ? null
-              : captionCtrl.text.trim(),
-        ),
-      );
-      await _load();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Kunne ikke lagre: $e')),
-      );
-    } finally {
-      titleCtrl.dispose();
-      captionCtrl.dispose();
     }
   }
 
@@ -266,6 +228,12 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
     }
   }
 
+  HomeFeedItem? get _previewItem {
+    final active = _items.where((e) => e.isActive).toList();
+    if (active.isEmpty) return null;
+    return active.first;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -289,8 +257,8 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
               padding: const EdgeInsets.all(16),
               children: [
                 Text(
-                  'Velg målgruppe og last opp bilde, video eller dokument. '
-                  'Endringer vises live i app og web uten ny bygg.',
+                  'Last opp bilde, video eller dokument — tilpass størrelse, tekst og farger '
+                  'med live forhåndsvisning for app og web. Endringer vises umiddelbart uten ny bygg.',
                   style: DriftProTheme.bodySm.copyWith(
                     color: isDark ? Colors.grey[400] : Colors.grey[700],
                   ),
@@ -323,7 +291,14 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                HomeFeedBanner(audience: _audience, compact: true),
+                const SizedBox(height: 8),
+                if (_previewItem != null)
+                  HomeFeedDualPreview(
+                    item: _previewItem!,
+                    layout: _previewItem!.layoutConfig,
+                  )
+                else
+                  HomeFeedBanner(audience: _audience, compact: true),
                 const SizedBox(height: 12),
                 if (_error != null)
                   Padding(
@@ -347,7 +322,7 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
                       index: i,
                       total: _items.length,
                       onToggle: () => _toggleActive(item),
-                      onEdit: () => _editMeta(item),
+                      onDesign: () => _openDesignEditor(item),
                       onDelete: () => _delete(item),
                       onMoveUp: i > 0 ? () => _move(i, -1) : null,
                       onMoveDown: i < _items.length - 1 ? () => _move(i, 1) : null,
@@ -371,7 +346,7 @@ class _AdminItemTile extends StatelessWidget {
     required this.index,
     required this.total,
     required this.onToggle,
-    required this.onEdit,
+    required this.onDesign,
     required this.onDelete,
     this.onMoveUp,
     this.onMoveDown,
@@ -381,7 +356,7 @@ class _AdminItemTile extends StatelessWidget {
   final int index;
   final int total;
   final VoidCallback onToggle;
-  final VoidCallback onEdit;
+  final VoidCallback onDesign;
   final VoidCallback onDelete;
   final VoidCallback? onMoveUp;
   final VoidCallback? onMoveDown;
@@ -400,6 +375,10 @@ class _AdminItemTile extends StatelessWidget {
         typeIcon = Icons.description_outlined;
     }
 
+    final layoutHint = item.layoutConfig.fullPageHero
+        ? ' · hero'
+        : ' · ${item.layoutConfig.sizePreset.label.toLowerCase()}';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       color: isDark ? DriftProTheme.cardDark : DriftProTheme.cardLight,
@@ -411,7 +390,7 @@ class _AdminItemTile extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
         subtitle: Text(
-          '${item.contentType.label}${item.isActive ? '' : ' · skjult'}',
+          '${item.contentType.label}$layoutHint${item.isActive ? '' : ' · skjult'}',
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
@@ -434,9 +413,9 @@ class _AdminItemTile extends StatelessWidget {
               onPressed: onToggle,
             ),
             IconButton(
-              tooltip: 'Rediger tekst',
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: onEdit,
+              tooltip: 'Tilpass design',
+              icon: const Icon(Icons.tune),
+              onPressed: onDesign,
             ),
             IconButton(
               tooltip: 'Slett',

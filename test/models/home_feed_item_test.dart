@@ -1,4 +1,6 @@
 import 'package:driftpro/models/home_feed_item.dart';
+import 'package:driftpro/models/home_feed_layout_config.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -24,6 +26,38 @@ void main() {
     expect(item.title, 'Velkommen');
     expect(item.sortOrder, 2);
     expect(item.isActive, isTrue);
+    expect(item.layoutConfig.sizePreset, HomeFeedSizePreset.medium);
+  });
+
+  test('HomeFeedLayoutConfig roundtrip json', () {
+    const config = HomeFeedLayoutConfig(
+      sizePreset: HomeFeedSizePreset.hero,
+      customHeightApp: 320,
+      edgeToEdge: true,
+      textPosition: HomeFeedTextPosition.overlayBottom,
+      textAlign: TextAlign.center,
+      titleStyle: HomeFeedTextStyleConfig(
+        size: HomeFeedTextSize.xl,
+        colorHex: '#FFD700',
+      ),
+    );
+
+    final restored = HomeFeedLayoutConfig.fromJson(config.toJson());
+    expect(restored.sizePreset, HomeFeedSizePreset.hero);
+    expect(restored.customHeightApp, 320);
+    expect(restored.edgeToEdge, isTrue);
+    expect(restored.textPosition, HomeFeedTextPosition.overlayBottom);
+    expect(restored.textAlign, TextAlign.center);
+    expect(restored.titleStyle.colorHex, '#FFD700');
+    expect(restored.titleStyle.size, HomeFeedTextSize.xl);
+  });
+
+  test('resolveHeight differs for app and web', () {
+    const config = HomeFeedLayoutConfig(sizePreset: HomeFeedSizePreset.large);
+    expect(
+      config.resolveHeight(isWeb: false),
+      lessThan(config.resolveHeight(isWeb: true)),
+    );
   });
 
   test('HomeFeedService content type guess', () {

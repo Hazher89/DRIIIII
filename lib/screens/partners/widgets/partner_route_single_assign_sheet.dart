@@ -11,14 +11,14 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/postal_code_registry.dart';
 import '../../../core/services/partner/route_pdf_auto_assign.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
-import '../../../core/services/notification/publish_action_labels.dart';
 import '../../../core/services/partner/route_time_band.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../models/notification_channel.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/partner/route_notify_prefs.dart';
 import 'partner_route_pdf_actions.dart';
 import 'partner_route_workflow_ui.dart';
+import 'route_publish_notify_buttons.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
@@ -75,8 +75,6 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
   TimeOfDay _start = const TimeOfDay(hour: 6, minute: 0);
   bool _busy = false;
   bool _analyzing = false;
-  String _publishLabel = 'Publiser og send varsel';
-  NotificationChannel _publishChannel = NotificationChannel.both;
   String? _actionError;
 
   Uint8List? _pdfBytes;
@@ -89,21 +87,9 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
     super.initState();
     _day = _dayOnly(widget.initialDay);
     _row = widget.initialRow;
-    _loadPublishLabel();
   }
 
-  Future<void> _loadPublishLabel() async {
-    try {
-      final label = await PublishActionLabels.singleRoutePublishLabel(widget.companyId);
-      final ch = await PublishActionLabels.singleRouteChannel(widget.companyId);
-      if (mounted) {
-        setState(() {
-          _publishLabel = label;
-          _publishChannel = ch;
-        });
-      }
-    } catch (_) {}
-  }
+  // removed _loadPublishLabel — varsel velges per kanal nederst
 
   List<FleetPartnerVehicleRow> get _maviFleet =>
       PartnerService.filterMaviFleetOnly(widget.fleet);
@@ -217,7 +203,10 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
     }
   }
 
-  Future<void> _saveRoute({required bool publish}) async {
+  Future<void> _saveRoute({
+    required bool publish,
+    RouteNotifyPrefs notifyPrefs = RouteNotifyPrefs.none,
+  }) async {
     if (!_hasPdf || _pdfFileName == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Last opp PDF først.')),
@@ -276,8 +265,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
         'partner_vehicle_id': row.vehicle.id,
       });
 
-      final notifyDriver =
-          publish && _publishChannel != NotificationChannel.none;
+      final notifyDriver = publish && notifyPrefs.anyEnabled;
 
       if (publish) {
         await PartnerService.dispatchRouteShares(
@@ -286,6 +274,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
           date: _day,
           shareIdToStartAt: {shareId: startAt},
           notifyDriver: notifyDriver,
+          notifyPrefs: notifyPrefs,
         );
       }
 
@@ -297,11 +286,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
         SnackBar(
           content: Text(
             publish
-                ? PublishActionLabels.successMessage(
-                    routeCount: 1,
-                    channel: _publishChannel,
-                    notifyDriver: notifyDriver,
-                  )
+                ? notifyPrefs.successMessage(1)
                 : 'PDF lagret som kladd for ${MaviUnitCodes.normalize(row.vehicle.unitCode)}.',
           ),
         ),
@@ -570,16 +555,15 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
               style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 46)),
             ),
             const SizedBox(height: 8),
-            FilledButton.icon(
-              onPressed: busy ? null : () => _saveRoute(publish: true),
-              style: FilledButton.styleFrom(
-                backgroundColor: accent,
-                minimumSize: const Size(double.infinity, 50),
-              ),
-              icon: _busy
-                  ? SizedBox(width: 20, height: 20, child: DriftProLoadingIndicator(size: 20))
-                  : const Icon(Icons.rocket_launch_outlined),
-              label: Text(_publishLabel),
+            RoutePublishNotifyButtons(
+              busy: busy,
+              onPublish: (prefs) async {
+                if (prefs == null || !prefs.anyEnabled) {
+                  await _saveRoute(publish: true, notifyPrefs: RouteNotifyPrefs.none);
+                } else {
+                  await _saveRoute(publish: true, notifyPrefs: prefs);
+                }
+              },
             ),
           ] else
             Text(
