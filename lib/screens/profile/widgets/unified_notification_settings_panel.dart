@@ -3,9 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../core/services/notification/unified_notification_settings_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../models/notification_channel.dart';
 import '../../../models/notification_event_definition.dart';
-import 'notification_channel_picker.dart';
+import 'notification_tri_channel_picker.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 enum NotificationSettingsScope { all, mavi, partner }
@@ -80,29 +79,39 @@ class _UnifiedNotificationSettingsPanelState
     }
   }
 
-  Future<void> _onChannelChanged(
-    NotificationEventDefinition event,
-    NotificationChannel channel,
-  ) async {
+  Future<void> _onChannelsChanged(
+    NotificationEventDefinition event, {
+    bool? smsEnabled,
+    bool? emailEnabled,
+    bool? pushEnabled,
+  }) async {
     if (_companyId == null) return;
+
+    final updated = event.copyWith(
+      smsEnabled: smsEnabled,
+      emailEnabled: emailEnabled,
+      pushEnabled: pushEnabled,
+    );
 
     setState(() {
       _savingEventId = event.id;
       _events = _events
-          .map((e) => e.id == event.id ? e.copyWith(channel: channel) : e)
+          .map((e) => e.id == event.id ? updated : e)
           .toList();
     });
 
     try {
-      await UnifiedNotificationSettingsService.setChannel(
+      await UnifiedNotificationSettingsService.setChannels(
         companyId: _companyId!,
         eventId: event.id,
-        channel: channel,
+        smsEnabled: updated.smsEnabled,
+        emailEnabled: updated.emailEnabled,
+        pushEnabled: updated.pushEnabled,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('«${event.title}» lagret (${channel.label})'),
+            content: Text('«${event.title}» lagret (${updated.channelSummary})'),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -207,8 +216,9 @@ class _UnifiedNotificationSettingsPanelState
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Text(
-                  'Alle varseltyper hentes fra Supabase. Hver endring lagres '
-                  'umiddelbart og styrer SMS/e-post i sanntid.',
+                  'Alle varseltyper hentes fra Supabase. For hver funksjon kan du '
+                  'slå SMS, e-post og push i appen av/på uavhengig. Endringer '
+                  'lagres umiddelbart og gjelder med en gang.',
                   style: TextStyle(fontSize: 13),
                 ),
               ),
@@ -234,7 +244,7 @@ class _UnifiedNotificationSettingsPanelState
                   const SizedBox(width: 8),
                   Chip(
                     label: Text(
-                      '${_events.where((e) => e.channel == NotificationChannel.none).length} av',
+                      '${_events.where((e) => e.allOff).length} helt av',
                     ),
                     visualDensity: VisualDensity.compact,
                   ),
@@ -380,12 +390,15 @@ class _UnifiedNotificationSettingsPanelState
                     'Nøkkel: ${event.settingKey}',
                     style: TextStyle(fontSize: 10, color: Colors.grey[500]),
                   ),
-                  const SizedBox(height: 8),
-                  NotificationChannelPicker(
-                    value: event.channel,
-                    onChanged: saving
-                        ? (_) {}
-                        : (ch) => _onChannelChanged(event, ch),
+                  const SizedBox(height: 4),
+                  NotificationTriChannelPicker(
+                    smsEnabled: event.smsEnabled,
+                    emailEnabled: event.emailEnabled,
+                    pushEnabled: event.pushEnabled,
+                    enabled: !saving,
+                    onSmsChanged: (v) => _onChannelsChanged(event, smsEnabled: v),
+                    onEmailChanged: (v) => _onChannelsChanged(event, emailEnabled: v),
+                    onPushChanged: (v) => _onChannelsChanged(event, pushEnabled: v),
                   ),
                   if (event.id == 'partner_route_reminder')
                     _routeReminderMinutesField(),

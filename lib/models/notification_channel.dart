@@ -19,6 +19,13 @@ enum NotificationChannel {
     }
   }
 
+  static NotificationChannel fromTriChannel(bool sms, bool email) {
+    if (sms && email) return NotificationChannel.both;
+    if (sms) return NotificationChannel.sms;
+    if (email) return NotificationChannel.email;
+    return NotificationChannel.none;
+  }
+
   String get dbValue => name;
 
   String get label {

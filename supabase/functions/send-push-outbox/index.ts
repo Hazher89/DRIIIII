@@ -1,4 +1,10 @@
-import "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import {
+  parseServiceAccount,
+  sendFcmLegacy,
+  sendFcmV1,
+  type FcmMessage,
+} from "../_shared/fcm_send.ts";
 
 type PushRow = {
   id: string;
@@ -27,123 +33,120 @@ function json(body: unknown, status = 200) {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-
-  const serverKey = Deno.env.get("FCM_SERVER_KEY");
-  if (!serverKey) {
-    return json({ error: "FCM_SERVER_KEY mangler i Edge Function secrets", sent: 0 }, 500);
-  }
-
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceKey) {
-    return json({ error: "Mangler Supabase miljøvariabler" }, 500);
-  }
-
-  const supabase = createClient(supabaseUrl, serviceKey);
-
-  let filterIds: string[] | null = null;
   try {
-    const body = await req.json();
-    if (Array.isArray(body?.ids) && body.ids.length > 0) {
-      filterIds = body.ids.map((id: unknown) => String(id)).filter(Boolean);
+    if (req.method === "OPTIONS") {
+      return new Response("ok", { headers: corsHeaders });
     }
-  } catch {
-    // empty body is fine
-  }
 
-  let query = supabase
-    .from("push_outbox")
-    .select("id, fcm_token, title, body, data, attempts")
-    .is("sent_at", null)
-    .order("created_at", { ascending: true });
+    const serviceAccount = parseServiceAccount(Deno.env.get("FCM_SERVICE_ACCOUNT_JSON"));
+    const serverKey = Deno.env.get("FCM_SERVER_KEY")?.trim();
 
-  if (filterIds?.length) {
-    query = query.in("id", filterIds);
-  } else {
-    query = query.lt("attempts", 5).limit(25);
-  }
+    if (!serviceAccount && !serverKey) {
+      return json({
+        error:
+          "Mangler FCM_SERVICE_ACCOUNT_JSON (anbefalt) eller FCM_SERVER_KEY i Edge Function secrets",
+        sent: 0,
+      }, 500);
+    }
 
-  const { data: rows, error: fetchError } = await query;
-  if (fetchError) {
-    return json({ error: fetchError.message }, 500);
-  }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return json({ error: "Mangler Supabase miljøvariabler" }, 500);
+    }
 
-  const pending = (rows ?? []) as PushRow[];
-  let sent = 0;
-  let failed = 0;
-  const details: Array<{ id: string; ok: boolean; error?: string }> = [];
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  for (const row of pending) {
+    let filterIds: string[] | null = null;
     try {
-      const res = await fetch("https://fcm.googleapis.com/fcm/send", {
-        method: "POST",
-        headers: {
-          Authorization: `key=${serverKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          to: row.fcm_token,
-          priority: "high",
-          notification: {
-            title: row.title,
-            body: row.body,
-            sound: "default",
-          },
-          data: {
-            ...(row.data ?? {}),
-            title: row.title,
-            body: row.body,
-          },
-        }),
-      });
+      const body = await req.json();
+      if (Array.isArray(body?.ids) && body.ids.length > 0) {
+        filterIds = body.ids.map((id: unknown) => String(id)).filter(Boolean);
+      }
+    } catch {
+      // empty body is fine
+    }
 
-      const payload = await res.json().catch(() => ({}));
-      const ok = res.ok && (payload?.success === 1 || payload?.success === undefined);
+    let query = supabase
+      .from("push_outbox")
+      .select("id, fcm_token, title, body, data, attempts")
+      .is("sent_at", null)
+      .order("created_at", { ascending: true });
 
-      if (ok) {
+    if (filterIds?.length) {
+      query = query.in("id", filterIds);
+    } else {
+      query = query.lt("attempts", 5).limit(25);
+    }
+
+    const { data: rows, error: fetchError } = await query;
+    if (fetchError) {
+      return json({ error: fetchError.message }, 500);
+    }
+
+    const pending = (rows ?? []) as PushRow[];
+    let sent = 0;
+    let failed = 0;
+    const details: Array<{ id: string; ok: boolean; error?: string }> = [];
+
+    for (const row of pending) {
+      const message: FcmMessage = {
+        token: row.fcm_token,
+        title: row.title,
+        body: row.body,
+        data: row.data,
+      };
+
+      try {
+        const result = serviceAccount
+          ? await sendFcmV1(serviceAccount, message)
+          : await sendFcmLegacy(serverKey!, message);
+
+        if (result.ok) {
+          await supabase
+            .from("push_outbox")
+            .update({
+              sent_at: new Date().toISOString(),
+              error_message: null,
+              attempts: row.attempts + 1,
+            })
+            .eq("id", row.id);
+          sent++;
+          details.push({ id: row.id, ok: true });
+        } else {
+          await supabase
+            .from("push_outbox")
+            .update({
+              error_message: result.error.slice(0, 500),
+              attempts: row.attempts + 1,
+            })
+            .eq("id", row.id);
+          failed++;
+          details.push({ id: row.id, ok: false, error: result.error });
+        }
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
         await supabase
           .from("push_outbox")
           .update({
-            sent_at: new Date().toISOString(),
-            error_message: null,
-            attempts: row.attempts + 1,
-          })
-          .eq("id", row.id);
-        sent++;
-        details.push({ id: row.id, ok: true });
-      } else {
-        const err = payload?.results?.[0]?.error ?? JSON.stringify(payload);
-        await supabase
-          .from("push_outbox")
-          .update({
-            error_message: String(err).slice(0, 500),
+            error_message: err.slice(0, 500),
             attempts: row.attempts + 1,
           })
           .eq("id", row.id);
         failed++;
-        details.push({ id: row.id, ok: false, error: String(err) });
+        details.push({ id: row.id, ok: false, error: err });
       }
-    } catch (e) {
-      const err = e instanceof Error ? e.message : String(e);
-      await supabase
-        .from("push_outbox")
-        .update({
-          error_message: err.slice(0, 500),
-          attempts: row.attempts + 1,
-        })
-        .eq("id", row.id);
-      failed++;
-      details.push({ id: row.id, ok: false, error: err });
     }
-  }
 
-  return json({
-    processed: pending.length,
-    sent,
-    failed,
-    details,
-  });
+    return json({
+      processed: pending.length,
+      sent,
+      failed,
+      transport: serviceAccount ? "fcm_v1" : "fcm_legacy",
+      details,
+    });
+  } catch (e) {
+    const err = e instanceof Error ? e.message : String(e);
+    return json({ error: err, sent: 0 }, 500);
+  }
 });

@@ -38,6 +38,25 @@ class UnifiedNotificationSettingsService {
     );
   }
 
+  static Future<void> setChannels({
+    required String companyId,
+    required String eventId,
+    required bool smsEnabled,
+    required bool emailEnabled,
+    required bool pushEnabled,
+  }) async {
+    await SupabaseService.client.rpc(
+      'set_notification_event_channels',
+      params: {
+        'p_company_id': companyId,
+        'p_event_id': eventId,
+        'p_sms_enabled': smsEnabled,
+        'p_email_enabled': emailEnabled,
+        'p_push_enabled': pushEnabled,
+      },
+    );
+  }
+
   static Future<int> fetchRouteAckReminderMinutes(String companyId) async {
     final row = await SupabaseService.client
         .from('company_partner_notification_settings')
