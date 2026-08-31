@@ -12,6 +12,8 @@ import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_portal_route_detail_page.dart';
 import '../widgets/partner_portal_route_list_tile.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../../widgets/home_feed_banner.dart';
+import '../../../models/home_feed_item.dart';
 
 class DriverPortalOverviewPage extends StatefulWidget {
   final Partner partner;
@@ -76,6 +78,10 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.only(bottom: 100),
                 children: [
+                  HomeFeedBanner(
+                    audience: HomeFeedAudience.partner,
+                    compact: true,
+                  ),
                   PartnerHeroBanner(
                     title: v != null
                         ? 'MAVI ${MaviUnitCodes.normalize(v.unitCode)}'

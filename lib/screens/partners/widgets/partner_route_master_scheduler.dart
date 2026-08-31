@@ -23,6 +23,7 @@ import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/route_ack_nudge_result.dart';
 import '../../../models/partner/route_reminder_flag.dart';
 import 'partner_route_pdf_actions.dart';
+import 'partner_route_partner_status.dart';
 import 'route_reminder_badge.dart';
 import 'partner_route_single_assign_sheet.dart';
 import 'partner_route_auto_mass_sheet.dart';
@@ -1402,22 +1403,32 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         borderRadius: BorderRadius.circular(10),
         border: Border(left: BorderSide(color: _shiftColor(s.shiftId), width: 4)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          PartnerRoutePdfActions.ackDot(s, size: 9),
-          const SizedBox(width: 6),
-          Text(start, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
-          const SizedBox(width: 6),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 160),
-            child: Text(
-              s.title?.split('—').first ?? 'Rute',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12),
-            ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              PartnerRoutePdfActions.ackDot(s, size: 9),
+              const SizedBox(width: 6),
+              Text(start, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
+              const SizedBox(width: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 160),
+                child: Text(
+                  s.title?.split('—').first ?? 'Rute',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ],
           ),
+          if (s.isSentWithNotify) ...[
+            const SizedBox(height: 6),
+            PartnerRoutePartnerStatus(share: s, compact: true),
+          ],
         ],
       ),
     );
@@ -1989,6 +2000,10 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
                         ],
                       ),
                       Text('Start $start · ${_dispatchLabel(s)}', style: const TextStyle(fontSize: 12)),
+                      if (s.isSentWithNotify) ...[
+                        const SizedBox(height: 8),
+                        PartnerRoutePartnerStatus(share: s, compact: false),
+                      ],
                       RouteReminderBadge(
                         share: s,
                         flag: widget.reminderFlags[s.id],
@@ -2502,6 +2517,10 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                               : '${s.isStaged ? 'Kladd' : 'Sendt'} · Aksept: ${_ackShortStatic(s.ackStatus)}',
                           style: const TextStyle(fontSize: 12),
                         ),
+                        if (s.isSentWithNotify) ...[
+                          const SizedBox(height: 8),
+                          PartnerRoutePartnerStatus(share: s),
+                        ],
                         RouteReminderBadge(
                           share: s,
                           flag: widget.reminderFlags[s.id],

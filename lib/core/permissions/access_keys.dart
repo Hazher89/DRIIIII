@@ -29,6 +29,7 @@ class AccessKeys {
   static const undersokelser = 'undersokelser';
   static const whistleblowing = 'whistleblowing';
   static const kiosk = 'kiosk';
+  static const forsideRedigering = 'forside_redigering';
   static const tilgangskontroll = 'tilgangskontroll';
   static const brukergodkjenning = 'brukergodkjenning';
   static const samarbeidspartnere = 'samarbeidspartnere';
@@ -118,6 +119,7 @@ class AccessKeys {
     undersokelser,
     whistleblowing,
     kiosk,
+    forsideRedigering,
     tilgangskontroll,
     brukergodkjenning,
     samarbeidspartnere,
@@ -189,6 +191,7 @@ class AccessKeys {
     undersokelser: 'Undersøkelser (meny)',
     whistleblowing: 'Anonym anmeldelse',
     kiosk: 'Infoskjerm',
+    forsideRedigering: 'Forside — bilde, video og dokumenter',
     tilgangskontroll: 'Tilgangskontroll',
     brukergodkjenning: 'Godkjenne nye brukere',
     samarbeidspartnere: 'Samarbeidspartnere (meny)',
@@ -252,5 +255,8 @@ class AccessKeys {
     varsler:
         'Varselsenter under Mer, varselinnstillinger og feilede varsler. '
         'Uavhengig av tilgang til Samarbeidspartnere.',
+    forsideRedigering:
+        'Redigere live forside-innhold for MAVI ansatte og partnere '
+        '(bilde, video, PDF). Endringer vises umiddelbart uten ny app-bygg.',
   };
 }

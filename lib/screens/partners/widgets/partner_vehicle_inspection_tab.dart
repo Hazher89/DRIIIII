@@ -17,7 +17,8 @@ import '../../../core/utils/bytes_download.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/vehicle_inspection.dart';
-import 'partner_inspection_hub_ui.dart';
+import 'vehicle_inspection_detail_page.dart';
+import 'vehicle_inspection_pdf_actions.dart';
 import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
@@ -269,11 +270,20 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   }
 
   Future<void> _exportPdf(PartnerVehicleInspection inspection) async {
-    await HmsPdfExportService.runWithFeedback(
+    await VehicleInspectionPdfActions.openPdf(
       context,
-      fileName: VehicleInspectionPdf.fileNameFor(inspection),
-      generate: () => _pdfBytesFor(inspection),
+      inspection: inspection,
+      partner: widget.partner,
     );
+  }
+
+  void _openDetail(PartnerVehicleInspection inspection) {
+    VehicleInspectionDetailPage.open(
+      context,
+      inspection: inspection,
+      partner: widget.partner,
+      canCloseFollowUp: true,
+    ).then((_) => _load());
   }
 
   Future<Uint8List> _pdfBytesFor(PartnerVehicleInspection inspection) async {
@@ -822,8 +832,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   }
 
   Future<void> _ackFollowUp(PartnerVehicleInspection ins) async {
-    await PartnerService.acknowledgeInspectionFollowUp(ins.id);
-    await _load();
+    _openDetail(ins);
   }
 
   @override
@@ -1144,7 +1153,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
                       backgroundColor: DriftProTheme.primaryGreen,
                       visualDensity: VisualDensity.compact,
                     ),
-                    child: const Text('Utført'),
+                    child: const Text('Lukk'),
                   ),
                 ),
               );
@@ -1381,9 +1390,7 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
                     }
                   });
                 }
-              : a.photoPaths.isNotEmpty
-                  ? () => _showSavedPhotos(a)
-                  : null,
+              : () => _openDetail(a),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

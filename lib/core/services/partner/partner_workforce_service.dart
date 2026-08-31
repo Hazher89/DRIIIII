@@ -461,4 +461,37 @@ class PartnerWorkforceService {
     ]);
     return excel.encode() ?? [];
   }
+
+  /// Sum hours for entries (open entries count until now).
+  static double totalHours(Iterable<PartnerTimeEntry> entries) {
+    var minutes = 0;
+    for (final e in entries) {
+      if (e.isOpen) {
+        minutes += DateTime.now().difference(e.clockIn).inMinutes;
+      } else {
+        minutes += e.duration?.inMinutes ?? 0;
+      }
+    }
+    return minutes / 60.0;
+  }
+
+  static Map<String, List<PartnerTimeEntry>> groupByStaff(
+    Iterable<PartnerTimeEntry> entries,
+  ) {
+    final map = <String, List<PartnerTimeEntry>>{};
+    for (final e in entries) {
+      map.putIfAbsent(e.staffId, () => []).add(e);
+    }
+    for (final list in map.values) {
+      list.sort((a, b) => b.clockIn.compareTo(a.clockIn));
+    }
+    return map;
+  }
+
+  static Set<String> openStaffIds(Iterable<PartnerTimeEntry> entries) =>
+      entries.where((e) => e.isOpen).map((e) => e.staffId).toSet();
+
+  static List<PartnerTimeEntry> openEntries(Iterable<PartnerTimeEntry> entries) =>
+      entries.where((e) => e.isOpen).toList()
+        ..sort((a, b) => a.clockIn.compareTo(b.clockIn));
 }

@@ -72,8 +72,8 @@ class OwnerPortalMorePage extends StatelessWidget {
         ),
         _MoreItem(
           icon: Icons.schedule_outlined,
-          title: 'Timer',
-          subtitle: 'Timeliste, redigering og Excel',
+          title: 'Timeliste & timerbank',
+          subtitle: 'Full oversikt, på jobb nå, Excel og logg',
           page: OwnerPortalTimesheetPage(partner: partner),
         ),
       ],

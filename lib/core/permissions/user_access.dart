@@ -125,6 +125,10 @@ class UserAccess {
   bool get canSurveysMenu => can(AccessKeys.undersokelser);
   bool get canWhistleblowing => can(AccessKeys.whistleblowing);
   bool get canKiosk => can(AccessKeys.kiosk);
+  bool get canHomeFeedAdmin =>
+      profile.isSuperAdmin ||
+      canArea('more.forside', AccessAction.edit) ||
+      can(AccessKeys.forsideRedigering);
   bool get canAccessControl => can(AccessKeys.tilgangskontroll);
   bool get canUserApproval => can(AccessKeys.brukergodkjenning);
   bool get canPartnersMenu => can(AccessKeys.samarbeidspartnere);

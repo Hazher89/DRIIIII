@@ -140,6 +140,11 @@ class RouteAccessMap {
       areaId: 'more.kiosk',
       legacyAccessKey: AccessKeys.kiosk,
     ),
+    AppPaths.moreForside: const RouteAccessRequirement(
+      areaId: 'more.forside',
+      action: AccessAction.edit,
+      legacyAccessKey: AccessKeys.forsideRedigering,
+    ),
     AppPaths.moreWhistleblowing: const RouteAccessRequirement(
       areaId: 'more.whistleblowing',
       legacyAccessKey: AccessKeys.whistleblowing,

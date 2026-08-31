@@ -759,6 +759,40 @@ class PartnerService {
     );
   }
 
+  static Future<PartnerRouteShare?> fetchRouteShareById(String routeShareId) async {
+    if (!_ok || routeShareId.isEmpty) return null;
+    try {
+      final row = await _client
+          .from('partner_route_shares')
+          .select()
+          .eq('id', routeShareId)
+          .maybeSingle();
+      if (row == null) return null;
+      return PartnerRouteShare.fromJson(Map<String, dynamic>.from(row));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<PartnerVehicleInspection?> fetchVehicleInspectionById(String inspectionId) async {
+    if (!_ok || inspectionId.isEmpty) return null;
+    try {
+      final row = await _client
+          .from('partner_vehicle_inspections')
+          .select(
+            '*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name), '
+            'closed_by_profile:profiles!partner_vehicle_inspections_follow_up_closed_by_fkey(full_name), '
+            'partners(name, trade_name)',
+          )
+          .eq('id', inspectionId)
+          .maybeSingle();
+      if (row == null) return null;
+      return PartnerVehicleInspection.fromJson(Map<String, dynamic>.from(row));
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Manuell purring: partner får SMS/e-post om å akseptere rute.
   static Future<RouteAckNudgeResult> nudgeRouteAck(String shareId) async {
     if (!_ok) {
@@ -2899,6 +2933,7 @@ class PartnerService {
           .from('partner_vehicle_inspections')
           .select(
             '*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name), '
+            'closed_by_profile:profiles!partner_vehicle_inspections_follow_up_closed_by_fkey(full_name), '
             'partners(name, trade_name)',
           )
           .eq('partner_id', partnerId)
@@ -2922,6 +2957,7 @@ class PartnerService {
           .from('partner_vehicle_inspections')
           .select(
             '*, profiles!partner_vehicle_inspections_inspected_by_fkey(full_name), '
+            'closed_by_profile:profiles!partner_vehicle_inspections_follow_up_closed_by_fkey(full_name), '
             'partners(name, trade_name)',
           )
           .eq('company_id', companyId);
@@ -3132,10 +3168,29 @@ class PartnerService {
   }
 
   static Future<void> acknowledgeInspectionFollowUp(String inspectionId) async {
-    if (!_ok) return;
-    await _client.from('partner_vehicle_inspections').update({
-      'follow_up_acknowledged_at': DateTime.now().toIso8601String(),
-    }).eq('id', inspectionId);
+    await closeInspectionFollowUp(
+      inspectionId: inspectionId,
+      actionNotes: 'Oppfølging markert som utført',
+    );
+  }
+
+  static Future<PartnerVehicleInspection> closeInspectionFollowUp({
+    required String inspectionId,
+    required String actionNotes,
+    DateTime? nextInspectionAt,
+  }) async {
+    if (!_ok) throw StateError('Supabase ikke konfigurert');
+    final row = await _client.rpc(
+      'close_partner_vehicle_inspection_followup',
+      params: {
+        'p_inspection_id': inspectionId,
+        'p_action_notes': actionNotes,
+        if (nextInspectionAt != null)
+          'p_next_inspection_at':
+              nextInspectionAt.toIso8601String().split('T').first,
+      },
+    ) as Map<String, dynamic>;
+    return PartnerVehicleInspection.fromJson(row);
   }
 
   // --- SAP rute-innboks (Resend Inbound) ---

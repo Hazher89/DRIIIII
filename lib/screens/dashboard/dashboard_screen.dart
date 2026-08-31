@@ -35,6 +35,8 @@ import '../../widgets/cards/quick_action_button.dart';
 import '../../widgets/common/section_header.dart';
 import '../profile/profile_screen.dart';
 import '../../widgets/driftpro_notification_bell.dart';
+import '../../widgets/home_feed_banner.dart';
+import '../../models/home_feed_item.dart';
 import 'widgets/dashboard_personal_panel.dart';
 import 'widgets/strategic_goals_overview.dart';
 import 'dashboard_search_catalog.dart';
@@ -1518,6 +1520,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                     actions: _dashboardHeaderActions(isDark),
                   ),
+
+                SliverToBoxAdapter(
+                  child: HomeFeedBanner(audience: HomeFeedAudience.mavi),
+                ),
 
                 SliverToBoxAdapter(
                   child: StrategicGoalsOverview(

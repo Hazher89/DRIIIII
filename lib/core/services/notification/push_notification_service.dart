@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../config/driftpro_client.dart';
 import '../../config/firebase_config.dart';
 import '../supabase_service.dart';
+import 'push_navigation_service.dart';
 
 /// Push-varsler på mobil — FCM når konfigurert, ellers lokale varsler via Realtime.
 abstract final class PushNotificationService {
@@ -25,6 +27,7 @@ abstract final class PushNotificationService {
     if (!DriftProClient.isMobile || kIsWeb) return;
     await _ensureLocalNotifications();
     await _ensureFirebaseMessaging(requestPermission: false);
+    await PushNavigationService.flushAfterLogin();
   }
 
   /// Kall etter at brukeren har gitt varsel-tillatelse (eller allerede har den).
@@ -91,7 +94,12 @@ abstract final class PushNotificationService {
     await showPushNotification(
       title: title,
       body: body,
-      payload: routeShareId,
+      payload: routeShareId == null
+          ? null
+          : jsonEncode({
+              'type': 'partner_route',
+              'route_share_id': routeShareId,
+            }),
     );
   }
 
@@ -105,6 +113,10 @@ abstract final class PushNotificationService {
     );
     await _local.initialize(
       settings: const InitializationSettings(android: android, iOS: ios),
+      onDidReceiveNotificationResponse: (response) {
+        unawaited(PushNavigationService.handlePayload(response.payload));
+      },
+      onDidReceiveBackgroundNotificationResponse: pushNotificationTapBackground,
     );
     if (Platform.isAndroid) {
       await _local
@@ -148,9 +160,11 @@ abstract final class PushNotificationService {
           unawaited(showPushNotification(
             title: title,
             body: body,
-            payload: message.data['route_share_id'] as String? ??
-                message.data['case_id'] as String?,
+            payload: jsonEncode(message.data),
           ));
+        });
+        FirebaseMessaging.onMessageOpenedApp.listen((message) {
+          unawaited(PushNavigationService.handleRemoteMessage(message));
         });
         FirebaseMessaging.instance.onTokenRefresh.listen(_persistToken);
         _firebaseReady = true;
@@ -233,4 +247,9 @@ Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
   } catch (_) {
     return;
   }
+}
+
+@pragma('vm:entry-point')
+void pushNotificationTapBackground(NotificationResponse response) {
+  PushNavigationService.handlePayload(response.payload);
 }

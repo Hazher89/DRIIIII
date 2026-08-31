@@ -10,7 +10,10 @@ import '../widgets/partner_portal_route_detail_page.dart';
 import '../widgets/partner_ui.dart';
 import '../widgets/eco_driving_badge.dart';
 import 'owner_portal_common.dart';
+import 'owner_workforce_summary_card.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../../../widgets/home_feed_banner.dart';
+import '../../../models/home_feed_item.dart';
 
 class OwnerPortalOverviewPage extends StatefulWidget {
   final Partner partner;
@@ -18,6 +21,8 @@ class OwnerPortalOverviewPage extends StatefulWidget {
   final VoidCallback? onGoToTrekk;
   final VoidCallback? onGoToDocs;
   final VoidCallback? onGoToMore;
+  final VoidCallback? onGoToTimesheet;
+  final bool workforceEnabled;
 
   const OwnerPortalOverviewPage({
     super.key,
@@ -26,6 +31,8 @@ class OwnerPortalOverviewPage extends StatefulWidget {
     this.onGoToTrekk,
     this.onGoToDocs,
     this.onGoToMore,
+    this.onGoToTimesheet,
+    this.workforceEnabled = false,
   });
 
   @override
@@ -109,6 +116,10 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
+                  HomeFeedBanner(
+                    audience: HomeFeedAudience.partner,
+                    compact: true,
+                  ),
                   PartnerHeroBanner(
                     title: 'Bil-eier oversikt',
                     subtitle: '${_data!.vehicles.length} kjøretøy · ${_data!.routes.length} ruter (90 d)',
@@ -125,6 +136,11 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     _pendingRoutesBanner(context, onTap: _openPendingRoutes),
                     const SizedBox(height: 12),
                   ],
+                  if (widget.workforceEnabled)
+                    OwnerWorkforceSummaryCard(
+                      partner: widget.partner,
+                      onTap: widget.onGoToTimesheet,
+                    ),
                   PartnerSmartActionsPanel(
                     title: 'Hurtigvalg',
                     actions: [
@@ -159,6 +175,13 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                           hint: 'Under Mer → Trekk',
                           icon: Icons.gavel_rounded,
                           onTap: widget.onGoToTrekk,
+                        ),
+                      if (widget.workforceEnabled)
+                        PartnerSmartAction(
+                          label: 'Timeliste & timerbank',
+                          hint: 'Ansattes timer, på jobb nå og Excel',
+                          icon: Icons.schedule_rounded,
+                          onTap: widget.onGoToTimesheet,
                         ),
                     ],
                   ),

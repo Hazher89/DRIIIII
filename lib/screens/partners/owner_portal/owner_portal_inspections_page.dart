@@ -1,14 +1,11 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 
-import '../../../core/services/hms/hms_pdf_export_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
-import '../../../core/services/partner/partner_service.dart';
-import '../../../core/services/partner/vehicle_inspection_pdf.dart';
+import '../../../core/services/partner/vehicle_inspection_checklist.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/vehicle_inspection.dart';
 import '../widgets/partner_portal_page_shell.dart';
+import '../widgets/vehicle_inspection_detail_page.dart';
 import 'owner_portal_common.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
@@ -41,32 +38,18 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
     }
   }
 
-  Future<void> _exportPdf(PartnerVehicleInspection inspection) async {
-    await HmsPdfExportService.runWithFeedback(
+  void _openDetail(PartnerVehicleInspection inspection) {
+    VehicleInspectionDetailPage.open(
       context,
-      fileName: VehicleInspectionPdf.fileNameFor(inspection),
-      generate: () async {
-        final photoBytes = <Uint8List>[];
-        for (final path in inspection.photoPaths) {
-          final bytes = await PartnerService.downloadInspectionPdfBytes(
-            path,
-            companyId: inspection.companyId,
-          );
-          if (bytes != null && bytes.isNotEmpty) photoBytes.add(bytes);
-        }
-        return VehicleInspectionPdf.generate(
-          inspection: inspection,
-          partner: widget.partner,
-          inspectorName: inspection.inspectedByName,
-          photoBytes: photoBytes,
-        );
-      },
+      inspection: inspection,
+      partner: widget.partner,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final withDeviation = _items.where((i) => i.hasDeviation).length;
+    final openFollowUp = _items.where((i) => i.followUpOpen).length;
     final byVehicle = <String, List<PartnerVehicleInspection>>{};
     for (final ins in _items) {
       final key = ins.unitCode ?? ins.registrationNumber ?? 'Ukjent';
@@ -105,6 +88,25 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
                       ],
                     ),
                   ),
+                  if (openFollowUp > 0)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          '$openFollowUp kontroll${openFollowUp == 1 ? '' : 'er'} '
+                          'venter på oppfølging fra MAVI.',
+                          style: TextStyle(
+                            color: Colors.orange.shade900,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
                   if (_items.isEmpty)
                     const Padding(
                       padding: EdgeInsets.all(24),
@@ -113,37 +115,130 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
                   else
                     for (final entry in byVehicle.entries) ...[
                       OwnerSectionTitle(
-                        title: entry.key.startsWith('NO_') ? MaviUnitCodes.normalize(entry.key) : entry.key,
+                        title: entry.key.startsWith('NO_')
+                            ? MaviUnitCodes.normalize(entry.key)
+                            : entry.key,
                         subtitle: '${entry.value.length} kontroll(er)',
                       ),
-                      ...entry.value.map((ins) {
-                        final label = ins.registrationNumber ?? ins.unitCode ?? 'Bil';
-                        return Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          child: ListTile(
-                            leading: Icon(
-                              ins.hasDeviation ? Icons.warning_amber : Icons.check_circle,
-                              color: ins.hasDeviation ? Colors.orange : Colors.green,
-                            ),
-                            title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
-                            subtitle: Text(
-                              '${ins.stampLine}\n'
-                              '${ins.hasDeviation ? (ins.deviationNotes ?? "Avvik") : "OK"}',
-                            ),
-                            isThreeLine: true,
-                            trailing: IconButton(
-                              tooltip: 'Last ned PDF-rapport',
-                              icon: const Icon(Icons.picture_as_pdf_outlined),
-                              onPressed: () => _exportPdf(ins),
-                            ),
-                          ),
-                        );
-                      }),
+                      ...entry.value.map((ins) => _InspectionCard(
+                            inspection: ins,
+                            onTap: () => _openDetail(ins),
+                          )),
                     ],
                   const SizedBox(height: 24),
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _InspectionCard extends StatelessWidget {
+  const _InspectionCard({
+    required this.inspection,
+    required this.onTap,
+  });
+
+  final PartnerVehicleInspection inspection;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final summary = VehicleInspectionChecklistSummary.fromInspection(inspection);
+    final hasAvvik = inspection.hasDeviation || summary.avvikCount > 0;
+    final statusColor = hasAvvik
+        ? (inspection.followUpOpen ? Colors.orange.shade800 : const Color(0xFFEA580C))
+        : Colors.green.shade700;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    hasAvvik ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
+                    color: statusColor,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          inspection.registrationNumber ?? inspection.unitCode ?? 'Bil',
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                        ),
+                        Text(
+                          inspection.stampLine,
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: Colors.grey[500]),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  _pill('OK ${summary.okCount}', Colors.green.shade700),
+                  if (summary.avvikCount > 0)
+                    _pill('Avvik ${summary.avvikCount}', Colors.orange.shade800),
+                  if (inspection.followUpOpen)
+                    _pill('Venter oppfølging', Colors.orange.shade800),
+                  if (inspection.followUpAcknowledgedAt != null)
+                    _pill('Lukket', Colors.green.shade700),
+                  if (inspection.nextInspectionAt != null)
+                    _pill(
+                      'Neste ${inspection.nextInspectionAt!.day}.${inspection.nextInspectionAt!.month}.${inspection.nextInspectionAt!.year}',
+                      Colors.blueGrey,
+                    ),
+                ],
+              ),
+              if ((inspection.deviationNotes ?? '').trim().isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Text(
+                  inspection.deviationNotes!.trim(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, height: 1.35),
+                ),
+              ],
+              if (summary.avvikItems.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Avvik: ${summary.avvikItems.take(3).map((e) => e.label).join(', ')}'
+                  '${summary.avvikItems.length > 3 ? '…' : ''}',
+                  style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pill(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+      ),
     );
   }
 }

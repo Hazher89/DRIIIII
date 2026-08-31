@@ -245,6 +245,13 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 'Infoskjerm',
                 isDark,
               ),
+            if (_profile!.access.canHomeFeedAdmin)
+              _buildMenuItem(
+                context,
+                Icons.dashboard_customize_outlined,
+                'Forside-innhold',
+                isDark,
+              ),
             if (_profile!.isSuperAdmin ||
                 _profile!.role == UserRole.admin)
               _buildMenuItem(
@@ -351,6 +358,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
         a.canAccessControl ||
         p.isSuperAdmin ||
         a.canKiosk ||
+        a.canHomeFeedAdmin ||
         a.canWhistleblowing;
   }
 
@@ -472,6 +480,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Anonym anmeldelse' => AppPaths.moreWhistleblowing,
             'Brukergodkjenning' => AppPaths.moreBrukergodkjenning,
             'Infoskjerm' => AppPaths.moreInfoskjerm,
+            'Forside-innhold' => AppPaths.moreForside,
             'DriftPro-assistent' => AppPaths.moreAssistent,
             'Fillagring' => AppPaths.moreDropbox,
             'Min profil' => AppPaths.moreProfil,

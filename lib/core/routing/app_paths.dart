@@ -123,6 +123,7 @@ abstract final class AppPaths {
   static const moreTilgangskontroll = '/more/tilgangskontroll';
   static const moreBrukergodkjenning = '/more/brukergodkjenning';
   static const moreInfoskjerm = '/more/infoskjerm';
+  static const moreForside = '/more/forside';
   static const moreWhistleblowing = '/more/whistleblowing';
   static const moreDropbox = '/more/dropbox';
   static const moreHjelp = '/more/hjelp';

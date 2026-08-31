@@ -1,19 +1,17 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/layout/web_layout.dart';
 import '../../core/routing/app_paths.dart';
-import '../../core/services/hms/hms_pdf_export_service.dart';
 import '../../core/services/partner/partner_service.dart';
-import '../../core/services/partner/vehicle_inspection_pdf.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/vehicle_inspection.dart';
 import 'widgets/partner_inspection_hub_ui.dart';
+import 'widgets/vehicle_inspection_detail_page.dart';
+import 'widgets/vehicle_inspection_pdf_actions.dart';
 import 'widgets/partner_modern_ui.dart';
 import 'widgets/partner_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
@@ -156,39 +154,20 @@ class _VehicleInspectionHubScreenState extends State<VehicleInspectionHubScreen>
   }
 
   Future<void> _exportPdf(PartnerVehicleInspection inspection) async {
-    final partner = _partnerFor(inspection);
-    await HmsPdfExportService.runWithFeedback(
+    await VehicleInspectionPdfActions.openPdf(
       context,
-      fileName: VehicleInspectionPdf.fileNameFor(inspection),
-      generate: () async {
-        final stored = inspection.pdfStoragePath?.trim();
-        if (stored != null && stored.isNotEmpty) {
-          final bytes = await PartnerService.downloadInspectionPdfBytes(
-            stored,
-            companyId: inspection.companyId,
-          );
-          if (bytes != null && bytes.isNotEmpty) return bytes;
-        }
-        return VehicleInspectionPdf.generate(
-          inspection: inspection,
-          partner: partner,
-          inspectorName: inspection.inspectedByName,
-          photoBytes: await _photoBytesForExport(inspection),
-        );
-      },
+      inspection: inspection,
+      partner: _partnerFor(inspection),
     );
   }
 
-  Future<List<Uint8List>> _photoBytesForExport(PartnerVehicleInspection inspection) async {
-    final out = <Uint8List>[];
-    for (final path in inspection.photoPaths) {
-      final bytes = await PartnerService.downloadInspectionPdfBytes(
-        path,
-        companyId: inspection.companyId,
-      );
-      if (bytes != null && bytes.isNotEmpty) out.add(bytes);
-    }
-    return out;
+  void _openDetail(PartnerVehicleInspection inspection) {
+    VehicleInspectionDetailPage.open(
+      context,
+      inspection: inspection,
+      partner: _partnerFor(inspection),
+      canCloseFollowUp: true,
+    ).then((_) => _load());
   }
 
   void _openPartner(String partnerId) {
@@ -350,6 +329,7 @@ class _VehicleInspectionHubScreenState extends State<VehicleInspectionHubScreen>
                             dateLabel: wide
                                 ? _dfShort.format(ins.inspectedAt.toLocal())
                                 : _df.format(ins.inspectedAt.toLocal()),
+                            onTap: () => _openDetail(ins),
                             onPdf: () => _exportPdf(ins),
                           ),
                         ),
@@ -511,12 +491,14 @@ class _InspectionTableHeader extends StatelessWidget {
 class _InspectionRow extends StatelessWidget {
   final PartnerVehicleInspection inspection;
   final String dateLabel;
+  final VoidCallback onTap;
   final VoidCallback onPdf;
   final bool wide;
 
   const _InspectionRow({
     required this.inspection,
     required this.dateLabel,
+    required this.onTap,
     required this.onPdf,
     required this.wide,
   });
@@ -532,7 +514,7 @@ class _InspectionRow extends StatelessWidget {
 
     if (wide) {
       return InkWell(
-        onTap: onPdf,
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
           child: Row(
@@ -589,6 +571,7 @@ class _InspectionRow extends StatelessWidget {
     return ListTile(
       dense: true,
       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      onTap: onTap,
       leading: Icon(
         inspection.hasDeviation ? Icons.warning_amber_rounded : Icons.check_circle_rounded,
         color: statusColor,

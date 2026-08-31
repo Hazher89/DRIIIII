@@ -5,7 +5,6 @@ import '../../../core/utils/nb_date_format.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import '../owner_portal/owner_portal_common.dart';
-import '../owner_portal/owner_portal_route_actions.dart';
 import 'partner_route_pdf_actions.dart';
 import 'partner_route_support_contact.dart';
 
@@ -33,8 +32,18 @@ class PartnerPortalRouteDetailPage extends StatelessWidget {
     required Future<void> Function() onReload,
     bool onBehalfOfDriver = false,
     String? vehicleLabel,
-  }) {
-    return Navigator.of(context).push(
+    bool openPdfImmediately = false,
+  }) async {
+    if (openPdfImmediately && route.requiresAck) {
+      await PartnerRoutePdfActions.openPdfWithAcceptFlow(
+        context,
+        share: route,
+        onBehalfOfDriver: onBehalfOfDriver,
+        onReload: onReload,
+      );
+      return;
+    }
+    return Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => PartnerPortalRouteDetailPage(
           route: route,
@@ -62,50 +71,28 @@ class PartnerPortalRouteDetailPage extends StatelessWidget {
           ? SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: FilledButton.icon(
-                        onPressed: () => PartnerRoutePdfActions.openPdf(context, route),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: DriftProTheme.primaryGreen,
-                        ),
-                        icon: const Icon(Icons.picture_as_pdf, size: 26),
-                        label: const Text(
-                          'Åpne rute-PDF',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                        ),
-                      ),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: FilledButton.icon(
+                    onPressed: () => PartnerRoutePdfActions.openPdfWithAcceptFlow(
+                      context,
+                      share: route,
+                      onBehalfOfDriver: onBehalfOfDriver,
+                      onReload: () async {
+                        await onReload();
+                        if (context.mounted) Navigator.pop(context);
+                      },
                     ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: FilledButton.icon(
-                        onPressed: () async {
-                          final ok = await ownerPortalSetRouteAck(
-                            context,
-                            route,
-                            accepted: true,
-                            onDone: onReload,
-                            onBehalfOfDriver: onBehalfOfDriver,
-                          );
-                          if (ok && context.mounted) Navigator.pop(context);
-                        },
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.green.shade700,
-                        ),
-                        icon: const Icon(Icons.check_circle, size: 26),
-                        label: const Text(
-                          'Aksepter rute',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                        ),
-                      ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DriftProTheme.primaryGreen,
                     ),
-                  ],
+                    icon: const Icon(Icons.picture_as_pdf, size: 28),
+                    label: const Text(
+                      'Les PDF og aksepter',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                    ),
+                  ),
                 ),
               ),
             )
@@ -122,18 +109,33 @@ class PartnerPortalRouteDetailPage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: Colors.orange.shade300, width: 2),
               ),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.notifications_active, color: Colors.orange.shade800, size: 32),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Ny rute venter på deg!\n1. Åpne PDF  2. Aksepter nederst',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: Colors.orange.shade900,
-                        height: 1.35,
+                  Row(
+                    children: [
+                      Icon(Icons.notifications_active, color: Colors.orange.shade800, size: 32),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Ny rute!',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Trykk «Les PDF og aksepter» nederst. '
+                    'Du leser ruten i appen og bekrefter med ett trykk.',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.orange.shade900,
+                      height: 1.4,
                     ),
                   ),
                 ],
@@ -208,7 +210,7 @@ class PartnerPortalRouteDetailPage extends StatelessWidget {
           ],
           if (pending) ...[
             const PartnerRouteSupportContactCard(),
-            const SizedBox(height: 100),
+            const SizedBox(height: 88),
           ],
         ],
       ),

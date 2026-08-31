@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../screens/absence/absence_screen.dart';
 import '../../screens/admin/access_control_screen.dart';
 import '../../screens/admin/dropbox_storage_settings_screen.dart';
+import '../../screens/admin/home_feed_admin_screen.dart';
 import '../../screens/admin/kiosk_settings_screen.dart';
 import '../../screens/auth/access_denied_screen.dart';
 import '../../screens/auth/auth_gate_screen.dart';
@@ -491,6 +492,13 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     builder: (context, state) => _guardPath(
                       state,
                       const KioskSettingsScreen()),
+                  ),
+                  GoRoute(
+                    path: 'forside',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const HomeFeedAdminScreen()),
                   ),
                   GoRoute(
                     path: 'whistleblowing',

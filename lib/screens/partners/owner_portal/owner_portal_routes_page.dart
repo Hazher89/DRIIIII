@@ -173,7 +173,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          '${_data!.pendingAckTotal} rute(r) venter — trykk ruten, åpne PDF, aksepter',
+                          '${_data!.pendingAckTotal} rute(r) venter — trykk «Les PDF og aksepter»',
                           style: TextStyle(
                             fontWeight: FontWeight.w800,
                             color: Colors.orange.shade900,

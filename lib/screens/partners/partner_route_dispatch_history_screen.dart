@@ -6,6 +6,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner_route_dispatch_history.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import 'widgets/partner_route_partner_status.dart';
 import 'widgets/partner_ui.dart';
 
 /// MAVI: oversikt over når ruter ble sendt, av hvem, og når PDF ble lest.
@@ -137,6 +138,7 @@ class _PartnerRouteDispatchHistoryScreenState
         r.title,
         r.sentByName,
         r.pdfOpenedByName,
+        r.ackByName,
         r.shiftName,
         r.registrationNumber,
       ].whereType<String>().join(' ').toLowerCase();
@@ -454,9 +456,6 @@ class _HistoryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final muted = PartnerUi.mutedText(context);
-    final channels = row.notifyChannels
-        .map((c) => c.toUpperCase())
-        .join(' · ');
 
     return Material(
       color: PartnerUi.surface(context),
@@ -532,34 +531,12 @@ class _HistoryCard extends StatelessWidget {
                   ? 'Ikke sendt ennå'
                   : '${_fmt(row.sentAt)} · ${row.sentByName?.trim().isNotEmpty == true ? row.sentByName! : 'Ukjent'}',
             ),
-            const SizedBox(height: 6),
-            _InfoLine(
-              icon: row.pdfWasOpened
-                  ? Icons.menu_book_rounded
-                  : Icons.menu_book_outlined,
-              label: 'PDF lest',
-              value: row.pdfWasOpened
-                  ? '${_fmt(row.pdfOpenedAt)} · ${row.pdfOpenedByName?.trim().isNotEmpty == true ? row.pdfOpenedByName! : 'Ukjent'}'
-                      '${row.pdfOpenCount > 1 ? ' (${row.pdfOpenCount}×)' : ''}'
-                  : 'Ikke åpnet ennå',
-              accent: row.pdfWasOpened ? Colors.teal : Colors.orange.shade800,
-            ),
-            if (row.ackAt != null ||
-                (row.ackStatus != null &&
-                    row.ackStatus != 'not_required')) ...[
-              const SizedBox(height: 6),
-              _InfoLine(
-                icon: Icons.fact_check_outlined,
-                label: 'Aksept',
-                value: row.ackAt != null
-                    ? '${row.ackStatus ?? '—'} · ${_fmt(row.ackAt)}'
-                    : (row.ackStatus ?? '—'),
-              ),
-            ],
-            if (channels.isNotEmpty && row.dispatchStatus == 'sent') ...[
+            const SizedBox(height: 10),
+            PartnerRoutePartnerStatus.fromHistory(row: row),
+            if (row.dispatchStatus == 'sent' && row.notifyChannels.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
-                'Kanaler: $channels',
+                'Kanaler: ${row.notifyChannels.map((c) => c.toUpperCase()).join(' · ')}',
                 style: TextStyle(fontSize: 11.5, color: muted),
               ),
             ],

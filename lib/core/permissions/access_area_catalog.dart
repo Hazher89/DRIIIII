@@ -480,6 +480,14 @@ class AccessAreaCatalog {
       legacyViewKey: AccessKeys.kiosk,
     ),
     AccessAreaDef(
+      id: 'more.forside',
+      title: 'Forside — bilde, video og dokumenter',
+      parentId: 'more',
+      actions: viewEdit,
+      routePath: '/more/forside',
+      legacyViewKey: AccessKeys.forsideRedigering,
+    ),
+    AccessAreaDef(
       id: 'more.partnere',
       title: 'Samarbeidspartnere (meny)',
       parentId: 'more',
@@ -611,6 +619,8 @@ class AccessAreaCatalog {
         (area: 'surveys.build', action: AccessAction.edit);
     m[AccessKeys.brukergodkjenning] =
         (area: 'more.brukergodkjenning', action: AccessAction.approve);
+    m[AccessKeys.forsideRedigering] =
+        (area: 'more.forside', action: AccessAction.edit);
     return m;
   }();
 }

@@ -16,6 +16,8 @@ class PartnerRouteDispatchHistoryRow {
     this.sentByName,
     this.ackStatus,
     this.ackAt,
+    this.ackBy,
+    this.ackByName,
     this.pdfOpenedAt,
     this.pdfOpenedBy,
     this.pdfOpenedByName,
@@ -39,6 +41,8 @@ class PartnerRouteDispatchHistoryRow {
   final String? sentByName;
   final String? ackStatus;
   final DateTime? ackAt;
+  final String? ackBy;
+  final String? ackByName;
   final DateTime? pdfOpenedAt;
   final String? pdfOpenedBy;
   final String? pdfOpenedByName;
@@ -79,6 +83,8 @@ class PartnerRouteDispatchHistoryRow {
       sentByName: json['sent_by_name'] as String?,
       ackStatus: json['ack_status'] as String?,
       ackAt: ts(json['ack_at']),
+      ackBy: json['ack_by'] as String?,
+      ackByName: json['ack_by_name'] as String?,
       pdfOpenedAt: ts(json['pdf_opened_at']),
       pdfOpenedBy: json['pdf_opened_by'] as String?,
       pdfOpenedByName: json['pdf_opened_by_name'] as String?,

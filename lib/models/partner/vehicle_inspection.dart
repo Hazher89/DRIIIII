@@ -86,6 +86,8 @@ class PartnerVehicleInspection {
   final DateTime? nextInspectionAt;
   final DateTime? followUpDueAt;
   final DateTime? followUpAcknowledgedAt;
+  final String? followUpActionNotes;
+  final String? followUpClosedBy;
   final bool isArchived;
   final DateTime createdAt;
 
@@ -97,6 +99,7 @@ class PartnerVehicleInspection {
 
   /// Joined fra profiles ved henting.
   final String? inspectedByName;
+  final String? followUpClosedByName;
 
   /// Joined fra partners ved firmavis henting.
   final String? partnerName;
@@ -118,9 +121,12 @@ class PartnerVehicleInspection {
     this.nextInspectionAt,
     this.followUpDueAt,
     this.followUpAcknowledgedAt,
+    this.followUpActionNotes,
+    this.followUpClosedBy,
     this.isArchived = true,
     required this.createdAt,
     this.inspectedByName,
+    this.followUpClosedByName,
     this.partnerName,
     this.partnerTradeName,
     this.pdfStoragePath,
@@ -158,6 +164,8 @@ class PartnerVehicleInspection {
       followUpAcknowledgedAt: json['follow_up_acknowledged_at'] != null
           ? DateTime.parse(json['follow_up_acknowledged_at'] as String)
           : null,
+      followUpActionNotes: json['follow_up_action_notes'] as String?,
+      followUpClosedBy: json['follow_up_closed_by'] as String?,
       isArchived: json['is_archived'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
       pdfStoragePath: json['pdf_storage_path'] as String?,
@@ -168,6 +176,9 @@ class PartnerVehicleInspection {
           const [],
       inspectedByName: json['profiles'] != null
           ? json['profiles']['full_name'] as String?
+          : null,
+      followUpClosedByName: json['closed_by_profile'] != null
+          ? json['closed_by_profile']['full_name'] as String?
           : null,
       partnerName: partnersMap?['name'] as String?,
       partnerTradeName: partnersMap?['trade_name'] as String?,
@@ -272,6 +283,11 @@ class PartnerVehicleInspection {
   PartnerVehicleInspection copyWith({
     String? pdfStoragePath,
     List<String>? photoPaths,
+    DateTime? followUpAcknowledgedAt,
+    String? followUpActionNotes,
+    String? followUpClosedBy,
+    String? followUpClosedByName,
+    DateTime? nextInspectionAt,
   }) {
     return PartnerVehicleInspection(
       id: id,
@@ -286,12 +302,16 @@ class PartnerVehicleInspection {
       hasDeviation: hasDeviation,
       deviationNotes: deviationNotes,
       deviationAssignee: deviationAssignee,
-      nextInspectionAt: nextInspectionAt,
+      nextInspectionAt: nextInspectionAt ?? this.nextInspectionAt,
       followUpDueAt: followUpDueAt,
-      followUpAcknowledgedAt: followUpAcknowledgedAt,
+      followUpAcknowledgedAt:
+          followUpAcknowledgedAt ?? this.followUpAcknowledgedAt,
+      followUpActionNotes: followUpActionNotes ?? this.followUpActionNotes,
+      followUpClosedBy: followUpClosedBy ?? this.followUpClosedBy,
       isArchived: isArchived,
       createdAt: createdAt,
       inspectedByName: inspectedByName,
+      followUpClosedByName: followUpClosedByName ?? this.followUpClosedByName,
       partnerName: partnerName,
       partnerTradeName: partnerTradeName,
       pdfStoragePath: pdfStoragePath ?? this.pdfStoragePath,

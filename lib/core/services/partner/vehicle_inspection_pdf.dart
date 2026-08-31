@@ -182,11 +182,14 @@ abstract final class VehicleInspectionPdf {
               ? 'Oppfølging er åpen og forfalt.'
               : 'Oppfølging er åpen.',
         );
-      } else if (inspection.followUpAcknowledgedAt != null) {
-        b.paragraph(
-          'Oppfølging markert som utført '
-          '${_dtf.format(inspection.followUpAcknowledgedAt!.toLocal())}.',
+      } else       if (inspection.followUpAcknowledgedAt != null) {
+        b.field(
+          'Oppfølging lukket',
+          _dtf.format(inspection.followUpAcknowledgedAt!.toLocal()),
         );
+        if ((inspection.followUpActionNotes ?? '').trim().isNotEmpty) {
+          b.field('Tiltak utført', inspection.followUpActionNotes!.trim());
+        }
       }
     }
 

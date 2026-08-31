@@ -13,6 +13,8 @@ import '../../core/services/partner/partner_portal_scope.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/partner/vehicle_inspection_pdf.dart';
 import '../../core/services/notification/partner_route_push_listener.dart';
+import '../../core/services/notification/push_navigation_service.dart';
+import '../../core/services/notification/push_navigation_target.dart';
 import '../../core/services/notification/push_notification_service.dart';
 import '../../core/services/native_permissions_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -33,6 +35,8 @@ import 'owner_portal/owner_portal_overview_page.dart';
 import 'owner_portal/owner_portal_routes_page.dart';
 import 'owner_portal/owner_portal_routes_focus.dart';
 import 'owner_portal/owner_portal_more_page.dart';
+import 'owner_portal/owner_portal_timesheet_page.dart';
+import 'partner_push_navigation.dart';
 import 'staff_portal/staff_portal_punch_page.dart';
 import 'widgets/partner_portal_bottom_nav.dart';
 import 'widgets/partner_portal_profile_page.dart';
@@ -96,12 +100,16 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   bool _staffCanManageRoutes = false;
   OwnerPortalRoutesFocus? _routesFocus;
   RealtimeChannel? _workforceChannel;
+  StreamSubscription<PushNavigationTarget>? _pushNavSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _index = widget.initialTabIndex;
+    _pushNavSub = PushNavigationService.onTarget.listen((target) {
+      unawaited(_handlePushNavigation(target));
+    });
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncUrl());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -118,6 +126,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(_pushNavSub?.cancel() ?? Future.value());
     unawaited(_workforceChannel?.unsubscribe() ?? Future.value());
     PartnerRoutePushListener.stop();
     super.dispose();
@@ -251,6 +260,40 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     );
   }
 
+  Future<void> _handlePushNavigation(PushNavigationTarget? target) async {
+    if (target == null || !target.isPartnerScope || !mounted) return;
+    final partner = _partner;
+    if (partner == null) return;
+
+    final tab = target.portalTab;
+    if (tab != null) {
+      final isOwner = widget.portalAccountKind == 'owner';
+      final isStaff = widget.portalAccountKind == 'staff';
+      final slugs = isStaff
+          ? [
+              if (_workforceEnabled) 'stempling',
+              if (_workforceEnabled && _staffCanManageRoutes) 'ruter',
+              'profil',
+            ]
+          : isOwner
+              ? AppPaths.portalOwnerTabs
+              : AppPaths.portalDriverTabs;
+      final tabIndex = RouteUrlSync.indexForSlug(tab, slugs);
+      if (_index != tabIndex) {
+        setState(() => _index = tabIndex);
+        _syncUrl();
+      }
+    }
+
+    PushNavigationService.takePending();
+    await PartnerPushNavigation.open(
+      context,
+      target: target,
+      partner: partner,
+      portalAccountKind: widget.portalAccountKind,
+    );
+  }
+
   void _selectTab(int i) {
     setState(() => _index = i);
     _syncUrl();
@@ -292,6 +335,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       });
       _listenWorkforceFlag(pid);
       _startPartnerPushListener();
+      unawaited(_handlePushNavigation(PushNavigationService.takePending()));
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
@@ -399,10 +443,18 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
             ? [
                 OwnerPortalOverviewPage(
                   partner: p,
+                  workforceEnabled: _workforceEnabled,
                   onGoToRoutes: goToRoutes,
                   onGoToTrekk: openTrekk,
                   onGoToDocs: () => _selectTab(2),
                   onGoToMore: () => _selectTab(3),
+                  onGoToTimesheet: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => OwnerPortalTimesheetPage(partner: p),
+                      ),
+                    );
+                  },
                 ),
                 OwnerPortalRoutesPage(
                   partner: p,

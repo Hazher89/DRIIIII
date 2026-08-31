@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +11,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/routing/app_router.dart';
 import 'core/routing/auth_refresh_listenable.dart';
+import 'core/services/notification/push_navigation_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/config/driftpro_client.dart';
 import 'core/config/supabase_config.dart';
@@ -86,6 +89,15 @@ class DriftProApp extends StatefulWidget {
 class _DriftProAppState extends State<DriftProApp> {
   late final AuthRefreshListenable _authRefresh = AuthRefreshListenable();
   late final GoRouter _router = createAppRouter(authRefresh: _authRefresh);
+
+  @override
+  void initState() {
+    super.initState();
+    PushNavigationService.bind(_router);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(PushNavigationService.handleInitialMessage());
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

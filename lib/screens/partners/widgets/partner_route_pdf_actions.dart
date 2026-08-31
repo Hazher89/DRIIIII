@@ -12,12 +12,41 @@ import '../../../core/utils/open_external_url.dart';
 import '../../../core/constants/route_dispatch_status.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../widgets/platform_pdf_bytes_view.dart';
+import '../owner_portal/owner_portal_route_actions.dart';
+
+typedef PartnerRouteReloadCallback = Future<void> Function();
 
 /// Delte PDF-handlinger for ruteplanlegging og sjåførportal.
 class PartnerRoutePdfActions {
   PartnerRoutePdfActions._();
 
   static Future<void> openPdf(BuildContext context, PartnerRouteShare share) async {
+    await _openPdfInternal(context, share: share);
+  }
+
+  /// Partner: les PDF og aksepter i samme flyt (enklest for sjåfør/eier).
+  static Future<void> openPdfWithAcceptFlow(
+    BuildContext context, {
+    required PartnerRouteShare share,
+    bool onBehalfOfDriver = false,
+    PartnerRouteReloadCallback? onReload,
+  }) async {
+    await _openPdfInternal(
+      context,
+      share: share,
+      acceptFlow: share.requiresAck,
+      onBehalfOfDriver: onBehalfOfDriver,
+      onReload: onReload,
+    );
+  }
+
+  static Future<void> _openPdfInternal(
+    BuildContext context, {
+    required PartnerRouteShare share,
+    bool acceptFlow = false,
+    bool onBehalfOfDriver = false,
+    PartnerRouteReloadCallback? onReload,
+  }) async {
     final path = share.pdfStoragePath.trim();
     if (path.isEmpty) {
       _snack(context, 'PDF mangler for denne ruten.', isError: true);
@@ -50,7 +79,14 @@ class PartnerRoutePdfActions {
       if (!context.mounted) return;
       if (bytes != null && bytes.isNotEmpty) {
         unawaited(PartnerService.markRoutePdfOpened(share.id));
-        await openPdfBytes(context, bytes: bytes, title: title);
+        await _showPdfBytesViewer(
+          context,
+          bytes: bytes,
+          title: title,
+          share: acceptFlow ? share : null,
+          onBehalfOfDriver: onBehalfOfDriver,
+          onReload: onReload,
+        );
         return;
       }
 
@@ -93,6 +129,9 @@ class PartnerRoutePdfActions {
     BuildContext context, {
     required Uint8List bytes,
     required String title,
+    PartnerRouteShare? share,
+    bool onBehalfOfDriver = false,
+    PartnerRouteReloadCallback? onReload,
   }) async {
     await showDialog<void>(
       context: context,
@@ -123,6 +162,55 @@ class PartnerRoutePdfActions {
             bytes: bytes,
             fileName: title.endsWith('.pdf') ? title : '$title.pdf',
           ),
+          bottomNavigationBar: share != null && share.requiresAck
+              ? SafeArea(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Etter at du har lest ruten — trykk aksepter',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 54,
+                          child: FilledButton.icon(
+                            onPressed: () async {
+                              final ok = await ownerPortalSetRouteAck(
+                                ctx,
+                                share,
+                                accepted: true,
+                                onDone: onReload ?? () async {},
+                                onBehalfOfDriver: onBehalfOfDriver,
+                              );
+                              if (ok && ctx.mounted) {
+                                Navigator.pop(ctx);
+                                if (context.mounted) Navigator.pop(context);
+                              }
+                            },
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.green.shade700,
+                            ),
+                            icon: const Icon(Icons.check_circle, size: 26),
+                            label: const Text(
+                              'Aksepter rute',
+                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : null,
         ),
       ),
     );

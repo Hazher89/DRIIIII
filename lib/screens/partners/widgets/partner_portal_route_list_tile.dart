@@ -8,7 +8,7 @@ import '../owner_portal/owner_portal_common.dart';
 import 'partner_portal_route_detail_page.dart';
 import 'partner_route_pdf_actions.dart';
 
-/// Kompakt rute-rad — trykk for detaljer, hurtigknapp for PDF.
+/// Kompakt rute-rad — trykk for å lese PDF og akseptere.
 class PartnerPortalRouteListTile extends StatelessWidget {
   final PartnerRouteShare route;
   final Map<String, FleetShiftDefinition> shifts;
@@ -44,96 +44,134 @@ class PartnerPortalRouteListTile extends StatelessWidget {
           width: pending ? 2 : 1,
         ),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => PartnerPortalRouteDetailPage.open(
-          context,
-          route: route,
-          shifts: shifts,
-          onReload: onReload,
-          onBehalfOfDriver: onBehalfOfDriver,
-          vehicleLabel: vehicleLabel,
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              PartnerRoutePdfActions.ackDot(route, size: 12),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: 56,
-                child: Text(
-                  start,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: DriftProTheme.accentBlue,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                PartnerRoutePdfActions.ackDot(route, size: 12),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 56,
+                  child: Text(
+                    start,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: DriftProTheme.accentBlue,
+                    ),
                   ),
                 ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      route.title ?? 'Rute',
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      NbDateFormat.format(day, 'EEE d. MMM'),
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                    ),
-                    Text(
-                      pending ? 'Trykk for å åpne og akseptere' : 'Trykk for å åpne',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: pending ? Colors.orange.shade900 : Colors.grey.shade600,
-                      ),
-                    ),
-                    if (vehicleLabel != null)
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        vehicleLabel!,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: DriftProTheme.primaryGreen,
-                        ),
-                        maxLines: 1,
+                        route.title ?? 'Rute',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                  ],
-                ),
-              ),
-              if (pending)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade200,
-                    borderRadius: BorderRadius.circular(12),
+                      const SizedBox(height: 2),
+                      Text(
+                        NbDateFormat.format(day, 'EEE d. MMM'),
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                      ),
+                      if (vehicleLabel != null)
+                        Text(
+                          vehicleLabel!,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: DriftProTheme.primaryGreen,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
                   ),
-                  child: Text(
-                    'NY',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.orange.shade900,
+                ),
+                if (pending)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade200,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'NY',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.orange.shade900,
+                      ),
                     ),
                   ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (pending)
+              SizedBox(
+                height: 50,
+                child: FilledButton.icon(
+                  onPressed: () => PartnerRoutePdfActions.openPdfWithAcceptFlow(
+                    context,
+                    share: route,
+                    onBehalfOfDriver: onBehalfOfDriver,
+                    onReload: onReload,
+                  ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DriftProTheme.primaryGreen,
+                  ),
+                  icon: const Icon(Icons.picture_as_pdf, size: 22),
+                  label: const Text(
+                    'Les PDF og aksepter',
+                    style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                  ),
                 ),
-              const SizedBox(width: 6),
-              IconButton(
-                tooltip: 'Åpne PDF',
-                icon: const Icon(Icons.picture_as_pdf),
-                color: DriftProTheme.primaryGreen,
-                onPressed: () => PartnerRoutePdfActions.openPdf(context, route),
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => PartnerRoutePdfActions.openPdf(context, route),
+                      icon: const Icon(Icons.picture_as_pdf_outlined),
+                      label: const Text('Åpne PDF'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Detaljer',
+                    onPressed: () => PartnerPortalRouteDetailPage.open(
+                      context,
+                      route: route,
+                      shifts: shifts,
+                      onReload: onReload,
+                      onBehalfOfDriver: onBehalfOfDriver,
+                      vehicleLabel: vehicleLabel,
+                    ),
+                    icon: const Icon(Icons.info_outline),
+                  ),
+                ],
               ),
-              const Icon(Icons.chevron_right),
+            if (pending) ...[
+              const SizedBox(height: 6),
+              TextButton(
+                onPressed: () => PartnerPortalRouteDetailPage.open(
+                  context,
+                  route: route,
+                  shifts: shifts,
+                  onReload: onReload,
+                  onBehalfOfDriver: onBehalfOfDriver,
+                  vehicleLabel: vehicleLabel,
+                ),
+                child: const Text('Se rutedetaljer'),
+              ),
             ],
-          ),
+          ],
         ),
       ),
     );
