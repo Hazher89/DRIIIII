@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../core/services/home_feed_service.dart';
-import '../core/services/storage/storage_file_actions.dart';
-import '../core/theme/app_theme.dart';
-import '../models/home_feed_item.dart';
-import '../models/home_feed_layout_config.dart';
-import 'platform_media_view.dart';
+import '../../core/services/home_feed_service.dart';
+import '../../core/services/storage/storage_file_actions.dart';
+import '../../core/theme/app_theme.dart';
+import '../../models/home_feed_item.dart';
+import '../../models/home_feed_layout_config.dart';
+import '../platform_media_view.dart';
 
 /// Én forside-rad — brukes i app, web og admin-forhåndsvisning.
 class HomeFeedItemView extends StatefulWidget {

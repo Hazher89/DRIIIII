@@ -36,6 +36,7 @@ import 'partner_route_publish_review_dialog.dart';
 import 'partner_route_workflow_ui.dart';
 import 'partner_route_workflow_ui.dart';
 import 'route_publish_notify_buttons.dart';
+import 'route_dispatch/route_notify_channel_toggles.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 class _PdfAssignmentRow {
