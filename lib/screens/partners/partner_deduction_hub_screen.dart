@@ -39,7 +39,19 @@ class _PartnerDeductionHubScreenState extends State<PartnerDeductionHubScreen> {
           backgroundColor: Theme.of(ctx).brightness == Brightness.dark
               ? DriftProTheme.surfaceDark
               : DriftProTheme.surfaceLight,
-          appBar: AppBar(title: const Text('Nytt trekk')),
+          appBar: AppBar(
+            title: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Nytt trekk', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                Text(
+                  'Gjennomgå alt før du sender',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
+                ),
+              ],
+            ),
+            toolbarHeight: 56,
+          ),
           body: PartnerDeductionComposePanel(
             partners: widget.partners,
             onCreated: () {

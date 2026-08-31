@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/permissions/user_access.dart';
@@ -5,6 +7,7 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/driftpro_loading_indicator.dart';
 import 'partner_modern_ui.dart';
 
 /// Deaktiver, aktiver eller slett bedrift permanent.
@@ -153,16 +156,28 @@ class PartnerCompanyLifecyclePanel extends StatelessWidget {
     );
     if (!ok || !context.mounted) return;
 
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const PopScope(
+          canPop: false,
+          child: Center(child: DriftProLoadingCenter()),
+        ),
+      ),
+    );
+
     try {
       await PartnerService.deletePartner(partner.id);
       if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // lukk lasting
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bedrift slettet permanent')),
       );
       onDeleted?.call();
-      Navigator.of(context).pop(true);
     } catch (e) {
       if (!context.mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // lukk lasting
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Sletting feilet: $e'), backgroundColor: Colors.red),
       );

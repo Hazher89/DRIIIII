@@ -99,17 +99,9 @@ abstract final class PushNotificationService {
   static Future<void> _ensureFirebaseMessaging({
     required bool requestPermission,
   }) async {
-    if (!FirebaseConfig.isConfigured) return;
     try {
       if (!_firebaseReady) {
-        await Firebase.initializeApp(
-          options: FirebaseOptions(
-            apiKey: FirebaseConfig.apiKey,
-            appId: FirebaseConfig.appId,
-            messagingSenderId: FirebaseConfig.messagingSenderId,
-            projectId: FirebaseConfig.projectId,
-          ),
-        );
+        await FirebaseConfig.initializeApp();
         FirebaseMessaging.onBackgroundMessage(_firebaseBackgroundHandler);
         FirebaseMessaging.onMessage.listen((message) {
           final n = message.notification;
@@ -159,13 +151,9 @@ abstract final class PushNotificationService {
 
 @pragma('vm:entry-point')
 Future<void> _firebaseBackgroundHandler(RemoteMessage message) async {
-  if (!FirebaseConfig.isConfigured) return;
-  await Firebase.initializeApp(
-    options: FirebaseOptions(
-      apiKey: FirebaseConfig.apiKey,
-      appId: FirebaseConfig.appId,
-      messagingSenderId: FirebaseConfig.messagingSenderId,
-      projectId: FirebaseConfig.projectId,
-    ),
-  );
+  try {
+    await FirebaseConfig.initializeApp();
+  } catch (_) {
+    return;
+  }
 }

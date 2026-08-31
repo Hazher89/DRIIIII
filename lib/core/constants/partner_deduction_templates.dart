@@ -98,17 +98,6 @@ const List<PartnerDeductionTemplate> kPartnerDeductionTemplates = [
         'Trekket dekker administrativ behandling.',
   ),
   PartnerDeductionTemplate(
-    id: 'hygiene_order',
-    title: 'Manglende hygiene og orden',
-    category: 'Miljø & orden',
-    iconName: 'cleaning_services_outlined',
-    shortDescription: 'Område eller kjøretøy holdt ikke avtalt hygienestandard.',
-    detailParagraph:
-        'Ved inspeksjon ble det registrert mangler på hygiene og orden i eller ved kjøretøy '
-        'tilknyttet oppdrag. Dette er i strid med våre rutiner overfor kunde og '
-        'samarbeidspartnere. Trekket dekker oppfølging og registrering.',
-  ),
-  PartnerDeductionTemplate(
     id: 'safety_breach',
     title: 'Brudd på HMS-/sikkerhetsregler',
     category: 'HMS',

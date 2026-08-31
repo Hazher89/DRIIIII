@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/permissions/access_keys.dart';
@@ -274,7 +275,10 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
             partner: _p,
             profile: _profile,
             onChanged: _reload,
-            onDeleted: () => Navigator.pop(context, true),
+            onDeleted: () {
+              if (!context.mounted) return;
+              context.go(AppPaths.partnersPath(tab: 'bedrifter'));
+            },
           ),
           if (_tabs != null)
             PartnerDetailTabBar(controller: _tabs!, tabs: _tabBarEntries),

@@ -14,6 +14,9 @@ class PartnerDeductionHubUi {
   static const _accent = Color(0xFFEA580C);
   static const _accentDark = Color(0xFF9A3412);
 
+  /// Oransje accent for Bot/Trekk (compose, knapper).
+  static Color get accent => _accent;
+
   static Widget pageShell({required BuildContext context, required Widget child}) {
     if (!WebLayout.prefersPointerNav) return child;
     return Align(

@@ -56,6 +56,7 @@ abstract final class PartnerDeductionService {
     required String caseId,
     bool notifySms = true,
     bool notifyEmail = true,
+    bool notifyPush = false,
   }) async {
     final row = await SupabaseService.client.rpc(
       'resend_partner_deduction_notification',
@@ -63,6 +64,7 @@ abstract final class PartnerDeductionService {
         'p_case_id': caseId,
         'p_notify_sms': notifySms,
         'p_notify_email': notifyEmail,
+        'p_notify_push': notifyPush,
       },
     ) as Map<String, dynamic>;
     return PartnerDeductionCase.fromJson(row);
@@ -113,6 +115,7 @@ abstract final class PartnerDeductionService {
       bytes: file.bytes,
       category: 'partner_deductions',
       fileName: '${caseNumber}_${file.fileName}',
+      allowSupabaseFallback: true,
     );
 
     final ref = CompanyFileStorage.toStorageReference(stored);
@@ -326,6 +329,7 @@ MAVI Logistikk AS
     String? logisticsDescription,
     bool notifySms = true,
     bool notifyEmail = true,
+    bool notifyPush = true,
     List<PartnerDeductionPendingEvidence> evidence = const [],
   }) async {
     try {
@@ -396,11 +400,12 @@ MAVI Logistikk AS
         );
       }
 
-      if ((notifySms && hasPhone) || (notifyEmail && hasEmail)) {
+      if ((notifySms && hasPhone) || (notifyEmail && hasEmail) || notifyPush) {
         created = await resendNotification(
           caseId: created.id,
           notifySms: notifySms && hasPhone,
           notifyEmail: notifyEmail && hasEmail,
+          notifyPush: notifyPush,
         );
         created = PartnerDeductionCase(
           id: created.id,

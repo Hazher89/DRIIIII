@@ -14,9 +14,16 @@ class StoragePathSanitizer {
     return s.isEmpty ? fallback : s;
   }
 
-  static String fileName(String raw, {String fallback = 'fil.pdf'}) {
-    final base = segment(raw, fallback: fallback);
-    return base.toLowerCase().endsWith('.pdf') ? base : '$base.pdf';
+  static String fileName(String raw, {String fallback = 'fil.dat'}) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return fallback;
+    final dot = trimmed.lastIndexOf('.');
+    if (dot > 0 && dot < trimmed.length - 1) {
+      final base = segment(trimmed.substring(0, dot), fallback: 'fil');
+      final ext = segment(trimmed.substring(dot + 1), fallback: 'dat');
+      return '$base.$ext';
+    }
+    return segment(trimmed, fallback: fallback);
   }
 
   static String storagePath(String raw) {

@@ -29,6 +29,14 @@ export function normalizeDropboxRoot(path: string): string {
   return trimmed === "" ? "/" : trimmed;
 }
 
+export function resolveDropboxUploadRoot(storedRoot: string): string {
+  const fromEnv = Deno.env.get("DROPBOX_ROOT_FOLDER")?.trim();
+  if (fromEnv) return normalizeDropboxRoot(fromEnv);
+  const stored = normalizeDropboxRoot(storedRoot);
+  if (stored.toLowerCase() === "/driftpro") return "/";
+  return stored;
+}
+
 export function buildDropboxStoragePath(
   root: string,
   companyId: string,
@@ -133,7 +141,7 @@ export async function tryUploadToDropbox(
 
   const conn = connRow as Conn;
   const token = await refreshAccessToken(conn, admin);
-  const root = normalizeDropboxRoot(conn.root_folder);
+  const root = resolveDropboxUploadRoot(conn.root_folder);
   const dropboxPath = buildDropboxStoragePath(
     root,
     companyId,

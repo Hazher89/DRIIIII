@@ -100,6 +100,15 @@ function normalizeRoot(path: string): string {
   return trimmed === "" ? "/" : trimmed;
 }
 
+/** App-folder tokens feiler ofte på /DriftPro/… — bruk rot /. */
+function resolveUploadRoot(storedRoot: string): string {
+  const fromEnv = Deno.env.get("DROPBOX_ROOT_FOLDER")?.trim();
+  if (fromEnv) return normalizeRoot(fromEnv);
+  const stored = normalizeRoot(storedRoot);
+  if (stored.toLowerCase() === "/driftpro") return "/";
+  return stored;
+}
+
 async function refreshAccessToken(conn: Conn, admin: ReturnType<typeof createClient>): Promise<string> {
   const appKey = requireEnv("DROPBOX_APP_KEY");
   const appSecret = requireEnv("DROPBOX_APP_SECRET");
@@ -705,7 +714,7 @@ Deno.serve(async (req) => {
 
     const conn = connRow as Conn;
     const token = await refreshAccessToken(conn, admin);
-    const root = normalizeRoot(conn.root_folder);
+    const root = resolveUploadRoot(conn.root_folder);
 
     if (action === "upload" && req.method === "POST") {
       const body = await req.json() as {
@@ -720,26 +729,36 @@ Deno.serve(async (req) => {
       }
 
       const bytes = Uint8Array.from(atob(body.bytes_base64), (c) => c.charCodeAt(0));
-      const dropboxPath = buildStoragePath(root, companyId, body.category, body.file_name);
-      const folder = dropboxPath.substring(0, dropboxPath.lastIndexOf("/"));
-      await ensureFolderPath(token, folder);
 
-      const upRes = await dropboxApi(token, "content", "/files/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/octet-stream" },
-        dropboxArg: { path: dropboxPath, mode: "add", autorename: true },
-        body: bytes,
-      });
+      async function tryUpload(uploadRoot: string) {
+        const dropboxPath = buildStoragePath(uploadRoot, companyId, body.category, body.file_name);
+        const folder = dropboxPath.substring(0, dropboxPath.lastIndexOf("/"));
+        await ensureFolderPath(token, folder);
 
-      const upText = await upRes.text();
-      if (!upRes.ok) return json({ error: upText.slice(0, 300) }, 500);
+        const upRes = await dropboxApi(token, "content", "/files/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/octet-stream" },
+          dropboxArg: { path: dropboxPath, mode: "add", autorename: true },
+          body: bytes,
+        });
 
-      const meta = JSON.parse(upText) as { path_display?: string; id?: string };
+        const upText = await upRes.text();
+        return { ok: upRes.ok, upText, dropboxPath };
+      }
+
+      let upload = await tryUpload(root);
+      if (!upload.ok && upload.upText.includes("malformed_path") && root !== "/") {
+        upload = await tryUpload("/");
+      }
+
+      if (!upload.ok) return json({ error: upload.upText.slice(0, 300) }, 500);
+
+      const meta = JSON.parse(upload.upText) as { path_display?: string; id?: string };
 
       const linkRes = await dropboxApi(token, "api", "/files/get_temporary_link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: meta.path_display ?? dropboxPath }),
+        body: JSON.stringify({ path: meta.path_display ?? upload.dropboxPath }),
       });
       const linkJson = linkRes.ok
         ? await linkRes.json() as { link: string }
@@ -748,7 +767,7 @@ Deno.serve(async (req) => {
       return json({
         ok: true,
         provider: "dropbox",
-        path: meta.path_display ?? dropboxPath,
+        path: meta.path_display ?? upload.dropboxPath,
         dropbox_id: meta.id,
         size: bytes.length,
         temporary_link: linkJson.link,

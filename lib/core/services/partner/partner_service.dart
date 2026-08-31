@@ -209,7 +209,8 @@ class PartnerService {
     );
     final payload = raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
     final paths = (payload['storage_paths'] as List?)?.whereType<String>().toList() ?? const <String>[];
-    await _deletePartnerStoragePaths(paths);
+    // Fil-sletting i bakgrunnen — DB er allerede slettet; unngår at UI henger.
+    unawaited(_deletePartnerStoragePaths(paths));
   }
 
   static Future<void> _deletePartnerStoragePaths(List<String> paths) async {

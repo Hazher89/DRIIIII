@@ -44,6 +44,11 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Firebase (local secrets — use ios/Firebase.env.example)
+ios/Firebase.env
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
+
 # Vision monitor local secrets & captures
 services/vision_monitor/.env
 services/vision_monitor/captures/

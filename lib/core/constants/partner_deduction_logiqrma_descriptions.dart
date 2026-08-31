@@ -7,7 +7,6 @@ const List<String> kPartnerDeductionLogiqrmaDescriptions = [
   'Trekk — kjøretøystandard',
   'Trekk — leveringskvalitet',
   'Trekk — manglende dokumentasjon',
-  'Trekk — renhold og orden',
   'Trekk — kommunikasjon / oppfølging',
   'Trekk — administrativt gebyr',
   'Trekk — annet (se kommentar)',
@@ -21,8 +20,7 @@ String? logiqrmaDescriptionForTemplate(String templateId) {
     'route_ack_late' => 'Trekk — manglende rutebekreftelse',
     'vehicle_standard' => 'Trekk — kjøretøystandard',
     'delivery_quality' => 'Trekk — leveringskvalitet',
-    'missing_docs' => 'Trekk — manglende dokumentasjon',
-    'cleanliness' => 'Trekk — renhold og orden',
+    'documentation' => 'Trekk — manglende dokumentasjon',
     'communication' => 'Trekk — kommunikasjon / oppfølging',
     _ => null,
   };

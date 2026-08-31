@@ -127,13 +127,18 @@ class _PartnerDeductionCaseSheetState extends State<PartnerDeductionCaseSheet> {
     }
   }
 
-  Future<void> _resend({required bool sms, required bool email}) async {
+  Future<void> _resend({
+    required bool sms,
+    required bool email,
+    bool push = false,
+  }) async {
     setState(() => _busy = true);
     try {
       final updated = await PartnerDeductionService.resendNotification(
         caseId: _case.id,
         notifySms: sms,
         notifyEmail: email,
+        notifyPush: push,
       );
       await PartnerDeductionService.flushOutbox();
       if (!mounted) return;
@@ -445,12 +450,18 @@ class _PartnerDeductionCaseSheetState extends State<PartnerDeductionCaseSheet> {
           ],
         ),
         const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : () => _resend(sms: false, email: false, push: true),
+          icon: const Icon(Icons.notifications_active_outlined),
+          label: const Text('Send push-varsel'),
+        ),
+        const SizedBox(height: 8),
         FilledButton.icon(
-          onPressed: _busy ? null : () => _resend(sms: true, email: true),
+          onPressed: _busy ? null : () => _resend(sms: true, email: true, push: true),
           icon: _busy
               ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : const Icon(Icons.notifications_active_outlined),
-          label: const Text('Send SMS + e-post'),
+          label: const Text('Send SMS + e-post + push'),
         ),
       ],
     ];
