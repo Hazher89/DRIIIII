@@ -47,19 +47,31 @@ class NotificationAuditEntry {
     );
   }
 
-  String get channelLabel => eventChannel == 'email' ? 'E-post' : 'SMS';
+  String get channelLabel => switch (eventChannel) {
+        'email' => 'E-post',
+        'push' => 'Push',
+        _ => 'SMS',
+      };
 
   String get deliveryStatusLabel {
     switch (deliveryStatus) {
       case 'sent':
-        return eventChannel == 'email' ? 'E-post sendt' : 'SMS sendt';
+        return switch (eventChannel) {
+          'email' => 'E-post sendt',
+          'push' => 'Push sendt',
+          _ => 'SMS sendt',
+        };
       case 'failed':
         return 'Sending feilet';
       case 'skipped':
         return 'Ikke sendt';
       case 'queued':
       default:
-        return eventChannel == 'email' ? 'E-post i kø' : 'SMS venter sending';
+        return switch (eventChannel) {
+          'email' => 'E-post i kø',
+          'push' => 'Push i kø',
+          _ => 'SMS venter sending',
+        };
     }
   }
 
@@ -79,6 +91,8 @@ class NotificationAuditEntry {
         return 'Bruker vil kun SMS';
       case 'missing_email':
         return 'Mangler e-postadresse';
+      case 'no_push_devices':
+        return 'Ingen push-enhet registrert i appen';
       default:
         return skipReason ?? '—';
     }
