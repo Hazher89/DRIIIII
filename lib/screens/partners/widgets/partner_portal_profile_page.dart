@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/auth/session_sign_out.dart';
+import '../../../core/config/driftpro_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/user_profile.dart';
 import '../../more/driftpro_platform_catalog.dart';
@@ -106,10 +107,8 @@ class PartnerPortalProfilePage extends StatelessWidget {
               ],
             ],
           ),
-          if (!staffPortal) ...[
-            const SizedBox(height: 12),
-            const PartnerPushStatusCard(),
-          ],
+          const SizedBox(height: 12),
+          if (DriftProClient.isMobile) const PartnerPushStatusCard(),
           const SizedBox(height: 12),
           Text(
             'Hjelp & juridisk',

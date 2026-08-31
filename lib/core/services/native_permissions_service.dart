@@ -1,10 +1,12 @@
 import 'dart:io';
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../config/driftpro_client.dart';
+import '../config/firebase_config.dart';
 import 'notification/push_notification_service.dart';
 
 /// Tillatelser DriftPro ber om — kun via systemets dialog (Info.plist / Android manifest).
@@ -47,8 +49,30 @@ extension AppPermissionKindX on AppPermissionKind {
       };
 }
 
-/// Native tillatelser (iOS/Android). Ingen app-dialog før systempopup —
-/// forklaring ligger i Info.plist / manifest (Apple guideline).
+/// Enhetens varsel-tillatelse for DriftPro (iOS/Android systeminnstillinger).
+enum NotificationAuthState {
+  enabled,
+  disabled,
+  notConfigured,
+}
+
+extension NotificationAuthStateX on NotificationAuthState {
+  String get label => switch (this) {
+        NotificationAuthState.enabled => 'På',
+        NotificationAuthState.disabled => 'Av',
+        NotificationAuthState.notConfigured => 'Ikke satt opp',
+      };
+
+  String get subtitle => switch (this) {
+        NotificationAuthState.enabled =>
+          'Denne enheten kan motta push-varsler fra DriftPro.',
+        NotificationAuthState.disabled =>
+          'Varsler er slått av for DriftPro på denne enheten.',
+        NotificationAuthState.notConfigured =>
+          'Varsler er ikke aktivert ennå på denne enheten.',
+      };
+}
+
 abstract final class NativePermissionsService {
   static bool get _native => DriftProClient.isMobile;
 
@@ -130,6 +154,41 @@ abstract final class NativePermissionsService {
     }
     return ok;
   }
+
+  /// Les varsel-tillatelse uten å vise systemdialog (for profil / innstillinger).
+  static Future<NotificationAuthState> readNotificationState() async {
+    if (!_native) return NotificationAuthState.enabled;
+
+    if (Platform.isIOS) {
+      try {
+        await FirebaseConfig.initializeApp();
+        final settings =
+            await FirebaseMessaging.instance.getNotificationSettings();
+        return switch (settings.authorizationStatus) {
+          AuthorizationStatus.authorized ||
+          AuthorizationStatus.provisional =>
+            NotificationAuthState.enabled,
+          AuthorizationStatus.denied => NotificationAuthState.disabled,
+          AuthorizationStatus.notDetermined =>
+            NotificationAuthState.notConfigured,
+        };
+      } catch (_) {
+        return NotificationAuthState.notConfigured;
+      }
+    }
+
+    final status = await Permission.notification.status;
+    if (status.isGranted || status.isLimited || status.isProvisional) {
+      return NotificationAuthState.enabled;
+    }
+    if (status.isDenied || status.isPermanentlyDenied) {
+      return NotificationAuthState.disabled;
+    }
+    return NotificationAuthState.notConfigured;
+  }
+
+  /// Åpner DriftPro under enhetens innstillinger (Apple-anbefalt for av/på).
+  static Future<void> openNotificationSettings() => openAppSettings();
 
   /// Etter innlogging: klargjør varsel-kanal uten å spørre om tillatelser.
   static Future<void> bootstrapAfterLogin([BuildContext? context]) async {
