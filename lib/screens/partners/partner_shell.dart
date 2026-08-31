@@ -102,6 +102,23 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   RealtimeChannel? _workforceChannel;
   StreamSubscription<PushNavigationTarget>? _pushNavSub;
 
+  bool _staffWantsPush() =>
+      widget.portalAccountKind == 'staff' &&
+      _workforceEnabled &&
+      _staffCanManageRoutes;
+
+  bool _wantsPushRegistration() =>
+      widget.portalAccountKind == 'driver' ||
+      widget.portalAccountKind == 'owner' ||
+      _staffWantsPush();
+
+  Future<void> _ensurePushRegistrationIfNeeded() async {
+    if (!mounted || !_wantsPushRegistration()) return;
+    await NativePermissionsService.ensureNotifications(context: context);
+    if (!mounted) return;
+    await PushNotificationService.syncRegistration();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -115,11 +132,6 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       await NativePermissionsService.bootstrapAfterLogin(context);
-      if (!mounted) return;
-      if (widget.portalAccountKind == 'driver' ||
-          widget.portalAccountKind == 'owner') {
-        await NativePermissionsService.ensureNotifications(context: context);
-      }
     });
   }
 
@@ -136,8 +148,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshWorkforceFlag());
-      if (widget.portalAccountKind == 'driver' ||
-          widget.portalAccountKind == 'owner') {
+      if (_wantsPushRegistration()) {
         unawaited(PushNotificationService.syncRegistration());
       }
     }
@@ -194,6 +205,20 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
         callback: (_) => unawaited(_refreshWorkforceFlag()),
       );
     }
+    final uid = client.auth.currentUser?.id;
+    if (widget.portalAccountKind == 'staff' && uid != null) {
+      channel = channel.onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'partner_staff',
+        filter: PostgresChangeFilter(
+          type: PostgresChangeFilterType.eq,
+          column: 'profile_id',
+          value: uid,
+        ),
+        callback: (_) => unawaited(_refreshWorkforceFlag()),
+      );
+    }
     _workforceChannel = channel.subscribe();
   }
 
@@ -224,6 +249,8 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
         if (_index > maxIdx) _index = maxIdx.clamp(0, 99);
       });
       if (!enabled) PartnerRoutePushListener.stop();
+      _startPartnerPushListener();
+      unawaited(_ensurePushRegistrationIfNeeded());
       _syncUrl();
     } catch (_) {}
   }
@@ -335,6 +362,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       });
       _listenWorkforceFlag(pid);
       _startPartnerPushListener();
+      unawaited(_ensurePushRegistrationIfNeeded());
       unawaited(_handlePushNavigation(PushNavigationService.takePending()));
     } catch (e) {
       if (mounted) {

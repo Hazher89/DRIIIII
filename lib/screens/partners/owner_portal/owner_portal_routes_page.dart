@@ -32,16 +32,19 @@ class OwnerPortalRoutesPage extends StatefulWidget {
 }
 
 class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with SingleTickerProviderStateMixin {
-  late TabController _tab;
+  TabController? _tab;
+  int _staffTab = 0;
   OwnerPortalData? _data;
   Map<String, PartnerVehicle> _vehicles = {};
   String? _vehicleFilterId;
   bool _loading = true;
 
+  int get _tabCount => widget.staffPortal ? 2 : 3;
+
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 3, vsync: this);
+    _tab = TabController(length: _tabCount, vsync: this);
     _load();
   }
 
@@ -57,9 +60,13 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
   void _applyLaunchFocus() {
     final focus = widget.launchFocus;
     if (focus == null || _data == null) return;
-    final tab = focus.tabIndex.clamp(0, 2);
-    if (_tab.index != tab) {
-      _tab.animateTo(tab);
+    if (widget.staffPortal) {
+      setState(() => _staffTab = focus.tabIndex == 2 ? 1 : 0);
+    } else {
+      final tab = focus.tabIndex.clamp(0, 2);
+      if (_tab!.index != tab) {
+        _tab!.animateTo(tab);
+      }
     }
     setState(() => _vehicleFilterId = focus.vehicleId);
     widget.onLaunchFocusConsumed?.call();
@@ -67,7 +74,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
 
   @override
   void dispose() {
-    _tab.dispose();
+    _tab?.dispose();
     super.dispose();
   }
 
@@ -90,35 +97,27 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
     setState(() {
       _vehicleFilterId = vehicleId;
     });
-    if (_tab.index != 1) {
-      _tab.animateTo(1);
+    if (widget.staffPortal) {
+      setState(() => _staffTab = 0);
+      return;
     }
-  }
-
-  List<PartnerRouteShare> _filtered(List<PartnerRouteShare> routes) {
-    if (_vehicleFilterId == null) return routes;
-    return routes.where((r) => r.partnerVehicleId == _vehicleFilterId).toList();
-  }
-
-  List<PartnerRouteShare> _sortedPendingFirst(List<PartnerRouteShare> routes) {
-    final copy = List<PartnerRouteShare>.from(routes);
-    copy.sort((a, b) {
-      if (a.requiresAck && !b.requiresAck) return -1;
-      if (b.requiresAck && !a.requiresAck) return 1;
-      return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
-    });
-    return copy;
+    if (_tab!.index != 1) {
+      _tab!.animateTo(1);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (widget.staffPortal) {
+      return _buildStaffRoutesPage(context);
+    }
     return PartnerPortalPageShell(
-      title: widget.staffPortal ? null : 'Alle ruter',
-      showMobileBackButton: !widget.staffPortal,
+      title: 'Alle ruter',
+      showMobileBackButton: true,
       bottom: _data == null
           ? null
           : TabBar(
-              controller: _tab,
+              controller: _tab!,
               isScrollable: true,
               tabAlignment: TabAlignment.start,
               tabs: [
@@ -130,11 +129,90 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
       body: _loading || _data == null
           ? const DriftProLoadingCenter()
           : DriftProTabView(
-              controller: _tab,
+              controller: _tab!,
               children: [
                 _tabBody(_data!.routesToday, 'Ingen ruter i dag.'),
                 _tabBody(_data!.routesUpcoming, 'Ingen kommende ruter.'),
                 _historyTab(),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildStaffRoutesPage(BuildContext context) {
+    final pending = _data?.pendingAckTotal ?? 0;
+    return PartnerPortalPageShell(
+      title: null,
+      showMobileBackButton: false,
+      body: _loading || _data == null
+          ? const DriftProLoadingCenter()
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (pending > 0)
+                  Material(
+                    color: Colors.orange.shade100,
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          Icon(Icons.mark_email_unread, color: Colors.orange.shade900, size: 28),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              '$pending rute(r) venter — trykk for å åpne PDF og akseptere',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: Colors.orange.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                  child: SegmentedButton<int>(
+                    segments: [
+                      ButtonSegment(
+                        value: 0,
+                        label: Text('Nye ruter (${_data!.routesNew.length})'),
+                        icon: Icon(
+                          pending > 0 ? Icons.mark_email_unread : Icons.route_outlined,
+                          size: 18,
+                        ),
+                      ),
+                      ButtonSegment(
+                        value: 1,
+                        label: Text('Tidligere (${_data!.routesPast.length})'),
+                        icon: const Icon(Icons.history, size: 18),
+                      ),
+                    ],
+                    selected: {_staffTab},
+                    onSelectionChanged: (s) => setState(() => _staffTab = s.first),
+                  ),
+                ),
+                Expanded(
+                  child: switch (_staffTab) {
+                    0 => _tabBody(
+                        _data!.routesNew,
+                        'Ingen nye ruter. Du får push-varsel når noe tildeles.',
+                        staffCompact: true,
+                      ),
+                    _ => RefreshIndicator(
+                        onRefresh: _load,
+                        child: OwnerPortalRouteHistoryView(
+                          partnerId: widget.partner.id,
+                          pastRoutes: _data!.routesPast,
+                          vehicles: _vehicles,
+                          shifts: _data!.shiftsById,
+                          vehicleFilterId: _vehicleFilterId,
+                          onVehicleFilter: (id) => setState(() => _vehicleFilterId = id),
+                        ),
+                      ),
+                  },
+                ),
               ],
             ),
     );
@@ -154,14 +232,18 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
     );
   }
 
-  Widget _tabBody(List<PartnerRouteShare> routes, String empty) {
+  Widget _tabBody(
+    List<PartnerRouteShare> routes,
+    String empty, {
+    bool staffCompact = false,
+  }) {
     final filtered = _sortedPendingFirst(_filtered(routes));
     return RefreshIndicator(
       onRefresh: _load,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
-          if (_data!.pendingAckTotal > 0)
+          if (!staffCompact && _data!.pendingAckTotal > 0)
             SliverToBoxAdapter(
               child: Material(
                 color: Colors.orange.shade100,
@@ -185,8 +267,8 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
                 ),
               ),
             ),
-          SliverToBoxAdapter(child: _vehicleFilters()),
-          if (_data!.vehicleStats.isNotEmpty)
+          if (!staffCompact) SliverToBoxAdapter(child: _vehicleFilters()),
+          if (!staffCompact && _data!.vehicleStats.isNotEmpty)
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
@@ -200,7 +282,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
                 ),
               ),
             ),
-          if (_data!.vehicleStats.isNotEmpty)
+          if (!staffCompact && _data!.vehicleStats.isNotEmpty)
             SliverToBoxAdapter(
               child: SizedBox(
                 height: 72,
@@ -238,7 +320,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
                       route: route,
                       shifts: _data!.shiftsById,
                       onReload: _load,
-                      onBehalfOfDriver: true,
+                      onBehalfOfDriver: !widget.staffPortal,
                       vehicleLabel: vehicleLabel,
                     );
                   },
@@ -249,6 +331,21 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> with Sing
         ],
       ),
     );
+  }
+
+  List<PartnerRouteShare> _filtered(List<PartnerRouteShare> routes) {
+    if (_vehicleFilterId == null) return routes;
+    return routes.where((r) => r.partnerVehicleId == _vehicleFilterId).toList();
+  }
+
+  List<PartnerRouteShare> _sortedPendingFirst(List<PartnerRouteShare> routes) {
+    final copy = List<PartnerRouteShare>.from(routes);
+    copy.sort((a, b) {
+      if (a.requiresAck && !b.requiresAck) return -1;
+      if (b.requiresAck && !a.requiresAck) return 1;
+      return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
+    });
+    return copy;
   }
 
   Widget _vehicleFilters() {

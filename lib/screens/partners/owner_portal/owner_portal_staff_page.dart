@@ -866,7 +866,7 @@ class _StaffCard extends StatelessWidget {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                     title: const Text('Rutetilgang'),
                     subtitle: const Text(
-                      'Se innkommende ruter, godkjenne og arkiv',
+                      'Se ruter, aksepter i appen og motta push-varsel for nye ruter',
                     ),
                     value: s.canManageRoutes,
                     onChanged: hasLogin ? onToggleRoutes : null,
