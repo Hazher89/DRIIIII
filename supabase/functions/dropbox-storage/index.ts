@@ -315,6 +315,17 @@ function bytesToBase64(bin: Uint8Array): string {
   return btoa(binary);
 }
 
+function joinDropboxPath(root: string, ...parts: string[]): string {
+  const normalizedRoot = normalizeRoot(root);
+  const cleanParts = parts
+    .map((p) => p.replace(/^\/+|\/+$/g, ""))
+    .filter((p) => p.length > 0);
+  if (normalizedRoot === "/") {
+    return `/${cleanParts.join("/")}`;
+  }
+  return `${normalizedRoot}/${cleanParts.join("/")}`;
+}
+
 function buildStoragePath(
   root: string,
   companyId: string,
@@ -325,7 +336,13 @@ function buildStoragePath(
   const safeName = sanitizeSegment(fileName, "fil.pdf");
   const safeCompany = sanitizeSegment(companyId, "bedrift");
   const date = new Date().toISOString().slice(0, 10);
-  return `${root}/company_${safeCompany}/${safeCat}/${date}/${Date.now()}_${safeName}`;
+  return joinDropboxPath(
+    root,
+    `company_${safeCompany}`,
+    safeCat,
+    date,
+    `${Date.now()}_${safeName}`,
+  );
 }
 
 async function companyExists(
