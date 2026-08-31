@@ -37,6 +37,9 @@ import '../../screens/more/whistleblowing_screen.dart';
 import '../../screens/online/online_presence_screen.dart';
 import '../../screens/partners/partner_detail_route.dart';
 import '../../screens/partners/partner_portal_route.dart';
+import '../../screens/chat/partner_chat_hub_screen.dart';
+import '../../screens/admin/chat_settings_screen.dart';
+import '../../widgets/chat/chat_feature_gate.dart';
 import '../../screens/partners/partners_dashboard_screen.dart';
 import '../../screens/profile/notifications_hub_screen.dart';
 import '../../screens/profile/profile_screen.dart';
@@ -370,6 +373,18 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                 ),
                 routes: [
                   GoRoute(
+                    path: 'meldinger',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      ChatHubGate(
+                        child: PartnerChatHubScreen(
+                          profile: AccessSessionCache.profile!,
+                        ),
+                      ),
+                    ),
+                  ),
+                  GoRoute(
                     path: 'bedrift/:partnerId',
                     parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) => _guardPath(
@@ -527,6 +542,13 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     builder: (context, state) => _guardPath(
                       state,
                       const AssistantSettingsScreen()),
+                  ),
+                  GoRoute(
+                    path: 'partner-chat',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const ChatSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'personvern',

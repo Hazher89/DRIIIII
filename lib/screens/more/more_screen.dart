@@ -260,6 +260,13 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 'DriftPro-assistent',
                 isDark,
               ),
+            if (_profile!.isSuperAdmin)
+              _buildMenuItem(
+                context,
+                Icons.forum_outlined,
+                'Partner-chat',
+                isDark,
+              ),
             if (_profile!.access.canWhistleblowing)
               _buildMenuItem(
                 context,
@@ -482,6 +489,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Infoskjerm' => AppPaths.moreInfoskjerm,
             'Forside-innhold' => AppPaths.moreForside,
             'DriftPro-assistent' => AppPaths.moreAssistent,
+            'Partner-chat' => AppPaths.morePartnerChat,
             'Fillagring' => AppPaths.moreDropbox,
             'Min profil' => AppPaths.moreProfil,
             'Personalmappe' => AppPaths.morePersonalmappe,

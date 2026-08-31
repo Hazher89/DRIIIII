@@ -68,6 +68,10 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
   final Widget footer;
   final Widget? topBanner;
   final bool showTabCaption;
+  /// Vis «Tilbake» ved siden av lukk — standard på for alle rute-flyter.
+  final bool showBackButton;
+  /// Overstyr tilbake-handling (f.eks. steg tilbake i flyt i stedet for å lukke).
+  final VoidCallback? onBack;
 
   const PartnerRouteWorkflowShell({
     super.key,
@@ -91,7 +95,9 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     required this.tabBody,
     required this.footer,
     this.topBanner,
-    this.showTabCaption = false,
+    this.showTabCaption = true,
+    this.showBackButton = true,
+    this.onBack,
   });
 
   static const _railWidth = 340.0;
@@ -195,6 +201,12 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
       ),
       child: Row(
         children: [
+          if (showBackButton)
+            IconButton(
+              tooltip: 'Tilbake',
+              onPressed: onBack ?? () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+            ),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -369,7 +381,7 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
 
   Widget _buildMainPanel(BuildContext context, {bool nativeMobile = false}) {
     final drift = context.driftColors;
-    final showCaption = showTabCaption && !nativeMobile;
+    final showCaption = showTabCaption && tabCaption.trim().isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

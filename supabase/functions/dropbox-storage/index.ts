@@ -704,28 +704,44 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: lastError.slice(0, 300) }, 404);
     }
 
+    // Hent kobling uten is_active-filter — soft-frakoblet reaktiveres automatisk.
     let { data: connRow, error: connErr } = await admin
       .from("company_dropbox_connections")
       .select("*")
       .eq("company_id", companyId)
-      .eq("is_active", true)
       .maybeSingle();
 
-    if (connErr) {
-      // is_active-filter kan feile før migrasjon — prøv uten
-      const fallback = await admin
-        .from("company_dropbox_connections")
-        .select("*")
-        .eq("company_id", companyId)
-        .maybeSingle();
-      connRow = fallback.data;
-      connErr = fallback.error;
+    if (connErr) throw connErr;
+
+    if (connRow) {
+      const soft = connRow as Conn;
+      const hasToken = !!soft.refresh_token?.trim();
+      if (soft.is_active === false && hasToken) {
+        const { data: revived, error: reviveErr } = await admin
+          .from("company_dropbox_connections")
+          .update({
+            is_active: true,
+            disconnect_locked: true,
+            health_fail_count: 0,
+            last_health_error: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("company_id", companyId)
+          .select("*")
+          .maybeSingle();
+        if (!reviveErr && revived) {
+          connRow = revived;
+          console.log("dropbox auto-reactivated", companyId);
+        } else {
+          connRow = { ...soft, is_active: true };
+        }
+      }
     }
 
-    if (connErr) throw connErr;
-    if (!connRow || (connRow as Conn).is_active === false) {
+    if (!connRow || !(connRow as Conn).refresh_token?.trim()) {
       return json({
-        error: "Dropbox er ikke koblet. Administrator må koble under Innstillinger → Dropbox.",
+        error: "not_connected",
+        code: "not_connected",
       }, 400);
     }
 

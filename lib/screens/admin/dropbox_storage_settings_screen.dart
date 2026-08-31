@@ -276,13 +276,19 @@ class _DropboxStorageSettingsScreenState extends State<DropboxStorageSettingsScr
   Future<void> _reactivate() async {
     setState(() => _busy = true);
     try {
-      await CompanyFileStorage.reactivateDropbox();
+      final ok = await CompanyFileStorage.reactivateDropbox();
       await _load();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Dropbox reaktivert og låst.')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            ok
+                ? 'Skylagring reaktivert og låst.'
+                : 'Ingen lagret tilkobling — koble på nytt via «Koble til».',
+          ),
+          backgroundColor: ok ? null : Colors.orange,
+        ),
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

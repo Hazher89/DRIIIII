@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/config/driftpro_client.dart';
+import '../../core/routing/app_paths.dart';
+import '../../core/services/chat/chat_flag_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../models/partner/partner_links.dart';
 import '../../core/services/supabase_service.dart';
@@ -88,6 +91,31 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
     );
   }
 
+  Future<void> _openChat() async {
+    context.push(AppPaths.partnersChat);
+  }
+
+  Widget _chatAction() {
+    return FutureBuilder<String?>(
+      future: SupabaseService.getCurrentCompanyId(),
+      builder: (context, cidSnap) {
+        final cid = cidSnap.data;
+        if (cid == null) return const SizedBox.shrink();
+        return StreamBuilder<ChatFlag>(
+          stream: ChatFlagService.watch(cid),
+          builder: (context, snap) {
+            if (!(snap.data?.maviEnabled ?? true)) return const SizedBox.shrink();
+            return IconButton(
+              tooltip: 'Meldinger',
+              onPressed: _openChat,
+              icon: const Icon(Icons.forum_outlined),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -152,6 +180,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
                                 label: const Text('Skiftplan'),
                               ),
                             ),
+                            _chatAction(),
                             IconButton(
                               tooltip: 'Søk i rute-PDF',
                               onPressed: _openPdfSearch,
@@ -191,6 +220,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
                           onPressed: _openPdfSearch,
                           icon: const Icon(Icons.manage_search_outlined),
                         ),
+                        _chatAction(),
                       ],
                     ),
             ),
@@ -204,6 +234,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
       appBar: AppBar(
         title: const Text('Ruter & planlegging'),
         actions: [
+          _chatAction(),
           IconButton(
             tooltip: 'Rutehistorikk',
             onPressed: _openHistory,

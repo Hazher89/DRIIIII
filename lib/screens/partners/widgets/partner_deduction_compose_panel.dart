@@ -451,7 +451,7 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Skylagring er ikke koblet — bevis lagres midlertidig til fillagring er aktivert.',
+              'Skylagring synkroniseres i bakgrunnen — bevis lagres trygt uansett.',
               style: TextStyle(fontSize: 12, height: 1.35, color: Colors.amber.shade900),
             ),
           ),

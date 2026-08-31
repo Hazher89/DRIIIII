@@ -379,6 +379,37 @@ class AccessAreaCatalog {
       legacyViewKey: AccessKeys.partnersTabFri,
     ),
     AccessAreaDef(
+      id: 'partners.chat',
+      title: 'Partner-chat (oversikt)',
+      parentId: 'partners',
+      actions: viewCreate,
+      routePath: '/partners/meldinger',
+    ),
+    AccessAreaDef(
+      id: 'partners.chat.internal',
+      title: 'MAVI intern chat',
+      parentId: 'partners.chat',
+      actions: viewCreate,
+    ),
+    AccessAreaDef(
+      id: 'partners.chat.broadcast',
+      title: 'Send melding til alle partnere',
+      parentId: 'partners.chat',
+      actions: viewCreate,
+    ),
+    AccessAreaDef(
+      id: 'partners.chat.direct',
+      title: 'Direkte melding til spesifikk partner',
+      parentId: 'partners.chat',
+      actions: viewCreate,
+    ),
+    AccessAreaDef(
+      id: 'partners.chat.moderate',
+      title: 'Chat-moderering (superadmin)',
+      parentId: 'partners.chat',
+      actions: crud,
+    ),
+    AccessAreaDef(
       id: 'stempling',
       title: 'Stempling',
       actions: viewEdit,

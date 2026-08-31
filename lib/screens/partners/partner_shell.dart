@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/routing/route_url_sync.dart';
 import '../../core/auth/session_sign_out.dart';
+import '../../core/services/chat/chat_flag_service.dart';
 import '../../core/services/hms/hms_pdf_export_service.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
 import '../../core/services/partner/partner_portal_scope.dart';
@@ -25,6 +26,8 @@ import '../../models/partner/partner.dart';
 import '../../models/partner/partner_links.dart';
 import '../../models/partner/vehicle_inspection.dart';
 import '../../models/user_profile.dart';
+import '../chat/partner_chat_hub_screen.dart';
+import '../../widgets/chat/chat_feature_gate.dart';
 import 'driver_portal/driver_portal_docs_page.dart';
 import 'driver_portal/driver_portal_fri_page.dart';
 import 'driver_portal/driver_portal_overview_page.dart';
@@ -102,6 +105,8 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   OwnerPortalRoutesFocus? _routesFocus;
   RealtimeChannel? _workforceChannel;
   StreamSubscription<PushNavigationTarget>? _pushNavSub;
+  StreamSubscription<ChatFlag>? _chatFlagSub;
+  bool _chatEnabled = true;
 
   bool _staffWantsPush() =>
       widget.portalAccountKind == 'staff' &&
@@ -140,6 +145,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_pushNavSub?.cancel() ?? Future.value());
+    unawaited(_chatFlagSub?.cancel() ?? Future.value());
     unawaited(_workforceChannel?.unsubscribe() ?? Future.value());
     PartnerRoutePushListener.stop();
     super.dispose();
@@ -270,25 +276,88 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       var n = 1; // profil
       if (_workforceEnabled) n += 1; // stempling
       if (_workforceEnabled && _staffCanManageRoutes) n += 1; // ruter
+      if (_chatEnabled) n += 1; // meldinger
       return n;
     }
-    if (widget.portalAccountKind == 'owner') return 5;
-    return 5; // driver
+    if (widget.portalAccountKind == 'owner') return _chatEnabled ? 6 : 5;
+    return _chatEnabled ? 6 : 5; // driver
+  }
+
+  List<String> _portalTabSlugs() {
+    final isOwner = widget.portalAccountKind == 'owner';
+    final isStaff = widget.portalAccountKind == 'staff';
+    if (isStaff) {
+      return [
+        if (_workforceEnabled) 'stempling',
+        if (_workforceEnabled && _staffCanManageRoutes) 'ruter',
+        if (_chatEnabled) 'meldinger',
+        'profil',
+      ];
+    }
+    if (isOwner) {
+      return [
+        'oversikt',
+        'ruter',
+        'dokumenter',
+        if (_chatEnabled) 'meldinger',
+        'mer',
+        'profil',
+      ];
+    }
+    return [
+      'oversikt',
+      'ruter',
+      'dokumenter',
+      if (_chatEnabled) 'meldinger',
+      'fri',
+      'profil',
+    ];
+  }
+
+  int _ownerMoreTabIndex() => _chatEnabled ? 4 : 3;
+
+  Widget _partnerChatPage() {
+    return ChatHubGate(
+      child: PartnerChatHubScreen(
+        profile: widget.profile,
+        embedded: true,
+      ),
+    );
+  }
+
+  void _bindChatFlag(String? companyId) {
+    unawaited(_chatFlagSub?.cancel() ?? Future.value());
+    _chatFlagSub = null;
+    if (companyId == null || companyId.isEmpty) return;
+    _chatFlagSub = ChatFlagService.watch(companyId).listen((flag) {
+      if (!mounted) return;
+      final on = flag.partnersEnabled;
+      if (on == _chatEnabled) return;
+      setState(() {
+        final previousSlugs = _portalTabSlugs();
+        final currentSlug = (_index >= 0 && _index < previousSlugs.length)
+            ? previousSlugs[_index]
+            : 'oversikt';
+        _chatEnabled = on;
+        final nextSlugs = _portalTabSlugs();
+        if (currentSlug == 'meldinger' && !on) {
+          final fallback = nextSlugs.contains('mer')
+              ? 'mer'
+              : (nextSlugs.contains('oversikt') ? 'oversikt' : nextSlugs.first);
+          _index = nextSlugs.indexOf(fallback).clamp(0, nextSlugs.length - 1);
+        } else {
+          final mapped = nextSlugs.indexOf(currentSlug);
+          _index = mapped >= 0 ? mapped : _index.clamp(0, nextSlugs.length - 1);
+        }
+      });
+      _syncUrl();
+    });
   }
 
   void _syncUrl() {
     if (!mounted) return;
-    final isOwner = widget.portalAccountKind == 'owner';
-    final isStaff = widget.portalAccountKind == 'staff';
-    final slugs = isStaff
-        ? [
-            if (_workforceEnabled) 'stempling',
-            if (_workforceEnabled && _staffCanManageRoutes) 'ruter',
-            'profil',
-          ]
-        : isOwner
-            ? AppPaths.portalOwnerTabs
-            : AppPaths.portalDriverTabs;
+    final slugs = _portalTabSlugs();
+    if (slugs.isEmpty) return;
     RouteUrlSync.syncTab(
       context,
       basePath: AppPaths.portal,
@@ -304,17 +373,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
 
     final tab = target.portalTab;
     if (tab != null) {
-      final isOwner = widget.portalAccountKind == 'owner';
-      final isStaff = widget.portalAccountKind == 'staff';
-      final slugs = isStaff
-          ? [
-              if (_workforceEnabled) 'stempling',
-              if (_workforceEnabled && _staffCanManageRoutes) 'ruter',
-              'profil',
-            ]
-          : isOwner
-              ? AppPaths.portalOwnerTabs
-              : AppPaths.portalDriverTabs;
+      final slugs = _portalTabSlugs();
       final tabIndex = RouteUrlSync.indexForSlug(tab, slugs);
       if (_index != tabIndex) {
         setState(() => _index = tabIndex);
@@ -335,7 +394,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     setState(() => _index = i);
     _syncUrl();
     // Oppdater feature-flag når eier åpner Mer (Ansatte/Timer synlighet).
-    if (widget.portalAccountKind == 'owner' && i == 3) {
+    if (widget.portalAccountKind == 'owner' && i == _ownerMoreTabIndex()) {
       unawaited(_refreshWorkforceFlag());
     }
   }
@@ -377,6 +436,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
         _loading = false;
       });
       _listenWorkforceFlag(pid);
+      _bindChatFlag(p?.companyId ?? widget.profile.companyId);
       _startPartnerPushListener();
       unawaited(_ensurePushRegistrationIfNeeded());
       unawaited(_handlePushNavigation(PushNavigationService.takePending()));
@@ -472,6 +532,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
               StaffPortalPunchPage(partner: p, profile: widget.profile),
             if (_workforceEnabled && _staffCanManageRoutes)
               OwnerPortalRoutesPage(partner: p, staffPortal: true),
+            if (_chatEnabled) _partnerChatPage(),
             PartnerPortalProfilePage(
               profile: widget.profile,
               roleLabel: !_workforceEnabled
@@ -491,7 +552,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                   onGoToRoutes: goToRoutes,
                   onGoToTrekk: openTrekk,
                   onGoToDocs: () => _selectTab(2),
-                  onGoToMore: () => _selectTab(3),
+                  onGoToMore: () => _selectTab(_ownerMoreTabIndex()),
                   onGoToTimesheet: () {
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
@@ -510,8 +571,10 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                   },
                 ),
                 OwnerPortalDocsPage(partner: p),
+                if (_chatEnabled) _partnerChatPage(),
                 OwnerPortalMorePage(
                   partner: p,
+                  profile: widget.profile,
                   workforceEnabled: _workforceEnabled,
                 ),
                 PartnerPortalProfilePage(
@@ -524,6 +587,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                 DriverPortalOverviewPage(partner: p, profile: widget.profile),
                 DriverPortalRoutesPage(partner: p, profile: widget.profile),
                 DriverPortalDocsPage(partner: p),
+                if (_chatEnabled) _partnerChatPage(),
                 DriverPortalFriPage(partner: p, profile: widget.profile),
                 PartnerPortalProfilePage(
                   profile: widget.profile,
@@ -531,12 +595,14 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                   partnerName: p.name,
                 ),
               ];
-    final ownerNavItems = const [
-      PartnerPortalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
-      PartnerPortalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
-      PartnerPortalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
-      PartnerPortalNavItem(icon: Icons.apps_outlined, selectedIcon: Icons.apps, label: 'Mer'),
-      PartnerPortalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
+    final ownerNavItems = [
+      const PartnerPortalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
+      const PartnerPortalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
+      const PartnerPortalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
+      if (_chatEnabled)
+        const PartnerPortalNavItem(icon: Icons.forum_outlined, selectedIcon: Icons.forum, label: 'Meldinger'),
+      const PartnerPortalNavItem(icon: Icons.apps_outlined, selectedIcon: Icons.apps, label: 'Mer'),
+      const PartnerPortalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
     ];
 
     final staffDestinations = [
@@ -552,6 +618,12 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
           selectedIcon: Icon(Icons.map),
           label: 'Ruter',
         ),
+      if (_chatEnabled)
+        const NavigationDestination(
+          icon: Icon(Icons.forum_outlined),
+          selectedIcon: Icon(Icons.forum),
+          label: 'Meldinger',
+        ),
       const NavigationDestination(
         icon: Icon(Icons.person_outlined),
         selectedIcon: Icon(Icons.person),
@@ -559,12 +631,14 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       ),
     ];
 
-    final driverDestinations = const [
-      NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
-      NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Mine ruter'),
-      NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
-      NavigationDestination(icon: Icon(Icons.beach_access_outlined), selectedIcon: Icon(Icons.beach_access), label: 'Fri'),
-      NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
+    final driverDestinations = [
+      const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
+      const NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Mine ruter'),
+      const NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
+      if (_chatEnabled)
+        const NavigationDestination(icon: Icon(Icons.forum_outlined), selectedIcon: Icon(Icons.forum), label: 'Meldinger'),
+      const NavigationDestination(icon: Icon(Icons.beach_access_outlined), selectedIcon: Icon(Icons.beach_access), label: 'Fri'),
+      const NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
     ];
 
     final pageIndex = _index.clamp(0, pages.length - 1);

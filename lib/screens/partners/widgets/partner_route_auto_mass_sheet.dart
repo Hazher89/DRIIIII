@@ -34,8 +34,8 @@ import 'partner_route_pdf_actions.dart';
 import 'partner_route_pdf_thumbnail.dart';
 import 'partner_route_publish_review_dialog.dart';
 import 'partner_route_workflow_ui.dart';
-import 'partner_route_workflow_ui.dart';
 import 'route_publish_notify_buttons.dart';
+import 'route_workflow_shared.dart';
 import 'route_dispatch/route_notify_channel_toggles.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
@@ -2656,7 +2656,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       guideExpanded: _guideExpanded,
       onGuideToggle: () => setState(() => _guideExpanded = !_guideExpanded),
       topBanner: DriftProClient.isMobile ? null : _buildUploadStatusBanner(ui),
-      showTabCaption: !DriftProClient.isMobile,
+      showTabCaption: true,
       tabLabels: const [
         'Alle',
         'Manuell',
@@ -3210,14 +3210,44 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
+  Widget _buildEmptyQueueHero(_MassUi ui) {
+    final isSap = _isSap;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            RouteWorkflowUploadHero(
+              accent: ui.accentDark,
+              busy: _busyUpload || _sapSyncing,
+              onUpload: (_busyUpload || _sapSyncing)
+                  ? null
+                  : (isSap ? _syncSapInbox : _pickPdfs),
+              title: isSap
+                  ? (_sapPendingInbox > 0
+                      ? 'Importer $_sapPendingInbox SAP-PDF'
+                      : 'Venter på SAP-ruter')
+                  : 'Last opp rute-PDF-er',
+              subtitle: ui.emptyHint.replaceAll('\n\n', ' '),
+            ),
+            if (isSap && _sapPendingInbox <= 0) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _busyUpload ? null : _pickPdfs,
+                icon: const Icon(Icons.upload_file),
+                label: const Text('Last opp PDF manuelt'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildRoutesOverview(_MassUi ui, {bool forceMissingOnly = false}) {
     if (_staged.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(ui.emptyHint, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade700, height: 1.45)),
-        ),
-      );
+      return _buildEmptyQueueHero(ui);
     }
 
     final routes = forceMissingOnly ? _routesMissingShift : _filteredQueueRoutes;
@@ -3489,12 +3519,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   Widget _buildDriverCentricList(_MassUi ui) {
     if (_staged.isEmpty && _skipped.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(ui.emptyHint, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey.shade700, height: 1.45)),
-        ),
-      );
+      return _buildEmptyQueueHero(ui);
     }
 
     final rows = _maviFleet.where((r) {

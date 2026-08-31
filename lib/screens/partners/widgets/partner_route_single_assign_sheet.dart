@@ -17,9 +17,13 @@ import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/route_notify_prefs.dart';
 import 'partner_route_pdf_actions.dart';
+import 'partner_route_pdf_thumbnail.dart';
 import 'partner_route_workflow_ui.dart';
 import 'route_publish_notify_buttons.dart';
+import 'route_workflow_shared.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+
+enum _SingleAssignPhase { upload, review, publishing, success }
 
 DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
@@ -81,6 +85,10 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
   String? _pdfFileName;
   RoutePdfAutoAssign? _auto;
   String? _analyzeError;
+  _SingleAssignPhase _phase = _SingleAssignPhase.upload;
+  String? _successDetail;
+  String? _successMessage;
+  String _successTitle = 'Rute sendt';
 
   @override
   void initState() {
@@ -177,6 +185,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
       final schedule = bundle.schedule;
 
       if (!mounted) return;
+      final shiftOptions = _shiftItems;
       setState(() {
         _pdfBytes = bytes;
         _auto = auto;
@@ -188,7 +197,10 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
             minute: schedule.routeStartAt!.minute,
           );
         }
-        _shiftId = auto.shift?.id ?? _shiftId;
+        _shiftId = auto.shift?.id ??
+            (shiftOptions.any((s) => s.id == _shiftId) ? _shiftId : null) ??
+            (shiftOptions.isNotEmpty ? shiftOptions.first.id : null);
+        _phase = _SingleAssignPhase.review;
         if (matchedRow == null && auto.maviCode != null) {
           _analyzeError =
               'Fant MAVI ${auto.maviCode} i PDF, men ingen matchende bil i flåten — velg sjåfør manuelt.';
@@ -201,6 +213,40 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
     } finally {
       if (mounted) setState(() => _analyzing = false);
     }
+  }
+
+  Future<bool> _confirmPublish(RouteNotifyPrefs prefs) async {
+    final channel = prefs.noneEnabled
+        ? 'Uten varsel (kladd i kalender)'
+        : prefs.shortLabel;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Bekreft utsendelse'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Rute til ${MaviUnitCodes.normalize(_row?.vehicle.unitCode ?? 'bil')} '
+              '· ${DateFormat('d. MMM', 'nb').format(_day)}',
+            ),
+            const SizedBox(height: 8),
+            Text('Varsling: $channel', style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            const Text(
+              'Sjåfør/eier får beskjed etter valgt kanal. Du kan sende purring senere fra planleggeren.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Send nå')),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   Future<void> _saveRoute({
@@ -229,6 +275,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
     setState(() {
       _busy = true;
       _actionError = null;
+      if (publish) _phase = _SingleAssignPhase.publishing;
     });
     try {
       final row = _row!;
@@ -278,32 +325,57 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
         );
       }
 
-      widget.onDone();
+      final unit = MaviUnitCodes.normalize(row.vehicle.unitCode);
+      final msg = publish
+          ? notifyPrefs.successMessage(1)
+          : 'PDF lagret som kladd for $unit.';
+
       if (!mounted) return;
-      final messenger = ScaffoldMessenger.of(context);
-      Navigator.pop(context);
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            publish
-                ? notifyPrefs.successMessage(1)
-                : 'PDF lagret som kladd for ${MaviUnitCodes.normalize(row.vehicle.unitCode)}.',
-          ),
-        ),
-      );
+      setState(() {
+        _phase = _SingleAssignPhase.success;
+        _successTitle = publish ? 'Rute sendt' : 'Kladd lagret';
+        _successMessage = msg;
+        _successDetail =
+            '${row.partner.name} · ${DateFormat('EEEE d. MMM', 'nb').format(_day)} · '
+            'Start ${_start.format(context)} · ${notifyPrefs.shortLabel}';
+        _busy = false;
+      });
     } catch (e) {
       if (mounted) {
-        setState(() => _actionError = e.toString());
+        setState(() {
+          _actionError = e.toString();
+          _phase = _hasPdf ? _SingleAssignPhase.review : _SingleAssignPhase.upload;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Feilet: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted && _phase != _SingleAssignPhase.success) {
+        setState(() => _busy = false);
+      }
     }
   }
 
-  Widget _autoSummaryCard() {
+  void _finishSuccess() {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final msg = _successMessage ?? 'Rute publisert.';
+    Navigator.pop(context);
+    widget.onDone();
+    messenger.showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _publishWithPrefs(RouteNotifyPrefs? prefs) async {
+    final effective = prefs ?? RouteNotifyPrefs.none;
+    if (!effective.noneEnabled) {
+      final ok = await _confirmPublish(effective);
+      if (!ok) return;
+    }
+    await _saveRoute(publish: true, notifyPrefs: effective);
+  }
+
+  Widget _buildReviewBody(bool busy) {
     final a = _auto;
     if (a == null) return const SizedBox.shrink();
     final band = RouteTimeBand.label(a.timeBand);
@@ -340,36 +412,211 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
     );
   }
 
-  Widget _stepIndicator() {
-    final step = _hasPdf ? 2 : 1;
-    return Row(
-      children: [
-        _stepDot(1, 'PDF', step >= 1),
-        Expanded(child: Container(height: 2, color: step >= 2 ? DriftProTheme.primaryGreen : Colors.grey.shade300)),
-        _stepDot(2, 'Kontroll', step >= 2),
-        Expanded(child: Container(height: 2, color: Colors.grey.shade300)),
-        _stepDot(3, 'Lagre', false),
-      ],
-    );
+  void _handleBack() {
+    if (_busy) return;
+    switch (_phase) {
+      case _SingleAssignPhase.review:
+        setState(() => _phase = _SingleAssignPhase.upload);
+      case _SingleAssignPhase.success:
+        _finishSuccess();
+      case _SingleAssignPhase.upload:
+      case _SingleAssignPhase.publishing:
+        if (!_busy) Navigator.of(context).maybePop();
+    }
   }
 
-  Widget _stepDot(int n, String label, bool active) {
-    return Column(
-      children: [
-        CircleAvatar(
-          radius: 12,
-          backgroundColor: active ? DriftProTheme.primaryGreen : Colors.grey.shade300,
-          child: Text('$n', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+  int get _stepIndex {
+    switch (_phase) {
+      case _SingleAssignPhase.upload:
+        return 0;
+      case _SingleAssignPhase.review:
+      case _SingleAssignPhase.publishing:
+        return 1;
+      case _SingleAssignPhase.success:
+        return 2;
+    }
+  }
+
+  Widget _buildMainContent(bool busy, Color accent) {
+    if (_phase == _SingleAssignPhase.success) {
+      return RouteWorkflowSuccessPanel(
+        title: _successTitle,
+        message: _successMessage ?? 'Ruten er lagret og sendt.',
+        detail: _successDetail,
+        accent: accent,
+        onDone: _finishSuccess,
+      );
+    }
+
+    if (_phase == _SingleAssignPhase.publishing) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            DriftProLoadingIndicator(size: 48),
+            const SizedBox(height: 16),
+            const Text(
+              'Lagrer og sender rute…',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Varsling sendes etter valgt kanal',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ],
         ),
-        const SizedBox(height: 4),
-        Text(label, style: TextStyle(fontSize: 9, fontWeight: active ? FontWeight.w700 : FontWeight.w500)),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(14),
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [
+        RouteWorkflowStepRail(
+          steps: const ['PDF', 'Kontroll', 'Sendt'],
+          activeIndex: _stepIndex,
+          accent: accent,
+        ),
+        const SizedBox(height: 16),
+        if (!_hasPdf) ...[
+          RouteWorkflowUploadHero(
+            accent: accent,
+            busy: _analyzing,
+            onUpload: busy ? null : _uploadPdfOnly,
+            title: 'Dra hit eller velg rute-PDF',
+            subtitle:
+                'MAVI, sjåfør, dato, skift og starttid leses automatisk. '
+                'Du ser forhåndsvisning og kontrollerer før du sender push, SMS eller e-post.',
+          ),
+        ] else ...[
+          if (_pdfFileName != null)
+            Text(
+              'Fil: $_pdfFileName',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            ),
+          if (_analyzeError != null) ...[
+            const SizedBox(height: 8),
+            Material(
+              color: const Color(0xFFFFF3E0),
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Text(
+                  _analyzeError!,
+                  style: TextStyle(fontSize: 12, color: Colors.orange.shade900, height: 1.35),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: PartnerRoutePdfThumbnail(
+              bytes: _pdfBytes,
+              height: 160,
+              showFullPage: true,
+              zoomTripHeader: true,
+              onTapOpen: busy
+                  ? null
+                  : () => PartnerRoutePdfActions.openPdfBytes(
+                        context,
+                        bytes: _pdfBytes!,
+                        title: _pdfFileName ?? 'Rute-PDF',
+                      ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildReviewBody(busy),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: busy
+                ? null
+                : () => PartnerRoutePdfActions.openPdfBytes(
+                      context,
+                      bytes: _pdfBytes!,
+                      title: _pdfFileName ?? 'Rute-PDF',
+                    ),
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            label: const Text('Åpne full PDF — kontroller før publisering'),
+            style: OutlinedButton.styleFrom(minimumSize: const Size(double.infinity, 44)),
+          ),
+          if (_phase == _SingleAssignPhase.review) ...[
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: busy ? null : _pickDay,
+              icon: const Icon(Icons.calendar_today_outlined),
+              label: Text(DateFormat('EEEE d. MMMM yyyy', 'nb').format(_day)),
+              style: OutlinedButton.styleFrom(
+                alignment: Alignment.centerLeft,
+                minimumSize: const Size(double.infinity, 44),
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<FleetPartnerVehicleRow>(
+              decoration: const InputDecoration(
+                labelText: 'Sjåfør / MAVI-bil *',
+                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              isExpanded: true,
+              value: _maviFleet.contains(_row) ? _row : null,
+              items: _maviFleet
+                  .map(
+                    (r) => DropdownMenuItem(
+                      value: r,
+                      child: Text(
+                        '${MaviUnitCodes.normalize(r.vehicle.unitCode)}'
+                        '${r.vehicle.driverName != null && r.vehicle.driverName!.trim().isNotEmpty ? ' · ${r.vehicle.driverName}' : ''}'
+                        ' · ${r.partner.name}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: busy ? null : (v) => setState(() => _row = v),
+            ),
+            const SizedBox(height: 12),
+            if (_shiftItems.isEmpty)
+              Text(
+                'Ingen skift — opprett under Administrer skift.',
+                style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600),
+              )
+            else
+              DropdownButtonFormField<String>(
+                decoration: const InputDecoration(
+                  labelText: 'Skift *',
+                  border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white,
+                ),
+                isExpanded: true,
+                value: _shiftItems.any((s) => s.id == _shiftId) ? _shiftId : null,
+                items: _shiftItems
+                    .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
+                    .toList(),
+                onChanged: busy ? null : (v) => setState(() => _shiftId = v),
+              ),
+            const SizedBox(height: 8),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Starttid'),
+              subtitle: Text(
+                _start.format(context),
+                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+              ),
+              trailing: const Icon(Icons.schedule),
+              onTap: busy ? null : _pickStart,
+            ),
+          ],
+        ],
       ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final shiftItems = _shiftItems;
     final busy = _busy || _analyzing;
     const accent = DriftProTheme.primaryGreen;
 
@@ -380,6 +627,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
       title: 'Ny rute',
       subtitle: 'Én PDF — auto sjåfør, skift og dato fra filen',
       badge: 'Enkelt',
+      onBack: _handleBack,
       metrics: [
         RouteWorkflowMetric(
           label: 'PDF',
@@ -420,120 +668,18 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
       tabLabels: const ['Oppsett'],
       selectedTabIndex: 0,
       onTabSelected: (_) {},
-      tabCaption: _hasPdf
-          ? 'Kontroller det systemet fant — juster om nødvendig, deretter lagre eller publiser.'
-          : 'Last opp rute-PDF. MAVI, dato, skift og starttid leses automatisk.',
-      tabBody: ListView(
-        padding: const EdgeInsets.all(14),
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          _stepIndicator(),
-          const SizedBox(height: 16),
-          if (_pdfFileName != null)
-            Text('Fil: $_pdfFileName', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-          if (_analyzeError != null) ...[
-            const SizedBox(height: 8),
-            Material(
-              color: const Color(0xFFFFF3E0),
-              borderRadius: BorderRadius.circular(8),
-              child: Padding(
-                padding: const EdgeInsets.all(10),
-                child: Text(
-                  _analyzeError!,
-                  style: TextStyle(fontSize: 12, color: Colors.orange.shade900, height: 1.35),
-                ),
-              ),
-            ),
-          ],
-          if (_hasPdf) ...[
-            const SizedBox(height: 12),
-            _autoSummaryCard(),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: busy
-                  ? null
-                  : () => PartnerRoutePdfActions.openPdfBytes(
-                        context,
-                        bytes: _pdfBytes!,
-                        title: _pdfFileName ?? 'Rute-PDF',
-                      ),
-              icon: const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text('Vis PDF — kontroller før publisering'),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 44),
-              ),
-            ),
-            const SizedBox(height: 14),
-            OutlinedButton.icon(
-              onPressed: busy ? null : _pickDay,
-              icon: const Icon(Icons.calendar_today_outlined),
-              label: Text(DateFormat('EEEE d. MMMM yyyy', 'nb').format(_day)),
-              style: OutlinedButton.styleFrom(
-                alignment: Alignment.centerLeft,
-                minimumSize: const Size(double.infinity, 44),
-              ),
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<FleetPartnerVehicleRow>(
-              decoration: const InputDecoration(
-                labelText: 'Sjåfør / MAVI-bil *',
-                border: OutlineInputBorder(),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              isExpanded: true,
-              value: _maviFleet.contains(_row) ? _row : null,
-              items: _maviFleet
-                  .map(
-                    (r) => DropdownMenuItem(
-                      value: r,
-                      child: Text(
-                        '${MaviUnitCodes.normalize(r.vehicle.unitCode)}'
-                        '${r.vehicle.driverName != null && r.vehicle.driverName!.trim().isNotEmpty ? ' · ${r.vehicle.driverName}' : ''}'
-                        ' · ${r.partner.name}',
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  )
-                  .toList(),
-              onChanged: busy ? null : (v) => setState(() => _row = v),
-            ),
-            const SizedBox(height: 12),
-            if (shiftItems.isEmpty)
-              Text(
-                'Ingen skift — opprett under Administrer skift.',
-                style: TextStyle(color: Colors.grey.shade700, fontWeight: FontWeight.w600),
-              )
-            else
-              DropdownButtonFormField<String>(
-                decoration: const InputDecoration(
-                  labelText: 'Skift *',
-                  border: OutlineInputBorder(),
-                  filled: true,
-                  fillColor: Colors.white,
-                ),
-                isExpanded: true,
-                value: shiftItems.any((s) => s.id == _shiftId) ? _shiftId : null,
-                items: shiftItems
-                    .map((s) => DropdownMenuItem(value: s.id, child: Text(s.name)))
-                    .toList(),
-                onChanged: busy ? null : (v) => setState(() => _shiftId = v),
-              ),
-            const SizedBox(height: 8),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Starttid'),
-              subtitle: Text(
-                _start.format(context),
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-              ),
-              trailing: const Icon(Icons.schedule),
-              onTap: busy ? null : _pickStart,
-            ),
-          ],
-        ],
-      ),
-      footer: Column(
+      tabCaption: switch (_phase) {
+        _SingleAssignPhase.upload =>
+          'Last opp rute-PDF. MAVI, dato, skift og starttid leses automatisk.',
+        _SingleAssignPhase.review =>
+          'Kontroller det systemet fant — juster om nødvendig, deretter lagre eller publiser.',
+        _SingleAssignPhase.publishing => 'Sender rute og varsling…',
+        _SingleAssignPhase.success => 'Ferdig — ruten er i planleggeren.',
+      },
+      tabBody: _buildMainContent(busy, accent),
+      footer: _phase == _SingleAssignPhase.success
+          ? const SizedBox.shrink()
+          : Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (_actionError != null) ...[
@@ -547,7 +693,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
             ),
             const SizedBox(height: 8),
           ],
-          if (_hasPdf) ...[
+          if (_phase == _SingleAssignPhase.review && _hasPdf) ...[
             OutlinedButton.icon(
               onPressed: busy ? null : () => _saveRoute(publish: false),
               icon: const Icon(Icons.save_outlined),
@@ -557,15 +703,9 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
             const SizedBox(height: 8),
             RoutePublishNotifyButtons(
               busy: busy,
-              onPublish: (prefs) async {
-                if (prefs == null || !prefs.anyEnabled) {
-                  await _saveRoute(publish: true, notifyPrefs: RouteNotifyPrefs.none);
-                } else {
-                  await _saveRoute(publish: true, notifyPrefs: prefs);
-                }
-              },
+              onPublish: (prefs) => _publishWithPrefs(prefs),
             ),
-          ] else
+          ] else if (_phase == _SingleAssignPhase.upload)
             Text(
               'Last opp PDF for å aktivere lagring og publisering.',
               textAlign: TextAlign.center,

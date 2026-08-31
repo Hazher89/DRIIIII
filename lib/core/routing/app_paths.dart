@@ -10,6 +10,7 @@ abstract final class AppPaths {
   static const tickets = '/avvik';
   static const hms = '/hms';
   static const partners = '/partners';
+  static const partnersChat = '/partners/meldinger';
   static const stempling = '/stempling';
   static const uniform = '/uniform';
   static const stemple = '/stemple';
@@ -130,6 +131,7 @@ abstract final class AppPaths {
   static const morePersonvern = '/more/personvern';
   static const moreOm = '/more/om';
   static const moreAssistent = '/more/assistent';
+  static const morePartnerChat = '/more/partner-chat';
   static const moreVisionCameras = '/more/vision-cameras';
   static const moreVisionEvents = '/more/vision-events';
 

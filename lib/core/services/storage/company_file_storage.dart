@@ -7,7 +7,7 @@ import '../../utils/storage_path_sanitizer.dart';
 import '../supabase_service.dart';
 import 'dropbox_storage_modules.dart';
 
-/// Resultat fra opplasting — Supabase eller Dropbox.
+/// Resultat fra opplasting — Dropbox (foretrukket) eller Supabase (sikkerhetsnett).
 class StoredFileResult {
   final String provider;
   final String path;
@@ -24,7 +24,7 @@ class StoredFileResult {
   bool get isDropbox => provider == 'dropbox';
 }
 
-/// Feil når Dropbox mangler eller opplasting feilet (ingen stille Supabase-fallback).
+/// Kun når både Dropbox og Supabase-opplasting feiler.
 class DropboxUploadException implements Exception {
   DropboxUploadException(this.message);
   final String message;
@@ -33,8 +33,8 @@ class DropboxUploadException implements Exception {
   String toString() => message;
 }
 
-/// All nye filopplastinger går til Dropbox (web, iOS, Android).
-/// Supabase er backend (auth/DB); Supabase Storage brukes ikke for nye filer.
+/// Filopplasting: Dropbox først, Supabase som sikkerhetsnett.
+/// Brukeren skal aldri få «Dropbox er ikke koblet» — filen skal lagres.
 class CompanyFileStorage {
   static const int defaultThresholdBytes = 0;
 
@@ -165,89 +165,91 @@ class CompanyFileStorage {
   }
 
   /// Soft-frakoblet → aktiv igjen uten ny OAuth.
-  static Future<void> reactivateDropbox() async {
-    await _client.rpc('reactivate_company_dropbox');
+  static Future<bool> reactivateDropbox() async {
+    final res = await _client.rpc('reactivate_company_dropbox');
+    if (res is Map && res['ok'] == true) return true;
+    return false;
   }
 
-  /// Lagre fil i Dropbox (påkrevd).
+  /// Prøv å gjenopplive soft-frakoblet Dropbox uten å vise feil til bruker.
+  static Future<bool> _ensureDropboxAlive() async {
+    try {
+      if (await isDropboxConnected()) return true;
+      await reactivateDropbox();
+      return await isDropboxConnected();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Lagre fil — Dropbox først, Supabase hvis Dropbox ikke er tilgjengelig.
   ///
-  /// Feiler synlig hvis Dropbox ikke er koblet eller opplasting feiler.
-  /// `allowSupabaseFallback` er kun for eksplisitte intern/test-kall.
+  /// Opplasting skal **aldri** feile bare fordi Dropbox er soft-frakoblet eller
+  /// midlertidig nede. `allowSupabaseFallback` beholdes for API-kompatibilitet
+  /// (alltid true i praksis).
   static Future<StoredFileResult> upload({
     required String supabaseBucket,
     required String storagePath,
     required Uint8List bytes,
     required String category,
     String? fileName,
-    bool allowSupabaseFallback = false,
+    bool allowSupabaseFallback = true,
   }) async {
-    final connected = await isDropboxConnected();
     final safePath = StoragePathSanitizer.storagePath(storagePath);
     final name = fileName ?? safePath.split('/').last;
-
-    if (!connected) {
-      if (allowSupabaseFallback) {
-        debugPrint(
-          'Dropbox ikke koblet — tillater Supabase-fallback ($category).',
-        );
-        return _uploadSupabase(supabaseBucket, safePath, bytes);
-      }
-      throw DropboxUploadException(
-        'Dropbox er ikke koblet. Koble under Mer → Fillagring før du laster opp filer.',
-      );
-    }
-
     final safeName = StoragePathSanitizer.fileName(name);
-    final b64 = base64Encode(bytes);
-    Object? lastError;
 
-    try {
-      final res = await _client.functions.invoke(
-        'dropbox-storage',
-        body: {
-          'file_name': safeName,
-          'category': category,
-          'bytes_base64': b64,
-        },
-        queryParameters: {'action': 'upload'},
-      );
-      final data = res.data;
-      if (data is Map && data['ok'] == true) {
-        final path = (data['path'] as String?)?.trim() ?? '';
-        if (path.isEmpty) {
-          throw DropboxUploadException('Dropbox returnerte tom filsti.');
-        }
-        return StoredFileResult(
-          provider: 'dropbox',
-          path: path,
-          publicOrSignedUrl: data['temporary_link'] as String?,
-          sizeBytes: bytes.length,
+    final connected = await _ensureDropboxAlive();
+    Object? dropboxError;
+
+    if (connected) {
+      try {
+        final res = await _client.functions.invoke(
+          'dropbox-storage',
+          body: {
+            'file_name': safeName,
+            'category': category,
+            'bytes_base64': base64Encode(bytes),
+          },
+          queryParameters: {'action': 'upload'},
         );
+        final data = res.data;
+        if (data is Map && data['ok'] == true) {
+          final path = (data['path'] as String?)?.trim() ?? '';
+          if (path.isNotEmpty) {
+            return StoredFileResult(
+              provider: 'dropbox',
+              path: path,
+              publicOrSignedUrl: data['temporary_link'] as String?,
+              sizeBytes: bytes.length,
+            );
+          }
+          dropboxError = 'Dropbox returnerte tom filsti';
+        } else if (data is Map) {
+          dropboxError = data['error'] ?? data['reason'] ?? 'ukjent feil';
+        } else {
+          dropboxError = 'Opplasting til Dropbox feilet';
+        }
+      } catch (e) {
+        dropboxError = e;
       }
-
-      lastError = data is Map
-          ? (data['error'] ?? data['reason'] ?? 'ukjent feil')
-          : 'Opplasting til Dropbox feilet';
-    } catch (e) {
-      lastError = e;
-      if (e is DropboxUploadException) rethrow;
+      debugPrint('Dropbox upload feilet ($category): $dropboxError — bruker sikkerhetsnett');
+    } else {
+      debugPrint('Dropbox ikke aktiv ($category) — bruker sikkerhetsnett');
     }
 
-    final reason = lastError.toString();
-    debugPrint('Dropbox upload feilet ($category): $reason');
-
-    if (allowSupabaseFallback) {
-      debugPrint('Tillater Supabase-fallback for $category');
-      return _uploadSupabase(supabaseBucket, safePath, bytes);
+    // Alltid lagre filen — aldri blokker bruker med «ikke koblet».
+    try {
+      return await _uploadSupabase(supabaseBucket, safePath, bytes);
+    } catch (supabaseError) {
+      throw DropboxUploadException(
+        'Kunne ikke lagre filen'
+        '${dropboxError != null ? ' (skylagring: $dropboxError)' : ''}'
+        ': $supabaseError',
+      );
     }
-
-    throw DropboxUploadException(
-      'Kunne ikke lagre filen i Dropbox: $reason. '
-      'Sjekk Mer → Fillagring, eller prøv en mindre fil.',
-    );
   }
 
-  /// Kun for eksplisitt `allowSupabaseFallback` (test/intern) — ikke nye prod-opplastinger.
   static Future<StoredFileResult> _uploadSupabase(
     String bucket,
     String path,
