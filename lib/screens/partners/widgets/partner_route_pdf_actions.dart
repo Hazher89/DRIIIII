@@ -226,12 +226,8 @@ class PartnerRoutePdfActions {
     );
   }
 
-  static Color ackDotColor(PartnerRouteShare share) {
-    if (share.isStaged) return RouteDispatchStatus.cellColor(RouteDispatchStatus.staged);
-    if (share.isRegistered) return RouteDispatchStatus.cellColor(RouteDispatchStatus.registered);
-    if (share.ackStatus == 'accepted') return RouteDispatchStatus.cellColor(RouteDispatchStatus.sent);
-    return Colors.red;
-  }
+  static Color ackDotColor(PartnerRouteShare share) =>
+      RouteDispatchStatus.cellColorForShare(share);
 
   static Widget ackDot(PartnerRouteShare share, {double size = 10}) {
     final color = ackDotColor(share);

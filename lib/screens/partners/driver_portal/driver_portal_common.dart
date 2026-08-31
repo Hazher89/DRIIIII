@@ -21,6 +21,16 @@ class DriverPortalData {
     required this.shiftsById,
   });
 
+  List<PartnerRouteShare> get routesNew {
+    final active = routes.where(ownerRouteIsActive).toList();
+    active.sort((a, b) {
+      if (a.requiresAck && !b.requiresAck) return -1;
+      if (b.requiresAck && !a.requiresAck) return 1;
+      return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
+    });
+    return active;
+  }
+
   List<PartnerRouteShare> get routesToday => routes.where(ownerRouteIsToday).toList();
 
   List<PartnerRouteShare> get routesUpcoming =>

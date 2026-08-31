@@ -5,10 +5,8 @@ import '../../core/services/partner/partner_deduction_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../models/partner/partner.dart';
 import '../../models/partner/partner_deduction_case.dart';
-import 'owner_portal/owner_portal_common.dart';
 import 'owner_portal/owner_portal_deduction_detail_sheet.dart';
 import 'owner_portal/owner_portal_timesheet_page.dart';
-import 'widgets/partner_portal_route_detail_page.dart';
 import 'widgets/partner_route_pdf_actions.dart';
 import 'widgets/vehicle_inspection_detail_page.dart';
 
@@ -64,23 +62,11 @@ abstract final class PartnerPushNavigation {
   }) async {
     final share = await PartnerService.fetchRouteShareById(routeShareId);
     if (share == null || !context.mounted) return;
-    final data = await OwnerPortalData.load(partner);
-    if (!context.mounted) return;
-    if (share.requiresAck) {
-      await PartnerRoutePdfActions.openPdfWithAcceptFlow(
-        context,
-        share: share,
-        onBehalfOfDriver: isOwner,
-        onReload: () async {},
-      );
-      return;
-    }
-    await PartnerPortalRouteDetailPage.open(
+    await PartnerRoutePdfActions.openPdfWithAcceptFlow(
       context,
-      route: share,
-      shifts: data.shiftsById,
-      onReload: () async {},
+      share: share,
       onBehalfOfDriver: isOwner,
+      onReload: () async {},
     );
   }
 

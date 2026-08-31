@@ -40,19 +40,15 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
       setState(() {
         _data = d;
         _loading = false;
-        if (d.pendingAck > 0) _tab = -1;
       });
     }
   }
-
-  List<PartnerRouteShare> get _pending =>
-      _data?.routes.where((r) => r.requiresAck).toList() ?? [];
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = isDark ? const Color(0xFF0F1419) : const Color(0xFFF4F6F8);
-    final pending = _pending;
+    final pending = _data?.pendingAck ?? 0;
 
     return PartnerPortalPageShell(
       backgroundColor: surface,
@@ -62,7 +58,7 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (pending.isNotEmpty)
+                if (pending > 0)
                   Material(
                     color: Colors.orange.shade100,
                     child: Padding(
@@ -73,7 +69,7 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
-                              '${pending.length} nye ruter — trykk på en rute for å åpne, se PDF og akseptere',
+                              '$pending nye ruter — trykk på en rute for å åpne, se PDF og akseptere',
                               style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 color: Colors.orange.shade900,
@@ -88,23 +84,18 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                   child: SegmentedButton<int>(
                     segments: [
-                      if (pending.isNotEmpty)
-                        ButtonSegment(
-                          value: -1,
-                          label: Text('Nye (${pending.length})'),
-                          icon: const Icon(Icons.mark_email_unread, size: 18),
-                        ),
                       ButtonSegment(
                         value: 0,
-                        label: Text('I dag (${_data!.routesToday.length})'),
+                        label: Text('Nye ruter (${_data!.routesNew.length})'),
+                        icon: Icon(
+                          pending > 0 ? Icons.mark_email_unread : Icons.route_outlined,
+                          size: 18,
+                        ),
                       ),
                       ButtonSegment(
                         value: 1,
-                        label: Text('Kommende (${_data!.routesUpcoming.length})'),
-                      ),
-                      ButtonSegment(
-                        value: 2,
                         label: Text('Tidligere (${_data!.routesArchive.length})'),
+                        icon: const Icon(Icons.history, size: 18),
                       ),
                     ],
                     selected: {_tab},
@@ -113,17 +104,9 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
                 ),
                 Expanded(
                   child: switch (_tab) {
-                    -1 => _routeList(
-                        pending,
-                        'Ingen nye ruter. Du får varsel når noe tildeles.',
-                      ),
                     0 => _routeList(
-                        _data!.routesToday,
-                        'Ingen ruter i dag. Sjekk «Nye» eller «Kommende».',
-                      ),
-                    1 => _routeList(
-                        _data!.routesUpcoming,
-                        'Ingen kommende ruter.',
+                        _data!.routesNew,
+                        'Ingen nye ruter. Du får varsel når noe tildeles.',
                       ),
                     _ => _routeList(
                         _data!.routesArchive,

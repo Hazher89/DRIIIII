@@ -12,6 +12,9 @@ class RouteNotifyPrefs {
 
   static const all = RouteNotifyPrefs();
   static const none = RouteNotifyPrefs(app: false, sms: false, email: false);
+  static const smsOnly = RouteNotifyPrefs(app: false, sms: true, email: false);
+  static const pushOnly = RouteNotifyPrefs(app: true, sms: false, email: false);
+  static const smsAndPush = RouteNotifyPrefs(app: true, sms: true, email: false);
 
   bool get anyEnabled => app || sms || email;
 

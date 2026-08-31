@@ -18,12 +18,15 @@ import '../../../core/services/partner/sap_route_inbox_live.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../models/partner/route_notify_prefs.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/route_ack_nudge_result.dart';
 import '../../../models/partner/route_reminder_flag.dart';
 import 'partner_route_pdf_actions.dart';
 import 'partner_route_partner_status.dart';
+import 'route_calendar_chip.dart';
+import 'route_publish_notify_buttons.dart';
 import 'route_reminder_badge.dart';
 import 'partner_route_single_assign_sheet.dart';
 import 'partner_route_auto_mass_sheet.dart';
@@ -406,11 +409,30 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   Color? _vehicleAckDotColor(String vehicleId) {
     final routes = _shares.where((s) => s.partnerVehicleId == vehicleId).toList();
     if (routes.isEmpty) return null;
-    if (routes.any((s) => s.isStaged)) return RouteDispatchStatus.cellColor(RouteDispatchStatus.staged);
-    if (routes.any((s) => s.isRegistered)) return RouteDispatchStatus.cellColor(RouteDispatchStatus.registered);
-    if (routes.any((s) => s.requiresAck)) return Colors.red;
-    return RouteDispatchStatus.cellColor(RouteDispatchStatus.sent);
+    routes.sort((a, b) => _shareDotPriority(a).compareTo(_shareDotPriority(b)));
+    return RouteDispatchStatus.cellColorForShare(routes.first);
   }
+
+  int _shareDotPriority(PartnerRouteShare s) {
+    if (s.isStaged) return 0;
+    if (s.isRegistered) return 1;
+    if (s.ackStatus == 'rejected') return 2;
+    if (s.requiresAck) return 3;
+    if (s.isSentWithNotify && !s.pdfWasOpened) return 4;
+    if (s.pdfWasOpened && s.requiresAck) return 5;
+    if (s.ackStatus == 'accepted') return 6;
+    return 7;
+  }
+
+  String? _shiftName(String? shiftId) => shiftNameFor(_shifts, shiftId);
+
+  List<Widget> get _dispatchLegendChips => [
+        _dispatchLegendChip('Kladd', const Color(0xFFFF9800)),
+        _dispatchLegendChip('Uten varsel', const Color(0xFF78909C)),
+        _dispatchLegendChip('Varslet', const Color(0xFF2E7D32)),
+        _dispatchLegendChip('PDF lest', const Color(0xFF1565C0)),
+        _dispatchLegendChip('Akseptert', const Color(0xFF1B5E20)),
+      ];
 
   Widget _dispatchLegendChip(String label, Color color) {
     return Row(
@@ -788,11 +810,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     spacing: 16,
                     runSpacing: 4,
                     crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      _dispatchLegendChip('Kladd', RouteDispatchStatus.cellColor(RouteDispatchStatus.staged)),
-                      _dispatchLegendChip('Uten varsel', RouteDispatchStatus.cellColor(RouteDispatchStatus.registered)),
-                      _dispatchLegendChip('Varslet', RouteDispatchStatus.cellColor(RouteDispatchStatus.sent)),
-                    ],
+                    children: _dispatchLegendChips,
                   ),
                   const SizedBox(height: 10),
                   if (_mode == _PlannerViewMode.month) ...[
@@ -1136,11 +1154,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             Wrap(
               spacing: 8,
               runSpacing: 6,
-              children: [
-                _dispatchLegendChip('Kladd', RouteDispatchStatus.cellColor(RouteDispatchStatus.staged)),
-                _dispatchLegendChip('Uten varsel', RouteDispatchStatus.cellColor(RouteDispatchStatus.registered)),
-                _dispatchLegendChip('Varslet', RouteDispatchStatus.cellColor(RouteDispatchStatus.sent)),
-              ],
+              children: _dispatchLegendChips,
             ),
           ],
         ),
@@ -1393,44 +1407,22 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     DateTime day,
     bool isDark,
   ) {
-    final start = TimeOfDay.fromDateTime(
-      s.routeStartAt?.toLocal() ?? DateTime(day.year, day.month, day.day, 6),
-    ).format(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: RouteDispatchStatus.cellFill(s.dispatchStatus, isDark: isDark),
-        borderRadius: BorderRadius.circular(10),
-        border: Border(left: BorderSide(color: _shiftColor(s.shiftId), width: 4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              PartnerRoutePdfActions.ackDot(s, size: 9),
-              const SizedBox(width: 6),
-              Text(start, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
-              const SizedBox(width: 6),
-              ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 160),
-                child: Text(
-                  s.title?.split('—').first ?? 'Rute',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-          if (s.isSentWithNotify) ...[
-            const SizedBox(height: 6),
-            PartnerRoutePartnerStatus(share: s, compact: true),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        RouteCalendarChip(
+          share: s,
+          day: day,
+          isDark: isDark,
+          shiftColor: _shiftColor(s.shiftId),
+          shiftName: _shiftName(s.shiftId),
+        ),
+        if (s.isSentWithNotify) ...[
+          const SizedBox(height: 6),
+          PartnerRoutePartnerStatus(share: s, compact: true),
         ],
-      ),
+      ],
     );
   }
 
@@ -1701,50 +1693,13 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     for (final s in list.take(2))
                       Padding(
                         padding: const EdgeInsets.only(bottom: 4),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(6),
-                          child: Material(
-                            color: RouteDispatchStatus.cellFill(s.dispatchStatus, isDark: isDark),
-                            child: Container(
-                              decoration: BoxDecoration(
-                                border: Border(
-                                  left: BorderSide(color: _shiftColor(s.shiftId), width: 4),
-                                ),
-                              ),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        PartnerRoutePdfActions.ackDot(s, size: 8),
-                                        const SizedBox(width: 4),
-                                        Expanded(
-                                          child: Text(
-                                            TimeOfDay.fromDateTime(
-                                              s.routeStartAt?.toLocal() ??
-                                                  DateTime(day.year, day.month, day.day, 6),
-                                            ).format(context),
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w900,
-                                              fontSize: 10,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    Text(
-                                      s.title?.split('—').first ?? 'Rute',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 9, height: 1.15),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
+                        child: RouteCalendarChip(
+                          share: s,
+                          day: day,
+                          isDark: isDark,
+                          shiftColor: _shiftColor(s.shiftId),
+                          shiftName: _shiftName(s.shiftId),
+                          compact: true,
                         ),
                       ),
                     if (list.length > 2)
@@ -1907,7 +1862,9 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
     );
   }
 
-  Future<void> _dispatchShare(PartnerRouteShare s, {required bool notifyDriver}) async {
+  Future<void> _dispatchShare(PartnerRouteShare s, {RouteNotifyPrefs? notifyPrefs}) async {
+    final prefs = notifyPrefs ?? RouteNotifyPrefs.none;
+    final notifyDriver = prefs.anyEnabled;
     final shiftId = s.shiftId ?? widget.shifts.where((x) => !x.isAvailability).firstOrNull?.id;
     if (shiftId == null) return;
     final routeDay = PartnerService.routeDayForShare(s);
@@ -1936,6 +1893,7 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
         date: routeDay,
         shareIdToStartAt: {s.id: at},
         notifyDriver: notifyDriver,
+        notifyPrefs: prefs,
       );
       widget.onChanged();
       if (mounted) {
@@ -1944,8 +1902,8 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
           SnackBar(
             content: Text(
               notifyDriver
-                  ? 'Sjåfør varslet på SMS — må akseptere ruten'
-                  : 'Rute registrert i kalender — ingen SMS sendt',
+                  ? 'Sjåfør varslet (${prefs.shortLabel})'
+                  : 'Rute registrert i kalender — ingen varsel sendt',
             ),
           ),
         );
@@ -2025,28 +1983,17 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
                         label: const Text('Flytt rute'),
                       ),
                       const SizedBox(height: 8),
-                      if (s.isStaged || s.isRegistered) ...[
-                        FilledButton.icon(
-                          onPressed: _busy ? null : () => _dispatchShare(s, notifyDriver: false),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          icon: const Icon(Icons.inventory_2_outlined),
-                          label: const Text('Uten varsel'),
-                        ),
+                      if (s.isStaged || s.isRegistered || s.isSentWithNotify) ...[
                         const SizedBox(height: 8),
-                      ],
-                      if (s.isStaged || s.isRegistered || s.isSentWithNotify)
-                        FilledButton.icon(
-                          onPressed: _busy ? null : () => _dispatchShare(s, notifyDriver: true),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: DriftProTheme.primaryGreen,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                        RoutePublishNotifyButtons(
+                          busy: _busy,
+                          showWithoutNotify: s.isStaged || s.isRegistered,
+                          onPublish: (prefs) => _dispatchShare(
+                            s,
+                            notifyPrefs: prefs ?? RouteNotifyPrefs.none,
                           ),
-                          icon: Icon(s.isSentWithNotify ? Icons.sms_outlined : Icons.rocket_launch_outlined),
-                          label: Text(s.isSentWithNotify ? 'Send SMS på nytt' : 'Publiser + SMS'),
                         ),
+                      ],
                       if (s.requiresAck) ...[
                         const SizedBox(height: 8),
                         FilledButton.tonalIcon(
@@ -2123,6 +2070,16 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
   final Map<String, TextEditingController> _noteCtrls = {};
   final Map<String, TimeOfDay> _startByShare = {};
   final Map<String, String?> _shiftByShare = {};
+  String? _pendingNotifyShareId;
+
+  PartnerRouteShare? get _pendingNotifyShare {
+    final id = _pendingNotifyShareId;
+    if (id == null) return null;
+    for (final s in _live) {
+      if (s.id == id) return s;
+    }
+    return null;
+  }
 
   @override
   void initState() {
@@ -2220,21 +2177,26 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
           if (schedule.routeStartAt != null) {
             _startByShare[created.id] = TimeOfDay.fromDateTime(startAt);
           }
+          _shiftByShare[created.id] = _draftShiftId;
+          _pendingNotifyShareId = created.id;
         });
         widget.onSaved();
       } else {
         widget.onRoutePlacedOnDate?.call(routeDay);
       }
 
-      if (mounted) {
+      if (mounted && !placedOnPdfDay) {
         final dayLabel = DateFormat('d.M.y').format(routeDay);
         final timeLabel = schedule.routeStartAt != null
             ? DateFormat('HH:mm').format(startAt.toLocal())
             : null;
-        final msg = placedOnPdfDay
-            ? 'PDF lagt i kladd for ${row.vehicle.unitCode} — $dayLabel${timeLabel != null ? ' kl. $timeLabel' : ''} fra PDF'
-            : 'Rute lagt på $dayLabel${timeLabel != null ? ' kl. $timeLabel' : ''} fra PDF (kalenderen hoppet til riktig uke)';
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Rute lagt på $dayLabel${timeLabel != null ? ' kl. $timeLabel' : ''} fra PDF (kalenderen hoppet til riktig uke)',
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -2394,7 +2356,12 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
     }
   }
 
-  Future<void> _publishOne(PartnerRouteShare s, {required bool notifyDriver}) async {
+  Future<void> _publishOne(
+    PartnerRouteShare s, {
+    required bool notifyDriver,
+    RouteNotifyPrefs notifyPrefs = RouteNotifyPrefs.all,
+    bool closeSheet = true,
+  }) async {
     final shiftItems = widget.shifts.where((x) => !x.isAvailability).toList();
     final shiftId = _shiftByShare[s.id] ?? s.shiftId ?? _draftShiftId;
     final start = _startByShare[s.id] ?? const TimeOfDay(hour: 6, minute: 0);
@@ -2421,18 +2388,19 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
         date: routeDay,
         shareIdToStartAt: {s.id: at},
         notifyDriver: notifyDriver,
+        notifyPrefs: notifyPrefs,
       );
       widget.onSaved();
       if (mounted) {
-        Navigator.pop(context);
+        if (closeSheet) Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              notifyDriver
+              notifyDriver && notifyPrefs.anyEnabled
                   ? (s.isStaged
-                      ? 'Rute publisert — sjåfør får SMS og må akseptere'
-                      : 'Rute oppdatert — sjåfør får ny SMS og må akseptere på nytt')
-                  : 'Rute registrert i kalender — ingen SMS sendt',
+                      ? 'Rute publisert — varsling: ${notifyPrefs.shortLabel}'
+                      : 'Rute oppdatert — varsling: ${notifyPrefs.shortLabel}')
+                  : 'Rute registrert i kalender — ingen varsel sendt',
             ),
           ),
         );
@@ -2442,6 +2410,102 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _finishPendingNotify({RouteNotifyPrefs? prefs}) async {
+    final share = _pendingNotifyShare;
+    if (share == null) return;
+
+    if (prefs == null || !prefs.anyEnabled) {
+      setState(() => _pendingNotifyShareId = null);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('PDF lagret som kladd — ingen varsel sendt')),
+        );
+      }
+      return;
+    }
+
+    await _publishOne(
+      share,
+      notifyDriver: true,
+      notifyPrefs: prefs,
+      closeSheet: false,
+    );
+    if (mounted) {
+      setState(() {
+        _pendingNotifyShareId = null;
+        final i = _live.indexWhere((s) => s.id == share.id);
+        if (i >= 0) {
+          _live[i] = _live[i].copyWithMerged(dispatchStatus: 'sent');
+        }
+      });
+    }
+  }
+
+  Widget _buildPostUploadNotifyPanel() {
+    final share = _pendingNotifyShare;
+    if (share == null) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12, bottom: 8),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+        border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.check_circle, color: DriftProTheme.primaryGreen, size: 22),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'PDF lastet opp — velg varsel',
+                  style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            share.title ?? 'Ny rute',
+            style: DriftProTheme.bodySm.copyWith(color: Colors.grey.shade700),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            onPressed: _busy ? null : () => _finishPendingNotify(prefs: RouteNotifyPrefs.smsOnly),
+            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+            icon: const Icon(Icons.sms_outlined),
+            label: const Text('Varsle med SMS'),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _busy ? null : () => _finishPendingNotify(prefs: RouteNotifyPrefs.pushOnly),
+            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+            icon: const Icon(Icons.notifications_active_outlined),
+            label: const Text('Varsle med push (app)'),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _busy ? null : () => _finishPendingNotify(prefs: RouteNotifyPrefs.smsAndPush),
+            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+            icon: const Icon(Icons.send_outlined),
+            label: const Text('Varsle med SMS + push'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: _busy ? null : () => _finishPendingNotify(),
+            child: const Text('Gå videre uten å varsle'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _ackShortStatic(String x) => switch (x) {
@@ -2572,6 +2636,24 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                           maxLines: 4,
                         ),
                         const SizedBox(height: 10),
+                        if (s.isStaged || s.isRegistered || s.isSentWithNotify)
+                          RoutePublishNotifyButtons(
+                            busy: _busy,
+                            compact: true,
+                            showWithoutNotify: s.isStaged || s.isRegistered,
+                            onPublish: (prefs) {
+                              if (prefs == null || !prefs.anyEnabled) {
+                                return _publishOne(s, notifyDriver: false);
+                              }
+                              return _publishOne(
+                                s,
+                                notifyDriver: true,
+                                notifyPrefs: prefs,
+                              );
+                            },
+                          ),
+                        if (s.isStaged || s.isRegistered || s.isSentWithNotify)
+                          const SizedBox(height: 8),
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
@@ -2589,28 +2671,6 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                               onPressed: _busy ? null : () => _deleteRoute(s),
                               icon: const Icon(Icons.delete_outline, size: 18),
                               label: const Text('Slett rute'),
-                            ),
-                            FilledButton(
-                              onPressed: _busy ? null : () => _publishOne(s, notifyDriver: false),
-                              style: FilledButton.styleFrom(
-                                backgroundColor: RouteDispatchStatus.cellColor(RouteDispatchStatus.registered),
-                              ),
-                              child: Text(
-                                s.isStaged || s.isRegistered
-                                    ? 'Publiser uten varsel'
-                                    : 'Registrer uten varsel',
-                              ),
-                            ),
-                            FilledButton(
-                              onPressed: _busy ? null : () => _publishOne(s, notifyDriver: true),
-                              style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-                              child: Text(
-                                s.isStaged
-                                    ? 'Publiser + SMS'
-                                    : s.isRegistered
-                                        ? 'Varsle (SMS)'
-                                        : 'Oppdater + SMS',
-                              ),
                             ),
                             if (s.requiresAck)
                               FilledButton.tonal(
@@ -2667,7 +2727,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    onPressed: _busy ? null : _pickPdf,
+                    onPressed: (_busy || _pendingNotifyShareId != null) ? null : _pickPdf,
                     style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
                     icon: _busy
                         ? SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
@@ -2677,6 +2737,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                 ),
               ],
             ),
+            if (_pendingNotifyShareId != null) _buildPostUploadNotifyPanel(),
             const SizedBox(height: 8),
             if (_live.isEmpty && shiftItems.isNotEmpty && _draftShiftId != null)
               FilledButton.icon(
@@ -2731,6 +2792,7 @@ extension on PartnerRouteShare {
     String? shiftId,
     String? notes,
     DateTime? routeStartAt,
+    String? dispatchStatus,
   }) {
     return PartnerRouteShare(
       id: id,
@@ -2748,7 +2810,7 @@ extension on PartnerRouteShare {
       shiftId: shiftId ?? this.shiftId,
       partnerVehicleId: partnerVehicleId,
       routeStartAt: routeStartAt ?? this.routeStartAt,
-      dispatchStatus: dispatchStatus,
+      dispatchStatus: dispatchStatus ?? this.dispatchStatus,
       pdfSearchText: pdfSearchText,
       createdAt: createdAt,
     );
