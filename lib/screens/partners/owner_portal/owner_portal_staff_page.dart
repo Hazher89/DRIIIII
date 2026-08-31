@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/partner_workforce_service.dart';
 import '../../../core/services/sms/sms_phone_utils.dart';
@@ -25,6 +26,7 @@ class OwnerPortalStaffPage extends StatefulWidget {
 
 class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
   List<PartnerStaff> _staff = [];
+  List<PartnerVehicle> _vehicles = [];
   Map<String, PartnerPortalAccount> _accountsById = {};
   bool _loading = true;
   bool _enabled = false;
@@ -59,6 +61,7 @@ class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
         partnerId: widget.partner.id,
         includeInactive: true,
       );
+      final vehicles = await PartnerService.fetchVehicles(widget.partner.id);
       final accounts =
           await PartnerService.fetchPortalAccounts(widget.partner.id);
       final byId = <String, PartnerPortalAccount>{};
@@ -69,6 +72,7 @@ class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
       setState(() {
         _enabled = true;
         _staff = list;
+        _vehicles = vehicles.where((v) => v.isActive).toList();
         _accountsById = byId;
         _loading = false;
       });
@@ -388,18 +392,184 @@ class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
   }
 
   Future<void> _toggleRoutes(PartnerStaff s, bool enabled) async {
+    if (!enabled) {
+      try {
+        await PartnerWorkforceService.setRouteAccess(
+          staffId: s.id,
+          enabled: false,
+        );
+        await _load();
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: DriftProTheme.error),
+        );
+      }
+      return;
+    }
+
+    final picked = await _pickRouteVehicles(
+      title: 'Velg biler for ${s.fullName}',
+      initialSelected: s.routeVehicleIds.toSet(),
+    );
+    if (picked == null) return;
+
     try {
-      await PartnerWorkforceService.setCanManageRoutes(
+      await PartnerWorkforceService.setRouteAccess(
         staffId: s.id,
-        enabled: enabled,
+        enabled: true,
+        vehicleIds: picked.toList(),
       );
       await _load();
+      if (!mounted) return;
+      if (picked.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Rutetilgang aktivert uten biler — velg biler for at ansatt skal se ruter.',
+            ),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$e'), backgroundColor: DriftProTheme.error),
       );
     }
+  }
+
+  Future<void> _editRouteVehicles(PartnerStaff s) async {
+    final picked = await _pickRouteVehicles(
+      title: 'Biler for ${s.fullName}',
+      initialSelected: s.routeVehicleIds.toSet(),
+    );
+    if (picked == null) return;
+    try {
+      await PartnerWorkforceService.setRouteVehicles(
+        staffId: s.id,
+        vehicleIds: picked.toList(),
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            picked.isEmpty
+                ? 'Ingen biler valgt — ansatt ser ingen ruter før du velger bil.'
+                : 'Oppdatert: ${picked.length} bil${picked.length == 1 ? '' : 'er'}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), backgroundColor: DriftProTheme.error),
+      );
+    }
+  }
+
+  Future<Set<String>?> _pickRouteVehicles({
+    required String title,
+    required Set<String> initialSelected,
+  }) async {
+    if (_vehicles.isEmpty) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ingen aktive MAVI-biler registrert på bedriften ennå.'),
+        ),
+      );
+      return null;
+    }
+
+    final selected = Set<String>.from(initialSelected);
+
+    return showModalBottomSheet<Set<String>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  0,
+                  20,
+                  20 + MediaQuery.viewInsetsOf(ctx).bottom,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Velg én eller flere biler ansatt kan motta og godkjenne ruter for.',
+                      style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: ListView(
+                        shrinkWrap: true,
+                        children: [
+                          for (final v in _vehicles)
+                            CheckboxListTile(
+                              value: selected.contains(v.id),
+                              onChanged: (on) {
+                                setLocal(() {
+                                  if (on == true) {
+                                    selected.add(v.id);
+                                  } else {
+                                    selected.remove(v.id);
+                                  }
+                                });
+                              },
+                              title: Text(
+                                MaviUnitCodes.normalize(v.unitCode),
+                                style: const TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              subtitle: Text(v.registrationNumber),
+                              secondary: const Icon(Icons.local_shipping_outlined),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => setLocal(() => selected.clear()),
+                          child: const Text('Ingen biler'),
+                        ),
+                        TextButton(
+                          onPressed: () => setLocal(() {
+                            selected
+                              ..clear()
+                              ..addAll(_vehicles.map((v) => v.id));
+                          }),
+                          child: const Text('Alle biler'),
+                        ),
+                      ],
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, Set<String>.from(selected)),
+                      child: Text(
+                        selected.isEmpty
+                            ? 'Lagre uten biler'
+                            : 'Lagre (${selected.length} bil${selected.length == 1 ? '' : 'er'})',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _setActive(PartnerStaff s, bool active) async {
@@ -601,10 +771,12 @@ class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
                                 child: _StaffCard(
                                   staff: s,
                                   username: username,
+                                  vehicles: _vehicles,
                                   onProvision: () => _provision(s),
                                   onResetPassword: () => _resetPassword(s),
                                   onEdit: () => _editDetails(s),
                                   onToggleRoutes: (v) => _toggleRoutes(s, v),
+                                  onEditRouteVehicles: () => _editRouteVehicles(s),
                                   onActivate: () => _setActive(s, true),
                                   onDeactivate: () => _setActive(s, false),
                                   onDelete: () => _hardDelete(s),
@@ -668,10 +840,12 @@ class _StaffCard extends StatelessWidget {
   const _StaffCard({
     required this.staff,
     required this.username,
+    required this.vehicles,
     required this.onProvision,
     required this.onResetPassword,
     required this.onEdit,
     required this.onToggleRoutes,
+    required this.onEditRouteVehicles,
     required this.onActivate,
     required this.onDeactivate,
     required this.onDelete,
@@ -679,13 +853,24 @@ class _StaffCard extends StatelessWidget {
 
   final PartnerStaff staff;
   final String? username;
+  final List<PartnerVehicle> vehicles;
   final VoidCallback onProvision;
   final VoidCallback onResetPassword;
   final VoidCallback onEdit;
   final ValueChanged<bool> onToggleRoutes;
+  final VoidCallback onEditRouteVehicles;
   final VoidCallback onActivate;
   final VoidCallback onDeactivate;
   final VoidCallback onDelete;
+
+  String _vehicleLabel(String id) {
+    for (final v in vehicles) {
+      if (v.id == id) {
+        return '${MaviUnitCodes.normalize(v.unitCode)} · ${v.registrationNumber}';
+      }
+    }
+    return id.substring(0, 8);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -782,6 +967,16 @@ class _StaffCard extends StatelessWidget {
                               label: 'Rutetilgang',
                               color: Colors.deepOrange,
                             ),
+                          if (s.canManageRoutes && s.routeVehicleIds.isEmpty)
+                            _Tag(
+                              label: 'Ingen bil valgt',
+                              color: Colors.red.shade700,
+                            ),
+                          if (s.canManageRoutes && s.routeVehicleIds.isNotEmpty)
+                            _Tag(
+                              label: '${s.routeVehicleIds.length} bil${s.routeVehicleIds.length == 1 ? '' : 'er'}',
+                              color: const Color(0xFF1565C0),
+                            ),
                         ],
                       ),
                     ],
@@ -866,11 +1061,47 @@ class _StaffCard extends StatelessWidget {
                     contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                     title: const Text('Rutetilgang'),
                     subtitle: const Text(
-                      'Se ruter, aksepter i appen og motta push-varsel for nye ruter',
+                      'Velg hvilke MAVI-biler ansatt kan motta, se og godkjenne ruter for',
                     ),
                     value: s.canManageRoutes,
                     onChanged: hasLogin ? onToggleRoutes : null,
                   ),
+                  if (s.canManageRoutes) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          onPressed: onEditRouteVehicles,
+                          icon: const Icon(Icons.local_shipping_outlined, size: 18),
+                          label: Text(
+                            s.routeVehicleIds.isEmpty
+                                ? 'Velg biler'
+                                : 'Endre biler (${s.routeVehicleIds.length})',
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (s.routeVehicleIds.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (final vid in s.routeVehicleIds)
+                              Chip(
+                                label: Text(
+                                  _vehicleLabel(vid),
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                          ],
+                        ),
+                      ),
+                  ],
                 ],
               ),
             ),

@@ -12,8 +12,9 @@ class PartnerStaff {
   final bool isActive;
   final DateTime? deactivatedAt;
   final String? notes;
-  /// Når true: ansatt kan se/godkjenne ruter for denne partneren.
+  /// Når true: ansatt kan se/godkjenne ruter for valgte biler.
   final bool canManageRoutes;
+  final List<String> routeVehicleIds;
   final DateTime createdAt;
 
   const PartnerStaff({
@@ -31,8 +32,22 @@ class PartnerStaff {
     this.deactivatedAt,
     this.notes,
     this.canManageRoutes = false,
+    this.routeVehicleIds = const [],
     required this.createdAt,
   });
+
+  static List<String> _parseRouteVehicleIds(Map<String, dynamic> json) {
+    final nested = json['partner_staff_route_vehicles'];
+    if (nested is! List) return const [];
+    final ids = <String>[];
+    for (final row in nested) {
+      if (row is Map) {
+        final id = row['partner_vehicle_id'] as String?;
+        if (id != null && id.isNotEmpty) ids.add(id);
+      }
+    }
+    return ids;
+  }
 
   factory PartnerStaff.fromJson(Map<String, dynamic> json) {
     return PartnerStaff(
@@ -52,6 +67,7 @@ class PartnerStaff {
           : null,
       notes: json['notes'] as String?,
       canManageRoutes: json['can_manage_routes'] as bool? ?? false,
+      routeVehicleIds: _parseRouteVehicleIds(json),
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
@@ -90,6 +106,7 @@ class PartnerStaff {
     DateTime? deactivatedAt,
     bool clearDeactivatedAt = false,
     bool? canManageRoutes,
+    List<String>? routeVehicleIds,
   }) {
     return PartnerStaff(
       id: id,
@@ -108,6 +125,7 @@ class PartnerStaff {
           : (deactivatedAt ?? this.deactivatedAt),
       notes: notes ?? this.notes,
       canManageRoutes: canManageRoutes ?? this.canManageRoutes,
+      routeVehicleIds: routeVehicleIds ?? this.routeVehicleIds,
       createdAt: createdAt,
     );
   }

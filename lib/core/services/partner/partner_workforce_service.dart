@@ -54,7 +54,10 @@ class PartnerWorkforceService {
     required String partnerId,
     bool includeInactive = false,
   }) async {
-    var q = _client.from('partner_staff').select().eq('partner_id', partnerId);
+    var q = _client
+        .from('partner_staff')
+        .select('*, partner_staff_route_vehicles(partner_vehicle_id)')
+        .eq('partner_id', partnerId);
     if (!includeInactive) q = q.eq('is_active', true);
     final data = await q.order('full_name') as List<dynamic>;
     return data
@@ -139,14 +142,44 @@ class PartnerWorkforceService {
     required String staffId,
     required bool enabled,
   }) async {
+    return setRouteAccess(staffId: staffId, enabled: enabled);
+  }
+
+  /// Slå rutetilgang av/på og sett hvilke biler ansatt kan håndtere ruter for.
+  static Future<PartnerStaff> setRouteAccess({
+    required String staffId,
+    required bool enabled,
+    List<String> vehicleIds = const [],
+  }) async {
     final row = await _client.rpc(
-      'partner_staff_set_can_manage_routes',
+      'partner_staff_set_route_access',
       params: {
         'p_staff_id': staffId,
         'p_enabled': enabled,
+        'p_vehicle_ids': enabled ? vehicleIds : <String>[],
       },
     );
-    return PartnerStaff.fromJson(Map<String, dynamic>.from(row as Map));
+    return _staffFromRpcRow(row);
+  }
+
+  /// Oppdater bil-liste uten å endre rutetilgang (kan være tom = ingen ruter).
+  static Future<PartnerStaff> setRouteVehicles({
+    required String staffId,
+    required List<String> vehicleIds,
+  }) async {
+    final row = await _client.rpc(
+      'partner_staff_set_route_vehicles',
+      params: {
+        'p_staff_id': staffId,
+        'p_vehicle_ids': vehicleIds,
+      },
+    );
+    return _staffFromRpcRow(row);
+  }
+
+  static PartnerStaff _staffFromRpcRow(Object? row) {
+    final map = Map<String, dynamic>.from(row as Map);
+    return PartnerStaff.fromJson(map);
   }
 
   /// Innlogget brukers ansatt-rad (kun egen — GDPR).
@@ -155,7 +188,7 @@ class PartnerWorkforceService {
     if (uid == null) return null;
     final row = await _client
         .from('partner_staff')
-        .select()
+        .select('*, partner_staff_route_vehicles(partner_vehicle_id)')
         .eq('profile_id', uid)
         .eq('is_active', true)
         .maybeSingle();

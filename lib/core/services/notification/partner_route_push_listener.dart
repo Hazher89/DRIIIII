@@ -6,20 +6,24 @@ import '../../config/driftpro_client.dart';
 import 'push_notification_service.dart';
 import '../native_permissions_service.dart';
 
-/// Realtime + lokal push når rute tildeles sjåfør eller bil-eier.
+  /// Realtime + lokal push når rute tildeles sjåfør, bil-eier eller ansatt.
 abstract final class PartnerRoutePushListener {
   static RealtimeChannel? _channel;
   static String? _partnerId;
+  static Set<String>? _allowedVehicleIds;
   static bool _askedNotifications = false;
 
-  /// [partnerVehicleId]: sjåfør — kun den bilen. Null: eier — alle biler for partneren.
+  /// [partnerVehicleId]: sjåfør — kun den bilen. Null: eier/ansatt — partner scope.
+  /// [allowedVehicleIds]: ansatt — kun valgte biler (tom = ingen varsler).
   static void start({
     required String partnerId,
     String? partnerVehicleId,
+    Set<String>? allowedVehicleIds,
   }) {
     if (!DriftProClient.isMobile) return;
     stop();
     _partnerId = partnerId;
+    _allowedVehicleIds = allowedVehicleIds;
     _askedNotifications = false;
 
     unawaited(_ensureNotificationsOnce());
@@ -92,6 +96,7 @@ abstract final class PartnerRoutePushListener {
 
   static void stop() {
     _partnerId = null;
+    _allowedVehicleIds = null;
     final ch = _channel;
     _channel = null;
     if (ch != null) {
@@ -103,6 +108,11 @@ abstract final class PartnerRoutePushListener {
     final pid = _partnerId;
     if (pid != null && row['partner_id']?.toString() != pid) return;
     if (row['dispatch_status']?.toString() != 'sent') return;
+    final vehicleId = row['partner_vehicle_id']?.toString();
+    final allowed = _allowedVehicleIds;
+    if (allowed != null) {
+      if (vehicleId == null || !allowed.contains(vehicleId)) return;
+    }
     final title = row['title']?.toString();
     unawaited(PushNotificationService.showRouteAssigned(
       title: 'Ny rute i DriftPro',

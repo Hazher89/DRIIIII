@@ -98,6 +98,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   bool _loading = true;
   bool _workforceEnabled = false;
   bool _staffCanManageRoutes = false;
+  Set<String> _staffRouteVehicleIds = {};
   OwnerPortalRoutesFocus? _routesFocus;
   RealtimeChannel? _workforceChannel;
   StreamSubscription<PushNavigationTarget>? _pushNavSub;
@@ -172,7 +173,10 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     if (widget.portalAccountKind == 'staff' &&
         _workforceEnabled &&
         _staffCanManageRoutes) {
-      PartnerRoutePushListener.start(partnerId: pid);
+      PartnerRoutePushListener.start(
+        partnerId: pid,
+        allowedVehicleIds: _staffRouteVehicleIds,
+      );
     }
   }
 
@@ -228,22 +232,28 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     try {
       final enabled = await PartnerWorkforceService.isEnabled(pid);
       var staffRoutes = _staffCanManageRoutes;
+      var staffVehicleIds = _staffRouteVehicleIds;
       if (widget.portalAccountKind == 'staff') {
         try {
           final me = await PartnerWorkforceService.myStaffRecord();
           staffRoutes = me?.canManageRoutes == true && enabled;
+          staffVehicleIds = me?.routeVehicleIds.toSet() ?? {};
         } catch (_) {
           staffRoutes = false;
+          staffVehicleIds = {};
         }
       }
       if (!mounted) return;
       if (enabled == _workforceEnabled &&
-          staffRoutes == _staffCanManageRoutes) {
+          staffRoutes == _staffCanManageRoutes &&
+          staffVehicleIds.length == _staffRouteVehicleIds.length &&
+          staffVehicleIds.containsAll(_staffRouteVehicleIds)) {
         return;
       }
       setState(() {
         _workforceEnabled = enabled;
         _staffCanManageRoutes = staffRoutes;
+        _staffRouteVehicleIds = staffVehicleIds;
         // Hold indeks innenfor synlige faner når Ansatte/Timer/Stempling forsvinner.
         final maxIdx = _visibleTabCount() - 1;
         if (_index > maxIdx) _index = maxIdx.clamp(0, 99);
@@ -344,6 +354,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       final p = await PartnerService.fetchPartner(pid);
       var workforce = false;
       var staffRoutes = false;
+      var staffVehicleIds = _staffRouteVehicleIds;
       try {
         workforce = await PartnerWorkforceService.isEnabled(pid);
       } catch (_) {}
@@ -351,13 +362,18 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
         try {
           final me = await PartnerWorkforceService.myStaffRecord();
           staffRoutes = me?.canManageRoutes == true;
-        } catch (_) {}
+          staffVehicleIds = me?.routeVehicleIds.toSet() ?? {};
+        } catch (_) {
+          staffRoutes = false;
+          staffVehicleIds = {};
+        }
       }
       if (!mounted) return;
       setState(() {
         _partner = p;
         _workforceEnabled = workforce;
         _staffCanManageRoutes = staffRoutes && workforce;
+        _staffRouteVehicleIds = staffVehicleIds;
         _loading = false;
       });
       _listenWorkforceFlag(pid);
