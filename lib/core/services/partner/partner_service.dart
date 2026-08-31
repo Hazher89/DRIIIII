@@ -1055,6 +1055,7 @@ class PartnerService {
         'p_route_share_id': share.id,
       });
       await flushSmsOutbox();
+      await flushPushOutbox();
     } catch (_) {}
   }
 
@@ -1144,7 +1145,7 @@ class PartnerService {
     await _client.from('partner_route_shares').delete().eq('id', share.id);
   }
 
-  /// Varsler sjåfør på nytt om eksisterende sendt rute.
+  /// Varsler sjåfør/eier på nytt om eksisterende sendt rute.
   static Future<bool> notifyRouteShareSms(String shareId) async {
     if (!_ok) return false;
     try {
@@ -1152,6 +1153,7 @@ class PartnerService {
         'p_route_share_id': shareId,
       });
       await flushSmsOutbox();
+      await flushPushOutbox();
       return true;
     } catch (_) {
       return false;
@@ -1240,6 +1242,20 @@ class PartnerService {
     try {
       await _client.functions.invoke('send-email-outbox');
     } catch (_) {}
+  }
+
+  /// Trigger FCM-worker for push-køen.
+  static Future<Map<String, dynamic>?> flushPushOutbox() async {
+    if (!_ok) return null;
+    try {
+      final res = await _client.functions.invoke('send-push-outbox');
+      final data = res.data;
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      return {'processed': 0, 'sent': 0, 'failed': 0};
+    } catch (e) {
+      return {'error': e.toString(), 'processed': 0, 'sent': 0, 'failed': 0};
+    }
   }
 
   static String? _smsFlushErrorMessage(Map<String, dynamic> flush) {
@@ -1457,13 +1473,22 @@ class PartnerService {
         notes: note,
         shifts: cachedShifts,
       );
-      // SMS/e-post/push køes via trg_partner_route_sms_on_sent ved dispatch_status = sent.
+
+      if (effectiveNotify) {
+        try {
+          await _client.rpc('notify_partner_route_assigned_sms', params: {
+            'p_route_share_id': entry.key,
+          });
+        } catch (_) {}
+      }
     }
     if (effectiveNotify) {
       if (flushOutbox) {
         await flushSmsOutbox();
+        await flushPushOutbox();
       } else {
         unawaited(flushSmsOutbox());
+        unawaited(flushPushOutbox());
       }
     }
   }
