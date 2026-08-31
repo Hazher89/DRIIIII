@@ -25,13 +25,14 @@ class PartnerRoutePdfActions {
   }
 
   /// Partner: les PDF og aksepter i samme flyt (enklest for sjåfør/eier).
-  static Future<void> openPdfWithAcceptFlow(
+  /// Returnerer true hvis ruten ble akseptert i denne flyten.
+  static Future<bool> openPdfWithAcceptFlow(
     BuildContext context, {
     required PartnerRouteShare share,
     bool onBehalfOfDriver = false,
     PartnerRouteReloadCallback? onReload,
   }) async {
-    await _openPdfInternal(
+    return _openPdfInternal(
       context,
       share: share,
       acceptFlow: share.requiresAck,
@@ -40,7 +41,7 @@ class PartnerRoutePdfActions {
     );
   }
 
-  static Future<void> _openPdfInternal(
+  static Future<bool> _openPdfInternal(
     BuildContext context, {
     required PartnerRouteShare share,
     bool acceptFlow = false,
@@ -50,7 +51,7 @@ class PartnerRoutePdfActions {
     final path = share.pdfStoragePath.trim();
     if (path.isEmpty) {
       _snack(context, 'PDF mangler for denne ruten.', isError: true);
-      return;
+      return false;
     }
 
     final messenger = ScaffoldMessenger.maybeOf(context);
@@ -76,10 +77,10 @@ class PartnerRoutePdfActions {
       // Nedlasting først — fungerer for bedriftsansvarlig/sjåfør (Dropbox + Supabase).
       final bytes = await PartnerService.downloadRoutePdfBytes(path);
       messenger?.hideCurrentSnackBar();
-      if (!context.mounted) return;
+      if (!context.mounted) return false;
       if (bytes != null && bytes.isNotEmpty) {
         unawaited(PartnerService.markRoutePdfOpened(share.id));
-        await _showPdfBytesViewer(
+        return await _showPdfBytesViewer(
           context,
           bytes: bytes,
           title: title,
@@ -87,7 +88,6 @@ class PartnerRoutePdfActions {
           onBehalfOfDriver: onBehalfOfDriver,
           onReload: onReload,
         );
-        return;
       }
 
       if (context.mounted) {
@@ -104,6 +104,7 @@ class PartnerRoutePdfActions {
         _snack(context, 'Kunne ikke åpne PDF: $e', isError: true);
       }
     }
+    return false;
   }
 
   static Future<void> openPdfBytes(
@@ -125,7 +126,7 @@ class PartnerRoutePdfActions {
     }
   }
 
-  static Future<void> _showPdfBytesViewer(
+  static Future<bool> _showPdfBytesViewer(
     BuildContext context, {
     required Uint8List bytes,
     required String title,
@@ -133,6 +134,7 @@ class PartnerRoutePdfActions {
     bool onBehalfOfDriver = false,
     PartnerRouteReloadCallback? onReload,
   }) async {
+    var accepted = false;
     await showDialog<void>(
       context: context,
       barrierDismissible: true,
@@ -192,8 +194,8 @@ class PartnerRoutePdfActions {
                                 onBehalfOfDriver: onBehalfOfDriver,
                               );
                               if (ok && ctx.mounted) {
+                                accepted = true;
                                 Navigator.pop(ctx);
-                                if (context.mounted) Navigator.pop(context);
                               }
                             },
                             style: FilledButton.styleFrom(
@@ -214,6 +216,7 @@ class PartnerRoutePdfActions {
         ),
       ),
     );
+    return accepted;
   }
 
   static void _snack(BuildContext context, String message, {bool isError = false}) {

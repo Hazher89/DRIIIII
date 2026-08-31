@@ -3,6 +3,8 @@ import 'package:driftpro/core/services/partner/postal_region_mapper.dart';
 import 'package:driftpro/core/services/partner/route_pdf_text_service.dart';
 import 'package:driftpro/core/services/partner/route_shift_resolver.dart';
 import 'package:driftpro/core/services/partner/route_time_band.dart';
+import 'package:driftpro/models/partner/fleet_shift.dart';
+import 'package:driftpro/models/partner/partner_links.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -181,5 +183,53 @@ Start date 15.04.26
     expect(a.dominantRegion, 'Østfold');
     final start = RoutePdfTextService.parseEarliestStopStartTime(text, routeDate: DateTime(2026, 4, 8));
     expect(RouteTimeBand.fromDateTime(start), 'kveld');
+  });
+
+  test('guessShiftId — PDF Oslo dag slår lagret Kveldsrute Hadeland', () async {
+    const pdf = '''
+Start date 13.04.26
+1 4106086725 Espen Bråten , Rødtvedtveien 24  0955 Oslo , +47 (41298207)  CURB 08:00 17:00
+2 4106112691 Sissel Strømfjord , Rødtvetveien 57  0955 Oslo , +47 (95212811)  SITE RETG IHOB 08:00 13:00
+''';
+    final shifts = [
+      FleetShiftDefinition(
+        id: 'shift-oslo-dag',
+        companyId: 'c1',
+        name: 'Dagrute - Oslo',
+        colorHex: '#43A047',
+        regionGroup: 'Oslo',
+        timeBand: 'dag',
+        shiftKind: 'route_ops',
+        sortOrder: 0,
+        isArchived: false,
+        createdAt: DateTime(2026),
+      ),
+      FleetShiftDefinition(
+        id: 'shift-hadeland-kveld',
+        companyId: 'c1',
+        name: 'Kveldsrute - Hadeland',
+        colorHex: '#6A1B9A',
+        regionGroup: 'Hadeland',
+        timeBand: 'kveld',
+        shiftKind: 'route_ops',
+        sortOrder: 1,
+        isArchived: false,
+        createdAt: DateTime(2026),
+      ),
+    ];
+    final share = PartnerRouteShare(
+      id: 's1',
+      partnerId: 'p1',
+      companyId: 'c1',
+      title: 'Rute NO_O_M0001',
+      pdfStoragePath: 'x.pdf',
+      shareDate: DateTime(2026, 4, 13),
+      isDailyShare: true,
+      shiftId: 'shift-hadeland-kveld',
+      pdfSearchText: pdf,
+      createdAt: DateTime(2026),
+    );
+    final guessed = await RouteShiftResolver.guessShiftId(share: share, shifts: shifts);
+    expect(guessed, 'shift-oslo-dag');
   });
 }

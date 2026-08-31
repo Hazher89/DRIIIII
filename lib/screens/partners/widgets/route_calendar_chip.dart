@@ -113,5 +113,38 @@ String? shiftNameFor(List<FleetShiftDefinition> shifts, String? shiftId) {
   return null;
 }
 
+/// Vis «PDF foreslår …» når valgt skift avviker fra PDF-analyse.
+class RoutePdfShiftSuggestionButton extends StatelessWidget {
+  const RoutePdfShiftSuggestionButton({
+    super.key,
+    required this.shifts,
+    required this.suggestedShiftId,
+    required this.selectedShiftId,
+    required this.onApply,
+  });
+
+  final List<FleetShiftDefinition> shifts;
+  final String? suggestedShiftId;
+  final String? selectedShiftId;
+  final VoidCallback onApply;
+
+  @override
+  Widget build(BuildContext context) {
+    final suggested = suggestedShiftId;
+    if (suggested == null || suggested.isEmpty || suggested == selectedShiftId) {
+      return const SizedBox.shrink();
+    }
+    final name = shiftNameFor(shifts, suggested) ?? '—';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: onApply,
+        icon: const Icon(Icons.auto_fix_high, size: 18),
+        label: Text('PDF foreslår: $name'),
+      ),
+    );
+  }
+}
+
 String formatRouteDayHeader(DateTime day) =>
     DateFormat.yMMMMEEEEd('nb_NO').format(day);

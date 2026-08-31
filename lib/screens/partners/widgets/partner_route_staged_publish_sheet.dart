@@ -5,10 +5,12 @@ import '../../../core/services/notification/publish_action_labels.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../models/notification_channel.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/services/partner/route_shift_resolver.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_route_pdf_actions.dart';
+import 'route_calendar_chip.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Full oversikt over kladd-ruter før SMS/publisering til sjåfører.
@@ -37,6 +39,7 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
   Map<String, PartnerPortalAccount> _portalByVehicle = {};
   final Set<String> _selected = {};
   final Map<String, String> _shiftByShare = {};
+  final Map<String, String> _pdfSuggestedShiftByShare = {};
   final Map<String, TimeOfDay> _startByShare = {};
   final Map<String, DateTime> _dateByShare = {};
   final Map<String, TextEditingController> _noteCtrls = {};
@@ -106,6 +109,23 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
           .firstOrNull ??
           (shiftItems.isNotEmpty ? shiftItems.first.id : null);
 
+      final shiftById = <String, String>{};
+      final pdfSuggested = <String, String>{};
+      for (final s in staged) {
+        final pdfText = await RouteShiftResolver.loadPdfTextForShare(s);
+        final sid = await RouteShiftResolver.resolveShiftIdForStagedShare(
+          share: s,
+          allShifts: widget.shifts,
+          pdfText: pdfText,
+        );
+        if (sid != null && sid.isNotEmpty) {
+          shiftById[s.id] = sid;
+          pdfSuggested[s.id] = sid;
+        } else {
+          shiftById[s.id] = s.shiftId ?? defaultShift ?? '';
+        }
+      }
+
       if (!mounted) return;
       setState(() {
         _staged = staged;
@@ -116,12 +136,15 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
         _dateByShare.clear();
         for (final s in staged) {
           _dateByShare[s.id] = PartnerService.routeDayForShare(s);
-          _shiftByShare[s.id] = s.shiftId ?? defaultShift ?? '';
+          _shiftByShare[s.id] = shiftById[s.id] ?? defaultShift ?? '';
           _startByShare[s.id] = s.routeStartAt != null
               ? TimeOfDay.fromDateTime(s.routeStartAt!.toLocal())
               : const TimeOfDay(hour: 6, minute: 0);
           _noteCtrls[s.id] = TextEditingController(text: s.notes ?? '');
         }
+        _pdfSuggestedShiftByShare
+          ..clear()
+          ..addAll(pdfSuggested);
         _loading = false;
       });
     } catch (_) {
@@ -358,12 +381,24 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
                           isExpanded: true,
-                          decoration: const InputDecoration(labelText: 'Skift', border: OutlineInputBorder(), isDense: true),
+                          decoration: const InputDecoration(
+                            labelText: 'Skift (endres før send)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
                           initialValue: _shiftByShare[share.id],
                           items: shiftItems.map((s) => DropdownMenuItem(value: s.id, child: Text(s.name))).toList(),
                           onChanged: (v) {
                             if (v != null) setState(() => _shiftByShare[share.id] = v);
                           },
+                        ),
+                        RoutePdfShiftSuggestionButton(
+                          shifts: widget.shifts,
+                          suggestedShiftId: _pdfSuggestedShiftByShare[share.id],
+                          selectedShiftId: _shiftByShare[share.id],
+                          onApply: () => setState(
+                            () => _shiftByShare[share.id] = _pdfSuggestedShiftByShare[share.id]!,
+                          ),
                         ),
                         ListTile(
                           contentPadding: EdgeInsets.zero,

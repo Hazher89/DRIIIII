@@ -75,15 +75,15 @@ class PartnerPortalRouteDetailPage extends StatelessWidget {
                   width: double.infinity,
                   height: 56,
                   child: FilledButton.icon(
-                    onPressed: () => PartnerRoutePdfActions.openPdfWithAcceptFlow(
-                      context,
-                      share: route,
-                      onBehalfOfDriver: onBehalfOfDriver,
-                      onReload: () async {
-                        await onReload();
-                        if (context.mounted) Navigator.pop(context);
-                      },
-                    ),
+                    onPressed: () async {
+                      final accepted = await PartnerRoutePdfActions.openPdfWithAcceptFlow(
+                        context,
+                        share: route,
+                        onBehalfOfDriver: onBehalfOfDriver,
+                        onReload: onReload,
+                      );
+                      if (accepted && context.mounted) Navigator.pop(context);
+                    },
                     style: FilledButton.styleFrom(
                       backgroundColor: DriftProTheme.primaryGreen,
                     ),

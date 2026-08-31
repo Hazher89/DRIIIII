@@ -16,6 +16,7 @@ import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/sap_route_inbox_live.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
+import '../../../core/services/partner/route_shift_resolver.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/route_notify_prefs.dart';
@@ -2070,6 +2071,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
   final Map<String, TextEditingController> _noteCtrls = {};
   final Map<String, TimeOfDay> _startByShare = {};
   final Map<String, String?> _shiftByShare = {};
+  final Map<String, String> _pdfSuggestedShiftByShare = {};
   String? _pendingNotifyShareId;
 
   PartnerRouteShare? get _pendingNotifyShare {
@@ -2095,6 +2097,25 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
           ? TimeOfDay.fromDateTime(s.routeStartAt!.toLocal())
           : const TimeOfDay(hour: 6, minute: 0);
       _shiftByShare[s.id] = s.shiftId ?? _draftShiftId;
+    }
+    unawaited(_bootstrapShiftsFromPdf());
+  }
+
+  Future<void> _bootstrapShiftsFromPdf() async {
+    for (final s in _live) {
+      try {
+        final pdfText = await RouteShiftResolver.loadPdfTextForShare(s);
+        final resolved = await RouteShiftResolver.resolveShiftIdForStagedShare(
+          share: s,
+          allShifts: widget.shifts,
+          pdfText: pdfText,
+        );
+        if (resolved == null || resolved.isEmpty || !mounted) continue;
+        setState(() {
+          _pdfSuggestedShiftByShare[s.id] = resolved;
+          _shiftByShare[s.id] = resolved;
+        });
+      } catch (_) {}
     }
   }
 
@@ -2142,6 +2163,19 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
       final routeDay = schedule.routeDate;
       final startAt = schedule.routeStartAt ??
           DateTime(routeDay.year, routeDay.month, routeDay.day, _draftStart.hour, _draftStart.minute);
+      final routeOps = widget.shifts
+          .where((s) => !s.isAvailability && s.shiftKind == 'route_ops')
+          .toList();
+      final shiftPool = routeOps.isNotEmpty
+          ? routeOps
+          : widget.shifts.where((x) => !x.isAvailability).toList();
+      final autoShift = await RouteShiftResolver.resolveBestFromPdfText(
+        pdfText: pdfExtract,
+        shifts: shiftPool,
+        routeStartAt: startAt,
+        routeDate: routeDay,
+      );
+      final shiftId = autoShift?.id ?? _draftShiftId;
       final created = await PartnerService.addRouteShare(
         PartnerRouteShare(
           id: '',
@@ -2152,7 +2186,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
           shareDate: routeDay,
           isDailyShare: true,
           dispatchStatus: 'staged',
-          shiftId: _draftShiftId,
+          shiftId: shiftId,
           partnerVehicleId: row.vehicle.id,
           notes: _noteCtrls['_new']?.text,
           createdAt: DateTime.now(),
@@ -2164,7 +2198,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
       await PartnerService.updateRouteShareFields(
         created.id,
         {
-          'shift_id': _draftShiftId,
+          'shift_id': shiftId,
           'notes': created.notes ?? '',
           'route_start_at': startAt.toUtc().toIso8601String(),
         },
@@ -2172,12 +2206,13 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
       final placedOnPdfDay = _dayOnly(routeDay) == _dayOnly(widget.day);
       if (placedOnPdfDay) {
         setState(() {
-          _live.add(created.copyWithMerged(shiftId: _draftShiftId, notes: created.notes, routeStartAt: startAt.toUtc()));
+          _live.add(created.copyWithMerged(shiftId: shiftId, notes: created.notes, routeStartAt: startAt.toUtc()));
           _noteCtrls[created.id] = TextEditingController(text: '');
           if (schedule.routeStartAt != null) {
             _startByShare[created.id] = TimeOfDay.fromDateTime(startAt);
           }
-          _shiftByShare[created.id] = _draftShiftId;
+          _shiftByShare[created.id] = shiftId;
+          if (shiftId != null) _pdfSuggestedShiftByShare[created.id] = shiftId;
           _pendingNotifyShareId = created.id;
         });
         widget.onSaved();
@@ -2607,11 +2642,21 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                         ),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          decoration: const InputDecoration(labelText: 'Skift', border: OutlineInputBorder(), isDense: true),
+                          decoration: const InputDecoration(
+                            labelText: 'Skift (endres før send)',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
                           isExpanded: true,
                           value: shiftId,
                           items: shiftItems.map((x) => DropdownMenuItem(value: x.id, child: Text(x.name))).toList(),
                           onChanged: (v) => setState(() => _shiftByShare[s.id] = v),
+                        ),
+                        RoutePdfShiftSuggestionButton(
+                          shifts: widget.shifts,
+                          suggestedShiftId: _pdfSuggestedShiftByShare[s.id],
+                          selectedShiftId: shiftId,
+                          onApply: () => setState(() => _shiftByShare[s.id] = _pdfSuggestedShiftByShare[s.id]),
                         ),
                         ListTile(
                           contentPadding: EdgeInsets.zero,

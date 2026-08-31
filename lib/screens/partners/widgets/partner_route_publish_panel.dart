@@ -16,6 +16,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import 'partner_route_pdf_actions.dart';
+import 'route_calendar_chip.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Én arbeidsflate: last opp PDF → kontroller alle sjåfører → publiser.
@@ -40,6 +41,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
   List<PartnerRouteShare> _staged = [];
   final Set<String> _selected = {};
   final Map<String, String> _shiftByShare = {};
+  final Map<String, String> _pdfSuggestedShiftByShare = {};
   final Map<String, TimeOfDay?> _startByShare = {};
   final Map<String, DateTime> _dateByShare = {};
   List<FleetShiftDefinition> _shifts = [];
@@ -77,6 +79,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
       }
       await PostalCodeRegistry.ensureLoaded();
       final shiftById = <String, String>{};
+      final pdfSuggested = <String, String>{};
       for (final s in staged) {
         final pdfText = await RouteShiftResolver.loadPdfTextForShare(s);
         final sid = await RouteShiftResolver.resolveShiftIdForStagedShare(
@@ -86,11 +89,12 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
         );
         if (sid != null && sid.isNotEmpty) {
           shiftById[s.id] = sid;
+          pdfSuggested[s.id] = sid;
           if (s.shiftId != sid) {
             await PartnerService.updateRouteShareFields(s.id, {'shift_id': sid});
           }
         } else {
-          shiftById[s.id] = '';
+          shiftById[s.id] = s.shiftId ?? '';
         }
       }
       if (!mounted) return;
@@ -104,6 +108,9 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
         _shiftByShare
           ..clear()
           ..addAll(shiftById);
+        _pdfSuggestedShiftByShare
+          ..clear()
+          ..addAll(pdfSuggested);
         _dateByShare.clear();
         for (final s in staged) {
           _dateByShare[s.id] = PartnerService.routeDayForShare(s);
@@ -593,7 +600,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
                         initialValue: _shiftByShare[share.id],
                         isExpanded: true,
                         decoration: const InputDecoration(
-                          labelText: 'Skift',
+                          labelText: 'Skift (endres før send)',
                           isDense: true,
                           border: OutlineInputBorder(),
                         ),
@@ -606,6 +613,14 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
                         onChanged: (v) {
                           if (v != null) setState(() => _shiftByShare[share.id] = v);
                         },
+                      ),
+                      RoutePdfShiftSuggestionButton(
+                        shifts: _shifts,
+                        suggestedShiftId: _pdfSuggestedShiftByShare[share.id],
+                        selectedShiftId: _shiftByShare[share.id],
+                        onApply: () => setState(
+                          () => _shiftByShare[share.id] = _pdfSuggestedShiftByShare[share.id]!,
+                        ),
                       ),
                       const SizedBox(height: 6),
                       Row(

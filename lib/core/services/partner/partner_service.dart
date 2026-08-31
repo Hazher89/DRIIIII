@@ -1416,9 +1416,10 @@ class PartnerService {
           ? DateTime(startAt.year, startAt.month, startAt.day)
           : date;
       final d = routeDay.toIso8601String().split('T').first;
+      final shiftId = entry.value;
       final patch = <String, dynamic>{
         'dispatch_status': status,
-        'shift_id': entry.value,
+        'shift_id': shiftId,
         'share_date': d,
         'notify_channels': channels.isEmpty
             ? const ['app', 'sms', 'email']
@@ -1468,7 +1469,7 @@ class PartnerService {
         companyId: companyId,
         partnerVehicleId: vid,
         date: routeDay,
-        shiftId: entry.value,
+        shiftId: shiftId,
         partnerRouteShareId: entry.key,
         notes: note,
         shifts: cachedShifts,

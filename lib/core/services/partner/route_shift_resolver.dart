@@ -338,13 +338,23 @@ class RouteShiftResolver {
     return false;
   }
 
-  /// Rekkefølge: eksisterende shift → tittel → postkoder. Ingen gjetting ved tvil.
+  /// Rekkefølge: PDF (område/tid) → lagret shift → tittel.
   static Future<String?> guessShiftId({
     required PartnerRouteShare share,
     required List<FleetShiftDefinition> shifts,
   }) async {
     final ops = FleetShiftFilters.forRouteAssignment(shifts);
     if (ops.isEmpty) return null;
+
+    final fromPdf = await resolveBestFromPdfText(
+      pdfText: share.pdfSearchText,
+      shifts: ops,
+      routeStartAt: share.routeStartAt,
+      routeDate: share.shareDate,
+      title: share.title,
+      notes: share.notes,
+    );
+    if (fromPdf != null) return fromPdf.id;
 
     if (share.shiftId != null && share.shiftId!.isNotEmpty) {
       FleetShiftDefinition? current;
@@ -368,15 +378,7 @@ class RouteShiftResolver {
       if (title.contains(name)) return s.id;
     }
 
-    final best = await resolveBestFromPdfText(
-      pdfText: share.pdfSearchText,
-      shifts: ops,
-      routeStartAt: share.routeStartAt,
-      routeDate: share.shareDate,
-      title: share.title,
-      notes: share.notes,
-    );
-    return best?.id;
+    return null;
   }
 
   /// Beste skift for kladd: PDF → lagret shift (ikke Geilo) → best-effort område/tid.
@@ -414,17 +416,7 @@ class RouteShiftResolver {
         : share;
 
     final guessed = await guessShiftId(share: shareWithText, shifts: allShifts);
-    if (guessed != null && guessed.isNotEmpty) return guessed;
-
-    final best = await resolveBestFromPdfText(
-      pdfText: text,
-      shifts: routeShifts,
-      routeStartAt: share.routeStartAt,
-      routeDate: share.shareDate,
-      title: share.title,
-      notes: share.notes,
-    );
-    return best?.id;
+    return guessed;
   }
 
   /// Henter PDF-tekst fra lagring; laster full PDF på nytt hvis cache mangler stopp/postnr.
