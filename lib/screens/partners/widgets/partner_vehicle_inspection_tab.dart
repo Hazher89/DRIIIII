@@ -19,6 +19,7 @@ import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/vehicle_inspection.dart';
 import 'vehicle_inspection_detail_page.dart';
 import 'vehicle_inspection_pdf_actions.dart';
+import 'partner_inspection_hub_ui.dart';
 import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
