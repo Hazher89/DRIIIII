@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/services/chat/chat_pending_navigation.dart';
 import '../../../core/services/chat/partner_chat_service.dart';
 import '../../../core/services/chat/chat_unread_service.dart';
 import '../../../core/services/chat/chat_realtime_notification_service.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../core/permissions/user_access.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/driftpro_theme_context.dart';
@@ -49,6 +51,8 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
   String _searchQuery = '';
   bool _webNotifOn = false;
   late TabController _tabs;
+  RealtimeChannel? _hubChannel;
+  Timer? _hubRefreshDebounce;
 
   bool get _isPartner => widget.profile.isPartnerPortalUser;
   bool get _isMavi => widget.profile.isMaviEmployee;
@@ -62,6 +66,7 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
     _tabs = TabController(length: 2, vsync: this);
     unawaited(ChatUnreadService.refresh());
     unawaited(ChatRealtimeNotificationService.start());
+    _startHubRealtime();
     if (kIsWeb) _refreshWebNotifState();
     _load();
   }
@@ -95,8 +100,42 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
     }).toList();
   }
 
+  void _startHubRealtime() {
+    final uid = SupabaseService.currentUser?.id;
+    if (uid == null) return;
+    _hubChannel?.unsubscribe();
+    _hubChannel = SupabaseService.client
+        .channel('chat_hub_list_$uid')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'chat_messages',
+          callback: (_) => _scheduleHubRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'chat_rooms',
+          callback: (_) => _scheduleHubRefresh(),
+        )
+        ..subscribe();
+  }
+
+  void _scheduleHubRefresh() {
+    _hubRefreshDebounce?.cancel();
+    _hubRefreshDebounce = Timer(const Duration(milliseconds: 400), () {
+      unawaited(ChatUnreadService.refresh());
+      unawaited(_load());
+    });
+  }
+
   @override
   void dispose() {
+    _hubRefreshDebounce?.cancel();
+    if (_hubChannel != null) {
+      SupabaseService.client.removeChannel(_hubChannel!);
+      _hubChannel = null;
+    }
     _tabs.dispose();
     super.dispose();
   }

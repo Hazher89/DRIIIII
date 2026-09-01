@@ -163,6 +163,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshWorkforceFlag());
+      unawaited(ChatUnreadService.refresh());
       if (_wantsPushRegistration()) {
         unawaited(PushNotificationService.syncRegistration());
       }

@@ -91,6 +91,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _sessionUserId != null) {
       unawaited(_loadAccess(silent: true));
+      unawaited(ChatUnreadService.refresh());
     }
   }
 
