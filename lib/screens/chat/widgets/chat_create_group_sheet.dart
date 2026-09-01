@@ -9,6 +9,9 @@ Future<({String title, List<String> memberIds})?> showChatCreateGroupSheet({
   required List<({String id, String title, String subtitle})> candidates,
   required String currentUserId,
   int minMembers = 1,
+  bool titleOptional = false,
+  String? initialTitle,
+  String confirmLabel = 'Opprett gruppe',
 }) {
   return showModalBottomSheet<({String title, List<String> memberIds})?>(
     context: context,
@@ -19,6 +22,9 @@ Future<({String title, List<String> memberIds})?> showChatCreateGroupSheet({
       privacyHint: privacyHint,
       candidates: candidates.where((c) => c.id != currentUserId).toList(),
       minMembers: minMembers,
+      titleOptional: titleOptional,
+      initialTitle: initialTitle,
+      confirmLabel: confirmLabel,
     ),
   );
 }
@@ -29,20 +35,32 @@ class _CreateGroupSheet extends StatefulWidget {
     required this.privacyHint,
     required this.candidates,
     required this.minMembers,
+    this.titleOptional = false,
+    this.initialTitle,
+    this.confirmLabel = 'Opprett gruppe',
   });
 
   final String headline;
   final String privacyHint;
   final List<({String id, String title, String subtitle})> candidates;
   final int minMembers;
+  final bool titleOptional;
+  final String? initialTitle;
+  final String confirmLabel;
 
   @override
   State<_CreateGroupSheet> createState() => _CreateGroupSheetState();
 }
 
 class _CreateGroupSheetState extends State<_CreateGroupSheet> {
-  final _title = TextEditingController();
+  late final TextEditingController _title;
   final _selected = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _title = TextEditingController(text: widget.initialTitle ?? '');
+  }
 
   @override
   void dispose() {
@@ -52,8 +70,8 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final canCreate =
-        _title.text.trim().length >= 2 && _selected.length >= widget.minMembers;
+    final titleOk = widget.titleOptional || _title.text.trim().length >= 2;
+    final canCreate = titleOk && _selected.length >= widget.minMembers;
 
     return DraggableScrollableSheet(
       expand: false,
@@ -72,17 +90,18 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
               padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
               child: Text(widget.privacyHint, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                controller: _title,
-                decoration: InputDecoration(
-                  labelText: 'Gruppenavn',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            if (!widget.titleOptional)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TextField(
+                  controller: _title,
+                  decoration: InputDecoration(
+                    labelText: 'Gruppenavn',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onChanged: (_) => setState(() {}),
                 ),
-                onChanged: (_) => setState(() {}),
               ),
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
               child: Text(
@@ -124,14 +143,19 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
                 onPressed: canCreate
                     ? () => Navigator.pop(
                           context,
-                          (title: _title.text.trim(), memberIds: _selected.toList()),
+                          (
+                            title: _title.text.trim().isEmpty
+                                ? (widget.initialTitle ?? 'Gruppe')
+                                : _title.text.trim(),
+                            memberIds: _selected.toList(),
+                          ),
                         )
                     : null,
                 style: FilledButton.styleFrom(
                   backgroundColor: DriftProTheme.primaryGreen,
                   minimumSize: const Size(double.infinity, 48),
                 ),
-                child: const Text('Opprett gruppe'),
+                child: Text(widget.confirmLabel),
               ),
             ),
           ],

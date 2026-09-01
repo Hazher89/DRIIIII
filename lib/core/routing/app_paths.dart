@@ -11,6 +11,7 @@ abstract final class AppPaths {
   static const hms = '/hms';
   static const partners = '/partners';
   static const partnersChat = '/partners/meldinger';
+  static const chat = '/meldinger';
   static const stempling = '/stempling';
   static const uniform = '/uniform';
   static const stemple = '/stemple';
@@ -144,6 +145,7 @@ abstract final class AppPaths {
     (path: hms, access: AccessKeys.hms),
     (path: uniform, access: AccessKeys.uniformMonitor),
     (path: partners, access: AccessKeys.partners),
+    (path: chat, access: AccessKeys.partnersChat),
     (path: stempling, access: AccessKeys.stempling),
     (path: more, access: AccessKeys.more),
   ];
@@ -158,8 +160,10 @@ abstract final class AppPaths {
   static int? branchIndexForPath(String path) {
     final normalized = _normalize(path.split('?').first);
     if (normalized == dashboard) return 0;
+    if (normalized == partnersChat || normalized.startsWith('$partnersChat')) return 7;
+    if (normalized == chat || normalized.startsWith('$chat/')) return 7;
     if (normalized.startsWith('$partners/')) return 6;
-    if (normalized.startsWith(stempling)) return 7;
+    if (normalized.startsWith(stempling)) return 8;
     if (normalized.startsWith(uniform)) return 5;
     if (normalized == tickets || normalized.startsWith('$tickets/')) return 3;
     for (var i = 1; i < shellTabs.length; i++) {

@@ -9,6 +9,7 @@ enum PushNavKind {
   hmsSja,
   hmsSafetyRound,
   hmsGeneric,
+  chatMessage,
   unknown,
 }
 
@@ -53,6 +54,7 @@ class PushNavigationTarget {
         PushNavKind.hmsGeneric => '/hms',
         PushNavKind.partnerDeduction => '/partners?tab=bot-trekk',
         PushNavKind.partnerInspection => '/partners?tab=bilkontroll',
+        PushNavKind.chatMessage => id != null ? '/meldinger?room=$id' : '/meldinger',
         _ => null,
       };
 
@@ -85,6 +87,9 @@ class PushNavigationTarget {
       case 'partner_staff_punch':
         kind = PushNavKind.partnerTimesheet;
         id = entryId ?? refId;
+      case 'chat_message':
+        kind = PushNavKind.chatMessage;
+        id = _str(data['room_id']) ?? refId;
       default:
         if (routeShareId != null) {
           kind = PushNavKind.partnerRoute;

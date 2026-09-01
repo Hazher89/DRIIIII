@@ -14,6 +14,7 @@ class AppStrings {
   static const String navUniform = 'Uniform';
   static const String navSurveys = 'Undersøkelser';
   static const String navPartners = 'Partnere';
+  static const String navChat = 'Meldinger';
   static const String navStempling = 'Stempling';
   static const String navMore = 'Mer';
 

@@ -7,6 +7,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../routing/app_paths.dart';
+import '../../permissions/access_session_cache.dart';
+import '../chat/chat_pending_navigation.dart';
 import 'push_navigation_target.dart';
 
 /// Navigerer til riktig skjerm når brukeren trykker på et push-varsel.
@@ -90,6 +92,19 @@ abstract final class PushNavigationService {
       router.go(AppPaths.portalPath(tab: tab));
       _stream.add(target);
       _pending = target;
+      return;
+    }
+
+    if (target.kind == PushNavKind.chatMessage && target.id != null) {
+      ChatPendingNavigation.setRoom(target.id!);
+      final profile = AccessSessionCache.profile;
+      if (profile?.isPartnerPortalUser == true) {
+        router.go(AppPaths.portalPath(tab: 'meldinger'));
+      } else {
+        router.go(AppPaths.chat);
+      }
+      _stream.add(target);
+      _pending = null;
       return;
     }
 

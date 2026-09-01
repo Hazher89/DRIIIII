@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:intl/intl.dart';
 
+import '../../../core/services/chat/chat_pending_navigation.dart';
 import '../../../core/services/chat/partner_chat_service.dart';
+import '../../../core/services/chat/chat_unread_service.dart';
+import '../../../core/permissions/user_access.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/driftpro_theme_context.dart';
 import '../../../models/chat/chat_models.dart';
@@ -9,7 +13,9 @@ import '../../../models/user_profile.dart';
 import '../../../widgets/chat/chat_feature_gate.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 import 'widgets/chat_create_group_sheet.dart';
+import 'widgets/chat_superadmin_panel.dart';
 import 'chat_room_screen.dart';
+import 'chat_moderation_screen.dart';
 
 /// Hub for MAVI ↔ partner chat med kanaltyper og personvern.
 class PartnerChatHubScreen extends StatefulWidget {
@@ -17,10 +23,12 @@ class PartnerChatHubScreen extends StatefulWidget {
     super.key,
     required this.profile,
     this.embedded = false,
+    this.initialRoomId,
   });
 
   final UserProfile profile;
   final bool embedded;
+  final String? initialRoomId;
 
   @override
   State<PartnerChatHubScreen> createState() => _PartnerChatHubScreenState();
@@ -31,17 +39,23 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
   List<ChatRoom> _archived = const [];
   List<ChatPartnerDirectoryEntry> _partners = const [];
   List<ChatMaviDirectoryEntry> _maviUsers = const [];
+  ChatSuperadminDirectory? _superadminDir;
+  List<ChatBlockedUser> _blocked = const [];
   bool _loading = true;
   String? _error;
   late TabController _tabs;
 
   bool get _isPartner => widget.profile.isPartnerPortalUser;
   bool get _isMavi => widget.profile.isMaviEmployee;
+  bool get _isSuperAdmin => widget.profile.role == UserRole.superadmin;
+  bool get _canModerate => widget.profile.access.canPartnersChatModerate;
+  bool get _canBroadcast => widget.profile.access.canPartnersChatBroadcast;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
+    unawaited(ChatUnreadService.refresh());
     _load();
   }
 
@@ -62,20 +76,37 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
       }
       final rooms = await PartnerChatService.fetchMyRooms(archived: false);
       final archived = await PartnerChatService.fetchMyRooms(archived: true);
-      final partners = _isPartner || _isMavi
-          ? await PartnerChatService.fetchPartnerDirectory()
-          : const <ChatPartnerDirectoryEntry>[];
-      final maviUsers = _isMavi && widget.profile.companyId != null
-          ? await PartnerChatService.fetchMaviDirectory(widget.profile.companyId!)
-          : const <ChatMaviDirectoryEntry>[];
+
+      List<ChatPartnerDirectoryEntry> partners = const [];
+      List<ChatMaviDirectoryEntry> maviUsers = const [];
+      ChatSuperadminDirectory? superadminDir;
+
+      if (_isSuperAdmin) {
+        superadminDir = await PartnerChatService.fetchSuperadminDirectory();
+        partners = superadminDir.partners;
+        maviUsers = superadminDir.mavi;
+      } else if (_isPartner) {
+        partners = await PartnerChatService.fetchPartnerDirectory();
+      } else if (_isMavi) {
+        maviUsers = widget.profile.companyId != null
+            ? await PartnerChatService.fetchMaviDirectory(widget.profile.companyId!)
+            : const [];
+      }
+
+      if (_isPartner) {
+        _blocked = await PartnerChatService.fetchPartnerBlockedUsers();
+      }
+
       if (!mounted) return;
       setState(() {
         _rooms = rooms;
         _archived = archived;
         _partners = partners;
         _maviUsers = maviUsers;
+        _superadminDir = superadminDir;
         _loading = false;
       });
+      await _openPendingRoom();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -83,6 +114,88 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
         _loading = false;
       });
     }
+  }
+
+  Future<void> _openPendingRoom() async {
+    final pending = widget.initialRoomId ?? ChatPendingNavigation.takeRoomId();
+    if (pending == null || !mounted) return;
+    final room = await PartnerChatService.fetchRoomById(pending);
+    if (room == null || !mounted) return;
+    await _openRoom(room);
+  }
+
+  Future<void> _openBroadcast() async {
+    final companyId = widget.profile.companyId;
+    if (companyId == null) return;
+    try {
+      final roomId = await PartnerChatService.ensureBroadcastRoom(companyId);
+      if (!mounted) return;
+      await _openRoom(ChatRoom(
+        id: roomId,
+        companyId: companyId,
+        roomType: ChatRoomType.partnerBroadcast,
+        title: 'Meldinger fra MAVI',
+      ));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kunne ikke åpne broadcast: $e')),
+      );
+    }
+  }
+
+  Future<void> _showBlockedUsers() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Blokkerte brukere', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+            if (_blocked.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Text('Ingen blokkerte brukere.', textAlign: TextAlign.center),
+              )
+            else
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _blocked.length,
+                  itemBuilder: (_, i) {
+                    final b = _blocked[i];
+                    return ListTile(
+                      title: Text(b.fullName),
+                      subtitle: Text(b.reason ?? 'Blokkert'),
+                      trailing: TextButton(
+                        onPressed: () async {
+                          await PartnerChatService.partnerUnblockUser(b.userId);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                          await _load();
+                        },
+                        child: const Text('Avblokker'),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openModeration() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => ChatModerationScreen(profile: widget.profile),
+      ),
+    );
   }
 
   Future<void> _openRoom(ChatRoom room) async {
@@ -146,7 +259,31 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                       child: Text(p.fullName.isNotEmpty ? p.fullName[0].toUpperCase() : '?'),
                     ),
                     title: Text(p.fullName, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(p.partnerName),
+                    subtitle: Text('${p.partnerName} · ${p.roleLabel}'),
+                    trailing: IconButton(
+                      tooltip: 'Blokker',
+                      icon: const Icon(Icons.block_outlined, size: 20),
+                      onPressed: () async {
+                        final ok = await showDialog<bool>(
+                          context: ctx,
+                          builder: (d) => AlertDialog(
+                            title: const Text('Blokker bruker?'),
+                            content: Text(
+                              '${p.fullName} kan ikke lenger kontakte deg på chat. '
+                              'Du kan chatte med andre bil-eiere og ansatte.',
+                            ),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Avbryt')),
+                              FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Blokker')),
+                            ],
+                          ),
+                        );
+                        if (ok == true) {
+                          await PartnerChatService.partnerBlockUser(p.userId);
+                          if (ctx.mounted) Navigator.pop(ctx);
+                        }
+                      },
+                    ),
                     onTap: () => Navigator.pop(ctx, p),
                   );
                 },
@@ -304,8 +441,29 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: _PrivacyBanner(isPartner: _isPartner, isMavi: _isMavi),
+                    child: _PrivacyBanner(
+                      isPartner: _isPartner,
+                      isMavi: _isMavi,
+                      isSuperAdmin: _isSuperAdmin,
+                    ),
                   ),
+                  if (_isSuperAdmin && _superadminDir != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: ChatSuperadminPanel(
+                        directory: _superadminDir!,
+                        existingRooms: _rooms,
+                        onRoomCreated: (roomId, type, title) async {
+                          await _openRoom(ChatRoom(
+                            id: roomId,
+                            companyId: widget.profile.companyId ?? '',
+                            roomType: type,
+                            title: title,
+                          ));
+                          await _load();
+                        },
+                      ),
+                    ),
                   if (!_loading && _error == null) ...[
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -324,12 +482,24 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                               label: const Text('Ny gruppe'),
                               onPressed: _createPartnerGroup,
                             ),
+                            ActionChip(
+                              avatar: const Icon(Icons.block_outlined, size: 18),
+                              label: Text('Blokkerte (${_blocked.length})'),
+                              onPressed: _showBlockedUsers,
+                            ),
                           ],
-                          if (_isMavi) ...[
+                          if (_isMavi && !_isSuperAdmin) ...[
                             ActionChip(
                               avatar: const Icon(Icons.groups_outlined, size: 18),
                               label: const Text('MAVI-gruppe'),
                               onPressed: _createMaviGroup,
+                            ),
+                          ],
+                          if (_isMavi && _canBroadcast) ...[
+                            ActionChip(
+                              avatar: const Icon(Icons.campaign_outlined, size: 18),
+                              label: const Text('Send til alle partnere'),
+                              onPressed: _openBroadcast,
                             ),
                           ],
                         ],
@@ -362,6 +532,12 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
       appBar: AppBar(
         title: const Text('Meldinger'),
         actions: [
+          if (_canModerate)
+            IconButton(
+              tooltip: 'Moderering',
+              onPressed: _openModeration,
+              icon: const Icon(Icons.shield_outlined),
+            ),
           IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
       ),
@@ -371,20 +547,28 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
 }
 
 class _PrivacyBanner extends StatelessWidget {
-  const _PrivacyBanner({required this.isPartner, required this.isMavi});
+  const _PrivacyBanner({
+    required this.isPartner,
+    required this.isMavi,
+    this.isSuperAdmin = false,
+  });
 
   final bool isPartner;
   final bool isMavi;
+  final bool isSuperAdmin;
 
   @override
   Widget build(BuildContext context) {
-    final text = isPartner
-        ? 'Du ser meldinger fra MAVI og kan chatte privat med andre partnere. '
-          'Partner-til-partner-chatter er skjult for MAVI (GDPR).'
-        : isMavi
-            ? 'Intern MAVI-chat er kun synlig for ansatte. '
-              'Partner-private chatter kan ikke leses av MAVI.'
-            : 'Sikker meldingskanal med rollebasert tilgang.';
+    final text = isSuperAdmin
+        ? 'Som superadmin ser du MAVI, partnere og bedrifter — kun du kan koble dem sammen. '
+          'Vanlige MAVI-ansatte ser aldri partnerlister.'
+        : isPartner
+            ? 'Du ser meldinger fra MAVI og kan chatte med andre bil-eiere og ansatte. '
+              'Partner-til-partner-chatter er skjult for MAVI (GDPR). Du kan blokkere andre partnere.'
+            : isMavi
+                ? 'Du ser kun andre MAVI-ansatte. Partnerbedrifter og private partner-chatter '
+                  'er skjult. Kun superadmin kan koble MAVI og partnere.'
+                : 'Sikker meldingskanal med rollebasert tilgang.';
 
     return Material(
       color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
@@ -498,9 +682,26 @@ class _RoomTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        room.displayTitle(null),
-                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      Row(
+                        children: [
+                          if (room.isPinned) ...[
+                            Icon(Icons.push_pin, size: 12, color: Colors.grey.shade600),
+                            const SizedBox(width: 4),
+                          ],
+                          if (room.isMuted) ...[
+                            Icon(Icons.notifications_off_outlined, size: 12, color: Colors.grey.shade600),
+                            const SizedBox(width: 4),
+                          ],
+                          Expanded(
+                            child: Text(
+                              room.displayTitle(null),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: room.unreadCount > 0 ? Colors.black : null,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       Text(
                         room.roomType.subtitleNorwegian,
@@ -512,14 +713,34 @@ class _RoomTile extends StatelessWidget {
                           room.lastMessagePreview!,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: Colors.grey.shade800),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: room.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
+                            color: Colors.grey.shade800,
+                          ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                if (time != null)
-                  Text(time, style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (time != null)
+                      Text(time, style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+                    if (room.unreadCount > 0) ...[
+                      const SizedBox(height: 4),
+                      CircleAvatar(
+                        radius: 10,
+                        backgroundColor: DriftProTheme.primaryGreen,
+                        child: Text(
+                          room.unreadCount > 99 ? '99+' : '${room.unreadCount}',
+                          style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ],
             ),
           ),

@@ -380,6 +380,7 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                       ChatHubGate(
                         child: PartnerChatHubScreen(
                           profile: AccessSessionCache.profile!,
+                          initialRoomId: state.uri.queryParameters['room'],
                         ),
                       ),
                     ),
@@ -396,6 +397,23 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     ),
                   ),
                 ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: AppPaths.chat,
+                builder: (context, state) => _guardPath(
+                  state,
+                  ChatHubGate(
+                    child: PartnerChatHubScreen(
+                      profile: AccessSessionCache.profile!,
+                      embedded: true,
+                      initialRoomId: state.uri.queryParameters['room'],
+                    ),
+                  ),
+                ),
               ),
             ],
           ),

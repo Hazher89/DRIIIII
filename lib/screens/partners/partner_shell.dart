@@ -8,6 +8,8 @@ import '../../core/routing/app_paths.dart';
 import '../../core/routing/route_url_sync.dart';
 import '../../core/auth/session_sign_out.dart';
 import '../../core/services/chat/chat_flag_service.dart';
+import '../../core/services/chat/chat_pending_navigation.dart';
+import '../../core/services/chat/chat_unread_service.dart';
 import '../../core/services/hms/hms_pdf_export_service.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
 import '../../core/services/partner/partner_portal_scope.dart';
@@ -106,7 +108,9 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   RealtimeChannel? _workforceChannel;
   StreamSubscription<PushNavigationTarget>? _pushNavSub;
   StreamSubscription<ChatFlag>? _chatFlagSub;
+  StreamSubscription<int>? _chatUnreadSub;
   bool _chatEnabled = true;
+  int _chatUnread = 0;
 
   bool _staffWantsPush() =>
       widget.portalAccountKind == 'staff' &&
@@ -146,6 +150,8 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_pushNavSub?.cancel() ?? Future.value());
     unawaited(_chatFlagSub?.cancel() ?? Future.value());
+    unawaited(_chatUnreadSub?.cancel() ?? Future.value());
+    ChatUnreadService.stopWatching();
     unawaited(_workforceChannel?.unsubscribe() ?? Future.value());
     PartnerRoutePushListener.stop();
     super.dispose();
@@ -350,8 +356,42 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
           _index = mapped >= 0 ? mapped : _index.clamp(0, nextSlugs.length - 1);
         }
       });
+      if (on) {
+        _bindChatUnread();
+      } else {
+        unawaited(_chatUnreadSub?.cancel() ?? Future.value());
+        setState(() => _chatUnread = 0);
+      }
       _syncUrl();
     });
+    if (_chatEnabled) _bindChatUnread();
+  }
+
+  void _bindChatUnread() {
+    unawaited(_chatUnreadSub?.cancel() ?? Future.value());
+    ChatUnreadService.startWatching();
+    _chatUnreadSub = ChatUnreadService.stream.listen((count) {
+      if (!mounted) return;
+      setState(() => _chatUnread = count);
+    });
+    unawaited(ChatUnreadService.refresh());
+  }
+
+  NavigationDestination _chatNavigationDestination() {
+    final badge = _chatUnread;
+    Widget icon(IconData data, {bool selected = false}) => Badge(
+          isLabelVisible: badge > 0,
+          label: Text(
+            badge > 99 ? '99+' : '$badge',
+            style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700),
+          ),
+          child: Icon(data),
+        );
+    return NavigationDestination(
+      icon: icon(Icons.forum_outlined),
+      selectedIcon: icon(Icons.forum, selected: true),
+      label: 'Meldinger',
+    );
   }
 
   void _syncUrl() {
@@ -367,7 +407,22 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   }
 
   Future<void> _handlePushNavigation(PushNavigationTarget? target) async {
-    if (target == null || !target.isPartnerScope || !mounted) return;
+    if (target == null || !mounted) return;
+
+    if (target.kind == PushNavKind.chatMessage) {
+      final roomId = target.id;
+      if (roomId != null) ChatPendingNavigation.setRoom(roomId);
+      final slugs = _portalTabSlugs();
+      final tabIndex = RouteUrlSync.indexForSlug('meldinger', slugs);
+      if (tabIndex >= 0 && _index != tabIndex) {
+        setState(() => _index = tabIndex);
+        _syncUrl();
+      }
+      PushNavigationService.takePending();
+      return;
+    }
+
+    if (!target.isPartnerScope) return;
     final partner = _partner;
     if (partner == null) return;
 
@@ -600,7 +655,12 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       const PartnerPortalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
       const PartnerPortalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
       if (_chatEnabled)
-        const PartnerPortalNavItem(icon: Icons.forum_outlined, selectedIcon: Icons.forum, label: 'Meldinger'),
+        PartnerPortalNavItem(
+          icon: Icons.forum_outlined,
+          selectedIcon: Icons.forum,
+          label: 'Meldinger',
+          badgeCount: _chatUnread,
+        ),
       const PartnerPortalNavItem(icon: Icons.apps_outlined, selectedIcon: Icons.apps, label: 'Mer'),
       const PartnerPortalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
     ];
@@ -618,12 +678,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
           selectedIcon: Icon(Icons.map),
           label: 'Ruter',
         ),
-      if (_chatEnabled)
-        const NavigationDestination(
-          icon: Icon(Icons.forum_outlined),
-          selectedIcon: Icon(Icons.forum),
-          label: 'Meldinger',
-        ),
+      if (_chatEnabled) _chatNavigationDestination(),
       const NavigationDestination(
         icon: Icon(Icons.person_outlined),
         selectedIcon: Icon(Icons.person),
@@ -635,8 +690,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       const NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Oversikt'),
       const NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Mine ruter'),
       const NavigationDestination(icon: Icon(Icons.folder_open_outlined), selectedIcon: Icon(Icons.folder_open), label: 'Dokumenter'),
-      if (_chatEnabled)
-        const NavigationDestination(icon: Icon(Icons.forum_outlined), selectedIcon: Icon(Icons.forum), label: 'Meldinger'),
+      if (_chatEnabled) _chatNavigationDestination(),
       const NavigationDestination(icon: Icon(Icons.beach_access_outlined), selectedIcon: Icon(Icons.beach_access), label: 'Fri'),
       const NavigationDestination(icon: Icon(Icons.person_outlined), selectedIcon: Icon(Icons.person), label: 'Profil'),
     ];

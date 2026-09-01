@@ -383,7 +383,7 @@ class AccessAreaCatalog {
       title: 'Partner-chat (oversikt)',
       parentId: 'partners',
       actions: viewCreate,
-      routePath: '/partners/meldinger',
+      routePath: '/meldinger',
     ),
     AccessAreaDef(
       id: 'partners.chat.internal',

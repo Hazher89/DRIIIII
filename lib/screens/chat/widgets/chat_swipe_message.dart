@@ -1,5 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/theme/app_theme.dart';
@@ -13,12 +14,18 @@ class ChatSwipeMessage extends StatefulWidget {
     required this.mine,
     required this.onReply,
     this.onOpenImage,
+    this.onDelete,
+    this.onHide,
+    this.onShowRead,
   });
 
   final ChatMessage message;
   final bool mine;
   final ValueChanged<ChatMessage> onReply;
   final void Function(String url)? onOpenImage;
+  final VoidCallback? onDelete;
+  final VoidCallback? onHide;
+  final VoidCallback? onShowRead;
 
   @override
   State<ChatSwipeMessage> createState() => _ChatSwipeMessageState();
@@ -79,11 +86,41 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
                     _onReply();
                   },
                 ),
-                if (m.body.isNotEmpty)
+                if (m.body.isNotEmpty && !m.isDeleted)
                   ListTile(
                     leading: const Icon(Icons.copy),
                     title: const Text('Kopier tekst'),
-                    onTap: () => Navigator.pop(ctx),
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: m.body));
+                      Navigator.pop(ctx);
+                    },
+                  ),
+                if (widget.onShowRead != null)
+                  ListTile(
+                    leading: const Icon(Icons.done_all),
+                    title: const Text('Lest av'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      widget.onShowRead!();
+                    },
+                  ),
+                if (widget.onDelete != null)
+                  ListTile(
+                    leading: const Icon(Icons.delete_outline, color: Colors.red),
+                    title: const Text('Slett melding'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      widget.onDelete!();
+                    },
+                  ),
+                if (widget.onHide != null)
+                  ListTile(
+                    leading: const Icon(Icons.visibility_off_outlined, color: Colors.orange),
+                    title: const Text('Skjul melding (moderator)'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      widget.onHide!();
+                    },
                   ),
               ],
             ),

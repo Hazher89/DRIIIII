@@ -9,11 +9,13 @@ class PartnerPortalNavItem {
     required this.icon,
     required this.selectedIcon,
     required this.label,
+    this.badgeCount = 0,
   });
 
   final IconData icon;
   final IconData selectedIcon;
   final String label;
+  final int badgeCount;
 }
 
 class PartnerPortalBottomNav extends StatefulWidget {
@@ -102,10 +104,17 @@ class _PartnerPortalBottomNavState extends State<PartnerPortalBottomNav> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          selected ? item.selectedIcon : item.icon,
-                          size: 22,
-                          color: fg,
+                        Badge(
+                          isLabelVisible: item.badgeCount > 0,
+                          label: Text(
+                            item.badgeCount > 99 ? '99+' : '${item.badgeCount}',
+                            style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w700),
+                          ),
+                          child: Icon(
+                            selected ? item.selectedIcon : item.icon,
+                            size: 22,
+                            color: fg,
+                          ),
                         ),
                         const SizedBox(height: 2),
                         Text(

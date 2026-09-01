@@ -15,6 +15,8 @@ import '../../core/constants/app_icons.dart';
 import '../auth/onboarding_screen.dart';
 import '../auth/pending_approval_screen.dart';
 import '../../models/user_profile.dart';
+import '../../core/services/chat/chat_flag_service.dart';
+import '../../core/services/chat/chat_unread_service.dart';
 import '../../core/services/native_permissions_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -44,6 +46,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   String? _realtimeUserId;
   bool _accessReloadInFlight = false;
   DateTime? _lastAccessReloadAt;
+  StreamSubscription<ChatFlag>? _chatFlagSub;
+  StreamSubscription<int>? _chatUnreadSub;
+  bool _chatMaviEnabled = true;
+  int _chatUnread = 0;
 
   @override
   void initState() {
@@ -72,6 +78,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _unsubscribeProfileRealtime();
+    _chatFlagSub?.cancel();
+    _chatUnreadSub?.cancel();
+    ChatUnreadService.stopWatching();
     _authSub?.cancel();
     super.dispose();
   }
@@ -257,6 +266,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       });
       AccessSessionCache.setProfile(profile);
       _subscribeProfileRealtime(profile.id);
+      _bindChatFlag(profile.companyId);
+      _bindChatUnread(profile);
       _lastAccessReloadAt = DateTime.now();
 
       if (!silent) {
@@ -325,10 +336,50 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     context.go(path);
   }
 
+  void _bindChatUnread(UserProfile profile) {
+    _chatUnreadSub?.cancel();
+    if (!profile.access.canPartnersChat || profile.isPartnerPortalUser) {
+      setState(() => _chatUnread = 0);
+      return;
+    }
+    ChatUnreadService.startWatching();
+    _chatUnreadSub = ChatUnreadService.stream.listen((count) {
+      if (!mounted) return;
+      setState(() => _chatUnread = count);
+    });
+    unawaited(ChatUnreadService.refresh());
+  }
+
+  void _bindChatFlag(String? companyId) {
+    _chatFlagSub?.cancel();
+    _chatFlagSub = null;
+    if (companyId == null || companyId.isEmpty) {
+      if (mounted) setState(() => _chatMaviEnabled = false);
+      return;
+    }
+    _chatFlagSub = ChatFlagService.watch(companyId).listen((flag) {
+      if (!mounted) return;
+      final enabled = flag.maviEnabled;
+      if (enabled == _chatMaviEnabled) return;
+      setState(() => _chatMaviEnabled = enabled);
+      if (!enabled &&
+          widget.navigationShell.currentIndex ==
+              AppPaths.shellTabs.indexWhere((t) => t.access == AccessKeys.partnersChat)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          context.go(AppPaths.dashboard);
+        });
+      }
+    });
+  }
+
   bool _hasAccess(String key) {
     if (_profile == null) return false;
     if (key == AccessKeys.partners) {
       return PartnerAccess.canOpenPartnersModule(_profile!.access);
+    }
+    if (key == AccessKeys.partnersChat) {
+      return _profile!.access.canPartnersChat && _chatMaviEnabled;
     }
     return _profile!.access.can(key);
   }
@@ -399,6 +450,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               'label': AppStrings.navWork,
               'access': AccessKeys.hms,
             },
+            if (_chatMaviEnabled && (_profile?.access.canPartnersChat ?? false))
+              {
+                'icon': Icons.forum_outlined,
+                'label': AppStrings.navChat,
+                'access': AccessKeys.partnersChat,
+              },
             {
               'icon': AppIcons.more,
               'label': AppStrings.navMore,
@@ -441,6 +498,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               'label': AppStrings.navPartners,
               'access': AccessKeys.partners,
             },
+            if (_chatMaviEnabled && (_profile?.access.canPartnersChat ?? false))
+              {
+                'icon': Icons.forum_outlined,
+                'label': AppStrings.navChat,
+                'access': AccessKeys.partnersChat,
+              },
             {
               'icon': AppIcons.clock,
               'label': AppStrings.navStempling,
@@ -484,6 +547,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                   navIndex: navIndex,
                   visibleScreens: visibleScreens,
                   compact: compact,
+                  badge: (s['access'] as String) == AccessKeys.partnersChat ? _chatUnread : null,
                 );
               },
             ),

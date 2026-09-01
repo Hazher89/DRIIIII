@@ -9,6 +9,7 @@ class AccessKeys {
   static const avvik = 'avvik';
   static const hms = 'hms';
   static const partners = 'partners';
+  static const partnersChat = 'partners_chat';
   static const stempling = 'stempling';
   static const uniformMonitor = 'uniform_monitor';
   static const more = 'more';
@@ -105,6 +106,7 @@ class AccessKeys {
     avvik,
     hms,
     partners,
+    partnersChat,
     stempling,
     uniformMonitor,
     more,

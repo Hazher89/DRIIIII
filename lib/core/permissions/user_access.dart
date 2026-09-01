@@ -180,6 +180,9 @@ class UserAccess {
   bool get canPartnersTabFri => can(AccessKeys.partnersTabFri);
   bool get canPartnersTabBotTrekk => can(AccessKeys.partnersTabBotTrekk);
   bool get canPartnersTabSms => canArea('partners.tabs.sms');
+  bool get canPartnersChat => canArea('partners.chat');
+  bool get canPartnersChatBroadcast => canArea('partners.chat.broadcast', AccessAction.create);
+  bool get canPartnersChatModerate => canArea('partners.chat.moderate');
 
   // HMS undermoduler
   bool get canHmsRisk => can(AccessKeys.hmsRisikovurdering);

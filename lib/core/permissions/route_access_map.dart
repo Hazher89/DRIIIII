@@ -92,6 +92,10 @@ class RouteAccessMap {
       areaId: 'partners.chat',
       legacyAccessKey: AccessKeys.partners,
     ),
+    AppPaths.chat: const RouteAccessRequirement(
+      areaId: 'partners.chat',
+      legacyAccessKey: AccessKeys.partnersChat,
+    ),
     AppPaths.stempling: const RouteAccessRequirement(
       areaId: 'stempling',
       legacyAccessKey: AccessKeys.stempling,

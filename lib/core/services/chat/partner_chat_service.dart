@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../models/chat/chat_models.dart';
 import '../supabase_service.dart';
+import 'chat_unread_service.dart';
 
 /// Partner ↔ MAVI chat — rom, meldinger, vedlegg, grupper, arkiv, realtime.
 abstract final class PartnerChatService {
@@ -24,7 +26,7 @@ abstract final class PartnerChatService {
         .from('chat_rooms')
         .select(
           'id, company_id, room_type, title, partner_id, last_message_at, last_message_preview, '
-          'chat_user_room_prefs!left(archived_at, pinned_at, user_id)',
+          'chat_user_room_prefs!left(archived_at, pinned_at, muted_until, user_id)',
         )
         .order('last_message_at', ascending: false, nullsFirst: false);
 
@@ -42,6 +44,26 @@ abstract final class PartnerChatService {
       if (room.isArchived == archived) rooms.add(room);
     }
 
+    final unread = await fetchUnreadByRoom();
+    for (var i = 0; i < rooms.length; i++) {
+      final n = unread[rooms[i].id] ?? 0;
+      if (n > 0) {
+        rooms[i] = ChatRoom(
+          id: rooms[i].id,
+          companyId: rooms[i].companyId,
+          roomType: rooms[i].roomType,
+          title: rooms[i].title,
+          partnerId: rooms[i].partnerId,
+          lastMessageAt: rooms[i].lastMessageAt,
+          lastMessagePreview: rooms[i].lastMessagePreview,
+          unreadCount: n,
+          isArchived: rooms[i].isArchived,
+          isPinned: rooms[i].isPinned,
+          isMuted: rooms[i].isMuted,
+        );
+      }
+    }
+
     rooms.sort((a, b) {
       if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
       final at = a.lastMessageAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -50,6 +72,49 @@ abstract final class PartnerChatService {
     });
 
     return rooms;
+  }
+
+  static Future<Map<String, int>> fetchUnreadByRoom() async {
+    if (SupabaseService.currentUser?.id == null) return const {};
+    final rows = await _client.rpc<dynamic>('chat_my_unread_by_room');
+    if (rows is! List) return const {};
+    final map = <String, int>{};
+    for (final raw in rows) {
+      final row = Map<String, dynamic>.from(raw as Map);
+      final roomId = row['room_id'] as String?;
+      if (roomId == null) continue;
+      map[roomId] = (row['unread_count'] as num?)?.toInt() ?? 0;
+    }
+    return map;
+  }
+
+  static Future<int> fetchTotalUnread() async {
+    if (SupabaseService.currentUser?.id == null) return 0;
+    final n = await _client.rpc<num>('chat_total_unread_count');
+    return n.toInt();
+  }
+
+  static Future<ChatRoom?> fetchRoomById(String roomId) async {
+    final uid = SupabaseService.currentUser?.id;
+    if (uid == null) return null;
+    final row = await _client
+        .from('chat_rooms')
+        .select(
+          'id, company_id, room_type, title, partner_id, last_message_at, last_message_preview, '
+          'chat_user_room_prefs!left(archived_at, pinned_at, muted_until, user_id)',
+        )
+        .eq('id', roomId)
+        .maybeSingle();
+    if (row == null) return null;
+    final map = Map<String, dynamic>.from(row);
+    final prefs = map['chat_user_room_prefs'];
+    if (prefs is List) {
+      map['chat_user_room_prefs'] = prefs.where((p) {
+        final m = p as Map;
+        return m['user_id'] == uid;
+      }).toList();
+    }
+    return ChatRoom.fromJson(map);
   }
 
   static Future<List<ChatMessage>> fetchMessages(
@@ -180,6 +245,21 @@ abstract final class PartnerChatService {
     });
   }
 
+  static Future<void> setPinned(String roomId, bool pinned) async {
+    await _client.rpc('chat_set_room_pinned', params: {
+      'p_room_id': roomId,
+      'p_pinned': pinned,
+    });
+  }
+
+  static Future<void> setMuted(String roomId, bool muted, {int? hours}) async {
+    await _client.rpc('chat_set_room_muted', params: {
+      'p_room_id': roomId,
+      'p_muted': muted,
+      'p_hours': hours,
+    });
+  }
+
   static Future<String> ensureBroadcastRoom(String companyId) async {
     return await _client.rpc<String>(
       'ensure_partner_broadcast_room',
@@ -221,56 +301,122 @@ abstract final class PartnerChatService {
     );
   }
 
-  static Future<List<ChatPartnerDirectoryEntry>> fetchPartnerDirectory() async {
-    final rows = await _client
-        .from('partner_portal_accounts')
-        .select('profile_id, partner_id, partners(name), profiles(full_name, is_active)')
-        .eq('is_active', true);
+  static Future<String> superadminCreateMaviGroup({
+    required List<String> memberIds,
+    required String title,
+  }) async {
+    return await _client.rpc<String>(
+      'chat_superadmin_create_mavi_group',
+      params: {'p_member_ids': memberIds, 'p_title': title},
+    );
+  }
 
-    final out = <ChatPartnerDirectoryEntry>[];
-    for (final raw in rows as List) {
-      final map = Map<String, dynamic>.from(raw as Map);
-      final profile = map['profiles'] as Map?;
-      if (profile == null || profile['is_active'] != true) continue;
-      final partner = map['partners'] as Map?;
-      out.add(
-        ChatPartnerDirectoryEntry(
-          userId: map['profile_id'] as String,
-          fullName: (profile['full_name'] as String?)?.trim() ?? 'Partner',
-          partnerId: map['partner_id'] as String,
-          partnerName: (partner?['name'] as String?)?.trim() ?? 'Partner',
-        ),
-      );
-    }
-    out.sort((a, b) => a.partnerName.compareTo(b.partnerName));
-    return out;
+  static Future<String> superadminCreatePartnerGroup({
+    required List<String> memberIds,
+    required String title,
+  }) async {
+    return await _client.rpc<String>(
+      'chat_superadmin_create_partner_group',
+      params: {'p_member_ids': memberIds, 'p_title': title},
+    );
+  }
+
+  static Future<int> superadminInviteToRoom({
+    required String roomId,
+    required List<String> userIds,
+  }) async {
+    final n = await _client.rpc<int>(
+      'chat_superadmin_invite_to_room',
+      params: {'p_room_id': roomId, 'p_user_ids': userIds},
+    );
+    return n;
+  }
+
+  static Future<List<ChatPartnerDirectoryEntry>> fetchPartnerDirectory() async {
+    final data = await _client.rpc<dynamic>('chat_partner_directory');
+    if (data is! List) return const [];
+    return data
+        .map((e) => ChatPartnerDirectoryEntry.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   static Future<List<ChatMaviDirectoryEntry>> fetchMaviDirectory(String companyId) async {
-    final rows = await _client
-        .from('profiles')
-        .select('id, full_name, is_active')
-        .eq('company_id', companyId)
-        .eq('is_active', true);
+    final data = await _client.rpc<dynamic>('chat_mavi_directory');
+    if (data is! List) return const [];
+    return data
+        .map((e) => ChatMaviDirectoryEntry.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
 
-    final out = <ChatMaviDirectoryEntry>[];
-    for (final raw in rows as List) {
-      final map = Map<String, dynamic>.from(raw as Map);
-      final id = map['id'] as String;
-      if (id == _uid) continue;
-      final isPartner = await _client
-          .from('partner_portal_accounts')
-          .select('profile_id')
-          .eq('profile_id', id)
-          .maybeSingle();
-      if (isPartner != null) continue;
-      out.add(ChatMaviDirectoryEntry(
-        userId: id,
-        fullName: (map['full_name'] as String?)?.trim() ?? 'Ansatt',
-      ));
-    }
-    out.sort((a, b) => a.fullName.compareTo(b.fullName));
-    return out;
+  static Future<ChatSuperadminDirectory> fetchSuperadminDirectory() async {
+    final data = await _client.rpc<Map<String, dynamic>>('chat_superadmin_directory');
+    return ChatSuperadminDirectory.fromJson(data);
+  }
+
+  static Future<void> partnerBlockUser(String userId, {String? reason}) async {
+    await _client.rpc('chat_partner_block_user', params: {
+      'p_blocked_user_id': userId,
+      'p_reason': reason,
+    });
+  }
+
+  static Future<void> partnerUnblockUser(String userId) async {
+    await _client.rpc('chat_partner_unblock_user', params: {
+      'p_blocked_user_id': userId,
+    });
+  }
+
+  static Future<void> adminBlockUser(String userId, {String? reason, String? roomId}) async {
+    await _client.rpc('chat_block_user', params: {
+      'p_blocked_user_id': userId,
+      'p_reason': reason,
+      'p_room_id': roomId,
+    });
+  }
+
+  static Future<void> adminUnblockUser(String userId, {String? roomId}) async {
+    await _client.rpc('chat_unblock_user', params: {
+      'p_blocked_user_id': userId,
+      'p_room_id': roomId,
+    });
+  }
+
+  static Future<void> hideMessage(String messageId) async {
+    await _client.rpc('chat_hide_message', params: {'p_message_id': messageId});
+  }
+
+  static Future<void> deleteOwnMessage(String messageId) async {
+    await _client.rpc('chat_delete_own_message', params: {'p_message_id': messageId});
+  }
+
+  static Future<List<ChatBlockedUser>> fetchPartnerBlockedUsers() async {
+    final rows = await _client.rpc<dynamic>('chat_partner_blocked_list');
+    if (rows is! List) return const [];
+    return rows
+        .map((e) => ChatBlockedUser.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  static Future<List<ChatAuditEntry>> fetchModerationAudit({int limit = 50}) async {
+    final rows = await _client
+        .from('chat_audit_log')
+        .select('id, action, room_id, message_id, target_user_id, meta, created_at, actor_id')
+        .order('created_at', ascending: false)
+        .limit(limit);
+    return (rows as List)
+        .map((e) => ChatAuditEntry.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  static Future<List<ChatReadReceipt>> fetchReadReceipts(String roomId, String messageId) async {
+    final rows = await _client.rpc<dynamic>(
+      'chat_message_read_by',
+      params: {'p_room_id': roomId, 'p_message_id': messageId},
+    );
+    if (rows is! List) return const [];
+    return rows
+        .map((e) => ChatReadReceipt.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
   }
 
   static RealtimeChannel subscribeRoom({
@@ -313,13 +459,6 @@ abstract final class PartnerChatService {
       'last_read_message_id': messageId,
       'last_read_at': DateTime.now().toUtc().toIso8601String(),
     });
-  }
-
-  static Future<void> blockUser(String userId, {String? reason, String? roomId}) async {
-    await _client.rpc('chat_block_user', params: {
-      'p_blocked_user_id': userId,
-      'p_reason': reason,
-      'p_room_id': roomId,
-    });
+    unawaited(ChatUnreadService.refresh());
   }
 }
