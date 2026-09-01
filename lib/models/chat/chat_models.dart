@@ -190,6 +190,48 @@ class ChatAttachment {
       );
 }
 
+class ChatReactionGroup {
+  const ChatReactionGroup({
+    required this.emoji,
+    required this.count,
+    required this.mine,
+    this.userNames = const [],
+  });
+
+  final String emoji;
+  final int count;
+  final bool mine;
+  final List<String> userNames;
+
+  static List<ChatReactionGroup> fromRows(List<dynamic>? rows, String myId) {
+    if (rows == null || rows.isEmpty) return const [];
+    final map = <String, List<String>>{};
+    final mine = <String>{};
+    for (final raw in rows) {
+      final r = Map<String, dynamic>.from(raw as Map);
+      final emoji = (r['emoji'] as String?)?.trim();
+      final uid = r['user_id'] as String?;
+      if (emoji == null || emoji.isEmpty) continue;
+      final profile = r['profiles'];
+      String? name;
+      if (profile is Map) name = (profile['full_name'] as String?)?.trim();
+      map.putIfAbsent(emoji, () => []).add(name ?? 'Bruker');
+      if (uid == myId) mine.add(emoji);
+    }
+    return map.entries
+        .map(
+          (e) => ChatReactionGroup(
+            emoji: e.key,
+            count: e.value.length,
+            mine: mine.contains(e.key),
+            userNames: e.value,
+          ),
+        )
+        .toList()
+      ..sort((a, b) => b.count.compareTo(a.count));
+  }
+}
+
 class ChatMessage {
   const ChatMessage({
     required this.id,
@@ -205,6 +247,7 @@ class ChatMessage {
     this.replyToId,
     this.replyTo,
     this.attachments = const [],
+    this.reactions = const [],
   });
 
   final String id;
@@ -220,6 +263,7 @@ class ChatMessage {
   final String? replyToId;
   final ChatMessage? replyTo;
   final List<ChatAttachment> attachments;
+  final List<ChatReactionGroup> reactions;
 
   bool get isDeleted => deletedAt != null;
   bool get isBlocked => moderationState == 'blocked';
@@ -249,6 +293,10 @@ class ChatMessage {
       moderationState: json['moderation_state'] as String? ?? 'active',
       replyToId: json['reply_to_id'] as String?,
       attachments: attachments,
+      reactions: ChatReactionGroup.fromRows(
+        json['chat_message_reactions'] as List?,
+        '', // fylles inn av service
+      ),
     );
   }
 
@@ -256,6 +304,7 @@ class ChatMessage {
     String? senderName,
     ChatMessage? replyTo,
     List<ChatAttachment>? attachments,
+    List<ChatReactionGroup>? reactions,
   }) =>
       ChatMessage(
         id: id,
@@ -271,6 +320,7 @@ class ChatMessage {
         replyToId: replyToId,
         replyTo: replyTo ?? this.replyTo,
         attachments: attachments ?? this.attachments,
+        reactions: reactions ?? this.reactions,
       );
 }
 

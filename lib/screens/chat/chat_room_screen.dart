@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/services/chat/chat_typing_service.dart';
 import '../../core/services/chat/chat_presence_service.dart';
 import '../../core/services/chat/chat_unread_service.dart';
 import '../../core/services/chat/partner_chat_service.dart';
@@ -11,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/permissions/user_access.dart';
 import '../../models/chat/chat_models.dart';
 import '../../models/user_profile.dart';
+import 'widgets/chat_media_gallery_sheet.dart';
 import 'widgets/chat_media_viewer.dart';
 import 'widgets/chat_ui_helpers.dart';
 import 'widgets/chat_media_send_sheet.dart';
@@ -44,7 +46,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   bool _sending = false;
   bool _pinned = false;
   bool _muted = false;
+  bool _searchOpen = false;
+  bool _showJumpLatest = false;
+  String _searchQuery = '';
+  Map<String, String> _typingUsers = {};
+  final _searchCtrl = TextEditingController();
   RealtimeChannel? _channel;
+  RealtimeChannel? _reactionsChannel;
+  ChatTypingService? _typing;
+  StreamSubscription<Map<String, String>>? _typingSub;
 
   bool get _canSend {
     if (_room.roomType == ChatRoomType.partnerBroadcast) {
@@ -66,7 +76,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _muted = widget.room.isMuted;
     ChatPresenceService.setOpenRoom(widget.room.id);
     _scroll.addListener(_onScroll);
-    _load();
+    _typing = ChatTypingService(
+      roomId: widget.room.id,
+      userId: widget.profile.id,
+      userName: widget.profile.fullName.isNotEmpty ? widget.profile.fullName : 'Bruker',
+    )..start();
+    _typingSub = _typing!.others.listen((map) {
+      if (!mounted) return;
+      setState(() => _typingUsers = map);
+    });
+    _input.addListener(() => _typing?.onUserTyping());
     _channel = PartnerChatService.subscribeRoom(
       roomId: widget.room.id,
       onMessage: (msg) async {
@@ -87,6 +106,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         _scrollToBottom();
       },
     );
+    _reactionsChannel = Supabase.instance.client
+        .channel('chat_reactions_${widget.room.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_message_reactions',
+          callback: (_) => unawaited(_load(silent: true)),
+        )
+        ..subscribe();
+    _load();
   }
 
   @override
@@ -94,14 +123,24 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (ChatPresenceService.openRoomId == widget.room.id) {
       ChatPresenceService.setOpenRoom(null);
     }
+    unawaited(_typingSub?.cancel() ?? Future.value());
+    _typing?.dispose();
     PartnerChatService.unsubscribe(_channel);
+    if (_reactionsChannel != null) {
+      Supabase.instance.client.removeChannel(_reactionsChannel!);
+    }
     _scroll.removeListener(_onScroll);
     _input.dispose();
+    _searchCtrl.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
   void _onScroll() {
+    if (_scroll.hasClients) {
+      final atBottom = _scroll.position.pixels >= _scroll.position.maxScrollExtent - 80;
+      if (atBottom != !_showJumpLatest) setState(() => _showJumpLatest = !atBottom);
+    }
     if (!_scroll.hasClients || _loadingMore || !_hasMore) return;
     if (_scroll.position.pixels <= 48) {
       unawaited(_loadOlder());
@@ -133,8 +172,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     final msgs = await PartnerChatService.fetchMessages(widget.room.id);
     if (!mounted) return;
     setState(() {
@@ -146,7 +185,28 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       await PartnerChatService.markRead(widget.room.id, msgs.last.id);
     }
     unawaited(ChatUnreadService.refresh());
-    _scrollToBottom();
+    if (!silent) _scrollToBottom();
+  }
+
+  List<ChatMessage> get _visibleMessages {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return _messages;
+    return _messages.where((m) {
+      final body = m.body.toLowerCase();
+      final name = (m.senderName ?? '').toLowerCase();
+      return body.contains(q) || name.contains(q);
+    }).toList();
+  }
+
+  Future<void> _toggleReaction(ChatMessage message, String emoji) async {
+    try {
+      await PartnerChatService.toggleReaction(message.id, emoji);
+      await _load(silent: true);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kunne ikke reagere: $e')));
+      }
+    }
   }
 
   void _scrollToBottom() {
@@ -356,6 +416,22 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         ),
         actions: [
           IconButton(
+            tooltip: 'Søk i samtale',
+            icon: Icon(_searchOpen ? Icons.close : Icons.search_rounded),
+            onPressed: () => setState(() {
+              _searchOpen = !_searchOpen;
+              if (!_searchOpen) {
+                _searchQuery = '';
+                _searchCtrl.clear();
+              }
+            }),
+          ),
+          IconButton(
+            tooltip: 'Media',
+            icon: const Icon(Icons.perm_media_outlined),
+            onPressed: () => ChatMediaGallerySheet.show(context, _messages),
+          ),
+          IconButton(
             tooltip: 'Medlemmer',
             icon: const Icon(Icons.people_outline),
             onPressed: () => showChatRoomMembersSheet(
@@ -404,48 +480,92 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             _PrivacyStrip(
               text: 'Kun lesing — du har ikke rettighet til å sende til alle partnere.',
             ),
+          if (_searchOpen)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+              child: TextField(
+                controller: _searchCtrl,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'Søk i meldinger eller avsendere…',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _searchQuery.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.clear),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        ),
+                  filled: true,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                ),
+                onChanged: (v) => setState(() => _searchQuery = v),
+              ),
+            ),
+          if (_typingUsers.isNotEmpty)
+            _TypingStrip(label: ChatTypingService.typingLabel(_typingUsers)),
           if (_loadingMore)
             const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : _messages.isEmpty
+                : _visibleMessages.isEmpty
                     ? Center(
                         child: Text(
-                          'Ingen meldinger ennå.\nSwipe på en melding for å svare.',
+                          _searchQuery.isEmpty
+                              ? 'Ingen meldinger ennå.\nSwipe på en melding for å svare.'
+                              : 'Ingen treff for «$_searchQuery»',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.grey.shade600),
                         ),
                       )
-                    : ListView.builder(
-                        controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                        itemCount: _messages.length,
-                        itemBuilder: (_, i) {
-                          final m = _messages[i];
-                          final prev = i > 0 ? _messages[i - 1] : null;
-                          final showDate = ChatUiHelpers.shouldShowDateHeader(m.createdAt, prev?.createdAt);
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              if (showDate)
-                                ChatDateHeader(label: ChatUiHelpers.formatDayLabel(m.createdAt)),
-                              ChatSwipeMessage(
-                                message: m,
-                                mine: m.senderId == me,
-                                showSender: _showSenderNames,
-                                onReply: (ChatMessage msg) => setState(() => _replyTo = msg),
-                                onOpenImage: _openImage,
-                                onDelete: m.senderId == me && !m.isDeleted ? () => _deleteMessage(m) : null,
-                                onHide: _canModerate && !m.isDeleted ? () => _hideMessage(m) : null,
-                                onModeratorDelete: _canModerateMessages && !m.isDeleted
-                                    ? () => _moderatorDeleteMessage(m)
-                                    : null,
-                                onShowRead: m.senderId == me ? () => _showReadReceipts(m) : null,
+                    : Stack(
+                        children: [
+                          ListView.builder(
+                            controller: _scroll,
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+                            itemCount: _visibleMessages.length,
+                            itemBuilder: (_, i) {
+                              final m = _visibleMessages[i];
+                              final prev = i > 0 ? _visibleMessages[i - 1] : null;
+                              final showDate = ChatUiHelpers.shouldShowDateHeader(m.createdAt, prev?.createdAt);
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (showDate)
+                                    ChatDateHeader(label: ChatUiHelpers.formatDayLabel(m.createdAt)),
+                                  ChatSwipeMessage(
+                                    message: m,
+                                    mine: m.senderId == me,
+                                    showSender: _showSenderNames,
+                                    onReply: (ChatMessage msg) => setState(() => _replyTo = msg),
+                                    onOpenImage: _openImage,
+                                    onReact: (e) => _toggleReaction(m, e),
+                                    onDelete: m.senderId == me && !m.isDeleted ? () => _deleteMessage(m) : null,
+                                    onHide: _canModerate && !m.isDeleted ? () => _hideMessage(m) : null,
+                                    onModeratorDelete: _canModerateMessages && !m.isDeleted
+                                        ? () => _moderatorDeleteMessage(m)
+                                        : null,
+                                    onShowRead: m.senderId == me ? () => _showReadReceipts(m) : null,
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          if (_showJumpLatest && !_searchOpen)
+                            Positioned(
+                              right: 12,
+                              bottom: 12,
+                              child: FloatingActionButton.small(
+                                heroTag: 'jump_latest',
+                                backgroundColor: DriftProTheme.primaryGreen,
+                                onPressed: _scrollToBottom,
+                                child: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white),
                               ),
-                            ],
-                          );
-                        },
+                            ),
+                        ],
                       ),
           ),
           if (_replyTo != null)
@@ -530,6 +650,41 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
         ],
       ),
+      ),
+    );
+  }
+}
+
+class _TypingStrip extends StatelessWidget {
+  const _TypingStrip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: DriftProTheme.primaryGreen.withValues(alpha: 0.8),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: DriftProTheme.primaryGreen),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

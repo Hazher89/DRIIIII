@@ -6,6 +6,7 @@ import '../../../core/services/chat/partner_chat_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/chat/chat_models.dart';
 import 'chat_media_viewer.dart';
+import 'chat_link_text.dart';
 import 'chat_ui_helpers.dart';
 
 /// Meldingsboble med swipe-for-svar, avatars og inline media.
@@ -21,6 +22,7 @@ class ChatSwipeMessage extends StatefulWidget {
     this.onHide,
     this.onModeratorDelete,
     this.onShowRead,
+    this.onReact,
   });
 
   final ChatMessage message;
@@ -32,6 +34,7 @@ class ChatSwipeMessage extends StatefulWidget {
   final VoidCallback? onHide;
   final VoidCallback? onModeratorDelete;
   final VoidCallback? onShowRead;
+  final void Function(String emoji)? onReact;
 
   @override
   State<ChatSwipeMessage> createState() => _ChatSwipeMessageState();
@@ -150,10 +153,21 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
                               ),
                             ),
                           ),
-                        _ChatBubbleBody(
-                          message: m,
-                          mine: mine,
-                          onOpenImage: widget.onOpenImage,
+                        Column(
+                          crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                          children: [
+                            _ChatBubbleBody(
+                              message: m,
+                              mine: mine,
+                              onOpenImage: widget.onOpenImage,
+                            ),
+                            if (m.reactions.isNotEmpty && !m.isDeleted)
+                              _ReactionBar(
+                                reactions: m.reactions,
+                                mine: mine,
+                                onReact: widget.onReact,
+                              ),
+                          ],
                         ),
                       ],
                     ),
@@ -175,6 +189,24 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  for (final e in PartnerChatService.quickReactionEmojis)
+                    IconButton(
+                      tooltip: e,
+                      icon: Text(e, style: const TextStyle(fontSize: 26)),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        widget.onReact?.call(e);
+                      },
+                    ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
             ListTile(
               leading: CircleAvatar(
                 backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
@@ -301,10 +333,13 @@ class _ChatBubbleBody extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       if (m.body.isNotEmpty)
-                        Text(
-                          m.isDeleted ? '[Slettet]' : m.body,
-                          style: TextStyle(color: fg, height: 1.4, fontSize: 15),
-                        ),
+                        m.isDeleted
+                            ? Text('[Slettet]', style: TextStyle(color: fg, height: 1.4, fontSize: 15))
+                            : ChatLinkText(
+                                text: m.body,
+                                style: TextStyle(color: fg, height: 1.4, fontSize: 15),
+                                linkColor: mine ? Colors.white : DriftProTheme.primaryGreen,
+                              ),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -343,6 +378,57 @@ class _ChatBubbleBody extends StatelessWidget {
                       const Icon(Icons.done_all_rounded, size: 11, color: Colors.white70),
                     ],
                   ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReactionBar extends StatelessWidget {
+  const _ReactionBar({
+    required this.reactions,
+    required this.mine,
+    required this.onReact,
+  });
+
+  final List<ChatReactionGroup> reactions;
+  final bool mine;
+  final void Function(String emoji)? onReact;
+
+  @override
+  Widget build(BuildContext context) {
+    if (reactions.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          for (final r in reactions)
+            GestureDetector(
+              onTap: onReact == null ? null : () => onReact!(r.emoji),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: r.mine
+                      ? DriftProTheme.primaryGreen.withValues(alpha: 0.15)
+                      : Colors.black.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: r.mine
+                        ? DriftProTheme.primaryGreen.withValues(alpha: 0.4)
+                        : Colors.black.withValues(alpha: 0.06),
+                  ),
+                ),
+                child: Text(
+                  '${r.emoji} ${r.count}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: r.mine ? FontWeight.w800 : FontWeight.w600,
+                  ),
                 ),
               ),
             ),

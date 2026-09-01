@@ -128,7 +128,8 @@ abstract final class PartnerChatService {
         .from('chat_messages')
         .select(
           'id, room_id, sender_id, body, message_type, created_at, is_edited, deleted_at, '
-          'moderation_state, reply_to_id, chat_message_attachments(id, storage_path, mime_type, file_name, byte_size, width, height, duration_ms)',
+          'moderation_state, reply_to_id, chat_message_attachments(id, storage_path, mime_type, file_name, byte_size, width, height, duration_ms), '
+          'chat_message_reactions(emoji, user_id, profiles(full_name))',
         )
         .eq('room_id', roomId);
 
@@ -137,8 +138,9 @@ abstract final class PartnerChatService {
     }
 
     final rows = await filter.order('created_at', ascending: false).limit(limit);
+    final myId = _uid;
     final messages = (rows as List)
-        .map((e) => ChatMessage.fromJson(Map<String, dynamic>.from(e as Map)))
+        .map((e) => _messageFromRow(Map<String, dynamic>.from(e as Map), myId))
         .toList()
         .reversed
         .toList();
@@ -182,6 +184,23 @@ abstract final class PartnerChatService {
       }
     }
   }
+
+  static ChatMessage _messageFromRow(Map<String, dynamic> json, String myId) {
+    final msg = ChatMessage.fromJson(json);
+    return msg.copyWith(
+      reactions: ChatReactionGroup.fromRows(json['chat_message_reactions'] as List?, myId),
+    );
+  }
+
+  static Future<bool> toggleReaction(String messageId, String emoji) async {
+    final added = await _client.rpc<bool>(
+      'chat_toggle_reaction',
+      params: {'p_message_id': messageId, 'p_emoji': emoji},
+    );
+    return added;
+  }
+
+  static const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '✅'];
 
   static Future<ChatMessage> hydrateMessage(ChatMessage message) async {
     var msg = message;
