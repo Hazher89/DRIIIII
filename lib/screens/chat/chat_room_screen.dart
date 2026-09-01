@@ -11,6 +11,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/permissions/user_access.dart';
 import '../../models/chat/chat_models.dart';
 import '../../models/user_profile.dart';
+import 'widgets/chat_media_viewer.dart';
+import 'widgets/chat_ui_helpers.dart';
 import 'widgets/chat_media_send_sheet.dart';
 import 'widgets/chat_room_members_sheet.dart';
 import 'widgets/chat_swipe_message.dart';
@@ -54,6 +56,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   bool get _canModerate => widget.profile.access.canPartnersChatModerate;
   bool get _isSuperAdmin => widget.profile.role == UserRole.superadmin;
   bool get _canModerateMessages => _canModerate || _isSuperAdmin;
+  bool get _showSenderNames => _room.roomType.isGroup;
 
   @override
   void initState() {
@@ -68,11 +71,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       roomId: widget.room.id,
       onMessage: (msg) async {
         if (!mounted) return;
+        ChatMessage incoming = msg;
+        if (incoming.replyToId != null) {
+          final parent = _messages.cast<ChatMessage?>().firstWhere(
+                (m) => m?.id == incoming.replyToId,
+                orElse: () => null,
+              );
+          if (parent != null) incoming = incoming.copyWith(replyTo: parent);
+        }
         setState(() {
-          final existing = _messages.any((m) => m.id == msg.id);
-          if (!existing) _messages = [..._messages, msg];
+          final existing = _messages.any((m) => m.id == incoming.id);
+          if (!existing) _messages = [..._messages, incoming];
         });
-        await PartnerChatService.markRead(widget.room.id, msg.id);
+        await PartnerChatService.markRead(widget.room.id, incoming.id);
         _scrollToBottom();
       },
     );
@@ -312,12 +323,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   void _openImage(String url) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => Dialog(
-        child: InteractiveViewer(child: Image.network(url, fit: BoxFit.contain)),
-      ),
-    );
+    ChatMediaViewer.openImage(context, url);
   }
 
   @override
@@ -378,7 +384,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ),
         ],
       ),
-      body: Column(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFFF4F7F5),
+              Colors.white,
+              DriftProTheme.primaryGreen.withValues(alpha: 0.03),
+            ],
+          ),
+        ),
+        child: Column(
         children: [
           if (room.roomType.isPartnerOnly)
             _PrivacyStrip(text: room.roomType.subtitleNorwegian),
@@ -401,21 +419,31 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                       )
                     : ListView.builder(
                         controller: _scroll,
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
                         itemCount: _messages.length,
                         itemBuilder: (_, i) {
                           final m = _messages[i];
-                          return ChatSwipeMessage(
-                            message: m,
-                            mine: m.senderId == me,
-                            onReply: (ChatMessage msg) => setState(() => _replyTo = msg),
-                            onOpenImage: _openImage,
-                            onDelete: m.senderId == me && !m.isDeleted ? () => _deleteMessage(m) : null,
-                            onHide: _canModerate && !m.isDeleted ? () => _hideMessage(m) : null,
-                            onModeratorDelete: _canModerateMessages && !m.isDeleted
-                                ? () => _moderatorDeleteMessage(m)
-                                : null,
-                            onShowRead: m.senderId == me ? () => _showReadReceipts(m) : null,
+                          final prev = i > 0 ? _messages[i - 1] : null;
+                          final showDate = ChatUiHelpers.shouldShowDateHeader(m.createdAt, prev?.createdAt);
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (showDate)
+                                ChatDateHeader(label: ChatUiHelpers.formatDayLabel(m.createdAt)),
+                              ChatSwipeMessage(
+                                message: m,
+                                mine: m.senderId == me,
+                                showSender: _showSenderNames,
+                                onReply: (ChatMessage msg) => setState(() => _replyTo = msg),
+                                onOpenImage: _openImage,
+                                onDelete: m.senderId == me && !m.isDeleted ? () => _deleteMessage(m) : null,
+                                onHide: _canModerate && !m.isDeleted ? () => _hideMessage(m) : null,
+                                onModeratorDelete: _canModerateMessages && !m.isDeleted
+                                    ? () => _moderatorDeleteMessage(m)
+                                    : null,
+                                onShowRead: m.senderId == me ? () => _showReadReceipts(m) : null,
+                              ),
+                            ],
                           );
                         },
                       ),
@@ -425,20 +453,30 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           if (_canSend)
             SafeArea(
               top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(8, 4, 12, 12),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 12,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.fromLTRB(8, 8, 12, 12),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    IconButton(
+                    _InputIconButton(
+                      icon: Icons.photo_library_rounded,
                       tooltip: 'Bilde',
-                      onPressed: _sending ? null : () => _pickMedia(video: false),
-                      icon: const Icon(Icons.photo_outlined),
+                      onTap: _sending ? null : () => _pickMedia(video: false),
                     ),
-                    IconButton(
+                    _InputIconButton(
+                      icon: Icons.videocam_rounded,
                       tooltip: 'Video',
-                      onPressed: _sending ? null : () => _pickMedia(video: true),
-                      icon: const Icon(Icons.videocam_outlined),
+                      onTap: _sending ? null : () => _pickMedia(video: true),
                     ),
                     Expanded(
                       child: TextField(
@@ -448,20 +486,35 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                         textInputAction: TextInputAction.send,
                         onSubmitted: (_) => _sendText(),
                         decoration: InputDecoration(
-                          hintText: 'Skriv melding… (swipe for svar)',
+                          hintText: _replyTo != null
+                              ? 'Skriv svar til ${_replyTo!.senderName ?? 'bruker'}…'
+                              : 'Skriv melding…',
                           filled: true,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(24)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          fillColor: const Color(0xFFF3F5F4),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide.none,
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.05)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide(color: DriftProTheme.primaryGreen.withValues(alpha: 0.5)),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 8),
                     FilledButton(
                       onPressed: _sending ? null : _sendText,
                       style: FilledButton.styleFrom(
                         backgroundColor: DriftProTheme.primaryGreen,
                         shape: const CircleBorder(),
                         padding: const EdgeInsets.all(14),
+                        elevation: 2,
                       ),
                       child: _sending
                           ? const SizedBox(
@@ -477,6 +530,31 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
         ],
       ),
+      ),
+    );
+  }
+}
+
+class _InputIconButton extends StatelessWidget {
+  const _InputIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onTap,
+      style: IconButton.styleFrom(
+        backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+      ),
+      icon: Icon(icon, color: DriftProTheme.primaryGreen, size: 22),
     );
   }
 }

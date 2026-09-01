@@ -1,18 +1,21 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 
+import '../../../core/services/chat/partner_chat_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/chat/chat_models.dart';
+import 'chat_media_viewer.dart';
+import 'chat_ui_helpers.dart';
 
-/// Meldingsboble med swipe-for-svar og lang-trykk-meny.
+/// Meldingsboble med swipe-for-svar, avatars og inline media.
 class ChatSwipeMessage extends StatefulWidget {
   const ChatSwipeMessage({
     super.key,
     required this.message,
     required this.mine,
     required this.onReply,
+    this.showSender = false,
     this.onOpenImage,
     this.onDelete,
     this.onHide,
@@ -22,6 +25,7 @@ class ChatSwipeMessage extends StatefulWidget {
 
   final ChatMessage message;
   final bool mine;
+  final bool showSender;
   final ValueChanged<ChatMessage> onReply;
   final void Function(String url)? onOpenImage;
   final VoidCallback? onDelete;
@@ -35,35 +39,41 @@ class ChatSwipeMessage extends StatefulWidget {
 
 class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerProviderStateMixin {
   double _drag = 0;
-  late AnimationController _snap;
+  late AnimationController _replyPulse;
 
   @override
   void initState() {
     super.initState();
-    _snap = AnimationController(vsync: this, duration: const Duration(milliseconds: 180));
+    _replyPulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 900))
+      ..repeat(reverse: true);
   }
 
   @override
   void dispose() {
-    _snap.dispose();
+    _replyPulse.dispose();
     super.dispose();
   }
 
-  void _onReply() => widget.onReply(widget.message);
+  void _onReply() {
+    HapticFeedback.lightImpact();
+    widget.onReply(widget.message);
+  }
 
   @override
   Widget build(BuildContext context) {
     final mine = widget.mine;
     final m = widget.message;
-    final threshold = mine ? -72.0 : 72.0;
-    final showReplyHint = mine ? _drag < -24 : _drag > 24;
+    final threshold = mine ? -64.0 : 64.0;
+    final showReplyHint = mine ? _drag < -20 : _drag > 20;
+    final senderName = m.senderName?.trim().isNotEmpty == true ? m.senderName! : 'Bruker';
+    final senderColor = mine ? DriftProTheme.primaryGreen : ChatUiHelpers.senderColor(m.senderId);
 
     return GestureDetector(
       onHorizontalDragUpdate: (d) {
         if (mine) {
-          setState(() => _drag = (_drag + d.delta.dx).clamp(-96.0, 0.0));
+          setState(() => _drag = (_drag + d.delta.dx).clamp(-88.0, 0.0));
         } else {
-          setState(() => _drag = (_drag + d.delta.dx).clamp(0.0, 96.0));
+          setState(() => _drag = (_drag + d.delta.dx).clamp(0.0, 88.0));
         }
       },
       onHorizontalDragEnd: (_) {
@@ -72,94 +82,158 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
         }
         setState(() => _drag = 0);
       },
-      onLongPress: () {
-        showModalBottomSheet<void>(
-          context: context,
-          showDragHandle: true,
-          builder: (ctx) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.reply),
-                  title: const Text('Svar'),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    _onReply();
-                  },
-                ),
-                if (m.body.isNotEmpty && !m.isDeleted)
-                  ListTile(
-                    leading: const Icon(Icons.copy),
-                    title: const Text('Kopier tekst'),
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: m.body));
-                      Navigator.pop(ctx);
-                    },
-                  ),
-                if (widget.onShowRead != null)
-                  ListTile(
-                    leading: const Icon(Icons.done_all),
-                    title: const Text('Lest av'),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      widget.onShowRead!();
-                    },
-                  ),
-                if (widget.onDelete != null)
-                  ListTile(
-                    leading: const Icon(Icons.delete_outline, color: Colors.red),
-                    title: const Text('Slett melding'),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      widget.onDelete!();
-                    },
-                  ),
-                if (widget.onModeratorDelete != null)
-                  ListTile(
-                    leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
-                    title: const Text('Slett melding (moderator)'),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      widget.onModeratorDelete!();
-                    },
-                  ),
-                if (widget.onHide != null)
-                  ListTile(
-                    leading: const Icon(Icons.visibility_off_outlined, color: Colors.orange),
-                    title: const Text('Skjul melding (moderator)'),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      widget.onHide!();
-                    },
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
+      onLongPress: () => _showActions(context, m),
       child: Stack(
         clipBehavior: Clip.none,
         alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
         children: [
           if (showReplyHint)
             Positioned(
-              right: mine ? 8 : null,
-              left: mine ? null : 8,
-              child: Icon(Icons.reply, color: DriftProTheme.primaryGreen.withValues(alpha: 0.8)),
+              right: mine ? 12 : null,
+              left: mine ? null : 12,
+              child: FadeTransition(
+                opacity: _replyPulse,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.35)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.reply_rounded, size: 16, color: DriftProTheme.primaryGreen),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Svar $senderName',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: DriftProTheme.primaryGreen,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
           Transform.translate(
             offset: Offset(_drag, 0),
-            child: Align(
-              alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-              child: _ChatBubbleBody(
-                message: m,
-                mine: mine,
-                onOpenImage: widget.onOpenImage,
+            child: Padding(
+              padding: EdgeInsets.only(
+                left: mine ? 48 : (widget.showSender ? 0 : 4),
+                right: mine ? 4 : 48,
+                bottom: 6,
+              ),
+              child: Row(
+                mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (!mine && widget.showSender) ...[
+                    ChatSenderAvatar(name: m.senderName, userId: m.senderId),
+                    const SizedBox(width: 8),
+                  ],
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      children: [
+                        if (widget.showSender)
+                          Padding(
+                            padding: EdgeInsets.only(left: mine ? 0 : 4, right: mine ? 4 : 0, bottom: 4),
+                            child: Text(
+                              mine ? 'Du' : senderName,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: senderColor,
+                              ),
+                            ),
+                          ),
+                        _ChatBubbleBody(
+                          message: m,
+                          mine: mine,
+                          onOpenImage: widget.onOpenImage,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showActions(BuildContext context, ChatMessage m) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                child: Icon(Icons.reply_rounded, color: DriftProTheme.primaryGreen),
+              ),
+              title: Text('Svar ${m.senderName ?? ''}'),
+              subtitle: Text(ChatUiHelpers.replySnippet(m), maxLines: 1, overflow: TextOverflow.ellipsis),
+              onTap: () {
+                Navigator.pop(ctx);
+                _onReply();
+              },
+            ),
+            if (m.body.isNotEmpty && !m.isDeleted)
+              ListTile(
+                leading: const Icon(Icons.copy_rounded),
+                title: const Text('Kopier tekst'),
+                onTap: () {
+                  Clipboard.setData(ClipboardData(text: m.body));
+                  Navigator.pop(ctx);
+                },
+              ),
+            if (widget.onShowRead != null)
+              ListTile(
+                leading: const Icon(Icons.done_all_rounded),
+                title: const Text('Lest av'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  widget.onShowRead!();
+                },
+              ),
+            if (widget.onDelete != null)
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: const Text('Slett melding'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  widget.onDelete!();
+                },
+              ),
+            if (widget.onModeratorDelete != null)
+              ListTile(
+                leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+                title: const Text('Slett melding (moderator)'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  widget.onModeratorDelete!();
+                },
+              ),
+            if (widget.onHide != null)
+              ListTile(
+                leading: const Icon(Icons.visibility_off_outlined, color: Colors.orange),
+                title: const Text('Skjul melding (moderator)'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  widget.onHide!();
+                },
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -178,66 +252,100 @@ class _ChatBubbleBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = mine ? DriftProTheme.primaryGreen : Colors.grey.shade200;
-    final fg = mine ? Colors.white : Colors.black87;
-    final time = DateFormat('HH:mm', 'nb').format(message.createdAt);
+    final m = message;
+    final mediaOnly = m.hasMedia && m.body.trim().isEmpty && !m.isDeleted;
+    final bg = mine
+        ? DriftProTheme.primaryGreen
+        : Colors.white;
+    final fg = mine ? Colors.white : const Color(0xFF1A1A1A);
+    final time = ChatUiHelpers.formatMessageTime(m.createdAt);
+    final border = mine
+        ? null
+        : Border.all(color: Colors.black.withValues(alpha: 0.06));
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.82),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.74),
       decoration: BoxDecoration(
-        color: message.isBlocked ? Colors.red.shade100 : bg,
-        borderRadius: BorderRadius.only(
-          topLeft: const Radius.circular(16),
-          topRight: const Radius.circular(16),
-          bottomLeft: Radius.circular(mine ? 16 : 4),
-          bottomRight: Radius.circular(mine ? 4 : 16),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
+        color: m.isBlocked ? Colors.red.shade50 : (mediaOnly ? Colors.transparent : bg),
+        borderRadius: BorderRadius.circular(18),
+        border: mediaOnly ? null : border,
+        boxShadow: mediaOnly
+            ? null
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: mine ? 0.08 : 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
         children: [
-          if (message.replyTo != null) _ReplyPreview(reply: message.replyTo!, mine: mine),
-          if (!mine && message.senderName != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                message.senderName!,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: fg.withValues(alpha: 0.85),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (m.replyTo != null) _ReplyPreview(reply: m.replyTo!, mine: mine),
+              if (m.hasMedia)
+                for (final att in m.attachments)
+                  _AttachmentView(
+                    att: att,
+                    message: m,
+                    mine: mine,
+                    onOpenImage: onOpenImage,
+                  ),
+              if (!mediaOnly)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(14, m.hasMedia ? 8 : 10, 14, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (m.body.isNotEmpty)
+                        Text(
+                          m.isDeleted ? '[Slettet]' : m.body,
+                          style: TextStyle(color: fg, height: 1.4, fontSize: 15),
+                        ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(time, style: TextStyle(fontSize: 10, color: fg.withValues(alpha: 0.65))),
+                          if (m.isEdited) ...[
+                            const SizedBox(width: 6),
+                            Text('redigert', style: TextStyle(fontSize: 9, color: fg.withValues(alpha: 0.55))),
+                          ],
+                          if (mine) ...[
+                            const SizedBox(width: 4),
+                            Icon(Icons.done_all_rounded, size: 12, color: fg.withValues(alpha: 0.65)),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          if (mediaOnly)
+            Positioned(
+              right: 10,
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(time, style: const TextStyle(fontSize: 10, color: Colors.white)),
+                    if (mine) ...[
+                      const SizedBox(width: 4),
+                      const Icon(Icons.done_all_rounded, size: 11, color: Colors.white70),
+                    ],
+                  ],
                 ),
               ),
             ),
-          if (message.hasMedia) ...[
-            for (final att in message.attachments) _AttachmentView(att: att, onOpen: onOpenImage),
-            if (message.body.isNotEmpty) const SizedBox(height: 6),
-          ],
-          if (message.body.isNotEmpty)
-            Text(
-              message.isDeleted ? '[Slettet]' : message.body,
-              style: TextStyle(color: fg, height: 1.35),
-            ),
-          const SizedBox(height: 2),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(time, style: TextStyle(fontSize: 9, color: fg.withValues(alpha: 0.7))),
-              if (message.isEdited) ...[
-                const SizedBox(width: 6),
-                Text('redigert', style: TextStyle(fontSize: 8, color: fg.withValues(alpha: 0.6))),
-              ],
-            ],
-          ),
         ],
       ),
     );
@@ -252,32 +360,54 @@ class _ReplyPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = mine ? Colors.white : DriftProTheme.primaryGreen;
-    final preview = reply.hasMedia
-        ? (reply.messageType == ChatMessageType.video ? '🎬 Video' : '📷 Bilde')
-        : reply.body;
+    final accent = mine ? Colors.white : ChatUiHelpers.senderColor(reply.senderId);
+    final replyName = reply.senderName?.trim().isNotEmpty == true ? reply.senderName! : 'Bruker';
+    final hasThumb = reply.attachments.isNotEmpty &&
+        PartnerChatService.attachmentIsImage(reply.attachments.first, reply.messageType) &&
+        reply.attachments.first.signedUrl != null;
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 6),
+      margin: const EdgeInsets.fromLTRB(8, 8, 8, 0),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: accent.withValues(alpha: mine ? 0.15 : 0.08),
-        borderRadius: BorderRadius.circular(8),
+        color: (mine ? Colors.white : accent).withValues(alpha: mine ? 0.14 : 0.08),
+        borderRadius: BorderRadius.circular(12),
         border: Border(left: BorderSide(color: accent, width: 3)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            reply.senderName ?? 'Svar',
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: accent),
-          ),
-          Text(
-            preview,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: mine ? Colors.white70 : Colors.black54),
+          if (hasThumb) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CachedNetworkImage(
+                imageUrl: reply.attachments.first.signedUrl!,
+                width: 42,
+                height: 42,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  replyName,
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: accent),
+                ),
+                Text(
+                  ChatUiHelpers.replySnippet(reply),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: mine ? Colors.white.withValues(alpha: 0.85) : Colors.black54,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -286,54 +416,132 @@ class _ReplyPreview extends StatelessWidget {
 }
 
 class _AttachmentView extends StatelessWidget {
-  const _AttachmentView({required this.att, this.onOpen});
+  const _AttachmentView({
+    required this.att,
+    required this.message,
+    required this.mine,
+    this.onOpenImage,
+  });
 
   final ChatAttachment att;
-  final void Function(String url)? onOpen;
+  final ChatMessage message;
+  final bool mine;
+  final void Function(String url)? onOpenImage;
 
   @override
   Widget build(BuildContext context) {
-    if (att.isImage && att.signedUrl != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: InkWell(
-          onTap: () => onOpen?.call(att.signedUrl!),
-          child: CachedNetworkImage(
-            imageUrl: att.signedUrl!,
-            height: 200,
-            width: double.infinity,
-            fit: BoxFit.cover,
-            placeholder: (_, __) => Container(
-              height: 120,
-              color: Colors.black12,
-              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+    final isImage = PartnerChatService.attachmentIsImage(att, message.messageType);
+    final isVideo = PartnerChatService.attachmentIsVideo(att, message.messageType);
+
+    if (isImage) {
+      if (att.signedUrl != null) {
+        final heroTag = 'chat_img_${message.id}_${att.id}';
+        return GestureDetector(
+          onTap: () {
+            if (onOpenImage != null) {
+              onOpenImage!(att.signedUrl!);
+            } else {
+              ChatMediaViewer.openImage(context, att.signedUrl!, heroTag: heroTag);
+            }
+          },
+          child: Hero(
+            tag: heroTag,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 280, minHeight: 120),
+              child: CachedNetworkImage(
+                imageUrl: att.signedUrl!,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              placeholder: (_, __) => Container(
+                height: 160,
+                color: Colors.black12,
+                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              ),
+              errorWidget: (_, __, ___) => _mediaCard(
+                icon: Icons.broken_image_outlined,
+                label: 'Kunne ikke laste bilde',
+                mine: mine,
+              ),
             ),
-            errorWidget: (_, __, ___) => _mediaPlaceholder(Icons.broken_image_outlined, 'Bilde'),
           ),
+        ),
+      );
+      }
+      return _mediaCard(icon: Icons.image_outlined, label: 'Laster bilde…', mine: mine);
+    }
+
+    if (isVideo) {
+      return GestureDetector(
+        onTap: att.signedUrl == null
+            ? null
+            : () => ChatMediaViewer.openVideo(context, att.signedUrl!),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            if (att.signedUrl != null && isImage)
+              CachedNetworkImage(
+                imageUrl: att.signedUrl!,
+                height: 200,
+                width: double.infinity,
+                fit: BoxFit.cover,
+              )
+            else
+              _mediaCard(
+                icon: Icons.videocam_rounded,
+                label: att.fileName ?? 'Video',
+                mine: mine,
+                height: 180,
+              ),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 34),
+            ),
+          ],
         ),
       );
     }
 
-    if (att.isVideo) {
-      return _mediaPlaceholder(Icons.videocam_outlined, att.fileName ?? 'Video');
-    }
-
-    return _mediaPlaceholder(Icons.attach_file, att.fileName ?? 'Vedlegg');
+    return _mediaCard(
+      icon: Icons.attach_file_rounded,
+      label: att.fileName ?? 'Vedlegg',
+      mine: mine,
+    );
   }
 
-  Widget _mediaPlaceholder(IconData icon, String label) {
+  Widget _mediaCard({
+    required IconData icon,
+    required String label,
+    required bool mine,
+    double height = 88,
+  }) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
+      height: height,
+      margin: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(10),
+        color: mine ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          Icon(icon),
-          const SizedBox(width: 8),
-          Expanded(child: Text(label, overflow: TextOverflow.ellipsis)),
+          Icon(icon, color: mine ? Colors.white : DriftProTheme.primaryGreen),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: mine ? Colors.white : Colors.black87,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -349,34 +557,54 @@ class ChatReplyBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final name = reply.senderName?.trim().isNotEmpty == true ? reply.senderName! : 'Bruker';
+    final color = ChatUiHelpers.senderColor(reply.senderId);
+    final hasThumb = reply.attachments.isNotEmpty &&
+        PartnerChatService.attachmentIsImage(reply.attachments.first, reply.messageType) &&
+        reply.attachments.first.signedUrl != null;
+
     return Material(
-      color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+      elevation: 6,
+      shadowColor: Colors.black26,
+      color: Colors.white,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
         child: Row(
           children: [
-            Container(width: 3, height: 36, color: DriftProTheme.primaryGreen),
+            ChatSenderAvatar(name: reply.senderName, userId: reply.senderId, radius: 16),
             const SizedBox(width: 10),
+            Container(width: 3, height: 42, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 10),
+            if (hasThumb) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: reply.attachments.first.signedUrl!,
+                  width: 40,
+                  height: 40,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(width: 10),
+            ],
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Svarer ${reply.senderName ?? ''}',
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                    'Svarer $name',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: color),
                   ),
                   Text(
-                    reply.body.isNotEmpty
-                        ? reply.body
-                        : (reply.messageType == ChatMessageType.video ? 'Video' : 'Bilde'),
-                    maxLines: 1,
+                    ChatUiHelpers.replySnippet(reply),
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.25),
                   ),
                 ],
               ),
             ),
-            IconButton(onPressed: onClear, icon: const Icon(Icons.close, size: 20)),
+            IconButton(onPressed: onClear, icon: const Icon(Icons.close_rounded, size: 20)),
           ],
         ),
       ),

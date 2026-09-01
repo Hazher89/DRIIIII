@@ -144,19 +144,70 @@ abstract final class PartnerChatService {
         .toList();
 
     await _attachSenderNames(messages);
-    _attachReplyPreviews(messages);
+    await _attachReplyPreviews(messages);
     await _signAttachmentUrls(messages);
     return messages;
   }
 
-  static void _attachReplyPreviews(List<ChatMessage> messages) {
+  static Future<void> _attachReplyPreviews(List<ChatMessage> messages) async {
     final byId = {for (final m in messages) m.id: m};
+    final missingReplyIds = <String>{};
+    for (final m in messages) {
+      if (m.replyToId != null && !byId.containsKey(m.replyToId)) {
+        missingReplyIds.add(m.replyToId!);
+      }
+    }
+
+    if (missingReplyIds.isNotEmpty) {
+      final rows = await _client
+          .from('chat_messages')
+          .select(
+            'id, room_id, sender_id, body, message_type, created_at, is_edited, deleted_at, '
+            'moderation_state, reply_to_id, chat_message_attachments(id, storage_path, mime_type, file_name)',
+          )
+          .inFilter('id', missingReplyIds.toList());
+      for (final raw in rows as List) {
+        final reply = ChatMessage.fromJson(Map<String, dynamic>.from(raw as Map));
+        byId[reply.id] = reply;
+      }
+      final extras = missingReplyIds.map((id) => byId[id]).whereType<ChatMessage>().toList();
+      await _attachSenderNames(extras);
+      await _signAttachmentUrls(extras);
+    }
+
     for (var i = 0; i < messages.length; i++) {
       final m = messages[i];
       if (m.replyToId != null && byId.containsKey(m.replyToId)) {
         messages[i] = m.copyWith(replyTo: byId[m.replyToId]);
       }
     }
+  }
+
+  static Future<ChatMessage> hydrateMessage(ChatMessage message) async {
+    var msg = message;
+    if (msg.attachments.isEmpty &&
+        (msg.messageType == ChatMessageType.image ||
+            msg.messageType == ChatMessageType.video ||
+            msg.messageType == ChatMessageType.file)) {
+      final row = await _client
+          .from('chat_messages')
+          .select(
+            'id, room_id, sender_id, body, message_type, created_at, is_edited, deleted_at, '
+            'moderation_state, reply_to_id, chat_message_attachments(id, storage_path, mime_type, file_name, byte_size, width, height, duration_ms)',
+          )
+          .eq('id', msg.id)
+          .maybeSingle();
+      if (row != null) {
+        msg = ChatMessage.fromJson(Map<String, dynamic>.from(row));
+      }
+    }
+
+    await _attachSenderNames([msg]);
+    if (msg.replyToId != null) {
+      await _attachReplyPreviews([msg]);
+    }
+    await _signAttachmentUrls([msg]);
+    return msg;
   }
 
   static Future<void> _attachSenderNames(List<ChatMessage> messages) async {
@@ -196,6 +247,30 @@ abstract final class PartnerChatService {
       }
       messages[i] = m.copyWith(attachments: signed);
     }
+  }
+
+  static bool attachmentIsImage(ChatAttachment att, ChatMessageType type) =>
+      att.isImage || type == ChatMessageType.image || _looksLikeImage(att);
+
+  static bool attachmentIsVideo(ChatAttachment att, ChatMessageType type) =>
+      att.isVideo || type == ChatMessageType.video || _looksLikeVideo(att);
+
+  static bool _looksLikeImage(ChatAttachment att) {
+    final name = (att.fileName ?? att.storagePath).toLowerCase();
+    return name.endsWith('.jpg') ||
+        name.endsWith('.jpeg') ||
+        name.endsWith('.png') ||
+        name.endsWith('.webp') ||
+        name.endsWith('.gif') ||
+        name.endsWith('.heic');
+  }
+
+  static bool _looksLikeVideo(ChatAttachment att) {
+    final name = (att.fileName ?? att.storagePath).toLowerCase();
+    return name.endsWith('.mp4') ||
+        name.endsWith('.mov') ||
+        name.endsWith('.webm') ||
+        name.endsWith('.m4v');
   }
 
   static Future<String> sendMessage({
@@ -489,8 +564,7 @@ abstract final class PartnerChatService {
             final record = payload.newRecord;
             if (record.isEmpty) return;
             var msg = ChatMessage.fromJson(Map<String, dynamic>.from(record));
-            await _attachSenderNames([msg]);
-            await _signAttachmentUrls([msg]);
+            msg = await hydrateMessage(msg);
             onMessage(msg);
           },
         )
