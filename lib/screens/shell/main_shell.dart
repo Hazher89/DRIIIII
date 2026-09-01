@@ -564,6 +564,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           boxShadow: drift.cardShadow,
         ),
         child: SafeArea(
+          top: false,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
             child: MobileShellNavBar(

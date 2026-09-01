@@ -11,6 +11,7 @@ import '../../core/services/native_permissions_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
 import '../hms/widgets/hms_pdf_export_button.dart';
+import '../../core/layout/mobile_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
 import '../../models/user_profile.dart';
@@ -1001,49 +1002,44 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 
   Widget _buildCommentBar(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.surfaceDark : Colors.white,
-        border: Border(
-          top: BorderSide(
-            color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
-          ),
+    return DockInputBar(
+      color: isDark ? DriftProTheme.surfaceDark : Colors.white,
+      border: Border(
+        top: BorderSide(
+          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
         ),
       ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _commentController,
-                decoration: InputDecoration(
-                  hintText: _canProcess
-                      ? 'Kommentar til saken…'
-                      : 'Skriv til saksbehandler…',
-                  filled: true,
-                  fillColor: isDark ? DriftProTheme.cardDark : Colors.grey[100],
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _commentController,
+              decoration: InputDecoration(
+                hintText: _canProcess
+                    ? 'Kommentar til saken…'
+                    : 'Skriv til saksbehandler…',
+                filled: true,
+                fillColor: isDark ? DriftProTheme.cardDark : Colors.grey[100],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide.none,
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            FloatingActionButton.small(
-              onPressed: _savingComment ? null : _submitComment,
-              backgroundColor: DriftProTheme.primaryGreen,
-              child: _savingComment
-                  ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
-                  : const Icon(Icons.send, size: 18),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          FloatingActionButton.small(
+            onPressed: _savingComment ? null : _submitComment,
+            backgroundColor: DriftProTheme.primaryGreen,
+            child: _savingComment
+                ? SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
+                : const Icon(Icons.send, size: 18),
+          ),
+        ],
       ),
     );
   }

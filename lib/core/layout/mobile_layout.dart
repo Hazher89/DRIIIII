@@ -15,10 +15,10 @@ abstract final class MobileLayout {
         MediaQuery.sizeOf(context).width < 600;
   }
 
-  /// Plass under innhold når skjermen har shell-bunnmeny + FAB.
+  /// Plass under innhold når skjermen har shell-bunnmeny (dock håndterer safe area).
   static double shellBottomInset(BuildContext context) {
     if (!DriftProClient.isMobile) return 0;
-    return 12 + MediaQuery.paddingOf(context).bottom;
+    return 12;
   }
 
   /// Ekstra padding nederst i scroll-lister (FAB + bunnmeny).
@@ -99,18 +99,30 @@ class MobileDialogBody extends StatelessWidget {
   }
 }
 
-/// SafeArea nederst for lagre-knapper i skjema.
-class MobileBottomActionBar extends StatelessWidget {
-  const MobileBottomActionBar({super.key, required this.child});
+/// Bunnfelt rett over shell-dock — ingen ekstra safe-area-gap.
+class DockInputBar extends StatelessWidget {
+  const DockInputBar({
+    super.key,
+    required this.child,
+    this.color,
+    this.padding = const EdgeInsets.fromLTRB(12, 8, 12, 8),
+    this.border,
+  });
 
   final Widget child;
+  final Color? color;
+  final EdgeInsetsGeometry padding;
+  final Border? border;
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color,
+        border: border,
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        padding: padding,
         child: child,
       ),
     );

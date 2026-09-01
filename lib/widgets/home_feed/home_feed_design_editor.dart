@@ -4,7 +4,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/home_feed_item.dart';
 import '../../models/home_feed_layout_config.dart';
 import 'home_feed_color_field.dart';
-import 'home_feed_dual_preview.dart';
+import 'home_feed_interactive_preview.dart';
 
 /// Visuell editor — størrelse, tekst, farger og live app/web-forhåndsvisning.
 class HomeFeedDesignEditor extends StatefulWidget {
@@ -41,10 +41,6 @@ class _HomeFeedDesignEditorState extends State<HomeFeedDesignEditor>
   late TextEditingController _captionCtrl;
   late HomeFeedLayoutConfig _layout;
   bool _saving = false;
-  bool _useCustomHeightApp = false;
-  bool _useCustomHeightWeb = false;
-  double _heightApp = 220;
-  double _heightWeb = 260;
 
   HomeFeedItem get _previewItem => widget.item.copyWith(
         title: _titleCtrl.text.trim(),
@@ -57,16 +53,10 @@ class _HomeFeedDesignEditorState extends State<HomeFeedDesignEditor>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 4, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
     _titleCtrl = TextEditingController(text: widget.item.title);
     _captionCtrl = TextEditingController(text: widget.item.caption ?? '');
     _layout = widget.item.layoutConfig;
-    _useCustomHeightApp = _layout.customHeightApp != null;
-    _useCustomHeightWeb = _layout.customHeightWeb != null;
-    _heightApp = _layout.customHeightApp ??
-        _layout.resolveHeight(isWeb: false, compactPreview: false);
-    _heightWeb = _layout.customHeightWeb ??
-        _layout.resolveHeight(isWeb: true, compactPreview: false);
     _titleCtrl.addListener(() => setState(() {}));
     _captionCtrl.addListener(() => setState(() {}));
   }
@@ -128,7 +118,6 @@ class _HomeFeedDesignEditorState extends State<HomeFeedDesignEditor>
           isScrollable: true,
           tabs: const [
             Tab(text: 'Forhåndsvisning'),
-            Tab(text: 'Størrelse'),
             Tab(text: 'Tekst'),
             Tab(text: 'Farger'),
           ],
@@ -138,7 +127,6 @@ class _HomeFeedDesignEditorState extends State<HomeFeedDesignEditor>
         controller: _tabs,
         children: [
           _buildPreviewTab(),
-          _buildSizeTab(),
           _buildTextTab(),
           _buildColorsTab(),
         ],
@@ -150,128 +138,12 @@ class _HomeFeedDesignEditorState extends State<HomeFeedDesignEditor>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          'Slik ser innholdet ut for brukerne — juster i fanene og se endringene live.',
-          style: DriftProTheme.bodySm.copyWith(color: Colors.grey[600]),
-        ),
-        const SizedBox(height: 16),
-        HomeFeedDualPreview(item: _previewItem, layout: _layout),
-      ],
-    );
-  }
-
-  Widget _buildSizeTab() {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Text('Størrelse på forsiden', style: DriftProTheme.labelLg),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: HomeFeedSizePreset.values.map((preset) {
-            final selected = _layout.sizePreset == preset;
-            return ChoiceChip(
-              label: Text(preset.label),
-              selected: selected,
-              onSelected: (_) => _setLayout(
-                _layout.copyWith(
-                  sizePreset: preset,
-                  clearCustomHeightApp: !_useCustomHeightApp,
-                  clearCustomHeightWeb: !_useCustomHeightWeb,
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 16),
-        SwitchListTile(
-          title: const Text('Dekk hele forsiden (hero)'),
-          subtitle: const Text('Maksimal høyde — dominerer oversikten'),
-          value: _layout.fullPageHero,
-          onChanged: (v) => _setLayout(_layout.copyWith(fullPageHero: v)),
-        ),
-        SwitchListTile(
-          title: const Text('Kant-til-kant'),
-          subtitle: const Text('Ingen side-margin — full bredde'),
-          value: _layout.edgeToEdge,
-          onChanged: (v) => _setLayout(_layout.copyWith(edgeToEdge: v)),
-        ),
-        const Divider(height: 28),
-        Text('Egendefinert høyde', style: DriftProTheme.labelLg),
-        SwitchListTile(
-          title: const Text('App — egen høyde (px)'),
-          value: _useCustomHeightApp,
-          onChanged: (v) {
-            setState(() {
-              _useCustomHeightApp = v;
-              _setLayout(_layout.copyWith(
-                customHeightApp: v ? _heightApp : null,
-                clearCustomHeightApp: !v,
-              ));
-            });
+        HomeFeedInteractivePreview(
+          item: _previewItem,
+          layout: _layout,
+          onLayoutChanged: (layout) {
+            setState(() => _layout = layout);
           },
-        ),
-        if (_useCustomHeightApp)
-          Slider(
-            value: _heightApp.clamp(80, 720),
-            min: 80,
-            max: 720,
-            divisions: 32,
-            label: '${_heightApp.round()} px',
-            onChanged: (v) {
-              setState(() {
-                _heightApp = v;
-                _setLayout(_layout.copyWith(customHeightApp: v));
-              });
-            },
-          ),
-        SwitchListTile(
-          title: const Text('Web — egen høyde (px)'),
-          value: _useCustomHeightWeb,
-          onChanged: (v) {
-            setState(() {
-              _useCustomHeightWeb = v;
-              _setLayout(_layout.copyWith(
-                customHeightWeb: v ? _heightWeb : null,
-                clearCustomHeightWeb: !v,
-              ));
-            });
-          },
-        ),
-        if (_useCustomHeightWeb)
-          Slider(
-            value: _heightWeb.clamp(80, 720),
-            min: 80,
-            max: 720,
-            divisions: 32,
-            label: '${_heightWeb.round()} px',
-            onChanged: (v) {
-              setState(() {
-                _heightWeb = v;
-                _setLayout(_layout.copyWith(customHeightWeb: v));
-              });
-            },
-          ),
-        const Divider(height: 28),
-        Text('Media', style: DriftProTheme.labelLg),
-        const SizedBox(height: 8),
-        SegmentedButton<HomeFeedMediaFit>(
-          segments: HomeFeedMediaFit.values
-              .map((f) => ButtonSegment(value: f, label: Text(f.label)))
-              .toList(),
-          selected: {_layout.mediaFit},
-          onSelectionChanged: (s) =>
-              _setLayout(_layout.copyWith(mediaFit: s.first)),
-        ),
-        const SizedBox(height: 12),
-        Text('Hjørner: ${_layout.borderRadius.round()} px'),
-        Slider(
-          value: _layout.borderRadius.clamp(0, 32),
-          min: 0,
-          max: 32,
-          divisions: 32,
-          onChanged: (v) => _setLayout(_layout.copyWith(borderRadius: v)),
         ),
       ],
     );
@@ -431,7 +303,12 @@ class _HomeFeedDesignEditorState extends State<HomeFeedDesignEditor>
           ),
         ],
         const SizedBox(height: 24),
-        HomeFeedDualPreview(item: _previewItem, layout: _layout),
+        HomeFeedInteractivePreview(
+          item: _previewItem,
+          layout: _layout,
+          onLayoutChanged: _setLayout,
+          showToolbar: false,
+        ),
       ],
     );
   }

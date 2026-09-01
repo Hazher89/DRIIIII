@@ -77,13 +77,22 @@ class DriftProBrandedScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stripTopInset = DriftProClient.isMobile && showBrandBar;
-    final content = stripTopInset
+    var content = stripTopInset
         ? MediaQuery.removePadding(
             context: context,
             removeTop: true,
             child: body,
           )
         : body;
+
+    // Bunnmeny håndterer safe area — unngå gap over dock på input-felt.
+    if (bottomNavigationBar != null && DriftProClient.isMobile) {
+      content = MediaQuery.removePadding(
+        context: context,
+        removeBottom: true,
+        child: content,
+      );
+    }
 
     return Scaffold(
       backgroundColor: backgroundColor,

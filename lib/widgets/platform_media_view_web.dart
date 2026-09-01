@@ -54,7 +54,9 @@ class _WebMediaElementState extends State<_WebMediaElement> {
         video.autoplay = widget.autoplay;
         video.muted = widget.muted;
         video.loop = true;
-        video.playsInline = true;
+        // Dart 3.12+ dart:html — bruk attributt i stedet for playsInline-setter.
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('webkit-playsinline', 'true');
         video.style.maxHeight = '100%';
         video.style.objectFit = 'contain';
       }
