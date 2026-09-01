@@ -52,6 +52,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   }
 
   bool get _canModerate => widget.profile.access.canPartnersChatModerate;
+  bool get _isSuperAdmin => widget.profile.role == UserRole.superadmin;
+  bool get _canModerateMessages => _canModerate || _isSuperAdmin;
 
   @override
   void initState() {
@@ -242,6 +244,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     }
   }
 
+  Future<void> _moderatorDeleteMessage(ChatMessage message) async {
+    try {
+      await PartnerChatService.moderatorDeleteMessage(message.id);
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke slette: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _hideMessage(ChatMessage message) async {
     try {
       await PartnerChatService.hideMessage(message.id);
@@ -397,6 +412,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                             onOpenImage: _openImage,
                             onDelete: m.senderId == me && !m.isDeleted ? () => _deleteMessage(m) : null,
                             onHide: _canModerate && !m.isDeleted ? () => _hideMessage(m) : null,
+                            onModeratorDelete: _canModerateMessages && !m.isDeleted
+                                ? () => _moderatorDeleteMessage(m)
+                                : null,
                             onShowRead: m.senderId == me ? () => _showReadReceipts(m) : null,
                           );
                         },

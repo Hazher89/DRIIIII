@@ -58,7 +58,7 @@ class ChatSuperadminPanel extends StatelessWidget {
               ))
           .toList(),
       currentUserId: '',
-      minMembers: 1,
+      minMembers: 2,
     );
     if (result == null) return;
     try {

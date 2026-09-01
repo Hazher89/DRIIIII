@@ -359,7 +359,7 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
           .map((p) => (id: p.userId, title: p.fullName, subtitle: p.partnerName))
           .toList(),
       currentUserId: widget.profile.id,
-      minMembers: 1,
+      minMembers: 2,
     );
     if (result == null) return;
     try {

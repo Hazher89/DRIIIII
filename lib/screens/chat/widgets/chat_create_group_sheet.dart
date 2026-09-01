@@ -56,19 +56,29 @@ class _CreateGroupSheet extends StatefulWidget {
 class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   late final TextEditingController _title;
   late final TextEditingController _search;
+  late final FocusNode _titleFocus;
   final _selected = <String>{};
+
+  static const _minTitleLength = 2;
 
   @override
   void initState() {
     super.initState();
     _title = TextEditingController(text: widget.initialTitle ?? '');
     _search = TextEditingController();
+    _titleFocus = FocusNode();
+    if (!widget.titleOptional) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _titleFocus.requestFocus();
+      });
+    }
   }
 
   @override
   void dispose() {
     _title.dispose();
     _search.dispose();
+    _titleFocus.dispose();
     super.dispose();
   }
 
@@ -92,11 +102,36 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
     setState(_selected.clear);
   }
 
+  bool get _titleOk =>
+      widget.titleOptional || _title.text.trim().length >= _minTitleLength;
+
+  bool get _membersOk => _selected.length >= widget.minMembers;
+
+  bool get _canCreate => _titleOk && _membersOk;
+
+  String? get _blockingHint {
+    if (_canCreate) return null;
+    if (!_titleOk && !_membersOk) {
+      return 'Skriv gruppenavn og velg minst ${widget.minMembers} medlem(mer).';
+    }
+    if (!_titleOk) {
+      final missing = _minTitleLength - _title.text.trim().length;
+      if (_title.text.trim().isEmpty) {
+        return 'Gi gruppen et navn — fyll inn feltet «Gruppenavn» over.';
+      }
+      return 'Gruppenavn må ha minst $_minTitleLength tegn (${missing > 0 ? ' $missing til' : ''}).';
+    }
+    if (!_membersOk) {
+      final need = widget.minMembers - _selected.length;
+      return 'Velg minst ${widget.minMembers} medlem(mer) ($need til).';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final titleOk = widget.titleOptional || _title.text.trim().length >= 2;
-    final canCreate = titleOk && _selected.length >= widget.minMembers;
     final filtered = _filtered;
+    final titleLen = _title.text.trim().length;
 
     return DraggableScrollableSheet(
       expand: false,
@@ -120,11 +155,42 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: TextField(
                   controller: _title,
+                  focusNode: _titleFocus,
+                  autofocus: true,
+                  textCapitalization: TextCapitalization.sentences,
                   decoration: InputDecoration(
-                    labelText: 'Gruppenavn',
+                    labelText: 'Gruppenavn *',
+                    hintText: 'F.eks. «Bil-eiere Oslo» eller «Sjåfør-team Nord»',
+                    helperText: _titleOk
+                        ? 'Navn er klart'
+                        : 'Påkrevd — minst $_minTitleLength tegn',
+                    helperStyle: TextStyle(
+                      color: _titleOk ? DriftProTheme.primaryGreen : Colors.orange.shade800,
+                      fontSize: 11,
+                    ),
+                    counterText: '$titleLen / $_minTitleLength',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(
+                        color: _titleOk ? Colors.grey.shade400 : Colors.orange.shade400,
+                        width: _titleOk ? 1 : 1.5,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: DriftProTheme.primaryGreen, width: 2),
+                    ),
                   ),
                   onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) {
+                    if (_canCreate) {
+                      Navigator.pop(
+                        context,
+                        (title: _title.text.trim(), memberIds: _selected.toList()),
+                      );
+                    }
+                  },
                 ),
               ),
             Padding(
@@ -196,10 +262,27 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
                       },
                     ),
             ),
+            if (_blockingHint != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.info_outline, size: 16, color: Colors.orange.shade800),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _blockingHint!,
+                        style: TextStyle(fontSize: 12, color: Colors.orange.shade900, height: 1.35),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.all(16),
               child: FilledButton(
-                onPressed: canCreate
+                onPressed: _canCreate
                     ? () => Navigator.pop(
                           context,
                           (
@@ -212,6 +295,8 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
                     : null,
                 style: FilledButton.styleFrom(
                   backgroundColor: DriftProTheme.primaryGreen,
+                  disabledBackgroundColor: Colors.grey.shade300,
+                  disabledForegroundColor: Colors.grey.shade600,
                   minimumSize: const Size(double.infinity, 48),
                 ),
                 child: Text(widget.confirmLabel),

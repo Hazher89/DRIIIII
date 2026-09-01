@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../models/chat/chat_models.dart';
+import '../storage/company_file_storage.dart';
+import '../storage/storage_file_access.dart';
 import '../supabase_service.dart';
 import 'chat_unread_service.dart';
 
@@ -177,7 +179,16 @@ abstract final class PartnerChatService {
       final signed = <ChatAttachment>[];
       for (final a in m.attachments) {
         try {
-          final url = await _client.storage.from(_mediaBucket).createSignedUrl(a.storagePath, 3600);
+          String? url;
+          if (CompanyFileStorage.isDropboxReference(a.storagePath)) {
+            url = await CompanyFileStorage.resolveDisplayUrl(a.storagePath);
+          } else {
+            try {
+              url = await _client.storage.from(_mediaBucket).createSignedUrl(a.storagePath, 3600);
+            } catch (_) {
+              url = await StorageFileAccess.resolveViewUrl(a.storagePath);
+            }
+          }
           signed.add(a.copyWith(signedUrl: url));
         } catch (_) {
           signed.add(a);
@@ -216,13 +227,17 @@ abstract final class PartnerChatService {
     final ext = media.fileName.contains('.')
         ? media.fileName.split('.').last
         : (media.isVideo ? 'mp4' : 'jpg');
-    final path = '$uid/${DateTime.now().millisecondsSinceEpoch}.$ext';
+    final path = 'chat/$roomId/$uid/${DateTime.now().millisecondsSinceEpoch}.$ext';
 
-    await _client.storage.from(_mediaBucket).uploadBinary(
-          path,
-          Uint8List.fromList(media.bytes),
-          fileOptions: FileOptions(contentType: media.mimeType, upsert: false),
-        );
+    final stored = await CompanyFileStorage.upload(
+      supabaseBucket: _mediaBucket,
+      storagePath: path,
+      bytes: Uint8List.fromList(media.bytes),
+      category: 'chat',
+      fileName: media.fileName,
+    );
+
+    final storageRef = CompanyFileStorage.toStorageReference(stored);
 
     return sendMessage(
       roomId: roomId,
@@ -230,10 +245,11 @@ abstract final class PartnerChatService {
       replyToId: replyToId,
       messageType: media.isVideo ? ChatMessageType.video : ChatMessageType.image,
       attachment: {
-        'storage_path': path,
+        'storage_path': storageRef,
         'mime_type': media.mimeType,
         'file_name': media.fileName,
         'byte_size': media.bytes.length,
+        'storage_provider': stored.provider,
       },
     );
   }
@@ -383,6 +399,10 @@ abstract final class PartnerChatService {
 
   static Future<void> hideMessage(String messageId) async {
     await _client.rpc('chat_hide_message', params: {'p_message_id': messageId});
+  }
+
+  static Future<void> moderatorDeleteMessage(String messageId) async {
+    await _client.rpc('chat_moderator_delete_message', params: {'p_message_id': messageId});
   }
 
   static Future<void> deleteOwnMessage(String messageId) async {

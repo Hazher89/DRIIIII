@@ -16,6 +16,7 @@ class ChatSwipeMessage extends StatefulWidget {
     this.onOpenImage,
     this.onDelete,
     this.onHide,
+    this.onModeratorDelete,
     this.onShowRead,
   });
 
@@ -25,6 +26,7 @@ class ChatSwipeMessage extends StatefulWidget {
   final void Function(String url)? onOpenImage;
   final VoidCallback? onDelete;
   final VoidCallback? onHide;
+  final VoidCallback? onModeratorDelete;
   final VoidCallback? onShowRead;
 
   @override
@@ -111,6 +113,15 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
                     onTap: () {
                       Navigator.pop(ctx);
                       widget.onDelete!();
+                    },
+                  ),
+                if (widget.onModeratorDelete != null)
+                  ListTile(
+                    leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+                    title: const Text('Slett melding (moderator)'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      widget.onModeratorDelete!();
                     },
                   ),
                 if (widget.onHide != null)

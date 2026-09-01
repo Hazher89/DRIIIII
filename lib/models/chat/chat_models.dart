@@ -439,6 +439,7 @@ class ChatAuditEntry {
         'hide_message' => 'Skjulte melding',
         'remove_member' => 'Fjernet medlem',
         'delete_room' => 'Slettet chat',
+        'delete_message' => 'Slettet melding',
         _ => action,
       };
 }
