@@ -48,6 +48,7 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
   List<ChatBlockedUser> _blocked = const [];
   bool _loading = true;
   String? _error;
+  ChatRoom? _selectedRoom;
   String _searchQuery = '';
   bool _webNotifOn = false;
   late TabController _tabs;
@@ -275,7 +276,14 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
     );
   }
 
+  bool _isWide(BuildContext context) =>
+      !widget.embedded && MediaQuery.sizeOf(context).width >= 960;
+
   Future<void> _openRoom(ChatRoom room) async {
+    if (_isWide(context)) {
+      setState(() => _selectedRoom = room);
+      return;
+    }
     await Navigator.of(context).push<void>(
       MaterialPageRoute<void>(
         builder: (_) => ChatRoomLiveGate(
@@ -503,6 +511,7 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
           },
           child: _RoomTile(
             room: r,
+            selected: _selectedRoom?.id == r.id,
             onTap: () => _openRoom(r),
             onLongPress: _isSuperAdmin
                 ? () => showChatRoomMembersSheet(
@@ -654,6 +663,46 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
 
     if (widget.embedded) return listBody;
 
+    if (_isWide(context)) {
+      return Scaffold(
+        backgroundColor: drift.surfaceMuted,
+        appBar: AppBar(
+          title: const Text('Meldinger'),
+          actions: [
+            if (_canModerate)
+              IconButton(
+                tooltip: 'Moderering',
+                onPressed: _openModeration,
+                icon: const Icon(Icons.shield_outlined),
+              ),
+            IconButton(tooltip: 'Oppdater', onPressed: _load, icon: const Icon(Icons.refresh)),
+          ],
+        ),
+        body: Row(
+          children: [
+            SizedBox(width: 400, child: listBody),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: _selectedRoom == null
+                  ? Center(
+                      child: Text(
+                        'Velg en samtale',
+                        style: TextStyle(color: Colors.grey.shade600, fontSize: 15),
+                      ),
+                    )
+                  : ChatRoomLiveGate(
+                      profile: widget.profile,
+                      child: ChatRoomScreen(
+                        room: _selectedRoom!,
+                        profile: widget.profile,
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: drift.surfaceMuted,
       appBar: AppBar(
@@ -773,11 +822,13 @@ class _RoomTile extends StatelessWidget {
     required this.room,
     required this.onTap,
     this.onLongPress,
+    this.selected = false,
   });
 
   final ChatRoom room;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
@@ -796,7 +847,7 @@ class _RoomTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: Colors.white,
+        color: selected ? DriftProTheme.primaryGreen.withValues(alpha: 0.08) : Colors.white,
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),

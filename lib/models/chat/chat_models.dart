@@ -124,6 +124,9 @@ enum ChatMessageType {
   text('text'),
   image('image'),
   video('video'),
+  voice('voice'),
+  document('document'),
+  location('location'),
   file('file'),
   system('system');
 
@@ -248,6 +251,11 @@ class ChatMessage {
     this.replyTo,
     this.attachments = const [],
     this.reactions = const [],
+    this.expiresAt,
+    this.translatedBody,
+    this.threadRootId,
+    this.mentionIds = const [],
+    this.showTranslation = false,
   });
 
   final String id;
@@ -264,6 +272,20 @@ class ChatMessage {
   final ChatMessage? replyTo;
   final List<ChatAttachment> attachments;
   final List<ChatReactionGroup> reactions;
+  final DateTime? expiresAt;
+  final String? translatedBody;
+  final String? threadRootId;
+  final List<String> mentionIds;
+  final bool showTranslation;
+
+  String get displayBody {
+    if (showTranslation && translatedBody != null && translatedBody!.trim().isNotEmpty) {
+      return translatedBody!;
+    }
+    return body;
+  }
+
+  bool get isEphemeral => expiresAt != null;
 
   bool get isDeleted => deletedAt != null;
   bool get isBlocked => moderationState == 'blocked';
@@ -295,8 +317,13 @@ class ChatMessage {
       attachments: attachments,
       reactions: ChatReactionGroup.fromRows(
         json['chat_message_reactions'] as List?,
-        '', // fylles inn av service
+        '',
       ),
+      expiresAt: json['expires_at'] != null
+          ? DateTime.tryParse(json['expires_at'] as String)?.toLocal()
+          : null,
+      translatedBody: json['translated_body'] as String?,
+      threadRootId: json['thread_root_id'] as String?,
     );
   }
 
@@ -305,6 +332,11 @@ class ChatMessage {
     ChatMessage? replyTo,
     List<ChatAttachment>? attachments,
     List<ChatReactionGroup>? reactions,
+    DateTime? expiresAt,
+    String? translatedBody,
+    String? threadRootId,
+    List<String>? mentionIds,
+    bool? showTranslation,
   }) =>
       ChatMessage(
         id: id,
@@ -321,6 +353,11 @@ class ChatMessage {
         replyTo: replyTo ?? this.replyTo,
         attachments: attachments ?? this.attachments,
         reactions: reactions ?? this.reactions,
+        expiresAt: expiresAt ?? this.expiresAt,
+        translatedBody: translatedBody ?? this.translatedBody,
+        threadRootId: threadRootId ?? this.threadRootId,
+        mentionIds: mentionIds ?? this.mentionIds,
+        showTranslation: showTranslation ?? this.showTranslation,
       );
 }
 

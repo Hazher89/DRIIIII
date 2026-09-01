@@ -128,7 +128,8 @@ abstract final class PartnerChatService {
         .from('chat_messages')
         .select(
           'id, room_id, sender_id, body, message_type, created_at, is_edited, deleted_at, '
-          'moderation_state, reply_to_id, chat_message_attachments(id, storage_path, mime_type, file_name, byte_size, width, height, duration_ms), '
+          'moderation_state, reply_to_id, expires_at, translated_body, thread_root_id, '
+          'chat_message_attachments(id, storage_path, mime_type, file_name, byte_size, width, height, duration_ms), '
           'chat_message_reactions(emoji, user_id, profiles(full_name))',
         )
         .eq('room_id', roomId);
@@ -298,6 +299,10 @@ abstract final class PartnerChatService {
     String? replyToId,
     ChatMessageType messageType = ChatMessageType.text,
     Map<String, dynamic>? attachment,
+    List<String>? mentionIds,
+    String? threadRootId,
+    int? expiresHours,
+    String? translatedBody,
   }) async {
     return await _client.rpc<String>(
       'send_chat_message',
@@ -307,8 +312,68 @@ abstract final class PartnerChatService {
         'p_reply_to_id': replyToId,
         'p_message_type': messageType.dbValue,
         'p_attachment': attachment,
+        'p_mention_ids': mentionIds,
+        'p_thread_root_id': threadRootId,
+        'p_expires_hours': expiresHours,
+        'p_translated_body': translatedBody,
       },
     );
+  }
+
+  static Future<Map<String, dynamic>?> fetchRoomMeta(String roomId) async {
+    final row = await _client
+        .from('chat_rooms')
+        .select('welcome_message, rules_text, require_member_approval, pinned_message_id, parent_room_id')
+        .eq('id', roomId)
+        .maybeSingle();
+    if (row == null) return null;
+    return Map<String, dynamic>.from(row);
+  }
+
+  static Future<ChatMessage?> fetchPinnedMessage(String? messageId) async {
+    if (messageId == null) return null;
+    final rows = await fetchMessagesByIds([messageId]);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  static Future<List<ChatMessage>> fetchMessagesByIds(List<String> ids) async {
+    if (ids.isEmpty) return const [];
+    final rows = await _client
+        .from('chat_messages')
+        .select(
+          'id, room_id, sender_id, body, message_type, created_at, is_edited, deleted_at, '
+          'moderation_state, reply_to_id, expires_at, translated_body, thread_root_id, '
+          'chat_message_attachments(id, storage_path, mime_type, file_name, byte_size, width, height, duration_ms)',
+        )
+        .inFilter('id', ids);
+    final myId = _uid;
+    final messages = (rows as List)
+        .map((e) => _messageFromRow(Map<String, dynamic>.from(e as Map), myId))
+        .toList();
+    await _attachSenderNames(messages);
+    await _signAttachmentUrls(messages);
+    return messages;
+  }
+
+  static Future<List<ChatMessage>> fetchThread(String threadRootId) async {
+    final rows = await _client
+        .from('chat_messages')
+        .select(
+          'id, room_id, sender_id, body, message_type, created_at, is_edited, deleted_at, '
+          'moderation_state, reply_to_id, expires_at, translated_body, thread_root_id, '
+          'chat_message_attachments(id, storage_path, mime_type, file_name, byte_size, width, height, duration_ms), '
+          'chat_message_reactions(emoji, user_id, profiles(full_name))',
+        )
+        .or('id.eq.$threadRootId,thread_root_id.eq.$threadRootId')
+        .order('created_at');
+    final myId = _uid;
+    final messages = (rows as List)
+        .map((e) => _messageFromRow(Map<String, dynamic>.from(e as Map), myId))
+        .toList();
+    await _attachSenderNames(messages);
+    await _attachReplyPreviews(messages);
+    await _signAttachmentUrls(messages);
+    return messages;
   }
 
   static Future<String> uploadAndSendMedia({

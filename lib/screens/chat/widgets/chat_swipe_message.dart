@@ -2,6 +2,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:url_launcher/url_launcher.dart';
+
 import '../../../core/services/chat/partner_chat_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/chat/chat_models.dart';
@@ -23,6 +25,10 @@ class ChatSwipeMessage extends StatefulWidget {
     this.onModeratorDelete,
     this.onShowRead,
     this.onReact,
+    this.onPin,
+    this.onReport,
+    this.onThread,
+    this.showTranslation = false,
   });
 
   final ChatMessage message;
@@ -35,6 +41,10 @@ class ChatSwipeMessage extends StatefulWidget {
   final VoidCallback? onModeratorDelete;
   final VoidCallback? onShowRead;
   final void Function(String emoji)? onReact;
+  final VoidCallback? onPin;
+  final VoidCallback? onReport;
+  final VoidCallback? onThread;
+  final bool showTranslation;
 
   @override
   State<ChatSwipeMessage> createState() => _ChatSwipeMessageState();
@@ -157,7 +167,7 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
                           crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                           children: [
                             _ChatBubbleBody(
-                              message: m,
+                              message: widget.showTranslation ? m.copyWith(showTranslation: true) : m,
                               mine: mine,
                               onOpenImage: widget.onOpenImage,
                             ),
@@ -228,7 +238,34 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
                   Navigator.pop(ctx);
                 },
               ),
-            if (widget.onShowRead != null)
+                if (widget.onThread != null)
+                  ListTile(
+                    leading: const Icon(Icons.forum_outlined),
+                    title: const Text('Svar i tråd'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      widget.onThread!();
+                    },
+                  ),
+                if (widget.onPin != null)
+                  ListTile(
+                    leading: const Icon(Icons.push_pin_outlined),
+                    title: const Text('Fest melding'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      widget.onPin!();
+                    },
+                  ),
+                if (widget.onReport != null)
+                  ListTile(
+                    leading: const Icon(Icons.flag_outlined, color: Colors.orange),
+                    title: const Text('Rapporter'),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      widget.onReport!();
+                    },
+                  ),
+                if (widget.onShowRead != null)
               ListTile(
                 leading: const Icon(Icons.done_all_rounded),
                 title: const Text('Lest av'),
@@ -336,10 +373,18 @@ class _ChatBubbleBody extends StatelessWidget {
                         m.isDeleted
                             ? Text('[Slettet]', style: TextStyle(color: fg, height: 1.4, fontSize: 15))
                             : ChatLinkText(
-                                text: m.body,
+                                text: m.displayBody,
                                 style: TextStyle(color: fg, height: 1.4, fontSize: 15),
                                 linkColor: mine ? Colors.white : DriftProTheme.primaryGreen,
                               ),
+                      if (m.isEphemeral)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '⏱ Utløper ${ChatUiHelpers.formatMessageTime(m.expiresAt!)}',
+                            style: TextStyle(fontSize: 9, color: fg.withValues(alpha: 0.6)),
+                          ),
+                        ),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -518,6 +563,27 @@ class _AttachmentView extends StatelessWidget {
   Widget build(BuildContext context) {
     final isImage = PartnerChatService.attachmentIsImage(att, message.messageType);
     final isVideo = PartnerChatService.attachmentIsVideo(att, message.messageType);
+
+    if (message.messageType == ChatMessageType.location || att.mimeType == 'application/geo') {
+      return InkWell(
+        onTap: () async {
+          final uri = Uri.parse('https://maps.google.com/?q=${Uri.encodeComponent(message.body)}');
+          if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
+        },
+        child: _mediaCard(icon: Icons.location_on_rounded, label: message.body.isNotEmpty ? message.body : 'Posisjon', mine: mine),
+      );
+    }
+
+    if (message.messageType == ChatMessageType.document || message.messageType == ChatMessageType.voice) {
+      return InkWell(
+        onTap: att.signedUrl == null ? null : () => launchUrl(Uri.parse(att.signedUrl!), mode: LaunchMode.externalApplication),
+        child: _mediaCard(
+          icon: message.messageType == ChatMessageType.voice ? Icons.mic_rounded : Icons.insert_drive_file_rounded,
+          label: att.fileName ?? message.body,
+          mine: mine,
+        ),
+      );
+    }
 
     if (isImage) {
       if (att.signedUrl != null) {

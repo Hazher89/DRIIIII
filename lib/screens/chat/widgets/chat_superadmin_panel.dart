@@ -4,6 +4,7 @@ import '../../../core/services/chat/partner_chat_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/chat/chat_models.dart';
 import 'chat_create_group_sheet.dart';
+import '../chat_stats_screen.dart';
 
 /// Superadmin: opprett grupper, koble MAVI↔partner, inviter — full kontroll.
 class ChatSuperadminPanel extends StatelessWidget {
@@ -286,6 +287,14 @@ class ChatSuperadminPanel extends StatelessWidget {
                   avatar: const Icon(Icons.person_add_alt_1_outlined, size: 18),
                   label: const Text('Inviter til gruppe'),
                   onPressed: () => _inviteToRoom(context),
+                ),
+                ActionChip(
+                  avatar: const Icon(Icons.insights_outlined, size: 18),
+                  label: const Text('Statistikk'),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(builder: (_) => const ChatStatsScreen()),
+                  ),
                 ),
               ],
             ),

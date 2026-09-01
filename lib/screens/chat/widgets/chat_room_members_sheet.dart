@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/services/chat/chat_advanced_service.dart';
 import '../../../core/services/chat/partner_chat_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/chat/chat_models.dart';
@@ -170,6 +171,24 @@ class _MembersSheetState extends State<_MembersSheet> {
     }
   }
 
+  Future<void> _approveMember(ChatRoomMember member) async {
+    try {
+      await ChatAdvancedService.approveMember(widget.room.id, member.userId);
+      await _load();
+      widget.onChanged?.call();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${member.fullName} godkjent')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kunne ikke godkjenne: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
@@ -217,23 +236,31 @@ class _MembersSheetState extends State<_MembersSheet> {
                   itemBuilder: (_, i) {
                     final m = _members[i];
                     final isMe = m.userId == widget.profile.id;
+                    final isPending = m.memberRole == 'pending';
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                        backgroundColor: isPending
+                            ? Colors.orange.withValues(alpha: 0.15)
+                            : DriftProTheme.primaryGreen.withValues(alpha: 0.12),
                         child: Text(m.fullName.isNotEmpty ? m.fullName[0].toUpperCase() : '?'),
                       ),
                       title: Text(
                         isMe ? '${m.fullName} (deg)' : m.fullName,
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
-                      subtitle: Text(m.subtitle),
-                      trailing: _isSuperAdmin && !isMe
-                          ? IconButton(
-                              tooltip: 'Fjern fra chat',
-                              icon: const Icon(Icons.person_remove_outlined, color: Colors.red),
-                              onPressed: () => _removeMember(m),
+                      subtitle: Text(isPending ? 'Venter på godkjenning' : m.subtitle),
+                      trailing: isPending && _isSuperAdmin
+                          ? FilledButton(
+                              onPressed: () => _approveMember(m),
+                              child: const Text('Godkjenn'),
                             )
-                          : null,
+                          : _isSuperAdmin && !isMe
+                              ? IconButton(
+                                  tooltip: 'Fjern fra chat',
+                                  icon: const Icon(Icons.person_remove_outlined, color: Colors.red),
+                                  onPressed: () => _removeMember(m),
+                                )
+                              : null,
                     );
                   },
                 ),

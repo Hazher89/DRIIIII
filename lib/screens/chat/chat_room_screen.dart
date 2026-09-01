@@ -1,11 +1,18 @@
 import 'dart:async';
 
+import 'package:desktop_drop/desktop_drop.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/services/chat/chat_advanced_service.dart';
 import '../../core/services/chat/chat_typing_service.dart';
 import '../../core/services/chat/chat_presence_service.dart';
+import '../../core/services/storage/company_file_storage.dart';
 import '../../core/services/chat/chat_unread_service.dart';
 import '../../core/services/chat/partner_chat_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -17,7 +24,11 @@ import 'widgets/chat_media_viewer.dart';
 import 'widgets/chat_ui_helpers.dart';
 import 'widgets/chat_media_send_sheet.dart';
 import 'widgets/chat_room_members_sheet.dart';
+import 'widgets/chat_compose_sheets.dart';
+import 'widgets/chat_room_banners.dart';
 import 'widgets/chat_swipe_message.dart';
+import 'widgets/chat_theme.dart';
+import 'chat_stats_screen.dart';
 
 class ChatRoomScreen extends StatefulWidget {
   const ChatRoomScreen({
@@ -55,6 +66,17 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   RealtimeChannel? _reactionsChannel;
   ChatTypingService? _typing;
   StreamSubscription<Map<String, String>>? _typingSub;
+  Timer? _heartbeatTimer;
+  int? _expiresHours;
+  bool _showTranslation = false;
+  String? _translatedBody;
+  ChatMessage? _pinnedMessage;
+  String? _rulesText;
+  bool _rulesDismissed = false;
+  List<ChatOnlineUser> _onlineUsers = const [];
+  String? _activeThreadId;
+  List<ChatMentionCandidate> _mentionCandidates = const [];
+  bool _dragOver = false;
 
   bool get _canSend {
     if (_room.roomType == ChatRoomType.partnerBroadcast) {
@@ -116,6 +138,40 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         )
         ..subscribe();
     _load();
+    unawaited(ChatAdvancedService.processScheduled());
+    _heartbeatTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      unawaited(ChatAdvancedService.heartbeat(roomId: widget.room.id));
+    });
+    unawaited(_loadRoomMeta());
+    unawaited(_loadOnline());
+    unawaited(_loadMentionCandidates());
+  }
+
+  Future<void> _loadMentionCandidates() async {
+    final members = await PartnerChatService.fetchRoomMembers(widget.room.id);
+    if (!mounted) return;
+    setState(() {
+      _mentionCandidates = members
+          .where((m) => m.memberRole != 'pending')
+          .map((m) => ChatMentionCandidate(userId: m.userId, label: m.fullName))
+          .toList();
+    });
+  }
+
+  Future<void> _loadRoomMeta() async {
+    final meta = await PartnerChatService.fetchRoomMeta(widget.room.id);
+    if (!mounted || meta == null) return;
+    final pinId = meta['pinned_message_id'] as String?;
+    final pinned = await PartnerChatService.fetchPinnedMessage(pinId);
+    setState(() {
+      _rulesText = (meta['rules_text'] as String?)?.trim();
+      _pinnedMessage = pinned;
+    });
+  }
+
+  Future<void> _loadOnline() async {
+    final users = await ChatAdvancedService.fetchOnlineUsers(widget.room.id);
+    if (mounted) setState(() => _onlineUsers = users);
   }
 
   @override
@@ -124,6 +180,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       ChatPresenceService.setOpenRoom(null);
     }
     unawaited(_typingSub?.cancel() ?? Future.value());
+    _heartbeatTimer?.cancel();
     _typing?.dispose();
     PartnerChatService.unsubscribe(_channel);
     if (_reactionsChannel != null) {
@@ -183,6 +240,12 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     });
     if (msgs.isNotEmpty) {
       await PartnerChatService.markRead(widget.room.id, msgs.last.id);
+      final me = widget.profile.id;
+      for (final m in msgs) {
+        if (m.senderId != me && !m.isDeleted) {
+          unawaited(ChatAdvancedService.markDelivered(m.id));
+        }
+      }
     }
     unawaited(ChatUnreadService.refresh());
     if (!silent) _scrollToBottom();
@@ -225,6 +288,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     if (text.isEmpty || _sending || !_canSend) return;
     setState(() => _sending = true);
     final replyId = _replyTo?.id;
+    final mentions = ChatMentionParser.extractMentionIds(text, _mentionCandidates);
     _input.clear();
     setState(() => _replyTo = null);
     try {
@@ -232,7 +296,15 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         roomId: widget.room.id,
         body: text,
         replyToId: replyId,
+        threadRootId: _activeThreadId,
+        mentionIds: mentions.isEmpty ? null : mentions,
+        expiresHours: _expiresHours,
+        translatedBody: _translatedBody,
       );
+      setState(() {
+        _expiresHours = null;
+        _translatedBody = null;
+      });
       await _load();
     } catch (e) {
       if (mounted) {
@@ -242,6 +314,52 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
       }
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _sendDroppedFiles(List<XFile> files) async {
+    if (_sending || !_canSend || files.isEmpty) return;
+    for (final file in files) {
+      if (!mounted) return;
+      final bytes = await file.readAsBytes();
+      final name = file.name.toLowerCase();
+      final isVideo = name.endsWith('.mp4') || name.endsWith('.mov') || name.endsWith('.webm');
+      final isImage = !isVideo &&
+          (name.endsWith('.jpg') ||
+              name.endsWith('.jpeg') ||
+              name.endsWith('.png') ||
+              name.endsWith('.gif') ||
+              name.endsWith('.webp'));
+      if (!isImage && !isVideo) continue;
+
+      final pending = ChatPendingMedia(
+        bytes: bytes,
+        mimeType: isVideo ? 'video/mp4' : 'image/jpeg',
+        fileName: file.name,
+        isVideo: isVideo,
+      );
+      final result = await ChatMediaSendSheet.show(context, pending);
+      if (result == null || !result.send || !mounted) continue;
+
+      setState(() => _sending = true);
+      try {
+        await PartnerChatService.uploadAndSendMedia(
+          roomId: widget.room.id,
+          media: pending,
+          caption: result.caption,
+          replyToId: _replyTo?.id,
+        );
+        setState(() => _replyTo = null);
+        await _load();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Kunne ikke sende: $e')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _sending = false);
+      }
     }
   }
 
@@ -285,6 +403,140 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  Future<void> _pickDocument() async {
+    if (_sending || !_canSend) return;
+    final r = await FilePicker.platform.pickFiles(withData: true);
+    final f = r?.files.first;
+    if (f == null || f.bytes == null) return;
+    setState(() => _sending = true);
+    try {
+      final path = 'chat/${widget.room.id}/${widget.profile.id}/${DateTime.now().millisecondsSinceEpoch}_${f.name}';
+      final stored = await CompanyFileStorage.upload(
+        supabaseBucket: 'chat-media',
+        storagePath: path,
+        bytes: f.bytes!,
+        category: 'chat',
+        fileName: f.name,
+      );
+      await PartnerChatService.sendMessage(
+        roomId: widget.room.id,
+        body: f.name,
+        messageType: ChatMessageType.document,
+        attachment: {
+          'storage_path': CompanyFileStorage.toStorageReference(stored),
+          'mime_type': f.extension != null ? 'application/${f.extension}' : 'application/octet-stream',
+          'file_name': f.name,
+          'byte_size': f.size,
+        },
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Dokument: $e')));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _sendLocation() async {
+    if (_sending || !_canSend) return;
+    setState(() => _sending = true);
+    try {
+      final perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) await Geolocator.requestPermission();
+      final pos = await Geolocator.getCurrentPosition();
+      final label = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+      await PartnerChatService.sendMessage(
+        roomId: widget.room.id,
+        body: label,
+        messageType: ChatMessageType.location,
+        attachment: {
+          'storage_path': 'geo://${pos.latitude},${pos.longitude}',
+          'mime_type': 'application/geo',
+          'file_name': 'Posisjon',
+        },
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Posisjon: $e')));
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _scheduleCurrent() async {
+    final when = await ChatScheduleSheet.pick(context, initialBody: _input.text);
+    if (when == null) return;
+    try {
+      await ChatAdvancedService.scheduleMessage(
+        roomId: widget.room.id,
+        body: _input.text.trim().isEmpty ? '(planlagt media)' : _input.text.trim(),
+        scheduledFor: when,
+        expiresHours: _expiresHours,
+        translatedBody: _translatedBody,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Melding planlagt')));
+        _input.clear();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _useTemplate() async {
+    final t = await ChatTemplatesSheet.pick(context);
+    if (t != null) _input.text = t.body;
+  }
+
+  Future<void> _pickSelfDestruct() async {
+    final h = await ChatSelfDestructPicker.pick(context);
+    setState(() => _expiresHours = h);
+  }
+
+  Future<void> _pinMessage(ChatMessage m) async {
+    await ChatAdvancedService.pinMessage(widget.room.id, m.id);
+    await _loadRoomMeta();
+  }
+
+  Future<void> _reportMessage(ChatMessage m) async {
+    final reason = await ChatReportSheet.show(context);
+    if (reason == null) return;
+    await ChatAdvancedService.reportMessage(m.id, reason: reason.isEmpty ? null : reason);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rapport sendt')));
+  }
+
+  void _openThread(ChatMessage m) {
+    setState(() => _activeThreadId = m.id);
+  }
+
+  ChatMessage? get _threadRoot {
+    if (_activeThreadId == null) return null;
+    for (final m in _messages) {
+      if (m.id == _activeThreadId) return m;
+    }
+    return null;
+  }
+
+  Future<void> _createSubgroup() async {
+    final title = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final c = TextEditingController();
+        return AlertDialog(
+          title: const Text('Ny undergruppe'),
+          content: TextField(controller: c, decoration: const InputDecoration(hintText: 'Navn')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('Opprett')),
+          ],
+        );
+      },
+    );
+    if (title == null || title.isEmpty) return;
+    await ChatAdvancedService.createSubgroup(parentRoomId: widget.room.id, title: title);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Undergruppe opprettet')));
   }
 
   Future<void> _archive() async {
@@ -391,7 +643,14 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     final me = widget.profile.id;
     final room = _room;
 
-    return Scaffold(
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.enter, control: true): () => _sendText(),
+        const SingleActivator(LogicalKeyboardKey.enter, meta: true): () => _sendText(),
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,6 +674,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: ChatTheme.dark ? 'Lys modus' : 'Mørk modus',
+            icon: Icon(ChatTheme.dark ? Icons.light_mode : Icons.dark_mode),
+            onPressed: () => setState(() => ChatTheme.dark = !ChatTheme.dark),
+          ),
+          if (_canModerateMessages)
+            IconButton(
+              tooltip: 'Statistikk',
+              icon: const Icon(Icons.insights_outlined),
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => const ChatStatsScreen()),
+              ),
+            ),
           IconButton(
             tooltip: 'Søk i samtale',
             icon: Icon(_searchOpen ? Icons.close : Icons.search_rounded),
@@ -450,35 +723,95 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                   await _togglePin();
                 case 'mute':
                   await _toggleMute();
+                case 'schedule':
+                  await _scheduleCurrent();
+                case 'template':
+                  await _useTemplate();
+                case 'selfdestruct':
+                  await _pickSelfDestruct();
+                case 'subgroup':
+                  await _createSubgroup();
+                case 'translation':
+                  final t = await showDialog<String>(
+                    context: context,
+                    builder: (ctx) {
+                      final c = TextEditingController(text: _translatedBody);
+                      return AlertDialog(
+                        title: const Text('Oversettelse (valgfritt)'),
+                        content: TextField(controller: c, maxLines: 3),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
+                          FilledButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('Lagre')),
+                        ],
+                      );
+                    },
+                  );
+                  if (t != null) setState(() => _translatedBody = t.isEmpty ? null : t);
+                case 'toggle_translation':
+                  setState(() => _showTranslation = !_showTranslation);
               }
             },
             itemBuilder: (_) => [
               PopupMenuItem(value: 'pin', child: Text(_pinned ? 'Løsne samtale' : 'Fest samtale')),
               PopupMenuItem(value: 'mute', child: Text(_muted ? 'Slå på varsler' : 'Demp varsler')),
+              const PopupMenuItem(value: 'schedule', child: Text('Planlegg melding')),
+              const PopupMenuItem(value: 'template', child: Text('Hurtigmal')),
+              const PopupMenuItem(value: 'selfdestruct', child: Text('Selvdestruerende melding')),
+              const PopupMenuItem(value: 'translation', child: Text('Legg til oversettelse')),
+              PopupMenuItem(value: 'toggle_translation', child: Text(_showTranslation ? 'Vis original' : 'Vis oversettelse')),
+              if (room.roomType.isGroup)
+                const PopupMenuItem(value: 'subgroup', child: Text('Opprett undergruppe')),
               const PopupMenuItem(value: 'archive', child: Text('Arkiver samtale')),
             ],
           ),
         ],
       ),
       body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              const Color(0xFFF4F7F5),
-              Colors.white,
-              DriftProTheme.primaryGreen.withValues(alpha: 0.03),
-            ],
-          ),
-        ),
+        decoration: BoxDecoration(gradient: ChatTheme.backgroundGradient(context)),
         child: Column(
         children: [
+          if (_pinnedMessage != null)
+            ChatPinnedMessageBar(
+              message: _pinnedMessage!,
+              onTap: _scrollToBottom,
+              onUnpin: () async {
+                await ChatAdvancedService.unpinMessage(widget.room.id);
+                setState(() => _pinnedMessage = null);
+              },
+            ),
+          if (_rulesText != null && _rulesText!.isNotEmpty && !_rulesDismissed)
+            ChatRulesBanner(rules: _rulesText!, onDismiss: () => setState(() => _rulesDismissed = true)),
+          ChatOnlineStrip(users: _onlineUsers),
           if (room.roomType.isPartnerOnly)
             _PrivacyStrip(text: room.roomType.subtitleNorwegian),
           if (room.roomType == ChatRoomType.partnerBroadcast && !_canSend)
             _PrivacyStrip(
               text: 'Kun lesing — du har ikke rettighet til å sende til alle partnere.',
+            ),
+          if (_activeThreadId != null && _threadRoot != null)
+            Material(
+              color: Colors.blue.withValues(alpha: 0.08),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Row(
+                  children: [
+                    const Icon(Icons.forum_outlined, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Tråd: ${ChatUiHelpers.replySnippet(_threadRoot!)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _activeThreadId = null),
+                      child: const Text('Lukk'),
+                    ),
+                  ],
+                ),
+              ),
             ),
           if (_searchOpen)
             Padding(
@@ -509,7 +842,26 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           if (_loadingMore)
             const LinearProgressIndicator(minHeight: 2),
           Expanded(
-            child: _loading
+            child: DropTarget(
+              onDragEntered: (_) => setState(() => _dragOver = true),
+              onDragExited: (_) => setState(() => _dragOver = false),
+              onDragDone: (detail) async {
+                setState(() => _dragOver = false);
+                final files = detail.files.map((f) => XFile(f.path)).toList();
+                await _sendDroppedFiles(files);
+              },
+              child: Stack(
+                children: [
+                  if (_dragOver)
+                    Positioned.fill(
+                      child: ColoredBox(
+                        color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                        child: const Center(
+                          child: Text('Slipp filer for å sende', style: TextStyle(fontWeight: FontWeight.w800)),
+                        ),
+                      ),
+                    ),
+                  _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _visibleMessages.isEmpty
                     ? Center(
@@ -549,6 +901,10 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                                         ? () => _moderatorDeleteMessage(m)
                                         : null,
                                     onShowRead: m.senderId == me ? () => _showReadReceipts(m) : null,
+                                    onPin: _canModerateMessages ? () => _pinMessage(m) : null,
+                                    onReport: !m.isDeleted ? () => _reportMessage(m) : null,
+                                    onThread: _room.roomType.isGroup ? () => _openThread(m) : null,
+                                    showTranslation: _showTranslation,
                                   ),
                                 ],
                               );
@@ -567,6 +923,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                             ),
                         ],
                       ),
+                ],
+              ),
+            ),
           ),
           if (_replyTo != null)
             ChatReplyBar(reply: _replyTo!, onClear: () => setState(() => _replyTo = null)),
@@ -588,6 +947,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    _InputIconButton(
+                      icon: Icons.attach_file_rounded,
+                      tooltip: 'Dokument',
+                      onTap: _sending ? null : _pickDocument,
+                    ),
+                    _InputIconButton(
+                      icon: Icons.location_on_outlined,
+                      tooltip: 'Posisjon',
+                      onTap: _sending ? null : _sendLocation,
+                    ),
                     _InputIconButton(
                       icon: Icons.photo_library_rounded,
                       tooltip: 'Bilde',
@@ -650,6 +1019,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
             ),
         ],
       ),
+      ),
+        ),
       ),
     );
   }
