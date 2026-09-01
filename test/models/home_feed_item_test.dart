@@ -1,3 +1,4 @@
+import 'package:driftpro/models/home_feed_content_config.dart';
 import 'package:driftpro/models/home_feed_item.dart';
 import 'package:driftpro/models/home_feed_layout_config.dart';
 import 'package:flutter/material.dart';
@@ -27,6 +28,41 @@ void main() {
     expect(item.sortOrder, 2);
     expect(item.isActive, isTrue);
     expect(item.layoutConfig.sizePreset, HomeFeedSizePreset.medium);
+  });
+
+  test('HomeFeedContentConfig youtube id extraction', () {
+    expect(
+      HomeFeedYoutubeConfig.extractYoutubeId(
+        'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+      ),
+      'dQw4w9WgXcQ',
+    );
+    expect(
+      HomeFeedYoutubeConfig.extractYoutubeId('https://youtu.be/abc123'),
+      'abc123',
+    );
+  });
+
+  test('HomeFeedLayoutConfig col span roundtrip', () {
+    const config = HomeFeedLayoutConfig(colSpanApp: 6, colSpanWeb: 4);
+    final restored = HomeFeedLayoutConfig.fromJson(config.toJson());
+    expect(restored.colSpanApp, 6);
+    expect(restored.colSpanWeb, 4);
+  });
+
+  test('HomeFeedItem text block fromJson', () {
+    final item = HomeFeedItem.fromJson({
+      'id': 't1',
+      'company_id': 'co',
+      'audience': 'mavi',
+      'content_type': 'text',
+      'title': 'Hei',
+      'content_json': {'body': 'Verden', 'theme': 'mavi_green'},
+      'layout_config': {'col_span_app': 12},
+    });
+    expect(item.contentType, HomeFeedContentType.text);
+    expect(item.contentConfig.textBlock.body, 'Verden');
+    expect(item.storagePath, isEmpty);
   });
 
   test('HomeFeedLayoutConfig roundtrip json', () {

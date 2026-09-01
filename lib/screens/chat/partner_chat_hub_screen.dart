@@ -537,14 +537,6 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
             ? _ErrorState(message: _error!, onRetry: _load)
             : Column(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: _PrivacyBanner(
-                      isPartner: _isPartner,
-                      isMavi: _isMavi,
-                      isSuperAdmin: _isSuperAdmin,
-                    ),
-                  ),
                   if (kIsWeb && !_webNotifOn)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -718,50 +710,6 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
         ],
       ),
       body: listBody,
-    );
-  }
-}
-
-class _PrivacyBanner extends StatelessWidget {
-  const _PrivacyBanner({
-    required this.isPartner,
-    required this.isMavi,
-    this.isSuperAdmin = false,
-  });
-
-  final bool isPartner;
-  final bool isMavi;
-  final bool isSuperAdmin;
-
-  @override
-  Widget build(BuildContext context) {
-    final text = isSuperAdmin
-        ? 'Som superadmin ser du MAVI, partnere og bedrifter — kun du kan koble dem sammen. '
-          'Vanlige MAVI-ansatte ser aldri partnerlister.'
-        : isPartner
-            ? 'Du ser meldinger fra MAVI og kan chatte med andre bil-eiere og ansatte. '
-              'Partner-til-partner-chatter er skjult for MAVI (GDPR). Du kan blokkere andre partnere.'
-            : isMavi
-                ? 'Du ser kun andre MAVI-ansatte. Partnerbedrifter og private partner-chatter '
-                  'er skjult. Kun superadmin kan koble MAVI og partnere.'
-                : 'Sikker meldingskanal med rollebasert tilgang.';
-
-    return Material(
-      color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(14),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.verified_user_outlined, color: DriftProTheme.primaryGreen),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(text, style: const TextStyle(fontSize: 12, height: 1.45)),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

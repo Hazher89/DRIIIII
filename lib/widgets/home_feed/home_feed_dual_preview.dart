@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/home_feed_item.dart';
 import '../../models/home_feed_layout_config.dart';
-import 'home_feed_item_view.dart';
+import 'home_feed_block_view.dart';
 
 /// Side-ved-side forhåndsvisning som simulerer mobil (app) og nettleser (web).
 class HomeFeedDualPreview extends StatelessWidget {
@@ -26,9 +26,8 @@ class HomeFeedDualPreview extends StatelessWidget {
             label: 'App (mobil)',
             icon: Icons.phone_iphone,
             width: sideBySide ? null : double.infinity,
-            child: HomeFeedItemView(
+            child: HomeFeedBlockView(
               item: item,
-              layout: layout,
               previewPlatform: HomeFeedPreviewPlatform.app,
               compactPreview: !sideBySide,
               interactive: false,
@@ -38,9 +37,8 @@ class HomeFeedDualPreview extends StatelessWidget {
             label: 'Web',
             icon: Icons.laptop_mac,
             width: sideBySide ? null : double.infinity,
-            child: HomeFeedItemView(
+            child: HomeFeedBlockView(
               item: item,
-              layout: layout,
               previewPlatform: HomeFeedPreviewPlatform.web,
               compactPreview: !sideBySide,
               interactive: false,

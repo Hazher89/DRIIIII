@@ -80,6 +80,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                 children: [
                   HomeFeedBanner(
                     audience: HomeFeedAudience.partner,
+                    portal: 'driver',
                     compact: true,
                   ),
                   PartnerHeroBanner(

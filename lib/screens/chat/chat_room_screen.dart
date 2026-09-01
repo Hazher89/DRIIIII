@@ -27,6 +27,7 @@ import 'widgets/chat_room_members_sheet.dart';
 import 'widgets/chat_compose_sheets.dart';
 import 'widgets/chat_room_banners.dart';
 import 'widgets/chat_swipe_message.dart';
+import 'widgets/chat_room_sheets.dart';
 import 'widgets/chat_theme.dart';
 import 'chat_stats_screen.dart';
 
@@ -44,7 +45,7 @@ class ChatRoomScreen extends StatefulWidget {
   State<ChatRoomScreen> createState() => _ChatRoomScreenState();
 }
 
-class _ChatRoomScreenState extends State<ChatRoomScreen> {
+class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObserver {
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final _picker = ImagePicker();
@@ -76,6 +77,8 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   List<ChatOnlineUser> _onlineUsers = const [];
   String? _activeThreadId;
   List<ChatMentionCandidate> _mentionCandidates = const [];
+  StreamSubscription<String>? _roomLiveSub;
+  Timer? _liveSyncDebounce;
   bool _dragOver = false;
 
   bool get _canSend {
@@ -93,6 +96,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _room = widget.room;
     _pinned = widget.room.isPinned;
     _muted = widget.room.isMuted;
@@ -110,23 +114,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _input.addListener(() => _typing?.onUserTyping());
     _channel = PartnerChatService.subscribeRoom(
       roomId: widget.room.id,
-      onMessage: (msg) async {
-        if (!mounted) return;
-        ChatMessage incoming = msg;
-        if (incoming.replyToId != null) {
-          final parent = _messages.cast<ChatMessage?>().firstWhere(
-                (m) => m?.id == incoming.replyToId,
-                orElse: () => null,
-              );
-          if (parent != null) incoming = incoming.copyWith(replyTo: parent);
-        }
-        setState(() {
-          final existing = _messages.any((m) => m.id == incoming.id);
-          if (!existing) _messages = [..._messages, incoming];
-        });
-        await PartnerChatService.markRead(widget.room.id, incoming.id);
-        _scrollToBottom();
-      },
+      onMessage: _onIncomingMessage,
     );
     _reactionsChannel = Supabase.instance.client
         .channel('chat_reactions_${widget.room.id}')
@@ -145,6 +133,38 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     unawaited(_loadRoomMeta());
     unawaited(_loadOnline());
     unawaited(_loadMentionCandidates());
+    _roomLiveSub = ChatUnreadService.roomInserts.listen((roomId) {
+      if (!mounted || roomId != widget.room.id) return;
+      _liveSyncDebounce?.cancel();
+      _liveSyncDebounce = Timer(const Duration(milliseconds: 400), () {
+        if (mounted) unawaited(_load(silent: true));
+      });
+    });
+  }
+
+  Future<void> _onIncomingMessage(ChatMessage msg) async {
+    if (!mounted) return;
+    ChatMessage incoming = msg;
+    if (incoming.replyToId != null) {
+      final parent = _messages.cast<ChatMessage?>().firstWhere(
+            (m) => m?.id == incoming.replyToId,
+            orElse: () => null,
+          );
+      if (parent != null) incoming = incoming.copyWith(replyTo: parent);
+    }
+    setState(() {
+      final existing = _messages.any((m) => m.id == incoming.id);
+      if (!existing) _messages = [..._messages, incoming];
+    });
+    await PartnerChatService.markRead(widget.room.id, incoming.id);
+    _scrollToBottom();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_load(silent: true));
+    }
   }
 
   Future<void> _loadMentionCandidates() async {
@@ -176,6 +196,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_roomLiveSub?.cancel() ?? Future.value());
+    _liveSyncDebounce?.cancel();
     if (ChatPresenceService.openRoomId == widget.room.id) {
       ChatPresenceService.setOpenRoom(null);
     }
@@ -634,6 +657,89 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     );
   }
 
+  Future<void> _openAttachSheet() async {
+    if (_sending || !_canSend) return;
+    final action = await ChatAttachSheet.show(context);
+    if (action == null || !mounted) return;
+    switch (action) {
+      case ChatAttachAction.photo:
+        await _pickMedia(video: false);
+      case ChatAttachAction.video:
+        await _pickMedia(video: true);
+      case ChatAttachAction.document:
+        await _pickDocument();
+      case ChatAttachAction.location:
+        await _sendLocation();
+    }
+  }
+
+  Future<void> _openRoomMenu() async {
+    final action = await ChatRoomMenuSheet.show(
+      context,
+      room: _room,
+      pinned: _pinned,
+      muted: _muted,
+      darkMode: ChatTheme.dark,
+      showTranslation: _showTranslation,
+      canSend: _canSend,
+      canModerateMessages: _canModerateMessages,
+      isGroup: _room.roomType.isGroup,
+    );
+    if (action == null || !mounted) return;
+    switch (action) {
+      case ChatRoomMenuAction.search:
+        setState(() => _searchOpen = true);
+      case ChatRoomMenuAction.mediaGallery:
+        await ChatMediaGallerySheet.show(context, _messages);
+      case ChatRoomMenuAction.members:
+        await showChatRoomMembersSheet(
+          context: context,
+          room: _room,
+          profile: widget.profile,
+          onRoomDeleted: () => Navigator.pop(context),
+        );
+      case ChatRoomMenuAction.darkMode:
+        setState(() => ChatTheme.dark = !ChatTheme.dark);
+      case ChatRoomMenuAction.pinRoom:
+        await _togglePin();
+      case ChatRoomMenuAction.muteRoom:
+        await _toggleMute();
+      case ChatRoomMenuAction.schedule:
+        await _scheduleCurrent();
+      case ChatRoomMenuAction.template:
+        await _useTemplate();
+      case ChatRoomMenuAction.selfDestruct:
+        await _pickSelfDestruct();
+      case ChatRoomMenuAction.subgroup:
+        await _createSubgroup();
+      case ChatRoomMenuAction.translation:
+        final t = await showDialog<String>(
+          context: context,
+          builder: (ctx) {
+            final c = TextEditingController(text: _translatedBody);
+            return AlertDialog(
+              title: const Text('Oversettelse (valgfritt)'),
+              content: TextField(controller: c, maxLines: 3),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
+                FilledButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('Lagre')),
+              ],
+            );
+          },
+        );
+        if (t != null) setState(() => _translatedBody = t.isEmpty ? null : t);
+      case ChatRoomMenuAction.toggleTranslation:
+        setState(() => _showTranslation = !_showTranslation);
+      case ChatRoomMenuAction.stats:
+        await Navigator.push(
+          context,
+          MaterialPageRoute<void>(builder: (_) => const ChatStatsScreen()),
+        );
+      case ChatRoomMenuAction.archive:
+        await _archive();
+    }
+  }
+
   void _openImage(String url) {
     ChatMediaViewer.openImage(context, url);
   }
@@ -652,118 +758,60 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
         autofocus: true,
         child: Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        titleSpacing: 0,
+        title: Row(
           children: [
-            Row(
-              children: [
-                if (_pinned) ...[
-                  const Icon(Icons.push_pin, size: 14),
-                  const SizedBox(width: 4),
-                ],
-                if (_muted) ...[
-                  Icon(Icons.notifications_off_outlined, size: 14, color: Colors.grey.shade600),
-                  const SizedBox(width: 4),
-                ],
-                Expanded(
-                  child: Text(room.displayTitle(), overflow: TextOverflow.ellipsis),
-                ),
-              ],
+            CircleAvatar(
+              radius: 18,
+              backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+              child: Icon(_room.roomType.icon, size: 18, color: DriftProTheme.primaryGreen),
             ),
-            Text(room.roomType.subtitleNorwegian, style: const TextStyle(fontSize: 11)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      if (_pinned) ...[
+                        const Icon(Icons.push_pin, size: 13),
+                        const SizedBox(width: 4),
+                      ],
+                      if (_muted) ...[
+                        Icon(Icons.notifications_off_outlined, size: 13, color: Colors.grey.shade600),
+                        const SizedBox(width: 4),
+                      ],
+                      Expanded(
+                        child: Text(
+                          room.displayTitle(),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: ChatTheme.dark ? 'Lys modus' : 'Mørk modus',
-            icon: Icon(ChatTheme.dark ? Icons.light_mode : Icons.dark_mode),
-            onPressed: () => setState(() => ChatTheme.dark = !ChatTheme.dark),
-          ),
-          if (_canModerateMessages)
+          if (_searchOpen)
             IconButton(
-              tooltip: 'Statistikk',
-              icon: const Icon(Icons.insights_outlined),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(builder: (_) => const ChatStatsScreen()),
-              ),
-            ),
-          IconButton(
-            tooltip: 'Søk i samtale',
-            icon: Icon(_searchOpen ? Icons.close : Icons.search_rounded),
-            onPressed: () => setState(() {
-              _searchOpen = !_searchOpen;
-              if (!_searchOpen) {
+              tooltip: 'Lukk søk',
+              icon: const Icon(Icons.close_rounded),
+              onPressed: () => setState(() {
+                _searchOpen = false;
                 _searchQuery = '';
                 _searchCtrl.clear();
-              }
-            }),
-          ),
-          IconButton(
-            tooltip: 'Media',
-            icon: const Icon(Icons.perm_media_outlined),
-            onPressed: () => ChatMediaGallerySheet.show(context, _messages),
-          ),
-          IconButton(
-            tooltip: 'Medlemmer',
-            icon: const Icon(Icons.people_outline),
-            onPressed: () => showChatRoomMembersSheet(
-              context: context,
-              room: room,
-              profile: widget.profile,
-              onRoomDeleted: () => Navigator.pop(context),
+              }),
+            )
+          else
+            IconButton(
+              tooltip: 'Meny',
+              icon: const Icon(Icons.more_vert_rounded),
+              onPressed: _openRoomMenu,
             ),
-          ),
-          PopupMenuButton<String>(
-            onSelected: (v) async {
-              switch (v) {
-                case 'archive':
-                  await _archive();
-                case 'pin':
-                  await _togglePin();
-                case 'mute':
-                  await _toggleMute();
-                case 'schedule':
-                  await _scheduleCurrent();
-                case 'template':
-                  await _useTemplate();
-                case 'selfdestruct':
-                  await _pickSelfDestruct();
-                case 'subgroup':
-                  await _createSubgroup();
-                case 'translation':
-                  final t = await showDialog<String>(
-                    context: context,
-                    builder: (ctx) {
-                      final c = TextEditingController(text: _translatedBody);
-                      return AlertDialog(
-                        title: const Text('Oversettelse (valgfritt)'),
-                        content: TextField(controller: c, maxLines: 3),
-                        actions: [
-                          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Avbryt')),
-                          FilledButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('Lagre')),
-                        ],
-                      );
-                    },
-                  );
-                  if (t != null) setState(() => _translatedBody = t.isEmpty ? null : t);
-                case 'toggle_translation':
-                  setState(() => _showTranslation = !_showTranslation);
-              }
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(value: 'pin', child: Text(_pinned ? 'Løsne samtale' : 'Fest samtale')),
-              PopupMenuItem(value: 'mute', child: Text(_muted ? 'Slå på varsler' : 'Demp varsler')),
-              const PopupMenuItem(value: 'schedule', child: Text('Planlegg melding')),
-              const PopupMenuItem(value: 'template', child: Text('Hurtigmal')),
-              const PopupMenuItem(value: 'selfdestruct', child: Text('Selvdestruerende melding')),
-              const PopupMenuItem(value: 'translation', child: Text('Legg til oversettelse')),
-              PopupMenuItem(value: 'toggle_translation', child: Text(_showTranslation ? 'Vis original' : 'Vis oversettelse')),
-              if (room.roomType.isGroup)
-                const PopupMenuItem(value: 'subgroup', child: Text('Opprett undergruppe')),
-              const PopupMenuItem(value: 'archive', child: Text('Arkiver samtale')),
-            ],
-          ),
         ],
       ),
       body: Container(
@@ -782,12 +830,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           if (_rulesText != null && _rulesText!.isNotEmpty && !_rulesDismissed)
             ChatRulesBanner(rules: _rulesText!, onDismiss: () => setState(() => _rulesDismissed = true)),
           ChatOnlineStrip(users: _onlineUsers),
-          if (room.roomType.isPartnerOnly)
-            _PrivacyStrip(text: room.roomType.subtitleNorwegian),
-          if (room.roomType == ChatRoomType.partnerBroadcast && !_canSend)
-            _PrivacyStrip(
-              text: 'Kun lesing — du har ikke rettighet til å sende til alle partnere.',
-            ),
           if (_activeThreadId != null && _threadRoot != null)
             Material(
               color: Colors.blue.withValues(alpha: 0.08),
@@ -943,30 +985,20 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
                     ),
                   ],
                 ),
-                padding: const EdgeInsets.fromLTRB(8, 8, 12, 12),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    _InputIconButton(
-                      icon: Icons.attach_file_rounded,
-                      tooltip: 'Dokument',
-                      onTap: _sending ? null : _pickDocument,
+                    IconButton(
+                      tooltip: 'Legg ved',
+                      onPressed: _sending ? null : _openAttachSheet,
+                      style: IconButton.styleFrom(
+                        backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+                        shape: const CircleBorder(),
+                      ),
+                      icon: const Icon(Icons.add_rounded, color: DriftProTheme.primaryGreen, size: 26),
                     ),
-                    _InputIconButton(
-                      icon: Icons.location_on_outlined,
-                      tooltip: 'Posisjon',
-                      onTap: _sending ? null : _sendLocation,
-                    ),
-                    _InputIconButton(
-                      icon: Icons.photo_library_rounded,
-                      tooltip: 'Bilde',
-                      onTap: _sending ? null : () => _pickMedia(video: false),
-                    ),
-                    _InputIconButton(
-                      icon: Icons.videocam_rounded,
-                      tooltip: 'Video',
-                      onTap: _sending ? null : () => _pickMedia(video: true),
-                    ),
+                    const SizedBox(width: 4),
                     Expanded(
                       child: TextField(
                         controller: _input,
@@ -1053,54 +1085,6 @@ class _TypingStrip extends StatelessWidget {
                 label,
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: DriftProTheme.primaryGreen),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InputIconButton extends StatelessWidget {
-  const _InputIconButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onTap,
-      style: IconButton.styleFrom(
-        backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-      ),
-      icon: Icon(icon, color: DriftProTheme.primaryGreen, size: 22),
-    );
-  }
-}
-
-class _PrivacyStrip extends StatelessWidget {
-  const _PrivacyStrip({required this.text});
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.deepPurple.withValues(alpha: 0.08),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          children: [
-            Icon(Icons.lock, size: 16, color: Colors.deepPurple.shade700),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(text, style: TextStyle(fontSize: 11, color: Colors.deepPurple.shade900)),
             ),
           ],
         ),

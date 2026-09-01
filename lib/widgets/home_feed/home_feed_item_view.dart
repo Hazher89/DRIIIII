@@ -48,6 +48,11 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
   }
 
   Future<void> _resolve() async {
+    if (!widget.item.contentType.needsMedia ||
+        widget.item.storagePath.isEmpty) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
     setState(() => _loading = true);
     final url = await HomeFeedService.resolveDisplayUrl(widget.item.storagePath);
     if (!mounted) return;
@@ -318,6 +323,12 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
             ),
           ),
         );
+      case HomeFeedContentType.text:
+      case HomeFeedContentType.youtube:
+      case HomeFeedContentType.link:
+      case HomeFeedContentType.spacer:
+      case HomeFeedContentType.carousel:
+        return const SizedBox.shrink();
     }
   }
 }

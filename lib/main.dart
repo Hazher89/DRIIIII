@@ -15,6 +15,7 @@ import 'core/services/notification/push_navigation_service.dart';
 import 'core/theme/app_theme.dart';
 import 'core/config/driftpro_client.dart';
 import 'core/config/supabase_config.dart';
+import 'core/layout/keyboard_dismiss_scope.dart';
 import 'core/layout/web_layout.dart';
 import 'core/theme/system_ui_sync.dart';
 import 'core/theme/theme_notifier.dart';
@@ -111,8 +112,10 @@ class _DriftProAppState extends State<DriftProApp> {
       routerConfig: _router,
       // Inne i MaterialApp slik at Theme.of fungerer (utenfor → hvite iOS-ikoner).
       builder: (context, child) => SystemUiSync(
-        child: DriftProAssistantOverlay(
-          child: child ?? const SizedBox.shrink(),
+        child: KeyboardDismissScope(
+          child: DriftProAssistantOverlay(
+            child: child ?? const SizedBox.shrink(),
+          ),
         ),
       ),
     );

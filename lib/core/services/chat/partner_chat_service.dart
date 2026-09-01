@@ -639,17 +639,18 @@ abstract final class PartnerChatService {
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'chat_messages',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'room_id',
-            value: roomId,
-          ),
           callback: (payload) async {
-            final record = payload.newRecord;
-            if (record.isEmpty) return;
-            var msg = ChatMessage.fromJson(Map<String, dynamic>.from(record));
-            msg = await hydrateMessage(msg);
-            onMessage(msg);
+            try {
+              final record = payload.newRecord;
+              if (record.isEmpty) return;
+              final msgRoomId = record['room_id'] as String?;
+              if (msgRoomId != roomId) return;
+              var msg = ChatMessage.fromJson(Map<String, dynamic>.from(record));
+              msg = await hydrateMessage(msg);
+              onMessage(msg);
+            } catch (_) {
+              // Realtime payload kan mangle joins — ignorer, fallback henter via roomInserts.
+            }
           },
         )
         ..subscribe();

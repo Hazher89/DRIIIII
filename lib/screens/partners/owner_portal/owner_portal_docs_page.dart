@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../../core/layout/keyboard_dismiss_scope.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -130,10 +131,13 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
     final nameCtrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => KeyboardDismissScope.wrapDialog(
+        AlertDialog(
         title: const Text('Ny mappe'),
         content: TextField(
           controller: nameCtrl,
+          textInputAction: TextInputAction.done,
+          onEditingComplete: KeyboardDismissScope.dismiss,
           decoration: const InputDecoration(
             labelText: 'Mappenavn',
             border: OutlineInputBorder(),
@@ -147,6 +151,7 @@ class _OwnerPortalDocsPageState extends State<OwnerPortalDocsPage> {
             child: const Text('Opprett'),
           ),
         ],
+      ),
       ),
     );
     if (ok != true || !mounted) {

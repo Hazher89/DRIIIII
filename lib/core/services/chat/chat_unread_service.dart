@@ -9,12 +9,15 @@ import 'partner_chat_service.dart';
 abstract final class ChatUnreadService {
   static SupabaseClient get _client => SupabaseService.client;
   static final _controller = StreamController<int>.broadcast();
+  static final _roomInsertController = StreamController<String>.broadcast();
   static int _lastCount = 0;
   static RealtimeChannel? _channel;
   static Timer? _debounce;
   static String? _watchingUserId;
 
   static Stream<int> get stream => _controller.stream;
+  /// Nye meldinger per rom-id (ufiltrert realtime — brukes som fallback i aktiv chat).
+  static Stream<String> get roomInserts => _roomInsertController.stream;
   static int get lastCount => _lastCount;
 
   static void startWatching() {
@@ -37,7 +40,13 @@ abstract final class ChatUnreadService {
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'chat_messages',
-          callback: (_) => _scheduleRefresh(),
+          callback: (payload) {
+            final roomId = payload.newRecord['room_id'] as String?;
+            if (roomId != null && !_roomInsertController.isClosed) {
+              _roomInsertController.add(roomId);
+            }
+            _scheduleRefresh();
+          },
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.update,

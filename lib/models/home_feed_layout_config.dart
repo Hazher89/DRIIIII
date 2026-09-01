@@ -87,6 +87,24 @@ enum HomeFeedMediaFit {
   }
 }
 
+enum HomeFeedDisplayMode {
+  staticBlock('static', 'Statisk'),
+  carousel('carousel', 'Karusell'),
+  shuffle('shuffle', 'Shuffle'),
+  rotate('rotate', 'Auto-rotasjon');
+
+  const HomeFeedDisplayMode(this.dbValue, this.label);
+  final String dbValue;
+  final String label;
+
+  static HomeFeedDisplayMode fromDb(String? raw) {
+    return HomeFeedDisplayMode.values.firstWhere(
+      (e) => e.dbValue == raw?.trim().toLowerCase(),
+      orElse: () => HomeFeedDisplayMode.staticBlock,
+    );
+  }
+}
+
 class HomeFeedTextStyleConfig {
   const HomeFeedTextStyleConfig({
     this.size = HomeFeedTextSize.md,
@@ -168,6 +186,10 @@ class HomeFeedLayoutConfig {
       colorHex: '#E8E8E8',
       bold: false,
     ),
+    this.colSpanApp = 12,
+    this.colSpanWeb = 12,
+    this.displayMode = HomeFeedDisplayMode.staticBlock,
+    this.darkModeOverrides,
   });
 
   final HomeFeedSizePreset sizePreset;
@@ -183,6 +205,10 @@ class HomeFeedLayoutConfig {
   final double overlayOpacity;
   final HomeFeedTextStyleConfig titleStyle;
   final HomeFeedTextStyleConfig captionStyle;
+  final int colSpanApp;
+  final int colSpanWeb;
+  final HomeFeedDisplayMode displayMode;
+  final Map<String, dynamic>? darkModeOverrides;
 
   static const defaults = HomeFeedLayoutConfig();
 
@@ -252,6 +278,10 @@ class HomeFeedLayoutConfig {
         'overlay_opacity': overlayOpacity,
         'title_style': titleStyle.toJson(),
         'caption_style': captionStyle.toJson(),
+        'col_span_app': colSpanApp.clamp(1, 12),
+        'col_span_web': colSpanWeb.clamp(1, 12),
+        'display_mode': displayMode.dbValue,
+        if (darkModeOverrides != null) 'dark_mode': darkModeOverrides,
       };
 
   factory HomeFeedLayoutConfig.fromJson(Map<String, dynamic>? json) {
@@ -279,8 +309,15 @@ class HomeFeedLayoutConfig {
       captionStyle: HomeFeedTextStyleConfig.fromJson(
         json['caption_style'] as Map<String, dynamic>?,
       ),
+      colSpanApp: (json['col_span_app'] as num?)?.toInt().clamp(1, 12) ?? 12,
+      colSpanWeb: (json['col_span_web'] as num?)?.toInt().clamp(1, 12) ?? 12,
+      displayMode: HomeFeedDisplayMode.fromDb(json['display_mode'] as String?),
+      darkModeOverrides: json['dark_mode'] as Map<String, dynamic>?,
     );
   }
+
+  int resolveColSpan({required bool isWeb}) =>
+      (isWeb ? colSpanWeb : colSpanApp).clamp(1, 12);
 
   HomeFeedLayoutConfig copyWith({
     HomeFeedSizePreset? sizePreset,
@@ -298,6 +335,10 @@ class HomeFeedLayoutConfig {
     double? overlayOpacity,
     HomeFeedTextStyleConfig? titleStyle,
     HomeFeedTextStyleConfig? captionStyle,
+    int? colSpanApp,
+    int? colSpanWeb,
+    HomeFeedDisplayMode? displayMode,
+    Map<String, dynamic>? darkModeOverrides,
   }) {
     return HomeFeedLayoutConfig(
       sizePreset: sizePreset ?? this.sizePreset,
@@ -315,6 +356,10 @@ class HomeFeedLayoutConfig {
       overlayOpacity: overlayOpacity ?? this.overlayOpacity,
       titleStyle: titleStyle ?? this.titleStyle,
       captionStyle: captionStyle ?? this.captionStyle,
+      colSpanApp: colSpanApp ?? this.colSpanApp,
+      colSpanWeb: colSpanWeb ?? this.colSpanWeb,
+      displayMode: displayMode ?? this.displayMode,
+      darkModeOverrides: darkModeOverrides ?? this.darkModeOverrides,
     );
   }
 

@@ -1620,6 +1620,43 @@ department:departments!department_id(name)
     await client.from('profiles').update(patch).eq('id', profileId);
   }
 
+  /// Bruker oppdaterer eget visningsnavn og/eller profilbilde.
+  static Future<void> updateOwnProfile({
+    String? fullName,
+    String? avatarUrl,
+  }) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw StateError('Ikke innlogget');
+    final patch = <String, dynamic>{};
+    if (fullName != null) {
+      final trimmed = fullName.trim();
+      if (trimmed.isEmpty) throw ArgumentError('Navn kan ikke være tomt');
+      patch['full_name'] = trimmed;
+    }
+    if (avatarUrl != null) patch['avatar_url'] = avatarUrl;
+    if (patch.isEmpty) return;
+    await client.from('profiles').update(patch).eq('id', user.id);
+  }
+
+  /// Laster opp profilbilde til egen mappe og returnerer offentlig URL.
+  static Future<String> uploadUserAvatar(
+    Uint8List bytes, {
+    String extension = 'jpg',
+    String contentType = 'image/jpeg',
+  }) async {
+    final user = client.auth.currentUser;
+    if (user == null) throw StateError('Ikke innlogget');
+    final ext = extension.replaceAll('.', '');
+    final path = '${user.id}/avatar.$ext';
+    await client.storage.from(SupabaseConfig.avatarsBucket).uploadBinary(
+          path,
+          bytes,
+          fileOptions: FileOptions(upsert: true, contentType: contentType),
+        );
+    final base = client.storage.from(SupabaseConfig.avatarsBucket).getPublicUrl(path);
+    return '$base?v=${DateTime.now().millisecondsSinceEpoch}';
+  }
+
   /// Ansatt oppdaterer antall barn under 12 på egen profil.
   static Future<void> updateProfileChildrenUnder12({
     required String profileId,

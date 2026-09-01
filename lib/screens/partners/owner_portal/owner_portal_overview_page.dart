@@ -118,6 +118,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                 children: [
                   HomeFeedBanner(
                     audience: HomeFeedAudience.partner,
+                    portal: 'owner',
                     compact: true,
                   ),
                   PartnerHeroBanner(

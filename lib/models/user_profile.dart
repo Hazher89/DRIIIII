@@ -159,6 +159,7 @@ class UserProfile {
   UserProfile copyWith({
     String? email,
     String? fullName,
+    String? avatarUrl,
     UserRole? role,
     bool? isOnboarded,
     bool? isApproved,
@@ -175,7 +176,7 @@ class UserProfile {
       role: role ?? this.role,
       departmentId: departmentId,
       companyId: companyId ?? this.companyId,
-      avatarUrl: avatarUrl,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
       employeeNumber: employeeNumber,
       phone: phone,
       address: address,
