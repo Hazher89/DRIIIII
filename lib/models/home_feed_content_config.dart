@@ -114,7 +114,7 @@ class HomeFeedYoutubeConfig {
   const HomeFeedYoutubeConfig({
     this.videoUrl = '',
     this.videoId,
-    this.autoplay = false,
+    this.autoplay = true,
     this.muted = true,
   });
 

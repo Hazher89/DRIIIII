@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'youtube_embed_view_stub.dart'
-    if (dart.library.html) 'youtube_embed_view_web.dart' as impl;
+    if (dart.library.html) 'youtube_embed_view_web.dart'
+    if (dart.library.io) 'youtube_embed_view_io.dart' as impl;
 
 class YoutubeEmbedView extends StatelessWidget {
   const YoutubeEmbedView({

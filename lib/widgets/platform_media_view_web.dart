@@ -4,14 +4,31 @@ import 'dart:ui_web' as ui_web;
 
 import 'package:flutter/material.dart';
 
-Widget buildPlatformMediaView(String url, {bool isAudio = false}) {
-  return _WebMediaElement(url: url, isAudio: isAudio);
+Widget buildPlatformMediaView(
+  String url, {
+  bool isAudio = false,
+  bool autoplay = true,
+  bool muted = true,
+}) {
+  return _WebMediaElement(
+    url: url,
+    isAudio: isAudio,
+    autoplay: autoplay,
+    muted: muted,
+  );
 }
 
 class _WebMediaElement extends StatefulWidget {
   final String url;
   final bool isAudio;
-  const _WebMediaElement({required this.url, required this.isAudio});
+  final bool autoplay;
+  final bool muted;
+  const _WebMediaElement({
+    required this.url,
+    required this.isAudio,
+    required this.autoplay,
+    required this.muted,
+  });
 
   @override
   State<_WebMediaElement> createState() => _WebMediaElementState();
@@ -33,9 +50,13 @@ class _WebMediaElementState extends State<_WebMediaElement> {
       el.style.width = '100%';
       el.style.height = '100%';
       if (!widget.isAudio) {
-        (el as html.VideoElement)
-          ..style.maxHeight = '100%'
-          ..style.objectFit = 'contain';
+        final video = el as html.VideoElement;
+        video.autoplay = widget.autoplay;
+        video.muted = widget.muted;
+        video.loop = true;
+        video.playsInline = true;
+        video.style.maxHeight = '100%';
+        video.style.objectFit = 'contain';
       }
       return el;
     });

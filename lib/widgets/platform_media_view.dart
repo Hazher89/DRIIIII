@@ -7,15 +7,24 @@ import 'platform_media_view_stub.dart'
 class PlatformMediaView extends StatelessWidget {
   final String url;
   final bool isAudio;
+  final bool autoplay;
+  final bool muted;
 
   const PlatformMediaView({
     super.key,
     required this.url,
     this.isAudio = false,
+    this.autoplay = true,
+    this.muted = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    return impl.buildPlatformMediaView(url, isAudio: isAudio);
+    return impl.buildPlatformMediaView(
+      url,
+      isAudio: isAudio,
+      autoplay: autoplay,
+      muted: muted,
+    );
   }
 }

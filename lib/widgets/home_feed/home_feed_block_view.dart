@@ -368,7 +368,7 @@ class _YoutubeBlockView extends StatelessWidget {
         ? 0.0
         : layout.borderRadius;
 
-    if (videoId != null && videoId.isNotEmpty && isWeb) {
+    if (videoId != null && videoId.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(radius),
         child: YoutubeEmbedView(

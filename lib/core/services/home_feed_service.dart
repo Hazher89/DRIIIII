@@ -236,7 +236,7 @@ class HomeFeedService {
       caption: caption,
       sortOrder: sortOrder,
       contentConfig: HomeFeedContentConfig(
-        youtube: HomeFeedYoutubeConfig(videoUrl: videoUrl),
+        youtube: HomeFeedYoutubeConfig(videoUrl: videoUrl, autoplay: true),
       ),
     );
   }

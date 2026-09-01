@@ -12,6 +12,7 @@ import '../../models/home_feed_item.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 import '../../widgets/home_feed/home_feed_add_block_sheet.dart';
 import '../../widgets/home_feed/home_feed_block_editor.dart';
+import '../../widgets/home_feed/home_feed_block_view.dart';
 import '../../widgets/home_feed_banner.dart';
 
 /// Avansert redigering av live forside-innhold.
@@ -452,17 +453,34 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
                     },
                   ),
                   const SizedBox(height: 20),
-                  Text(
-                    'Forhåndsvisning (live)',
-                    style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w700),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Innhold på forsiden (${_items.length})',
+                          style: DriftProTheme.labelLg
+                              .copyWith(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      FilledButton.icon(
+                        onPressed: _busy ? null : _addBlock,
+                        icon: const Icon(Icons.add, size: 18),
+                        label: const Text('Legg til'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 8),
-                  HomeFeedBanner(audience: _audience, compact: true),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Trykk på et element for å redigere. Sveip eller bruk søppelbøtte for å slette.',
+                    style: DriftProTheme.bodySm.copyWith(
+                      color: isDark ? Colors.grey[400] : Colors.grey[700],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   if (_error != null) ...[
-                    const SizedBox(height: 12),
                     Text(_error!, style: const TextStyle(color: Colors.orange)),
+                    const SizedBox(height: 12),
                   ],
-                  const SizedBox(height: 16),
                   if (_items.isEmpty)
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 32),
@@ -508,6 +526,13 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
                       padding: EdgeInsets.all(24),
                       child: Center(child: DriftProLoadingIndicator()),
                     ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Forhåndsvisning (live)',
+                    style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  HomeFeedBanner(audience: _audience, compact: true),
                   const SizedBox(height: 80),
                 ],
               ),
@@ -552,42 +577,99 @@ class _AdminBlockTile extends StatelessWidget {
     ].join(' · ');
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: const EdgeInsets.only(bottom: 12),
       color: isDark ? DriftProTheme.cardDark : DriftProTheme.cardLight,
+      clipBehavior: Clip.antiAlias,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ListTile(
-            leading: Icon(item.contentType.icon, color: DriftProTheme.primaryGreen),
-            title: Text(
-              item.title.isNotEmpty ? item.title : item.contentType.label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+          InkWell(
+            onTap: onEdit,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+              child: Row(
+                children: [
+                  Icon(item.contentType.icon, color: DriftProTheme.primaryGreen),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.title.isNotEmpty ? item.title : item.contentType.label,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: DriftProTheme.labelMd
+                              .copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(meta, style: DriftProTheme.bodySm),
+                      ],
+                    ),
+                  ),
+                  if (!item.isActive)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Skjult',
+                        style: DriftProTheme.labelSm.copyWith(color: Colors.orange),
+                      ),
+                    ),
+                ],
+              ),
             ),
-            subtitle: Text(meta),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(DriftProTheme.radiusSm),
+              child: SizedBox(
+                height: item.contentType == HomeFeedContentType.spacer ? 40 : 150,
+                child: HomeFeedBlockView(
+                  item: item,
+                  compactPreview: true,
+                  interactive: false,
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+            child: Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              alignment: WrapAlignment.end,
               children: [
                 if (onMoveUp != null)
                   IconButton(
+                    tooltip: 'Flytt opp',
                     icon: const Icon(Icons.arrow_upward),
                     onPressed: onMoveUp,
                   ),
                 if (onMoveDown != null)
                   IconButton(
+                    tooltip: 'Flytt ned',
                     icon: const Icon(Icons.arrow_downward),
                     onPressed: onMoveDown,
                   ),
                 IconButton(
+                  tooltip: item.isActive ? 'Skjul' : 'Vis',
                   icon: Icon(
                     item.isActive ? Icons.visibility : Icons.visibility_off,
                   ),
                   onPressed: onToggle,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.tune),
+                  tooltip: 'Rediger',
+                  icon: const Icon(Icons.edit_outlined),
                   onPressed: onEdit,
                 ),
                 IconButton(
+                  tooltip: 'Slett',
                   icon: const Icon(Icons.delete_outline, color: DriftProTheme.error),
                   onPressed: onDelete,
                 ),
@@ -596,7 +678,7 @@ class _AdminBlockTile extends StatelessWidget {
           ),
           if (onDuplicateToPartner != null || onAddSlide != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
               child: Wrap(
                 spacing: 8,
                 children: [

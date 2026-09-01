@@ -5,15 +5,32 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
-Widget buildPlatformMediaView(String url, {bool isAudio = false}) {
-  return _InlineMediaPlayer(url: url, isAudio: isAudio);
+Widget buildPlatformMediaView(
+  String url, {
+  bool isAudio = false,
+  bool autoplay = true,
+  bool muted = true,
+}) {
+  return _InlineMediaPlayer(
+    url: url,
+    isAudio: isAudio,
+    autoplay: autoplay,
+    muted: muted,
+  );
 }
 
 class _InlineMediaPlayer extends StatefulWidget {
-  const _InlineMediaPlayer({required this.url, required this.isAudio});
+  const _InlineMediaPlayer({
+    required this.url,
+    required this.isAudio,
+    required this.autoplay,
+    required this.muted,
+  });
 
   final String url;
   final bool isAudio;
+  final bool autoplay;
+  final bool muted;
 
   @override
   State<_InlineMediaPlayer> createState() => _InlineMediaPlayerState();
@@ -34,11 +51,19 @@ class _InlineMediaPlayerState extends State<_InlineMediaPlayer> {
     try {
       final c = await _createController(widget.url);
       await c.initialize();
+      await c.setVolume(widget.muted ? 0 : 1);
+      if (!widget.isAudio) {
+        await c.setLooping(true);
+      }
+      c.addListener(_onTick);
       if (!mounted) return;
       setState(() {
         _controller = c;
         _loading = false;
       });
+      if (widget.autoplay) {
+        await c.play();
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -47,6 +72,10 @@ class _InlineMediaPlayerState extends State<_InlineMediaPlayer> {
         });
       }
     }
+  }
+
+  void _onTick() {
+    if (mounted) setState(() {});
   }
 
   Future<VideoPlayerController> _createController(String url) async {
@@ -69,6 +98,7 @@ class _InlineMediaPlayerState extends State<_InlineMediaPlayer> {
 
   @override
   void dispose() {
+    _controller?.removeListener(_onTick);
     _controller?.dispose();
     super.dispose();
   }
@@ -76,13 +106,12 @@ class _InlineMediaPlayerState extends State<_InlineMediaPlayer> {
   void _togglePlay() {
     final c = _controller;
     if (c == null) return;
-    setState(() {
-      if (c.value.isPlaying) {
-        c.pause();
-      } else {
-        c.play();
-      }
-    });
+    if (c.value.isPlaying) {
+      c.pause();
+    } else {
+      c.play();
+    }
+    setState(() {});
   }
 
   @override
@@ -95,6 +124,7 @@ class _InlineMediaPlayerState extends State<_InlineMediaPlayer> {
     }
 
     final c = _controller!;
+    final playing = c.value.isPlaying;
     return GestureDetector(
       onTap: _togglePlay,
       child: Stack(
@@ -109,7 +139,7 @@ class _InlineMediaPlayerState extends State<_InlineMediaPlayer> {
               child: VideoPlayer(c),
             ),
           ),
-          if (!c.value.isPlaying)
+          if (!playing)
             Container(
               color: Colors.black26,
               child: const Icon(
