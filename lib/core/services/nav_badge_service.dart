@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 
 import '../../models/dashboard_stats.dart';
 import '../../models/user_profile.dart';
@@ -8,6 +8,7 @@ import '../permissions/access_keys.dart';
 import '../permissions/user_access.dart';
 import 'chat/chat_unread_service.dart';
 import 'chat/partner_chat_service.dart';
+import 'hms/hms_service.dart';
 import 'supabase_service.dart';
 
 /// Badge-tall for bunnnavigasjon (MAVI / ansatte).
@@ -129,6 +130,7 @@ abstract final class NavBadgeService {
     }
 
     DashboardStats? stats;
+    HmsDashboardStats? hmsStats;
     int pendingAbsence = 0;
     int myPendingAbsence = 0;
     int pendingUsers = 0;
@@ -172,6 +174,12 @@ abstract final class NavBadgeService {
               .length;
         } catch (_) {}
       }(),
+      () async {
+        if (!access.can(AccessKeys.hms)) return;
+        try {
+          hmsStats = await HmsService.loadDashboardStats(companyId);
+        } catch (_) {}
+      }(),
     ];
 
     int chat = ChatUnreadService.lastCount;
@@ -191,11 +199,7 @@ abstract final class NavBadgeService {
 
     final avvik = access.can(AccessKeys.avvik) ? (stats?.openTickets ?? 0) : 0;
 
-    final hms = access.can(AccessKeys.hms)
-        ? ((stats?.pendingSja ?? 0) +
-            (stats?.highRiskCount ?? 0) +
-            (stats?.upcomingSafetyRounds ?? 0))
-        : 0;
+    final hms = access.can(AccessKeys.hms) ? (hmsStats?.navBadgeTotal ?? 0) : 0;
 
     final more = pendingUsers +
         (access.can(AccessKeys.more) && (stats?.expiringDocuments ?? 0) > 0

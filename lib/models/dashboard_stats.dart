@@ -3,6 +3,7 @@ class DashboardStats {
   final int openTickets;
   final int criticalTickets;
   final int highRiskCount;
+  final int openRiskCount;
   final int pendingSja;
   final int expiringDocuments;
   final int upcomingSafetyRounds;
@@ -14,6 +15,7 @@ class DashboardStats {
     this.openTickets = 0,
     this.criticalTickets = 0,
     this.highRiskCount = 0,
+    this.openRiskCount = 0,
     this.pendingSja = 0,
     this.expiringDocuments = 0,
     this.upcomingSafetyRounds = 0,
@@ -27,6 +29,9 @@ class DashboardStats {
       openTickets: (json['open_tickets'] as num?)?.toInt() ?? 0,
       criticalTickets: (json['critical_tickets'] as num?)?.toInt() ?? 0,
       highRiskCount: (json['high_risk_count'] as num?)?.toInt() ?? 0,
+      openRiskCount: (json['open_risk_count'] as num?)?.toInt() ??
+          (json['high_risk_count'] as num?)?.toInt() ??
+          0,
       pendingSja: (json['pending_sja'] as num?)?.toInt() ?? 0,
       expiringDocuments: (json['expiring_documents'] as num?)?.toInt() ?? 0,
       upcomingSafetyRounds:

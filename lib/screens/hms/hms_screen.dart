@@ -116,7 +116,9 @@ class _HmsScreenState extends State<HmsScreen> {
         subtitle: 'ROS med ISO-felter, behandling og vedlegg',
         color: DriftProTheme.riskHigh,
         isDark: isDark,
-        badge: _statsLoading ? null : '${_stats.riskCount}',
+        badge: _statsLoading || _stats.riskCount == 0
+            ? null
+            : '${_stats.riskCount}',
         badgeColor: _stats.highRiskCount > 0 ? DriftProTheme.error : null,
         onTap: () => context.push(AppPaths.hmsRisiko),
       ));
@@ -140,7 +142,9 @@ class _HmsScreenState extends State<HmsScreen> {
         subtitle: 'SJA med maler, PPE og farepunkter',
         color: DriftProTheme.accentBlue,
         isDark: isDark,
-        badge: _statsLoading ? null : '${_stats.sjaOpen} åpne',
+        badge: _statsLoading || _stats.sjaOpen == 0
+            ? null
+            : '${_stats.sjaOpen} åpne',
         onTap: () => context.push(AppPaths.hmsSja),
       ));
     }
@@ -152,7 +156,9 @@ class _HmsScreenState extends State<HmsScreen> {
         subtitle: 'Vernerunder med sjekklister fra mal',
         color: DriftProTheme.success,
         isDark: isDark,
-        badge: _statsLoading ? null : '${_stats.safetyPlanned} planlagt',
+        badge: _statsLoading || _stats.safetyPlanned == 0
+            ? null
+            : '${_stats.safetyPlanned} planlagt',
         onTap: () => context.push(AppPaths.hmsVernerunde),
       ));
     }
@@ -333,7 +339,7 @@ class _HmsScreenState extends State<HmsScreen> {
         children: [
           Row(
             children: [
-              Expanded(child: _kpiTile(isDark, 'Risikoer', '${_stats.riskCount}',
+              Expanded(child: _kpiTile(isDark, 'Åpne ROS', '${_stats.riskCount}',
                   Icons.warning_amber_rounded, DriftProTheme.riskHigh)),
               const SizedBox(width: 8),
               Expanded(child: _kpiTile(isDark, 'Høy risiko', '${_stats.highRiskCount}',
@@ -351,7 +357,7 @@ class _HmsScreenState extends State<HmsScreen> {
         Expanded(
           child: _kpiTile(
             isDark,
-            'Risikoer',
+            'Åpne ROS',
             '${_stats.riskCount}',
             Icons.warning_amber_rounded,
             DriftProTheme.riskHigh,

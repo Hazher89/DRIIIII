@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/hms/hms_ecosystem_service.dart';
 import '../../../core/services/hms/hms_pdf_generators.dart';
+import '../../../core/services/nav_badge_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../widgets/hms_pdf_export_button.dart';
 import '../../../core/theme/app_theme.dart';
@@ -166,6 +169,7 @@ class _RiskAssessmentDetailScreenState extends State<RiskAssessmentDetailScreen>
         },
       });
       await _load();
+      unawaited(NavBadgeService.refresh());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(markTreated ? 'Markert som behandlet' : 'Lagret')),
@@ -207,6 +211,39 @@ class _RiskAssessmentDetailScreenState extends State<RiskAssessmentDetailScreen>
       await _save();
     } finally {
       if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _archiveRisk() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Arkiver risikoanalyse'),
+        content: const Text(
+          'Analysen skjules fra åpne tall og badges, men beholdes i arkivet.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Arkiver')),
+        ],
+      ),
+    );
+    if (!mounted || ok != true) return;
+    setState(() => _saving = true);
+    try {
+      await HmsEcosystemService.updateRiskAssessment(_ra.id, {
+        'status': RiskAssessmentStatuses.arkivert,
+      });
+      unawaited(NavBadgeService.refresh());
+      if (!mounted) return;
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kunne ikke arkivere: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -367,6 +404,14 @@ class _RiskAssessmentDetailScreenState extends State<RiskAssessmentDetailScreen>
                         style: DriftProTheme.caption,
                       ),
                     ),
+                  if (_canEdit && _status != RiskAssessmentStatuses.arkivert) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _saving ? null : _archiveRisk,
+                      icon: const Icon(Icons.archive_outlined),
+                      label: const Text('Arkiver (fjern fra badges)'),
+                    ),
+                  ],
                   const SizedBox(height: 40),
                 ],
               ),

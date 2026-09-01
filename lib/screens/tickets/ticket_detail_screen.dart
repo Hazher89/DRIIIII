@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -8,6 +10,7 @@ import '../../core/case_trace/case_trace_chip.dart';
 import '../../core/services/hms/hms_ecosystem_service.dart';
 import '../../core/services/hms/hms_pdf_generators.dart';
 import '../../core/services/native_permissions_service.dart';
+import '../../core/services/nav_badge_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
 import '../hms/widgets/hms_pdf_export_button.dart';
@@ -123,6 +126,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       );
       if (!mounted) return;
       setState(() => _ticket = updated);
+      unawaited(NavBadgeService.refresh());
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${_ticket.displayTraceRef} arkivert')),
       );
@@ -250,6 +254,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       );
       await _refreshTicket();
       await _loadComments();
+      unawaited(NavBadgeService.refresh());
       if (mounted && _isClosed) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

@@ -1,5 +1,6 @@
 import '../../../models/hms/equipment.dart';
 import '../../../models/risk_assessment.dart';
+import '../../../models/risk_assessment_status.dart';
 import '../../../models/sja_form.dart';
 import 'equipment_service.dart';
 import '../supabase_service.dart';
@@ -21,6 +22,9 @@ class HmsDashboardStats {
     this.equipmentNeedsService = 0,
     this.expiringCertificates = 0,
   });
+
+  /// Sum av åpne HMS-oppgaver for navigasjons-badge.
+  int get navBadgeTotal => riskCount + sjaOpen + safetyPlanned;
 }
 
 class HmsService {
@@ -48,12 +52,18 @@ class HmsService {
       }).length;
     } catch (_) {}
 
+    final openRisks = risks
+        .where((r) => RiskAssessmentStatuses.isOpen(r.status))
+        .toList();
+
     return HmsDashboardStats(
-      riskCount: risks.length,
-      highRiskCount: risks.where((r) => r.isHighRisk).length,
+      riskCount: openRisks.length,
+      highRiskCount: openRisks.where((r) => r.isHighRisk).length,
       sjaOpen: sjas
           .where((s) =>
-              s.status == SjaStatus.utkast || s.status == SjaStatus.signert)
+              s.status == SjaStatus.utkast ||
+              s.status == SjaStatus.venterSignatur ||
+              s.status == SjaStatus.iGang)
           .length,
       safetyPlanned: rounds.where((r) => r.overallStatus == 'planlagt').length,
       equipmentNeedsService: equipService,
