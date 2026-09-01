@@ -137,7 +137,7 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
               padding: EdgeInsets.only(
                 left: mine ? 48 : (widget.showSender ? 0 : 4),
                 right: mine ? 4 : 48,
-                bottom: 6,
+                bottom: 4,
               ),
               child: Row(
                 mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,

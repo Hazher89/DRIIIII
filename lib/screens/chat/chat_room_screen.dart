@@ -218,11 +218,11 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
 
   void _onScroll() {
     if (_scroll.hasClients) {
-      final atBottom = _scroll.position.pixels >= _scroll.position.maxScrollExtent - 80;
+      final atBottom = _scroll.position.pixels <= 80;
       if (atBottom != !_showJumpLatest) setState(() => _showJumpLatest = !atBottom);
     }
     if (!_scroll.hasClients || _loadingMore || !_hasMore) return;
-    if (_scroll.position.pixels <= 48) {
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 48) {
       unawaited(_loadOlder());
     }
   }
@@ -299,7 +299,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_scroll.hasClients) return;
       _scroll.animateTo(
-        _scroll.position.maxScrollExtent,
+        0,
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeOut,
       );
@@ -744,6 +744,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
     ChatMediaViewer.openImage(context, url);
   }
 
+  List<ChatMessage> get _displayMessages =>
+      List<ChatMessage>.from(_visibleMessages.reversed);
+
   @override
   Widget build(BuildContext context) {
     final me = widget.profile.id;
@@ -757,6 +760,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
       child: Focus(
         autofocus: true,
         child: Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         titleSpacing: 0,
         title: Row(
@@ -919,12 +923,18 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
                         children: [
                           ListView.builder(
                             controller: _scroll,
-                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
-                            itemCount: _visibleMessages.length,
+                            reverse: true,
+                            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                            itemCount: _displayMessages.length,
                             itemBuilder: (_, i) {
-                              final m = _visibleMessages[i];
-                              final prev = i > 0 ? _visibleMessages[i - 1] : null;
-                              final showDate = ChatUiHelpers.shouldShowDateHeader(m.createdAt, prev?.createdAt);
+                              final m = _displayMessages[i];
+                              final olderNeighbor = i + 1 < _displayMessages.length
+                                  ? _displayMessages[i + 1]
+                                  : null;
+                              final showDate = ChatUiHelpers.shouldShowDateHeader(
+                                m.createdAt,
+                                olderNeighbor?.createdAt,
+                              );
                               return Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
@@ -972,80 +982,75 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
           if (_replyTo != null)
             ChatReplyBar(reply: _replyTo!, onClear: () => setState(() => _replyTo = null)),
           if (_canSend)
-            SafeArea(
-              top: false,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 12,
-                      offset: const Offset(0, -2),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    IconButton(
-                      tooltip: 'Legg ved',
-                      onPressed: _sending ? null : _openAttachSheet,
-                      style: IconButton.styleFrom(
-                        backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
-                        shape: const CircleBorder(),
+            Material(
+              elevation: 8,
+              shadowColor: Colors.black26,
+              color: Colors.white,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        tooltip: 'Legg ved',
+                        onPressed: _sending ? null : _openAttachSheet,
+                        style: IconButton.styleFrom(
+                          backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+                          shape: const CircleBorder(),
+                        ),
+                        icon: const Icon(Icons.add_rounded, color: DriftProTheme.primaryGreen, size: 26),
                       ),
-                      icon: const Icon(Icons.add_rounded, color: DriftProTheme.primaryGreen, size: 26),
-                    ),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: TextField(
-                        controller: _input,
-                        minLines: 1,
-                        maxLines: 5,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _sendText(),
-                        decoration: InputDecoration(
-                          hintText: _replyTo != null
-                              ? 'Skriv svar til ${_replyTo!.senderName ?? 'bruker'}…'
-                              : 'Skriv melding…',
-                          filled: true,
-                          fillColor: const Color(0xFFF3F5F4),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide.none,
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: TextField(
+                          controller: _input,
+                          minLines: 1,
+                          maxLines: 5,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _sendText(),
+                          decoration: InputDecoration(
+                            hintText: _replyTo != null
+                                ? 'Skriv svar til ${_replyTo!.senderName ?? 'bruker'}…'
+                                : 'Skriv melding…',
+                            filled: true,
+                            fillColor: const Color(0xFFF3F5F4),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide.none,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.05)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(color: DriftProTheme.primaryGreen.withValues(alpha: 0.5)),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                           ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide(color: Colors.black.withValues(alpha: 0.05)),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide(color: DriftProTheme.primaryGreen.withValues(alpha: 0.5)),
-                          ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _sending ? null : _sendText,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: DriftProTheme.primaryGreen,
-                        shape: const CircleBorder(),
-                        padding: const EdgeInsets.all(14),
-                        elevation: 2,
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _sending ? null : _sendText,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: DriftProTheme.primaryGreen,
+                          shape: const CircleBorder(),
+                          padding: const EdgeInsets.all(14),
+                          elevation: 2,
+                        ),
+                        child: _sending
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.send_rounded),
                       ),
-                      child: _sending
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.send_rounded),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),

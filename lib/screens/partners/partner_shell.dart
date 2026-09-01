@@ -50,6 +50,7 @@ import 'widgets/partner_route_pdf_actions.dart';
 import 'widgets/partner_ui.dart' show PartnerStatusBadge;
 import '../../widgets/driftpro_loading_indicator.dart';
 import '../../core/layout/web_layout.dart';
+import '../../core/services/nav_badge_service.dart';
 import '../../core/services/partner/partner_workforce_service.dart';
 
 DateTime _routeCalendarDay(PartnerRouteShare r) {
@@ -111,8 +112,10 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   StreamSubscription<PushNavigationTarget>? _pushNavSub;
   StreamSubscription<ChatFlag>? _chatFlagSub;
   StreamSubscription<int>? _chatUnreadSub;
+  StreamSubscription<PartnerNavBadgeCounts>? _partnerBadgeSub;
   bool _chatEnabled = true;
   int _chatUnread = 0;
+  PartnerNavBadgeCounts _partnerBadges = PartnerNavBadgeCounts.zero;
 
   bool _staffWantsPush() =>
       widget.portalAccountKind == 'staff' &&
@@ -166,7 +169,9 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     unawaited(_pushNavSub?.cancel() ?? Future.value());
     unawaited(_chatFlagSub?.cancel() ?? Future.value());
     unawaited(_chatUnreadSub?.cancel() ?? Future.value());
+    unawaited(_partnerBadgeSub?.cancel() ?? Future.value());
     ChatUnreadService.stopWatching();
+    PartnerNavBadgeService.stop();
     ChatRealtimeNotificationService.stop();
     unawaited(_workforceChannel?.unsubscribe() ?? Future.value());
     PartnerRoutePushListener.stop();
@@ -178,6 +183,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed) {
       unawaited(_refreshWorkforceFlag());
       unawaited(ChatUnreadService.refresh());
+      unawaited(PartnerNavBadgeService.refresh());
       if (_wantsPushRegistration()) {
         unawaited(PushNotificationService.syncRegistration());
       }
@@ -375,6 +381,9 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       });
       if (on) {
         _bindChatUnread();
+        if (widget.profile.partnerId != null) {
+          _bindPartnerBadges(widget.profile.partnerId!);
+        }
       } else {
         unawaited(_chatUnreadSub?.cancel() ?? Future.value());
         setState(() => _chatUnread = 0);
@@ -395,12 +404,42 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     unawaited(ChatUnreadService.refresh());
   }
 
+  void _bindPartnerBadges(String partnerId) {
+    unawaited(_partnerBadgeSub?.cancel() ?? Future.value());
+    PartnerNavBadgeService.start(
+      partnerId: partnerId,
+      partnerVehicleId: widget.profile.partnerVehicleId,
+      chatEnabled: _chatEnabled,
+    );
+    _partnerBadgeSub = PartnerNavBadgeService.stream.listen((counts) {
+      if (!mounted) return;
+      setState(() {
+        _partnerBadges = counts;
+        _chatUnread = counts.chat;
+      });
+    });
+    unawaited(PartnerNavBadgeService.refresh());
+  }
+
   PartnerPortalNavItem _chatNavItem() {
     return PartnerPortalNavItem(
       icon: Icons.forum_outlined,
       selectedIcon: Icons.forum,
       label: 'Meldinger',
-      badgeCount: _chatUnread,
+      badgeCount: _partnerBadges.chat,
+    );
+  }
+
+  PartnerPortalNavItem _portalNavItem({
+    required IconData icon,
+    required IconData selectedIcon,
+    required String label,
+  }) {
+    return PartnerPortalNavItem(
+      icon: icon,
+      selectedIcon: selectedIcon,
+      label: label,
+      badgeCount: _partnerBadges.forLabel(label),
     );
   }
 
@@ -502,6 +541,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       });
       _listenWorkforceFlag(pid);
       _bindChatFlag(p?.companyId ?? widget.profile.companyId);
+      _bindPartnerBadges(pid);
       _startPartnerPushListener();
       unawaited(_ensurePushRegistrationIfNeeded());
       unawaited(_handlePushNavigation(PushNavigationService.takePending()));
@@ -664,42 +704,34 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                 ),
               ];
     final ownerNavItems = [
-      const PartnerPortalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
-      const PartnerPortalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
-      const PartnerPortalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
+      _portalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
+      _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
+      _portalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
       if (_chatEnabled) _chatNavItem(),
-      const PartnerPortalNavItem(icon: Icons.apps_outlined, selectedIcon: Icons.apps, label: 'Mer'),
-      const PartnerPortalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
+      _portalNavItem(icon: Icons.apps_outlined, selectedIcon: Icons.apps, label: 'Mer'),
+      _portalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
     ];
 
     final staffNavItems = [
       if (_workforceEnabled)
-        const PartnerPortalNavItem(
+        _portalNavItem(
           icon: Icons.fingerprint_outlined,
           selectedIcon: Icons.fingerprint,
           label: 'Stempling',
         ),
       if (_workforceEnabled && _staffCanManageRoutes)
-        const PartnerPortalNavItem(
-          icon: Icons.map_outlined,
-          selectedIcon: Icons.map,
-          label: 'Ruter',
-        ),
+        _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
       if (_chatEnabled) _chatNavItem(),
-      const PartnerPortalNavItem(
-        icon: Icons.person_outlined,
-        selectedIcon: Icons.person,
-        label: 'Profil',
-      ),
+      _portalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
     ];
 
     final driverNavItems = [
-      const PartnerPortalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
-      const PartnerPortalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
-      const PartnerPortalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
+      _portalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
+      _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
+      _portalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
       if (_chatEnabled) _chatNavItem(),
-      const PartnerPortalNavItem(icon: Icons.beach_access_outlined, selectedIcon: Icons.beach_access, label: 'Fri'),
-      const PartnerPortalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
+      _portalNavItem(icon: Icons.beach_access_outlined, selectedIcon: Icons.beach_access, label: 'Fri'),
+      _portalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
     ];
 
     final pageIndex = _index.clamp(0, pages.length - 1);

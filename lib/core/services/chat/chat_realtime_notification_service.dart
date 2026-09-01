@@ -7,6 +7,7 @@ import '../supabase_service.dart';
 import 'chat_pending_navigation.dart';
 import 'chat_presence_service.dart';
 import 'chat_unread_service.dart';
+import '../haptic_feedback_service.dart';
 import 'chat_web_notifications.dart';
 
 /// Varsler ved nye chat-meldinger — særlig nettleser på web.
@@ -73,6 +74,7 @@ abstract final class ChatRealtimeNotificationService {
     }
 
     unawaited(ChatUnreadService.refresh());
+    HapticFeedbackService.notification();
 
     if (!kIsWeb || !await chatWebNotificationsGranted()) return;
 

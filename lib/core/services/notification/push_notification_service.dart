@@ -9,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../config/driftpro_client.dart';
 import '../../config/firebase_config.dart';
 import '../supabase_service.dart';
+import '../haptic_feedback_service.dart';
 import 'push_navigation_service.dart';
 
 /// Push-varsler på mobil — FCM når konfigurert, ellers lokale varsler via Realtime.
@@ -60,7 +61,9 @@ abstract final class PushNotificationService {
     required String body,
     String? payload,
     int? notificationId,
+    bool haptic = true,
   }) async {
+    if (haptic) HapticFeedbackService.notification();
     await _ensureLocalNotifications();
     await _local.show(
       id: notificationId ??

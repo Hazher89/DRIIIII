@@ -18,6 +18,7 @@ import '../../models/user_profile.dart';
 import '../../core/services/chat/chat_flag_service.dart';
 import '../../core/services/chat/chat_unread_service.dart';
 import '../../core/services/chat/chat_realtime_notification_service.dart';
+import '../../core/services/nav_badge_service.dart';
 import '../../core/services/native_permissions_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -49,8 +50,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   DateTime? _lastAccessReloadAt;
   StreamSubscription<ChatFlag>? _chatFlagSub;
   StreamSubscription<int>? _chatUnreadSub;
+  StreamSubscription<NavBadgeCounts>? _navBadgeSub;
   bool _chatMaviEnabled = true;
-  int _chatUnread = 0;
+  NavBadgeCounts _navBadges = NavBadgeCounts.zero;
 
   @override
   void initState() {
@@ -81,7 +83,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     _unsubscribeProfileRealtime();
     _chatFlagSub?.cancel();
     _chatUnreadSub?.cancel();
+    _navBadgeSub?.cancel();
     ChatUnreadService.stopWatching();
+    NavBadgeService.stop();
     ChatRealtimeNotificationService.stop();
     _authSub?.cancel();
     super.dispose();
@@ -92,6 +96,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed && _sessionUserId != null) {
       unawaited(_loadAccess(silent: true));
       unawaited(ChatUnreadService.refresh());
+      unawaited(NavBadgeService.refresh());
     }
   }
 
@@ -270,7 +275,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       AccessSessionCache.setProfile(profile);
       _subscribeProfileRealtime(profile.id);
       _bindChatFlag(profile.companyId);
-      _bindChatUnread(profile);
+      _bindNavBadges(profile);
       _lastAccessReloadAt = DateTime.now();
 
       if (!silent) {
@@ -339,17 +344,38 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     context.go(path);
   }
 
-  void _bindChatUnread(UserProfile profile) {
+  void _bindNavBadges(UserProfile profile) {
     _chatUnreadSub?.cancel();
-    if (!profile.access.canPartnersChat || profile.isPartnerPortalUser) {
-      setState(() => _chatUnread = 0);
+    _navBadgeSub?.cancel();
+    if (profile.isPartnerPortalUser) {
+      setState(() => _navBadges = NavBadgeCounts.zero);
+      NavBadgeService.stop();
+      return;
+    }
+
+    NavBadgeService.start(profile);
+    _navBadgeSub = NavBadgeService.stream.listen((counts) {
+      if (!mounted) return;
+      setState(() => _navBadges = counts);
+    });
+    unawaited(NavBadgeService.refresh());
+
+    if (!profile.access.canPartnersChat || !_chatMaviEnabled) {
       return;
     }
     ChatUnreadService.startWatching();
     unawaited(ChatRealtimeNotificationService.start());
     _chatUnreadSub = ChatUnreadService.stream.listen((count) {
       if (!mounted) return;
-      setState(() => _chatUnread = count);
+      setState(() {
+        _navBadges = NavBadgeCounts(
+          chat: count,
+          avvik: _navBadges.avvik,
+          fravaer: _navBadges.fravaer,
+          hms: _navBadges.hms,
+          more: _navBadges.more,
+        );
+      });
     });
     unawaited(ChatUnreadService.refresh());
   }
@@ -366,6 +392,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       final enabled = flag.maviEnabled;
       if (enabled == _chatMaviEnabled) return;
       setState(() => _chatMaviEnabled = enabled);
+      if (_profile != null) _bindNavBadges(_profile!);
       if (!enabled &&
           widget.navigationShell.currentIndex ==
               AppPaths.shellTabs.indexWhere((t) => t.access == AccessKeys.partnersChat)) {
@@ -551,7 +578,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                   navIndex: navIndex,
                   visibleScreens: visibleScreens,
                   compact: compact,
-                  badge: (s['access'] as String) == AccessKeys.partnersChat ? _chatUnread : null,
+                  badge: _navBadges.forAccess(s['access'] as String),
                 );
               },
             ),
@@ -594,9 +621,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           children: [
             Badge(
               isLabelVisible: badge != null && badge > 0,
-              label: badge != null
+              label: badge != null && badge > 0
                   ? Text(
-                      '$badge',
+                      badge > 99 ? '99+' : '$badge',
                       style: const TextStyle(
                         fontSize: 9,
                         fontWeight: FontWeight.w700,
