@@ -50,7 +50,7 @@ Future<HomeFeedContentType?> showHomeFeedAddBlockSheet(
   );
 }
 
-String? _subtitleFor(HomeFeedContentType type) {
+String _subtitleFor(HomeFeedContentType type) {
   switch (type) {
     case HomeFeedContentType.text:
       return 'Kun tekst med farger og tema';
