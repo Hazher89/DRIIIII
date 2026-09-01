@@ -61,6 +61,10 @@ class _HomeFeedBlockEditorState extends State<HomeFeedBlockEditor>
   int _priority = 0;
   bool _pinned = false;
   bool _saving = false;
+  late bool _useCustomHeightApp;
+  late bool _useCustomHeightWeb;
+  late double _heightApp;
+  late double _heightWeb;
 
   HomeFeedItem get _previewItem => widget.item.copyWith(
         title: _titleCtrl.text.trim(),
@@ -93,6 +97,10 @@ class _HomeFeedBlockEditorState extends State<HomeFeedBlockEditor>
         TextEditingController(text: item.contentConfig.badge.label ?? '');
     _layout = item.layoutConfig;
     _content = item.contentConfig;
+    _useCustomHeightApp = item.layoutConfig.customHeightApp != null;
+    _useCustomHeightWeb = item.layoutConfig.customHeightWeb != null;
+    _heightApp = item.layoutConfig.customHeightApp ?? 220;
+    _heightWeb = item.layoutConfig.customHeightWeb ?? 260;
     _scheduleStart = item.scheduleStart;
     _scheduleEnd = item.scheduleEnd;
     _portals = item.targetPortals.toSet();
@@ -379,9 +387,19 @@ class _HomeFeedBlockEditorState extends State<HomeFeedBlockEditor>
   }
 
   Widget _sizeTab() {
+    final appHeight = _layout.resolveHeight(isWeb: false, compactPreview: false);
+    final webHeight = _layout.resolveHeight(isWeb: true, compactPreview: false);
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Text('Størrelse på forsiden', style: DriftProTheme.labelLg),
+        const SizedBox(height: 4),
+        Text(
+          'App: ${appHeight.round()} px · Web: ${webHeight.round()} px',
+          style: DriftProTheme.bodySm.copyWith(color: Colors.grey),
+        ),
+        const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -390,23 +408,130 @@ class _HomeFeedBlockEditorState extends State<HomeFeedBlockEditor>
               label: Text(preset.label),
               selected: _layout.sizePreset == preset,
               onSelected: (_) => setState(() {
-                _layout = _layout.copyWith(sizePreset: preset);
+                _layout = _layout.copyWith(
+                  sizePreset: preset,
+                  clearCustomHeightApp: !_useCustomHeightApp,
+                  clearCustomHeightWeb: !_useCustomHeightWeb,
+                );
               }),
             );
           }).toList(),
         ),
+        const SizedBox(height: 8),
         SwitchListTile(
+          contentPadding: EdgeInsets.zero,
           title: const Text('Hero — dekker mesteparten'),
+          subtitle: const Text('Maksimal høyde — dominerer oversikten'),
           value: _layout.fullPageHero,
           onChanged: (v) => setState(() {
             _layout = _layout.copyWith(fullPageHero: v);
           }),
         ),
         SwitchListTile(
+          contentPadding: EdgeInsets.zero,
           title: const Text('Kant-til-kant'),
+          subtitle: const Text('Ingen side-margin — full bredde'),
           value: _layout.edgeToEdge,
           onChanged: (v) => setState(() {
             _layout = _layout.copyWith(edgeToEdge: v);
+          }),
+        ),
+        const Divider(height: 28),
+        Text('Egendefinert høyde', style: DriftProTheme.labelLg),
+        const SizedBox(height: 4),
+        Text(
+          'Overstyrer preset — juster app og web separat',
+          style: DriftProTheme.bodySm.copyWith(color: Colors.grey),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('App — egen høyde (px)'),
+          value: _useCustomHeightApp,
+          onChanged: (v) {
+            setState(() {
+              _useCustomHeightApp = v;
+              _layout = _layout.copyWith(
+                customHeightApp: v ? _heightApp : null,
+                clearCustomHeightApp: !v,
+              );
+            });
+          },
+        ),
+        if (_useCustomHeightApp) ...[
+          Slider(
+            value: _heightApp.clamp(80, 720),
+            min: 80,
+            max: 720,
+            divisions: 64,
+            label: '${_heightApp.round()} px',
+            onChanged: (v) {
+              setState(() {
+                _heightApp = v;
+                _layout = _layout.copyWith(customHeightApp: v);
+              });
+            },
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text('${_heightApp.round()} px', style: DriftProTheme.labelMd),
+          ),
+        ],
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Web — egen høyde (px)'),
+          value: _useCustomHeightWeb,
+          onChanged: (v) {
+            setState(() {
+              _useCustomHeightWeb = v;
+              _layout = _layout.copyWith(
+                customHeightWeb: v ? _heightWeb : null,
+                clearCustomHeightWeb: !v,
+              );
+            });
+          },
+        ),
+        if (_useCustomHeightWeb) ...[
+          Slider(
+            value: _heightWeb.clamp(80, 720),
+            min: 80,
+            max: 720,
+            divisions: 64,
+            label: '${_heightWeb.round()} px',
+            onChanged: (v) {
+              setState(() {
+                _heightWeb = v;
+                _layout = _layout.copyWith(customHeightWeb: v);
+              });
+            },
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text('${_heightWeb.round()} px', style: DriftProTheme.labelMd),
+          ),
+        ],
+        const Divider(height: 28),
+        Text('Media', style: DriftProTheme.labelLg),
+        const SizedBox(height: 8),
+        SegmentedButton<HomeFeedMediaFit>(
+          segments: HomeFeedMediaFit.values
+              .map((f) => ButtonSegment(value: f, label: Text(f.label)))
+              .toList(),
+          selected: {_layout.mediaFit},
+          onSelectionChanged: (s) => setState(() {
+            _layout = _layout.copyWith(mediaFit: s.first);
+          }),
+        ),
+        const SizedBox(height: 16),
+        Text('Hjørner: ${_layout.borderRadius.round()} px',
+            style: DriftProTheme.labelMd),
+        Slider(
+          value: _layout.borderRadius.clamp(0, 32),
+          min: 0,
+          max: 32,
+          divisions: 32,
+          label: '${_layout.borderRadius.round()} px',
+          onChanged: (v) => setState(() {
+            _layout = _layout.copyWith(borderRadius: v);
           }),
         ),
       ],

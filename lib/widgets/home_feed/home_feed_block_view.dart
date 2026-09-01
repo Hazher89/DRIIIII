@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -9,6 +10,7 @@ import '../../models/home_feed_content_config.dart';
 import '../../models/home_feed_item.dart';
 import '../../models/home_feed_layout_config.dart';
 import 'home_feed_item_view.dart';
+import '../youtube_embed_view.dart';
 
 /// Renderer for alle blokktyper inkl. karusell.
 class HomeFeedBlockView extends StatelessWidget {
@@ -26,9 +28,14 @@ class HomeFeedBlockView extends StatelessWidget {
   final bool interactive;
 
   bool _isWeb(BuildContext context) {
-    return previewPlatform == HomeFeedPreviewPlatform.web ||
-        (previewPlatform == HomeFeedPreviewPlatform.auto &&
-            MediaQuery.sizeOf(context).width >= 720);
+    switch (previewPlatform) {
+      case HomeFeedPreviewPlatform.web:
+        return true;
+      case HomeFeedPreviewPlatform.app:
+        return false;
+      case HomeFeedPreviewPlatform.auto:
+        return kIsWeb || MediaQuery.sizeOf(context).width >= 720;
+    }
   }
 
   @override
@@ -58,6 +65,7 @@ class HomeFeedBlockView extends StatelessWidget {
           item: item,
           layout: item.layoutConfig,
           isWeb: _isWeb(context),
+          compactPreview: compactPreview,
           interactive: interactive,
         );
       case HomeFeedContentType.link:
@@ -329,12 +337,14 @@ class _YoutubeBlockView extends StatelessWidget {
     required this.item,
     required this.layout,
     required this.isWeb,
+    required this.compactPreview,
     required this.interactive,
   });
 
   final HomeFeedItem item;
   final HomeFeedLayoutConfig layout;
   final bool isWeb;
+  final bool compactPreview;
   final bool interactive;
 
   Future<void> _open(BuildContext context) async {
@@ -349,59 +359,86 @@ class _YoutubeBlockView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final yt = item.contentConfig.youtube;
-    final thumb = yt.thumbnailUrl;
-    final height = layout.resolveHeight(isWeb: isWeb);
-    final radius = layout.borderRadius;
+    final videoId = yt.resolvedVideoId;
+    final height = layout.resolveHeight(
+      isWeb: isWeb,
+      compactPreview: compactPreview,
+    );
+    final radius = layout.edgeToEdge || layout.fullPageHero
+        ? 0.0
+        : layout.borderRadius;
 
-    return Material(
-      clipBehavior: Clip.antiAlias,
-      borderRadius: BorderRadius.circular(radius),
-      child: InkWell(
-        onTap: () => _open(context),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (thumb != null)
-              Image.network(
-                thumb,
-                fit: layout.mediaFit.boxFit,
-                width: double.infinity,
-                height: height,
-                errorBuilder: (_, __, ___) => _placeholder(height),
-              )
-            else
-              _placeholder(height),
-            Container(
-              color: Colors.black.withValues(alpha: 0.25),
-              child: const Center(
-                child: Icon(
-                  Icons.play_circle_fill,
-                  size: 64,
-                  color: Colors.white,
+    if (videoId != null && videoId.isNotEmpty && isWeb) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: YoutubeEmbedView(
+          videoId: videoId,
+          height: height,
+          autoplay: yt.autoplay,
+          muted: yt.muted,
+        ),
+      );
+    }
+
+    final thumb = yt.thumbnailUrl;
+
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Material(
+        clipBehavior: Clip.antiAlias,
+        borderRadius: BorderRadius.circular(radius),
+        child: InkWell(
+          onTap: interactive ? () => _open(context) : null,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (thumb != null)
+                Image.network(
+                  thumb,
+                  fit: layout.mediaFit.boxFit,
+                  width: double.infinity,
+                  height: height,
+                  errorBuilder: (_, __, ___) => _placeholder(),
+                )
+              else
+                _placeholder(),
+              Container(
+                color: Colors.black.withValues(alpha: 0.25),
+                child: Center(
+                  child: Icon(
+                    videoId == null || videoId.isEmpty
+                        ? Icons.videocam_off_outlined
+                        : Icons.play_circle_fill,
+                    size: videoId == null || videoId.isEmpty ? 48 : 64,
+                    color: Colors.white.withValues(
+                      alpha: videoId == null || videoId.isEmpty ? 0.5 : 1,
+                    ),
+                  ),
                 ),
               ),
-            ),
-            if (item.title.isNotEmpty)
-              Positioned(
-                left: 12,
-                right: 12,
-                bottom: 12,
-                child: Text(
-                  item.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: layout.titleStyle.toTextStyle(fallback: Colors.white),
+              if (item.title.isNotEmpty)
+                Positioned(
+                  left: 12,
+                  right: 12,
+                  bottom: 12,
+                  child: Text(
+                    item.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        layout.titleStyle.toTextStyle(fallback: Colors.white),
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _placeholder(double height) {
+  Widget _placeholder() {
     return Container(
-      height: height,
       color: Colors.black87,
       child: const Center(
         child: Icon(Icons.play_circle_outline, color: Colors.white54, size: 48),

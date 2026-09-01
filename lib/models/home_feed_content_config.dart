@@ -173,7 +173,9 @@ class HomeFeedYoutubeConfig {
   factory HomeFeedYoutubeConfig.fromJson(Map<String, dynamic>? json) {
     if (json == null) return const HomeFeedYoutubeConfig();
     return HomeFeedYoutubeConfig(
-      videoUrl: (json['video_url'] as String?)?.trim() ?? '',
+      videoUrl: (json['video_url'] as String?)?.trim() ??
+          (json['youtube_url'] as String?)?.trim() ??
+          '',
       videoId: (json['video_id'] as String?)?.trim(),
       autoplay: json['autoplay'] == true,
       muted: json['muted'] != false,

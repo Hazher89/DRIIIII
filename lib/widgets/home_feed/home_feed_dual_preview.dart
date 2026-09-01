@@ -18,16 +18,26 @@ class HomeFeedDualPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final previewItem = item.copyWith(layoutConfig: layout);
     return LayoutBuilder(
       builder: (context, constraints) {
         final sideBySide = constraints.maxWidth >= 720;
+        final appHeight = layout.resolveHeight(
+          isWeb: false,
+          compactPreview: !sideBySide,
+        );
+        final webHeight = layout.resolveHeight(
+          isWeb: true,
+          compactPreview: !sideBySide,
+        );
         final children = [
           _PreviewFrame(
             label: 'App (mobil)',
+            subtitle: '${appHeight.round()} px høyde',
             icon: Icons.phone_iphone,
             width: sideBySide ? null : double.infinity,
             child: HomeFeedBlockView(
-              item: item,
+              item: previewItem,
               previewPlatform: HomeFeedPreviewPlatform.app,
               compactPreview: !sideBySide,
               interactive: false,
@@ -35,10 +45,11 @@ class HomeFeedDualPreview extends StatelessWidget {
           ),
           _PreviewFrame(
             label: 'Web',
+            subtitle: '${webHeight.round()} px høyde',
             icon: Icons.laptop_mac,
             width: sideBySide ? null : double.infinity,
             child: HomeFeedBlockView(
-              item: item,
+              item: previewItem,
               previewPlatform: HomeFeedPreviewPlatform.web,
               compactPreview: !sideBySide,
               interactive: false,
@@ -75,10 +86,12 @@ class _PreviewFrame extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.child,
+    this.subtitle,
     this.width,
   });
 
   final String label;
+  final String? subtitle;
   final IconData icon;
   final Widget child;
   final double? width;
@@ -105,9 +118,24 @@ class _PreviewFrame extends StatelessWidget {
               children: [
                 Icon(icon, size: 18, color: DriftProTheme.primaryGreen),
                 const SizedBox(width: 8),
-                Text(
-                  label,
-                  style: DriftProTheme.labelMd.copyWith(fontWeight: FontWeight.w700),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: DriftProTheme.labelMd
+                            .copyWith(fontWeight: FontWeight.w700),
+                      ),
+                      if (subtitle != null)
+                        Text(
+                          subtitle!,
+                          style: DriftProTheme.bodySm.copyWith(
+                            color: isDark ? Colors.white54 : Colors.grey,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ],
             ),

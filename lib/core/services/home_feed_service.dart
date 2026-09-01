@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/home_feed_content_config.dart';
 import '../../models/home_feed_item.dart';
 import '../../models/home_feed_layout_config.dart';
+import '../utils/media_display_url.dart';
 import '../services/storage/company_file_storage.dart';
 import '../services/supabase_service.dart';
 import 'storage/storage_file_access.dart';
@@ -366,16 +367,31 @@ class HomeFeedService {
     }
   }
 
-  static Future<String?> resolveDisplayUrl(String storagePath) async {
+  static Future<String?> resolveDisplayUrl(
+    String storagePath, {
+    String? mimeType,
+    String? fileName,
+  }) async {
     final raw = storagePath.trim();
     if (raw.isEmpty) return null;
     try {
       return await StorageFileAccess.resolveViewUrl(raw);
     } catch (e) {
-      if (e is StorageBytesReady) return null;
+      if (e is StorageBytesReady) {
+        return await bytesToMediaUrl(
+          e.bytes,
+          mimeType: guessMediaMimeType(fileName, mimeType),
+        );
+      }
       try {
         return await CompanyFileStorage.resolveDisplayUrl(raw);
-      } catch (_) {
+      } catch (e2) {
+        if (e2 is StorageBytesReady) {
+          return await bytesToMediaUrl(
+            e2.bytes,
+            mimeType: guessMediaMimeType(fileName, mimeType),
+          );
+        }
         return null;
       }
     }

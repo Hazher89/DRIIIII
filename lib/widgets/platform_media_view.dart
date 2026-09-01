@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'platform_media_view_stub.dart'
-    if (dart.library.html) 'platform_media_view_web.dart' as impl;
+    if (dart.library.html) 'platform_media_view_web.dart'
+    if (dart.library.io) 'platform_media_view_io.dart' as impl;
 
 class PlatformMediaView extends StatelessWidget {
   final String url;

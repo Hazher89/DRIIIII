@@ -42,7 +42,8 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
   @override
   void didUpdateWidget(covariant HomeFeedItemView oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.storagePath != widget.item.storagePath) {
+    if (oldWidget.item.storagePath != widget.item.storagePath ||
+        oldWidget.item.id != widget.item.id) {
       _resolve();
     }
   }
@@ -54,7 +55,11 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
       return;
     }
     setState(() => _loading = true);
-    final url = await HomeFeedService.resolveDisplayUrl(widget.item.storagePath);
+    final url = await HomeFeedService.resolveDisplayUrl(
+      widget.item.storagePath,
+      mimeType: widget.item.mimeType,
+      fileName: widget.item.fileName,
+    );
     if (!mounted) return;
     setState(() {
       _url = url;
