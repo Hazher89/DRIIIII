@@ -437,8 +437,55 @@ class ChatAuditEntry {
         'block_user' => 'Blokkerte bruker',
         'unblock_user' => 'Avblokkerte bruker',
         'hide_message' => 'Skjulte melding',
+        'remove_member' => 'Fjernet medlem',
+        'delete_room' => 'Slettet chat',
         _ => action,
       };
+}
+
+class ChatRoomMember {
+  const ChatRoomMember({
+    required this.userId,
+    required this.fullName,
+    required this.memberRole,
+    this.partnerName,
+    this.accountKind = 'owner',
+    this.joinedAt,
+  });
+
+  final String userId;
+  final String fullName;
+  final String memberRole;
+  final String? partnerName;
+  final String accountKind;
+  final DateTime? joinedAt;
+
+  String get roleLabel => switch (accountKind) {
+        'mavi' => 'MAVI-ansatt',
+        'driver' => 'Sjåfør',
+        'staff' => 'Ansatt',
+        _ => 'Bil-eier',
+      };
+
+  String get subtitle {
+    final parts = <String>[roleLabel];
+    if (partnerName != null && partnerName!.trim().isNotEmpty) {
+      parts.add(partnerName!.trim());
+    }
+    if (memberRole == 'owner') parts.add('Admin');
+    return parts.join(' · ');
+  }
+
+  factory ChatRoomMember.fromJson(Map<String, dynamic> json) => ChatRoomMember(
+        userId: json['user_id'] as String,
+        fullName: (json['full_name'] as String?)?.trim() ?? 'Bruker',
+        memberRole: json['member_role'] as String? ?? 'member',
+        partnerName: json['partner_name'] as String?,
+        accountKind: json['account_kind'] as String? ?? 'owner',
+        joinedAt: json['joined_at'] != null
+            ? DateTime.tryParse(json['joined_at'] as String)?.toLocal()
+            : null,
+      );
 }
 
 class ChatReadReceipt {

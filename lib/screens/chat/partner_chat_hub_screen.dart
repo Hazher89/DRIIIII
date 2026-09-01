@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/chat/chat_pending_navigation.dart';
 import '../../../core/services/chat/partner_chat_service.dart';
 import '../../../core/services/chat/chat_unread_service.dart';
+import '../../../core/services/chat/chat_realtime_notification_service.dart';
 import '../../../core/permissions/user_access.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/driftpro_theme_context.dart';
@@ -14,6 +16,7 @@ import '../../../widgets/chat/chat_feature_gate.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 import 'widgets/chat_create_group_sheet.dart';
 import 'widgets/chat_superadmin_panel.dart';
+import 'widgets/chat_room_members_sheet.dart';
 import 'chat_room_screen.dart';
 import 'chat_moderation_screen.dart';
 
@@ -43,6 +46,8 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
   List<ChatBlockedUser> _blocked = const [];
   bool _loading = true;
   String? _error;
+  String _searchQuery = '';
+  bool _webNotifOn = false;
   late TabController _tabs;
 
   bool get _isPartner => widget.profile.isPartnerPortalUser;
@@ -56,7 +61,38 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
     unawaited(ChatUnreadService.refresh());
+    unawaited(ChatRealtimeNotificationService.start());
+    if (kIsWeb) _refreshWebNotifState();
     _load();
+  }
+
+  Future<void> _refreshWebNotifState() async {
+    final on = await ChatRealtimeNotificationService.webNotificationsEnabled();
+    if (mounted) setState(() => _webNotifOn = on);
+  }
+
+  Future<void> _enableWebNotifications() async {
+    final ok = await ChatRealtimeNotificationService.enableWebNotifications();
+    if (!mounted) return;
+    setState(() => _webNotifOn = ok);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ok ? 'Nettleservarsler er på — du får varsel ved nye meldinger.' : 'Tillatelse ble ikke gitt.',
+        ),
+      ),
+    );
+  }
+
+  List<ChatRoom> _filterRooms(List<ChatRoom> rooms) {
+    final q = _searchQuery.trim().toLowerCase();
+    if (q.isEmpty) return rooms;
+    return rooms.where((r) {
+      final title = r.displayTitle().toLowerCase();
+      final preview = (r.lastMessagePreview ?? '').toLowerCase();
+      final type = r.roomType.labelNorwegian.toLowerCase();
+      return title.contains(q) || preview.contains(q) || type.contains(q);
+    }).toList();
   }
 
   @override
@@ -424,7 +460,19 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
             await _archiveRoom(r, archive: !archived);
             return false;
           },
-          child: _RoomTile(room: r, onTap: () => _openRoom(r)),
+          child: _RoomTile(
+            room: r,
+            onTap: () => _openRoom(r),
+            onLongPress: _isSuperAdmin
+                ? () => showChatRoomMembersSheet(
+                      context: context,
+                      room: r,
+                      profile: widget.profile,
+                      onChanged: _load,
+                      onRoomDeleted: _load,
+                    )
+                : null,
+          ),
         );
       },
     );
@@ -447,6 +495,26 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                       isSuperAdmin: _isSuperAdmin,
                     ),
                   ),
+                  if (kIsWeb && !_webNotifOn)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: Material(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(14),
+                        child: ListTile(
+                          leading: Icon(Icons.notifications_active_outlined, color: Colors.blue.shade700),
+                          title: const Text('Slå på nettleservarsler', style: TextStyle(fontWeight: FontWeight.w800)),
+                          subtitle: const Text(
+                            'Få varsel på web når nye meldinger kommer — også når fanen er i bakgrunnen.',
+                            style: TextStyle(fontSize: 11),
+                          ),
+                          trailing: FilledButton(
+                            onPressed: _enableWebNotifications,
+                            child: const Text('Aktiver'),
+                          ),
+                        ),
+                      ),
+                    ),
                   if (_isSuperAdmin && _superadminDir != null)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -465,6 +533,18 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                       ),
                     ),
                   if (!_loading && _error == null) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: TextField(
+                        decoration: InputDecoration(
+                          hintText: 'Søk i samtaler…',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          isDense: true,
+                        ),
+                        onChanged: (v) => setState(() => _searchQuery = v),
+                      ),
+                    ),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                       child: Wrap(
@@ -508,8 +588,8 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                     TabBar(
                       controller: _tabs,
                       tabs: [
-                        Tab(text: 'Aktive (${_rooms.length})'),
-                        Tab(text: 'Arkiv (${_archived.length})'),
+                        Tab(text: 'Aktive (${_filterRooms(_rooms).length})'),
+                        Tab(text: 'Arkiv (${_filterRooms(_archived).length})'),
                       ],
                     ),
                   ],
@@ -517,8 +597,14 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                     child: TabBarView(
                       controller: _tabs,
                       children: [
-                        RefreshIndicator(onRefresh: _load, child: _roomList(_rooms, archived: false)),
-                        RefreshIndicator(onRefresh: _load, child: _roomList(_archived, archived: true)),
+                        RefreshIndicator(
+                          onRefresh: _load,
+                          child: _roomList(_filterRooms(_rooms), archived: false),
+                        ),
+                        RefreshIndicator(
+                          onRefresh: _load,
+                          child: _roomList(_filterRooms(_archived), archived: true),
+                        ),
                       ],
                     ),
                   ),
@@ -642,10 +728,15 @@ class _ActionCard extends StatelessWidget {
 }
 
 class _RoomTile extends StatelessWidget {
-  const _RoomTile({required this.room, required this.onTap});
+  const _RoomTile({
+    required this.room,
+    required this.onTap,
+    this.onLongPress,
+  });
 
   final ChatRoom room;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -669,6 +760,7 @@ class _RoomTile extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
+          onLongPress: onLongPress,
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(

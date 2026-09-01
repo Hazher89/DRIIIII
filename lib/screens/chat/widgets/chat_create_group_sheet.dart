@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
-/// Opprett gruppe-chat med flervalg.
+
+/// Opprett gruppe-chat med flervalg, søk og velg alle.
 Future<({String title, List<String> memberIds})?> showChatCreateGroupSheet({
   required BuildContext context,
   required String headline,
@@ -54,28 +55,52 @@ class _CreateGroupSheet extends StatefulWidget {
 
 class _CreateGroupSheetState extends State<_CreateGroupSheet> {
   late final TextEditingController _title;
+  late final TextEditingController _search;
   final _selected = <String>{};
 
   @override
   void initState() {
     super.initState();
     _title = TextEditingController(text: widget.initialTitle ?? '');
+    _search = TextEditingController();
   }
 
   @override
   void dispose() {
     _title.dispose();
+    _search.dispose();
     super.dispose();
+  }
+
+  List<({String id, String title, String subtitle})> get _filtered {
+    final q = _search.text.trim().toLowerCase();
+    if (q.isEmpty) return widget.candidates;
+    return widget.candidates.where((c) {
+      return c.title.toLowerCase().contains(q) || c.subtitle.toLowerCase().contains(q);
+    }).toList();
+  }
+
+  void _selectAllVisible() {
+    setState(() {
+      for (final c in _filtered) {
+        _selected.add(c.id);
+      }
+    });
+  }
+
+  void _clearAll() {
+    setState(_selected.clear);
   }
 
   @override
   Widget build(BuildContext context) {
     final titleOk = widget.titleOptional || _title.text.trim().length >= 2;
     final canCreate = titleOk && _selected.length >= widget.minMembers;
+    final filtered = _filtered;
 
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.85,
+      initialChildSize: 0.88,
       maxChildSize: 0.95,
       minChildSize: 0.5,
       builder: (_, scroll) => SafeArea(
@@ -87,7 +112,7 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
               child: Text(widget.headline, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 8),
               child: Text(widget.privacyHint, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
             ),
             if (!widget.titleOptional)
@@ -103,39 +128,73 @@ class _CreateGroupSheetState extends State<_CreateGroupSheet> {
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-              child: Text(
-                'Velg medlemmer (${_selected.length} valgt)',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: TextField(
+                controller: _search,
+                decoration: InputDecoration(
+                  hintText: 'Søk navn, bedrift…',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  isDense: true,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_selected.length} valgt · ${filtered.length} vist',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: filtered.isEmpty ? null : _selectAllVisible,
+                    child: const Text('Velg alle'),
+                  ),
+                  TextButton(
+                    onPressed: _selected.isEmpty ? null : _clearAll,
+                    child: const Text('Fjern alle'),
+                  ),
+                ],
               ),
             ),
             Expanded(
-              child: ListView.builder(
-                controller: scroll,
-                itemCount: widget.candidates.length,
-                itemBuilder: (_, i) {
-                  final c = widget.candidates[i];
-                  final checked = _selected.contains(c.id);
-                  return CheckboxListTile(
-                    value: checked,
-                    onChanged: (v) {
-                      setState(() {
-                        if (v == true) {
-                          _selected.add(c.id);
-                        } else {
-                          _selected.remove(c.id);
-                        }
-                      });
-                    },
-                    title: Text(c.title, style: const TextStyle(fontWeight: FontWeight.w600)),
-                    subtitle: Text(c.subtitle, style: const TextStyle(fontSize: 11)),
-                    secondary: CircleAvatar(
-                      backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
-                      child: Text(c.title.isNotEmpty ? c.title[0].toUpperCase() : '?'),
+              child: filtered.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Ingen treff',
+                        style: TextStyle(color: Colors.grey.shade600),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scroll,
+                      itemCount: filtered.length,
+                      itemBuilder: (_, i) {
+                        final c = filtered[i];
+                        final checked = _selected.contains(c.id);
+                        return CheckboxListTile(
+                          value: checked,
+                          onChanged: (v) {
+                            setState(() {
+                              if (v == true) {
+                                _selected.add(c.id);
+                              } else {
+                                _selected.remove(c.id);
+                              }
+                            });
+                          },
+                          title: Text(c.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          subtitle: Text(c.subtitle, style: const TextStyle(fontSize: 11)),
+                          secondary: CircleAvatar(
+                            backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                            child: Text(c.title.isNotEmpty ? c.title[0].toUpperCase() : '?'),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
             Padding(
               padding: const EdgeInsets.all(16),

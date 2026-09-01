@@ -419,6 +419,37 @@ abstract final class PartnerChatService {
         .toList();
   }
 
+  static Future<List<ChatRoomMember>> fetchRoomMembers(String roomId) async {
+    final rows = await _client.rpc<dynamic>(
+      'chat_room_members_list',
+      params: {'p_room_id': roomId},
+    );
+    if (rows is! List) return const [];
+    return rows
+        .map((e) => ChatRoomMember.fromJson(Map<String, dynamic>.from(e as Map)))
+        .toList();
+  }
+
+  static Future<void> superadminRemoveFromRoom({
+    required String roomId,
+    required String userId,
+  }) async {
+    await _client.rpc('chat_superadmin_remove_from_room', params: {
+      'p_room_id': roomId,
+      'p_user_id': userId,
+    });
+  }
+
+  static Future<void> superadminDeleteRoom(String roomId) async {
+    await _client.rpc('chat_superadmin_delete_room', params: {
+      'p_room_id': roomId,
+    });
+  }
+
+  static Future<void> leaveRoom(String roomId) async {
+    await _client.rpc('chat_leave_room', params: {'p_room_id': roomId});
+  }
+
   static RealtimeChannel subscribeRoom({
     required String roomId,
     required void Function(ChatMessage message) onMessage,

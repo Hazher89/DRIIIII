@@ -10,6 +10,7 @@ import '../../core/auth/session_sign_out.dart';
 import '../../core/services/chat/chat_flag_service.dart';
 import '../../core/services/chat/chat_pending_navigation.dart';
 import '../../core/services/chat/chat_unread_service.dart';
+import '../../core/services/chat/chat_realtime_notification_service.dart';
 import '../../core/services/hms/hms_pdf_export_service.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
 import '../../core/services/partner/partner_portal_scope.dart';
@@ -152,6 +153,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     unawaited(_chatFlagSub?.cancel() ?? Future.value());
     unawaited(_chatUnreadSub?.cancel() ?? Future.value());
     ChatUnreadService.stopWatching();
+    ChatRealtimeNotificationService.stop();
     unawaited(_workforceChannel?.unsubscribe() ?? Future.value());
     PartnerRoutePushListener.stop();
     super.dispose();
@@ -370,6 +372,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   void _bindChatUnread() {
     unawaited(_chatUnreadSub?.cancel() ?? Future.value());
     ChatUnreadService.startWatching();
+    unawaited(ChatRealtimeNotificationService.start());
     _chatUnreadSub = ChatUnreadService.stream.listen((count) {
       if (!mounted) return;
       setState(() => _chatUnread = count);

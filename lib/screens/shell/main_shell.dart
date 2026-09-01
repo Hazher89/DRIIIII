@@ -17,6 +17,7 @@ import '../auth/pending_approval_screen.dart';
 import '../../models/user_profile.dart';
 import '../../core/services/chat/chat_flag_service.dart';
 import '../../core/services/chat/chat_unread_service.dart';
+import '../../core/services/chat/chat_realtime_notification_service.dart';
 import '../../core/services/native_permissions_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -81,6 +82,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     _chatFlagSub?.cancel();
     _chatUnreadSub?.cancel();
     ChatUnreadService.stopWatching();
+    ChatRealtimeNotificationService.stop();
     _authSub?.cancel();
     super.dispose();
   }
@@ -343,6 +345,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       return;
     }
     ChatUnreadService.startWatching();
+    unawaited(ChatRealtimeNotificationService.start());
     _chatUnreadSub = ChatUnreadService.stream.listen((count) {
       if (!mounted) return;
       setState(() => _chatUnread = count);

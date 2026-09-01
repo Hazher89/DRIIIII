@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/services/chat/chat_presence_service.dart';
 import '../../core/services/chat/chat_unread_service.dart';
 import '../../core/services/chat/partner_chat_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -11,6 +12,7 @@ import '../../core/permissions/user_access.dart';
 import '../../models/chat/chat_models.dart';
 import '../../models/user_profile.dart';
 import 'widgets/chat_media_send_sheet.dart';
+import 'widgets/chat_room_members_sheet.dart';
 import 'widgets/chat_swipe_message.dart';
 
 class ChatRoomScreen extends StatefulWidget {
@@ -57,6 +59,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
     _room = widget.room;
     _pinned = widget.room.isPinned;
     _muted = widget.room.isMuted;
+    ChatPresenceService.setOpenRoom(widget.room.id);
     _scroll.addListener(_onScroll);
     _load();
     _channel = PartnerChatService.subscribeRoom(
@@ -75,6 +78,9 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
 
   @override
   void dispose() {
+    if (ChatPresenceService.openRoomId == widget.room.id) {
+      ChatPresenceService.setOpenRoom(null);
+    }
     PartnerChatService.unsubscribe(_channel);
     _scroll.removeListener(_onScroll);
     _input.dispose();
@@ -328,6 +334,16 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Medlemmer',
+            icon: const Icon(Icons.people_outline),
+            onPressed: () => showChatRoomMembersSheet(
+              context: context,
+              room: room,
+              profile: widget.profile,
+              onRoomDeleted: () => Navigator.pop(context),
+            ),
+          ),
           PopupMenuButton<String>(
             onSelected: (v) async {
               switch (v) {
