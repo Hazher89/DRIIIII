@@ -125,7 +125,7 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
     _hubRefreshDebounce?.cancel();
     _hubRefreshDebounce = Timer(const Duration(milliseconds: 400), () {
       unawaited(ChatUnreadService.refresh());
-      unawaited(_load());
+      unawaited(_load(silent: true));
     });
   }
 
@@ -140,11 +140,13 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       if (widget.profile.companyId != null && _isMavi) {
         await PartnerChatService.ensureBroadcastRoom(widget.profile.companyId!);
