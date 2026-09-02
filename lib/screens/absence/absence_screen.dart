@@ -19,6 +19,7 @@ import 'widgets/leave_egenmelding_blocked_sheet.dart';
 import 'widgets/leave_usage_meter.dart';
 import '../../models/leave_period_usage.dart';
 import '../../core/services/absence/department_leave_conflict_service.dart';
+import '../../core/services/nav_badge_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/absence.dart';
@@ -29,6 +30,7 @@ import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/user_access.dart';
 import 'new_absence_screen.dart';
 import 'vacation_admin_screen.dart';
+import 'widgets/absence_detail_sheet.dart';
 import 'widgets/department_leave_tip_card.dart';
 import 'widgets/leave_quick_actions.dart';
 import 'widgets/leave_rules_panel.dart';
@@ -1205,7 +1207,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         ),
         const SizedBox(height: 12),
         ..._pendingApprovals.map(
-          (a) => _buildAbsenceCard(a, _days(a), isDark, showActions: true),
+          (a) => _buildAbsenceCard(a, _days(a), isDark, showActions: true, managerView: true),
         ),
       ],
     );
@@ -1491,11 +1493,31 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     }
   }
 
+  Future<void> _openAbsenceDetail(Absence a, int days, {bool managerView = false}) async {
+    final profile = _profile;
+    if (profile == null) return;
+    final changed = await showAbsenceDetailSheet(
+      context,
+      absence: a,
+      profile: profile,
+      days: days,
+      onChanged: _refreshScopedLists,
+      onDecide: managerView
+          ? (id, status, {decisionComment}) =>
+              _updateStatus(id, status, decisionComment: decisionComment)
+          : null,
+    );
+    if (changed == true) {
+      unawaited(NavBadgeService.refresh());
+    }
+  }
+
   Widget _buildAbsenceCard(
     Absence a,
     int days,
     bool isDark, {
     bool showActions = false,
+    bool managerView = false,
   }) {
     final color = _colorForType(a.type);
     return Container(
@@ -1510,7 +1532,14 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _absenceListTile(a, isDark, days: days, color: color),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () => _openAbsenceDetail(a, days, managerView: managerView),
+              child: _absenceListTile(a, isDark, days: days, color: color),
+            ),
+          ),
           if (showActions) ...[
             if ((_approvalOverlaps[a.id] ?? []).isNotEmpty)
               DepartmentLeaveTipCard(
@@ -1582,6 +1611,11 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
             '${DateFormat('d. MMM').format(a.endDate)} ($d dager)',
             style: DriftProTheme.bodySm,
           ),
+          if (a.decisionComment != null && a.decisionComment!.trim().isNotEmpty)
+            Text(
+              'Svar: ${a.decisionComment!.trim()}',
+              style: DriftProTheme.bodySm.copyWith(fontStyle: FontStyle.italic),
+            ),
           if (a.comment != null)
             Text('"${a.comment!}"', style: DriftProTheme.bodySm.copyWith(fontStyle: FontStyle.italic)),
         ],
@@ -1589,7 +1623,11 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     );
   }
 
-  Future<void> _updateStatus(String id, AbsenceStatus status) async {
+  Future<void> _updateStatus(
+    String id,
+    AbsenceStatus status, {
+    String? decisionComment,
+  }) async {
     if (status == AbsenceStatus.godkjent) {
       final overlaps = _approvalOverlaps[id] ?? [];
       final approved = DepartmentLeaveConflictService.approvedVacation(overlaps);
@@ -1639,8 +1677,13 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     });
 
     try {
-      await SupabaseService.updateAbsenceStatus(id, status);
+      await SupabaseService.updateAbsenceStatus(
+        id,
+        status,
+        decisionComment: decisionComment,
+      );
       await _refreshScopedLists();
+      unawaited(NavBadgeService.refresh());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

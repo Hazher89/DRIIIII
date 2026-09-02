@@ -563,11 +563,38 @@ department:departments!department_id(name)
     return Absence.fromJson(inserted);
   }
 
-  static Future<void> updateAbsenceStatus(String id, AbsenceStatus status) async {
-    await client.from('absences').update({
+  static Future<void> updateAbsenceStatus(
+    String id,
+    AbsenceStatus status, {
+    String? decisionComment,
+  }) async {
+    final patch = <String, dynamic>{
       'status': status.name,
       'approved_by': client.auth.currentUser?.id,
       'approved_at': DateTime.now().toIso8601String(),
+    };
+    if (decisionComment != null) {
+      patch['decision_comment'] = decisionComment.trim().isEmpty
+          ? null
+          : decisionComment.trim();
+    }
+    await client.from('absences').update(patch).eq('id', id);
+  }
+
+  static Future<void> updatePendingAbsence({
+    required String id,
+    required AbsenceType type,
+    required DateTime startDate,
+    required DateTime endDate,
+    String? comment,
+    int? quotaYear,
+  }) async {
+    await client.from('absences').update({
+      'type': type.dbValue,
+      'start_date': startDate.toIso8601String().split('T').first,
+      'end_date': endDate.toIso8601String().split('T').first,
+      'comment': comment,
+      'quota_year': quotaYear ?? startDate.year,
     }).eq('id', id);
   }
 

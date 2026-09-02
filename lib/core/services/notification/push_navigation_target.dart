@@ -1,4 +1,5 @@
-/// Parsed push-varsel som skal åpne riktig sted i appen.
+import '../../routing/app_paths.dart';
+
 enum PushNavKind {
   partnerRoute,
   partnerDeduction,
@@ -10,6 +11,7 @@ enum PushNavKind {
   hmsSafetyRound,
   hmsGeneric,
   chatMessage,
+  absence,
   unknown,
 }
 
@@ -52,6 +54,9 @@ class PushNavigationTarget {
         PushNavKind.hmsSja => '/hms/sja',
         PushNavKind.hmsSafetyRound => '/hms/vernerunde',
         PushNavKind.hmsGeneric => '/hms',
+        PushNavKind.absence => AppPaths.absencePath(
+            tab: raw['type'] == 'absence_decision' ? 'mine' : 'godkjenn',
+          ),
         PushNavKind.partnerDeduction => '/partners?tab=bot-trekk',
         PushNavKind.partnerInspection => '/partners?tab=bilkontroll',
         PushNavKind.chatMessage => id != null ? '/meldinger?room=$id' : '/meldinger',
@@ -90,6 +95,11 @@ class PushNavigationTarget {
       case 'chat_message':
         kind = PushNavKind.chatMessage;
         id = _str(data['room_id']) ?? refId;
+      case 'absence_request':
+      case 'absence_decision':
+      case 'absence':
+        kind = PushNavKind.absence;
+        id = refId;
       default:
         if (routeShareId != null) {
           kind = PushNavKind.partnerRoute;
@@ -133,6 +143,8 @@ class PushNavigationTarget {
         return PushNavKind.hmsSja;
       case 'safety_rounds':
         return PushNavKind.hmsSafetyRound;
+      case 'absences':
+        return PushNavKind.absence;
       default:
         return PushNavKind.hmsGeneric;
     }

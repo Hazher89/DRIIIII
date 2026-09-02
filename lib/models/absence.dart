@@ -61,6 +61,7 @@ class Absence {
   final DateTime endDate;
   final AbsenceStatus status;
   final String? comment;
+  final String? decisionComment;
   final int? quotaYear;
   final int? totalDays;
   final int? vacationDayCount;
@@ -83,6 +84,7 @@ class Absence {
     required this.endDate,
     this.status = AbsenceStatus.ventende,
     this.comment,
+    this.decisionComment,
     this.quotaYear,
     this.totalDays,
     this.vacationDayCount,
@@ -108,6 +110,7 @@ class Absence {
         orElse: () => AbsenceStatus.ventende,
       ),
       comment: json['comment'] as String?,
+      decisionComment: json['decision_comment'] as String?,
       quotaYear: json['quota_year'] as int?,
       totalDays: json['total_days'] as int?,
       vacationDayCount: json['vacation_day_count'] as int?,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/constants/leave_rules.dart';
@@ -8,6 +10,7 @@ import '../../core/services/absence/leave_period_usage_service.dart';
 import '../../models/leave_period_usage.dart';
 import '../../core/utils/business_days.dart';
 import '../../core/services/absence/department_leave_conflict_service.dart';
+import '../../core/services/nav_badge_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/absence.dart';
@@ -22,6 +25,8 @@ class NewAbsenceScreen extends StatefulWidget {
   final DateTime? initialStart;
   final DateTime? initialEnd;
   final bool allowPickEmployee;
+  /// Rediger ventende egen søknad.
+  final Absence? existingAbsence;
 
   const NewAbsenceScreen({
     super.key,
@@ -29,6 +34,7 @@ class NewAbsenceScreen extends StatefulWidget {
     this.initialStart,
     this.initialEnd,
     this.allowPickEmployee = false,
+    this.existingAbsence,
   });
 
   @override
@@ -57,8 +63,12 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
   @override
   void initState() {
     super.initState();
-    _startDate = widget.initialStart;
-    _endDate = widget.initialEnd ?? widget.initialStart;
+    final existing = widget.existingAbsence;
+    _startDate = existing?.startDate ?? widget.initialStart;
+    _endDate = existing?.endDate ?? widget.initialEnd ?? widget.initialStart;
+    if (existing?.comment != null) {
+      _commentController.text = existing!.comment!;
+    }
     _loadContext();
   }
 
@@ -303,6 +313,29 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
     });
 
     try {
+      final existing = widget.existingAbsence;
+      if (existing != null) {
+        if (existing.status != AbsenceStatus.ventende) {
+          throw StateError('Kun ventende søknader kan endres.');
+        }
+        await SupabaseService.updatePendingAbsence(
+          id: existing.id,
+          type: widget.type,
+          startDate: _startDate!,
+          endDate: _endDate!,
+          comment: _commentController.text.trim().isEmpty
+              ? null
+              : _commentController.text.trim(),
+          quotaYear: _startDate!.year,
+        );
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Søknaden er oppdatert')),
+        );
+        Navigator.of(context).pop(true);
+        return;
+      }
+
       final status = _directRegister
           ? AbsenceStatus.godkjent
           : AbsenceStatus.ventende;
@@ -326,6 +359,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
         absence,
         approverId: _directRegister ? _profile!.id : null,
       );
+      unawaited(NavBadgeService.refresh());
 
       if (!mounted) return;
       final msg = status == AbsenceStatus.godkjent
@@ -361,7 +395,11 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
       backgroundColor:
           isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       appBar: AppBar(
-        title: Text('Søk ${widget.type.label.toLowerCase()}'),
+        title: Text(
+          widget.existingAbsence != null
+              ? 'Endre ${widget.type.label.toLowerCase()}'
+              : 'Søk ${widget.type.label.toLowerCase()}',
+        ),
       ),
       body: _isLoadingContext
           ? const DriftProLoadingCenter()
