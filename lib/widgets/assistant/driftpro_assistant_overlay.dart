@@ -133,13 +133,19 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
   Widget build(BuildContext context) {
     if (!kIsWeb) return widget.child;
 
+    // Under-ruter (f.eks. avdelingsdetaljer) har «Lagre» øverst til høyre —
+    // flytt chip ned så den ikke dekker AppBar-handlinger.
+    final nav = driftProRootNavigatorKey.currentState;
+    final onSubRoute = nav != null && nav.canPop();
+    final topInset = MediaQuery.paddingOf(context).top;
+
     return Stack(
       fit: StackFit.expand,
       children: [
         widget.child,
         if (_showFab)
           Positioned(
-            top: 6,
+            top: onSubRoute ? topInset + kToolbarHeight + 6 : topInset + 6,
             right: 10,
             child: SafeArea(
               bottom: false,

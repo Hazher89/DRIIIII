@@ -2,6 +2,8 @@ import '../../../models/hms/equipment.dart';
 import '../../../models/risk_assessment.dart';
 import '../../../models/risk_assessment_status.dart';
 import '../../../models/sja_form.dart';
+import '../../../models/user_profile.dart';
+import '../../permissions/user_access.dart';
 import 'equipment_service.dart';
 import '../supabase_service.dart';
 
@@ -25,10 +27,43 @@ class HmsDashboardStats {
 
   /// Sum av åpne HMS-oppgaver for navigasjons-badge.
   int get navBadgeTotal => riskCount + sjaOpen + safetyPlanned;
+
+  static const zero = HmsDashboardStats();
 }
 
 class HmsService {
   HmsService._();
+
+  /// Badge-tall per bruker — kun moduler brukeren har tilgang til (RLS-scopet).
+  static Future<int> loadNavBadgeTotal(UserProfile profile) async {
+    final access = profile.access;
+    final companyId = profile.companyId;
+    if (companyId == null || companyId.isEmpty || !access.canHms) return 0;
+
+    var total = 0;
+
+    if (access.canHmsRisk) {
+      final risks = await SupabaseService.fetchRiskAssessments(companyId: companyId);
+      total += risks.where((r) => RiskAssessmentStatuses.isOpen(r.status)).length;
+    }
+
+    if (access.canHmsSja) {
+      final sjas = await SupabaseService.fetchSjaForms(companyId: companyId);
+      total += sjas
+          .where((s) =>
+              s.status == SjaStatus.utkast ||
+              s.status == SjaStatus.venterSignatur ||
+              s.status == SjaStatus.iGang)
+          .length;
+    }
+
+    if (access.canHmsSafetyRound) {
+      final rounds = await SupabaseService.fetchSafetyRounds(companyId: companyId);
+      total += rounds.where((r) => r.overallStatus == 'planlagt').length;
+    }
+
+    return total;
+  }
 
   static Future<HmsDashboardStats> loadDashboardStats(String companyId) async {
     final risks = await SupabaseService.fetchRiskAssessments(companyId: companyId);

@@ -130,9 +130,17 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
       appBar: AppBar(
         title: Text(widget.isNew ? 'Ny Avdeling' : _currentDept.name),
         actions: [
-          TextButton(
-            onPressed: _saveDepartment,
-            child: const Text('Lagre', style: TextStyle(color: DriftProTheme.primaryGreen)),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: FilledButton(
+              onPressed: _isLoading ? null : _saveDepartment,
+              style: FilledButton.styleFrom(
+                backgroundColor: DriftProTheme.primaryGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              child: Text(widget.isNew ? 'Lagre avdeling' : 'Lagre'),
+            ),
           ),
         ],
         bottom: TabBar(
@@ -540,7 +548,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
                 ),
               ),
               FilledButton.icon(
-                onPressed: _showAddMemberPicker,
+                onPressed: widget.isNew ? _promptSaveDepartmentFirst : _showAddMemberPicker,
                 icon: const Icon(Icons.person_add_alt_1, size: 18),
                 label: const Text('Legg til ansatt'),
                 style: FilledButton.styleFrom(
@@ -610,12 +618,17 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
           SizedBox(
             width: double.infinity,
             child: FilledButton(
-              onPressed: _saveLeadersOnly,
+              onPressed: _isLoading
+                  ? null
+                  : (widget.isNew ? _saveDepartment : _saveLeadersOnly),
               style: FilledButton.styleFrom(
                 backgroundColor: DriftProTheme.primaryGreen,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              child: const Text('Lagre avdelingsledere', style: TextStyle(fontWeight: FontWeight.w800)),
+              child: Text(
+                widget.isNew ? 'Lagre avdeling og ledere' : 'Lagre avdelingsledere',
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
             ),
           ),
         ],
@@ -623,11 +636,20 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
     );
   }
 
+  void _promptSaveDepartmentFirst() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Lagre avdelingen først — gå til «Innstillinger» eller trykk «Lagre avdeling» øverst.',
+        ),
+      ),
+    );
+    _tabController.animateTo(5);
+  }
+
   Future<void> _saveLeadersOnly() async {
     if (widget.isNew) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lagre avdelingen først (øverst til høyre)')),
-      );
+      _promptSaveDepartmentFirst();
       return;
     }
     setState(() => _isLoading = true);
@@ -749,6 +771,28 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
            const SizedBox(height: 20),
            const Text('Beskrivelse'),
            TextField(controller: _descController, maxLines: 2),
+           if (widget.isNew) ...[
+             const SizedBox(height: 24),
+             SizedBox(
+               width: double.infinity,
+               child: FilledButton(
+                 onPressed: _isLoading ? null : _saveDepartment,
+                 style: FilledButton.styleFrom(
+                   backgroundColor: DriftProTheme.primaryGreen,
+                   padding: const EdgeInsets.symmetric(vertical: 14),
+                 ),
+                 child: const Text(
+                   'Lagre avdeling',
+                   style: TextStyle(fontWeight: FontWeight.w800),
+                 ),
+               ),
+             ),
+             const SizedBox(height: 8),
+             Text(
+               'Du kan legge til ansatte og flere ledere etter at avdelingen er lagret.',
+               style: DriftProTheme.caption,
+             ),
+           ],
            const SizedBox(height: 12),
            ListTile(
              contentPadding: EdgeInsets.zero,

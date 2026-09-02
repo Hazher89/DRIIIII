@@ -357,6 +357,7 @@ department:departments!department_id(name)
     }
     return active.where((t) =>
         t.reportedBy == profile.id ||
+        t.assignedTo == profile.id ||
         (profile.departmentId != null &&
             t.departmentId == profile.departmentId)).toList();
   }

@@ -1,8 +1,5 @@
 import 'dart:async';
 
-import 'dart:async';
-
-import '../../models/dashboard_stats.dart';
 import '../../models/user_profile.dart';
 import '../permissions/access_keys.dart';
 import '../permissions/user_access.dart';
@@ -129,22 +126,18 @@ abstract final class NavBadgeService {
       return NavBadgeCounts(chat: ChatUnreadService.lastCount);
     }
 
-    DashboardStats? stats;
-    HmsDashboardStats? hmsStats;
     int pendingAbsence = 0;
     int myPendingAbsence = 0;
     int pendingUsers = 0;
+    int avvik = 0;
+    int hms = 0;
 
     final futures = <Future<void>>[
       () async {
+        if (!access.can(AccessKeys.avvik)) return;
         try {
-          final res = await SupabaseService.client.rpc<dynamic>(
-            'get_dashboard_stats',
-            params: {'p_company_id': companyId},
-          );
-          if (res is Map) {
-            stats = DashboardStats.fromJson(Map<String, dynamic>.from(res));
-          }
+          final scoped = await SupabaseService.fetchScopedTickets(profile: profile);
+          avvik = scoped.where((t) => t.isOpen).length;
         } catch (_) {}
       }(),
       () async {
@@ -177,7 +170,7 @@ abstract final class NavBadgeService {
       () async {
         if (!access.can(AccessKeys.hms)) return;
         try {
-          hmsStats = await HmsService.loadDashboardStats(companyId);
+          hms = await HmsService.loadNavBadgeTotal(profile);
         } catch (_) {}
       }(),
     ];
@@ -197,21 +190,12 @@ abstract final class NavBadgeService {
         ? pendingAbsence
         : (access.can(AccessKeys.fravaer) ? myPendingAbsence : 0);
 
-    final avvik = access.can(AccessKeys.avvik) ? (stats?.openTickets ?? 0) : 0;
-
-    final hms = access.can(AccessKeys.hms) ? (hmsStats?.navBadgeTotal ?? 0) : 0;
-
-    final more = pendingUsers +
-        (access.can(AccessKeys.more) && (stats?.expiringDocuments ?? 0) > 0
-            ? stats!.expiringDocuments
-            : 0);
-
     return NavBadgeCounts(
       chat: chat,
       avvik: avvik,
       fravaer: fravaer,
       hms: hms,
-      more: more,
+      more: pendingUsers,
     );
   }
 }
