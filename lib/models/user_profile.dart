@@ -20,6 +20,12 @@ class UserProfile {
   final String? emergencyContactName;
   final String? emergencyContactPhone;
   final bool isSafetyRepresentative;
+  /// Tillitsvalgt (AML kap. 8–9) — lovpålagt medvirkningsverv.
+  final bool isUnionRepresentative;
+  /// Hovedverneombud (AML § 6-1).
+  final bool isChiefSafetyRepresentative;
+  /// Medlem av arbeidsmiljøutvalg (AML kap. 7).
+  final bool isAmuMember;
   final bool isActive;
   final bool isOnboarded;
   final bool isApproved;
@@ -51,6 +57,9 @@ class UserProfile {
     this.emergencyContactName,
     this.emergencyContactPhone,
     this.isSafetyRepresentative = false,
+    this.isUnionRepresentative = false,
+    this.isChiefSafetyRepresentative = false,
+    this.isAmuMember = false,
     this.isActive = true,
     this.isOnboarded = false,
     this.isApproved = false,
@@ -118,6 +127,11 @@ class UserProfile {
       emergencyContactPhone: json['emergency_contact_phone'] as String?,
       isSafetyRepresentative:
           json['is_safety_representative'] as bool? ?? false,
+      isUnionRepresentative:
+          json['is_union_representative'] as bool? ?? false,
+      isChiefSafetyRepresentative:
+          json['is_chief_safety_representative'] as bool? ?? false,
+      isAmuMember: json['is_amu_member'] as bool? ?? false,
       isActive: json['is_active'] as bool? ?? true,
       isOnboarded: json['is_onboarded'] as bool? ?? false,
       isApproved: json['is_approved'] as bool? ?? false,
@@ -148,6 +162,9 @@ class UserProfile {
     'emergency_contact_name': emergencyContactName,
     'emergency_contact_phone': emergencyContactPhone,
     'is_safety_representative': isSafetyRepresentative,
+    'is_union_representative': isUnionRepresentative,
+    'is_chief_safety_representative': isChiefSafetyRepresentative,
+    'is_amu_member': isAmuMember,
     'is_active': isActive,
     'is_onboarded': isOnboarded,
     'is_approved': isApproved,
@@ -163,11 +180,16 @@ class UserProfile {
     UserRole? role,
     bool? isOnboarded,
     bool? isApproved,
+    bool? isSafetyRepresentative,
+    bool? isUnionRepresentative,
+    bool? isChiefSafetyRepresentative,
+    bool? isAmuMember,
     bool? isActive,
     String? companyId,
     String? partnerId,
     String? partnerVehicleId,
     bool? isRecoverySession,
+    Map<String, dynamic>? accessSettings,
   }) {
     return UserProfile(
       id: id,
@@ -187,12 +209,18 @@ class UserProfile {
       nationalIdNumber: nationalIdNumber,
       emergencyContactName: emergencyContactName,
       emergencyContactPhone: emergencyContactPhone,
-      isSafetyRepresentative: isSafetyRepresentative,
+      isSafetyRepresentative:
+          isSafetyRepresentative ?? this.isSafetyRepresentative,
+      isUnionRepresentative:
+          isUnionRepresentative ?? this.isUnionRepresentative,
+      isChiefSafetyRepresentative:
+          isChiefSafetyRepresentative ?? this.isChiefSafetyRepresentative,
+      isAmuMember: isAmuMember ?? this.isAmuMember,
       isActive: isActive ?? this.isActive,
       isOnboarded: isOnboarded ?? this.isOnboarded,
       isApproved: isApproved ?? this.isApproved,
       createdAt: createdAt,
-      accessSettings: accessSettings,
+      accessSettings: accessSettings ?? this.accessSettings,
       partnerId: partnerId ?? this.partnerId,
       partnerVehicleId: partnerVehicleId ?? this.partnerVehicleId,
       isRecoverySession: isRecoverySession ?? this.isRecoverySession,

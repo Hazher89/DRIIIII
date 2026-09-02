@@ -109,7 +109,7 @@ class LeaveCalendarRulesSection extends StatelessWidget {
           _quotaRow(
             'Egenmelding',
             '${companySettings.egenmeldingConsecutiveMax} dager om gangen · '
-            'maks ${companySettings.egenmeldingDaysPerYear} dager/år',
+            'maks ${companySettings.effectiveEgenmeldingDaysPerYear} dager/år',
           ),
           _quotaRow(
             'Sykt barn',

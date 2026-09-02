@@ -173,7 +173,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
       _periodUsage != null &&
       LeaveEligibility.isEgenmeldingExhausted(
         usage: _periodUsage,
-        maxDays: _companySettings.egenmeldingDaysPerYear,
+        maxDays: _companySettings.effectiveEgenmeldingDaysPerYear,
       );
 
   int get _childrenUnder12 => _selectedEmployee?.childrenUnder12Count ?? 0;
@@ -394,6 +394,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
     return Scaffold(
       backgroundColor:
           isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: Text(
           widget.existingAbsence != null
@@ -406,7 +407,13 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
           : _egenmeldingBlocked
               ? _buildEgenmeldingBlockedBody(isDark)
               : SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(
+                20,
+                20,
+                20,
+                20 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -421,7 +428,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                     LeaveUsageMeter(
                       title: 'Egenmelding i perioden',
                       used: _periodUsage!.egenmeldingDaysUsed,
-                      max: _companySettings.egenmeldingDaysPerYear,
+                      max: _companySettings.effectiveEgenmeldingDaysPerYear,
                       subtitle:
                           '${_periodUsage!.window.formatRange()} · maks $maxConsec dager per søknad',
                       icon: Icons.sick_outlined,
@@ -470,49 +477,69 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                   const SizedBox(height: 20),
                   _sectionHeader('Kommentar (valgfritt)', isDark),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: _commentController,
-                    maxLines: 3,
-                    decoration: InputDecoration(
-                      hintText: 'Kort merknad til leder…',
-                      fillColor: isDark ? DriftProTheme.cardDark : Colors.white,
+                  const SizedBox(height: 12),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 120),
+                    child: TextField(
+                      controller: _commentController,
+                      minLines: 1,
+                      maxLines: 4,
+                      keyboardType: TextInputType.multiline,
+                      textInputAction: TextInputAction.newline,
+                      scrollPadding: const EdgeInsets.only(bottom: 140),
+                      decoration: InputDecoration(
+                        hintText: 'Kort merknad til leder…',
+                        alignLabelWithHint: true,
+                        filled: true,
+                        fillColor: isDark ? DriftProTheme.cardDark : Colors.white,
+                      ),
                     ),
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 16),
                     Text(_error!, style: const TextStyle(color: DriftProTheme.error)),
                   ],
-                  const SizedBox(height: 28),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 54,
-                    child: FilledButton(
-                      onPressed: (_isSubmitting || _leaderSelfBlocked)
-                          ? null
-                          : _submit,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: DriftProTheme.primaryGreen,
-                      ),
-                      child: _isSubmitting
-                          ? const SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : Text(
-                              _submitButtonLabel,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                              ),
-                            ),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
                 ],
+              ),
+            ),
+      bottomNavigationBar: _isLoadingContext || _egenmeldingBlocked
+          ? null
+          : SafeArea(
+              top: false,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  8,
+                  20,
+                  12 + MediaQuery.viewInsetsOf(context).bottom,
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: FilledButton(
+                    onPressed: (_isSubmitting || _leaderSelfBlocked) ? null : _submit,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: DriftProTheme.primaryGreen,
+                    ),
+                    child: _isSubmitting
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            _submitButtonLabel,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                  ),
+                ),
               ),
             ),
     );
@@ -546,7 +573,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  '${usage.egenmeldingDaysUsed}/${_companySettings.egenmeldingDaysPerYear} dager · '
+                  '${usage.egenmeldingDaysUsed}/${_companySettings.effectiveEgenmeldingDaysPerYear} dager · '
                   '${usage.egenmeldingPeriodsUsed}/${LeaveRules.egenmeldingMaxPeriodsPerYear} tilfeller',
                   style: DriftProTheme.labelMd,
                 ),

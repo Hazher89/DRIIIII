@@ -42,10 +42,10 @@ class AbsenceService {
         }
         if (periodUsage != null &&
             periodUsage.egenmeldingDaysUsed + days >
-                company.egenmeldingDaysPerYear) {
+                company.effectiveEgenmeldingDaysPerYear) {
           return 'Egenmeldingskvoten er brukt opp i perioden '
               '${periodUsage.window.formatRange()} '
-              '(${periodUsage.egenmeldingDaysUsed}/${company.egenmeldingDaysPerYear} dager).';
+              '(${periodUsage.egenmeldingDaysUsed}/${company.effectiveEgenmeldingDaysPerYear} dager).';
         }
         return null;
 

@@ -122,7 +122,7 @@ class EmployeeLeaveSnapshot {
       ferieUsed: ferieUsed,
       egenDaysTotal: egenDaysTotal,
       egenTilfeller: egenRecords.length,
-      egenMax: company.egenmeldingDaysPerYear,
+      egenMax: company.effectiveEgenmeldingDaysPerYear,
       egenTilfellerMax: LeaveRules.egenmeldingMaxPeriodsPerYear,
       syktDays: syktDays,
       syktMax: syktMax,

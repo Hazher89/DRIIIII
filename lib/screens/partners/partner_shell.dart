@@ -148,6 +148,10 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       await NativePermissionsService.bootstrapAfterLogin(context);
+      if (!mounted) return;
+      await NativePermissionsService.promptNotificationsIfNeeded(context);
+      if (!mounted) return;
+      await _ensurePushRegistrationIfNeeded();
     });
   }
 

@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/company_principals.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/ticket_assignee_options.dart';
 import '../../../models/user_profile.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
-/// Velg ansvarlig leder/saksbehandler for ROS eller SJA.
+/// Velg ansvarlig — kun egen leder + ledelsen (Tommy/Nico/Hazher).
 class HmsResponsiblePicker extends StatelessWidget {
   final String? selectedId;
   final ValueChanged<String?> onChanged;
@@ -36,35 +37,56 @@ class HmsResponsiblePicker extends StatelessWidget {
     return name.isEmpty ? p.fullName : name;
   }
 
-  List<UserProfile> get _candidates {
-    final seen = <String>{};
-    final list = <UserProfile>[];
-    for (final p in [
-      ...options.nearestLeaders,
-      ...options.otherLeaders,
-      ...options.superadmins,
-    ]) {
-      if (seen.add(p.id)) list.add(p);
-    }
-    return list;
-  }
-
   @override
   Widget build(BuildContext context) {
     if (loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 12),
-        child: const DriftProLoadingCenter(),
+        child: DriftProLoadingCenter(),
       );
     }
 
-    final candidates = _candidates;
-    if (candidates.isEmpty) {
+    final nearest = options.nearestLeaders;
+    final leadership = options.leadership;
+    if (nearest.isEmpty && leadership.isEmpty) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Text(
-          'Ingen ansvarlige funnet — kontakt HR.',
+          'Ingen ansvarlige funnet — kontakt din leder eller ledelsen.',
           style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
+        ),
+      );
+    }
+
+    Widget tile(UserProfile p) {
+      final selected = selectedId == p.id;
+      return Card(
+        margin: const EdgeInsets.only(bottom: 8),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: selected
+                ? DriftProTheme.primaryGreen
+                : Colors.grey.shade300,
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: RadioListTile<String>(
+          value: p.id,
+          groupValue: selectedId,
+          onChanged: (v) => onChanged(v),
+          title: Text(
+            displayName(p),
+            style: TextStyle(
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+          subtitle: Text(
+            p.displayTitle,
+            style: const TextStyle(fontSize: 11),
+          ),
+          activeColor: DriftProTheme.primaryGreen,
         ),
       );
     }
@@ -75,42 +97,27 @@ class HmsResponsiblePicker extends StatelessWidget {
         Text('Ansvarlig for vurdering', style: DriftProTheme.labelLg),
         const SizedBox(height: 4),
         Text(
-          'Valgt person får e-post og SMS med beskjed om å logge inn og vurdere.',
+          'Kun din leder eller ledelsen (Tommy, Nico, Hazher).',
           style: DriftProTheme.bodySm.copyWith(color: Colors.grey),
         ),
         const SizedBox(height: 8),
-        ...candidates.map((p) {
-          final selected = selectedId == p.id;
-          return Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            elevation: 0,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(
-                color: selected
-                    ? DriftProTheme.primaryGreen
-                    : Colors.grey.shade300,
-                width: selected ? 2 : 1,
-              ),
-            ),
-            child: RadioListTile<String>(
-              value: p.id,
-              groupValue: selectedId,
-              onChanged: (v) => onChanged(v),
-              title: Text(
-                displayName(p),
-                style: TextStyle(
-                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                ),
-              ),
-              subtitle: Text(
-                p.role == UserRole.leder ? 'Leder' : 'Administrator',
-                style: const TextStyle(fontSize: 11),
-              ),
-              activeColor: DriftProTheme.primaryGreen,
-            ),
-          );
-        }),
+        if (nearest.isNotEmpty) ...[
+          Text(
+            'Din leder',
+            style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          ...nearest.map(tile),
+          const SizedBox(height: 8),
+        ],
+        if (leadership.isNotEmpty) ...[
+          Text(
+            'Ledelsen',
+            style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 6),
+          ...leadership.map(tile),
+        ],
       ],
     );
   }

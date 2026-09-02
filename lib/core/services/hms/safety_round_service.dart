@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import '../../../models/safety_round.dart';
+import '../assistant/assistant_event_learning.dart';
 import '../supabase_service.dart';
 import 'equipment_service.dart';
 import 'safety_round_pdf.dart';
@@ -74,6 +75,7 @@ class SafetyRoundService {
     Map<String, dynamic> payload, {
     String? id,
   }) async {
+    SafetyRound saved;
     if (id != null && id.isNotEmpty) {
       final row = await SupabaseService.client
           .from('safety_rounds')
@@ -81,14 +83,28 @@ class SafetyRoundService {
           .eq('id', id)
           .select()
           .single();
-      return SafetyRound.fromJson(row);
+      saved = SafetyRound.fromJson(row);
+    } else {
+      final row = await SupabaseService.client
+          .from('safety_rounds')
+          .insert(payload)
+          .select()
+          .single();
+      saved = SafetyRound.fromJson(row);
     }
-    final row = await SupabaseService.client
-        .from('safety_rounds')
-        .insert(payload)
-        .select()
-        .single();
-    return SafetyRound.fromJson(row);
+
+    if (saved.overallStatus == 'fullført') {
+      try {
+        await AssistantEventLearning.onSafetyRoundCompleted(
+          companyId: saved.companyId,
+          title: saved.title,
+          location: saved.location,
+          archiveNumber: saved.archiveNumber,
+          conductorName: saved.conductorName,
+        );
+      } catch (_) {}
+    }
+    return saved;
   }
 
   static Future<String> uploadPdf({

@@ -48,11 +48,20 @@ class KnowledgeAssistantEngine {
     'passord': ['passord', 'password', 'bytt passord', 'innlogging', '000000'],
     'fravaer': [
       'fravær', 'ferie', 'egenmelding', 'sykmelding', 'permisjon', 'sykt barn',
+      'omsorgspenger', 'saldo', 'kvote',
     ],
-    'hms': ['hms', 'avvik', 'sja', 'vernerunde', 'risiko', 'kompetanse'],
+    'hms': ['hms', 'sja', 'vernerunde', 'risiko', 'kompetanse'],
     'avvik': [
-      'avvik', 'registrere', 'registere', 'melde', 'melding', 'deviation',
-      'meld avvik', 'nytt avvik', 'kritisk',
+      'avvik', 'registrere', 'registere', 'melde avvik', 'deviation',
+      'meld avvik', 'nytt avvik', 'kritisk', 'saksbehandler',
+    ],
+    'anonym_varsling': [
+      'anonym', 'anmeldelse', 'varsling', 'whistleblowing', 'whistle',
+      'anonymt', 'anonym anmeldelse', 'anonymt avvik', 'varsle',
+    ],
+    'rute_live': [
+      'm09', 'm08', 'm62', 'mavi', 'rute', 'kunder', 'område', 'kjort',
+      'kjørt', 'endre rute', 'flåte', 'rutehistorikk',
     ],
     'ferie': ['ferie', 'fravær', 'fravaer', 'egenmelding', 'permisjon', 'sykmelding'],
     'partner': ['partner', 'rute', 'sjåfør', 'brreg', 'sap', 'sms'],
@@ -65,6 +74,7 @@ class KnowledgeAssistantEngine {
     'goran': ['goran', 'lasteliste', 'lasting', 'sjåfør', 'driver'],
     'pris': ['pris', 'gebyr', 'kostnad', 'faktura', '1000', 'drivstoff'],
     'godkjenning': ['godkjenning', 'godkjenn', 'jassy', 'herish', 'julie', 'karwan'],
+    'ledelse': ['tommy', 'nico', 'nicola', 'hazher', 'avdelingsleder', 'leder'],
     'support': ['support', 'hjelp', 'kontakt', 'e-post', 'epost'],
   };
 
@@ -112,19 +122,20 @@ class KnowledgeAssistantEngine {
       return 'Se «${primary.chunk.title}» i ${primary.chunk.sourceLabel}.';
     }
 
-    // Steg-for-steg guider: vis innholdet direkte uten «Ifølge …».
+    final isFaq = primary.chunk.id.startsWith('faq:');
+    // FAQ/fakta: svar direkte. Steg-guider: kort intro bare når det passer.
     if (RegExp(r'(^|\n)\s*\d+\.\s').hasMatch(body)) {
       final buf = StringBuffer();
-      if (primary.chunk.id.contains('avvik')) {
+      if (!isFaq && primary.chunk.id.contains('avvik')) {
         buf.writeln('Slik registrerer du avvik i DriftPro:');
-      } else if (body.length > 900) {
+      } else if (!isFaq && body.length > 900) {
         buf.writeln('${primary.chunk.title}:');
       }
-      buf.write(_clip(body, 1200));
+      buf.write(_clip(body, 1400));
       return buf.toString().trim();
     }
 
-    final buf = StringBuffer(_clip(body, 900));
+    final buf = StringBuffer(_clip(body, 1200));
     final extras = related
         .where((h) => h.chunk.id != primary.chunk.id)
         .where(
@@ -202,6 +213,42 @@ class KnowledgeAssistantEngine {
     final hay = _normalize(chunk.searchableText);
     var boost = 0.0;
 
+    final asksAnonymous = q.contains('anonym') ||
+        q.contains('anmeldelse') ||
+        q.contains('varsling') ||
+        q.contains('whistle') ||
+        q.contains('varsle');
+    final asksAvvikHowTo = (q.contains('avvik') ||
+            q.contains('registrer') ||
+            q.contains('melde avvik') ||
+            q.contains('meld avvik')) &&
+        !asksAnonymous;
+    final asksWho = q.contains('hvem') ||
+        q.contains('kan sende') ||
+        q.contains('kan lane') ||
+        q.contains('kan låne') ||
+        q.contains('godkjenn') ||
+        q.contains('signerer') ||
+        q.contains('mottar');
+
+    // Anonym anmeldelse / varsling — aldri generisk avvik-SOP.
+    if (asksAnonymous) {
+      if (chunk.id.startsWith('faq:whistle') ||
+          chunk.id.startsWith('faq:anonymous') ||
+          hay.contains('anonym anmeldelse') ||
+          hay.contains('whistleblowing') ||
+          (hay.contains('anonym') &&
+              (hay.contains('tommy') || hay.contains('anmeldelse')))) {
+        boost += asksWho ? 260 : 200;
+      } else if (chunk.id.contains('avvik') &&
+          !chunk.id.contains('anonymous') &&
+          chunk.source == KnowledgeSourceKind.sop) {
+        boost -= 180;
+      } else if (chunk.id == 'help:hms' && !hay.contains('anonym anmeldelse')) {
+        boost -= 40;
+      }
+    }
+
     final asksRental = q.contains('bilutleie') ||
         q.contains('leiebil') ||
         q.contains('leieavtale') ||
@@ -234,18 +281,16 @@ class KnowledgeAssistantEngine {
       if (chunk.id.contains('fravaer') || chunk.id.contains('ferie')) boost -= 80;
     }
 
-    final asksWho = q.contains('hvem') ||
-        q.contains('kan lane') ||
-        q.contains('kan låne') ||
-        q.contains('godkjenn') ||
-        q.contains('signerer');
     if (asksWho &&
         (asksRental || q.contains('bil')) &&
         (chunk.id == 'rental:approvers' ||
             hay.contains('jassy') ||
             hay.contains('godkjenningsrekkefolge') ||
             hay.contains('godkjenningsrekkefølge'))) {
-      boost += 140;
+      boost += 280;
+    }
+    if (asksWho && asksRental && chunk.id == 'rental:agreement') {
+      boost -= 120;
     }
 
     if ((q.contains('pris') || q.contains('koster') || q.contains('gebyr')) &&
@@ -258,25 +303,39 @@ class KnowledgeAssistantEngine {
       }
     }
 
-    if ((q.contains('avvik') ||
-            q.contains('registrer') ||
-            q.contains('melde avvik')) &&
-        (chunk.id.contains('avvik') || hay.contains('meld nytt avvik'))) {
-      boost += chunk.id.contains('avvik') ? 160 : 80;
+    if (asksAvvikHowTo &&
+        (chunk.id.contains('avvik') ||
+            chunk.id == 'faq:avvik-normal' ||
+            hay.contains('meld nytt avvik'))) {
+      boost += chunk.id.startsWith('faq:') ? 180 : 120;
     }
-    if ((q.contains('avvik') || q.contains('registrer')) &&
-        chunk.id == 'help:hms') {
+    if (asksAvvikHowTo && chunk.id == 'help:hms') {
       boost -= 50;
     }
-    if ((q.contains('ferie') || q.contains('fravær') || q.contains('fravaer')) &&
-        chunk.id.contains('fravaer')) {
-      boost += 120;
+    if ((q.contains('ferie') ||
+            q.contains('fravær') ||
+            q.contains('fravaer') ||
+            q.contains('egenmelding') ||
+            q.contains('sykt barn')) &&
+        (chunk.id.contains('fravaer') ||
+            chunk.id.contains('leave') ||
+            chunk.id.startsWith('faq:leave') ||
+            chunk.id == 'help:absence' ||
+            chunk.id == 'faq:mine-ansatte')) {
+      boost += 140;
     }
     if (q.contains('hvordan') &&
         chunk.source == KnowledgeSourceKind.sop &&
         chunk.id.startsWith('sop:') &&
-        !chunk.id.contains('_err')) {
+        !chunk.id.contains('_err') &&
+        !asksAnonymous) {
       boost += 20;
+    }
+
+    // FAQ-fakta vinner over lange SOP-steg når spørsmålet er «hvem/hva/kan».
+    if ((asksWho || q.contains('hva er') || q.contains('kan jeg')) &&
+        chunk.id.startsWith('faq:')) {
+      boost += 60;
     }
 
     if ((q.contains('passord') || q.contains('logg inn') || q.contains('innlogging')) &&
@@ -299,6 +358,12 @@ class KnowledgeAssistantEngine {
         chunk.source == KnowledgeSourceKind.rental &&
         (hay.contains('retur') || hay.contains('utlevering'))) {
       boost += 40;
+    }
+    if ((q.contains('organisasjonskart') ||
+            q.contains('hierarki') ||
+            q.contains('hvem er leder')) &&
+        (chunk.id.contains('org') || hay.contains('organisasjonskart'))) {
+      boost += 120;
     }
     return boost;
   }

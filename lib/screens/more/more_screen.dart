@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/constants/app_icons.dart';
+import '../../core/constants/company_principals.dart';
 import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/config/driftpro_client.dart';
@@ -132,7 +133,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          _profile?.jobTitle ?? (_profile?.role.name.toUpperCase() ?? ''),
+                          _profile?.displayTitle ?? '',
                           style: DriftProTheme.bodySm.copyWith(
                             color: Colors.white.withOpacity(0.75),
                           ),

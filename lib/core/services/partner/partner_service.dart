@@ -27,6 +27,7 @@ import 'fleet_shift_seed.dart';
 import 'mavi_unit_codes.dart';
 import '../storage/company_file_storage.dart';
 import '../storage/storage_file_access.dart';
+import '../assistant/assistant_event_learning.dart';
 import 'partner_portal_scope.dart';
 import 'postal_code_registry.dart';
 import 'route_pdf_text_service.dart';
@@ -1487,6 +1488,38 @@ class PartnerService {
         unawaited(flushPushOutbox());
       }
     }
+
+    // Assistenten lærer fra utsendingen (kontinuerlig).
+    try {
+      final labels = <String>[];
+      for (final shareId in shareIdToShiftId.keys) {
+        final row = await _client
+            .from('partner_route_shares')
+            .select(
+              'partner_vehicles(unit_number, registration_number, label)',
+            )
+            .eq('id', shareId)
+            .maybeSingle();
+        final v = row?['partner_vehicles'];
+        if (v is Map) {
+          final unit = '${v['unit_number'] ?? ''}'.trim();
+          final reg = '${v['registration_number'] ?? ''}'.trim();
+          final label = '${v['label'] ?? ''}'.trim();
+          final name = [
+            if (unit.isNotEmpty) unit,
+            if (reg.isNotEmpty) reg,
+            if (label.isNotEmpty && label != unit && label != reg) label,
+          ].join(' ');
+          if (name.isNotEmpty) labels.add(name);
+        }
+      }
+      await AssistantEventLearning.onRouteDispatched(
+        companyId: companyId,
+        routeCount: shareIdToShiftId.length,
+        vehicleLabels: labels,
+        routeDate: date,
+      );
+    } catch (_) {}
   }
 
   /// Publiser alle ruter i kladd ([dispatchStatus] = staged) til sjåfører.

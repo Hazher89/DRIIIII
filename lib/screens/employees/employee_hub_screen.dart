@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/constants/company_principals.dart';
 import '../../core/permissions/access_catalog.dart';
 import '../../core/permissions/user_access.dart';
 import '../../core/routing/app_paths.dart';
@@ -430,7 +431,7 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                     Text(user.email, style: DriftProTheme.caption),
                     const SizedBox(height: 4),
                     Text(
-                      '${user.role.name} · ${_deptName(user.departmentId)} · $enabled tilganger aktive',
+                      '${user.displayTitle} · ${_deptName(user.departmentId)} · $enabled tilganger aktive',
                       style: DriftProTheme.caption,
                     ),
                   ],

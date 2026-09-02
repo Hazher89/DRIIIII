@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/company_principals.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/user_profile.dart';
 import '../../employees/widgets/employee_display.dart';
@@ -70,7 +71,7 @@ class UnassignedEmployeesBanner extends StatelessWidget {
                       ),
                     ),
                     title: EmployeeDisplay.nameWithNumber(p),
-                    subtitle: Text(p.jobTitle ?? p.role.name),
+                    subtitle: Text(p.displayTitle),
                   ),
                 )
                 .toList(),

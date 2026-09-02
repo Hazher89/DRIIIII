@@ -8,12 +8,14 @@ import '../../core/config/driftpro_client.dart';
 import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/constants/app_icons.dart';
 import '../../core/constants/company_display.dart';
+import '../../core/constants/company_principals.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/user_access.dart';
 import '../../core/services/absence/employee_leave_stats.dart';
 import '../../core/services/supabase_service.dart';
+import '../../core/services/org/department_leader_scope.dart';
 import '../employees/employee_hub_screen.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/dashboard_stats.dart';
@@ -72,6 +74,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   int? _vacationDaysLeft;
   int _myPendingAbsences = 0;
   int _myOpenTickets = 0;
+  bool _canManageTeam = false;
   TeamLeaveSummary _leaveSummary = TeamLeaveSummary.empty;
   int _goalCriticalTickets = 0;
   int _goalUpcomingSafetyRounds = 0;
@@ -209,28 +212,38 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       final companySettings = await SupabaseService.fetchCompanyLeaveSettings(companyId);
 
+      final canManageTeam = profile != null
+          ? await DepartmentLeaderScope.canManageTeam(profile)
+          : false;
+
       List<UserProfile> scopeProfiles = const [];
       if (profile != null) {
         if (profile.isAdmin) {
           scopeProfiles =
               await SupabaseService.fetchProfiles(companyId: companyId);
-        } else if (profile.role == UserRole.leder &&
-            profile.departmentId != null) {
-          scopeProfiles = await SupabaseService.fetchProfiles(
-            companyId: companyId,
-            departmentId: profile.departmentId,
-          );
+        } else if (canManageTeam) {
+          final deptIds =
+              await DepartmentLeaderScope.managedDepartmentIds(profile);
+          final all =
+              await SupabaseService.fetchProfiles(companyId: companyId);
+          scopeProfiles = all
+              .where((p) =>
+                  p.departmentId != null && deptIds.contains(p.departmentId))
+              .toList();
+          if (!scopeProfiles.any((p) => p.id == profile.id)) {
+            scopeProfiles = [profile, ...scopeProfiles];
+          }
         } else {
           scopeProfiles = [profile];
         }
       }
 
-      final isCoordinator = access?.canApproveLeave == true;
+      final isCoordinator = canManageTeam;
       final scopeUserIds = scopeProfiles.map((p) => p.id).toSet();
 
       var onDuty = await AttendanceService.getOnDutyEmployees(companyId);
       if (profile != null && !profile.isAdmin) {
-        if (profile.role == UserRole.leder) {
+        if (canManageTeam) {
           onDuty = onDuty.where((e) => scopeUserIds.contains(e.userId)).toList();
         } else {
           onDuty = onDuty.where((e) => e.userId == profile.id).toList();
@@ -311,7 +324,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             color: DriftProTheme.primaryGreen,
             type: _NoticeType.pendingUsers,
           ),
-        if (pendingApprovals > 0 && access?.canApproveLeave == true)
+        if (pendingApprovals > 0 && canManageTeam)
           _DashboardNotice(
             title: '$pendingApprovals fravær/ferie-forespørsler venter',
             subtitle: 'Trykk for å åpne håndtering',
@@ -355,6 +368,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
       setState(() {
         _profile = profile;
+        _canManageTeam = canManageTeam;
         _kiosk = meta.kiosk;
         _companyName = CompanyDisplay.resolve(meta.companyName);
         _scopedAbsences = scopedAbsences;
@@ -518,21 +532,14 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   String get _dataScopeLabel {
     if (_profile?.isAdmin == true) return 'Hele bedriften';
-    if (_profile?.role == UserRole.leder) return 'Din avdeling og deg';
+    if (_canManageTeam) return 'Din avdeling og ansatte';
     return 'Kun dine registreringer';
   }
 
   String get _roleLabel {
     final p = _profile;
     if (p == null) return '';
-    if (p.jobTitle != null && p.jobTitle!.trim().isNotEmpty) return p.jobTitle!.trim();
-    return switch (p.role) {
-      UserRole.superadmin => 'Superadmin',
-      UserRole.admin => 'Administrator',
-      UserRole.leder => 'Avdelingsleder',
-      UserRole.ansatt => 'Ansatt',
-      UserRole.samarbeidspartner => 'Samarbeidspartner',
-    };
+    return p.displayTitle;
   }
 
   DashboardPersonalSnapshot? get _personalSnapshot {

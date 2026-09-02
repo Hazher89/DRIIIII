@@ -116,7 +116,7 @@ class _EmployeeDepartmentLeadershipEditorState
                 title: Text(d.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                 subtitle: Text(
                   isLed
-                      ? 'Er avdelingsleder — får varsler om fravær m.m.'
+                      ? 'Er avdelingsleder — ser ansatte, avvik, HMS, fravær/ferie i avdelingen'
                       : 'Ikke leder for denne avdelingen',
                   style: const TextStyle(fontSize: 12),
                 ),

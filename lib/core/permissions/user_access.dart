@@ -1,4 +1,5 @@
 import '../../models/user_profile.dart';
+import '../constants/company_principals.dart';
 import 'access_actions.dart';
 import 'access_area_catalog.dart';
 import 'access_keys.dart';
@@ -17,8 +18,12 @@ class UserAccess {
   static UserAccess? of(UserProfile? profile) =>
       profile == null ? null : UserAccess(profile);
 
+  static bool _hasFullSystemAccess(UserProfile profile) =>
+      profile.role == UserRole.superadmin ||
+      CompanyPrincipal.isPrincipal(profile);
+
   static AccessSettingsDoc _resolveDoc(UserProfile profile) {
-    if (profile.role == UserRole.superadmin) {
+    if (_hasFullSystemAccess(profile)) {
       final d = AccessSettingsDoc.empty();
       for (final area in AccessAreaCatalog.areas) {
         for (final a in area.actions) {
@@ -40,7 +45,7 @@ class UserAccess {
   }
 
   static Map<String, bool> _resolveLegacy(UserProfile profile) {
-    if (profile.role == UserRole.superadmin) {
+    if (_hasFullSystemAccess(profile)) {
       return {
         for (final k in AccessKeys.allKeys) k: true,
         AccessKeys.partnersVehicleRental: true,
@@ -59,7 +64,7 @@ class UserAccess {
 
   /// Ny API: sjekk område + handling.
   bool canArea(String areaId, [AccessAction action = AccessAction.view]) {
-    if (profile.role == UserRole.superadmin) return true;
+    if (_hasFullSystemAccess(profile)) return true;
     if (!profile.isApproved) return false;
     if (profile.role == UserRole.ansatt &&
         (areaId == 'more.avdelinger' ||
@@ -79,7 +84,7 @@ class UserAccess {
 
   /// Legacy bool-nøkkel (AccessKeys.*).
   bool can(String key) {
-    if (profile.role == UserRole.superadmin) return true;
+    if (_hasFullSystemAccess(profile)) return true;
     if (!profile.isApproved) return false;
     if (profile.role == UserRole.ansatt &&
         (key == AccessKeys.avdelinger || key == AccessKeys.avdelingerRediger)) {
@@ -198,10 +203,13 @@ class UserAccess {
   bool get canHmsTraining => canArea('hms.opplaering');
 
   bool get dataScopeCompany =>
-      profile.role == UserRole.admin || profile.role == UserRole.superadmin;
+      profile.role == UserRole.admin ||
+      profile.role == UserRole.superadmin ||
+      CompanyPrincipal.isPrincipal(profile);
 }
 
 extension UserProfileAccess on UserProfile {
   UserAccess get access => UserAccess(this);
-  bool get isSuperAdmin => role == UserRole.superadmin;
+  bool get isSuperAdmin =>
+      role == UserRole.superadmin || CompanyPrincipal.isPrincipal(this);
 }

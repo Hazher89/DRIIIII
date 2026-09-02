@@ -3,13 +3,19 @@ import 'package:intl/intl.dart';
 import 'business_days.dart';
 
 /// 12-måneders fraværsperiode forankret på ansettelsesdato (som legacy-systemet).
+///
+/// [periodEnd] er **siste inkluderende dag** i perioden.
 class LeavePeriodWindow {
   final DateTime periodStart;
   final DateTime periodEnd;
 
+  /// True når perioden følger ansettelsesdato; false = kalenderår.
+  final bool anchoredToHireDate;
+
   const LeavePeriodWindow({
     required this.periodStart,
     required this.periodEnd,
+    this.anchoredToHireDate = false,
   });
 
   /// Periode som inneholder [referenceDate] (standard: i dag).
@@ -24,6 +30,7 @@ class LeavePeriodWindow {
       return LeavePeriodWindow(
         periodStart: DateTime(ref.year, 1, 1),
         periodEnd: DateTime(ref.year, 12, 31),
+        anchoredToHireDate: false,
       );
     }
 
@@ -32,8 +39,14 @@ class LeavePeriodWindow {
     if (periodStart.isAfter(ref)) {
       periodStart = _anniversaryOnYear(hire, ref.year - 1);
     }
-    final periodEnd = _anniversaryOnYear(hire, periodStart.year + 1);
-    return LeavePeriodWindow(periodStart: periodStart, periodEnd: periodEnd);
+    // Neste årsjubileum er eksklusivt — lagre siste inkluderende dag.
+    final nextAnniversary = _anniversaryOnYear(hire, periodStart.year + 1);
+    final periodEnd = nextAnniversary.subtract(const Duration(days: 1));
+    return LeavePeriodWindow(
+      periodStart: periodStart,
+      periodEnd: periodEnd,
+      anchoredToHireDate: true,
+    );
   }
 
   static DateTime _anniversaryOnYear(DateTime hire, int year) {
@@ -50,4 +63,11 @@ class LeavePeriodWindow {
     final fmt = DateFormat('dd.MM.yyyy');
     return '${fmt.format(periodStart)} – ${fmt.format(periodEnd)}';
   }
+
+  /// Kort forklaring til ledere / ansatte.
+  String get basisLabel => anchoredToHireDate
+      ? '12 mnd. fra ansettelse'
+      : 'Kalenderår ${periodStart.year}';
+
+  String formatRangeWithBasis() => '${formatRange()} · $basisLabel';
 }

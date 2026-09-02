@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/permissions/access_catalog.dart';
 import '../../core/permissions/access_presets.dart';
+import '../../core/permissions/statutory_role_access.dart';
 import '../../core/permissions/user_access.dart';
+import '../../core/services/org/access_change_audit_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
@@ -15,7 +17,7 @@ import 'widgets/permission_matrix_editor.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 import '../../core/layout/web_layout.dart';
 
-/// Full tilgangskonfigurasjon for én ansatt (superadmin).
+/// Full tilgangskonfigurasjon for én ansatt (Tommy/Nico/Hazher).
 class EmployeeAccessDetailScreen extends StatefulWidget {
   final UserProfile employee;
   final List<Department> departments;
@@ -45,7 +47,13 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
   late String? _departmentId;
   late bool _approved;
   late Map<String, dynamic> _settings;
+  late bool _safetyRep;
+  late bool _unionRep;
+  late bool _chiefSafety;
+  late bool _amuMember;
   bool _saving = false;
+  bool _statutoryBusy = false;
+  List<AccessChangeAuditEntry> _audit = const [];
 
   @override
   void dispose() {
@@ -62,6 +70,18 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
     _departmentId = widget.employee.departmentId;
     _approved = widget.employee.isApproved;
     _settings = AccessCatalog.normalizeV2(widget.employee.accessSettings, _role);
+    _safetyRep = widget.employee.isSafetyRepresentative;
+    _unionRep = widget.employee.isUnionRepresentative;
+    _chiefSafety = widget.employee.isChiefSafetyRepresentative;
+    _amuMember = widget.employee.isAmuMember;
+    _loadAudit();
+  }
+
+  Future<void> _loadAudit() async {
+    final list = await AccessChangeAuditService.fetchForTarget(
+      targetProfileId: widget.employee.id,
+    );
+    if (mounted) setState(() => _audit = list);
   }
 
   Future<void> _loadCurrentUser() async {
@@ -90,7 +110,77 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
     setState(() {
       _role = role;
       _settings = Map<String, dynamic>.from(AccessPresets.forRoleV2(role));
+      if (_safetyRep || _unionRep || _chiefSafety || _amuMember) {
+        _settings = StatutoryRoleAccess.rebuildAccessSettings(
+          role: role,
+          current: _settings,
+          isSafetyRepresentative: _safetyRep || _chiefSafety,
+          isUnionRepresentative: _unionRep,
+          isChiefSafetyRepresentative: _chiefSafety,
+          isAmuMember: _amuMember,
+        );
+      }
     });
+  }
+
+  Future<void> _setStatutory({
+    bool? safety,
+    bool? union,
+    bool? chief,
+    bool? amu,
+  }) async {
+    if (!widget.isSuperAdmin || _statutoryBusy) return;
+    setState(() => _statutoryBusy = true);
+    try {
+      await SupabaseService.setStatutoryRepresentativeRoles(
+        profileId: widget.employee.id,
+        isSafetyRepresentative: safety,
+        isUnionRepresentative: union,
+        isChiefSafetyRepresentative: chief,
+        isAmuMember: amu,
+      );
+      final row = await SupabaseService.client
+          .from('profiles')
+          .select()
+          .eq('id', widget.employee.id)
+          .maybeSingle();
+      if (!mounted) return;
+      setState(() {
+        if (safety != null) _safetyRep = safety;
+        if (union != null) _unionRep = union;
+        if (chief != null) {
+          _chiefSafety = chief;
+          if (chief) _safetyRep = true;
+        }
+        if (amu != null) _amuMember = amu;
+        if (row != null) {
+          final refreshed = UserProfile.fromJson(row);
+          _safetyRep = refreshed.isSafetyRepresentative;
+          _unionRep = refreshed.isUnionRepresentative;
+          _chiefSafety = refreshed.isChiefSafetyRepresentative;
+          _amuMember = refreshed.isAmuMember;
+          _settings = AccessCatalog.normalizeV2(
+            refreshed.accessSettings,
+            refreshed.role,
+          );
+        }
+      });
+      widget.onSaved?.call();
+      await _loadAudit();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Verv oppdatert — tilganger synket')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Feil: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _statutoryBusy = false);
+    }
   }
 
   Future<void> _save() async {
@@ -348,6 +438,74 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
                   employee: widget.employee,
                   departments: widget.departments,
                 ),
+                const SizedBox(height: 16),
+                Text('Lovpålagte verv', style: DriftProTheme.headingSm),
+                const SizedBox(height: 4),
+                Text(
+                  'Tommy, Nico og Hazher kan slå av/på. Tilganger settes '
+                  'automatisk etter norsk lov — enkeltmoduler kan justeres under.',
+                  style: DriftProTheme.caption,
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Verneombud'),
+                  subtitle: Text(StatutoryRoleAccess.verneombudLawHint),
+                  value: _safetyRep || _chiefSafety,
+                  onChanged: (_statutoryBusy || _chiefSafety)
+                      ? null
+                      : (v) => _setStatutory(safety: v),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Hovedverneombud'),
+                  subtitle: Text(StatutoryRoleAccess.hovedverneombudLawHint),
+                  value: _chiefSafety,
+                  onChanged: _statutoryBusy
+                      ? null
+                      : (v) => _setStatutory(chief: v),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Tillitsvalgt'),
+                  subtitle: Text(StatutoryRoleAccess.tillitsvalgtLawHint),
+                  value: _unionRep,
+                  onChanged: _statutoryBusy
+                      ? null
+                      : (v) => _setStatutory(union: v),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('AMU-medlem'),
+                  subtitle: Text(StatutoryRoleAccess.amuLawHint),
+                  value: _amuMember,
+                  onChanged: _statutoryBusy
+                      ? null
+                      : (v) => _setStatutory(amu: v),
+                ),
+                if (_audit.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text('Revisjon (siste endringer)', style: DriftProTheme.headingSm),
+                  const SizedBox(height: 6),
+                  ..._audit.take(8).map((e) {
+                    final when = e.createdAt;
+                    final stamp = when == null
+                        ? ''
+                        : '${when.day.toString().padLeft(2, '0')}.'
+                            '${when.month.toString().padLeft(2, '0')}.'
+                            '${when.year} '
+                            '${when.hour.toString().padLeft(2, '0')}:'
+                            '${when.minute.toString().padLeft(2, '0')}';
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(e.summary, style: DriftProTheme.bodySm),
+                      subtitle: Text(
+                        stamp.isEmpty ? e.action : '$stamp · ${e.action}',
+                        style: DriftProTheme.caption,
+                      ),
+                    );
+                  }),
+                ],
                 const SizedBox(height: 8),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
@@ -361,7 +519,8 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
                   children: [
                     Expanded(
                       child: Text(
-                        'Alle sider og funksjoner i DriftPro',
+                        'Alle sider og funksjoner i DriftPro '
+                        '(manuell justering)',
                         style: DriftProTheme.headingSm,
                       ),
                     ),
@@ -434,6 +593,12 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
                   children: [
                     _chip(_role.name, DriftProTheme.primaryGreen),
                     _chip(_deptName, Colors.blue),
+                    if (_chiefSafety)
+                      _chip('Hovedverneombud', Colors.deepPurple)
+                    else if (_safetyRep)
+                      _chip('Verneombud', Colors.teal),
+                    if (_unionRep) _chip('Tillitsvalgt', Colors.indigo),
+                    if (_amuMember) _chip('AMU', Colors.brown),
                     _chip(
                       _approved ? 'Godkjent' : 'Venter',
                       _approved ? Colors.green : Colors.orange,

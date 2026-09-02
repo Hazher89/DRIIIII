@@ -34,7 +34,7 @@ void main() {
     );
 
     expect(snap.egenDaysTotal, 4);
-    expect(snap.quotaUsagePercent, closeTo(16.67, 0.1));
+    expect(snap.quotaUsagePercent, closeTo(33.33, 0.1));
     expect(snap.absenceRatePercent(ref), greaterThan(0));
     expect(snap.absenceRatePercent(ref), lessThan(10));
   });

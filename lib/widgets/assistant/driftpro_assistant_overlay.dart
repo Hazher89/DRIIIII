@@ -133,11 +133,10 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
   Widget build(BuildContext context) {
     if (!kIsWeb) return widget.child;
 
-    // Under-ruter (f.eks. avdelingsdetaljer) har «Lagre» øverst til høyre —
-    // flytt chip ned så den ikke dekker AppBar-handlinger.
-    final nav = driftProRootNavigatorKey.currentState;
-    final onSubRoute = nav != null && nav.canPop();
+    // Web: alltid under typisk AppBar + TabBar så «Lagre» og faner ikke dekkes.
+    // (Nested Navigator.push — f.eks. avdeling — registreres ikke på root-nav.)
     final topInset = MediaQuery.paddingOf(context).top;
+    final chipTop = topInset + kToolbarHeight + kTextTabBarHeight + 8;
 
     return Stack(
       fit: StackFit.expand,
@@ -145,16 +144,11 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
         widget.child,
         if (_showFab)
           Positioned(
-            top: onSubRoute ? topInset + kToolbarHeight + 6 : topInset + 6,
-            right: 10,
-            child: SafeArea(
-              bottom: false,
-              left: false,
-              right: false,
-              child: _AssistantLaunchChip(
-                title: _flag.displayTitle,
-                onPressed: _openChat,
-              ),
+            top: chipTop,
+            right: 12,
+            child: _AssistantLaunchChip(
+              title: _flag.displayTitle,
+              onPressed: _openChat,
             ),
           ),
       ],

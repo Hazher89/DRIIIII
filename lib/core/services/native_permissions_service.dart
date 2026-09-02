@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../config/driftpro_client.dart';
@@ -74,7 +75,47 @@ extension NotificationAuthStateX on NotificationAuthState {
 }
 
 abstract final class NativePermissionsService {
+  static const _notificationPromptFlagFile = 'notification_permission_prompted_v1';
+
   static bool get _native => DriftProClient.isMobile;
+
+  /// Apple-mønster: be kun om varsel-tillatelse etter innlogging (systemdialog).
+  /// Kamera, bilder, posisjon og mikrofon spørres ved behov via [ensureCamera] m.m.
+  static Future<void> promptNotificationsIfNeeded([BuildContext? context]) async {
+    if (!_native) return;
+
+    final state = await readNotificationState();
+    if (state == NotificationAuthState.enabled) {
+      await PushNotificationService.registerAfterPermissionGranted();
+      return;
+    }
+
+    // Allerede avslått — ikke mase (Apple-mønster).
+    if (state == NotificationAuthState.disabled) return;
+
+    if (context != null && !context.mounted) return;
+    await ensureNotifications(context: context);
+
+    if (Platform.isAndroid) {
+      await _markNotificationPromptAttempted();
+    }
+  }
+
+  static Future<bool> _notificationPromptAttempted() async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      return File('${dir.path}/$_notificationPromptFlagFile').existsSync();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> _markNotificationPromptAttempted() async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      await File('${dir.path}/$_notificationPromptFlagFile').writeAsString('1');
+    } catch (_) {}
+  }
 
   static Future<bool> ensureNotifications({BuildContext? context}) =>
       ensure(AppPermissionKind.notifications, context: context);
@@ -112,6 +153,21 @@ abstract final class NativePermissionsService {
       return ok;
     }
 
+    if (kind == AppPermissionKind.notifications && Platform.isAndroid) {
+      final ok = await PushNotificationService.requestSystemNotificationPermission();
+      if (ok) {
+        await PushNotificationService.registerAfterPermissionGranted();
+      } else if (context != null && context.mounted) {
+        _snack(
+          context,
+          kind.deniedMessage,
+          actionLabel: 'Innstillinger',
+          onAction: openAppSettings,
+        );
+      }
+      return ok;
+    }
+
     if (kind == AppPermissionKind.location) {
       final serviceOn = await Geolocator.isLocationServiceEnabled();
       if (!serviceOn) {
@@ -128,9 +184,6 @@ abstract final class NativePermissionsService {
     final permission = kind.permission;
     var status = await permission.status;
     if (status.isGranted || status.isLimited || status.isProvisional) {
-      if (kind == AppPermissionKind.notifications) {
-        await PushNotificationService.registerAfterPermissionGranted();
-      }
       return true;
     }
 
@@ -147,12 +200,7 @@ abstract final class NativePermissionsService {
     }
 
     status = await permission.request();
-    final ok =
-        status.isGranted || status.isLimited || status.isProvisional;
-    if (ok && kind == AppPermissionKind.notifications) {
-      await PushNotificationService.registerAfterPermissionGranted();
-    }
-    return ok;
+    return status.isGranted || status.isLimited || status.isProvisional;
   }
 
   /// Les varsel-tillatelse uten å vise systemdialog (for profil / innstillinger).
@@ -181,7 +229,10 @@ abstract final class NativePermissionsService {
     if (status.isGranted || status.isLimited || status.isProvisional) {
       return NotificationAuthState.enabled;
     }
-    if (status.isDenied || status.isPermanentlyDenied) {
+    if (status.isPermanentlyDenied) {
+      return NotificationAuthState.disabled;
+    }
+    if (await _notificationPromptAttempted()) {
       return NotificationAuthState.disabled;
     }
     return NotificationAuthState.notConfigured;

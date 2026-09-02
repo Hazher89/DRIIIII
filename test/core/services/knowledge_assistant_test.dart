@@ -33,5 +33,24 @@ void main() {
       who.text.toLowerCase(),
       anyOf(contains('jassy'), contains('godkjenn'), contains('herish')),
     );
+
+    final anon = engine.answer('hvem kan sende anmeldelse anonymt');
+    expect(anon.found, isTrue);
+    expect(anon.hits.first.chunk.id, contains('whistle'));
+    expect(
+      anon.text.toLowerCase(),
+      allOf(
+        anyOf(contains('anonym'), contains('anmeldelse')),
+        anyOf(contains('tommy'), contains('nico'), contains('hazher')),
+      ),
+    );
+    expect(anon.text.toLowerCase(), isNot(contains('slik registrerer du avvik')));
+
+    final egen = engine.answer('hvor mange egenmeldingsdager har jeg?');
+    expect(egen.found, isTrue);
+    expect(
+      egen.text.toLowerCase(),
+      anyOf(contains('egenmelding'), contains('12'), contains('tilfeller')),
+    );
   });
 }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
+import '../../../core/constants/company_principals.dart';
 import '../../../core/constants/leave_rules.dart';
 import '../../../core/services/absence/employee_leave_stats.dart';
 import '../../../core/theme/app_theme.dart';
@@ -127,7 +129,7 @@ class LeaveEmployeeStatsCompactBar extends StatelessWidget {
   }
 }
 
-/// Full saldo for valgt ansatt — vises i bottom sheet.
+/// Full saldo for valgt ansatt — vises i bottom sheet / sidepanel.
 class LeaveEmployeeStatsPanel extends StatelessWidget {
   final UserProfile employee;
   final AbsenceQuota? quota;
@@ -135,6 +137,7 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
   final int selectedYear;
   final List<Absence> employeeAbsences;
   final Map<String, String> departmentNames;
+  final VoidCallback? onEditQuota;
 
   const LeaveEmployeeStatsPanel({
     super.key,
@@ -144,6 +147,7 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
     required this.selectedYear,
     required this.employeeAbsences,
     required this.departmentNames,
+    this.onEditQuota,
   });
 
   static Future<void> showSheet(
@@ -154,6 +158,7 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
     required int selectedYear,
     required List<Absence> employeeAbsences,
     required Map<String, String> departmentNames,
+    VoidCallback? onEditQuota,
   }) {
     return showModalBottomSheet<void>(
       context: context,
@@ -164,12 +169,12 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
       ),
       builder: (ctx) => DraggableScrollableSheet(
         expand: false,
-        initialChildSize: 0.55,
-        minChildSize: 0.35,
-        maxChildSize: 0.9,
+        initialChildSize: 0.72,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
         builder: (_, scrollCtrl) => SingleChildScrollView(
           controller: scrollCtrl,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
           child: LeaveEmployeeStatsPanel(
             employee: employee,
             quota: quota,
@@ -177,6 +182,7 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
             selectedYear: selectedYear,
             employeeAbsences: employeeAbsences,
             departmentNames: departmentNames,
+            onEditQuota: onEditQuota,
           ),
         ),
       ),
@@ -197,15 +203,25 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
     final dept = employee.departmentId != null
         ? departmentNames[employee.departmentId!]
         : null;
+    final df = DateFormat('dd.MM.yyyy');
+    final dfShort = DateFormat('d. MMM', 'nb_NO');
 
     final pending = employeeAbsences
         .where((a) => a.status == AbsenceStatus.ventende)
-        .length;
+        .toList()
+      ..sort((a, b) => a.startDate.compareTo(b.startDate));
+    final recent = [...employeeAbsences]
+      ..sort((a, b) => b.startDate.compareTo(a.startDate));
     final onLeaveToday = employeeAbsences.any((a) {
       if (a.status != AbsenceStatus.godkjent) return false;
       final now = DateTime.now();
-      return !now.isBefore(a.startDate) && !now.isAfter(a.endDate);
+      final t = DateTime(now.year, now.month, now.day);
+      final s = DateTime(a.startDate.year, a.startDate.month, a.startDate.day);
+      final e = DateTime(a.endDate.year, a.endDate.month, a.endDate.day);
+      return !t.isBefore(s) && !t.isAfter(e);
     });
+
+    final hireMissing = employee.hireDate == null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -222,9 +238,10 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
           ),
         ),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CircleAvatar(
-              radius: 20,
+              radius: 22,
               backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
               child: Text(
                 employee.fullName.isNotEmpty
@@ -242,50 +259,172 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(employee.fullName, style: DriftProTheme.labelLg),
+                  const SizedBox(height: 2),
                   Text(
                     [
                       if (dept != null) dept,
                       if (employee.employeeNumber != null)
                         'nr ${employee.employeeNumber}',
-                    ].join(' · '),
+                      employee.displayTitle,
+                    ].where((s) => s.toString().trim().isNotEmpty).join(' · '),
                     style: DriftProTheme.caption,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    employee.hireDate != null
+                        ? 'Ansatt siden ${df.format(employee.hireDate!)}'
+                        : 'Ansettelsesdato mangler',
+                    style: DriftProTheme.caption.copyWith(
+                      color: hireMissing ? DriftProTheme.warning : null,
+                      fontWeight: hireMissing ? FontWeight.w700 : null,
+                    ),
                   ),
                 ],
               ),
             ),
-            if (onLeaveToday)
-              _badge('Borte i dag', DriftProTheme.warning)
-            else if (pending > 0)
-              _badge('$pending venter', DriftProTheme.warning)
-            else
-              _badge(
-                '${stats.totalFravaerDager} dager fravær',
-                stats.egenLevel == LeaveUsageLevel.critical ||
-                        stats.syktLevel == LeaveUsageLevel.critical
-                    ? DriftProTheme.error
-                    : stats.egenLevel == LeaveUsageLevel.warning ||
-                            stats.syktLevel == LeaveUsageLevel.warning
-                        ? Colors.orange.shade700
-                        : DriftProTheme.primaryGreen,
+            if (onEditQuota != null)
+              IconButton(
+                tooltip: 'Rediger feriekvote',
+                onPressed: onEditQuota,
+                icon: const Icon(Icons.edit_calendar_outlined),
               ),
           ],
         ),
-        const SizedBox(height: 14),
-        LeaveEmployeeKpiRow(stats: stats, selectedYear: selectedYear),
         const SizedBox(height: 10),
-        Text(
-          'Totalt ${stats.totalFravaerDager} fraværsdager '
-          '(${stats.egenDaysTotal} d egen · ${stats.egenTilfeller} tilf. · '
-          '${stats.syktDays} d sykt barn). '
-          'Egen kvote: ${stats.egenQuotaPercent.round()}% · '
-          'Sykt barn: ${stats.syktQuotaPercent.round()}% · '
-          'Fravær YTD: ${stats.absenceRatePercent(refDate).round()}% av virkedager.',
-          style: DriftProTheme.caption.copyWith(
-            color: isDark ? Colors.white54 : Colors.grey.shade600,
-            fontSize: 11,
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (onLeaveToday)
+              _badge('Borte i dag', DriftProTheme.warning)
+            else
+              _badge('På jobb', DriftProTheme.primaryGreen),
+            if (pending.isNotEmpty)
+              _badge('${pending.length} venter', DriftProTheme.warning),
+            _badge(
+              '${stats.totalFravaerDager} d fravær',
+              stats.quotaUsageLevel == LeaveUsageLevel.critical
+                  ? DriftProTheme.error
+                  : DriftProTheme.absenceSickSelf,
+            ),
+            AbsenceRateBadge(
+              percent: stats.absenceRatePercent(refDate),
+              level: stats.absenceRateLevel(refDate),
+            ),
+          ],
+        ),
+        if (hireMissing) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: DriftProTheme.warning.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: DriftProTheme.warning.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Text(
+              'Uten ansettelsesdato brukes kalenderår ${refDate.year} for '
+              'egenmelding/sykt barn. Sett ansettelsesdato på ansattprofilen '
+              'for korrekt 12-månedersperiode.',
+              style: DriftProTheme.caption.copyWith(height: 1.35),
+            ),
+          ),
+        ],
+        const SizedBox(height: 16),
+        LeaveEmployeeKpiRow(stats: stats, selectedYear: selectedYear),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF7FBF8),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Periode & kvote',
+                style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Egenmelding / sykt barn: ${stats.periodUsage.window.formatRangeWithBasis()}',
+                style: DriftProTheme.caption,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Ferie følger kalenderår $selectedYear '
+                '(${stats.ferieUsed} brukt · ${stats.ferieRemaining} igjen av ${stats.ferieTotal}).',
+                style: DriftProTheme.caption,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Totalt ${stats.totalFravaerDager} fraværsdager '
+                '(${stats.egenDaysTotal} d egen · ${stats.egenTilfeller} tilf. · '
+                '${stats.syktDays} d sykt barn). '
+                'Fravær YTD: ${stats.absenceRatePercent(refDate).round()}% av virkedager.',
+                style: DriftProTheme.caption.copyWith(height: 1.35),
+              ),
+            ],
           ),
         ),
+        if (pending.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Ventende søknader',
+            style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          ...pending.map(
+            (a) => _absenceLine(a, dfShort, highlight: true),
+          ),
+        ],
+        const SizedBox(height: 16),
+        Text(
+          'Siste fravær',
+          style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
+        if (recent.isEmpty)
+          Text('Ingen registrerte søknader', style: DriftProTheme.caption)
+        else
+          ...recent.take(8).map((a) => _absenceLine(a, dfShort)),
       ],
+    );
+  }
+
+  Widget _absenceLine(Absence a, DateFormat df, {bool highlight = false}) {
+    final days = a.totalDays ??
+        a.endDate.difference(a.startDate).inDays + 1;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: highlight
+            ? DriftProTheme.warning.withValues(alpha: 0.08)
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: highlight
+              ? DriftProTheme.warning.withValues(alpha: 0.3)
+              : Colors.grey.shade200,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '${a.type.label} · ${df.format(a.startDate)}–${df.format(a.endDate)}',
+              style: DriftProTheme.bodySm.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ),
+          Text('$days d', style: DriftProTheme.caption),
+          const SizedBox(width: 8),
+          Text(a.status.label, style: DriftProTheme.caption),
+        ],
+      ),
     );
   }
 

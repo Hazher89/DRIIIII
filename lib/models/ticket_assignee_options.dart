@@ -1,14 +1,14 @@
 import 'user_profile.dart';
 
-/// Hvem avsender kan velge ved innrapportering av avvik.
+/// Hvem avsender kan velge ved avvik / HMS — kun egen leder + ledelsen.
 class TicketAssigneeOptions {
-  /// Avdelingsleder(e) — anbefalt standardvalg for ansattens avdeling.
+  /// Avdelingsleder(e) for ansattens egen avdeling.
   final List<UserProfile> nearestLeaders;
 
-  /// Øvrige ledere i bedriften (andre avdelinger).
+  /// Ikke i bruk for ansatte (holdes tom — andre avdelingers ledere skjuless).
   final List<UserProfile> otherLeaders;
 
-  /// Sentral eskalering (superadmin).
+  /// Ledelsen: Tommy, Nico, Hazher (feltnavn beholdes for bakoverkompatibilitet).
   final List<UserProfile> superadmins;
 
   const TicketAssigneeOptions({
@@ -17,14 +17,17 @@ class TicketAssigneeOptions {
     this.superadmins = const [],
   });
 
+  /// Alias: Tommy / Nico / Hazher.
+  List<UserProfile> get leadership => superadmins;
+
   bool get isEmpty =>
       nearestLeaders.isEmpty && otherLeaders.isEmpty && superadmins.isEmpty;
 
-  /// Standardvalg: første nærmeste leder, ellers første annen leder, ellers superadmin.
+  /// Standardvalg: egen leder, ellers første i ledelsen.
   String? get defaultAssigneeId {
     if (nearestLeaders.isNotEmpty) return nearestLeaders.first.id;
-    if (otherLeaders.isNotEmpty) return otherLeaders.first.id;
     if (superadmins.isNotEmpty) return superadmins.first.id;
+    if (otherLeaders.isNotEmpty) return otherLeaders.first.id;
     return null;
   }
 

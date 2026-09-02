@@ -282,6 +282,14 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         unawaited(NativePermissionsService.bootstrapAfterLogin(
           mounted ? context : null,
         ));
+        if (mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            unawaited(
+              NativePermissionsService.promptNotificationsIfNeeded(context),
+            );
+          });
+        }
       }
 
       if (!silent && profile.isRecoverySession) {

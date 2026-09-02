@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/company_principals.dart';
 import '../../../core/constants/leave_rules.dart';
 import '../../../core/services/absence/employee_leave_stats.dart';
 import '../../../core/theme/absence_palette.dart';
@@ -84,7 +85,7 @@ class DepartmentMemberLeaveCard extends StatelessWidget {
                       [
                         if (member.employeeNumber != null)
                           'nr ${member.employeeNumber}',
-                        member.role.name,
+                        member.displayTitle,
                       ].join(' · '),
                       style: DriftProTheme.caption,
                     ),
@@ -107,9 +108,14 @@ class DepartmentMemberLeaveCard extends StatelessWidget {
           LeaveEmployeeKpiRow(stats: stats, selectedYear: selectedYear),
           const SizedBox(height: 8),
           Text(
-            '${stats.totalFravaerDager} dager fravær totalt · '
-            '${stats.egenTilfeller}/${LeaveRules.egenmeldingMaxPeriodsPerYear} egenm.tilfeller',
+            '${stats.totalFravaerDager} d fravær · '
+            '${stats.egenTilfeller}/${LeaveRules.egenmeldingMaxPeriodsPerYear} egenm.tilf. · '
+            '${stats.periodUsage.window.basisLabel}',
             style: DriftProTheme.caption.copyWith(fontSize: 10),
+          ),
+          Text(
+            stats.periodUsage.window.formatRange(),
+            style: DriftProTheme.caption.copyWith(fontSize: 9),
           ),
         ],
       ),

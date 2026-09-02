@@ -5,6 +5,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_strings.dart';
+import '../../core/constants/company_principals.dart';
 import '../../core/services/native_permissions_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -13,6 +14,7 @@ import '../../models/hms/hms_ticket_template.dart';
 import '../../models/ticket.dart';
 import '../../models/ticket_assignee_options.dart';
 import '../../models/user_profile.dart';
+import '../../models/whistleblowing_report.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Enkel, rask innrapportering for ansatte (tekst + bilder + alvor).
@@ -36,6 +38,12 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   String? _category;
   String? _selectedHandlerId;
   TicketAssigneeOptions _assignees = const TicketAssigneeOptions();
+  /// Anonymt avvik: kun Tommy / Nico / Hazher (én, flere eller alle).
+  final Set<WhistlePrincipal> _anonymousRecipients = {
+    WhistlePrincipal.tommy,
+    WhistlePrincipal.nico,
+    WhistlePrincipal.hazher,
+  };
   List<HmsTicketTemplate> _templates = [];
   bool _capturingGps = false;
   double? _gpsLat;
@@ -162,10 +170,52 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
     }
   }
 
+  List<UserProfile> get _leadershipProfiles => _assignees.leadership;
+
+  UserProfile? _profileForPrincipal(WhistlePrincipal p) {
+    for (final profile in _leadershipProfiles) {
+      if (CompanyPrincipal.ofProfile(profile) == p.companyPrincipal) {
+        return profile;
+      }
+    }
+    return null;
+  }
+
+  List<String> _resolveAnonymousProfileIds() {
+    final ids = <String>[];
+    for (final p in WhistlePrincipal.values) {
+      if (!_anonymousRecipients.contains(p)) continue;
+      final profile = _profileForPrincipal(p);
+      if (profile != null) ids.add(profile.id);
+    }
+    return ids;
+  }
+
+  void _toggleAnonymousRecipient(WhistlePrincipal p) {
+    setState(() {
+      if (_anonymousRecipients.contains(p)) {
+        if (_anonymousRecipients.length > 1) {
+          _anonymousRecipients.remove(p);
+        }
+      } else {
+        _anonymousRecipients.add(p);
+      }
+    });
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    if (_selectedHandlerId == null || _selectedHandlerId!.isEmpty) {
+    final anonymousIds =
+        _isAnonymous ? _resolveAnonymousProfileIds() : const <String>[];
+
+    if (_isAnonymous) {
+      if (_anonymousRecipients.isEmpty || anonymousIds.isEmpty) {
+        setState(() => _error =
+            'Velg minst én mottaker (Tommy, Nico eller Hazher).');
+        return;
+      }
+    } else if (_selectedHandlerId == null || _selectedHandlerId!.isEmpty) {
       setState(() => _error = 'Velg hvem som skal behandle avviket.');
       return;
     }
@@ -204,12 +254,15 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         }
       }
 
+      final assignedTo =
+          _isAnonymous ? anonymousIds.first : _selectedHandlerId;
+
       final ticket = Ticket(
         id: '',
         companyId: companyId,
         departmentId: profile?.departmentId,
         reportedBy: user.id,
-        assignedTo: _selectedHandlerId,
+        assignedTo: assignedTo,
         title: _titleController.text.trim(),
         description: _descriptionController.text.trim(),
         category: _category,
@@ -225,6 +278,13 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
       );
 
       final created = await SupabaseService.createTicket(ticket);
+      if (_isAnonymous && anonymousIds.length > 1) {
+        // Første varsles via insert-trigger; resten via RPC.
+        await SupabaseService.notifyAnonymousTicketRecipients(
+          ticketId: created.id,
+          profileIds: anonymousIds.skip(1).toList(),
+        );
+      }
       if (!mounted) return;
       final avvikId = created.traceRef ?? created.displayTraceRef;
       if (failedUploads > 0) {
@@ -240,8 +300,10 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '$avvikId er registrert. Saksbehandler får varsel nå, '
-              'og du får SMS ved statusendringer (under arbeid og ferdig).',
+              _isAnonymous
+                  ? '$avvikId er registrert anonymt. Valgte mottakere får varsel.'
+                  : '$avvikId er registrert. Saksbehandler får varsel nå, '
+                      'og du får SMS ved statusendringer (under arbeid og ferdig).',
             ),
           ),
         );
@@ -289,7 +351,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         Text('Velg saksbehandler', style: DriftProTheme.labelLg),
         const SizedBox(height: 4),
         Text(
-          'Systemet velger din leder automatisk. Du kan bytte til en annen leder eller superadmin.',
+          'Du kan kun melde til din egen leder eller ledelsen (Tommy, Nico, Hazher).',
           style: DriftProTheme.bodySm.copyWith(color: Colors.grey[600]),
         ),
         const SizedBox(height: 12),
@@ -301,17 +363,89 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
           ),
           const SizedBox(height: 8),
         ],
-        if (_assignees.otherLeaders.isNotEmpty) ...[
-          _assigneeSectionLabel('Andre ledere', Icons.groups_outlined),
+        if (_assignees.leadership.isNotEmpty) ...[
+          _assigneeSectionLabel('Ledelsen', Icons.apartment_outlined),
           const SizedBox(height: 6),
-          ..._assignees.otherLeaders.map((p) => _assigneeTile(p)),
-          const SizedBox(height: 8),
+          ..._assignees.leadership.map((p) => _assigneeTile(p)),
         ],
-        if (_assignees.superadmins.isNotEmpty) ...[
-          _assigneeSectionLabel('Superadmin', Icons.admin_panel_settings_outlined),
-          const SizedBox(height: 6),
-          ..._assignees.superadmins.map((p) => _assigneeTile(p)),
-        ],
+      ],
+    );
+  }
+
+  Widget _buildAnonymousRecipientPicker() {
+    if (_leadershipProfiles.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: Text(
+          'Fant ikke Tommy, Nico eller Hazher i systemet. Prøv igjen senere.',
+          style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text('Hvem skal motta?', style: DriftProTheme.labelLg),
+            ),
+            TextButton(
+              onPressed: () => setState(() {
+                _anonymousRecipients
+                  ..clear()
+                  ..addAll(WhistlePrincipal.values);
+              }),
+              child: const Text('Velg alle'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Kun Tommy, Nico eller Hazher — aldri avdelingsledere. '
+          'Velg én, flere eller alle tre.',
+          style: DriftProTheme.bodySm.copyWith(color: Colors.grey[600]),
+        ),
+        const SizedBox(height: 12),
+        ...WhistlePrincipal.values.map((p) {
+          final profile = _profileForPrincipal(p);
+          final available = profile != null;
+          final selected = _anonymousRecipients.contains(p) && available;
+          return Card(
+            margin: const EdgeInsets.only(bottom: 8),
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: selected
+                    ? DriftProTheme.primaryGreen
+                    : Colors.grey.shade300,
+                width: selected ? 2 : 1,
+              ),
+            ),
+            child: CheckboxListTile(
+              value: selected,
+              onChanged: available
+                  ? (_) => _toggleAnonymousRecipient(p)
+                  : null,
+              title: Text(
+                p.label,
+                style: TextStyle(
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: available ? null : Colors.grey,
+                ),
+              ),
+              subtitle: Text(
+                available
+                    ? '${p.title} · får varsel'
+                    : 'Ikke funnet i systemet',
+                style: const TextStyle(fontSize: 11),
+              ),
+              activeColor: DriftProTheme.primaryGreen,
+            ),
+          );
+        }),
       ],
     );
   }
@@ -346,12 +480,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
 
   Widget _assigneeTile(UserProfile p, {bool recommended = false}) {
     final selected = _selectedHandlerId == p.id;
-    final roleLabel = switch (p.role) {
-      UserRole.superadmin => 'Superadmin',
-      UserRole.admin => 'Administrator',
-      UserRole.leder => 'Leder',
-      _ => 'Saksbehandler',
-    };
+    final roleLabel = p.displayTitle;
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       elevation: 0,
@@ -502,11 +631,24 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
               }).toList(),
             ),
             const SizedBox(height: 16),
+            SwitchListTile.adaptive(
+              value: _isAnonymous,
+              onChanged: (v) => setState(() => _isAnonymous = v),
+              title: const Text(AppStrings.anonymous),
+              subtitle: const Text(
+                'Navnet ditt skjules. Kun Tommy, Nico eller Hazher kan motta — '
+                'ikke avdelingsledere.',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            const SizedBox(height: 8),
             if (_loadingHandlers)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
-                child: const DriftProLoadingCenter(),
+                child: DriftProLoadingCenter(),
               )
+            else if (_isAnonymous)
+              _buildAnonymousRecipientPicker()
             else
               _buildAssigneePicker(),
             const SizedBox(height: 16),
@@ -568,15 +710,6 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
               title: const Text('Personskade / sensitive opplysninger'),
               subtitle: const Text(
                 'Navn på skadde lagres kryptert og kun synlig for leder/HR.',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-            SwitchListTile.adaptive(
-              value: _isAnonymous,
-              onChanged: (v) => setState(() => _isAnonymous = v),
-              title: const Text(AppStrings.anonymous),
-              subtitle: const Text(
-                'Navnet vises ikke for saksbehandlere i listen.',
                 style: TextStyle(fontSize: 12),
               ),
             ),
@@ -654,8 +787,9 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
             FilledButton(
               onPressed: _isSubmitting ||
                       _loadingHandlers ||
-                      _assignees.isEmpty ||
-                      _selectedHandlerId == null
+                      (_isAnonymous
+                          ? _resolveAnonymousProfileIds().isEmpty
+                          : (_assignees.isEmpty || _selectedHandlerId == null))
                   ? null
                   : _submit,
               child: _isSubmitting

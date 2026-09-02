@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/services/supabase_service.dart';
 import '../../core/utils/norwegian_national_id.dart';
+import '../../core/permissions/statutory_role_access.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
 import '../../models/notification_channel.dart';
@@ -41,6 +42,9 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
   DateTime? _birthDate;
   DateTime? _hireDate;
   bool _safetyRep = false;
+  bool _unionRep = false;
+  bool _chiefSafety = false;
+  bool _amuMember = false;
   bool _smsOptIn = true;
   bool _emailOptIn = true;
   NotificationChannel _notifyChannel = NotificationChannel.both;
@@ -90,6 +94,9 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     _hireDate = e.hireDate;
     _childrenUnder12 = e.childrenUnder12Count;
     _safetyRep = e.isSafetyRepresentative;
+    _unionRep = e.isUnionRepresentative;
+    _chiefSafety = e.isChiefSafetyRepresentative;
+    _amuMember = e.isAmuMember;
     _active = e.isActive;
     _loadNotifyPrefs();
   }
@@ -99,7 +106,11 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     if (!mounted) return;
     if (!SupabaseService.canManageEmployees(me)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kun superadmin kan redigere ansattprofiler.')),
+        const SnackBar(
+          content: Text(
+            'Kun Tommy, Nico eller Hazher kan redigere ansattprofiler.',
+          ),
+        ),
       );
       Navigator.pop(context);
     }
@@ -151,7 +162,11 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
     if (!SupabaseService.canManageEmployees(me)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Kun superadmin kan lagre endringer.')),
+          const SnackBar(
+            content: Text(
+              'Kun Tommy, Nico eller Hazher kan lagre endringer.',
+            ),
+          ),
         );
       }
       return;
@@ -199,7 +214,10 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
         birthDate: _birthDate ?? fnrBirth,
         hireDate: _hireDate,
         childrenUnder12Count: _childrenUnder12,
-        isSafetyRepresentative: _safetyRep,
+        isSafetyRepresentative: _safetyRep || _chiefSafety,
+        isUnionRepresentative: _unionRep,
+        isChiefSafetyRepresentative: _chiefSafety,
+        isAmuMember: _amuMember,
         isActive: _active,
         smsOptIn: _smsOptIn,
         emailOptIn: _emailOptIn,
@@ -294,10 +312,47 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
               onChanged: (v) => setState(() => _role = v ?? _role),
             ),
           ],
+          _section('Lovpålagte verv'),
           SwitchListTile(
             title: const Text('Verneombud'),
-            value: _safetyRep,
-            onChanged: (v) => setState(() => _safetyRep = v),
+            subtitle: Text(
+              StatutoryRoleAccess.verneombudLawHint,
+              style: DriftProTheme.caption,
+            ),
+            value: _safetyRep || _chiefSafety,
+            onChanged: _chiefSafety
+                ? null
+                : (v) => setState(() => _safetyRep = v),
+          ),
+          SwitchListTile(
+            title: const Text('Hovedverneombud'),
+            subtitle: Text(
+              StatutoryRoleAccess.hovedverneombudLawHint,
+              style: DriftProTheme.caption,
+            ),
+            value: _chiefSafety,
+            onChanged: (v) => setState(() {
+              _chiefSafety = v;
+              if (v) _safetyRep = true;
+            }),
+          ),
+          SwitchListTile(
+            title: const Text('Tillitsvalgt'),
+            subtitle: Text(
+              StatutoryRoleAccess.tillitsvalgtLawHint,
+              style: DriftProTheme.caption,
+            ),
+            value: _unionRep,
+            onChanged: (v) => setState(() => _unionRep = v),
+          ),
+          SwitchListTile(
+            title: const Text('AMU-medlem'),
+            subtitle: Text(
+              StatutoryRoleAccess.amuLawHint,
+              style: DriftProTheme.caption,
+            ),
+            value: _amuMember,
+            onChanged: (v) => setState(() => _amuMember = v),
           ),
           SwitchListTile(
             title: const Text('Aktiv ansatt'),

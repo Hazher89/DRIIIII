@@ -6,6 +6,7 @@ import '../../core/routing/app_paths.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/constants/app_icons.dart';
+import '../../core/constants/company_principals.dart';
 import '../../models/user_profile.dart';
 import '../more/driftpro_platform_catalog.dart';
 import '../more/widgets/info_page_scaffold.dart';
@@ -245,14 +246,14 @@ class _ProfileHeader extends StatelessWidget {
         Text(profile.fullName, style: DriftProTheme.headingLg),
         const SizedBox(height: 4),
         Text(
-          profile.jobTitle ?? 'Ansatt',
+          profile.displayTitle,
           style: DriftProTheme.bodyMd.copyWith(color: Colors.grey[600]),
         ),
-        if (profile.isSuperAdmin) ...[
+        if (profile.isSuperAdmin && !CompanyPrincipal.isPrincipal(profile)) ...[
           const SizedBox(height: 8),
           Chip(
             avatar: const Icon(Icons.admin_panel_settings, size: 18),
-            label: const Text('Superadmin'),
+            label: const Text('Systemtilgang'),
             backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
             visualDensity: VisualDensity.compact,
           ),

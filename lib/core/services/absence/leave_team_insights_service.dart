@@ -114,7 +114,7 @@ class LeaveTeamInsightsService {
         hireDate: p.hireDate,
       );
       final used = periodUsage.egenmeldingDaysUsed;
-      final cap = company.egenmeldingDaysPerYear;
+      final cap = company.effectiveEgenmeldingDaysPerYear;
       insights.add(
         EmployeeLeaveInsight(
           profile: p,
@@ -151,7 +151,7 @@ class LeaveTeamInsightsService {
       daysByTypeYtd: daysByType,
       onVacationToday: onVacationToday,
       egenmeldingExhaustedCount: insights
-          .where((e) => e.egenmeldingExhaustedFor(company.egenmeldingDaysPerYear))
+          .where((e) => e.egenmeldingExhaustedFor(company.effectiveEgenmeldingDaysPerYear))
           .length,
       pendingCount: pending,
     );

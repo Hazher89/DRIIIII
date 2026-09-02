@@ -123,6 +123,7 @@ CREATE TABLE profiles (
     emergency_contact_name TEXT,
     emergency_contact_phone TEXT,
     is_safety_representative BOOLEAN DEFAULT FALSE,
+    is_union_representative BOOLEAN DEFAULT FALSE,
     fcm_token TEXT,
     last_seen_at TIMESTAMPTZ,
     is_active BOOLEAN DEFAULT TRUE,

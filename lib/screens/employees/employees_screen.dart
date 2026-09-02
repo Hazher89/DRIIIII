@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../../core/constants/company_principals.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
 import 'employee_hub_screen.dart';
 import 'widgets/employee_display.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
-/// Ansatte – kun superadmin får full administrasjon.
+/// Ansatte – Tommy/Nico/Hazher får full administrasjon; avdelingsleder ser eget team.
 class EmployeesScreen extends StatefulWidget {
   const EmployeesScreen({super.key});
 
@@ -117,7 +118,7 @@ class _EmployeeScopedReadOnlyListState extends State<_EmployeeScopedReadOnlyList
                         leading: CircleAvatar(child: Text(p.initials)),
                         title: EmployeeDisplay.nameWithNumber(p, emphasizeNumber: true),
                         subtitle: Text(
-                          '${p.jobTitle ?? p.role.name}${p.id == _me?.id ? ' · deg' : ''}',
+                          '${p.displayTitle}${p.id == _me?.id ? ' · deg' : ''}',
                         ),
                       );
                     },

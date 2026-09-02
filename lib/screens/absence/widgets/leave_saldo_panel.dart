@@ -116,7 +116,7 @@ class LeaveSaldoPanel extends StatelessWidget {
 
     final syktBarnMax = company.syktBarnDaysLimit(childrenUnder12: childrenUnder12);
     final egenExhausted = periodUsage != null &&
-        periodUsage!.isEgenmeldingExhausted(company.egenmeldingDaysPerYear);
+        periodUsage!.isEgenmeldingExhausted(company.effectiveEgenmeldingDaysPerYear);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -149,7 +149,7 @@ class LeaveSaldoPanel extends StatelessWidget {
                     onPressed: () => showLeaveEgenmeldingBlockedSheet(
                       context,
                       periodUsage: periodUsage!,
-                      maxDays: company.egenmeldingDaysPerYear,
+                      maxDays: company.effectiveEgenmeldingDaysPerYear,
                       onChooseAlternative: onChooseAlternative,
                     ),
                     child: const Text('Se alternativer og Lovdata-info'),
@@ -192,7 +192,7 @@ class LeaveSaldoPanel extends StatelessWidget {
         QuotaMiniRow(
           label: 'Egenmelding',
           used: periodUsage?.egenmeldingDaysUsed ?? quota!.egenmeldingDaysUsed,
-          total: company.egenmeldingDaysPerYear,
+          total: company.effectiveEgenmeldingDaysPerYear,
           color: DriftProTheme.absenceSickSelf,
           subtitle: periodUsage != null
               ? '${periodUsage!.egenmeldingPeriodsUsed}/${LeaveRules.egenmeldingMaxPeriodsPerYear} tilfeller'

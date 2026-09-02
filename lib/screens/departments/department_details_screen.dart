@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_icons.dart';
+import '../../core/constants/company_principals.dart';
 import '../../core/constants/leave_rules.dart';
 import '../../core/services/absence/employee_leave_stats.dart';
 import '../../core/services/supabase_service.dart';
@@ -131,7 +132,9 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
         title: Text(widget.isNew ? 'Ny Avdeling' : _currentDept.name),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: EdgeInsets.only(
+              right: WebLayout.prefersPointerNav ? 12 : 8,
+            ),
             child: FilledButton(
               onPressed: _isLoading ? null : _saveDepartment,
               style: FilledButton.styleFrom(
@@ -494,7 +497,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
         title: EmployeeDisplay.nameWithNumber(m),
         subtitle: Text(
           [
-            m.role.name,
+            m.displayTitle,
             if (m.phone != null && m.phone!.isNotEmpty) m.phone!,
             if (!compact) m.email,
           ].join(' · '),

@@ -3,6 +3,9 @@ import '../../routing/app_paths.dart';
 import '../hms/sop_training_models.dart';
 import '../hms/training_library_service.dart';
 import '../../../screens/more/driftpro_platform_catalog.dart';
+import 'assistant_app_faq.dart';
+import 'assistant_leave_intelligence.dart';
+import 'assistant_route_intelligence.dart';
 import 'assistant_text_utils.dart';
 
 enum KnowledgeSourceKind { sop, rental, help }
@@ -45,6 +48,9 @@ class AssistantCorpus {
 
   static Future<List<KnowledgeChunk>> build() async {
     final chunks = <KnowledgeChunk>[
+      ...AssistantAppFaq.chunks(),
+      ...AssistantRouteIntelligence.faqHints(),
+      ...AssistantLeaveIntelligence.faqHints(),
       ..._rentalChunks(),
       ..._helpChunks(),
       ..._catalogChunks(),
@@ -224,9 +230,20 @@ class AssistantCorpus {
         body:
             'HMS-huben samler avvik (bilder, GPS, alvorlighet), risikoanalyse (ROS 5×5), '
             'SJA med maler og signatur, vernerunder, maskiner/utstyr, kompetansematrise, '
-            'DMS for håndbok, og anonym varsling. Et avvik kan kobles til risikoanalyse.',
+            'DMS for håndbok, og anonym varsling. Et avvik kan kobles til risikoanalyse. '
+            'Anonym anmeldelse ligger under Mer → Anonym anmeldelse (kun til Tommy/Nico/Hazher).',
         routePath: AppPaths.moreHjelp,
-        tags: ['hms', 'avvik', 'sja', 'vernerunde', 'risiko', 'kompetanse', 'dms'],
+        tags: [
+          'hms',
+          'avvik',
+          'sja',
+          'vernerunde',
+          'risiko',
+          'kompetanse',
+          'dms',
+          'anonym',
+          'varsling',
+        ],
       ),
       KnowledgeChunk(
         id: 'help:partners',

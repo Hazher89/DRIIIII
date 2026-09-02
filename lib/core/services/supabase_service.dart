@@ -6,10 +6,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/supabase_config.dart';
 import 'notification/notification_outbox_service.dart';
 import '../utils/norwegian_national_id.dart';
+import '../constants/company_principals.dart';
+import '../permissions/access_presets.dart';
+import '../permissions/statutory_role_access.dart';
+import 'assistant/assistant_event_learning.dart';
 import '../../models/ticket.dart';
 import '../../models/ticket_assignee_options.dart';
 import '../../models/absence.dart';
 import '../constants/leave_rules.dart';
+import 'org/department_leader_scope.dart';
 import '../../models/department.dart';
 import '../../models/risk_assessment.dart';
 import '../../models/user_profile.dart';
@@ -345,21 +350,25 @@ department:departments!department_id(name)
     if (cid == null) return const [];
     final all = await fetchTickets(companyId: cid);
     final active = all.where((t) => !t.isDeleted).toList();
-    if (profile.isAdmin) return active;
-    if (profile.role == UserRole.leder) {
+    if (profile.isAdmin || CompanyPrincipal.isPrincipal(profile)) return active;
+
+    final deptIds = await DepartmentLeaderScope.managedDepartmentIds(profile);
+    final isTeamLeader = await DepartmentLeaderScope.canManageTeam(profile);
+
+    if (isTeamLeader) {
       return active
           .where((t) =>
-              t.reportedBy == profile.id ||
-              t.assignedTo == profile.id ||
-              (profile.departmentId != null &&
-                  t.departmentId == profile.departmentId))
+              DepartmentLeaderScope.ticketInScope(t, profile, deptIds))
           .toList();
     }
-    return active.where((t) =>
-        t.reportedBy == profile.id ||
-        t.assignedTo == profile.id ||
-        (profile.departmentId != null &&
-            t.departmentId == profile.departmentId)).toList();
+
+    return active
+        .where((t) =>
+            t.reportedBy == profile.id ||
+            t.assignedTo == profile.id ||
+            (profile.departmentId != null &&
+                t.departmentId == profile.departmentId))
+        .toList();
   }
 
   static Future<List<Ticket>> fetchScopedTicketsIncludingDeleted({
@@ -368,7 +377,7 @@ department:departments!department_id(name)
     final cid = profile.companyId;
     if (cid == null) return const [];
     final all = await fetchTickets(companyId: cid);
-    if (profile.isAdmin) return all;
+    if (profile.isAdmin || CompanyPrincipal.isPrincipal(profile)) return all;
     return fetchScopedTickets(profile: profile);
   }
 
@@ -431,6 +440,26 @@ department:departments!department_id(name)
     final created = Ticket.fromJson(inserted);
     unawaited(NotificationOutboxService.flushAll());
     return created;
+  }
+
+  /// Varsle valgte principals om anonymt avvik (Tommy/Nico/Hazher).
+  static Future<void> notifyAnonymousTicketRecipients({
+    required String ticketId,
+    required List<String> profileIds,
+  }) async {
+    if (!isConfigured || profileIds.isEmpty) return;
+    try {
+      await client.rpc(
+        'notify_ticket_selected_profiles',
+        params: {
+          'p_ticket_id': ticketId,
+          'p_profile_ids': profileIds,
+        },
+      );
+      unawaited(NotificationOutboxService.flushAll());
+    } catch (e) {
+      debugPrint('notifyAnonymousTicketRecipients: $e');
+    }
   }
 
   static Future<List<TicketComment>> fetchTicketComments(String ticketId) async {
@@ -531,16 +560,19 @@ department:departments!department_id(name)
   }) async {
     if (profile.companyId == null) return const [];
     final all = await fetchAbsences(companyId: profile.companyId);
-    if (profile.isAdmin) return all;
-    if (profile.role == UserRole.leder) {
+    if (profile.isAdmin || CompanyPrincipal.isPrincipal(profile)) return all;
+
+    final deptIds = await DepartmentLeaderScope.managedDepartmentIds(profile);
+    final isTeamLeader = await DepartmentLeaderScope.canManageTeam(profile);
+
+    if (isTeamLeader) {
       return all
           .where((a) =>
-              a.userId == profile.id ||
-              (profile.departmentId != null &&
-                  a.departmentId == profile.departmentId))
+              DepartmentLeaderScope.absenceInScope(a, profile, deptIds))
           .toList();
     }
-    // Ansatt: egne søknader + kollegaers godkjente/ventende fravær i avdelingen (planlegging).
+
+    // Ansatt: egne + kollegaers godkjente/ventende i avdeling (planlegging).
     return all
         .where((a) =>
             a.userId == profile.id ||
@@ -568,6 +600,14 @@ department:departments!department_id(name)
     AbsenceStatus status, {
     String? decisionComment,
   }) async {
+    final existing = await client
+        .from('absences')
+        .select(
+          '*, profiles!absences_user_id_fkey(full_name)',
+        )
+        .eq('id', id)
+        .maybeSingle();
+
     final patch = <String, dynamic>{
       'status': status.name,
       'approved_by': client.auth.currentUser?.id,
@@ -579,6 +619,30 @@ department:departments!department_id(name)
           : decisionComment.trim();
     }
     await client.from('absences').update(patch).eq('id', id);
+
+    if (existing != null &&
+        (status == AbsenceStatus.godkjent || status == AbsenceStatus.avvist)) {
+      try {
+        final absence = Absence.fromJson(
+          Map<String, dynamic>.from(existing),
+        );
+        final name = absence.userName?.trim().isNotEmpty == true
+            ? absence.userName!
+            : 'Ansatt';
+        await AssistantEventLearning.onAbsenceDecision(
+          companyId: absence.companyId,
+          userId: absence.userId,
+          employeeName: name,
+          typeLabel: absence.type.label,
+          statusLabel: status.label,
+          start: absence.startDate,
+          end: absence.endDate,
+          departmentId: absence.departmentId,
+        );
+      } catch (e) {
+        debugPrint('assistant leave learn: $e');
+      }
+    }
   }
 
   static Future<void> updatePendingAbsence({
@@ -958,6 +1022,7 @@ department:departments!department_id(name)
   }
 
   /// Legg til / fjern én leder på én avdeling (beholder andre ledere).
+  /// Ved tilordning: sikrer avdelingsleder-tilgang (ansatte, avvik, HMS, fravær).
   static Future<void> setProfileLeadsDepartment({
     required String departmentId,
     required String profileId,
@@ -971,6 +1036,173 @@ department:departments!department_id(name)
       current.remove(profileId);
     }
     await setDepartmentLeaders(departmentId, current);
+
+    if (isLeader) {
+      await ensureDepartmentLeaderAccess(profileId);
+    }
+  }
+
+  /// Sikrer at avdelingsleder har pakke for ansatte / avvik / HMS / fravær / ferie.
+  static Future<void> ensureDepartmentLeaderAccess(String profileId) async {
+    final row = await client
+        .from('profiles')
+        .select(
+          'role, access_settings, is_safety_representative, is_union_representative, '
+          'is_chief_safety_representative, is_amu_member',
+        )
+        .eq('id', profileId)
+        .maybeSingle();
+    if (row == null) return;
+
+    final roleName = row['role'] as String? ?? 'ansatt';
+    var role = UserRole.values.firstWhere(
+      (e) => e.name == roleName,
+      orElse: () => UserRole.ansatt,
+    );
+    // Oppgrader ansatt → leder når de får avdelingsansvar.
+    if (role == UserRole.ansatt) {
+      role = UserRole.leder;
+    }
+
+    final safety = row['is_safety_representative'] as bool? ?? false;
+    final union = row['is_union_representative'] as bool? ?? false;
+    final chief = row['is_chief_safety_representative'] as bool? ?? false;
+    final amu = row['is_amu_member'] as bool? ?? false;
+    final current = row['access_settings'] as Map<String, dynamic>?;
+
+    final merged = StatutoryRoleAccess.mergePackage(
+      current,
+      AccessPresets.departmentLeaderV2(),
+      role,
+    );
+    final rebuilt = StatutoryRoleAccess.rebuildAccessSettings(
+      role: role,
+      current: merged,
+      isSafetyRepresentative: safety || chief,
+      isUnionRepresentative: union,
+      isChiefSafetyRepresentative: chief,
+      isAmuMember: amu,
+    );
+
+    await client.from('profiles').update({
+      'role': role.name,
+      'access_settings': rebuilt,
+    }).eq('id', profileId);
+  }
+
+  /// Sett/fjern lovpålagte verv og synk tilganger + revisjonslogg.
+  static Future<void> setStatutoryRepresentativeRoles({
+    required String profileId,
+    bool? isSafetyRepresentative,
+    bool? isUnionRepresentative,
+    bool? isChiefSafetyRepresentative,
+    bool? isAmuMember,
+  }) async {
+    final row = await client
+        .from('profiles')
+        .select(
+          'company_id, role, access_settings, is_safety_representative, '
+          'is_union_representative, is_chief_safety_representative, is_amu_member',
+        )
+        .eq('id', profileId)
+        .maybeSingle();
+    if (row == null) throw StateError('Fant ikke profil');
+
+    final roleName = row['role'] as String? ?? 'ansatt';
+    final role = UserRole.values.firstWhere(
+      (e) => e.name == roleName,
+      orElse: () => UserRole.ansatt,
+    );
+    final oldSafety = row['is_safety_representative'] as bool? ?? false;
+    final oldUnion = row['is_union_representative'] as bool? ?? false;
+    final oldChief = row['is_chief_safety_representative'] as bool? ?? false;
+    final oldAmu = row['is_amu_member'] as bool? ?? false;
+
+    var safety = isSafetyRepresentative ?? oldSafety;
+    final union = isUnionRepresentative ?? oldUnion;
+    final chief = isChiefSafetyRepresentative ?? oldChief;
+    final amu = isAmuMember ?? oldAmu;
+    // Hovedverneombud innebærer verneombud.
+    if (chief) safety = true;
+
+    final current = row['access_settings'] as Map<String, dynamic>?;
+    final settings = StatutoryRoleAccess.rebuildAccessSettings(
+      role: role,
+      current: current,
+      isSafetyRepresentative: safety,
+      isUnionRepresentative: union,
+      isChiefSafetyRepresentative: chief,
+      isAmuMember: amu,
+    );
+
+    await client.from('profiles').update({
+      'is_safety_representative': safety,
+      'is_union_representative': union,
+      'is_chief_safety_representative': chief,
+      'is_amu_member': amu,
+      'access_settings': settings,
+    }).eq('id', profileId);
+
+    final companyId = row['company_id'] as String?;
+    if (companyId != null) {
+      final changes = <String>[];
+      if (safety != oldSafety) {
+        changes.add(safety ? 'verneombud på' : 'verneombud av');
+      }
+      if (chief != oldChief) {
+        changes.add(chief ? 'hovedverneombud på' : 'hovedverneombud av');
+      }
+      if (union != oldUnion) {
+        changes.add(union ? 'tillitsvalgt på' : 'tillitsvalgt av');
+      }
+      if (amu != oldAmu) {
+        changes.add(amu ? 'AMU på' : 'AMU av');
+      }
+      if (changes.isNotEmpty) {
+        // ignore: unnecessary_import — used via top-level import below
+        await _logAccessChange(
+          companyId: companyId,
+          targetProfileId: profileId,
+          action: 'statutory_roles',
+          summary: 'Verv: ${changes.join(', ')}',
+          oldData: {
+            'is_safety_representative': oldSafety,
+            'is_union_representative': oldUnion,
+            'is_chief_safety_representative': oldChief,
+            'is_amu_member': oldAmu,
+          },
+          newData: {
+            'is_safety_representative': safety,
+            'is_union_representative': union,
+            'is_chief_safety_representative': chief,
+            'is_amu_member': amu,
+          },
+        );
+      }
+    }
+  }
+
+  static Future<void> _logAccessChange({
+    required String companyId,
+    required String targetProfileId,
+    required String action,
+    required String summary,
+    Map<String, dynamic>? oldData,
+    Map<String, dynamic>? newData,
+  }) async {
+    try {
+      await client.from('access_change_audit').insert({
+        'company_id': companyId,
+        'actor_id': client.auth.currentUser?.id,
+        'target_profile_id': targetProfileId,
+        'action': action,
+        'summary': summary,
+        if (oldData != null) 'old_data': oldData,
+        if (newData != null) 'new_data': newData,
+      });
+    } catch (e) {
+      debugPrint('access_change_audit: $e');
+    }
   }
 
   static Future<List<UserProfile>> fetchProfiles({String? companyId, String? departmentId}) async {
@@ -1015,22 +1247,23 @@ department:departments!department_id(name)
     );
   }
 
-  /// GDPR: ansatt = kun egen profil, leder = egne avdelinger, admin/superadmin = hele bedriften.
+  /// GDPR: ansatt = kun egen profil, leder = egne avdelinger,
+  /// principals / admin / superadmin = hele bedriften.
   static Future<List<UserProfile>> fetchScopedProfiles(UserProfile viewer) async {
     if (!isConfigured) return const [];
     final companyId = viewer.companyId;
     if (companyId == null) return [viewer];
 
-    if (viewer.role == UserRole.superadmin || viewer.role == UserRole.admin) {
+    if (viewer.role == UserRole.superadmin ||
+        viewer.role == UserRole.admin ||
+        CompanyPrincipal.isPrincipal(viewer)) {
       return fetchProfiles(companyId: companyId);
     }
 
-    if (viewer.role == UserRole.leder) {
-      final ledDeptIds = await fetchDepartmentIdsLedByProfile(viewer.id);
-      final allowedDeptIds = {...ledDeptIds};
-      if (viewer.departmentId != null) {
-        allowedDeptIds.add(viewer.departmentId!);
-      }
+    final canTeam = await DepartmentLeaderScope.canManageTeam(viewer);
+    if (canTeam || viewer.role == UserRole.leder) {
+      final allowedDeptIds =
+          await DepartmentLeaderScope.managedDepartmentIds(viewer);
       if (allowedDeptIds.isEmpty) return [viewer];
 
       final all = await fetchProfiles(companyId: companyId);
@@ -1038,7 +1271,8 @@ department:departments!department_id(name)
           .where(
             (p) =>
                 p.id == viewer.id ||
-                (p.departmentId != null && allowedDeptIds.contains(p.departmentId)),
+                (p.departmentId != null &&
+                    allowedDeptIds.contains(p.departmentId)),
           )
           .toList();
     }
@@ -1046,9 +1280,32 @@ department:departments!department_id(name)
     return [viewer];
   }
 
-  /// Kun superadmin kan administrere ansatte via organisasjonskart / ansattliste.
-  static bool canManageEmployees(UserProfile? viewer) =>
-      viewer?.role == UserRole.superadmin;
+  /// Tommy / Nico / Hazher og superadmin kan administrere ansatte og verv.
+  static bool canManageEmployees(UserProfile? viewer) {
+    if (viewer == null) return false;
+    if (viewer.role == UserRole.superadmin) return true;
+    return CompanyPrincipal.isPrincipal(viewer);
+  }
+
+  /// Bedriftskatalog til organisasjonskart (RPC — synlig for alle i selskapet).
+  static Future<List<UserProfile>> fetchOrganizationChartPeople() async {
+    if (!isConfigured) return const [];
+    try {
+      final data = await client.rpc('get_organization_chart');
+      if (data is! List) return const [];
+      return data.map((e) {
+        final m = Map<String, dynamic>.from(e as Map);
+        return UserProfile.fromJson({
+          ...m,
+          'email': m['email'] ?? '',
+          'company_id': null,
+        });
+      }).toList();
+    } catch (e) {
+      debugPrint('fetchOrganizationChartPeople: $e');
+      return const [];
+    }
+  }
 
   static TicketAssigneeOptions _parseTicketAssigneeOptionsRpc(dynamic data) {
     if (data is! Map) return const TicketAssigneeOptions();
@@ -1071,7 +1328,7 @@ department:departments!department_id(name)
     );
   }
 
-  /// Nærmeste leder (avdeling) + superadmin — hvem avsender kan velge.
+  /// Nærmeste leder (avdeling) + Tommy/Nico/Hazher — ikke andre avdelingers ledere.
   static Future<TicketAssigneeOptions> fetchTicketAssigneeOptions({
     required String companyId,
     String? departmentId,
@@ -1122,7 +1379,7 @@ department:departments!department_id(name)
     final nearest = <UserProfile>[];
     for (final id in deptLeaderIds) {
       final p = companyProfiles.where((x) => x.id == id).firstOrNull;
-      if (p != null && eligible(p)) {
+      if (p != null && eligible(p) && !CompanyPrincipal.isPrincipal(p)) {
         nearest.add(p);
       }
     }
@@ -1130,60 +1387,29 @@ department:departments!department_id(name)
       for (final p in companyProfiles) {
         if (eligible(p) &&
             p.role == UserRole.leder &&
-            p.departmentId == departmentId) {
+            p.departmentId == departmentId &&
+            !CompanyPrincipal.isPrincipal(p)) {
           if (!nearest.any((x) => x.id == p.id)) nearest.add(p);
         }
       }
     }
     nearest.sort((a, b) => a.fullName.compareTo(b.fullName));
 
-    final allDepts = await fetchDepartments(companyId: companyId);
-    final leaderMap = await fetchDepartmentLeaderIdsByDepartment(
-      allDepts.map((d) => d.id).toList(),
-    );
-    final allLeaderIds = <String>{};
-    for (final d in allDepts) {
-      if (d.leaderId != null && d.leaderId!.isNotEmpty) {
-        allLeaderIds.add(d.leaderId!);
-      }
-      for (final id in leaderMap[d.id] ?? []) {
-        allLeaderIds.add(id);
-      }
-    }
-    for (final p in companyProfiles) {
-      if (eligible(p) &&
-          (p.role == UserRole.leder || p.role == UserRole.admin)) {
-        allLeaderIds.add(p.id);
-      }
-    }
-
-    final nearestIds = nearest.map((p) => p.id).toSet();
-    final otherLeaders = <UserProfile>[];
-    for (final id in allLeaderIds) {
-      if (nearestIds.contains(id)) continue;
-      final p = companyProfiles.where((x) => x.id == id).firstOrNull;
-      if (p != null && eligible(p)) otherLeaders.add(p);
-    }
-    otherLeaders.sort((a, b) => a.fullName.compareTo(b.fullName));
-
-    final usedIds = {
-      ...nearestIds,
-      ...otherLeaders.map((p) => p.id),
-    };
-    final superadmins = companyProfiles
-        .where(
-          (p) =>
-              eligible(p) &&
-              p.role == UserRole.superadmin &&
-              !usedIds.contains(p.id),
-        )
+    final leadership = companyProfiles
+        .where((p) => eligible(p) && CompanyPrincipal.isPrincipal(p))
         .toList()
-      ..sort((a, b) => a.fullName.compareTo(b.fullName));
+      ..sort((a, b) {
+        final pa = CompanyPrincipal.ofProfile(a)?.sortOrder ?? 99;
+        final pb = CompanyPrincipal.ofProfile(b)?.sortOrder ?? 99;
+        final r = pa.compareTo(pb);
+        if (r != 0) return r;
+        return a.fullName.compareTo(b.fullName);
+      });
 
     return TicketAssigneeOptions(
       nearestLeaders: nearest,
-      otherLeaders: otherLeaders,
-      superadmins: superadmins,
+      otherLeaders: const [],
+      superadmins: leadership,
     );
   }
 
@@ -1273,6 +1499,12 @@ department:departments!department_id(name)
     required bool isApproved,
     bool setDepartmentLeader = false,
   }) async {
+    final before = await client
+        .from('profiles')
+        .select('company_id, role, access_settings, is_approved')
+        .eq('id', profileId)
+        .maybeSingle();
+
     await client.from('profiles').update({
       'role': role.name,
       'department_id': departmentId,
@@ -1286,6 +1518,27 @@ department:departments!department_id(name)
         'p_department_id': departmentId,
         'p_profile_id': profileId,
       });
+      await ensureDepartmentLeaderAccess(profileId);
+    }
+
+    final companyId = before?['company_id'] as String?;
+    if (companyId != null) {
+      await _logAccessChange(
+        companyId: companyId,
+        targetProfileId: profileId,
+        action: 'access_matrix',
+        summary:
+            'Tilganger/rolle lagret (${role.name}, godkjent=$isApproved)',
+        oldData: {
+          'role': before?['role'],
+          'is_approved': before?['is_approved'],
+        },
+        newData: {
+          'role': role.name,
+          'is_approved': isApproved,
+          'department_id': departmentId,
+        },
+      );
     }
   }
 
@@ -1595,6 +1848,9 @@ department:departments!department_id(name)
     String? emergencyContactName,
     String? emergencyContactPhone,
     bool? isSafetyRepresentative,
+    bool? isUnionRepresentative,
+    bool? isChiefSafetyRepresentative,
+    bool? isAmuMember,
     bool? isActive,
     bool? smsOptIn,
     bool? emailOptIn,
@@ -1635,15 +1891,32 @@ department:departments!department_id(name)
       patch['emergency_contact_phone'] =
           emergencyContactPhone.trim().isEmpty ? null : emergencyContactPhone.trim();
     }
-    if (isSafetyRepresentative != null) {
-      patch['is_safety_representative'] = isSafetyRepresentative;
-    }
     if (isActive != null) patch['is_active'] = isActive;
     if (smsOptIn != null) patch['sms_opt_in'] = smsOptIn;
     if (emailOptIn != null) patch['email_opt_in'] = emailOptIn;
     if (notifyChannelPreference != null) {
       patch['notify_channel_preference'] = notifyChannelPreference;
     }
+
+    final statutoryChanged = isSafetyRepresentative != null ||
+        isUnionRepresentative != null ||
+        isChiefSafetyRepresentative != null ||
+        isAmuMember != null;
+    if (statutoryChanged) {
+      // Synk flagg + lovpakke i én operasjon.
+      if (patch.isNotEmpty) {
+        await client.from('profiles').update(patch).eq('id', profileId);
+      }
+      await setStatutoryRepresentativeRoles(
+        profileId: profileId,
+        isSafetyRepresentative: isSafetyRepresentative,
+        isUnionRepresentative: isUnionRepresentative,
+        isChiefSafetyRepresentative: isChiefSafetyRepresentative,
+        isAmuMember: isAmuMember,
+      );
+      return;
+    }
+
     if (patch.isEmpty) return;
     await client.from('profiles').update(patch).eq('id', profileId);
   }
@@ -1809,9 +2082,60 @@ department:departments!department_id(name)
     if (me == targetUserId) {
       throw StateError('Du kan ikke slette din egen bruker.');
     }
+    await _purgeUserStorageBeforeHardDelete(targetUserId);
     await client.rpc('admin_delete_user_hard', params: {
       'target_user_id': targetUserId,
     });
+  }
+
+  /// Sletter brukerens filer i Storage (Supabase tillater ikke SQL DELETE på storage.objects).
+  static Future<void> _purgeUserStorageBeforeHardDelete(String userId) async {
+    if (!isConfigured) return;
+
+    final byBucket = <String, List<String>>{};
+
+    try {
+      final rows = await client.rpc(
+        'admin_list_user_storage_objects',
+        params: {'p_user_id': userId},
+      );
+      if (rows is List) {
+        for (final row in rows) {
+          if (row is! Map) continue;
+          final bucket = row['bucket_id'] as String?;
+          final name = row['object_name'] as String?;
+          if (bucket == null || name == null || name.isEmpty) continue;
+          byBucket.putIfAbsent(bucket, () => []).add(name);
+        }
+      }
+    } catch (e) {
+      debugPrint('admin_list_user_storage_objects: $e');
+    }
+
+    try {
+      final avatarFolder = await client.storage.from(SupabaseConfig.avatarsBucket).list(
+            path: userId,
+          );
+      for (final f in avatarFolder) {
+        byBucket
+            .putIfAbsent(SupabaseConfig.avatarsBucket, () => [])
+            .add('$userId/${f.name}');
+      }
+    } catch (e) {
+      debugPrint('avatar storage list: $e');
+    }
+
+    for (final entry in byBucket.entries) {
+      final paths = entry.value.toSet().toList();
+      for (var i = 0; i < paths.length; i += 100) {
+        final chunk = paths.sublist(i, i + 100 > paths.length ? paths.length : i + 100);
+        try {
+          await client.storage.from(entry.key).remove(chunk);
+        } catch (e) {
+          debugPrint('storage remove ${entry.key}: $e');
+        }
+      }
+    }
   }
 
   /// App Store: slett egen konto (edge `delete-own-account`).

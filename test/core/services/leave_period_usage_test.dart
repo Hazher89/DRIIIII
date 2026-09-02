@@ -12,8 +12,9 @@ void main() {
       referenceDate: DateTime(2026, 1, 12),
     );
     expect(window.periodStart, DateTime(2025, 6, 7));
-    expect(window.periodEnd, DateTime(2026, 6, 7));
-    expect(window.formatRange(), '07.06.2025 – 07.06.2026');
+    expect(window.periodEnd, DateTime(2026, 6, 6));
+    expect(window.formatRange(), '07.06.2025 – 06.06.2026');
+    expect(window.anchoredToHireDate, isTrue);
   });
 
   test('egenmelding teller løpende over årsskifte uten nullstilling', () {

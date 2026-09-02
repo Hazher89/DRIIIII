@@ -11,12 +11,15 @@ import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
+import '../../core/services/org/department_leader_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/ticket.dart';
 import '../../models/user_profile.dart';
+import '../../widgets/common/team_scope_segment.dart';
 import 'new_ticket_screen.dart';
 import 'ticket_admin_dashboard_screen.dart';
 import 'ticket_detail_screen.dart';
+import 'widgets/ticket_team_employees_hub.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Avvik med synlig hub: KPI, hurtighandlinger og liste (ikke «gjemt» kontrollsenter).
@@ -36,6 +39,11 @@ class _TicketsScreenState extends State<TicketsScreen> {
   bool _isLoading = true;
   String? _error;
   UserProfile? _profile;
+  bool _canManageTeam = false;
+  TeamDataScope _dataScope = TeamDataScope.mine;
+  List<UserProfile> _teamProfiles = const [];
+  String? _teamEmployeeFilter;
+  TicketTeamViewMode _teamViewMode = TicketTeamViewMode.oversikt;
 
   @override
   void initState() {
@@ -65,8 +73,70 @@ class _TicketsScreenState extends State<TicketsScreen> {
 
   Future<void> _loadProfileAndTickets() async {
     final p = await SupabaseService.fetchEffectiveUserProfile();
-    if (mounted) setState(() => _profile = p);
-    await _loadTickets();
+    final canManage =
+        p != null ? await DepartmentLeaderScope.canManageTeam(p) : false;
+    if (mounted) {
+      setState(() {
+        _profile = p;
+        _canManageTeam = canManage;
+      });
+    }
+    await Future.wait([
+      _loadTickets(),
+      _loadTeamProfiles(canManage),
+    ]);
+  }
+
+  Future<void> _loadTeamProfiles(bool canManage) async {
+    final profile = _profile;
+    if (profile == null || profile.companyId == null || !canManage) {
+      if (mounted) setState(() => _teamProfiles = const []);
+      return;
+    }
+    final deptIds =
+        await DepartmentLeaderScope.managedDepartmentIds(profile);
+    final all = await SupabaseService.fetchProfiles(
+      companyId: profile.companyId,
+    );
+    final scoped = all
+        .where((p) =>
+            p.departmentId != null &&
+            deptIds.contains(p.departmentId) &&
+            !p.isPartnerPortalUser)
+        .toList();
+    if (mounted) setState(() => _teamProfiles = scoped);
+  }
+
+  List<Ticket> get _teamTickets {
+    final profile = _profile;
+    if (profile == null) return const [];
+    return _tickets.where((t) => t.reportedBy != profile.id).toList();
+  }
+
+  List<Ticket> get _scopedVisibleTickets {
+    final profile = _profile;
+    if (profile == null) return _tickets;
+    if (!_canManageTeam || _dataScope == TeamDataScope.mine) {
+      return _tickets
+          .where((t) =>
+              t.reportedBy == profile.id || t.assignedTo == profile.id)
+          .toList();
+    }
+    var list = _teamTickets;
+    if (_teamEmployeeFilter != null) {
+      list = list.where((t) => t.reportedBy == _teamEmployeeFilter).toList();
+    }
+    return list;
+  }
+
+  void _openTicketDetail(Ticket t) {
+    Navigator.of(context)
+        .push(
+      MaterialPageRoute(
+        builder: (_) => TicketDetailScreen(ticket: t),
+      ),
+    )
+        .then((_) => _loadTickets());
   }
 
   Future<void> _loadTickets() async {
@@ -162,8 +232,8 @@ class _TicketsScreenState extends State<TicketsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final stats = TicketDashboardStats.fromTickets(_tickets);
-    final coord = _profile?.role == UserRole.leder || _profile?.isAdmin == true;
+    final stats = TicketDashboardStats.fromTickets(_scopedVisibleTickets);
+    final coord = _canManageTeam || _profile?.isAdmin == true;
     final ticketAdmin = _profile?.isAdmin == true;
 
     return PermissionGuard(
@@ -187,8 +257,10 @@ class _TicketsScreenState extends State<TicketsScreen> {
           icon: const Icon(AppIcons.add),
           label: const Text(AppStrings.reportDeviation),
         ),
-      body: RefreshIndicator(
-        onRefresh: _loadTickets,
+      body: _canManageTeam && _dataScope == TeamDataScope.team
+          ? _buildTeamLeaderBody(isDark, coord)
+          : RefreshIndicator(
+        onRefresh: _loadProfileAndTickets,
         color: DriftProTheme.primaryGreen,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(
@@ -198,6 +270,16 @@ class _TicketsScreenState extends State<TicketsScreen> {
             SliverToBoxAdapter(
               child: _buildHubHeader(stats, isDark),
             ),
+            if (_canManageTeam)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  child: TeamScopeSegment(
+                    scope: _dataScope,
+                    onChanged: (s) => setState(() => _dataScope = s),
+                  ),
+                ),
+              ),
             if (!DriftProClient.isMobile)
               SliverToBoxAdapter(
                 child: _buildQuickActions(coord, isDark),
@@ -235,7 +317,11 @@ class _TicketsScreenState extends State<TicketsScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text(
-                  DriftProClient.isMobile ? 'Mine / åpne avvik' : 'Filter',
+                  _canManageTeam
+                      ? (_dataScope == TeamDataScope.mine
+                          ? 'Mine avvik'
+                          : 'Avvik hos mine ansatte')
+                      : (DriftProClient.isMobile ? 'Mine / åpne avvik' : 'Filter'),
                   style: DriftProTheme.labelSm.copyWith(
                     color: Colors.grey[600],
                     fontWeight: FontWeight.w600,
@@ -298,12 +384,101 @@ class _TicketsScreenState extends State<TicketsScreen> {
     );
   }
 
+  Widget _buildTeamLeaderBody(bool isDark, bool coord) {
+    final stats = TicketDashboardStats.fromTickets(_scopedVisibleTickets);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: TeamScopeSegment(
+            scope: _dataScope,
+            onChanged: (s) => setState(() {
+              _dataScope = s;
+              _teamEmployeeFilter = null;
+              _teamViewMode = TicketTeamViewMode.oversikt;
+            }),
+          ),
+        ),
+        if (_isLoading)
+          const Expanded(child: DriftProLoadingCenter())
+        else if (_error != null)
+          Expanded(
+            child: Center(
+              child: Text(_error!, textAlign: TextAlign.center),
+            ),
+          )
+        else
+          Expanded(
+            child: TicketTeamEmployeesHub(
+              teamProfiles: _teamProfiles,
+              teamTickets: _teamTickets,
+              leaderProfile: _profile,
+              selectedEmployeeId: _teamEmployeeFilter,
+              initialView: _teamViewMode,
+              onViewChanged: (v) => setState(() => _teamViewMode = v),
+              onEmployeeSelected: (id) =>
+                  setState(() => _teamEmployeeFilter = id),
+              onTicketTap: _openTicketDetail,
+              listChild: RefreshIndicator(
+                onRefresh: _loadProfileAndTickets,
+                color: DriftProTheme.primaryGreen,
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(
+                    parent: BouncingScrollPhysics(),
+                  ),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                        child: Text(
+                          _teamEmployeeFilter == null
+                              ? 'Alle avvik hos ansatte'
+                              : 'Filtrert på valgt ansatt',
+                          style: DriftProTheme.caption,
+                        ),
+                      ),
+                    ),
+                    SliverToBoxAdapter(child: _buildStatusFilterRow()),
+                    ..._buildTicketSlivers(stats, isDark, coord),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildStatusFilterRow() {
+    return SizedBox(
+      height: 46,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          _chip('Alle', _filterStatus == null, () {
+            setState(() => _filterStatus = null);
+          }),
+          ...TicketStatus.values.map(
+            (s) => _chip(
+              s.label,
+              _filterStatus == s,
+              () => setState(() => _filterStatus = s),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   List<Widget> _buildTicketSlivers(
     TicketDashboardStats stats,
     bool isDark,
     bool coord,
   ) {
-    final filtered = _tickets
+    final filtered = _scopedVisibleTickets
         .where((t) => _showDeleted ? t.isDeleted : !t.isDeleted)
         .where((t) => _filterStatus == null || t.status == _filterStatus)
         .where(_matchesSearch)

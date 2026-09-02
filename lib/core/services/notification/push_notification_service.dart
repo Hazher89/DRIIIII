@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../config/driftpro_client.dart';
 import '../../config/firebase_config.dart';
@@ -29,6 +30,28 @@ abstract final class PushNotificationService {
     await _ensureLocalNotifications();
     await _ensureFirebaseMessaging(requestPermission: false);
     await PushNavigationService.flushAfterLogin();
+  }
+
+  /// Android 13+: systemdialog for POST_NOTIFICATIONS (FCM alene viser den ikke).
+  static Future<bool> requestSystemNotificationPermission() async {
+    if (!DriftProClient.isMobile || kIsWeb) return false;
+    await _ensureLocalNotifications();
+
+    if (Platform.isAndroid) {
+      final android = _local.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      final fromPlugin = await android?.requestNotificationsPermission();
+      if (fromPlugin == true) return true;
+
+      final status = await Permission.notification.request();
+      return status.isGranted || status.isLimited || status.isProvisional;
+    }
+
+    if (Platform.isIOS) {
+      return registerAfterPermissionGranted();
+    }
+
+    return false;
   }
 
   /// Kall etter at brukeren har gitt varsel-tillatelse (eller allerede har den).
@@ -176,13 +199,22 @@ abstract final class PushNotificationService {
       final messaging = FirebaseMessaging.instance;
 
       if (requestPermission) {
-        await messaging.requestPermission(alert: true, badge: true, sound: true);
+        if (Platform.isAndroid) {
+          await requestSystemNotificationPermission();
+        } else {
+          await messaging.requestPermission(
+            alert: true,
+            badge: true,
+            sound: true,
+          );
+        }
       }
 
-      final settings = await messaging.getNotificationSettings();
-      final allowed =
-          settings.authorizationStatus == AuthorizationStatus.authorized ||
-              settings.authorizationStatus == AuthorizationStatus.provisional;
+      final allowed = Platform.isAndroid
+          ? await _androidNotificationsAllowed()
+          : _iosNotificationsAllowed(
+              await messaging.getNotificationSettings(),
+            );
       if (!allowed) {
         _lastRegistrationOk = false;
         return false;
@@ -203,6 +235,15 @@ abstract final class PushNotificationService {
       debugPrint('Firebase messaging init: $e');
       return false;
     }
+  }
+
+  static bool _iosNotificationsAllowed(NotificationSettings settings) =>
+      settings.authorizationStatus == AuthorizationStatus.authorized ||
+      settings.authorizationStatus == AuthorizationStatus.provisional;
+
+  static Future<bool> _androidNotificationsAllowed() async {
+    final status = await Permission.notification.status;
+    return status.isGranted || status.isLimited || status.isProvisional;
   }
 
   static Future<void> _waitForApnsToken(FirebaseMessaging messaging) async {

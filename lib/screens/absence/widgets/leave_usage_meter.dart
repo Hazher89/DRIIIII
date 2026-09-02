@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
 
-/// Bruksmåler som går fra gull (lav bruk) til rødt (brukt opp).
+/// Bruksmåler — gull → rødt. Støtter dobbel metrikk (dager + tilfeller).
 class LeaveUsageMeter extends StatelessWidget {
   const LeaveUsageMeter({
     super.key,
@@ -12,6 +12,12 @@ class LeaveUsageMeter extends StatelessWidget {
     this.subtitle,
     this.icon = Icons.local_hospital_outlined,
     this.trailing,
+    this.metricLabel,
+    this.secondaryUsed,
+    this.secondaryMax,
+    this.secondaryMetricLabel,
+    this.secondaryRemainingLabel,
+    this.onTap,
   });
 
   final String title;
@@ -20,6 +26,14 @@ class LeaveUsageMeter extends StatelessWidget {
   final String? subtitle;
   final IconData icon;
   final Widget? trailing;
+  /// Overstyrer standard «used/max» (f.eks. «4 dager · 3/4 tilfeller»).
+  final String? metricLabel;
+  /// Valgfri sekundær måler (f.eks. tilfeller ved egenmelding).
+  final int? secondaryUsed;
+  final int? secondaryMax;
+  final String? secondaryMetricLabel;
+  final String? secondaryRemainingLabel;
+  final VoidCallback? onTap;
 
   double get _ratio {
     if (max <= 0) return 1;
@@ -43,7 +57,7 @@ class LeaveUsageMeter extends StatelessWidget {
     final color = _meterColor;
     final remaining = (max - used).clamp(0, max);
 
-    return Container(
+    final body = Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? DriftProTheme.cardDark : Colors.white,
@@ -86,33 +100,105 @@ class LeaveUsageMeter extends StatelessWidget {
               ),
               if (trailing != null) trailing!,
               Text(
-                '$used/$max',
+                metricLabel ?? '$used/$max',
                 style: DriftProTheme.labelLg.copyWith(color: color),
+                textAlign: TextAlign.end,
               ),
+              if (onTap != null) ...[
+                const SizedBox(width: 4),
+                Icon(Icons.chevron_right, color: color.withValues(alpha: 0.7), size: 20),
+              ],
             ],
           ),
           const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: _ratio,
-              minHeight: 10,
-              backgroundColor: color.withValues(alpha: 0.12),
-              valueColor: AlwaysStoppedAnimation<Color>(color),
-            ),
+          _meterRow(
+            label: secondaryMax != null ? 'Dager' : null,
+            used: used,
+            max: max,
+            color: color,
           ),
+          if (secondaryMax != null && secondaryUsed != null) ...[
+            const SizedBox(height: 10),
+            _meterRow(
+              label: 'Tilfeller',
+              used: secondaryUsed!,
+              max: secondaryMax!,
+              color: color,
+              valueLabel: secondaryMetricLabel,
+            ),
+          ],
           const SizedBox(height: 8),
           Text(
-            remaining <= 0
-                ? 'Kvoten er brukt opp i denne perioden'
-                : '$remaining dager igjen i perioden',
+            _footerText(remaining, color),
             style: DriftProTheme.bodySm.copyWith(
               color: remaining <= 0 ? color : null,
               fontWeight: remaining <= 0 ? FontWeight.w700 : FontWeight.w500,
             ),
           ),
+          if (secondaryMax != null &&
+              secondaryUsed != null &&
+              secondaryRemainingLabel != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              secondaryRemainingLabel!,
+              style: DriftProTheme.caption,
+            ),
+          ],
         ],
       ),
+    );
+
+    if (onTap == null) return body;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: body,
+      ),
+    );
+  }
+
+  String _footerText(int remaining, Color color) {
+    if (remaining <= 0) return 'Dagskvoten er brukt opp i denne perioden';
+    return '$remaining dager igjen i perioden';
+  }
+
+  Widget _meterRow({
+    required int used,
+    required int max,
+    required Color color,
+    String? label,
+    String? valueLabel,
+  }) {
+    final ratio = max <= 0 ? 1.0 : (used / max).clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (label != null) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: DriftProTheme.caption),
+              Text(
+                valueLabel ?? '$used/$max',
+                style: DriftProTheme.caption.copyWith(color: color),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+        ],
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            value: ratio,
+            minHeight: label == null ? 10 : 8,
+            backgroundColor: color.withValues(alpha: 0.12),
+            valueColor: AlwaysStoppedAnimation<Color>(color),
+          ),
+        ),
+      ],
     );
   }
 }

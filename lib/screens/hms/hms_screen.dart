@@ -12,8 +12,10 @@ import '../../core/layout/mobile_shell_scaffold.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/services/hms/hms_service.dart';
 import '../../core/services/supabase_service.dart';
+import '../../core/services/org/department_leader_scope.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
+import '../../widgets/common/team_scope_segment.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
 /// HMS-hub — moduler for avvik, risiko, SJA, vernerunde m.m.
@@ -28,6 +30,8 @@ class _HmsScreenState extends State<HmsScreen> {
   UserProfile? _profile;
   HmsDashboardStats _stats = const HmsDashboardStats();
   bool _statsLoading = true;
+  bool _canManageTeam = false;
+  TeamDataScope _dataScope = TeamDataScope.mine;
 
   @override
   void initState() {
@@ -37,8 +41,13 @@ class _HmsScreenState extends State<HmsScreen> {
 
   Future<void> _load() async {
     final p = await SupabaseService.fetchCurrentUserProfile();
+    final canManage =
+        p != null ? await DepartmentLeaderScope.canManageTeam(p) : false;
     if (!mounted) return;
-    setState(() => _profile = p);
+    setState(() {
+      _profile = p;
+      _canManageTeam = canManage;
+    });
     if (p?.companyId != null) {
       setState(() => _statsLoading = true);
       final s = await HmsService.loadDashboardStats(p!.companyId!);
@@ -256,6 +265,15 @@ class _HmsScreenState extends State<HmsScreen> {
                       ),
                       children: [
                         if (isMobile) ...[
+                          if (_canManageTeam) ...[
+                            TeamScopeSegment(
+                              scope: _dataScope,
+                              onChanged: (s) => setState(() => _dataScope = s),
+                            ),
+                            const SizedBox(height: 12),
+                            if (_dataScope == TeamDataScope.team)
+                              _buildTeamLeaderHint(context, isDark),
+                          ],
                           Text(
                             'Opplæring, dokumenter og sikkerhet',
                             style: DriftProTheme.bodyMd.copyWith(
@@ -292,6 +310,47 @@ class _HmsScreenState extends State<HmsScreen> {
                       ],
                     ),
                   ),
+      ),
+    );
+  }
+
+  Widget _buildTeamLeaderHint(BuildContext context, bool isDark) {
+    return Material(
+      color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: () => context.go(AppPaths.tickets),
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(Icons.groups_outlined, color: DriftProTheme.primaryGreen),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Oversikt over ansatte',
+                      style: DriftProTheme.labelMd.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'Avvik, fravær og godkjenninger for teamet ditt finner du under Avvik og Fravær.',
+                      style: DriftProTheme.caption,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: DriftProTheme.primaryGreen.withValues(alpha: 0.7),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

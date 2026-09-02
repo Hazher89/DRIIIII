@@ -22,7 +22,7 @@ class LeaveTeamInsightsPanel extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final topEgen = snapshot.topEgenmeldingUsers;
     final exhausted =
-        snapshot.egenmeldingExhausted(companySettings.egenmeldingDaysPerYear);
+        snapshot.egenmeldingExhausted(companySettings.effectiveEgenmeldingDaysPerYear);
     final typeEntries = snapshot.daysByTypeYtd.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -177,7 +177,7 @@ class LeaveTeamInsightsPanel extends StatelessWidget {
   }
 
   Widget _egenmeldingBarChart(bool isDark, List<EmployeeLeaveInsight> rows) {
-    final maxCap = companySettings.egenmeldingDaysPerYear;
+    final maxCap = companySettings.effectiveEgenmeldingDaysPerYear;
     final maxY = rows
         .map((e) => e.egenmeldingUsed)
         .fold<int>(0, (a, b) => a > b ? a : b)
@@ -242,7 +242,7 @@ class LeaveTeamInsightsPanel extends StatelessWidget {
                   BarChartRodData(
                     toY: rows[i].egenmeldingUsed.toDouble(),
                     color: rows[i].egenmeldingExhaustedFor(
-                            companySettings.egenmeldingDaysPerYear)
+                            companySettings.effectiveEgenmeldingDaysPerYear)
                         ? DriftProTheme.error
                         : DriftProTheme.absenceSickSelf,
                     width: 16,
@@ -355,7 +355,7 @@ class LeaveTeamInsightsPanel extends StatelessWidget {
           const SizedBox(height: 8),
           ...list.take(6).map(
             (e) => Text(
-              '• ${e.profile.fullName} — ${e.egenmeldingUsed}/${companySettings.egenmeldingDaysPerYear} dager, '
+              '• ${e.profile.fullName} — ${e.egenmeldingUsed}/${companySettings.effectiveEgenmeldingDaysPerYear} dager, '
               '${e.egenmeldingPeriodsUsed}/${LeaveRules.egenmeldingMaxPeriodsPerYear} perioder',
               style: DriftProTheme.bodySm,
             ),
@@ -392,9 +392,9 @@ class LeaveTeamInsightsPanel extends StatelessWidget {
           const Divider(height: 1),
           ...snapshot.employees.map((e) {
             final egenColor = e.egenmeldingExhaustedFor(
-                    companySettings.egenmeldingDaysPerYear)
+                    companySettings.effectiveEgenmeldingDaysPerYear)
                 ? DriftProTheme.error
-                : e.egenmeldingUsed >= companySettings.egenmeldingDaysPerYear - 3
+                : e.egenmeldingUsed >= companySettings.effectiveEgenmeldingDaysPerYear - 3
                     ? DriftProTheme.warning
                     : DriftProTheme.primaryGreen;
             return ListTile(
