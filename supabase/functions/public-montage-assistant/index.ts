@@ -154,7 +154,7 @@ ${question}
 
 Skriv et naturlig, godt svar:`;
 
-    const model = Deno.env.get("GEMINI_MODEL")?.trim() || "gemini-2.0-flash";
+    const model = Deno.env.get("GEMINI_MODEL")?.trim() || "gemini-3.6-flash";
     const url =
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
 
