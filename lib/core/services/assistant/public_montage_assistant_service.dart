@@ -20,7 +20,7 @@ class PublicMontageAssistantService {
     'Hva må jeg gjøre klart før komfyren kommer?',
     'Er side-by-side kjøleskap enkel eller avansert montering?',
     'Hva dekker omhengsling av dør?',
-    'Når ringer montøren ved avansert montering?',
+    'Hva er forskjellen på enkel og avansert montering?',
   ];
 
   /// Naturlig språk → tjeneste-stikkord som forbedrer søk.

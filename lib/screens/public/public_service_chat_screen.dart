@@ -149,7 +149,7 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Svarer ut fra MAVI/Elkjöp monteringsoversikt · ikke pris eller booking',
+                              'Svarer ut fra MAVI/Elkjøp monteringsoversikt · ikke pris eller booking',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 11,
@@ -259,7 +259,7 @@ class _TopBar extends StatelessWidget {
             ),
             const Spacer(),
             Text(
-              'MAVI × Elkjöp',
+              'MAVI × Elkjøp',
               style: TextStyle(
                 fontSize: 12,
                 color: Colors.black.withValues(alpha: 0.4),

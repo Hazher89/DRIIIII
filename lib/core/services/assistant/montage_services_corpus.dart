@@ -1,6 +1,6 @@
 import 'assistant_corpus.dart';
 
-/// Offentlig kunnskapsbase: Elkjöp monteringstjenester (PDF 23.07.2026).
+/// Offentlig kunnskapsbase: Elkjøp monteringstjenester (PDF 23.07.2026).
 /// Utføres av MAVI hos kunden — enkle (sjåfør) og avanserte (montør).
 abstract final class MontageServicesCorpus {
   static const overviewId = 'montage.overview';
@@ -29,21 +29,19 @@ abstract final class MontageServicesCorpus {
         tags: [
           'montering',
           'elkjop',
-          'elkjöp',
+          'elkjøp',
           'mavi',
           'levering',
           'enkel',
           'avansert',
         ],
         body: '''
-MAVI utfører monteringstjenester hos kunden for Elkjöp.
+MAVI utfører monteringstjenester hos kunden for Elkjøp.
 
 Enkle tjenester: utføres av sjåfør ved levering.
 Steg: frakobling → bæring → transport → montering.
 
-Avanserte tjenester: utføres ved levering av MAVI, eller 0–5 dager etter levering via Bring.
-Montør kontakter kunde innen kl. 20.00 samme dag som levering for å avtale tid.
-(Noen områder: Bring leverer og monterer samtidig.)
+Avanserte tjenester: utføres av montør.
 
 Denne chatten svarer kun på hva som er inkludert, hva kunden må sørge for, og hva som ikke er inkludert.
 Vi gir ikke pris, booking eller ordrestatus her.
@@ -248,7 +246,7 @@ Vi gir ikke pris, booking eller ordrestatus her.
             'Skjøting/skjøteledning til strøm',
             'Funksjonstest',
           ],
-          note: 'Avansert tjeneste — montør avtaler tid (kontakt innen kl. 20 samme dag som levering).',
+          note: 'Avansert tjeneste — utføres av montør.',
         ),
         _service(
           id: 'montage.adv.sbs',

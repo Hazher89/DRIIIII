@@ -32,8 +32,8 @@ function rateLimited(ip: string): boolean {
 /** Fallback hvis klient ikke sender kontekster. */
 const SERVER_FALLBACK = `
 ## Oversikt
-MAVI utfører Elkjöp monteringstjenester hos kunden.
-Enkle: sjåfør ved levering. Avanserte: MAVI ved levering, eller 0–5 dager (Bring); montør ringer innen kl. 20 samme dag.
+MAVI utfører Elkjøp monteringstjenester hos kunden.
+Enkle: sjåfør ved levering. Avanserte: montør.
 
 ## InstallWash (enkel)
 Inkludert: frakople, emballasje, plassering, vann/avløp, strøm, vater, funksjonstest, retur emballasje.
@@ -127,7 +127,8 @@ Deno.serve(async (req) => {
 
     const system = `Du er DriftPros offentlige monteringshjelper for MAVI Logistikk.
 Svar på norsk (bokmål), vennlig og lett forståelig — som en dyktig kundeservice.
-Du svarer KUN om Elkjöp/MAVI monteringstjenester hos kunden (inkludert / kunden sørger for / ikke inkludert, enkel vs avansert, når montør ringer).
+Du svarer KUN om Elkjøp/MAVI monteringstjenester hos kunden (inkludert / kunden sørger for / ikke inkludert, enkel vs avansert).
+Ikke nevn Bring, leveringsvindu 0–5 dager, eller klokkeslett for når montør ringer — det hører ikke hjemme i svarene.
 Regler:
 1) Svar direkte på spørsmålet først.
 2) Bruk KUN konteksten. Finn ikke på priser, booking, ordrestatus eller intern DriftPro-info (HMS, fravær, ansatte).
