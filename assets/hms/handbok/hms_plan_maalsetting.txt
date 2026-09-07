@@ -1,32 +1,25 @@
-MAVI LOGISTIKK AS
-HMS PLAN
+HMS-PLAN OG MÅLSETTING
+MAVI Logistikk AS
 
-Målsetting:
-MAVI Logistikk AS har et høyt fokus på helse, miljø og sikkerhet (HMS) til enhver tid. 
-HMS inngår som en del av bedriftens totale kvalitetssystem og� bidrar til å styrke konkurransekraft og motivere ansatte og samarbeidspartnere.
-MAVI Logistikk AS sin HMS målsetting er: at alle aktiviteter skal gjennomføres på en forsvarlig, organisert og sikker måte, slik at menneskers liv og helse, det ytre og indre miljø, samt materielle verdier ivaretas.
-For å nå denne målsetningen vil MAVI Logistikk AS arbeide for:
-• Å fremme godt arbeidsmiljø gjennom åpenhet og god kommunikasjon
-• Sikkerhet for medarbeidere og kunder gjennom sikker jobbutførelse med vekt på kunnskap om risiko, tilrettelegging av arbeid og arbeidsplasser og god beredskap ved hendelser
-� 
-•� Å involvere våre medarbeidere i HMS arbeidet, vi er alle ansvarlige for å nå målsetningen
-� 
-• Systematisk oppfølging av resultatene for å kontinuerlig forbedre våre rutiner� 
-� 
-� 
+Målsetting
+MAVI Logistikk AS har et høyt fokus på helse, miljø og sikkerhet (HMS) til enhver tid. HMS inngår som en del av bedriftens totale kvalitetssystem og bidrar til å styrke konkurransekraft og motivere ansatte og samarbeidspartnere.
+
+HMS-målsettingen er at alle aktiviteter skal gjennomføres på en forsvarlig, organisert og sikker måte, slik at menneskers liv og helse, det ytre og indre miljø, samt materielle verdier ivaretas.
+
+For å nå målet arbeider vi for
+• Godt arbeidsmiljø gjennom åpenhet og god kommunikasjon
+• Sikkerhet for medarbeidere og kunder gjennom sikker jobbutførelse, kunnskap om risiko, tilrettelegging og god beredskap
+• Involvering av medarbeidere i HMS-arbeidet — alle er ansvarlige
+• Systematisk oppfølging av resultater for kontinuerlig forbedring
 • Produkter og tekniske løsninger med fokus på sikkerhet for personer, eiendom og miljø
-� 
 
-Ansvar og oppgaver innenfor HMS er fordelt som følger:
+Ansvar
+Daglig leder har hovedansvar for arbeidsmiljø, ansatte og underleverandører, herunder transportoppdrag og kontoransatte.
 
-	•	Daglig leder: hovedansvar for arbeidsmiljø og samtlige ansatte og underleverandører, samt direktre ansvar for kontoransatte, ansvar for ansatte og underleverandører som utfører transportoppdrag
+Risiko og oppfølging
+Kartlegging av risiko er gjennomført med grovmatrise, risikodiagram og analyseskjema. Det foretas jevnlig risikovurdering basert på erfaring og rapporter.
 
-Kartlegging av risiko er gjennomført ved bruk av grovmatrise, risikodiagram og analyseskjema utarbeidet av Arbeidstilsynet. Det foretas jevnlig risikovudering basert på erfaring og rapporter. 
+Tiltak fremgår av handlingsplan. Feil og mangler håndteres fortløpende. HMS-systemet vurderes ut fra rapporter fra ansatte og underleverandører.
 
-Tiltakene for å fremme  helse, miljø og sikkerhet fremgår I den vedlagte handlingsplan.
-
-Det foretas jevnlig vurdering for å håndtere feil og mangler. HMS systemet vurderes på bakgrunn av rapporter fra ansatte og underleverandører. Risikoen revurderes ved bruk av grovmatrise, risikodiagram og analyseskjema.
-
-HMS-rutinene gjennomgås i samarbeid med kundene, ansatte og underleverandører. Endringene i bedriftens virksomhet, lokalisering, arbeidsrutiner og oppgaver vurderes fra et sikkerhetsmessig synspunkt for å ta hensyn til evt. behov for endringer.
-
-
+I DriftPro
+Bruk Risikoanalyser, Risikomatrise, Vernerunde og Avvik/RUH for å følge opp dette i praksis.

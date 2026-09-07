@@ -1,14 +1,11 @@
 RISIKODIAGRAM — MILJØ
 Vedlegg 3.2 · MAVI Logistikk AS
-
 Formål
 Vurdere sannsynlighet og konsekvens for skade på ytre miljø (utslipp, søl, avfall).
-
 Slik bruker du det i DriftPro
 1. Gå til HMS → Risikomatrise eller Risikoanalyser
 2. Opprett vurdering for miljørelevante aktiviteter (f.eks. kjemikalier, avfall)
 3. Koble tiltak til ansvarlig og frist
 4. Bruk Avvik ved utslipp / lekkasje (se også RUH-vedlegg)
-
 Husk
 Rapporter miljøhendelser. Se Avfallsinstruks (vedlegg 13) for sortering på Solheimveien.
