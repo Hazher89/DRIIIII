@@ -10,15 +10,18 @@ class _ChatMessage {
     required this.text,
     required this.isUser,
     this.copied = false,
+    this.followUps = const [],
   });
   final String text;
   final bool isUser;
   final bool copied;
+  final List<String> followUps;
 
   _ChatMessage copyWith({bool? copied}) => _ChatMessage(
         text: text,
         isUser: isUser,
         copied: copied ?? this.copied,
+        followUps: followUps,
       );
 }
 
@@ -114,7 +117,13 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
     final answer = await PublicMontageAssistantService.instance.ask(q);
     if (!mounted) return;
     setState(() {
-      _messages.add(_ChatMessage(text: answer.text, isUser: false));
+      _messages.add(
+        _ChatMessage(
+          text: answer.text,
+          isUser: false,
+          followUps: answer.followUps,
+        ),
+      );
       _busy = false;
       _liveChunks = PublicMontageAssistantService.instance.liveChunkCount;
     });
@@ -223,6 +232,7 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
                                   onCopy: _messages[i].isUser
                                       ? null
                                       : () => _copy(i),
+                                  onFollowUp: _busy ? null : _send,
                                 );
                               },
                             ),
@@ -741,10 +751,12 @@ class _MessageRow extends StatelessWidget {
     required this.message,
     required this.maxWidth,
     this.onCopy,
+    this.onFollowUp,
   });
   final _ChatMessage message;
   final double maxWidth;
   final VoidCallback? onCopy;
+  final void Function(String)? onFollowUp;
 
   @override
   Widget build(BuildContext context) {
@@ -755,80 +767,117 @@ class _MessageRow extends StatelessWidget {
         constraints: BoxConstraints(maxWidth: maxWidth),
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            decoration: BoxDecoration(
-              color: isUser ? const Color(0xFF1C2420) : Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: isUser
-                  ? null
-                  : Border.all(color: Colors.black.withValues(alpha: 0.05)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: isUser ? 0.08 : 0.03),
-                  blurRadius: 14,
-                  offset: const Offset(0, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                decoration: BoxDecoration(
+                  color: isUser ? const Color(0xFF1C2420) : Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: isUser
+                      ? null
+                      : Border.all(color: Colors.black.withValues(alpha: 0.05)),
+                  boxShadow: [
+                    BoxShadow(
+                      color:
+                          Colors.black.withValues(alpha: isUser ? 0.08 : 0.03),
+                      blurRadius: 14,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      radius: 12,
-                      backgroundColor: isUser
-                          ? Colors.white.withValues(alpha: 0.15)
-                          : DriftProTheme.primaryGreen,
-                      child: Icon(
-                        isUser ? Icons.person_outline : Icons.bolt_rounded,
-                        size: 14,
-                        color: Colors.white,
-                      ),
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 12,
+                          backgroundColor: isUser
+                              ? Colors.white.withValues(alpha: 0.15)
+                              : DriftProTheme.primaryGreen,
+                          child: Icon(
+                            isUser ? Icons.person_outline : Icons.bolt_rounded,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          isUser ? 'Deg' : 'DriftPro',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12.5,
+                            color: isUser
+                                ? Colors.white.withValues(alpha: 0.9)
+                                : const Color(0xFF1A1A1A),
+                          ),
+                        ),
+                        const Spacer(),
+                        if (onCopy != null)
+                          TextButton.icon(
+                            onPressed: onCopy,
+                            icon: Icon(
+                              message.copied
+                                  ? Icons.check
+                                  : Icons.copy_rounded,
+                              size: 14,
+                              color: Colors.black45,
+                            ),
+                            label: Text(
+                              message.copied ? 'Kopiert' : 'Kopier',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Colors.black45,
+                              ),
+                            ),
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                            ),
+                          ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      isUser ? 'Deg' : 'DriftPro',
+                    const SizedBox(height: 8),
+                    SelectableText(
+                      message.text,
                       style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12.5,
-                        color: isUser
-                            ? Colors.white.withValues(alpha: 0.9)
-                            : const Color(0xFF1A1A1A),
+                        fontSize: 15.2,
+                        height: 1.55,
+                        color: isUser ? Colors.white : const Color(0xFF1A1A1A),
                       ),
                     ),
-                    const Spacer(),
-                    if (onCopy != null)
-                      TextButton.icon(
-                        onPressed: onCopy,
-                        icon: Icon(
-                          message.copied ? Icons.check : Icons.copy_rounded,
+                  ],
+                ),
+              ),
+              if (!isUser &&
+                  message.followUps.isNotEmpty &&
+                  onFollowUp != null) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final f in message.followUps)
+                      ActionChip(
+                        label: Text(f, style: const TextStyle(fontSize: 12.5)),
+                        onPressed: () => onFollowUp!(f),
+                        backgroundColor: Colors.white,
+                        side: BorderSide(
+                          color: DriftProTheme.primaryGreen
+                              .withValues(alpha: 0.35),
+                        ),
+                        avatar: const Icon(
+                          Icons.arrow_outward_rounded,
                           size: 14,
-                          color: Colors.black45,
-                        ),
-                        label: Text(
-                          message.copied ? 'Kopiert' : 'Kopier',
-                          style: const TextStyle(fontSize: 12, color: Colors.black45),
-                        ),
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: EdgeInsets.zero,
+                          color: DriftProTheme.primaryGreen,
                         ),
                       ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                SelectableText(
-                  message.text,
-                  style: TextStyle(
-                    fontSize: 15.2,
-                    height: 1.55,
-                    color: isUser ? Colors.white : const Color(0xFF1A1A1A),
-                  ),
-                ),
               ],
-            ),
+            ],
           ),
         ),
       ),

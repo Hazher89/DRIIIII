@@ -21,27 +21,52 @@ class PublicMontageAssistantService {
   /// null = ukjent, false = funksjon mangler/feiler (ikke spør igjen hver gang).
   bool? _geminiAvailable;
   int _liveChunkCount = 0;
+  DateTime? _engineBuiltAt;
 
   int get liveChunkCount => _liveChunkCount;
+
+  /// Test-only: inject engine without network.
+  void debugSetEngineForTest(
+    KnowledgeAssistantEngine engine, {
+    int liveCount = 0,
+  }) {
+    _engine = engine;
+    _engineBuiltAt = DateTime.now();
+    _liveChunkCount = liveCount;
+    _geminiAvailable = false;
+  }
 
   /// Force rebuild (etter admin har lagret ny kunnskap).
   Future<void> reloadKnowledge() async {
     _engine = null;
+    _engineBuiltAt = null;
     PublicChatKnowledgeService.instance.invalidateCache();
     await ensureReady(forceRefresh: true);
   }
 
   Future<void> ensureReady({bool forceRefresh = false}) async {
-    if (!forceRefresh && (_engine != null || _loading)) {
+    final freshEnough = _engine != null &&
+        _engineBuiltAt != null &&
+        DateTime.now().difference(_engineBuiltAt!) < const Duration(seconds: 20);
+    if (!forceRefresh && freshEnough) return;
+
+    if (_loading) {
       while (_loading) {
         await Future<void>.delayed(const Duration(milliseconds: 40));
       }
-      return;
+      if (!forceRefresh &&
+          _engine != null &&
+          _engineBuiltAt != null &&
+          DateTime.now().difference(_engineBuiltAt!) <
+              const Duration(seconds: 20)) {
+        return;
+      }
     }
+
     _loading = true;
     try {
       final live = await PublicChatKnowledgeService.instance.publishedChunks(
-        forceRefresh: forceRefresh,
+        forceRefresh: forceRefresh || !freshEnough,
       );
       _liveChunkCount = live.length;
       final chunks = <KnowledgeChunk>[
@@ -51,6 +76,7 @@ class PublicMontageAssistantService {
       ];
       final engine = KnowledgeAssistantEngine(chunks)..buildIndex();
       _engine = engine;
+      _engineBuiltAt = DateTime.now();
     } finally {
       _loading = false;
     }
@@ -167,6 +193,8 @@ class PublicMontageAssistantService {
   }
 
   Future<KnowledgeAnswer> ask(String query) async {
+    // Soft-refresh knowledge every ~20s so Chat Lab updates apply.
+    // Skip network when test engine is injected (_geminiAvailable == false and built now).
     await ensureReady();
     final engine = _engine;
     if (engine == null) {
@@ -189,10 +217,12 @@ class PublicMontageAssistantService {
 
     final intent = _matchIntent(q);
     final expanded = _expandQuery(q);
+    final liveHits = _matchLiveKnowledge(q);
     final hits = _rankHits(
       q,
       expanded,
       [
+        ...liveHits,
         ...engine.search(expanded, limit: 14),
         ...engine.search(q, limit: 10),
         ..._forcedTagHits(expanded),
@@ -201,17 +231,46 @@ class PublicMontageAssistantService {
       intentBoostId: intent?.chunkId,
     );
 
-    final local = _composeNatural(q, hits, intent);
+    final strongLive = liveHits.isNotEmpty && liveHits.first.score >= 40;
+    final local = _composeNatural(q, hits, intent, preferLive: strongLive);
 
-    // Gemini først — formulerer naturlig for CCC/butikk.
-    if (_geminiAvailable != false) {
+    // Live-trening vinner alltid — raskt, uten å vente på Gemini.
+    if (strongLive && local.found) {
+      return KnowledgeAnswer(
+        found: true,
+        hits: hits.take(3).toList(),
+        text: _sanitizeExternal(local.text),
+        followUps: _followUpsFrom(hits, excludeId: liveHits.first.chunk.id),
+      );
+    }
+
+    // Gemini kun når vi mangler treff — med kort timeout.
+    if (!local.found && _geminiAvailable != false) {
       try {
-        final gemini = await _askGemini(q, hits, intent);
+        final gemini = await _askGemini(q, hits, intent)
+            .timeout(const Duration(seconds: 6), onTimeout: () => null);
         if (gemini != null && gemini.trim().isNotEmpty) {
           return KnowledgeAnswer(
-            found: hits.isNotEmpty || local.found,
+            found: hits.isNotEmpty,
             hits: hits.take(3).toList(),
             text: _sanitizeExternal(gemini.trim()),
+            followUps: _followUpsFrom(hits),
+          );
+        }
+      } catch (_) {}
+    } else if (local.found && _geminiAvailable != false && !strongLive) {
+      // Valgfri polering — men ikke blokker hvis tregt.
+      try {
+        final gemini = await _askGemini(q, hits, intent)
+            .timeout(const Duration(seconds: 4), onTimeout: () => null);
+        if (gemini != null &&
+            gemini.trim().isNotEmpty &&
+            !_geminiContradictsLive(gemini, hits)) {
+          return KnowledgeAnswer(
+            found: true,
+            hits: hits.take(3).toList(),
+            text: _sanitizeExternal(gemini.trim()),
+            followUps: _followUpsFrom(hits, excludeId: hits.first.chunk.id),
           );
         }
       } catch (_) {}
@@ -222,17 +281,127 @@ class PublicMontageAssistantService {
         found: true,
         hits: hits.take(3).toList(),
         text: _sanitizeExternal(local.text),
+          followUps: _followUpsFrom(
+            hits,
+            excludeId: hits.isEmpty ? null : hits.first.chunk.id,
+          ),
       );
     }
 
-    return const KnowledgeAnswer(
+    return KnowledgeAnswer(
       found: false,
-      hits: [],
+      hits: const [],
       text:
           'Jeg er ikke helt sikker på det.\n\n'
           'Prøv å spesifisere produkt (vaskemaskin, komfyr, TV…) eller handling '
           '(ombooking, endre adresse, SA, kansellering, fire personer).',
+      followUps: suggestedQueries.take(3).toList(),
     );
+  }
+
+  List<String> _followUpsFrom(
+    List<KnowledgeHit> hits, {
+    String? excludeId,
+  }) {
+    final out = <String>[];
+    for (final h in hits) {
+      if (h.chunk.id == excludeId) continue;
+      final t = h.chunk.title.trim();
+      if (t.isEmpty || t.length > 72) continue;
+      if (out.contains(t)) continue;
+      out.add(t);
+      if (out.length >= 3) break;
+    }
+    if (out.length < 3) {
+      for (final s in suggestedQueries) {
+        if (out.contains(s)) continue;
+        out.add(s);
+        if (out.length >= 3) break;
+      }
+    }
+    return out;
+  }
+
+  /// Direkte treff mot Chat Lab-kunnskap (tittel/innhold), ikke bare indeks.
+  List<KnowledgeHit> _matchLiveKnowledge(String query) {
+    final engine = _engine;
+    if (engine == null) return const [];
+    final q = query.toLowerCase().trim();
+    final qTokens = q
+        .split(RegExp(r'[^a-zæøå0-9]+', caseSensitive: false))
+        .where((t) => t.length >= 3)
+        .toSet();
+    if (qTokens.isEmpty && q.length < 3) return const [];
+
+    final out = <KnowledgeHit>[];
+    for (final chunk in engine.allChunks) {
+      if (chunk.source != KnowledgeSourceKind.liveTrain) continue;
+      final hay = '${chunk.title}\n${chunk.body}'.toLowerCase();
+      var score = 0.0;
+
+      // Substring / phrase overlap
+      for (final t in qTokens) {
+        if (hay.contains(t)) score += 28;
+      }
+      if (q.contains('steng') && hay.contains('steng')) score += 80;
+      if ((q.contains('åpning') || q.contains('aapning')) &&
+          (hay.contains('åpning') ||
+              hay.contains('aapning') ||
+              hay.contains('steng') ||
+              hay.contains('17'))) {
+        score += 70;
+      }
+      if (q.contains('lydplanke') || q.contains('soundbar')) {
+        if (hay.contains('lyd') || hay.contains('sound')) score += 80;
+      }
+      if (hay.contains(q) || q.contains(chunk.title.toLowerCase())) {
+        score += 50;
+      }
+      // Title word overlap
+      final titleTokens = chunk.title
+          .toLowerCase()
+          .split(RegExp(r'[^a-zæøå0-9]+'))
+          .where((t) => t.length >= 3);
+      for (final t in titleTokens) {
+        if (qTokens.contains(t) || q.contains(t)) score += 35;
+      }
+
+      if (score < 28) continue;
+      out.add(
+        KnowledgeHit(
+          chunk: chunk,
+          score: score,
+          snippet: chunk.body.length > 140
+              ? '${chunk.body.substring(0, 140)}…'
+              : chunk.body,
+        ),
+      );
+    }
+    out.sort((a, b) => b.score.compareTo(a.score));
+    return out;
+  }
+
+  bool _geminiContradictsLive(String answer, List<KnowledgeHit> hits) {
+    final live = hits
+        .where((h) => h.chunk.source == KnowledgeSourceKind.liveTrain)
+        .take(3);
+    if (live.isEmpty) return false;
+    final a = answer.toLowerCase();
+    final denies = a.contains('dessverre ikke') ||
+        a.contains('har ikke') ||
+        a.contains('vet ikke') ||
+        a.contains('ikke tilgjengelig') ||
+        a.contains('kan variere');
+    if (!denies) return false;
+    // If live knowledge mentions a concrete fact (clock / number), Gemini denial is wrong.
+    for (final h in live) {
+      if (RegExp(r'\d').hasMatch(h.chunk.body) ||
+          h.chunk.body.toLowerCase().contains('steng') ||
+          h.chunk.body.toLowerCase().contains('monterer ikke')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   _PublicIntent? _matchIntent(String query) {
@@ -391,10 +560,19 @@ class PublicMontageAssistantService {
   KnowledgeAnswer _composeNatural(
     String query,
     List<KnowledgeHit> hits,
-    _PublicIntent? intent,
-  ) {
+    _PublicIntent? intent, {
+    bool preferLive = false,
+  }) {
     KnowledgeChunk? primary;
-    if (intent != null) {
+    if (preferLive) {
+      for (final h in hits) {
+        if (h.chunk.source == KnowledgeSourceKind.liveTrain) {
+          primary = h.chunk;
+          break;
+        }
+      }
+    }
+    if (primary == null && intent != null) {
       for (final h in hits) {
         if (h.chunk.id == intent.chunkId) {
           primary = h.chunk;
@@ -413,9 +591,9 @@ class PublicMontageAssistantService {
     }
     // Prefer live-trained knowledge when scores are close.
     if (hits.isNotEmpty) {
-      for (final h in hits.take(4)) {
+      for (final h in hits.take(5)) {
         if (h.chunk.source == KnowledgeSourceKind.liveTrain &&
-            h.score >= (hits.first.score - 80)) {
+            h.score >= (hits.first.score - 120)) {
           primary = h.chunk;
           break;
         }
@@ -428,22 +606,12 @@ class PublicMontageAssistantService {
     final q = query.toLowerCase();
     final buf = StringBuffer();
 
-    if (primary.source == KnowledgeSourceKind.publicOps) {
+    if (primary.source == KnowledgeSourceKind.liveTrain) {
+      buf.writeln(_rewriteLiveAnswer(primary));
+    } else if (primary.source == KnowledgeSourceKind.publicOps) {
       buf.writeln(_rewriteOpsAnswer(primary, intent?.label));
     } else {
       buf.writeln(_rewriteMontageAnswer(primary, q));
-    }
-
-    final related = hits
-        .where((h) => h.chunk.id != primary!.id)
-        .take(2)
-        .toList();
-    if (related.isNotEmpty) {
-      buf.writeln();
-      buf.writeln('Du kan også spørre om:');
-      for (final h in related) {
-        buf.writeln('• ${h.chunk.title}');
-      }
     }
 
     return KnowledgeAnswer(
@@ -451,6 +619,45 @@ class PublicMontageAssistantService {
       hits: hits.take(3).toList(),
       text: buf.toString().trim(),
     );
+  }
+
+  /// Profesjonell formulering av Chat Lab-regler / Q&A — uten unødvendig fyll.
+  String _rewriteLiveAnswer(KnowledgeChunk chunk) {
+    var body = chunk.body.trim();
+    body = body.replaceFirst(RegExp(r'^Spørsmål:\s*.+\n+', multiLine: true), '');
+    body = body
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(RegExp(r'\s*KL\s*', caseSensitive: false), ' kl. ')
+        .trim();
+    if (body.isEmpty) return chunk.title;
+
+    // Allerede en full setning?
+    final lower = body.toLowerCase();
+    if (body.length > 28 &&
+        (body.contains('.') || body.contains('!') || body.contains('?'))) {
+      return _capitalizeSentence(body);
+    }
+
+    if (lower.contains('steng') && RegExp(r'\d').hasMatch(body)) {
+      return _capitalizeSentence(
+        body.endsWith('.') ? body : '$body.',
+      );
+    }
+    if (lower.contains('monterer ikke') || lower.startsWith('vi ')) {
+      return _capitalizeSentence(body.endsWith('.') ? body : '$body.');
+    }
+
+    // Kort faktum → full setning
+    if (body.length < 90 && !body.contains('.')) {
+      return _capitalizeSentence('$body.');
+    }
+    return _capitalizeSentence(body);
+  }
+
+  String _capitalizeSentence(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return t;
+    return '${t[0].toUpperCase()}${t.substring(1)}';
   }
 
   /// Naturlige svar til CCC/butikk — «du»-form, aldri «kontakt CCC/butikk».
@@ -658,7 +865,10 @@ class PublicMontageAssistantService {
     }
 
     final contexts = <Map<String, String>>[
-      for (final h in hits)
+      for (final h in [
+        ...hits.where((h) => h.chunk.source == KnowledgeSourceKind.liveTrain),
+        ...hits.where((h) => h.chunk.source != KnowledgeSourceKind.liveTrain),
+      ])
         if (AssistantTextUtils.isUsefulChunk(
           id: h.chunk.id,
           title: h.chunk.title,
@@ -688,9 +898,10 @@ class PublicMontageAssistantService {
       'source': 'Policy',
       'body':
           'Målgruppe: CCC og butikk (Elkjøp). Snakk direkte til dem som operatører. '
-          'Bruk «du/dere» om handlinger de skal gjøre selv (ombook, sett opp SA, endre i ordren). '
-          'ALDRI si «kontakt CCC», «kontakt butikken» eller «ta kontakt med Elkjøp» — de ER CCC/butikk. '
-          'Ikke lim inn FAQ ordrett. Formuler naturlig og intelligent. '
+          'Hvis konteksten inneholder «Live trening», er det FASIT — bruk den alltid. '
+          'Aldri si at du mangler info som finnes i Live trening. '
+          'Svar kort og profesjonelt. Ingen unødvendige tips. '
+          'ALDRI si «kontakt CCC», «kontakt butikken» eller «ta kontakt med Elkjøp». '
           'Aldri nevn interne MAVI-systemer, filer eller hub-rutiner. '
           '${intent != null ? 'Tema: ${intent.label}.' : ''}',
     });

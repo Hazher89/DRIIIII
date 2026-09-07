@@ -18,11 +18,13 @@ class KnowledgeAnswer {
     required this.text,
     required this.hits,
     required this.found,
+    this.followUps = const [],
   });
 
   final String text;
   final List<KnowledgeHit> hits;
   final bool found;
+  final List<String> followUps;
 }
 
 /// Gratis søkemotor over DriftPro-kunnskap (uten betalt AI-API).
@@ -31,6 +33,8 @@ class KnowledgeAssistantEngine {
 
   final List<KnowledgeChunk> _chunks;
   final Map<String, List<String>> _termIndex = {};
+
+  List<KnowledgeChunk> get allChunks => List.unmodifiable(_chunks);
 
   static const _stopWords = {
     'og', 'i', 'på', 'av', 'til', 'for', 'med', 'en', 'et', 'den', 'det', 'de',

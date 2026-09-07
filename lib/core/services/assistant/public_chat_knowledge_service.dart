@@ -107,6 +107,11 @@ class PublicChatKnowledgeEntry {
         if (question != null && question!.trim().isNotEmpty) 'qa',
         'live',
         'trained',
+        ...title
+            .toLowerCase()
+            .split(RegExp(r'[^a-zæøå0-9]+'))
+            .where((t) => t.length >= 3)
+            .take(6),
       ],
     );
   }
@@ -177,7 +182,7 @@ class PublicChatKnowledgeService {
     if (!forceRefresh &&
         _publishedCache != null &&
         _publishedCacheAt != null &&
-        now.difference(_publishedCacheAt!) < const Duration(minutes: 2)) {
+    now.difference(_publishedCacheAt!) < const Duration(seconds: 30)) {
       return _publishedCache!;
     }
     try {
