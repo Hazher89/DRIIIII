@@ -50,6 +50,8 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
       final path = raw.split('?').first;
       if (AppPaths.isPublicPath(path) ||
           path == AppPaths.chatt ||
+          path == AppPaths.publicChatAlias ||
+          path == AppPaths.publicChatAliasAlt ||
           path == '/chat') {
         return false;
       }

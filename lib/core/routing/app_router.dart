@@ -200,6 +200,10 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
         redirect: (context, state) => AppPaths.chatt,
       ),
       GoRoute(
+        path: AppPaths.publicChatAliasAlt,
+        redirect: (context, state) => AppPaths.chatt,
+      ),
+      GoRoute(
         path: AppPaths.stemple,
         builder: (context, state) => const KioskScreen(slug: 'stemple'),
       ),

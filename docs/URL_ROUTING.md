@@ -22,6 +22,7 @@ DriftPro bruker **go_router** med **path-URL** (ikke `#/dashboard`). Refresh og 
 | Undersøkelse (delt) | `/s/{id}` eller `?survey=` |
 | Kundesporing | `/track/{token}` eller `?track=` |
 | Infoskjerm | `/live` eller `?view=infoskjerm` |
+| Monteringchat (offentlig) | `/montering` |
 
 ## Programmatisk navigasjon
 

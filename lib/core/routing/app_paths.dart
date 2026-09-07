@@ -19,11 +19,12 @@ abstract final class AppPaths {
   static const more = '/more';
   static const live = '/live';
   static const portal = '/portal';
-  /// Offentlig monteringchat (ingen innlogging).
   /// Offentlig monteringchat (uten innlogging).
-  static const chatt = '/chatt';
-  /// Alias for [chatt] (ikke det samme som intern [chat] = /meldinger).
-  static const publicChatAlias = '/chat';
+  /// Merk: `/chatt` og `/chat` omdirigeres til `/` i Cloudflare — bruk `/montering`.
+  static const chatt = '/montering';
+  /// Legacy-alias (kan blokkeres av Cloudflare Redirect Rules).
+  static const publicChatAlias = '/chatt';
+  static const publicChatAliasAlt = '/chat';
 
   /// Vises når bruker mangler tilgang til en delt/sikker lenke.
   static const accessDenied = '/ingen-tilgang';
@@ -208,7 +209,11 @@ abstract final class AppPaths {
 
     if (path.startsWith('/s/')) return path;
     final normalized = _normalize(path);
-    if (normalized == chatt || normalized == publicChatAlias) return chatt;
+    if (normalized == chatt ||
+        normalized == publicChatAlias ||
+        normalized == publicChatAliasAlt) {
+      return chatt;
+    }
     if (path.startsWith('/track/')) return path;
 
     final fragment = uri.fragment;
@@ -245,6 +250,7 @@ abstract final class AppPaths {
     final p = _normalize(path.split('?').first);
     return p == chatt ||
         p == publicChatAlias ||
+        p == publicChatAliasAlt ||
         p.startsWith('/s/') ||
         p.startsWith('/track/') ||
         p == stemple ||
