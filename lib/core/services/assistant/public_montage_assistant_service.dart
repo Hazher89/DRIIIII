@@ -154,7 +154,8 @@ class PublicMontageAssistantService {
     ],
     'tvwall': [
       'tv på vegg', 'henge tv', 'veggmontering', 'veggfeste', 'tvonwall',
-      'opphengt tv', 'feste tv',
+      'opphengt tv', 'feste tv', 'netflix', 'wifi', 'wi-fi', 'kanalsøk',
+      'oppsett av tv', 'sette opp tv', 'smart tv',
     ],
     'tvstand': [
       'tv på fot', 'tv-benk', 'tvonstand', 'tv fot',
@@ -222,15 +223,6 @@ class PublicMontageAssistantService {
     if (liveHits.isEmpty && engine != null) {
       liveHits = _matchLiveKnowledge(q);
     }
-    // Always keep full live library available for Gemini grounding.
-    final allLiveHits = [
-      for (final c in liveChunks)
-        KnowledgeHit(
-          chunk: c,
-          score: 30,
-          snippet: c.body.length > 120 ? '${c.body.substring(0, 120)}…' : c.body,
-        ),
-    ];
 
     final intent = _matchIntent(q);
     final expanded = _expandQuery(q);
@@ -243,57 +235,82 @@ class PublicMontageAssistantService {
       ..._forcedTagHits(expanded),
       ..._forcedTagHits(q),
     ];
-    final hits = _rankHits(
+    var hits = _rankHits(
       q,
       expanded,
       searchHits,
       intentBoostId: intent?.chunkId,
     );
 
+    // Only trust Chat Lab when the match is actually about the same topic.
+    final confidentLive = liveHits
+        .where((h) => h.score >= 70)
+        .toList();
+    final bestCorpus = hits
+        .where((h) => h.chunk.source != KnowledgeSourceKind.liveTrain)
+        .toList();
+    final corpusTop = bestCorpus.isEmpty ? 0.0 : bestCorpus.first.score;
+    final liveTop = confidentLive.isEmpty ? 0.0 : confidentLive.first.score;
+    final useLive = confidentLive.isNotEmpty && liveTop >= corpusTop * 0.85;
+
     final local = _composeNatural(
       q,
       hits,
       intent,
-      preferLive: liveHits.isNotEmpty,
+      preferLive: useLive,
     );
 
-    // Gemini formulerer naturlig — med hele kunnskapsbasen som bakgrunn.
+    // Gemini with ONLY relevant hits — never dump unrelated Chat Lab rules.
     if (_geminiAvailable != false) {
       try {
         final geminiHits = <KnowledgeHit>[
-          ...liveHits,
-          ...hits,
-          ...allLiveHits,
+          if (useLive) ...confidentLive,
+          ...hits.where((h) => h.chunk.source != KnowledgeSourceKind.liveTrain),
           ...codeHits,
         ];
-        final gemini = await _askGemini(q, geminiHits, intent, localDraft: local.found ? local.text : null)
-            .timeout(const Duration(seconds: 8), onTimeout: () => null);
+        final gemini = await _askGemini(
+          q,
+          geminiHits,
+          intent,
+          localDraft: local.found ? local.text : null,
+        ).timeout(const Duration(seconds: 8), onTimeout: () => null);
         if (gemini != null &&
             gemini.trim().isNotEmpty &&
-            !_geminiContradictsLive(gemini, liveHits.isNotEmpty ? liveHits : allLiveHits)) {
+            !_geminiContradictsLive(
+              gemini,
+              useLive ? confidentLive : const [],
+            ) &&
+            !_answerLooksOffTopic(q, gemini)) {
           return KnowledgeAnswer(
-            found: hits.isNotEmpty || liveHits.isNotEmpty || local.found,
+            found: hits.isNotEmpty || useLive || local.found,
             hits: hits.take(4).toList(),
             text: _sanitizeExternal(gemini.trim()),
-            followUps: _followUpsFrom(hits, excludeId: hits.isEmpty ? null : hits.first.chunk.id),
+            followUps: _followUpsFrom(
+              hits,
+              excludeId: hits.isEmpty ? null : hits.first.chunk.id,
+            ),
           );
         }
       } catch (_) {}
     }
 
-    if (liveHits.isNotEmpty) {
-      final liveLocal = _composeNatural(q, liveHits, intent, preferLive: true);
-      if (liveLocal.found) {
+    if (useLive) {
+      final liveLocal =
+          _composeNatural(q, confidentLive, intent, preferLive: true);
+      if (liveLocal.found && !_answerLooksOffTopic(q, liveLocal.text)) {
         return KnowledgeAnswer(
           found: true,
-          hits: liveHits.take(3).toList(),
+          hits: confidentLive.take(3).toList(),
           text: _sanitizeExternal(liveLocal.text),
-          followUps: _followUpsFrom(hits, excludeId: liveHits.first.chunk.id),
+          followUps: _followUpsFrom(
+            hits,
+            excludeId: confidentLive.first.chunk.id,
+          ),
         );
       }
     }
 
-    if (local.found) {
+    if (local.found && !_answerLooksOffTopic(q, local.text)) {
       return KnowledgeAnswer(
         found: true,
         hits: hits.take(3).toList(),
@@ -305,6 +322,19 @@ class PublicMontageAssistantService {
       );
     }
 
+    // Last safe local: best non-live hit only.
+    if (bestCorpus.isNotEmpty) {
+      final corpusLocal = _composeNatural(q, bestCorpus, intent);
+      if (corpusLocal.found) {
+        return KnowledgeAnswer(
+          found: true,
+          hits: bestCorpus.take(3).toList(),
+          text: _sanitizeExternal(corpusLocal.text),
+          followUps: _followUpsFrom(bestCorpus),
+        );
+      }
+    }
+
     return KnowledgeAnswer(
       found: false,
       hits: const [],
@@ -314,6 +344,42 @@ class PublicMontageAssistantService {
           '(ombooking, endre adresse, SA, kansellering, fire personer).',
       followUps: suggestedQueries.take(3).toList(),
     );
+  }
+
+  /// Catch obviously wrong answers (e.g. lydplanke on a Netflix/TV question).
+  bool _answerLooksOffTopic(String query, String answer) {
+    final q = query.toLowerCase();
+    final a = answer.toLowerCase();
+
+    final asksTvSetup = q.contains('netflix') ||
+        q.contains('wifi') ||
+        q.contains('wi-fi') ||
+        q.contains('kanalsøk') ||
+        (q.contains('tv') &&
+            (q.contains('oppsett') ||
+                q.contains('sette opp') ||
+                q.contains('app')));
+    if (asksTvSetup &&
+        (a.contains('lydplanke') || a.contains('soundbar'))) {
+      return true;
+    }
+
+    final asksSoundbar = q.contains('lydplanke') ||
+        q.contains('lydplnake') ||
+        q.contains('soundbar');
+    if (!asksSoundbar && a.contains('lydplanke') && q.contains('tv')) {
+      return true;
+    }
+
+    final asksClose = q.contains('steng') || q.contains('åpningstid');
+    if (asksClose && a.contains('lydplanke')) return true;
+    if (!asksClose &&
+        a.contains('stenger') &&
+        a.contains('17') &&
+        (q.contains('tv') || q.contains('netflix') || q.contains('ombook'))) {
+      return true;
+    }
+    return false;
   }
 
   /// Treffer InstallXxx / servicekoder direkte i spørsmålet.
@@ -373,6 +439,16 @@ class PublicMontageAssistantService {
     return out;
   }
 
+  static const _liveStopWords = {
+    'og', 'i', 'på', 'av', 'til', 'for', 'med', 'en', 'et', 'den', 'det', 'de',
+    'som', 'er', 'skal', 'kan', 'har', 'var', 'fra', 'om', 'når', 'hva',
+    'hvordan', 'hvor', 'hvem', 'man', 'jeg', 'vi', 'du', 'dere', 'meg',
+    'the', 'and', 'or', 'in', 'at', 'to', 'of', 'a', 'an', 'is', 'are',
+    'how', 'what', 'do', 'does', 'be', 'gjør', 'gjore', 'si', 'sette', 'opp',
+    'kunden', 'kunde', 'montere', 'monterer', 'montering', 'ikke', 'nei',
+    'ja', 'eller', 'også', 'bare', 'dette', 'denne',
+  };
+
   List<KnowledgeHit> _matchLiveAgainst(
     String query,
     List<KnowledgeChunk> chunks,
@@ -380,8 +456,10 @@ class PublicMontageAssistantService {
     final q = query.toLowerCase().trim();
     final qTokens = q
         .split(RegExp(r'[^a-zæøå0-9]+', caseSensitive: false))
-        .where((t) => t.length >= 3)
+        .where((t) => t.length >= 3 && !_liveStopWords.contains(t))
         .toSet();
+    if (qTokens.isEmpty) return const [];
+
     final out = <KnowledgeHit>[];
     for (final chunk in chunks) {
       if (chunk.source != KnowledgeSourceKind.liveTrain &&
@@ -389,19 +467,18 @@ class PublicMontageAssistantService {
         continue;
       }
       final hay = '${chunk.title}\n${chunk.body}'.toLowerCase();
-      var score = 0.0;
-      for (final t in qTokens) {
-        if (hay.contains(t)) score += 28;
-      }
+      final hayTokens = hay
+          .split(RegExp(r'[^a-zæøå0-9]+'))
+          .where((t) => t.length >= 3 && !_liveStopWords.contains(t))
+          .toSet();
+      final overlap = qTokens.intersection(hayTokens);
+      if (overlap.isEmpty) continue;
+
+      var score = overlap.length * 45.0;
+      // Distinctive topic boosts (must appear in BOTH query and knowledge).
       if (q.contains('steng') && hay.contains('steng')) score += 100;
-      if ((q.contains('åpning') ||
-              q.contains('aapning') ||
-              q.contains('åpent') ||
-              q.contains('aapent') ||
-              q.contains('åpner')) &&
-          (hay.contains('steng') ||
-              hay.contains('åpning') ||
-              hay.contains('17'))) {
+      if ((q.contains('åpning') || q.contains('aapning')) &&
+          (hay.contains('steng') || hay.contains('17'))) {
         score += 90;
       }
       if ((q.contains('lydplanke') ||
@@ -410,15 +487,19 @@ class PublicMontageAssistantService {
           (hay.contains('lyd') || hay.contains('sound'))) {
         score += 100;
       }
-      if (hay.contains(q)) score += 60;
+      if (hay.contains(q) && q.length >= 8) score += 60;
+
       final titleTokens = chunk.title
           .toLowerCase()
           .split(RegExp(r'[^a-zæøå0-9]+'))
-          .where((t) => t.length >= 3);
-      for (final t in titleTokens) {
-        if (qTokens.contains(t) || q.contains(t)) score += 40;
-      }
-      if (score < 24) continue;
+          .where((t) => t.length >= 3 && !_liveStopWords.contains(t))
+          .toSet();
+      score += titleTokens.intersection(qTokens).length * 50;
+
+      // Require real topical overlap — one generic word is not enough.
+      if (overlap.length < 2 && score < 90) continue;
+      if (score < 70) continue;
+
       out.add(
         KnowledgeHit(
           chunk: chunk,
@@ -1006,6 +1087,8 @@ class PublicMontageAssistantService {
           'Bruk ALL relevant kunnskap under. '
           'Hvis Live trening finnes: det er FASIT. '
           'Ved spørsmål om tjenestekoder (InstallWash, InstallWashW, InstallDish osv.): forklar forskjell/likhet tydelig. '
+          'Bruk KUN kunnskap som faktisk handler om spørsmålet. '
+          'Ikke bland inn urelaterte Chat Lab-regler (f.eks. lydplanke-svar på TV/Netflix-spørsmål). '
           'Ikke si at du mangler info som finnes i kunnskapen. '
           'Ikke lim inn FAQ ordrett — formuler som Gemini: profesjonelt og lesbart. '
           'ALDRI «kontakt CCC/butikk». Ingen interne MAVI-systemer. '

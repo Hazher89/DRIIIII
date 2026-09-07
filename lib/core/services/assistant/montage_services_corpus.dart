@@ -538,9 +538,30 @@ Kort svar til CCC: Ser du InstallWashW på ordren, er det våtroms-montering av 
           excluded: [
             'Koble til nye komponenter som ikke har vært koblet til før',
             'Forsterkning av vegg uten nok bæring',
-            'Oppsett av TV (WIFI, kanalsøk etc.)',
+            'Oppsett av TV (WIFI, kanalsøk, Netflix, apper osv.)',
             'Skjule kabler',
           ],
+        ),
+        KnowledgeChunk(
+          id: 'montage.faq.tv_setup',
+          source: KnowledgeSourceKind.montage,
+          title: 'TV-montering: Netflix / WiFi / oppsett',
+          tags: const [
+            'tv',
+            'tvonwall',
+            'tvonstand',
+            'netflix',
+            'wifi',
+            'oppsett',
+            'kanalsøk',
+            'apper',
+          ],
+          body: '''
+Nei — ved montering av TV (TVonWall / TVonStand) setter vi ikke opp Netflix, WiFi, kanalsøk eller andre apper.
+
+Inkludert er typisk fysisk montering/plassering, tilkobling av eksisterende komponenter (inntil 3) og funksjonstest av skjerm.
+Kunden (eller butikk) må selv gjøre smart-TV-oppsett etterpå.
+''',
         ),
         _service(
           id: 'montage.adv.turndoor',
