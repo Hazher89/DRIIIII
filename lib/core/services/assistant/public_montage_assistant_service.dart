@@ -15,13 +15,59 @@ class PublicMontageAssistantService {
   bool _loading = false;
 
   static const suggestedQueries = [
-    'Hva er inkludert i InstallWash?',
-    'Kan dere henge TV på vegg?',
-    'Hva må jeg gjøre før komfyrlevering?',
-    'Er side-by-side (SBS) en enkel eller avansert tjeneste?',
-    'Hva er ikke inkludert ved omhengsling (TurnDoor)?',
-    'Når kontakter montør meg for avansert montering?',
+    'Hva er inkludert når dere monterer vaskemaskin?',
+    'Kan dere henge TV på veggen hos meg?',
+    'Hva må jeg gjøre klart før komfyren kommer?',
+    'Er side-by-side kjøleskap enkel eller avansert montering?',
+    'Hva dekker omhengsling av dør?',
+    'Når ringer montøren ved avansert montering?',
   ];
+
+  /// Naturlig språk → tjeneste-stikkord som forbedrer søk.
+  static const _synonymMap = <String, List<String>>{
+    'wash': [
+      'vaskemaskin', 'vaskemaskinen', 'vask', 'vasken', 'laundry', 'installwash',
+    ],
+    'dryer': [
+      'tørketrommel', 'torketrommel', 'tørke', 'trommel', 'installdryer',
+    ],
+    'cooker': [
+      'komfyr', 'komfyren', 'komfyrlevering', 'installcooker',
+    ],
+    'fridge': [
+      'kjøleskap', 'kjoleskap', 'fryser', 'fryseren', 'kjøl', 'installfridge',
+      'freezer',
+    ],
+    'sbs': [
+      'sbs', 'side-by-side', 'side by side', 'sidebyside', 'amerikansk kjøleskap',
+    ],
+    'dish': [
+      'oppvask', 'oppvaskmaskin', 'oppvaskmaskinen', 'installdish', 'dishwasher',
+    ],
+    'hood': [
+      'ventilator', 'kjøkkenvifte', 'vifte', 'hood', 'installhood',
+    ],
+    'micro': [
+      'mikro', 'mikrobølge', 'mikrobølgeovn', 'micro', 'installmicro',
+    ],
+    'hob': [
+      'platetopp', 'koketopp', 'induksjon', 'hob', 'installhob',
+    ],
+    'oven': [
+      'ovn', 'ovnen', 'innebygd ovn', 'installoven',
+    ],
+    'tvwall': [
+      'tv på vegg', 'henge tv', 'veggmontering', 'veggfeste', 'tvonwall',
+      'opphengt tv', 'feste tv',
+    ],
+    'tvstand': [
+      'tv på fot', 'tv-benk', 'tvonstand', 'tv fot',
+    ],
+    'turndoor': [
+      'omheng', 'omhengsling', 'bytte dørhengsel', 'dørhengsel', 'turndoor',
+      'snu dør',
+    ],
+  };
 
   Future<void> ensureReady() async {
     if (_engine != null || _loading) {
@@ -38,6 +84,22 @@ class PublicMontageAssistantService {
     } finally {
       _loading = false;
     }
+  }
+
+  String _expandQuery(String raw) {
+    final q = raw.toLowerCase();
+    final extras = <String>{};
+    for (final entry in _synonymMap.entries) {
+      for (final syn in entry.value) {
+        if (q.contains(syn.toLowerCase())) {
+          extras.add(entry.key);
+          extras.addAll(entry.value.take(3));
+          break;
+        }
+      }
+    }
+    if (extras.isEmpty) return raw;
+    return '$raw ${extras.join(' ')}';
   }
 
   Future<KnowledgeAnswer> ask(String query) async {
@@ -60,10 +122,14 @@ class PublicMontageAssistantService {
       );
     }
 
+    final expanded = _expandQuery(q);
     final hits = _rankMontageHits(
       q,
+      expanded,
       [
-        ...engine.search(q, limit: 10),
+        ...engine.search(expanded, limit: 12),
+        ...engine.search(q, limit: 8),
+        ..._forcedTagHits(expanded),
         ..._forcedTagHits(q),
       ],
     );
@@ -87,33 +153,44 @@ class PublicMontageAssistantService {
       hits: [],
       text:
           'Jeg fant ikke nok i tjenesteoversikten til å svare sikkert. '
-          'Prøv å spørre om en konkret tjeneste (f.eks. vaskemaskin, komfyr, '
-          'TV på vegg) — hva som er inkludert, hva du må gjøre, eller hva '
-          'som ikke er inkludert.\n\n'
+          'Prøv å nevne produktet (f.eks. vaskemaskin, komfyr, TV, oppvaskmaskin) '
+          'og om du lurer på det som er inkludert, det du må gjøre, eller det som ikke er inkludert.\n\n'
           'For booking eller pris: kontakt butikken der du handlet.',
     );
   }
 
-  /// Sørg for at sterke stikkord (TurnDoor, omhengsling) alltid er blant kandidatene.
   List<KnowledgeHit> _forcedTagHits(String query) {
     final q = query.toLowerCase();
     final out = <KnowledgeHit>[];
     for (final chunk in MontageServicesCorpus.chunks()) {
       var force = false;
       for (final tag in chunk.tags) {
-        if (tag.length >= 4 && q.contains(tag.toLowerCase())) force = true;
+        if (tag.length >= 3 && q.contains(tag.toLowerCase())) force = true;
       }
-      final code = RegExp(r'install[a-z]+|tvon[a-z]+|turndoor', caseSensitive: false)
-          .firstMatch(chunk.title)
-          ?.group(0)
-          ?.toLowerCase();
+      for (final entry in _synonymMap.entries) {
+        if (!chunk.id.contains(entry.key) &&
+            !chunk.tags.any((t) => t.contains(entry.key))) {
+          continue;
+        }
+        for (final syn in entry.value) {
+          if (q.contains(syn.toLowerCase())) {
+            force = true;
+            break;
+          }
+        }
+      }
+      final code =
+          RegExp(r'install[a-z]+|tvon[a-z]+|turndoor', caseSensitive: false)
+              .firstMatch(chunk.title)
+              ?.group(0)
+              ?.toLowerCase();
       if (code != null && q.contains(code)) force = true;
       if (q.contains('omheng') && chunk.id.contains('turndoor')) force = true;
       if (!force) continue;
       out.add(
         KnowledgeHit(
           chunk: chunk,
-          score: 50,
+          score: 80,
           snippet: chunk.body.length > 120
               ? '${chunk.body.substring(0, 120)}…'
               : chunk.body,
@@ -123,15 +200,18 @@ class PublicMontageAssistantService {
     return out;
   }
 
-  /// Preferer treff der spørsmålet nevner tjenestekode/tag (InstallWash, omhengsling…).
-  List<KnowledgeHit> _rankMontageHits(String query, List<KnowledgeHit> hits) {
+  List<KnowledgeHit> _rankMontageHits(
+    String original,
+    String expanded,
+    List<KnowledgeHit> hits,
+  ) {
     final seen = <String>{};
     final unique = <KnowledgeHit>[];
     for (final h in hits) {
       if (seen.add(h.chunk.id)) unique.add(h);
     }
 
-    final q = query.toLowerCase();
+    final q = expanded.toLowerCase();
     final scored = <({KnowledgeHit hit, double bonus})>[];
     for (final h in unique) {
       var bonus = h.score;
@@ -139,29 +219,48 @@ class PublicMontageAssistantService {
       final id = h.chunk.id.toLowerCase();
       for (final tag in h.chunk.tags) {
         final t = tag.toLowerCase();
-        if (t.length >= 4 && q.contains(t)) bonus += 120;
+        if (t.length >= 3 && q.contains(t)) bonus += 120;
       }
-      final code = RegExp(r'install[a-z]+|tvon[a-z]+|turndoor', caseSensitive: false)
-          .firstMatch(h.chunk.title)
-          ?.group(0)
-          ?.toLowerCase();
+      for (final entry in _synonymMap.entries) {
+        final matchesService = id.contains(entry.key) ||
+            h.chunk.tags.any((t) => t.toLowerCase().contains(entry.key));
+        if (!matchesService) continue;
+        for (final syn in entry.value) {
+          if (original.toLowerCase().contains(syn.toLowerCase()) ||
+              q.contains(syn.toLowerCase())) {
+            bonus += 180;
+            break;
+          }
+        }
+      }
+      final code =
+          RegExp(r'install[a-z]+|tvon[a-z]+|turndoor', caseSensitive: false)
+              .firstMatch(h.chunk.title)
+              ?.group(0)
+              ?.toLowerCase();
       if (code != null && q.contains(code)) bonus += 160;
-      if (q.contains('omheng') && (id.contains('turndoor') || title.contains('omheng'))) {
+      if (q.contains('omheng') &&
+          (id.contains('turndoor') || title.contains('omheng'))) {
         bonus += 200;
       }
-      if (q.contains('vask') && id.contains('wash')) bonus += 140;
-      if ((q.contains('vegg') || q.contains('oppheng')) && id.contains('tvwall')) {
-        bonus += 140;
+      if ((q.contains('enkel') || q.contains('sjåfør') || q.contains('sjafor')) &&
+          id.contains('simple')) {
+        bonus += 40;
       }
-      if (q.contains('sbs') || q.contains('side-by-side') || q.contains('side by side')) {
-        if (id.contains('sbs')) bonus += 160;
+      if ((q.contains('avansert') || q.contains('montør') || q.contains('montor')) &&
+          id.contains('adv')) {
+        bonus += 40;
       }
       scored.add((hit: h, bonus: bonus));
     }
     scored.sort((a, b) => b.bonus.compareTo(a.bonus));
     return [
       for (final s in scored)
-        KnowledgeHit(chunk: s.hit.chunk, score: s.bonus, snippet: s.hit.snippet),
+        KnowledgeHit(
+          chunk: s.hit.chunk,
+          score: s.bonus,
+          snippet: s.hit.snippet,
+        ),
     ];
   }
 
@@ -170,23 +269,81 @@ class PublicMontageAssistantService {
       return const KnowledgeAnswer(found: false, hits: [], text: '');
     }
     final primary = hits.first;
+    final q = query.toLowerCase();
+    final body = primary.chunk.body;
+
+    String section(String header) {
+      final idx = body.indexOf(header);
+      if (idx < 0) return '';
+      final rest = body.substring(idx + header.length);
+      final next = [
+        rest.indexOf('\nInkludert:'),
+        rest.indexOf('\nKunden sørger for:'),
+        rest.indexOf('\nIkke inkludert:'),
+      ].where((i) => i > 0).fold<int?>(null, (a, b) => a == null ? b : (b < a ? b : a));
+      final slice = next == null ? rest : rest.substring(0, next);
+      return slice.trim();
+    }
+
+    final wantExcluded =
+        q.contains('ikke inkludert') || q.contains('dekker ikke') || q.contains('utenom');
+    final wantCustomer = q.contains('må jeg') ||
+        q.contains('sørge') ||
+        q.contains('klart') ||
+        q.contains('forberede') ||
+        q.contains('kunden');
+    final wantIncluded = q.contains('inkludert') ||
+        q.contains('gjør dere') ||
+        q.contains('hva får') ||
+        (!wantExcluded && !wantCustomer);
+
+    final buf = StringBuffer();
+    buf.writeln('For **${primary.chunk.title}**:');
+    buf.writeln();
+
+    if (wantIncluded) {
+      final s = section('Inkludert:');
+      if (s.isNotEmpty) {
+        buf.writeln('**Inkludert**');
+        buf.writeln(s);
+        buf.writeln();
+      }
+    }
+    if (wantCustomer) {
+      final s = section('Kunden sørger for:');
+      if (s.isNotEmpty) {
+        buf.writeln('**Du / kunden sørger for**');
+        buf.writeln(s);
+        buf.writeln();
+      }
+    }
+    if (wantExcluded) {
+      final s = section('Ikke inkludert:');
+      if (s.isNotEmpty) {
+        buf.writeln('**Ikke inkludert**');
+        buf.writeln(s);
+        buf.writeln();
+      }
+    }
+
+    // Fallback: full body if sections empty.
+    if (buf.toString().trim().split('\n').length <= 2) {
+      buf.write(body.trim());
+    }
+
     final related = hits.skip(1).take(2).toList();
-    final buf = StringBuffer()
-      ..writeln(primary.chunk.title)
-      ..writeln()
-      ..write(primary.chunk.body.trim());
     if (related.isNotEmpty) {
       buf.writeln();
-      buf.writeln();
-      buf.writeln('Se også:');
+      buf.writeln('Relatert:');
       for (final h in related) {
         buf.writeln('• ${h.chunk.title}');
       }
     }
+
     return KnowledgeAnswer(
       found: true,
       hits: hits.take(3).toList(),
-      text: buf.toString().trim(),
+      text: buf.toString().trim().replaceAll('**', ''),
     );
   }
 
@@ -211,7 +368,6 @@ class PublicMontageAssistantService {
           },
     ];
 
-    // Alltid send oversikt hvis tomt.
     if (contexts.isEmpty) {
       final overview = MontageServicesCorpus.chunks().first;
       contexts.add({
@@ -230,15 +386,7 @@ class PublicMontageAssistantService {
     );
 
     final data = res.data;
-    if (data is Map && data['error'] != null) {
-      final err = '${data['error']}';
-      if (err.contains('gemini_not_configured') ||
-          err.contains('GEMINI_API_KEY') ||
-          err.contains('rate_limited')) {
-        return null;
-      }
-      return null;
-    }
+    if (data is Map && data['error'] != null) return null;
     if (data is Map && data['answer'] is String) {
       return data['answer'] as String;
     }

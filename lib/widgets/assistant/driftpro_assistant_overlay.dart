@@ -37,11 +37,23 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
 
   bool get _showFab {
     if (!kIsWeb || !_flag.enabled) return false;
-    // Skjul intern assistent på offentlig monteringchat.
+    // Skjul intern «Spør DriftPro» på offentlig monteringchat (/chatt),
+    // også når GoRouter er i errorBuilder eller utenfor router-treet.
+    final candidates = <String>[];
     try {
-      final path = GoRouter.of(context).state.uri.path;
-      if (AppPaths.isPublicPath(path) || path == AppPaths.chatt) return false;
+      candidates.add(GoRouter.of(context).state.uri.path);
     } catch (_) {}
+    try {
+      candidates.add(Uri.base.path);
+    } catch (_) {}
+    for (final raw in candidates) {
+      final path = raw.split('?').first;
+      if (AppPaths.isPublicPath(path) ||
+          path == AppPaths.chatt ||
+          path == '/chat') {
+        return false;
+      }
+    }
     return true;
   }
 

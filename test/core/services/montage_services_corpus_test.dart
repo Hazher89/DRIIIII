@@ -43,4 +43,28 @@ void main() {
     expect(chunks.length, greaterThan(10));
     expect(chunks.first.id, MontageServicesCorpus.overviewId);
   });
+
+  test('natural language vaskemaskin maps to wash', () async {
+    final a = await PublicMontageAssistantService.instance.ask(
+      'Hva er inkludert når dere monterer vaskemaskinen min?',
+    );
+    expect(a.found, isTrue);
+    expect(a.hits.first.chunk.id, contains('wash'));
+  });
+
+  test('natural language komfyr maps to cooker', () async {
+    final a = await PublicMontageAssistantService.instance.ask(
+      'Hva må jeg gjøre klart før komfyren kommer?',
+    );
+    expect(a.found, isTrue);
+    expect(a.hits.first.chunk.id, contains('cooker'));
+  });
+
+  test('natural language omhengsling without code', () async {
+    final a = await PublicMontageAssistantService.instance.ask(
+      'Hva dekker omhengsling av dør?',
+    );
+    expect(a.found, isTrue);
+    expect(a.hits.first.chunk.id, contains('turndoor'));
+  });
 }

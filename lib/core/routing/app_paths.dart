@@ -20,7 +20,10 @@ abstract final class AppPaths {
   static const live = '/live';
   static const portal = '/portal';
   /// Offentlig monteringchat (ingen innlogging).
+  /// Offentlig monteringchat (uten innlogging).
   static const chatt = '/chatt';
+  /// Alias for [chatt] (ikke det samme som intern [chat] = /meldinger).
+  static const publicChatAlias = '/chat';
 
   /// Vises når bruker mangler tilgang til en delt/sikker lenke.
   static const accessDenied = '/ingen-tilgang';
@@ -204,7 +207,8 @@ abstract final class AppPaths {
     if (path.isEmpty) path = dashboard;
 
     if (path.startsWith('/s/')) return path;
-    if (_normalize(path) == chatt) return chatt;
+    final normalized = _normalize(path);
+    if (normalized == chatt || normalized == publicChatAlias) return chatt;
     if (path.startsWith('/track/')) return path;
 
     final fragment = uri.fragment;
@@ -240,6 +244,7 @@ abstract final class AppPaths {
   static bool isPublicPath(String path) {
     final p = _normalize(path.split('?').first);
     return p == chatt ||
+        p == publicChatAlias ||
         p.startsWith('/s/') ||
         p.startsWith('/track/') ||
         p == stemple ||

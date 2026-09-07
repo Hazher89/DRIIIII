@@ -347,6 +347,8 @@ class _Bubble extends StatelessWidget {
         return Icons.directions_car_outlined;
       case KnowledgeSourceKind.help:
         return Icons.help_outline;
+      case KnowledgeSourceKind.montage:
+        return Icons.handyman_outlined;
     }
   }
 }
