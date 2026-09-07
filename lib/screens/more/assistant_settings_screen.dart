@@ -183,8 +183,8 @@ class _AssistantSettingsScreenState extends State<AssistantSettingsScreen> {
                 SizedBox(height: 6),
                 Text(
                   'Her skjuler/viser du chat-ikonet for hele selskapet. '
-                  'Ikonet ligger nederst til høyre (over menyen). '
-                  'For å stille spørsmål: trykk «Åpne chat» under.',
+                  'Hold inne og dra ikonet dit du vil — posisjonen huskes per bruker. '
+                  'For å stille spørsmål: trykk på ikonet, eller «Åpne chat» under.',
                   style: TextStyle(
                     fontSize: 13.5,
                     height: 1.4,
