@@ -44,6 +44,7 @@ import '../../screens/partners/partners_dashboard_screen.dart';
 import '../../screens/profile/notifications_hub_screen.dart';
 import '../../screens/profile/profile_screen.dart';
 import '../../screens/public/public_tracking_screen.dart';
+import '../../screens/public/public_service_chat_screen.dart';
 import '../../screens/shell/main_shell.dart';
 import '../../screens/stempling/kiosk/kiosk_screen.dart';
 import '../../screens/stempling/stempling_screen.dart';
@@ -189,6 +190,10 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
         builder: (context, state) => PublicTrackingScreen(
           token: state.pathParameters['token']!,
         ),
+      ),
+      GoRoute(
+        path: AppPaths.chatt,
+        builder: (context, state) => const PublicServiceChatScreen(),
       ),
       GoRoute(
         path: AppPaths.stemple,

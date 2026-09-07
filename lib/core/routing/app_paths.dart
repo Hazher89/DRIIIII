@@ -19,6 +19,8 @@ abstract final class AppPaths {
   static const more = '/more';
   static const live = '/live';
   static const portal = '/portal';
+  /// Offentlig monteringchat (ingen innlogging).
+  static const chatt = '/chatt';
 
   /// Vises når bruker mangler tilgang til en delt/sikker lenke.
   static const accessDenied = '/ingen-tilgang';
@@ -202,6 +204,8 @@ abstract final class AppPaths {
     if (path.isEmpty) path = dashboard;
 
     if (path.startsWith('/s/')) return path;
+    if (_normalize(path) == chatt) return chatt;
+    if (path.startsWith('/track/')) return path;
 
     final fragment = uri.fragment;
     if ((path == dashboard || path.isEmpty) && fragment.isNotEmpty) {
@@ -235,7 +239,8 @@ abstract final class AppPaths {
 
   static bool isPublicPath(String path) {
     final p = _normalize(path.split('?').first);
-    return p.startsWith('/s/') ||
+    return p == chatt ||
+        p.startsWith('/s/') ||
         p.startsWith('/track/') ||
         p == stemple ||
         p.startsWith('$stemple/') ||

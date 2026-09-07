@@ -76,6 +76,11 @@ class KnowledgeAssistantEngine {
     'godkjenning': ['godkjenning', 'godkjenn', 'jassy', 'herish', 'julie', 'karwan'],
     'ledelse': ['tommy', 'nico', 'nicola', 'hazher', 'avdelingsleder', 'leder'],
     'support': ['support', 'hjelp', 'kontakt', 'e-post', 'epost'],
+    'montage': [
+      'montering', 'install', 'vaskemaskin', 'komfyr', 'kjøleskap', 'fryser',
+      'tørketrommel', 'oppvask', 'ventilator', 'platetopp', 'ovn', 'tv',
+      'vegg', 'omhengsling', 'elkjop', 'elkjöp', 'inkludert', 'sbs',
+    ],
   };
 
   void buildIndex() {

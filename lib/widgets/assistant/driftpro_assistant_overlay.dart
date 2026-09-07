@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/routing/app_paths.dart';
 import '../../core/routing/app_router.dart';
 import '../../core/services/assistant/assistant_flag_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -33,7 +35,15 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
   AssistantFlag _flag = AssistantFlag.disabled;
   bool _sheetOpen = false;
 
-  bool get _showFab => kIsWeb && _flag.enabled;
+  bool get _showFab {
+    if (!kIsWeb || !_flag.enabled) return false;
+    // Skjul intern assistent på offentlig monteringchat.
+    try {
+      final path = GoRouter.of(context).state.uri.path;
+      if (AppPaths.isPublicPath(path) || path == AppPaths.chatt) return false;
+    } catch (_) {}
+    return true;
+  }
 
   @override
   void initState() {
