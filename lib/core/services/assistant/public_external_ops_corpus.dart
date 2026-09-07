@@ -1,10 +1,8 @@
 import 'assistant_corpus.dart';
 
-/// Ekstern kunnskapsbase for offentlig chat (/montering).
-///
-/// Bygd ut fra interne FAQ-er, men omskrevet til hva butikk/CCC/kunde
-/// skal gjøre — uten å avsløre MAVI sine interne systemer, filer, roller
-/// eller arbeidsinstrukser.
+/// Kunnskap for offentlig chat — målgruppe: CCC og butikk (Elkjøp).
+/// Forteller hva DU skal gjøre i booking/ordre — aldri «kontakt CCC/butikk».
+/// Ingen interne MAVI-systemdetaljer.
 abstract final class PublicExternalOpsCorpus {
   static List<KnowledgeChunk> chunks() => [
         _overview(),
@@ -38,7 +36,7 @@ abstract final class PublicExternalOpsCorpus {
   static KnowledgeChunk _overview() => const KnowledgeChunk(
         id: 'ext.overview',
         source: KnowledgeSourceKind.publicOps,
-        title: 'Hjelp til levering og montering',
+        title: 'Hjelp for CCC og butikk',
         tags: [
           'levering',
           'montering',
@@ -46,21 +44,15 @@ abstract final class PublicExternalOpsCorpus {
           'ombooking',
           'ccc',
           'butikk',
-          'kunde',
           'hjelp',
         ],
         body: '''
-Denne chatten hjelper kunder, butikk og CCC med hva DE skal gjøre rundt levering og montering.
+Du snakker med CCC eller butikk. Gi konkrete handlinger de kan gjøre selv:
+ombooking, endre kundedata, sette opp SA, endre tjenestetype, kansellere, notater på ordre.
 
-Vi forklarer:
-- Hva du selv må endre i booking/system (adresse, tjenestetype, kansellering)
-- Når du må kontakte CCC/butikk
-- Hva som er realistisk å forvente ved leveringsvindu, ombooking og ekstra tjenester
-- Hva monteringstjenester inkluderer hos kunden
-
-Vi deler ikke interne MAVI-rutiner, systemnavn, interne filer, interne roller eller detaljer om hvordan hub planlegger.
-
-Booking, pris og ordrestatus: alltid via butikken der kjøpet ble gjort, eller Elkjøp CCC.
+Ikke si «kontakt CCC» eller «kontakt butikken» — brukeren er allerede der.
+Ikke avslør interne MAVI-systemer eller hub-rutiner.
+Forklar begrensninger tydelig (f.eks. hva leverandør ikke kan gjøre) og hva som er riktig grep hos deg.
 ''',
       );
 
@@ -79,20 +71,19 @@ Booking, pris og ordrestatus: alltid via butikken der kjøpet ble gjort, eller E
           'begrep',
         ],
         body: '''
-CCC: Elkjøps kundesenter — der endringer i ordre, booking og tjenester normalt gjøres.
-NDC: Elkjøps sentrallager (varer kommer ofte derfra før levering).
+NDC: sentrallager varer ofte kommer fra før levering.
 Curbside: levering til fortauskant / første dør.
-Deliverysite: levering inn til anvist plass hos kunden.
-SA (standalone service): egen serviceordre (f.eks. montering/oppfølging) uten ny varelevering.
-Force tid: spesialgodkjent leveringstid utenom vanlig matrise — må avtales via CCC, og varen må være klar for levering.
-Pick & pack: butikken klargjør varen for henting (fremme + skannelapp). Uten dette blir ikke henting planlagt riktig.
+Deliverysite: levering inn til anvist plass.
+SA: standalone service — egen serviceordre uten ny varelevering.
+Force tid: spesialtid utenom matrise — bare når varen er klar og det er avtalt.
+Pick & pack: butikk klargjør vare for henting (fremme + skannelapp). Uten dette blir ikke henting planlagt riktig.
 ''',
       );
 
   static KnowledgeChunk _rebookScan() => const KnowledgeChunk(
         id: 'ext.rebook_scan',
         source: KnowledgeSourceKind.publicOps,
-        title: 'Omboking når varen ikke er skannet inn',
+        title: 'Omboking før varen er klar',
         tags: [
           'ombook',
           'omboking',
@@ -102,18 +93,15 @@ Pick & pack: butikken klargjør varen for henting (fremme + skannelapp). Uten de
           'innskann',
         ],
         body: '''
-Spørsmål du ofte får: «Kan dere skanne inn varen på hub så vi kan booke om?»
-
-Svar til ekstern: Varen kan først behandles for ombooking når den faktisk er hos oss / returnert og registrert.
-Be om at ombooking skjer etter at varen er returnert/ankommet til avtalt tid — ikke før.
-Du (CCC/butikk) booker om i deres system når varen er klar.
+Varen kan ikke bookes om før den faktisk er ankommet/returnert og registrert hos leverandør.
+Book ikke om «på forskudd». Vent til varen er klar, deretter ombook i deres system.
 ''',
       );
 
   static KnowledgeChunk _earlierDelivery() => const KnowledgeChunk(
         id: 'ext.earlier',
         source: KnowledgeSourceKind.publicOps,
-        title: 'Ønske om tidligere leveringsdato',
+        title: 'Tidligere leveringsdato',
         tags: [
           'tidligere',
           'første leveringsdato',
@@ -122,16 +110,15 @@ Du (CCC/butikk) booker om i deres system når varen er klar.
           'raskere',
         ],
         body: '''
-Utgangspunkt: hold dere til datoen som er satt i leveringsmatrisen / bookingen — særlig hvis varen ikke har ankommet ennå.
-
-Unntak: hvis leveringen har feilet flere ganger på grunn av transportør/leverandør (f.eks. «rakk ikke»), kan CCC be om tidligere tidspunkt. Da må varen allerede være klar for levering, og ny tid må avtales via CCC.
+Hold matrise-/booket dato som standard — særlig hvis varen ikke har ankommet.
+Unntak: flere feilleveranser på leverandørsiden (f.eks. «rakk ikke»). Da kan du forespørre tidligere tid, men varen må være klar først. Bruk force-tid kun når det er avtalt og varen er klar.
 ''',
       );
 
   static KnowledgeChunk _timeWindow() => const KnowledgeChunk(
         id: 'ext.time_window',
         source: KnowledgeSourceKind.publicOps,
-        title: 'Ønske om spesifikt tidspunkt i vinduet',
+        title: 'Spesifikt tidspunkt i vinduet',
         tags: [
           'tidsrom',
           'vindu',
@@ -142,18 +129,16 @@ Unntak: hvis leveringen har feilet flere ganger på grunn av transportør/levera
           'tilgjengelig',
         ],
         body: '''
-Leveranser planlegges etter booket tidsvindu. Vi kan ikke garantere f.eks. «først etter kl. 19» innenfor et vindu 17–22.
-
-Hvis kunden ikke kan være tilgjengelig hele vinduet, er beste løsning å booke om til en dag der kunden kan være hjemme i hele tidsrommet (via CCC/butikk).
-
-Har det vært flere bomturer som skyldes leverandør tidligere, kan CCC be om ekstra hensyn ved ny planlegging.
+Levering planlegges etter booket tidsvindu. Spesifikke klokkeslett inni vinduet (f.eks. «etter 19») kan ikke loves.
+Hvis kunden ikke kan hele vinduet: book om til en dag der hele tidsrommet passer.
+Ved flere tidligere bomturer på leverandørsiden: merk behov for hensyn ved ombooking/planlegging.
 ''',
       );
 
   static KnowledgeChunk _statusToday() => const KnowledgeChunk(
         id: 'ext.status_today',
         source: KnowledgeSourceKind.publicOps,
-        title: 'Blir leveringen gjennomført i dag?',
+        title: 'Status — kommer leveringen i dag?',
         tags: [
           'i dag',
           'status',
@@ -163,11 +148,8 @@ Har det vært flere bomturer som skyldes leverandør tidligere, kan CCC be om ek
           'på rute',
         ],
         body: '''
-Hvis avtalt tid er passert og kunden lurer på om leveringen kommer i dag:
-Be kunden/butikk kontakte CCC med ordrenummer.
-CCC kan sjekke status og eventuelt be sjåfør kontakte kunden hvis leveringen er på vei.
-
-Denne chatten viser ikke live ordrestatus.
+Chatten har ikke live ordrestatus. Sjekk status i deres egne ordresystemer med ordrenummer.
+Hvis leveringen er ute: følg opp slik at kunden får beskjed / sjåfør kontaktes via vanlig kanal.
 ''',
       );
 
@@ -184,9 +166,8 @@ Denne chatten viser ikke live ordrestatus.
           'oppfølging',
         ],
         body: '''
-Ved klage på montering eller behov for ny gjennomgang: be CCC sette opp en standalone service (SA) til kunden.
-
-Ved vannlekkasje eller fare for skade i hjemmet: prioriter via CCC så raskt som mulig — dette kan behandles mer akutt enn vanlig matrise.
+Sett opp en standalone service (SA) til kunden for ny gjennomgang.
+Ved vannlekkasje eller skaderisiko: prioriter — kan behandles mer akutt enn vanlig matrise.
 ''',
       );
 
@@ -203,18 +184,17 @@ Ved vannlekkasje eller fare for skade i hjemmet: prioriter via CCC så raskt som
           'installfridge',
         ],
         body: '''
-Hvis produktet allerede er levert hos kunden: be CCC opprette en SA (f.eks. installfridge / deliveryunp) som grunnlag for å planlegge fire personer, og oppgi ønsket dato.
-
-Hvis varen kan bookes om: book levering på nytt og merk tydelig at det trengs fire personer + ny tid.
-
-Hvis det først oppdages under levering: sjåfør må ofte fullføre/avbryte etter situasjonen. Oppfølging og ny planlegging går via CCC — ikke forvent at ekstra mannskap alltid er tilgjengelig på kort varsel samme dag.
+Allerede levert: opprett SA (f.eks. installfridge / deliveryunp) og oppgi ønsket dato.
+Ikke levert: book om og merk tydelig at fire personer trengs + ny tid.
+Oppdaget under levering: ekstra mannskap samme dag er ikke alltid mulig — planlegg på nytt med SA/omboking.
+Merk behovet tidlig på ordren.
 ''',
       );
 
   static KnowledgeChunk _extraService() => const KnowledgeChunk(
         id: 'ext.extra_service',
         source: KnowledgeSourceKind.publicOps,
-        title: 'Glemt / ekstra tjeneste på leveringen',
+        title: 'Ekstra / glemt tjeneste',
         tags: [
           'ekstra tjeneste',
           'glemt tjeneste',
@@ -223,9 +203,8 @@ Hvis det først oppdages under levering: sjåfør må ofte fullføre/avbryte ett
           'payment',
         ],
         body: '''
-Levering i dag/i morgen: hvis det er en vanlig tjeneste bilene kan utføre og kunden har deliverysite, kan ekstra tjeneste ofte legges til under levering. Kunden får da betalingslenke etterpå. Avklar via CCC/butikk før levering.
-
-Levering lenger frem: CCC kan legge opp en SA på samme dato/tid (samme kundedata), slik at tjenesten følger med i planleggingen.
+I dag/i morgen + vanlig tjeneste + deliverysite: tjenesten kan ofte legges til under levering (kunden får betalingslenke etterpå). Avklar før levering.
+Lenger frem: legg opp SA på samme dato/tid med samme kundedata.
 ''',
       );
 
@@ -241,10 +220,9 @@ Levering lenger frem: CCC kan legge opp en SA på samme dato/tid (samme kundedat
           'kundeinformasjon',
         ],
         body: '''
-Adresse, telefonnummer og kundenavn endres av CCC/butikk — ikke av leverandør.
+Du endrer adresse/telefon/navn selv i ordresystemet. Leverandør kan ikke gjøre det.
 Som oftest må leveringen bookes om for at endringen skal gjelde.
-
-Ved levering samme dag / neste dag på dagtid kan korrekt telefonnummer noen ganger noteres til sjåfør via CCC, men den permanente endringen må fortsatt gjøres i ordren.
+Samme dag / i morgen: du kan i tillegg sikre at korrekt tlf følger med til sjåfør, men permanent endring må inn i ordren.
 ''',
       );
 
@@ -260,9 +238,9 @@ Ved levering samme dag / neste dag på dagtid kan korrekt telefonnummer noen gan
           'teknisk feil',
         ],
         body: '''
-Noen ganger feiler registrering på sjåførens enhet, selv om leveringen er gjort.
-Er leveringen fra i går: vent normalt til neste arbeidsdag for oppdatering.
-Er den eldre: kontakt CCC og be dem følge opp status/utlevering i systemet.
+Registrering hos sjåfør kan feile selv om leveringen er gjort.
+Fra i går: vent normalt til neste arbeidsdag for oppdatering.
+Eldre: følg opp status/utlevering i deres system / med leverandør med ordrenummer.
 ''',
       );
 
@@ -278,7 +256,8 @@ Er den eldre: kontakt CCC og be dem følge opp status/utlevering i systemet.
           'endre tjeneste',
         ],
         body: '''
-Endring fra curbside (fortauskant) til deliverysite (anvist plass) gjøres av CCC/butikk i deres system — ikke av leverandør.
+Du endrer selv fra curbside til deliverysite i ordresystemet. Leverandør kan ikke bytte tjenestetype.
+Gjør endringen før leveringsdagen.
 ''',
       );
 
@@ -295,10 +274,9 @@ Endring fra curbside (fortauskant) til deliverysite (anvist plass) gjøres av CC
           'klargjort',
         ],
         body: '''
-Hvis varen ikke ble hentet fra butikk: nei — den kan normalt ikke leveres til oppsatt tid likevel.
-Ordren må bookes om med både henting og levering.
-
-Butikk må ha gjort pick & pack i tide. Uten klargjøring blir ikke henting planlagt riktig.
+Hvis varen ikke ble hentet fra butikk: den kan normalt ikke leveres til oppsatt tid.
+Book om med både henting og levering.
+Sørg for at pick & pack er gjort i tide — uten klargjøring blir ikke henting planlagt riktig.
 ''',
       );
 
@@ -313,10 +291,8 @@ Butikk må ha gjort pick & pack i tide. Uten klargjøring blir ikke henting plan
           'ikke utføre',
         ],
         body: '''
-MAVI kan ikke kansellere ordre i Elkjøps system.
-CCC/butikk må kansellere selv.
-
-Be samtidig CCC bekrefte at leveringen ikke skal kjøres, slik at den ikke blir planlagt ut.
+Du kansellerer ordren selv i Elkjøp-systemet. Leverandør kan ikke kansellere for deg.
+Sørg samtidig for at leveringen ikke blir kjørt (stopp/merk ordren slik at den ikke planlegges ut).
 ''',
       );
 
@@ -331,15 +307,14 @@ Be samtidig CCC bekrefte at leveringen ikke skal kjøres, slik at den ikke blir 
           'endre dato',
         ],
         body: '''
-For returhentinger kan dato ofte justeres ved behov.
-Be CCC sende forespørsel med ordrenummer og ønsket dato.
+Returhentingsdato kan ofte justeres. Send forespørsel med ordrenummer og ønsket dato til leverandør/planlegging.
 ''',
       );
 
   static KnowledgeChunk _orderNotes() => const KnowledgeChunk(
         id: 'ext.notes',
         source: KnowledgeSourceKind.publicOps,
-        title: 'Viktig info til sjåfør / oppdrag',
+        title: 'Info til sjåfør på ordren',
         tags: [
           'beskjed',
           'note',
@@ -349,10 +324,9 @@ Be CCC sende forespørsel med ordrenummer og ønsket dato.
           'ring først',
         ],
         body: '''
-Viktig informasjon til oppdraget (portkode, ring først, vanskelig adkomst) må legges inn på ordren via CCC/butikk, slik at den følger sjåføren.
-
-Er leveringen i dag: be også CCC sørge for at sjåfør varsles.
-Er leveringen i morgen eller senere: legg inn notat i ordren i god tid.
+Legg viktige notater (portkode, ring først, adkomst) direkte på ordren slik at det følger sjåføren.
+I dag: sørg for at beskjeden også når frem raskt.
+I morgen eller senere: legg inn notatet i god tid.
 ''',
       );
 }

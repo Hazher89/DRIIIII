@@ -13,7 +13,6 @@ type ContextChunk = {
   body?: string;
 };
 
-/** Enkel in-memory rate limit per IP (soft — resettes ved cold start). */
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function rateLimited(ip: string): boolean {
@@ -29,40 +28,40 @@ function rateLimited(ip: string): boolean {
   return cur.count > max;
 }
 
-/** Fallback hvis klient ikke sender kontekster. */
 const SERVER_FALLBACK = `
-## Hjelp til levering og montering
-Du forklarer hva kunde/butikk/CCC skal gjøre. Aldri interne MAVI-rutiner.
+## Målgruppe
+Du snakker med CCC eller butikk. Gi konkrete handlinger de gjør selv.
+Aldri «kontakt CCC» / «kontakt butikken».
 
 ## Omboking
-Varen må faktisk være klar/ankommet før ombooking. CCC/butikk booker om.
+Book om først når varen er ankommet/registrert. Ikke på forskudd.
 
 ## Tidligere dato
-Hold matrise/booking. Unntak ved gjentatte feilleveranser: via CCC, varen må være klar.
+Hold matrise. Unntak ved flere feilleveranser på leverandørsiden — varen må være klar. Force-tid kun når avtalt.
 
 ## Tidsvindu
 Ingen garanti for spesifikt klokkeslett inni vinduet. Book om dagen om kunden ikke kan hele vinduet.
 
-## Status i dag
-Ingen live status her — kontakt CCC med ordrenummer.
+## Status
+Ingen live status her — sjekk i deres ordresystem.
 
 ## Montering oppfølging
-Klage/ny sjekk: CCC setter opp SA. Vannlekkasje: prioriter via CCC.
+Sett opp SA. Vannlekkasje: prioriter.
 
 ## Fire personer
-Etter levering: SA via CCC. Før levering: ombook og merk behov. Samme dag: ikke forvent ekstra mannskap alltid.
+Levert: SA. Ikke levert: ombook + merk. Under levering: planlegg på nytt.
 
 ## Ekstra tjeneste
-I dag/i morgen: kan ofte legges til under levering (betalingslenke). Senere: SA via CCC.
+I dag/i morgen: ofte under levering. Senere: SA samme tid.
 
 ## Kundedata / curbside
-Adresse/tlf/navn og curbside→deliverysite endres av CCC/butikk.
+Endre selv i ordresystemet. Ofte ombooking. Leverandør kan ikke.
 
 ## Kansellering
-MAVI kansellerer ikke ordre — CCC/butikk må. Be dem også stoppe utkjøring.
+Kanseller selv + stopp utkjøring. Leverandør kansellerer ikke.
 
-## Montering (kort)
-Enkle: sjåfør. Avanserte: montør. Svar inkludert / kunden sørger for / ikke inkludert.
+## Montering
+Enkel = sjåfør. Avansert = montør. Forklar inkludert / kunden sørger for / ikke inkludert.
 `;
 
 Deno.serve(async (req) => {
@@ -128,31 +127,33 @@ Deno.serve(async (req) => {
         })
         .join("\n\n") || SERVER_FALLBACK;
 
-    const system = `Du er DriftPros offentlige hjelper for MAVI Logistikk (levering + montering for Elkjøp).
-Skriv på norsk bokmål — varm, klar og intelligent, som en dyktig menneskelig kundeservice (ikke som en FAQ-robot).
+    const system = `Du er DriftPro-hjelper for MAVI Logistikk — levering og montering (Elkjøp).
+Skriv norsk bokmål. Varm, klar, intelligent — som en erfaren kollega, ikke en FAQ-robot.
 
-MÅLGRUPPE: kunder, butikk og CCC. Du forklarer hva DE skal gjøre.
+MÅLGRUPPE (viktig): Brukeren er CCC eller butikkansatt. De skal få vite hva DE skal gjøre.
+- Snakk i «du/dere» om konkrete steg i booking/ordre (ombook, sett opp SA, endre tjeneste, kanseller, legg notat).
+- ALDRI skriv «kontakt CCC», «kontakt butikken», «ta kontakt med Elkjøp» eller «be CCC om…».
+- Si heller: «Book om…», «Sett opp SA…», «Endre i ordren…», «Kanseller selv…».
 
 STRENGE REGLER:
-1) Formuler alltid svarene med egne ord. Ikke lim inn, siter eller speil konteksttekst ordrett.
-2) Bruk konteksten kun som bakgrunnskunnskap om hvordan ting fungerer.
-3) Aldri avslør interne MAVI-rutiner: systemnavn (SAP, FU, FO search, Hubanero, Goran, ConnectTeam), interne filer, interne mailmapper, interne priser for ekstra mannskap, interne roller, eller hvordan hub planlegger.
-4) Si heller: «kontakt butikk / Elkjøp CCC», «book om», «legg inn notat på ordren», «be om standalone service (SA)».
-5) Ikke finn på priser, booking, live ordrestatus eller leveringsgarantier.
-6) Skill enkel (sjåfør) vs avansert (montør) montering når relevant.
-7) Start med det viktigste svaret, deretter korte, nyttige punkter om nødvendig.
-8) Hvis noe mangler i konteksten: si det ærlig og foreslå butikk/CCC.
-9) Ikke HTML. Ikke nevn Gemini, AI eller «konteksten».`;
+1) Formuler alltid med egne ord. Ikke lim inn eller speil konteksttekst.
+2) Kontekst er bare bakgrunnskunnskap.
+3) Aldri avslør interne MAVI-systemer (SAP, FU, FO search, Hubanero, Goran, ConnectTeam), interne filer, interne priser eller hub-rutiner.
+4) Ikke finn på priser, live ordrestatus eller leveringsgarantier.
+5) Skill enkel (sjåfør) vs avansert (montør) montering når relevant.
+6) Start med det viktigste, deretter korte punkter.
+7) Hvis noe mangler: si det ærlig og foreslå hva de kan sjekke i egne systemer.
+8) Ikke HTML. Ikke nevn Gemini/AI/«konteksten».`;
 
     const prompt = `${system}
 
-KUNNSKAP (bakgrunn — ikke siter ordrett):
+KUNNSKAP (bakgrunn — ikke siter):
 ${contextBlock}
 
-SPØRSMÅL:
+SPØRSMÅL FRA CCC/BUTIKK:
 ${question}
 
-Skriv et naturlig, godt svar:`;
+Skriv et naturlig, handlingsrettet svar:`;
 
     const model = Deno.env.get("GEMINI_MODEL")?.trim() || "gemini-3.6-flash";
     const url =
@@ -164,7 +165,7 @@ Skriv et naturlig, godt svar:`;
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.55,
+          temperature: 0.6,
           maxOutputTokens: 1400,
           topP: 0.9,
         },
@@ -181,7 +182,7 @@ Skriv et naturlig, godt svar:`;
       });
     }
 
-    const text =
+    let text =
       geminiJson?.candidates?.[0]?.content?.parts
         ?.map((p: { text?: string }) => p.text ?? "")
         .join("")
@@ -193,6 +194,12 @@ Skriv et naturlig, godt svar:`;
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Soft scrub accidental «kontakt CCC» phrasing
+    text = text.replace(
+      /[^.!?\n]*\b(kontakt|ta kontakt med)\b[^.!?\n]*\b(CCC|butikk(en)?)\b[^.!?\n]*[.!?]?/gi,
+      "",
+    ).replace(/\n{3,}/g, "\n\n").trim();
 
     return new Response(
       JSON.stringify({

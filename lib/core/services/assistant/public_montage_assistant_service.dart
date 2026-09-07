@@ -21,16 +21,16 @@ class PublicMontageAssistantService {
   bool? _geminiAvailable;
 
   static const suggestedQueries = [
-    'Hva er inkludert når dere monterer vaskemaskin?',
-    'Kan jeg få levering tidligere enn booket dato?',
-    'Kan dere komme etter kl. 19 innenfor vinduet?',
-    'Hvordan endrer jeg adresse eller telefon?',
-    'Kan dere endre fra curbside til deliverysite?',
-    'Kunden glemte en tjeneste — hva gjør vi?',
-    'Det trengs fire personer for bæring — hva nå?',
-    'Kan dere kansellere leveringen for oss?',
-    'Hva må jeg gjøre klart før komfyren kommer?',
-    'Er side-by-side kjøleskap enkel eller avansert montering?',
+    'Kan kunden få levering tidligere enn booket dato?',
+    'Kunden vil ha levering etter kl. 19 i vinduet — hva gjør vi?',
+    'Hvordan endrer vi adresse eller telefon på ordren?',
+    'Curbside til deliverysite — hvordan?',
+    'Kunden glemte en tjeneste — hvordan fikser vi det?',
+    'Det trengs fire personer — hva setter vi opp?',
+    'Hvordan kansellerer vi leveringen riktig?',
+    'Hva er inkludert ved montering av vaskemaskin?',
+    'Er side-by-side enkel eller avansert montering?',
+    'Vare ikke hentet fra butikk — kan den leveres likevel?',
   ];
 
   /// Interne ord/fraser som aldri skal komme ut til eksterne.
@@ -187,13 +187,8 @@ class PublicMontageAssistantService {
 
     final local = _composeNatural(q, hits, intent);
 
-    // Har vi et skarpt intent-svar, bruk det først (raskt + uten lekkasjer).
-    // Gemini er bonus når den er deployet.
-    final preferLocal = intent != null &&
-        local.found &&
-        _naturalAnswers.containsKey(intent.chunkId);
-
-    if (!preferLocal && _geminiAvailable != false) {
+    // Gemini først — formulerer naturlig for CCC/butikk.
+    if (_geminiAvailable != false) {
       try {
         final gemini = await _askGemini(q, hits, intent);
         if (gemini != null && gemini.trim().isNotEmpty) {
@@ -214,27 +209,13 @@ class PublicMontageAssistantService {
       );
     }
 
-    if (_geminiAvailable != false) {
-      try {
-        final gemini = await _askGemini(q, hits, intent);
-        if (gemini != null && gemini.trim().isNotEmpty) {
-          return KnowledgeAnswer(
-            found: hits.isNotEmpty,
-            hits: hits.take(3).toList(),
-            text: _sanitizeExternal(gemini.trim()),
-          );
-        }
-      } catch (_) {}
-    }
-
     return const KnowledgeAnswer(
       found: false,
       hits: [],
       text:
-          'Jeg er ikke helt sikker på det ut fra det jeg har her.\n\n'
-          'Prøv å nevne produktet (f.eks. vaskemaskin, komfyr, TV) eller '
-          'hva du vil få til (ombooking, endre adresse, ekstra tjeneste, kansellering).\n\n'
-          'For booking, pris og ordrestatus: kontakt butikken der kjøpet ble gjort, eller Elkjøp CCC.',
+          'Jeg er ikke helt sikker på det.\n\n'
+          'Prøv å spesifisere produkt (vaskemaskin, komfyr, TV…) eller handling '
+          '(ombooking, endre adresse, SA, kansellering, fire personer).',
     );
   }
 
@@ -445,77 +426,64 @@ class PublicMontageAssistantService {
     );
   }
 
-  /// Ferdige, naturlige svar — høres ut som AI, ikke som kopiert FAQ.
+  /// Naturlige svar til CCC/butikk — «du»-form, aldri «kontakt CCC/butikk».
   static const _naturalAnswers = <String, String>{
     'ext.rebook_scan':
-        'Ja — men først må varen faktisk være hos oss (eller returnert og registrert).\n\n'
-        'Så lenge den er underveis eller ikke ankommet, kan den ikke bookes om «på forskudd». '
-        'Vent til den er klar, og book deretter om via butikk/CCC.\n\n'
-        'Tips: Oppgi ordrenummer når du kontakter CCC, så går det fortest.',
+        'Omboking kan først skje når varen faktisk er ankommet/returnert og registrert hos leverandør.\n\n'
+        'Book ikke om på forskudd mens varen er underveis. Når den er klar: ombook i deres system med ønsket ny tid.',
     'ext.earlier':
-        'Som hovedregel gjelder datoen som allerede er booket i leveringsmatrisen — '
-        'særlig hvis varen ikke har ankommet ennå.\n\n'
-        'Unntak finnes hvis leveringen har feilet flere ganger på vår side (f.eks. «rakk ikke»). '
-        'Da kan CCC spørre om en tidligere tid, men varen må være klar for levering først.\n\n'
-        'Beste neste steg: kontakt CCC med ordrenummer og forklar situasjonen.',
+        'Utgangspunktet er booket dato i matrisen — særlig hvis varen ikke har ankommet ennå.\n\n'
+        'Unntak: flere feilleveranser på leverandørsiden (f.eks. «rakk ikke»). '
+        'Da kan dere forespørre tidligere tid, men varen må være klar først. '
+        'Force-tid bare når det er avtalt og varen er klar for levering.',
     'ext.time_window':
-        'Vi planlegger etter det tidsvinduet som er booket — for eksempel 17–22. '
-        'Vi kan dessverre ikke love et spesifikt klokkeslett inni vinduet (som «først etter 19»).\n\n'
-        'Hvis kunden ikke kan være hjemme hele vinduet, er beste løsning å booke om til en dag '
-        'der hele tidsrommet passer.\n\n'
-        'Har det vært flere bomturer tidligere som skyldes leveransen, kan CCC be om ekstra hensyn ved ny planlegging.',
+        'Levering følger booket tidsvindu (f.eks. 17–22). '
+        'Spesifikke klokkeslett inni vinduet — som «først etter 19» — kan ikke loves.\n\n'
+        'Hvis kunden ikke kan være hjemme hele vinduet: book om til en dag der hele tidsrommet passer.\n\n'
+        'Har det vært flere bomturer på leverandørsiden tidligere, merk det ved ombooking så det kan tas hensyn til.',
     'ext.status_today':
-        'Jeg ser ikke live ordrestatus her i chatten.\n\n'
-        'Ta kontakt med butikk eller Elkjøp CCC med ordrenummer. '
-        'De kan sjekke om leveringen er på vei i dag, og eventuelt sørge for at sjåfør ringer kunden.',
+        'Chatten viser ikke live status. Sjekk ordrenummeret i deres egne systemer.\n\n'
+        'Ser leveringen ut til å være ute: følg opp slik at kunden får beskjed på vanlig måte.',
     'ext.montage_followup':
-        'Ved klage på montering, eller hvis noe må sjekkes på nytt, ber du CCC sette opp en '
-        'standalone service (SA) til kunden.\n\n'
-        'Er det vannlekkasje eller fare for skade i hjemmet, si ifra tydelig — da skal det prioriteres raskere enn vanlig.\n\n'
-        'Ta med ordrenummer og en kort beskrivelse av problemet.',
+        'Sett opp en standalone service (SA) til kunden for ny gjennomgang / oppfølging av monteringen.\n\n'
+        'Ved vannlekkasje eller skaderisiko: prioriter — dette kan behandles mer akutt enn vanlig matrise. '
+        'Noter kort hva som er galt på ordren/SA.',
     'ext.four_person':
-        'Det kommer an på hvor i løpet dere er:\n\n'
-        '• Allerede levert hos kunden: Be CCC opprette en SA (f.eks. for bæring/montering) og oppgi ønsket dato.\n'
-        '• Ikke levert ennå: Book om leveringen og merk tydelig at det trengs fire personer.\n'
-        '• Oppdaget først under levering: Ekstra mannskap samme dag er ikke alltid tilgjengelig. '
-        'Ofte må oppdraget fullføres/avbrytes der og da, og ny planlegging skjer via CCC.\n\n'
+        'Slik håndterer dere fire personer:\n\n'
+        '• Allerede levert: opprett SA (f.eks. installfridge / deliveryunp) med ønsket dato.\n'
+        '• Ikke levert: book om og merk tydelig at det trengs fire personer + ny tid.\n'
+        '• Oppdaget under levering: ekstra mannskap samme dag er ikke alltid mulig — planlegg på nytt.\n\n'
         'Jo tidligere behovet er merket på ordren, jo enklere blir det.',
     'ext.extra_service':
-        'Glemt en tjeneste? Det går ofte fint — avhengig av tidspunkt:\n\n'
-        '• Levering i dag/i morgen: Vanlige tjenester kan ofte legges til under levering '
-        '(kunden får betalingslenke etterpå). Avklar via CCC/butikk før sjåfør er der.\n'
-        '• Lenger frem i tid: CCC kan legge opp en SA på samme dato/tid, så tjenesten følger med.\n\n'
-        'Si hvilke tjeneste det gjelder, så blir det riktig fra start.',
+        'Glemt tjeneste — dette kan dere ofte fikse selv:\n\n'
+        '• I dag/i morgen + vanlig tjeneste + deliverysite: tjenesten kan ofte legges til under levering '
+        '(kunden får betalingslenke etterpå). Avklar før levering.\n'
+        '• Lenger frem: legg opp SA på samme dato/tid med samme kundedata.',
     'ext.customer_info':
-        'Adresse, telefon og navn endres av butikk/CCC — ikke av oss som leverandør.\n\n'
+        'Adresse, telefon og navn endrer dere selv i ordresystemet — leverandør kan ikke gjøre det.\n\n'
         'Som oftest må leveringen bookes om for at endringen skal gjelde.\n\n'
-        'Er leveringen i dag eller i morgen, kan korrekt telefonnummer noen ganger noteres til sjåfør via CCC, '
-        'men den permanente endringen må fortsatt inn i ordren.',
+        'Samme dag / i morgen: sørg for at korrekt telefon også følger med til sjåfør, '
+        'men den permanente endringen må inn i ordren.',
     'ext.utlevere':
-        'Noen ganger blir leveringen gjennomført, men registreringen på enheten feiler.\n\n'
-        '• Fra i går: Vent normalt til neste arbeidsdag — status oppdateres ofte da.\n'
-        '• Eldre leveringer: Kontakt CCC og be dem følge opp utlevering/status i systemet.\n\n'
-        'Ha ordrenummer klart.',
+        'Noen ganger er varen levert, men registreringen feiler.\n\n'
+        '• Fra i går: vent normalt til neste arbeidsdag — status oppdateres ofte da.\n'
+        '• Eldre: følg opp utlevering/status med ordrenummer i deres system / mot leverandør.',
     'ext.curbside_site':
-        'Bytte fra curbside (fortauskant) til deliverysite (inn til anvist plass) '
-        'må gjøres av butikk/CCC i deres system.\n\n'
-        'Vi kan ikke endre tjenestetypen fra vår side. Be dem oppdatere ordren før leveringsdagen.',
+        'Bytt selv fra curbside til deliverysite i ordresystemet før leveringsdagen.\n\n'
+        'Leverandør kan ikke endre tjenestetypen for dere.',
     'ext.store_pickup':
-        'Hvis varen ikke ble hentet fra butikk, kan den normalt ikke leveres til oppsatt tid likevel.\n\n'
-        'Ordren må bookes om med både henting og ny levering. '
-        'Butikk må også ha gjort pick & pack (klargjort varen) i tide.\n\n'
-        'Kontakt butikk/CCC med ordrenummer for å få satt dette riktig.',
+        'Hvis varen ikke ble hentet fra butikk, kan den normalt ikke leveres til oppsatt tid.\n\n'
+        'Book om med både henting og ny levering, og sørg for at pick & pack er gjort i tide.',
     'ext.cancel':
-        'Vi kan ikke kansellere ordren i Elkjøps system — det må butikk/CCC gjøre.\n\n'
-        'Be dem samtidig bekrefte at leveringen ikke skal kjøres, så den ikke blir planlagt ut.\n\n'
-        'Kort sagt: kansellering skjer hos CCC/butikk, ikke hos leverandør.',
+        'Kanseller ordren selv i Elkjøp-systemet — leverandør kan ikke kansellere for dere.\n\n'
+        'Merk/stopp samtidig ordren slik at den ikke blir planlagt for utkjøring.',
     'ext.return_pickup':
-        'For returhentinger kan dato ofte justeres ved behov.\n\n'
-        'Send forespørsel via CCC med ordrenummer og ønsket ny dato — så ordner de oppfølgingen.',
+        'Returhentingsdato kan ofte justeres.\n\n'
+        'Send forespørsel med ordrenummer og ønsket ny dato til planlegging/leverandør.',
     'ext.notes':
-        'Viktig info til sjåfør (portkode, «ring først», vanskelig adkomst) må ligge på ordren via butikk/CCC.\n\n'
-        '• Levering i dag: Be også CCC sørge for at sjåfør får beskjed.\n'
-        '• I morgen eller senere: Legg inn notatet i god tid, så følger det automatisk med.',
+        'Legg viktige beskjeder (portkode, ring først, adkomst) direkte på ordren.\n\n'
+        '• I dag: sørg for at beskjeden når frem raskt.\n'
+        '• I morgen eller senere: legg inn notatet i god tid, så følger det sjåføren.',
   };
 
   /// Formulerer naturlig svar — aldri rå dokumentsitering.
@@ -529,35 +497,14 @@ class PublicMontageAssistantService {
         .split(RegExp(r'\n\s*\n'))
         .map((p) => p.trim())
         .where((p) => p.isNotEmpty)
-        .where((p) => !p.toLowerCase().startsWith('spørsmål du ofte'))
         .toList();
 
     final buf = StringBuffer();
-    if (topic != null) {
-      buf.writeln('Kort fortalt om $topic:');
-      buf.writeln();
-    }
-
     for (final p in paras.take(3)) {
-      var line = p
-          .replaceFirst(RegExp(r'^Svar til ekstern:\s*', caseSensitive: false), '')
-          .replaceFirst(RegExp(r'^Utgangspunkt:\s*', caseSensitive: false), '')
-          .trim();
-      if (line.toLowerCase().startsWith('vi forklarer')) continue;
-      if (line.toLowerCase().startsWith('vi deler ikke')) continue;
-      if (line.toLowerCase().startsWith('booking, pris')) {
-        buf.writeln();
-        buf.writeln(line);
-        continue;
-      }
-      buf.writeln(line);
+      buf.writeln(p);
       buf.writeln();
     }
-
-    buf.writeln(
-      'Trenger du endring i ordre, booking eller status: kontakt butikk eller Elkjøp CCC med ordrenummer.',
-    );
-    return buf.toString().trim();
+    return _sanitizeExternal(buf.toString().trim());
   }
 
   String _rewriteMontageAnswer(KnowledgeChunk chunk, String q) {
@@ -596,15 +543,15 @@ class PublicMontageAssistantService {
     final buf = StringBuffer();
     buf.writeln(
       name.isEmpty
-          ? 'Slik fungerer denne monteringstjenesten:'
-          : 'For $name hos deg gjelder dette:',
+          ? 'Når dere booker / forklarer denne monteringstjenesten:'
+          : 'For $name — dette kan dere bruke mot kunden / i booking:',
     );
     buf.writeln();
 
     if (wantIncluded) {
       final s = section('Inkludert:');
       if (s.isNotEmpty) {
-        buf.writeln('Det som er inkludert:');
+        buf.writeln('Inkludert:');
         for (final line in s.split('\n')) {
           final t = line.trim();
           if (t.isEmpty) continue;
@@ -616,7 +563,7 @@ class PublicMontageAssistantService {
     if (wantCustomer || (!wantExcluded && wantIncluded)) {
       final s = section('Kunden sørger for:');
       if (s.isNotEmpty) {
-        buf.writeln('Det du bør ha klart:');
+        buf.writeln('Kunden må ha klart:');
         for (final line in s.split('\n')) {
           final t = line.trim();
           if (t.isEmpty) continue;
@@ -639,17 +586,10 @@ class PublicMontageAssistantService {
     }
 
     if (buf.toString().trim().split('\n').length <= 2) {
-      // Overview / freeform chunk — rewrite lightly
-      final cleaned = body
-          .replaceAll(RegExp(r'\n{3,}'), '\n\n')
-          .trim();
+      final cleaned = body.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
       buf.write(cleaned);
     }
 
-    buf.writeln();
-    buf.writeln(
-      'Pris og booking avtales via butikken der du handlet — ikke her i chatten.',
-    );
     return buf.toString().trim();
   }
 
@@ -658,6 +598,22 @@ class PublicMontageAssistantService {
     for (final p in _leakPatterns) {
       out = out.replaceAll(p, '');
     }
+    // Aldri «kontakt CCC/butikk» — brukeren ER CCC/butikk.
+    out = out.replaceAll(
+      RegExp(
+        r'[^.!?\n]*\b(kontakt|ta kontakt med|ring|spør)\b[^.!?\n]*\b(CCC|butikk(en)?|Elkj[øo]p CCC)\b[^.!?\n]*[.!?]?',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    out = out.replaceAll(
+      RegExp(r'\bbe\s+(CCC|butikk(en)?)\b', caseSensitive: false),
+      'dere kan',
+    );
+    out = out.replaceAll(
+      RegExp(r'\bvia\s+(CCC|butikk)/?(CCC|butikk)?\b', caseSensitive: false),
+      'i ordresystemet',
+    );
     out = out
         .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
         .replaceAll(RegExp(r'\n{3,}'), '\n\n')
@@ -704,12 +660,12 @@ class PublicMontageAssistantService {
       'title': 'Retningslinjer for svar',
       'source': 'Policy',
       'body':
-          'Skriv naturlig som en dyktig kundeservice. '
-          'Forklar hva kunden/butikk/CCC skal gjøre. '
-          'Aldri nevn interne MAVI-systemer, filer, interne mailrutiner, '
-          'interne priser for ekstra mannskap, eller hvordan hub jobber. '
-          'Ikke lim inn kontekst ordrett — formuler selv. '
-          '${intent != null ? 'Brukeren spør om: ${intent.label}.' : ''}',
+          'Målgruppe: CCC og butikk (Elkjøp). Snakk direkte til dem som operatører. '
+          'Bruk «du/dere» om handlinger de skal gjøre selv (ombook, sett opp SA, endre i ordren). '
+          'ALDRI si «kontakt CCC», «kontakt butikken» eller «ta kontakt med Elkjøp» — de ER CCC/butikk. '
+          'Ikke lim inn FAQ ordrett. Formuler naturlig og intelligent. '
+          'Aldri nevn interne MAVI-systemer, filer eller hub-rutiner. '
+          '${intent != null ? 'Tema: ${intent.label}.' : ''}',
     });
 
     try {
