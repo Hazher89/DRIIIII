@@ -114,7 +114,11 @@ abstract final class AppPaths {
   static const hmsRisikomatrise = '/hms/risikomatrise';
   static const hmsSja = '/hms/sja';
   static const hmsVernerunde = '/hms/vernerunde';
+  static const hmsTungloft = '/hms/tungloft';
+  static const hmsHandbok = '/hms/handbok';
   static const hmsUtstyr = '/hms/utstyr';
+
+  static String hmsHandbokDoc(String id) => '$hmsHandbok/$id';
   static const hmsKompetanse = '/hms/kompetanse';
   static const hmsOpplaering = '/hms/opplaering';
   static const hmsDms = '/hms/dms';

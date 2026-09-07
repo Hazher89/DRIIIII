@@ -67,62 +67,42 @@ class _HmsScreenState extends State<HmsScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isMobile = DriftProClient.isMobile;
     final a = _profile?.access;
-    final modules = <Widget>[];
+    final handbook = <Widget>[];
+    final operations = <Widget>[];
+    final resources = <Widget>[];
 
-    // Mobil: prioriter opplæring og dokumenter først (ansatt-vennlig).
-    void addTraining() {
-      if (a?.canHmsTraining != true) return;
-      modules.add(_buildModuleCard(
+    // —— Håndbok (IK-system + vedlegg) ——
+    if (a?.can(AccessKeys.hms) == true) {
+      handbook.add(_buildModuleCard(
         context,
-        icon: Icons.school_rounded,
-        title: 'Opplæring',
-        subtitle: isMobile
-            ? 'Søk og lær — SOP og brukerveiledning'
-            : 'Smart søk — alle DriftPro-funksjoner + SOP Hub',
-        color: const Color(0xFF00695C),
+        icon: Icons.menu_book_rounded,
+        title: 'HMS-håndbok',
+        subtitle: 'IK-system og alle vedlegg — ryddig fordelt',
+        color: DriftProTheme.primaryGreen,
         isDark: isDark,
-        badge: isMobile ? null : 'Alle',
-        onTap: () => context.push(AppPaths.hmsOpplaering),
+        badge: 'MAVI',
+        onTap: () => context.push(AppPaths.hmsHandbok),
       ));
     }
 
-    void addDocuments() {
-      if (a?.canHmsDocuments != true) return;
-      modules.add(_buildModuleCard(
-        context,
-        icon: AppIcons.document,
-        title: AppStrings.documents,
-        subtitle: isMobile
-            ? 'Håndbok og styrende dokumenter'
-            : 'HMS-håndbok og styrende dokumenter (DMS)',
-        color: DriftProTheme.info,
-        isDark: isDark,
-        onTap: () => context.push(AppPaths.hmsDms),
-      ));
-    }
-
-    if (isMobile) {
-      addTraining();
-      addDocuments();
-    }
-
-    if (a?.canAvvik == true && !isMobile) {
-      modules.add(_buildModuleCard(
+    // —— Operativt ——
+    if (a?.canAvvik == true) {
+      operations.add(_buildModuleCard(
         context,
         icon: Icons.report_problem_outlined,
-        title: 'Avvik',
-        subtitle: 'Hurtigmaler, GPS, media og lederoppfølging',
+        title: 'Avvik / RUH',
+        subtitle: 'Uønskede hendelser — erstatter papir-RUH',
         color: DriftProTheme.error,
         isDark: isDark,
         onTap: () => context.push(AppPaths.hmsAvvik),
       ));
     }
     if (a?.canHmsRisk == true) {
-      modules.add(_buildModuleCard(
+      operations.add(_buildModuleCard(
         context,
         icon: AppIcons.riskAssessment,
         title: AppStrings.riskAssessment,
-        subtitle: 'ROS med ISO-felter, behandling og vedlegg',
+        subtitle: 'ROS med maler for løft, trapp og lager',
         color: DriftProTheme.riskHigh,
         isDark: isDark,
         badge: _statsLoading || _stats.riskCount == 0
@@ -133,22 +113,22 @@ class _HmsScreenState extends State<HmsScreen> {
       ));
     }
     if (a?.canHmsRiskMatrix == true) {
-      modules.add(_buildModuleCard(
+      operations.add(_buildModuleCard(
         context,
         icon: Icons.grid_view_rounded,
         title: 'Risikomatrise',
-        subtitle: '5×5 matrise · sannsynlighet og konsekvens',
+        subtitle: '5×5 · mennesker, miljø og økonomi',
         color: DriftProTheme.warning,
         isDark: isDark,
         onTap: () => context.push(AppPaths.hmsRisikomatrise),
       ));
     }
     if (a?.canHmsSja == true) {
-      modules.add(_buildModuleCard(
+      operations.add(_buildModuleCard(
         context,
         icon: AppIcons.sja,
         title: AppStrings.sjaTitle,
-        subtitle: 'SJA med maler, PPE og farepunkter',
+        subtitle: 'Digitale SJA med mal for tungløft',
         color: DriftProTheme.accentBlue,
         isDark: isDark,
         badge: _statsLoading || _stats.sjaOpen == 0
@@ -158,11 +138,11 @@ class _HmsScreenState extends State<HmsScreen> {
       ));
     }
     if (a?.canHmsSafetyRound == true) {
-      modules.add(_buildModuleCard(
+      operations.add(_buildModuleCard(
         context,
         icon: AppIcons.safetyRound,
         title: AppStrings.safetyRound,
-        subtitle: 'Vernerunder med sjekklister fra mal',
+        subtitle: 'Sjekklister inkl. ergonomi og løft',
         color: DriftProTheme.success,
         isDark: isDark,
         badge: _statsLoading || _stats.safetyPlanned == 0
@@ -171,8 +151,22 @@ class _HmsScreenState extends State<HmsScreen> {
         onTap: () => context.push(AppPaths.hmsVernerunde),
       ));
     }
+    if (a?.can(AccessKeys.hms) == true) {
+      operations.add(_buildModuleCard(
+        context,
+        icon: Icons.fitness_center_rounded,
+        title: 'Tungløft',
+        subtitle: 'Bildeguide + MAVI-instruks (vedlegg 12)',
+        color: const Color(0xFF2E7D32),
+        isDark: isDark,
+        badge: 'Guide',
+        onTap: () => context.push(AppPaths.hmsTungloft),
+      ));
+    }
+
+    // —— Ressurser ——
     if (a?.canHmsEquipment == true) {
-      modules.add(_buildModuleCard(
+      resources.add(_buildModuleCard(
         context,
         icon: Icons.construction_rounded,
         title: 'Maskiner & utstyr',
@@ -187,11 +181,11 @@ class _HmsScreenState extends State<HmsScreen> {
       ));
     }
     if (a?.canHmsCompetence == true) {
-      modules.add(_buildModuleCard(
+      resources.add(_buildModuleCard(
         context,
         icon: Icons.card_membership_rounded,
         title: 'Kompetanse & kurs',
-        subtitle: 'Kurs, bevis, PDF og kompetansematrise',
+        subtitle: 'Kurs, bevis, byggekort og matrise',
         color: Colors.indigo,
         isDark: isDark,
         badge: _stats.expiringCertificates > 0
@@ -201,10 +195,33 @@ class _HmsScreenState extends State<HmsScreen> {
         onTap: () => context.push(AppPaths.hmsKompetanse),
       ));
     }
-    if (!isMobile) {
-      addTraining();
-      addDocuments();
+    if (a?.canHmsTraining == true) {
+      resources.add(_buildModuleCard(
+        context,
+        icon: Icons.school_rounded,
+        title: 'Opplæring',
+        subtitle: isMobile
+            ? 'Søk og lær — SOP og brukerveiledning'
+            : 'Smart søk — DriftPro + SOP Hub',
+        color: const Color(0xFF00695C),
+        isDark: isDark,
+        onTap: () => context.push(AppPaths.hmsOpplaering),
+      ));
     }
+    if (a?.canHmsDocuments == true) {
+      resources.add(_buildModuleCard(
+        context,
+        icon: AppIcons.document,
+        title: AppStrings.documents,
+        subtitle: 'Egne opplastede dokumenter (DMS)',
+        color: DriftProTheme.info,
+        isDark: isDark,
+        onTap: () => context.push(AppPaths.hmsDms),
+      ));
+    }
+
+    final hasAny =
+        handbook.isNotEmpty || operations.isNotEmpty || resources.isNotEmpty;
 
     final hubTitle = isMobile ? AppStrings.navWork : AppStrings.navHMS;
 
@@ -223,7 +240,7 @@ class _HmsScreenState extends State<HmsScreen> {
             isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
         body: _profile == null
             ? const DriftProLoadingCenter()
-            : modules.isEmpty
+            : !hasAny
                 ? Center(
                     child: Padding(
                       padding: const EdgeInsets.all(32),
@@ -275,34 +292,43 @@ class _HmsScreenState extends State<HmsScreen> {
                               _buildTeamLeaderHint(context, isDark),
                           ],
                           Text(
-                            'Opplæring, dokumenter og sikkerhet',
+                            'Systematisk HMS — håndbok, risiko og manuell håndtering',
                             style: DriftProTheme.bodyMd.copyWith(
                               color: Colors.grey.shade700,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Flere kort vises når du får tilgang.',
-                            style: DriftProTheme.caption,
-                          ),
                           const SizedBox(height: 16),
                         ] else ...[
                           _buildVersionBanner(isDark),
                           const SizedBox(height: 12),
+                          _buildSystemIntro(isDark),
+                          const SizedBox(height: 12),
                           _buildKpiRow(isDark),
                           const SizedBox(height: 20),
-                          Text('Moduler', style: DriftProTheme.headingSm),
-                          const SizedBox(height: 12),
                         ],
-                        for (var i = 0; i < modules.length; i++) ...[
-                          if (i > 0) SizedBox(height: isMobile ? 14 : 12),
-                          modules[i],
-                        ],
+                        ..._section(
+                          'Håndbok og styring',
+                          'IK-system og vedlegg fra MAVI',
+                          handbook,
+                          isMobile: isMobile,
+                        ),
+                        ..._section(
+                          'Operativt HMS',
+                          'Det du bruker i det daglige',
+                          operations,
+                          isMobile: isMobile,
+                        ),
+                        ..._section(
+                          'Ressurser',
+                          'Utstyr, kompetanse og opplæring',
+                          resources,
+                          isMobile: isMobile,
+                        ),
                         if (!isMobile) ...[
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 8),
                           Text(
-                            'Maler er tilgjengelig når du oppretter risiko, SJA eller vernerunde — velg «Ny» og «Start fra mal».',
+                            'Maler finnes når du oppretter risiko, SJA eller vernerunde — velg «Ny» og «Start fra mal».',
                             style: DriftProTheme.caption,
                           ),
                         ],
@@ -312,6 +338,26 @@ class _HmsScreenState extends State<HmsScreen> {
                   ),
       ),
     );
+  }
+
+  List<Widget> _section(
+    String title,
+    String subtitle,
+    List<Widget> cards, {
+    required bool isMobile,
+  }) {
+    if (cards.isEmpty) return const [];
+    return [
+      Text(title, style: DriftProTheme.headingSm.copyWith(fontWeight: FontWeight.w800)),
+      const SizedBox(height: 4),
+      Text(subtitle, style: DriftProTheme.caption),
+      SizedBox(height: isMobile ? 12 : 10),
+      for (var i = 0; i < cards.length; i++) ...[
+        if (i > 0) SizedBox(height: isMobile ? 14 : 12),
+        cards[i],
+      ],
+      SizedBox(height: isMobile ? 22 : 20),
+    ];
   }
 
   Widget _buildTeamLeaderHint(BuildContext context, bool isDark) {
@@ -381,10 +427,44 @@ class _HmsScreenState extends State<HmsScreen> {
                   style: DriftProTheme.labelMd.copyWith(color: Colors.white),
                 ),
                 Text(
-                  'KPI · maler · ROS · Supabase',
+                  'Risiko · vernerunde · tungløft · dokumentasjon',
                   style: DriftProTheme.caption.copyWith(color: Colors.white70),
                 ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSystemIntro(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : DriftProTheme.primaryGreen.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: DriftProTheme.primaryGreen.withValues(alpha: 0.2),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.health_and_safety_outlined,
+            color: DriftProTheme.primaryGreen,
+            size: 22,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Systematisk HMS — håndbok (IK + vedlegg), risikoanalyser, vernerunder '
+              'og manuell håndtering. Ryddig for BHT og daglig drift.',
+              style: DriftProTheme.bodyMd.copyWith(height: 1.4, fontSize: 13.5),
             ),
           ),
         ],

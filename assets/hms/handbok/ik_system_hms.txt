@@ -1,0 +1,883 @@
+INTERNKONTROLLSYSTEM 
+HMS 
+		
+For
+
+MAVI Logistikk AS  
+
+
+
+
+Organisasjon :
+
+MAVI Logistikk AS 
+
+NO  912� 332 209 MVA
+
+
+
+
+Systematisk helse-, miljø- og sikkerhetsarbeid
+
+
+
+
+
+ 
+
+Dette internkontrollsystem (IK-system) gjelder for følgende organisasjon: 
+
+
+MAVI Logistikk AS	
+    		
+Adresse :		Solheimveien 3      		           	Org.nr : 	912� 332 209
+Postnummer :		1461				            E-post :  tommy@mavilogistikk.no
+Poststed : 		Lørenskog			 	Telefon: 	40 17 50 38
+
+Signatur : 		________________________________
+ 			Tommy Larsen 
+							
+
+
+Ytelse siste 5 år i bedriften: 
+  								                                      Ja/Nei :
+Har noen ansatte i virksomheten vært utsatt for alvorlige, store eller vesentlige skader i løpet av de siste 5 årene?
+
+  Nei
+Har det forekommet juridiske tiltak (søksmål, merknader, advarselsbrev osv.) som angår din virksomhet eller de ansatte i løpet av de siste 5 årene?
+
+  Nei
+Finnes det pågående juridiske tiltak nå?
+
+
+  Nei
+Hvis ja i en av feltene overfor kreves en kort redegjørelse for dette: 
+
+
+
+Innholdsfortegnelse :
+
+Internkontroll innebærer at virksomheten skal:
+Side:
+1. Sørge for at de lover og forskrifter i helse-, miljø- og sikkerhetslovgivningen som gjelder for
+    virksomheten er tilgjengelig, og ha oversikt over de krav som er av særlig viktighet. 
+
+3-4
+2. Sørge for at arbeidstakerne har tilstrekkelig kunnskaper og ferdigheter i det systematiske
+    helse-, miljø- og sikkerhetsarbeidet, herunder informasjon om endringer  (ref også punkt 10)
+
+4
+3. Sørge for at arbeidstakerne medvirker slik at samlet kunnskap og erfaring utnyttes 
+    
+
+5
+4. Fastsette mål for helse, miljø og sikkerhet.
+
+6-7
+5. Ha oversikt over virksomhetens organisasjon, herunder hvordan ansvar, oppgaver og 
+    myndighet for arbeidet med helse, miljø og sikkerhet er fordelt (ref også punkt 9)
+
+7-8
+6. Kartlegge farer og problemer og på denne bakgrunn vurdere risiko, samt utarbeide
+    tilhørende planer og tiltak for å redusere risikoforholdene 
+
+
+8-11
+7. Iverksette rutiner for å avdekke, rette opp og forebygge overtredelser av krav fastsatt i eller i
+    medhold av helse-, miljø- og sikkerhets- lovgivningen (ref også punkt 17)
+
+12
+8. Revisjon
+12
+9. Tiltaksklassifisering
+12
+10. Ledelsens og bedriftens ID-kort
+13
+11. Kursbehov
+13
+12. Dokumentasjon forsikringer
+13
+13. Grunnleggende HMS-bestemmelser       
+13-15
+14. Instrukser (Alvorlig ulykke, bruk av arbeidsutstyr, prosjektering, reklamasjon etc ). 
+15
+15. Montasjeledelse og avvikskontroll
+16
+16. Sanksjoner ved brudd på HMS-bestemmelser.
+16
+17. Handlingsplan
+16
+18. Signaturdokument-ansatte, (rett til å stanse arbeide AML § 2.3c – plikt til å medvirke AML
+      §§ 2.3 – 2-5”)
+
+17
+
+Vedleggsoversikt : 
+Beskrivelse : 
+Vedlegg
+Kan sendes eksternt : 
+Krav til UE ved akkreditering :
+HMS-og KS-erklæring
+1 og 1.1
+JA
+x
+Etiske retningslinjer
+2
+JA
+x
+Risikorapport ansatte
+3
+NEI
+x
+Sykefraværsrapport
+4
+NEI
+x
+RUH-skjema
+5
+JA
+
+Generell SJA-mal
+6
+JA
+
+Handlingsplan 2020
+7
+NEI
+
+Signaturdokument – ansatte 
+8
+JA
+Før attestutstedelse
+
+
+
+
+
+
+1. Lover, forskrifter og tilgjengelighet. 
+
+Hele dette internkontrollsystemet er tilgjengelig for alle ansatte i bedriften på felles nettverk.
+
+Vi har samlet de viktigste lover, forskrifter og normer som gjelder for MAVI Logistikk sin virksomhet. 
+
+MAVI Logistikk har rutiner for oppdatering av dette gjennom en årlig revisjon av HMS-systemet i sin helhet. Ref kap 8.
+
+Lover og forskrifter er ellers generelt tilgjengelige på:  HYPERLINK "http://www.lovdata.no" www.lovdata.no
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+1.1 Lover, forskrifter og normer
+
+MAVI Logistikk er i all hovedsak underlagt følgende lover, forskrifter og eventuelle normer i bransjen. 
+
+Referanse :
+Lover : 
+2005 AID
+Arbeidsmiljøloven 
+1981 MD
+Forurensningsloven
+1993 AID
+Allmenngjøringsloven (Utenlandsk arbeidskraft)
+1995 MD
+Plan- og bygningsloven
+1988 JD
+Kjøpsloven
+1918 JD
+Avtaleloven
+Bestillingsnummer
+Forskrifter
+235
+Asbest
+321
+Verneombud og arbeidsmiljøutvalg
+404
+Regionale verneombud i bygg og anleggsbransjen
+466
+Enmannsbedrifter i bygg og anlegg
+500
+Stillaser, stiger og arbeid på tak m.m
+524
+Bruk av personlig verneutstyr
+529
+Arbeidsplasser og arbeidslokaler
+531
+Tungt og ensformig arbeid
+534
+Byggherreforskriften
+544
+Internkontrollforskriften
+555
+Bruk av arbeidsutstyr
+566
+Kjemikalieforskriften
+798
+Forskrift om etablering av Brann og eksplosjonsvern
+01-22-33
+Forskrift om krav til byggverk, og produkter til byggverk (TEK)
+01-22-35
+Forskrift om godkjenning av foretak (GOF)
+06-24-749
+Forskrift om saksbehandling og kontroll i byggesaker (SAK)
+06-08-914
+Forskrift om bedriftshelsetjeneste
+Kommentarer :Norsk Standard / Normer :   HYPERLINK "http://www.standard.no" www.standard.no
+  
+ HYPERLINK "http://www.standard.no" www.standard.no
+NS 3420 Beskrivelsestekster for bygg,anlegg, og installasjoner
+ HYPERLINK "http://www.standard.no" www.standard.no
+NS 8405, 8406,8409, 8415, 8416, 8417 og 8430
+ HYPERLINK "http://www.ffv.no" www.ffv.no
+Våtromsnormen – fagrådet for våtrom
+
+
+
+
+2. Kunnskap / opplæring og ansettelseskontrakter.
+
+I MAVI Logistikk viser vi til at forskrift «Bruk av arbeidsutstyr», stiller krav til opplæring i 
+§§ 9-10, og i § 48 dokumentert opplæring og i § 49 sertifisert opplæring.
+Virksomheten har laget en plan for opplæringsbehov (kap 11) hvor de ansatte dokumenterer med sin underskrift at opplæring er gitt i.h.t signaturdokument i kap 21. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+3 Medvirkning. 
+Ledelse og de ansatte har i samarbeid laget bedriftens rutiner.
+Dersom rutiner ikke følges, det skjer nesten-ulykker og/eller feil, eller andre uheldige forhold oppstår, meldes det fra til nærmeste overordnede i.h.t prosedyre i kap 7.  
+
+Forslag til forbedringer vurderes i samarbeid med dem som blir berørt. Dette kan f.eks. være innskjerping av rutiner, klarere ansvarsforhold eller tekniske forbedringer. Tiltak registreres i handlingsplanen.
+Arbeidstakerne skal medvirke i arbeidet med helse, miljø og sikkerhet. Dette omfatter en rekke forhold, blant annet bruk av verneutstyr, sikker bruk av arbeidsutstyr og verktøy, sikring mot fall, hindring av brann og deltakelse på vernerunder/vernemøter.
+I ansettelseskontrakter vises det til at medarbeidere har rett til å stanse ethvert arbeide, (jmfr Aml. § 2.3 – 2.5) som vurderes som risikofylt. (jmfr Aml. § 2.3 ).Vurderingen omkring graden av risiko vurderes helt og holdent av den ansatte selv. (Aml §2.5 definerer Vern mot konsekvenser av varsling). 
+Videre vises det til Aml. § 2.3 som vedrører ansattes plikt til medvirkning. Alle ansatte som arbeider på oppdrag for MAVI Logistikk har skriftlige arbeidsavtaler (jmf. Aml. § 14-5 og 6), som også spesifiserer retten til å stanse risikofylt arbeide, men som også spesifiserer plikten til medvirkning. (ref kap 3) 
+Ledelsen og de ansattes medvirkning skjer forøvrig gjennom en rekke aktiviteter : 
+Interne avdelingsmøter
+Eksterne møter som ; oppstartsmøter, byggemøter og oppfølgingsmøter på byggeplass, befaringer samt deltagelse i vernerunder.
+Seminarer og samlinger, og interne kurser.
+Pålagt innrapportering av RUH, (registrering av uønskede hendelser), som igjen kan medføre endringer i SJA’ er eller instrukser. 
+Årlig revisjon og felles gjennomgang av IK-systemet. (HMS)
+
+
+
+
+
+4. Hensikt og målsetting med IK-systemet :  
+Hensikten med internkontrollsystemet sett fra et lov- og forskriftsmessig perspektiv, er definert og illustrert på følgende vis: 
+
+4.1 MAVI Logistikk har følgende HMS-mål i sin virksomhet
+I MAVI Logistikk skal vi sammen skape et trivelig og sikkert arbeidsmiljø for alle ansatte. Vi skal også beskytte bedriftens materiell og vi skal forhindre skader på arbeidsplassen og på våre produkter. Disse målene skal vi nå gjennom kontinuerlige forbedringer. Både ledelse og ansatte skal delta aktivt i dette forbedringsarbeidet. 
+Vi skal bruke IK-systemet for å bedre arbeidsplassens driftssikkerhet, lønnsomhet og konkurransekraft. MAVI Logistikk sine produkter og tjenester skal oppfylle våre kunders krav til kvalitet og punktlighet både i dag og i fremtiden. Selskapet skal videre arbeide for et godt psykososialt arbeidsmiljø. Ovenfor nevnte gjelder også selvsagt arbeid og leveranser ute på byggeplasser.
+Lover, forskrifter, avtaler og bestemmelser skal respekteres slik at skader og ulykker unngås. Videre skal de ansattes kompetanse følges opp for et sikkert arbeidsmiljø, også om nødvendig påfyll av kompetanse. 
+
+MAVI Logistikk har et overordnet mål om: Ingen ulykker eller alvorlige skader.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Selskapenes respektive HMS-erklæring ligger i vedlegg 1.
+
+
+4.2 Etiske retningslinjer i MAVI Logistikk : 
+
+MAVI Logistikk har utarbeidet etiske retningslinjer til denne HMS-plan. 
+  
+
+
+5. Organisasjon / verneorganisasjon.
+
+
+Daglig leder:      Tommy Larsen
+
+
+Antall ansatte:  Heltid :  23             Deltid : 0
+
+(Dersom bedriften består av 10 ansatte eller flere må det velges et verneombud blant de ansatte i bedriften)
+
+Verneombud: Hazher Abdullah Osman, Mob : 45045451 E-post : hazher@mavilogistikk.no
+
+(Dersom bedriften har mindre enn 10 ansatte kan det alternativt benytte offentlig regionalt verneombud som ombudsordning)  
+
+Vårt regionale verneombud er : ----------
+
+Mobil :                                E-post : 
+
+(Regionalt verneombud er en offentlig ordning hvor det regionale verneombudet representerer de ansatte overfor bedriften. Ved valg av dette alternativ som ordning skaldet  regionale verneombudet varsles om dette. )
+
+Verne- og helsepersonale (bedriftshelsetjeneste) :
+
+Vår bedriftshelsetjeneste er: Oslo Bedriftshelsetjeneste AS  
+
+Mobil : 21 42 05 21                               E-post : kundeservice@oslobht.no
+
+Verneutvalg: 
+
+Dersom bedriften er større enn 50 ansatte er det lovpålagt å velge et verneutvalg: 
+Det er også plikt til å opprette verneutvalg i bedrifter mellom 20 – 50 ansatte, dersom en av partene krever dette. 
+Vårt verneutvalg består av følgende medlemmer: (Utvalgsleder noteres øverst i listen)
+Verneutvalget skal bestå av representant(er) for arbeidsgiver, arbeidstaker(verneombud) samt bedriftshelsetjenesten. 
+
+Navn :
+Stilling / Representerer : 
+E-post : 
+  
+Mobil :
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+5.1 Organisering av arbeidet / Prosedyrer
+
+Det er utarbeidet prosedyre for organisering av arbeidet i MAVI Logistikk, som beskriver både funksjon og den innbyrdes ansvarsfordelingen.  
+
+
+
+6. Overordnede risikovurderinger 
+
+
+6.1 Overordnet risikoanalyse av brukerutstyr / verktøy.
+
+Virksomheten i MAVI Logistikk er overordnet av slik karakter at bruk av verktøy, spesielt el-verktøy kan medføre risiko for skader. Graden av risiko er definert i påfølgende tabell og er derfor underlagt krav om h.h.v intern opplæring/kurs, dokumentert opplæring og sertifisering.
+Forskrift om bruk av arbeidsutstyr deler utstyr og maskiner inn i tre nivåer.
+Nivå 1: §§ 9-10 Utstyr generelt (Krever kjennskap til instrukser)
+Nivå 2: § 48 Utstyr som krever særlig forsiktighet ved bruk og derfor skal ha dokumentert opplæring.
+Nivå 3: § 49 Utstyr i ”høyeste” risikogruppe, og hvor det kreves sertifisert opplæring.
+
+
+
+6.1 Risikovurdering av utstyr og maskiner : 
+Utstyr / maskin
+Risikogruppe 1 
+(§§ 9 – 10)
+Risikogruppe 2 (§48)
+Risikogruppe 3 
+(§ 49)
+Kniver, skarpt verktøy
+           x
+
+
+Feinsag og håndsag
+           x
+
+
+Skrudrill og drill
+           x
+
+
+Gjæresag og sirkelsag
+           x
+
+
+Splittsag
+           x
+
+
+Elektrisk fliskutter / vannkutter
+           x
+
+
+Vinkelsliper
+           x
+
+
+Bruk av rullestilasje
+           x
+
+
+Stroppekurs ( lossing og lessing)
+
+           x
+
+Bruk av mobilkran
+
+           
+            x
+Varme arbeider / sveising
+
+
+            x
+
+
+6.2 Vedlikehold av brukerutstyr.
+
+Godt og riktig vedlikehold er viktig for sikker bruk av verktøy og utstyr. 
+Våre rutiner for vedlikehold er nærmere beskrevet i den enkelte instruks i kap 14 
+
+6.3 Annet fagarbeide og brukerutstyr.  
+
+Ethvert arbeide som er underlagt fagbrev, tømrer, (konstruksjonsarbeide), elektriker, rørlegger, murer m.mer utføres av MAVI Logistikk kun dersom vedkommende eller ansatt innehar nødvendig og dokumenterbart fagbrev for aktuelt arbeide, og det fremkommer av kontrakt at MAVI Logistikk skal utføre slikt arbeide. 
+NB ! Dersom overfor nevnte skulle være aktuelt må det foretas en evaluering av faremomenter ved bruk av aktuelt utstyr, og eventuelt utarbeides verktøyinstruks og/eller sikker jobbanalyse (SJA).
+
+6.4 Risikovurdering av arbeidsoperasjoner (SJA)
+
+MAVI Logistikk har foretatt risikovurderinger av de arbeidsoperasjoner som særskilt medfører materielle eller personrelaterte konsekvenser av hendelser. De fleste arbeidsoperasjoner i MAVI Logistikk underlagt, er overordnet vurdert til å være begrenset m.h.t risiko.
+
+Risikoen er i større grad relatert til Entreprenørens hovedorganisering av HMS-arbeidet på byggeplassen. Stort sett er dette relativt godt organisert i større sammenhenger blant de «kjente entreprenørene» på norske byggeplasser. Imidlertid er denne organisering i større grad varierende for mindre og «ukjente» entreprenører. 
+MAVI Logistikk har derfor utarbeidet en mal for overordnet risikoanalyse, som skal benyttes for vurderingen av sikkerhet på den enkelte byggeplass. 
+Dette dokumentet skal benyttes og evalueres av prosjektkonsulent, distribueres og arkiveres for hvert enkelt prosjekt. Eventuelle risikoavvik skal rapporteres til Entreprenør, hvorpå særskilt SJA for prosjektet eventuelt skal utarbeides, dersom entreprenør ikke tar rapporteringen til etterretning og utbedrer avviket. 
+Denne overordnede risikovurderingen utarbeides av daglig leder og/eller verneombud i MAVI Logistikk og / eller i forbindelse med oppstartsmøtet med Entreprenøren. 
+
+
+     
+
+
+6.5 Risikovurdering vedrørende kontoransatte. 
+
+Den generelle risikovurdering omkring kontoransatte pr dags dato er at konsekvensene og 
+risikoen er svært lav. Minimum 1 gang pr år skal ledelsen i MAVI Logistikk vurdere følgende 
+faktorer, definere mål og behov for tiltak, og eventuelt sette tidsfrister for utbedring av 
+forholdene på følgende områder:
+Inneklima.
+Psykososialt miljø generelt. 
+Vurdering omkring risiko ved tungt og / eller ensformig arbeide. 
+Konfliktforhold.
+Lysforhold, og ergonomiske forhold på arbeidsplassene.
+Samt generell trivsel og arbeidsbelastning. 
+
+Siste oppdatert risikorapport er 28/07-2020, ligger som vedlegg.
+
+NB ! Avdekking av overforstående forhold skal for øvrig være en del av medarbeidersamtalene, som hvert år avholdes mai måned.  
+
+Det skal gjennomføres brannøvelse minimum en gang pr år i MAVI Logistikk.
+
+6.6 Risikovurdering vedrørende miljø og avfall. 
+
+Den generelle vurdering omkring miljø og avfallsprodukter er at virksomheten er svært lite risikoutsatt, m.h.t miljøavfall. Det refereres til generell instruks for miljøavfall som generelt skal deponeres på miljøstasjoner / avfallsplasser i lokalområdet. 
+
+
+Produktene som benyttes i virksomheten til MAVI Logistikk har svært begrenset miljømessig risiko, dog håndterer MAVI Logistikk større volum av ee-avfall og returmiljø. Det foreligger gode rutiner for gjenvinning.
+
+
+
+6.7 Renhold
+
+Ukentlig renhold av kontorer utføres av: Ritas Vaskeservice AS.
+
+6.8 Elektriske anlegg og utstyr
+Bedriftens elektriske anlegg og utstyr blir regelmessig kontrollert etter en enkel sjekkliste. Dette utføres av Kolonial.no som står ansvarlig for det elektriske anlegget på bygget. Kontaktinfo til ansvarlig hos Kolonial.no for det elektriske anlegget er: 407 24� 196
+Gårdeier bruker autoriserte installatører ved vedlikehold og reparasjoner.
+
+
+6.9 Brannslukningsapparater
+Vi har 4 stk brannslange og 6 stk brannslukningsapparater tilknyttet lokalene på Lørenskog 
+      
+
+
+
+
+6.10 Førstehjelpsutstyr
+
+Førstehjelpsutstyr er til enhver tid komplett i henhold til oppsatt liste. De ansatte har gjennomgått en enkel opplæring.
+
+Førstehjelpsutstyr finnes:                          I kontorlandskap   
+Kontroll/etterfylling utføres av:                  Hazher Abdullah Osman
+
+
+
+6.11 Registrering av sykefravær 
+
+Sykefraværet i MAVI Logistikk registreres slik at vi kan vurdere hva som kan forbedres for å unngå skader og sykdom. Registreringen gir oss også en oversikt over hvilke kostnader sykefraværet påfører bedriften. 
+
+Registrering av sykefravær utføres av: Tommy Larsen
+
+Yrkessykdom og yrkesskade meldes av arbeidsgiver til trygdekontoret (nav13-07.05). 
+
+Siste sykefraværsrapport ligger som vedlegg 4.
+
+6.12 Vernerunder og HMS-kurs.  
+
+Det skal en gang pr. år gås en vernerunde med daglig leder og verneombud i lokalene på Lørenskog.
+Kunnskap og etterlevelse vedr. punktene 6.6 Miljø og avfall, 6.9 Brannnslukningsapparater samt 6.10 Førstehjelpsutstyr vil derfor ivaretas på byggeplassene via disse vernerunder. 
+
+6.13 Alminnelige overtidsbestemmelser 
+
+Iflg arbeidsmiljøloven er det følgende generelle overtidsbestemmelser som gjelder; 
+
+Redigert sitat : 
+(4) Overtidsarbeidet må ikke overstige ti timer i løpet av sju dager, 25 timer i fire sammenhengende uker og 200 timer innenfor en periode på 52 uker.
+(6) Arbeidstilsynet kan etter søknad i særlige tilfeller tillate samlet overtidsarbeid inntil 20 timer i løpet av sju dager og 200 timer i løpet av en periode på 26 uker. 
+(7) Overtidsarbeid utover rammen i fjerde ledd kan bare pålegges arbeidstakere som i det enkelte tilfellet har sagt seg villig til det.
+(8) Samlet arbeidstid må ikke overstige 13 timer i løpet av 24 timer eller 48 timer i løpet av sju dager. Grensen på 48 timer i løpet av sju dager kan gjennomsnittsberegnes over en periode på åtte uker.
+Overtid utover dette krever søknad om dispensasjon fra arbeidstilsynet. 
+
+For ansatte regulert av tariffavtaler gjelder andre bestemmelser. 
+
+
+
+
+
+
+
+
+7. Rutiner for å avdekke, rette opp og forebygge feil.
+
+Som et ledd i rutinene for å avdekke, rette opp og forebygge feil benytter vi følgende metoder, og verktøy: 
+                                                                                                        
+      1) Medarbeider-samtaler       
+      2) Bruk av kvalitetssikringsskjema for hver boenhet før montasje påbegynnes.
+      3) Bruk av egenkontrollskjemaer, inkl avfallshåndtering for hver boenhet etter montasje.
+      4) RUH – rapportering av uønskede hendelser
+      5) Jobbsikkerhetsanalyser (SJA)
+     
+
+
+
+8. Revisjon. 
+IK-systemet i MAVI Logistikk gjennomgås årlig for å se om noe bør endres eller forbedres. Behovet for ny handlingsplan må vurderes. Er målene nådd? Har virksomheten rettet opp alle mangler? Hvis ikke, hvorfor? Er systemet bra nok for vår virksomhet? Jobber virksomheten aktivt for å forbedre helse, miljø og sikkerheten i virksomheten?
+MAVI Logistikk vil gjennom innrapportering løpende vurdere og evaluere behovet for endringer. Dette kan basert på de løpende erfaringer som gjøres, medføre etablering av nye SJA’er, eller en revidering av eksisterende. Eventuelle endring av SJA’er vil oppdateres i dette internkontroll-system av MAVI Logistikk v/ Verneombud. 
+
+9 Tiltaksklassifisering: 
+Normalt er MAVI Logistikk kun utførende, og/eller kontrollerende for utførelsen. Tiltakssøknaden ligger under Hovedentreprenør/oppdragsgiver, hvilket vil si at MAVI Logistikk ikke søker om godkjenning i kommunen for det enkelte prosjekt. Det foreligger videre ingen formelle krav til fagbrev for MAVI Logistikk sine installasjoner.
+10 Sertifikater, ID-kort, kurser etc. 
+Eksempler er: kransertifikat, opplæring på truck, elektro, sveising, varmt arbeid, stillas. 
+Alle ansatte i MAVI Logistikk som under oppdrag jobber på byggeplass skal ha ID-kort ( HYPERLINK "http://www.byggekort.no" www.byggekort.no). 
+
+Navn : 
+Sertifisering / Kurs :
+
+Tommy Larsen
+Byggekort / Truckførerbevis T1-T4
+
+Jaspreet Singh
+Truckførerbevis T1-T4
+
+Jasmin B. Pålsson 
+Truckførerbevis T1-T4
+
+Dawid R. Oracz
+Truckførerbevis T1-T4
+
+Karwan Lian
+Truckførerbevis T1-T4
+
+Madyar Khezernia
+Truckførerbevis T1-T4
+
+Hame Hasanyani
+Truckførerbevis T1-T4
+
+Adib Hasan
+Truckførerbevis T1-T4
+
+Aram Rasoulpour
+Truckførerbevis T1-T4
+
+Herish Hameed Alsabaawi
+Truckførerbevis T1-T4
+
+Mohammed Amine Hammani
+Byggekort
+
+Hassan Abd Al-Ghani Hamza
+Byggekort
+
+
+11 Kursbehov : 
+Med bakgrunn i arbeid som utføres i MAVI Logistikk, er det ingen behov for kurs. Det blir utført intern opplæring innen «Lossesikring»
+
+12.  Dokumentasjon av forsikringer
+MAVI Logistikk AS:   
+Type dokumentasjon  
+Selskap :  
+Polisenummer / ID :
+Spesifisering : 
+Gyldig til :
+TransportforsikringIF HYPERLINK "https://bedrift.if.no/policies/SP807406" SP807406.6.1
+3 mill pr. tilfelle
+Løpende
+HelseforsikringIF HYPERLINK "https://bedrift.if.no/policies/SP1117403" SP1117403.4.9
+Legespesialist 7 virkedager og videre til behandling 10 virkedager
+Løpende
+YrkesskadeIF HYPERLINK "https://bedrift.if.no/policies/SP807406" SP807406.6.1
+
+Løpende
+BedriftsansvarIF HYPERLINK "https://bedrift.if.no/policies/SP807406" SP807406.6.1
+10 mill pr tilfelle
+Løpende
+KriminalitetsforsikringIF HYPERLINK "https://bedrift.if.no/policies/SP807406" SP807406.6.1
+400.000,- pr tilfelle
+Løpende
+
+
+Ansvarlig for vedlikehold av forsikringer er: Nicola Vino
+
+
+13. Grunnleggende HMS-bestemmelser 
+
+Kravene til bruk av personlig verneutstyr i forbindelse med arbeider på vegne av MAVI Logistikk er ufravikelige. Dette gjelder alle ansatte og samarbeidspartnere av MAVI Logistikk. 
+
+Merk følgende praktiske huskeregler for MAVI Logistikk: 
+
+
+
+
+
+
+13.1 Rapportering av uønskede hendelser (RUH). 
+
+I prinsippet skal alle former for uønskede hendelser, og potensielle farer innrapporteres til MAVI Logistikk i form av RUH. En innrapportering skal og vil ikke medføre konsekvenser med mindre det er utvist grov uaktsomhet. Hensikten er at forhold skal innrapporteres for å evaluere forbedringsmuligheter i arbeidet og rutinene, for å hindre at alvorlige hendelser skjer. 
+
+Intensjonen med RUH er at innrapportering er en pålitelig og lojal handling, og ikke skal være gjenstand for straffetiltak eller medføre «jakt etter syndebukker»
+(En «straffende» holdning vil kun medføre en generell unnlatelse av innrapportering, og tilbøyelighet til å skjule hendelser eller potensielle farer, i stedet for forebyggende)
+
+
+Observasjoner av egne arbeideres, eller andres uønskede opptreden ved arbeids på byggeplass skal også innrapporteres, og kan være gjenstand for advarsler, men ingen umiddelbare konsekvenser. (Med unntak av grove forseelser) 
+
+Og husk at alle har rett til å stanse det som oppfattes som farefullt arbeide, uten konsekvens.
+
+Som tidligere nevnt er MAVI Logistikk sin virksomhet i stor grad avhengig av den generelle HMS-oppfølgingen som skjer fra Entreprenørens/oppdragsgiver`s side. 
+ 
+Det er likevel grunn for å spesielt å merke seg at følgende 2 forhold betraktes som de mest potensielle farer i vår virksomhet, og som man skal være kontinuerlig oppmerksom på : 
+
+1) Manglende sperresikring (gjerder) på ; 
+- Gangveier, trapper, traseer og adkomstveier til boenheter.
+
+2) Materialflyt på byggeplass eller hos sluttkunde med kran. (Gå aldri under hengende last)
+
+RUH-skjema ligger som vedlegg 5.
+
+13.2 Plikt til daglig innregistrering på byggeplass, overtidsarbeider m.mer.
+
+Generelt på alle norske byggeplasser kreves det daglig innregistrering når man arbeider på plassen. Dette skal etterleves å gjøres normalt på «Byggeplasskontoret»
+
+Likeledes skal det godkjennes av Entreprenøren/oppdragsgiver, dersom det er behov for å arbeide utenom normal produksjonstid. (Overtid)
+I slike tilfeller skal også daglig leder i MAVI Logistikk varsles og godkjenne dette før arbeider påbegynnes. Hensikten med dette er å koordinere eventuelt behov og mulighet for beredskap om hendelser eller ulykker skulle oppstå. Ref for øvrig Instruks – Alvorlig ulykke.
+
+Videre er det et krav i slike tilfeller at man aldri kan arbeide alene 
+
+
+
+
+
+
+
+13.3 SJA – Sikker jobbanalyse.   
+
+MAVI Logistikk har utarbeidet en generell SJA som skal benyttes av MAVI Logistikk, når slike arbeidsoperasjoner er aktuelle. 
+SJA skal fylles ut av utførende og signeres av både utførende og daglig leder i MAVI Logistikk, før arbeider påbegynnes. Dette for å sikre at nødvendige tiltak gjennomføres og er tilstrekkelige.
+
+1) Generell SJA-mal. vedlegg 6: 
+	- Hensikten med denne er at denne benyttes dersom den overordnede risikoanalysen 
+  avdekker spesielle forhold i prosjektet som må evalueres m.h.t HMS.
+
+
+14. Instrukser. 
+
+Instrukser skal være kjent av alle som arbeider i MAVI Logistikk. Instrukser er ment som en kortfattet oppsummering av sikker verktøyshåndtering, «do and don’t», samt instrukser som vedrører spesifikke administrative oppgaver. (Arbeidsbeskrivelse)  
+
+
+14.1 Andre instrukser : 				Vedlegg : 
+
+HMS-relaterte instrukser : 
+
+1
+Instruks ved alvorlig ulykke 
+9
+2
+Branninstruks – Lørenskog
+10
+3
+Instruks for Alkohol og rus 
+11
+4
+Instruks for tunge løft
+12
+5
+Avfallsinstruks
+13
+
+							Vedlegg :
+14.2  Administrative instrukser : 	
+9
+Instruks for byggekort
+14
+
+
+
+
+15. Montasjeledelse og avvikskontroll. 
+
+For å forebygge feil og mangler ved overlevering, rettidig fremdrift og målsetting om 0-feil, samt sikre løpende rapportering av avvik benytter vi følgende dokumenter : 
+
+1) Kontrakt pr. prosjekt
+2) Dette IK-systemet
+2) Kvalitetssikringsskjema, før montasjen påbegynnes
+3) Egenkontrollskjema m/ billeddokumentasjon, etter ferdig montasje. 
+4) Endringsmeldinger i.h.t aktuell Norsk Standard i,h,t kontrakt. 
+5) RUH (Registrering av uønskede hendelser)
+
+
+
+16. Sanksjoner ved brudd på HMS-bestemmelser.
+
+Det er i MAVI Logistikk og overfor oppdragsgiver sanksjonsrettigheter ved brudd på HMS-bestemmelser. 
+
+17.  Handlingsplanen i bedriften definerer: 
+
+Aktivitet eller tiltak som skal utføres, overfor hvem, når,
+      og hvem som er ansvarlig for å gjennomføre aktiviteten eller tiltaket.  
+
+Handlingsplanen for 2020 ligger som vedlegg 7.
+Aktiviteter og tiltak i handlingsplanen vil normalt utføres av daglig leder i MAVI Logistikk.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+18. Signaturdokument – ansatte
+
+
+Signaturdokument for den enkelte ansatte i MAVI LOGISTIKK ligger som vedlegg 8. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Lørenskog 28/07-20.
+
+_____________________
+Tommy Larsen
+
+MAVI Logistikk AS
+
+
+
+
+
+
+
+
+		
+
+
+PAGE  
+
+
+Internkontroll og HMS-plan, MAVI Logistikk AS			PAGE   \* MERGEFORMAT16
+
+
+
+Definisjon av alvorlig skade
+Hodeskade/hjernerystelse med tap av bevissthet eller andre alvorlige konsekvenser.
+Skjelettskade (unntatt enkle brist eller brudd på fingre og tær)
+Indre skader (skader på indre organer, for eksempel lunger, nyrer, milt osv.)
+Tap av kroppsdel (amputasjon av legemsdel eller deler av slike)
+Forgiftning (med fare for varige helseskader), for eksempel hydrogensulfid-forgifting.
+Bevissthetstap på grunn av arbeidsmiljøfaktorer som for eksempel oksygenmangel.
+Forbrenninger, frostskader eller etseskader. Alle fullhudsskader (3.grad) og eller delhudsskader (2.grad) i ansikt, på hender, føtter eller anogenitalområdet. I tillegg alle delhud skader større enn 5 % av kroppsoverflaten.
+Generell nedkjøling (hypotermi)
+Skade som krever sykehusbehandling, unntatt enklere polikliniske behandling.
+
+
+
+

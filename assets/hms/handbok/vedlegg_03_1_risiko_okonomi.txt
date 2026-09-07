@@ -1,0 +1,16 @@
+RISIKODIAGRAM — ØKONOMI
+Vedlegg 3.1 · MAVI Logistikk AS
+
+Formål
+Vurdere sannsynlighet og konsekvens for økonomiske tap (materiell skade, driftstans, erstatning).
+
+Slik bruker du det i DriftPro
+1. Gå til HMS → Risikoanalyser
+2. Beskriv hendelsen og mulige økonomiske konsekvenser
+3. Sett sannsynlighet × konsekvens
+4. Planlegg tiltak som reduserer både sannsynlighet og konsekvens
+
+Eksempler
+• Skade på gods under transport
+• Driftstans ved alvorlig ulykke
+• Kostnader ved brudd på HMS-krav hos kunde / byggeplass

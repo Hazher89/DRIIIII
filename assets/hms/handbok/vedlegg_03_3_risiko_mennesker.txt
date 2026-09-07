@@ -1,0 +1,24 @@
+RISIKODIAGRAM — MENNESKER
+Vedlegg 3.3 · MAVI Logistikk AS
+
+Formål
+Vurdere sannsynlighet og konsekvens for personskade (ansatte, innleid, tredjeparter).
+
+Slik bruker du det i DriftPro
+1. Gå til HMS → Risikoanalyser
+2. Opprett vurdering fra mal (f.eks. manuelt løft, trapp, truck)
+3. Sett sannsynlighet og konsekvens i 5×5-matrisen
+4. Beskriv eksisterende og foreslåtte tiltak
+5. Følg opp til risikoen er akseptabel
+
+Sannsynlighet (typisk skala)
+• Svært sannsynlig / kontinuerlig
+• Sannsynlig / periodevis
+• Mindre sannsynlig / enkelttilfeller
+• Lite sannsynlig
+
+Konsekvens for mennesker
+• Ubetydelig → livstruende / dødelig
+
+Husk
+Risikodiagram på papir er historikk. Aktive vurderinger og tiltak skal ligge i DriftPro slik at BHT og ledelse kan følge dem opp.

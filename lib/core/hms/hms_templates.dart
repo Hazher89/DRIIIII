@@ -132,12 +132,61 @@ class HmsTemplates {
     HmsRiskTemplate(
       id: 'manuelt_løft',
       title: 'Manuelt løft på lager',
-      area: 'Lager',
-      description: 'Ryggskade ved gjentatte løft',
+      area: 'Lager / terminal',
+      description:
+          'Rygg-, skulder- eller kneskade ved gjentatte eller tunge manuelle løft',
       probability: 4,
       consequence: 3,
-      existingMeasures: 'Løfteveiledning',
-      proposedMeasures: 'Hjelpemidler, roterende oppgaver',
+      existingMeasures:
+          'Opplæring i løfteteknikk, tilgjengelige traller, to-person ved tunge kolli',
+      proposedMeasures:
+          'Rotasjon av oppgaver, maksvekt-veiledning, rapportering ved manglende hjelpemidler',
+    ),
+    HmsRiskTemplate(
+      id: 'tungloft_hvitevare',
+      title: 'Tungløft hvitevarer / store kolli',
+      area: 'Lager / hjemlevering',
+      description:
+          'Belastningsskade eller klemskade ved løft av vaskemaskin, kjøleskap eller lignende',
+      probability: 4,
+      consequence: 4,
+      existingMeasures: 'To-person løft, sekketralle, planlagt rute',
+      proposedMeasures:
+          'Obligatorisk hjelpemiddel over avtalt vekt, sjekkliste før bæring',
+    ),
+    HmsRiskTemplate(
+      id: 'baering_trapp',
+      title: 'Bæring i trapp hos kunde',
+      area: 'Hjemlevering / montering',
+      description:
+          'Fall, klemskade eller ryggskade ved bæring i trange trapper',
+      probability: 3,
+      consequence: 4,
+      existingMeasures: 'To personer, kommunikasjon, vurdering før start',
+      proposedMeasures:
+          'Stopp-kriterium ved usikker trapp, be kunde rydde, bruk tralle der mulig',
+    ),
+    HmsRiskTemplate(
+      id: 'loft_skulderhoyde',
+      title: 'Løft over skulderhøyde / reol',
+      area: 'Lager',
+      description: 'Skulder- og nakkeskade ved løft til høy reol uten truck',
+      probability: 3,
+      consequence: 3,
+      existingMeasures: 'Truck / plukkestige der det finnes',
+      proposedMeasures:
+          'Forbud mot manuelt løft over skulder uten hjelpemiddel, opplæring',
+    ),
+    HmsRiskTemplate(
+      id: 'gjentatte_loft_terminal',
+      title: 'Gjentatte løft i terminal',
+      area: 'Terminal / sortering',
+      description: 'Belastningslidelse over tid ved mange like løft i skift',
+      probability: 4,
+      consequence: 3,
+      existingMeasures: 'Pauser, arbeidsrotasjon',
+      proposedMeasures:
+          'Ergonomivurdering, tempojustering, flere hjelpemidler i sonen',
     ),
     HmsRiskTemplate(
       id: 'last_sikring',
@@ -162,6 +211,42 @@ class HmsTemplates {
   ];
 
   static const sjaTemplates = [
+    HmsSjaTemplate(
+      id: 'sja_tungloft',
+      title: 'SJA – Manuell håndtering / tungløft',
+      workDescription:
+          'Manuell løfting, bæring eller håndtering av gods (lager, bil eller hos kunde)',
+      location: 'Lager / rute / kunde',
+      ppe: ['Verneskog', 'Hansker', 'Synlighetsbekledning'],
+      hazards: [
+        {
+          'title': 'Rygg-/skulderskade',
+          'risk': 'Høy',
+          'control': 'Riktig teknikk, nær kropp, hjelpemiddel',
+        },
+        {
+          'title': 'Klemskade / fallende last',
+          'risk': 'Middels',
+          'control': 'Godt grep, to-person, ryddig underlag',
+        },
+        {
+          'title': 'Fall i trapp',
+          'risk': 'Høy',
+          'control': 'To personer, planlagt rute, stopp ved usikkerhet',
+        },
+      ],
+      measures: [
+        {'action': 'Vurder vekt og rute før løft', 'responsible': 'Utførende'},
+        {
+          'action': 'Hent tralle / be om hjelp ved behov',
+          'responsible': 'Utførende',
+        },
+        {
+          'action': 'Tool box talk ved nye tunge produkter',
+          'responsible': 'Leder',
+        },
+      ],
+    ),
     HmsSjaTemplate(
       id: 'sja_hoyde',
       title: 'SJA – Arbeid i høyden',

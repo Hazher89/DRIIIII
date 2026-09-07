@@ -1,7 +1,7 @@
 name: driftpro
 description: "DriftPro - Enterprise ERP & HMS Platform"
 publish_to: 'none'
-version: 1.0.0+16
+version: 1.0.0+17
 
 environment:
   sdk: ^3.10.7
@@ -67,3 +67,5 @@ flutter:
     - assets/hms/sop_hub_driftsrutiner_v4_8.docx
     - assets/hms/training/
     - assets/hms/training/guides/
+    - assets/hms/tungloft/
+    - assets/hms/handbok/

@@ -1,0 +1,13 @@
+SIKKER JOBB ANALYSE (SJA)
+Vedlegg 6 · MAVI Logistikk AS
+
+Papirmalen inneholder:
+• Nr. / aktivitet / dato / deltagere
+• Beskrivelse av arbeidet
+• Mulige sikkerhetsrisikoer
+• Sikkerhetstiltak
+• Nødvendig sikkerhetsutstyr
+• Underskrift
+
+I DriftPro
+Bruk HMS → SJA for å opprette digitale analyser med maler (inkl. manuell håndtering / tungløft), PPE og oppfølging.

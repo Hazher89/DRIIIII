@@ -134,6 +134,20 @@ class SafetyRoundTemplates {
         ],
       ),
       SafetyRoundTemplateSection(
+        id: 'ergonomi_loft',
+        title: 'Ergonomi og manuell håndtering',
+        legalReference: 'AML § 4-4 / forskrift om tungt og ensformig arbeid',
+        items: [
+          'Ansatte kjenner til riktig løfteteknikk (opplæring dokumentert)',
+          'Traller / sekketralle / andre hjelpemidler er tilgjengelige og i orden',
+          'To-person løft brukes ved tunge hvitevarer og store kolli',
+          'Ingen forventning om å løfte alene over avtalt / kjent grense',
+          'Arbeidsrotasjon eller pauser ved gjentatte løft i terminal',
+          'Risikovurdering for manuell håndtering er oppdatert og kjent',
+          'Nestenuhell / ryggplager kan meldes uten sanksjoner',
+        ],
+      ),
+      SafetyRoundTemplateSection(
         id: 'kjemikalier',
         title: 'Kjemikalier og farlig stoff',
         legalReference: 'Produktkontrollforskriften / REACH',
@@ -210,8 +224,51 @@ class SafetyRoundTemplates {
     ],
   );
 
+  /// Kompakt mal for rask demo / oppfølging av manuell håndtering.
+  static const lagerOgLoft = SafetyRoundTemplateDef(
+    id: 'no_lager_loft',
+    title: 'Vernerunde – Lager & løft',
+    description:
+        'Fokusert sjekk for orden, truck, ergonomi og manuell håndtering. '
+        'Egnet før BHT-besøk eller etter endringer i lagerdrift.',
+    sections: [
+      SafetyRoundTemplateSection(
+        id: 'orden_lager',
+        title: 'Orden og reoler',
+        legalReference: 'AML / internkontroll',
+        items: [
+          'Ganger er frie og merket',
+          'Reoler er stabile og lastet forsvarlig',
+          'Underlag er tørt og uten snublefarer',
+        ],
+      ),
+      SafetyRoundTemplateSection(
+        id: 'truck_hjelp',
+        title: 'Truck og hjelpemidler',
+        legalReference: 'Forskrift om bruk av arbeidsutstyr',
+        items: [
+          'Truckførere har gyldig opplæring',
+          'Traller og løftehjelp er tilgjengelige',
+          'Defekt utstyr er merket / tatt ut av bruk',
+        ],
+      ),
+      SafetyRoundTemplateSection(
+        id: 'manuell',
+        title: 'Manuell håndtering',
+        legalReference: 'AML § 4-4',
+        items: [
+          'Opplæring i tungløft er gjennomført / kjent',
+          'To-person brukes ved tunge kolli',
+          'Ansatte tør å stoppe usikre løft',
+          'Risikovurdering for løft er tilgjengelig',
+        ],
+      ),
+    ],
+  );
+
   static List<SafetyRoundTemplateDef> get all => [
         norskKontorLager,
+        lagerOgLoft,
         verksted,
       ];
 
