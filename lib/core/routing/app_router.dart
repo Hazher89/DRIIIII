@@ -21,6 +21,7 @@ import '../../screens/hms/equipment/equipment_hub_screen.dart';
 import '../../screens/hms/hms_screen.dart';
 import '../../screens/hms/handbook/hms_handbook_doc_screen.dart';
 import '../../screens/hms/handbook/hms_handbook_hub_screen.dart';
+import '../../screens/hms/miljo/iso14000_hub_screen.dart';
 import '../../screens/hms/manual_handling/tungloft_guide_screen.dart';
 import '../../screens/hms/training/sop_training_screen.dart';
 import '../../screens/hms/risk_assessment/risk_assessment_list_screen.dart';
@@ -333,6 +334,12 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     parentNavigatorKey: driftProRootNavigatorKey,
                     builder: (context, state) =>
                         _guardPath(state, const TungloftGuideScreen()),
+                  ),
+                  GoRoute(
+                    path: 'iso14000',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) =>
+                        _guardPath(state, const Iso14000HubScreen()),
                   ),
                   GoRoute(
                     path: 'handbok',

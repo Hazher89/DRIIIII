@@ -266,6 +266,9 @@ class _TrafficLightCard extends StatelessWidget {
   }
 
   Widget _zone(Color color, String title, String body) {
+    final ink = isDark
+        ? Colors.white.withValues(alpha: 0.88)
+        : const Color(0xFF1A1A1A);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
@@ -281,10 +284,10 @@ class _TrafficLightCard extends StatelessWidget {
           Expanded(
             child: RichText(
               text: TextSpan(
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13.5,
                   height: 1.4,
-                  color: Color(0xFF1A1A1A),
+                  color: ink,
                 ),
                 children: [
                   TextSpan(
@@ -330,14 +333,17 @@ class _SectionCard extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: AspectRatio(
-                aspectRatio: 4 / 3,
+                aspectRatio: 16 / 9,
                 child: Image.asset(
                   section.asset,
                   fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  cacheWidth: 720,
+                  filterQuality: FilterQuality.medium,
                   errorBuilder: (_, error, stackTrace) => Container(
                     color: accent.withValues(alpha: 0.08),
                     alignment: Alignment.center,
-                    child: Icon(Icons.image_outlined, color: accent, size: 40),
+                    child: Icon(Icons.image_outlined, color: accent, size: 36),
                   ),
                 ),
               ),

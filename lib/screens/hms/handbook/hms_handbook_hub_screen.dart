@@ -105,6 +105,10 @@ class HmsHandbookHubScreen extends StatelessWidget {
             runSpacing: 8,
             children: [
               _QuickChip(
+                label: 'ISO 14000',
+                onTap: () => context.push(AppPaths.hmsIso14000),
+              ),
+              _QuickChip(
                 label: 'Risiko',
                 onTap: () => context.push(AppPaths.hmsRisiko),
               ),
@@ -155,6 +159,17 @@ class _CategoryBlock extends StatelessWidget {
   final bool isDark;
   final List<HmsHandbookDoc> docs;
 
+  static String _badgeShort(String? raw) {
+    if (raw == null || raw.isEmpty) return '•';
+    final r = raw.trim();
+    if (r.toLowerCase() == 'landax') return 'LX';
+    if (r.toLowerCase() == 'export') return 'EX';
+    if (r.toLowerCase().startsWith('hoved')) return 'HK';
+    if (r.toLowerCase() == 'plan') return 'P';
+    if (r.length <= 3) return r;
+    return r.length <= 4 ? r : r.substring(0, 2);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -186,37 +201,42 @@ class _CategoryBlock extends StatelessWidget {
         const SizedBox(height: 10),
         for (final d in docs)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Material(
               color: isDark ? DriftProTheme.cardDark : Colors.white,
-              borderRadius: BorderRadius.circular(12),
+              elevation: isDark ? 0 : 0.4,
+              shadowColor: Colors.black26,
+              borderRadius: BorderRadius.circular(14),
               child: InkWell(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(14),
                 onTap: () => context.push(AppPaths.hmsHandbokDoc(d.id)),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: Colors.black.withValues(alpha: isDark ? 0.12 : 0.06),
+                      color: Colors.black.withValues(alpha: isDark ? 0.14 : 0.05),
                     ),
                   ),
                   child: Row(
                     children: [
                       Container(
-                        width: 36,
-                        height: 36,
+                        width: 42,
+                        height: 42,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
                           color: color.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(11),
                         ),
                         child: Text(
-                          d.vedleggNr ?? '•',
+                          _badgeShort(d.vedleggNr),
+                          textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
+                            height: 1.1,
                             color: color,
+                            letterSpacing: 0.2,
                           ),
                         ),
                       ),
@@ -227,24 +247,43 @@ class _CategoryBlock extends StatelessWidget {
                           children: [
                             Text(
                               d.title,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.w600,
                                 fontSize: 14.5,
+                                height: 1.25,
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.92)
+                                    : const Color(0xFF152018),
                               ),
                             ),
-                            if (d.moduleLabel != null)
+                            const SizedBox(height: 3),
+                            Text(
+                              d.summary,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: DriftProTheme.caption.copyWith(
+                                color: isDark
+                                    ? Colors.white.withValues(alpha: 0.48)
+                                    : const Color(0xFF6A7A6E),
+                                height: 1.35,
+                              ),
+                            ),
+                            if (d.moduleLabel != null) ...[
+                              const SizedBox(height: 5),
                               Text(
                                 '→ ${d.moduleLabel}',
                                 style: DriftProTheme.caption.copyWith(
                                   color: DriftProTheme.primaryGreen,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
+                            ],
                           ],
                         ),
                       ),
                       Icon(
-                        Icons.chevron_right,
-                        color: Colors.black.withValues(alpha: 0.35),
+                        Icons.chevron_right_rounded,
+                        color: Colors.black.withValues(alpha: isDark ? 0.35 : 0.28),
                       ),
                     ],
                   ),

@@ -83,6 +83,16 @@ class _HmsScreenState extends State<HmsScreen> {
         badge: 'QHSE',
         onTap: () => context.push(AppPaths.hmsHandbok),
       ));
+      handbook.add(_buildModuleCard(
+        context,
+        icon: Icons.eco_rounded,
+        title: 'ISO 14000 — miljø',
+        subtitle: '14001 · 14004 · 14031 · 14063 · 19011 — smart oversikt',
+        color: const Color(0xFF2E7D32),
+        isDark: isDark,
+        badge: 'ISO',
+        onTap: () => context.push(AppPaths.hmsIso14000),
+      ));
     }
 
     // —— Operativt ——
