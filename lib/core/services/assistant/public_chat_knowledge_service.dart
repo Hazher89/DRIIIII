@@ -7,7 +7,7 @@ import '../../config/supabase_config.dart';
 import '../supabase_service.dart';
 import 'assistant_corpus.dart';
 
-/// Én trenbar kunnskapsbit for CCC/butikk-chatten (/montering).
+/// Én trenbar kunnskapsbit for CCC (/montering) eller intern Spør DriftPro.
 class PublicChatKnowledgeEntry {
   const PublicChatKnowledgeEntry({
     required this.id,
@@ -21,6 +21,7 @@ class PublicChatKnowledgeEntry {
     this.priority = 50,
     this.published = true,
     this.active = true,
+    this.channel = PublicChatKnowledgeService.channelPublic,
     this.sourceFilename,
     this.storagePath,
     this.mimeType,
@@ -40,6 +41,7 @@ class PublicChatKnowledgeEntry {
   final int priority;
   final bool published;
   final bool active;
+  final String channel;
   final String? sourceFilename;
   final String? storagePath;
   final String? mimeType;
@@ -63,6 +65,8 @@ class PublicChatKnowledgeEntry {
       priority: (json['priority'] as num?)?.toInt() ?? 50,
       published: json['published'] as bool? ?? true,
       active: json['active'] as bool? ?? true,
+      channel: json['channel'] as String? ??
+          PublicChatKnowledgeService.channelPublic,
       sourceFilename: json['source_filename'] as String?,
       storagePath: json['storage_path'] as String?,
       mimeType: json['mime_type'] as String?,
@@ -133,23 +137,43 @@ class PublicChatKnowledgeStats {
   final int rules;
 }
 
-/// Superadmin-lab for å mate CCC/butikk-chatten med live kunnskap.
+/// Superadmin-lab for å mate CCC-chatten og/eller intern Spør DriftPro.
 class PublicChatKnowledgeService {
   PublicChatKnowledgeService._();
   static final PublicChatKnowledgeService instance =
       PublicChatKnowledgeService._();
 
   static const bucket = 'public-chat-knowledge';
+  static const channelPublic = 'public';
+  static const channelInternal = 'internal';
+  static const channelBoth = 'both';
 
   List<PublicChatKnowledgeEntry>? _publishedCache;
   DateTime? _publishedCacheAt;
+  List<PublicChatKnowledgeEntry>? _internalCache;
+  DateTime? _internalCacheAt;
 
-  Future<List<PublicChatKnowledgeEntry>> listForCompany(String companyId) async {
+  List<String> _channelFilter(String channel) {
+    if (channel == channelPublic) return const [channelPublic, channelBoth];
+    if (channel == channelInternal) {
+      return const [channelInternal, channelBoth];
+    }
+    return [channel];
+  }
+
+  Future<List<PublicChatKnowledgeEntry>> listForCompany(
+    String companyId, {
+    String? channel,
+  }) async {
     if (!SupabaseService.isConfigured) return const [];
-    final data = await SupabaseService.client
+    var query = SupabaseService.client
         .from('public_chat_knowledge')
         .select()
-        .eq('company_id', companyId)
+        .eq('company_id', companyId);
+    if (channel != null) {
+      query = query.inFilter('channel', _channelFilter(channel));
+    }
+    final data = await query
         .order('priority', ascending: false)
         .order('updated_at', ascending: false);
     return (data as List)
@@ -229,9 +253,66 @@ class PublicChatKnowledgeService {
     ];
   }
 
+  /// Publisert kunnskap for intern Spør DriftPro (auth + RLS).
+  Future<List<PublicChatKnowledgeEntry>> listPublishedInternal({
+    bool forceRefresh = false,
+  }) async {
+    if (!SupabaseService.isConfigured) return const [];
+    final now = DateTime.now();
+    if (!forceRefresh &&
+        _internalCache != null &&
+        _internalCacheAt != null &&
+        now.difference(_internalCacheAt!) < const Duration(seconds: 30)) {
+      return _internalCache!;
+    }
+    try {
+      final profile = await SupabaseService.fetchCurrentUserProfile();
+      final companyId = profile?.companyId;
+      if (companyId == null) return const [];
+      final data = await SupabaseService.client
+          .from('public_chat_knowledge')
+          .select()
+          .eq('company_id', companyId)
+          .eq('published', true)
+          .eq('active', true)
+          .inFilter('channel', _channelFilter(channelInternal))
+          .order('priority', ascending: false)
+          .order('updated_at', ascending: false)
+          .limit(200);
+      final rows = (data as List)
+          .map((e) => PublicChatKnowledgeEntry.fromJson(
+                Map<String, dynamic>.from(e as Map),
+              ))
+          .toList();
+      _internalCache = rows;
+      _internalCacheAt = now;
+      return rows;
+    } catch (_) {
+      return _internalCache ?? const [];
+    }
+  }
+
+  Future<List<KnowledgeChunk>> publishedChunksForChannel(
+    String channel, {
+    bool forceRefresh = false,
+  }) async {
+    if (channel == channelPublic) {
+      return publishedChunks(forceRefresh: forceRefresh);
+    }
+    final rows = await listPublishedInternal(forceRefresh: forceRefresh);
+    return [
+      for (final r in rows)
+        if (r.content.trim().isNotEmpty ||
+            (r.preferredAnswer?.trim().isNotEmpty ?? false))
+          r.toChunk(),
+    ];
+  }
+
   void invalidateCache() {
     _publishedCache = null;
     _publishedCacheAt = null;
+    _internalCache = null;
+    _internalCacheAt = null;
   }
 
   Future<PublicChatKnowledgeEntry> upsert({
@@ -246,6 +327,7 @@ class PublicChatKnowledgeService {
     int priority = 50,
     bool published = true,
     bool active = true,
+    String channel = channelPublic,
     String? sourceFilename,
     String? storagePath,
     String? mimeType,
@@ -263,6 +345,7 @@ class PublicChatKnowledgeService {
       'priority': priority.clamp(0, 100),
       'published': published,
       'active': active,
+      'channel': channel,
       'source_filename': sourceFilename,
       'storage_path': storagePath,
       'mime_type': mimeType,

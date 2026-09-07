@@ -264,10 +264,17 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             if (_profile!.isSuperAdmin)
               _buildMenuItem(
                 context,
+                Icons.school_outlined,
+                'Assistent-lab',
+                isDark,
+                badge: 'NY',
+              ),
+            if (_profile!.isSuperAdmin)
+              _buildMenuItem(
+                context,
                 Icons.psychology_alt_outlined,
                 'CCC Chat Lab',
                 isDark,
-                badge: 'NY',
               ),
             if (_profile!.isSuperAdmin)
               _buildMenuItem(
@@ -498,6 +505,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Infoskjerm' => AppPaths.moreInfoskjerm,
             'Forside-innhold' => AppPaths.moreForside,
             'DriftPro-assistent' => AppPaths.moreAssistent,
+            'Assistent-lab' => AppPaths.moreAssistentLab,
             'CCC Chat Lab' => AppPaths.moreChatLab,
             'Partner-chat' => AppPaths.morePartnerChat,
             'Fillagring' => AppPaths.moreDropbox,

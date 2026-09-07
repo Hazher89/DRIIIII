@@ -353,6 +353,8 @@ class _Bubble extends StatelessWidget {
         return Icons.local_shipping_outlined;
       case KnowledgeSourceKind.liveTrain:
         return Icons.psychology_outlined;
+      case KnowledgeSourceKind.hms:
+        return Icons.health_and_safety_outlined;
     }
   }
 }

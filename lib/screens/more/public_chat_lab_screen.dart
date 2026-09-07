@@ -4,15 +4,22 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/permissions/user_access.dart';
 import '../../core/routing/app_paths.dart';
+import '../../core/services/assistant/knowledge_assistant_service.dart';
 import '../../core/services/assistant/public_chat_knowledge_service.dart';
 import '../../core/services/assistant/public_montage_assistant_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
-/// Superadmin-lab: mate CCC/butikk-chatten med dokumenter, regler og Q&A.
+/// Superadmin-lab: mate CCC-chatten eller intern Spør DriftPro.
 class PublicChatLabScreen extends StatefulWidget {
-  const PublicChatLabScreen({super.key});
+  const PublicChatLabScreen({
+    super.key,
+    this.channel = PublicChatKnowledgeService.channelPublic,
+  });
+
+  /// `public` = /montering CCC-chat, `internal` = Spør DriftPro for ansatte.
+  final String channel;
 
   @override
   State<PublicChatLabScreen> createState() => _PublicChatLabScreenState();
@@ -27,6 +34,12 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
   bool _allowed = false;
   List<PublicChatKnowledgeEntry> _rows = const [];
   PublicChatKnowledgeStats? _stats;
+
+  bool get _isInternal =>
+      widget.channel == PublicChatKnowledgeService.channelInternal;
+
+  String get _labTitle =>
+      _isInternal ? 'DriftPro Assistent-lab' : 'CCC Chat Lab';
 
   @override
   void initState() {
@@ -52,7 +65,7 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
         setState(() {
           _allowed = false;
           _loading = false;
-          _error = 'Kun superadmin har tilgang til Chat Lab.';
+          _error = 'Kun superadmin har tilgang til $_labTitle.';
         });
         return;
       }
@@ -75,10 +88,16 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
       _error = null;
     });
     try {
-      final rows =
-          await PublicChatKnowledgeService.instance.listForCompany(companyId);
+      final rows = await PublicChatKnowledgeService.instance.listForCompany(
+        companyId,
+        channel: widget.channel,
+      );
       final stats = await PublicChatKnowledgeService.instance.statsFor(rows);
-      await PublicMontageAssistantService.instance.reloadKnowledge();
+      if (_isInternal) {
+        await KnowledgeAssistantService.instance.reload();
+      } else {
+        await PublicMontageAssistantService.instance.reloadKnowledge();
+      }
       if (!mounted) return;
       setState(() {
         _rows = rows;
@@ -92,9 +111,11 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
         _loading = false;
         _error = msg.contains('public_chat_knowledge') ||
                 msg.contains('schema cache') ||
-                msg.contains('does not exist')
-            ? 'Database mangler Chat Lab-tabellen. Kjør migrasjonen '
-                '20260907180000_public_chat_knowledge_lab.sql i Supabase.'
+                msg.contains('does not exist') ||
+                msg.contains('channel')
+            ? 'Database mangler Chat Lab / channel. Kjør migrasjonene '
+                '20260907180000_public_chat_knowledge_lab.sql og '
+                '20260907230000_assistant_knowledge_channel.sql i Supabase.'
             : msg;
       });
     }
@@ -109,8 +130,10 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
       backgroundColor: Colors.transparent,
       builder: (ctx) => _KnowledgeEditorSheet(
         companyId: companyId,
+        channel: widget.channel,
         existing: existing,
         initialKind: kind ?? existing?.kind ?? 'rule',
+        isInternal: _isInternal,
       ),
     );
     if (saved == true) await _reload();
@@ -126,7 +149,7 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
       allowedExtensions: const ['pdf', 'txt', 'md'],
     );
     if (picked == null || picked.files.isEmpty) return;
-    if (!context.mounted) return;
+    if (!mounted) return;
 
     showDialog<void>(
       context: context,
@@ -153,8 +176,11 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
           kind: 'document',
           title: f.name.replaceAll(RegExp(r'\.(pdf|txt|md)$', caseSensitive: false), ''),
           content: ingested.text,
-          tags: const ['dokument', 'opplastet'],
+          tags: _isInternal
+              ? const ['dokument', 'opplastet', 'intern']
+              : const ['dokument', 'opplastet'],
           priority: 70,
+          channel: widget.channel,
           sourceFilename: f.name,
           storagePath: ingested.storagePath,
           mimeType: ingested.mime,
@@ -184,7 +210,7 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
     if (_loading && _rows.isEmpty) {
       return Scaffold(
         backgroundColor: bg,
-        appBar: AppBar(title: const Text('CCC Chat Lab'), backgroundColor: bg),
+        appBar: AppBar(title: Text(_labTitle), backgroundColor: bg),
         body: const Center(child: DriftProLoadingIndicator()),
       );
     }
@@ -192,7 +218,7 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
     if (!_allowed) {
       return Scaffold(
         backgroundColor: bg,
-        appBar: AppBar(title: const Text('CCC Chat Lab'), backgroundColor: bg),
+        appBar: AppBar(title: Text(_labTitle), backgroundColor: bg),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -203,19 +229,23 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
     }
 
     final stats = _stats;
+    final liveChunks = _isInternal
+        ? KnowledgeAssistantService.instance.liveChunkCount
+        : PublicMontageAssistantService.instance.liveChunkCount;
 
     return Scaffold(
       backgroundColor: bg,
       appBar: AppBar(
-        title: const Text('CCC Chat Lab'),
+        title: Text(_labTitle),
         backgroundColor: bg,
         elevation: 0,
         actions: [
-          IconButton(
-            tooltip: 'Åpne offentlig chat',
-            onPressed: () => context.push(AppPaths.chatt),
-            icon: const Icon(Icons.open_in_new_rounded),
-          ),
+          if (!_isInternal)
+            IconButton(
+              tooltip: 'Åpne offentlig chat',
+              onPressed: () => context.push(AppPaths.chatt),
+              icon: const Icon(Icons.open_in_new_rounded),
+            ),
           IconButton(
             tooltip: 'Oppdater',
             onPressed: _reload,
@@ -260,13 +290,15 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
               controller: _tabs,
               children: [
                 _OverviewTab(
+                  isInternal: _isInternal,
                   stats: stats,
-                  liveChunks:
-                      PublicMontageAssistantService.instance.liveChunkCount,
+                  liveChunks: liveChunks,
                   onUpload: _uploadDocs,
                   onNewRule: () => _openEditor(kind: 'rule'),
                   onNewQa: () => _openEditor(kind: 'qa'),
-                  onOpenChat: () => context.push(AppPaths.chatt),
+                  onOpenChat: _isInternal
+                      ? null
+                      : () => context.push(AppPaths.chatt),
                 ),
                 _KnowledgeListTab(
                   rows: _rows,
@@ -308,7 +340,9 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
                 ),
                 _KnowledgeListTab(
                   rows: _rows.where((e) => e.kind == 'qa').toList(),
-                  emptyHint: 'Ingen Q&A ennå. Lær chatten typiske spørsmål og fasitsvar.',
+                  emptyHint: _isInternal
+                      ? 'Ingen Q&A ennå. Lær Spør DriftPro typiske MAVI-spørsmål.'
+                      : 'Ingen Q&A ennå. Lær chatten typiske spørsmål og fasitsvar.',
                   onEdit: (e) => _openEditor(existing: e),
                   onToggleActive: (e) async {
                     await PublicChatKnowledgeService.instance
@@ -326,8 +360,12 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
                     await _reload();
                   },
                 ),
-                _UploadTab(onUpload: _uploadDocs, onPaste: () => _openEditor(kind: 'document')),
-                const _TestLabTab(),
+                _UploadTab(
+                  isInternal: _isInternal,
+                  onUpload: _uploadDocs,
+                  onPaste: () => _openEditor(kind: 'document'),
+                ),
+                _TestLabTab(isInternal: _isInternal),
               ],
             ),
           ),
@@ -339,20 +377,22 @@ class _PublicChatLabScreenState extends State<PublicChatLabScreen>
 
 class _OverviewTab extends StatelessWidget {
   const _OverviewTab({
+    required this.isInternal,
     required this.stats,
     required this.liveChunks,
     required this.onUpload,
     required this.onNewRule,
     required this.onNewQa,
-    required this.onOpenChat,
+    this.onOpenChat,
   });
 
+  final bool isInternal;
   final PublicChatKnowledgeStats? stats;
   final int liveChunks;
   final VoidCallback onUpload;
   final VoidCallback onNewRule;
   final VoidCallback onNewQa;
-  final VoidCallback onOpenChat;
+  final VoidCallback? onOpenChat;
 
   @override
   Widget build(BuildContext context) {
@@ -373,9 +413,11 @@ class _OverviewTab extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Verdenslab for CCC-chatten',
-                style: TextStyle(
+              Text(
+                isInternal
+                    ? 'Treningslab for Spør DriftPro'
+                    : 'Verdenslab for CCC-chatten',
+                style: const TextStyle(
                   color: Colors.white,
                   fontSize: 22,
                   fontWeight: FontWeight.w800,
@@ -384,8 +426,12 @@ class _OverviewTab extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Last opp PDF-er, skriv rutiner, lær Q&A-fasit og test svarene live. '
-                'Alt som er publisert mates direkte inn i /montering.',
+                isInternal
+                    ? 'Last opp PDF-er, skriv HMS-regler, lær Q&A og test svarene. '
+                        'Publisert kunnskap mates inn i Spør DriftPro for alle MAVI-ansatte '
+                        '(i tillegg til innebygd HMS-håndbok og opplæring).'
+                    : 'Last opp PDF-er, skriv rutiner, lær Q&A-fasit og test svarene live. '
+                        'Alt som er publisert mates direkte inn i /montering.',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.92),
                   height: 1.45,
@@ -433,23 +479,34 @@ class _OverviewTab extends StatelessWidget {
               icon: const Icon(Icons.school_outlined),
               label: const Text('Lær Q&A'),
             ),
-            OutlinedButton.icon(
-              onPressed: onOpenChat,
-              icon: const Icon(Icons.forum_outlined),
-              label: const Text('Åpne /montering'),
-            ),
+            if (onOpenChat != null)
+              OutlinedButton.icon(
+                onPressed: onOpenChat,
+                icon: const Icon(Icons.forum_outlined),
+                label: const Text('Åpne /montering'),
+              ),
           ],
         ),
         const SizedBox(height: 22),
-        const _GuideCard(
-          title: 'Slik blir chatten smartere hver dag',
-          bullets: [
-            'Last opp prosedyrer og FAQ som PDF/TXT — teksten indeksers automatisk.',
-            'Skriv «Regel / rutine» for harde regler (f.eks. «ombooking kun når scannet»).',
-            'Bruk Q&A-trening for typiske CCC-spørsmål med fasitsvar i deres språk.',
-            'Test i Test-lab før du publiserer — slå av upubliserte utkast.',
-            'Skriv svarstil som «tone» for å styre hvordan chatten formulerer seg.',
-          ],
+        _GuideCard(
+          title: isInternal
+              ? 'Slik blir Spør DriftPro smartere'
+              : 'Slik blir chatten smartere hver dag',
+          bullets: isInternal
+              ? const [
+                  'HMS-håndbok, ISO 14000 og opplæring er allerede innebygd.',
+                  'Last opp ekstra prosedyrer som PDF/TXT når noe mangler.',
+                  'Skriv «Regel / rutine» for harde MAVI-regler.',
+                  'Bruk Q&A for typiske ansatt-spørsmål med fasitsvar.',
+                  'Test i Test-lab før du publiserer.',
+                ]
+              : const [
+                  'Last opp prosedyrer og FAQ som PDF/TXT — teksten indeksers automatisk.',
+                  'Skriv «Regel / rutine» for harde regler (f.eks. «ombooking kun når scannet»).',
+                  'Bruk Q&A-trening for typiske CCC-spørsmål med fasitsvar i deres språk.',
+                  'Test i Test-lab før du publiserer — slå av upubliserte utkast.',
+                  'Skriv svarstil som «tone» for å styre hvordan chatten formulerer seg.',
+                ],
         ),
       ],
     );
@@ -665,9 +722,14 @@ class _MiniBadge extends StatelessWidget {
 }
 
 class _UploadTab extends StatelessWidget {
-  const _UploadTab({required this.onUpload, required this.onPaste});
+  const _UploadTab({
+    required this.onUpload,
+    required this.onPaste,
+    this.isInternal = false,
+  });
   final VoidCallback onUpload;
   final VoidCallback onPaste;
+  final bool isInternal;
 
   @override
   Widget build(BuildContext context) {
@@ -695,8 +757,11 @@ class _UploadTab extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Teksten ekstraheres og indekseres for CCC-chatten. '
-                'Originalfil lagres når storage-bucket er på plass.',
+                isInternal
+                    ? 'Teksten ekstraheres og indekseres for Spør DriftPro '
+                        '(MAVI-ansatte). Originalfil lagres når storage-bucket er på plass.'
+                    : 'Teksten ekstraheres og indekseres for CCC-chatten. '
+                        'Originalfil lagres når storage-bucket er på plass.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Colors.black.withValues(alpha: 0.55),
@@ -731,7 +796,9 @@ class _UploadTab extends StatelessWidget {
 }
 
 class _TestLabTab extends StatefulWidget {
-  const _TestLabTab();
+  const _TestLabTab({this.isInternal = false});
+
+  final bool isInternal;
 
   @override
   State<_TestLabTab> createState() => _TestLabTabState();
@@ -757,6 +824,20 @@ class _TestLabTabState extends State<_TestLabTab> {
       _answer = null;
       _hits = const [];
     });
+    if (widget.isInternal) {
+      await KnowledgeAssistantService.instance.reload();
+      final res = await KnowledgeAssistantService.instance.ask(q);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _answer = res.text;
+        _hits = [
+          for (final h in res.hits.take(4))
+            '${h.chunk.sourceLabel}: ${h.chunk.title} (${h.score.toStringAsFixed(0)})',
+        ];
+      });
+      return;
+    }
     await PublicMontageAssistantService.instance.reloadKnowledge();
     final res = await PublicMontageAssistantService.instance.ask(q);
     if (!mounted) return;
@@ -780,7 +861,9 @@ class _TestLabTabState extends State<_TestLabTab> {
           minLines: 2,
           maxLines: 4,
           decoration: InputDecoration(
-            hintText: 'Test et CCC-spørsmål…',
+            hintText: widget.isInternal
+                ? 'Test et MAVI-spørsmål (HMS, opplæring, DriftPro)…'
+                : 'Test et CCC-spørsmål…',
             filled: true,
             fillColor: Colors.white,
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
@@ -834,13 +917,17 @@ class _TestLabTabState extends State<_TestLabTab> {
 class _KnowledgeEditorSheet extends StatefulWidget {
   const _KnowledgeEditorSheet({
     required this.companyId,
+    required this.channel,
     this.existing,
     required this.initialKind,
+    this.isInternal = false,
   });
 
   final String companyId;
+  final String channel;
   final PublicChatKnowledgeEntry? existing;
   final String initialKind;
+  final bool isInternal;
 
   @override
   State<_KnowledgeEditorSheet> createState() => _KnowledgeEditorSheetState();
@@ -903,6 +990,7 @@ class _KnowledgeEditorSheetState extends State<_KnowledgeEditorSheet> {
         tags: tags,
         priority: _priority.round(),
         published: _published,
+        channel: widget.existing?.channel ?? widget.channel,
         sourceFilename: widget.existing?.sourceFilename,
         storagePath: widget.existing?.storagePath,
         mimeType: widget.existing?.mimeType,
@@ -990,8 +1078,10 @@ class _KnowledgeEditorSheetState extends State<_KnowledgeEditorSheet> {
                     TextField(
                       controller: _question,
                       maxLines: 2,
-                      decoration: const InputDecoration(
-                        labelText: 'Typisk spørsmål fra CCC/butikk',
+                      decoration: InputDecoration(
+                        labelText: widget.isInternal
+                            ? 'Typisk spørsmål fra MAVI-ansatt'
+                            : 'Typisk spørsmål fra CCC/butikk',
                         filled: true,
                         fillColor: Colors.white,
                       ),

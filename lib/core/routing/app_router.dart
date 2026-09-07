@@ -35,6 +35,7 @@ import '../../screens/uniform/uniform_monitor_screen.dart';
 import '../../screens/more/help_support_screen.dart';
 import '../../screens/more/assistant_settings_screen.dart';
 import '../../screens/more/public_chat_lab_screen.dart';
+import '../../core/services/assistant/public_chat_knowledge_service.dart';
 import '../../screens/more/more_screen.dart';
 import '../../screens/more/organization_chart_screen.dart';
 import '../../screens/more/privacy_screen.dart';
@@ -608,6 +609,16 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     builder: (context, state) => _guardPath(
                       state,
                       const AssistantSettingsScreen()),
+                  ),
+                  GoRoute(
+                    path: 'assistent-lab',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const PublicChatLabScreen(
+                        channel: PublicChatKnowledgeService.channelInternal,
+                      ),
+                    ),
                   ),
                   GoRoute(
                     path: 'chat-lab',

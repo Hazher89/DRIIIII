@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../core/permissions/user_access.dart';
+import '../../core/routing/app_paths.dart';
 import '../../core/services/assistant/assistant_flag_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -7,7 +10,7 @@ import '../../core/theme/driftpro_theme_context.dart';
 import '../../widgets/assistant/driftpro_assistant_sheet.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
-/// Admin: slå DriftPro-assistenten av/på remote (uten app-oppdatering).
+/// Admin: slå DriftPro-assistenten av/på + åpne treningslab.
 class AssistantSettingsScreen extends StatefulWidget {
   const AssistantSettingsScreen({super.key});
 
@@ -20,6 +23,7 @@ class _AssistantSettingsScreenState extends State<AssistantSettingsScreen> {
   bool _saving = false;
   bool _enabled = false;
   bool _sqlMissing = false;
+  bool _isSuperAdmin = false;
   String? _error;
   final _titleCtrl = TextEditingController(text: 'Spør DriftPro');
 
@@ -56,6 +60,7 @@ class _AssistantSettingsScreenState extends State<AssistantSettingsScreen> {
       final title = flag.title?.trim();
       setState(() {
         _enabled = flag.enabled;
+        _isSuperAdmin = profile?.isSuperAdmin == true;
         // Ikke overskriv med tilfeldig tekst brukeren skrev som «spørsmål».
         if (title != null &&
             title.isNotEmpty &&
@@ -177,9 +182,9 @@ class _AssistantSettingsScreenState extends State<AssistantSettingsScreen> {
                 ),
                 SizedBox(height: 6),
                 Text(
-                  'Her slår du bare chat-ikonet av/på for hele selskapet. '
-                  'For å stille spørsmål: trykk «Åpne chat» under, eller bruk '
-                  'det grønne chat-ikonet nederst til høyre når det er på.',
+                  'Her skjuler/viser du chat-ikonet for hele selskapet. '
+                  'Ikonet ligger nederst til høyre (over menyen). '
+                  'For å stille spørsmål: trykk «Åpne chat» under.',
                   style: TextStyle(
                     fontSize: 13.5,
                     height: 1.4,
@@ -203,6 +208,18 @@ class _AssistantSettingsScreenState extends State<AssistantSettingsScreen> {
               ),
             ),
           ),
+          if (_isSuperAdmin) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: () => context.push(AppPaths.moreAssistentLab),
+              icon: const Icon(Icons.school_outlined),
+              label: const Text('Åpne treningslab (lær opp assistenten)'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+                foregroundColor: DriftProTheme.primaryGreen,
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(16),
@@ -220,8 +237,8 @@ class _AssistantSettingsScreenState extends State<AssistantSettingsScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Når dette er på, ser alle innloggede brukere chat-ikonet '
-                  '(web og app) uten ny install.',
+                  'Når dette er på, ser alle innloggede brukere det grønne '
+                  'chat-ikonet nederst til høyre (web) uten ny install.',
                   style: TextStyle(color: drift.textMuted, fontSize: 13, height: 1.35),
                 ),
                 const SizedBox(height: 8),
@@ -245,14 +262,19 @@ class _AssistantSettingsScreenState extends State<AssistantSettingsScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Navn på chat-vinduet',
                     border: OutlineInputBorder(),
-                    helperText: 'Ikke skriv spørsmål her — bare tittel, f.eks. Spør DriftPro',
+                    helperText:
+                        'Ikke skriv spørsmål her — bare tittel, f.eks. Spør DriftPro',
                   ),
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
                   Text(
                     _error!,
-                    style: TextStyle(color: DriftProTheme.error, fontSize: 13, height: 1.35),
+                    style: TextStyle(
+                      color: DriftProTheme.error,
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
                   ),
                 ],
                 if (_sqlMissing) ...[
@@ -267,17 +289,16 @@ class _AssistantSettingsScreenState extends State<AssistantSettingsScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Hvordan Google «lærer» MAVI-reglene\n'
-            'Vi trener ikke en egen modell. Ved hvert spørsmål henter DriftPro '
-            'relevante utdrag (SOP, bilutleie, hjelp) og sender dem til Gemini '
-            'som kontekst. Da svarer Google ut fra MAVI sine tekster.\n\n'
+            'Hva assistenten allerede kan\n'
+            'Spør DriftPro får automatisk HMS-håndbok, ISO 14000-oversikt, '
+            'opplæring/SOP, bilutleie, monteringstjenester, hjelp/FAQ, '
+            'live ruter og fravær (GDPR). Superadmin kan legge til mer via '
+            'Assistent-lab (PDF, regler, Q&A) — samme måte som CCC Chat Lab.\n\n'
             'Gemini-oppsett (engangs):\n'
-            '1) Gå til aistudio.google.com → Get API key\n'
-            '2) Opprett nøkkel i et Google-prosjekt\n'
-            '3) I Supabase: Edge Functions → Secrets → GEMINI_API_KEY = nøkkelen\n'
-            '4) Deploy funksjonen driftpro-assistant\n'
-            '5) Valgfritt: GEMINI_MODEL = gemini-2.0-flash\n\n'
-            'Uten Gemini-nøkkel faller chatten tilbake til lokalt dokumentsøk.',
+            '1) aistudio.google.com → Get API key\n'
+            '2) Supabase Edge Functions → Secrets → GEMINI_API_KEY\n'
+            '3) Deploy funksjonen driftpro-assistant\n\n'
+            'Uten Gemini faller chatten tilbake til lokalt dokumentsøk.',
             style: DriftProTheme.bodySm.copyWith(color: drift.textMuted, height: 1.4),
           ),
         ],

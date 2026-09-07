@@ -14,8 +14,8 @@ import 'driftpro_assistant_sheet.dart';
 
 /// Global chat-knapp — **kun web**, når assistenten er slått på.
 ///
-/// Plassert øverst til høyre (over brand-bar) så den ikke dekker
-/// bunnnavigasjon (avvik, fravær, osv.).
+/// Plassert nederst til høyre over bunnnavigasjonen som et kompakt ikon,
+/// så den ikke dekker AppBar, faner eller innhold.
 class DriftProAssistantOverlay extends StatefulWidget {
   const DriftProAssistantOverlay({super.key, required this.child});
 
@@ -157,10 +157,9 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
   Widget build(BuildContext context) {
     if (!kIsWeb) return widget.child;
 
-    // Web: alltid under typisk AppBar + TabBar så «Lagre» og faner ikke dekkes.
-    // (Nested Navigator.push — f.eks. avdeling — registreres ikke på root-nav.)
-    final topInset = MediaQuery.paddingOf(context).top;
-    final chipTop = topInset + kToolbarHeight + kTextTabBarHeight + 8;
+    final mq = MediaQuery.of(context);
+    // Over bottom nav (~56–64) + home indicator, uten å dekke innholdet midt på.
+    final bottom = mq.padding.bottom + 72;
 
     return Stack(
       fit: StackFit.expand,
@@ -168,8 +167,8 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
         widget.child,
         if (_showFab)
           Positioned(
-            top: chipTop,
-            right: 12,
+            right: 14,
+            bottom: bottom,
             child: _AssistantLaunchChip(
               title: _flag.displayTitle,
               onPressed: _openChat,
@@ -191,35 +190,25 @@ class _AssistantLaunchChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      elevation: 3,
-      shadowColor: Colors.black26,
-      color: DriftProTheme.primaryGreen,
-      borderRadius: BorderRadius.circular(22),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(22),
-        mouseCursor: SystemMouseCursors.click,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 14, 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.chat_bubble_rounded,
-                color: Colors.white,
-                size: 18,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                title.length > 18 ? '${title.substring(0, 17)}…' : title,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-              ),
-            ],
+    return Tooltip(
+      message: title,
+      child: Material(
+        elevation: 4,
+        shadowColor: Colors.black38,
+        color: DriftProTheme.primaryGreen,
+        shape: const CircleBorder(),
+        child: InkWell(
+          onTap: onPressed,
+          customBorder: const CircleBorder(),
+          mouseCursor: SystemMouseCursors.click,
+          child: const SizedBox(
+            width: 52,
+            height: 52,
+            child: Icon(
+              Icons.chat_bubble_rounded,
+              color: Colors.white,
+              size: 24,
+            ),
           ),
         ),
       ),

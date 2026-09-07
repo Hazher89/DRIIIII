@@ -379,6 +379,23 @@ class KnowledgeAssistantEngine {
         (chunk.id.contains('org') || hay.contains('organisasjonskart'))) {
       boost += 120;
     }
+    final asksHms = q.contains('hms') ||
+        q.contains('handbok') ||
+        q.contains('håndbok') ||
+        q.contains('iso') ||
+        q.contains('beredskap') ||
+        q.contains('miljo') ||
+        q.contains('miljø') ||
+        q.contains('risiko') ||
+        q.contains('sja') ||
+        q.contains('opplaering') ||
+        q.contains('opplæring');
+    if (asksHms &&
+        (chunk.source == KnowledgeSourceKind.hms ||
+            chunk.source == KnowledgeSourceKind.sop ||
+            chunk.source == KnowledgeSourceKind.liveTrain)) {
+      boost += 70;
+    }
     return boost;
   }
 

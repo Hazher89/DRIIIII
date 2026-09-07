@@ -4,9 +4,10 @@ import 'assistant_memory_service.dart';
 import 'assistant_route_intelligence.dart';
 import 'assistant_text_utils.dart';
 import 'knowledge_assistant_engine.dart';
+import 'public_chat_knowledge_service.dart';
 import '../supabase_service.dart';
 
-/// DriftPro-assistent: FAQ + live ruter + live fravær (GDPR) + kontinuerlig læring.
+/// DriftPro-assistent: FAQ + HMS + opplæring + live trening + ruter/fravær.
 class KnowledgeAssistantService {
   KnowledgeAssistantService._();
 
@@ -14,6 +15,9 @@ class KnowledgeAssistantService {
 
   KnowledgeAssistantEngine? _engine;
   bool _loading = false;
+  int _liveChunkCount = 0;
+
+  int get liveChunkCount => _liveChunkCount;
 
   static const suggestedQueries = [
     'Hvor har M09 kjørt i det siste?',
@@ -23,10 +27,17 @@ class KnowledgeAssistantService {
     'Hvor mange egenmeldingsdager har jeg?',
     'Hvem kan sende anmeldelse anonymt?',
     'Hvordan melder jeg avvik?',
+    'Hva står i HMS-håndboka om beredskap?',
     'Hvordan bytter jeg passord?',
     'Hva koster bilutleie per dag?',
     'Hvem godkjenner bilutleie?',
+    'Hva er ISO 14001?',
   ];
+
+  Future<void> reload() async {
+    _engine = null;
+    await ensureReady();
+  }
 
   Future<void> ensureReady() async {
     if (_engine != null || _loading) {
@@ -38,6 +49,12 @@ class KnowledgeAssistantService {
     _loading = true;
     try {
       final chunks = await AssistantCorpus.build();
+      final live = await PublicChatKnowledgeService.instance
+          .publishedChunksForChannel(
+        PublicChatKnowledgeService.channelInternal,
+      );
+      _liveChunkCount = live.length;
+      chunks.addAll(live);
       final engine = KnowledgeAssistantEngine(chunks)..buildIndex();
       _engine = engine;
     } finally {

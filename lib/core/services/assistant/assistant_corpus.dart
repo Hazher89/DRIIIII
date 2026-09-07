@@ -1,4 +1,8 @@
+import 'package:flutter/services.dart' show rootBundle;
+
 import '../../constants/vehicle_rental_agreement.dart';
+import '../../hms/iso14000_guide.dart';
+import '../../hms/mavi_hms_handbook.dart';
 import '../../routing/app_paths.dart';
 import '../hms/sop_training_models.dart';
 import '../hms/training_library_service.dart';
@@ -7,8 +11,17 @@ import 'assistant_app_faq.dart';
 import 'assistant_leave_intelligence.dart';
 import 'assistant_route_intelligence.dart';
 import 'assistant_text_utils.dart';
+import 'montage_services_corpus.dart';
 
-enum KnowledgeSourceKind { sop, rental, help, montage, publicOps, liveTrain }
+enum KnowledgeSourceKind {
+  sop,
+  rental,
+  help,
+  montage,
+  publicOps,
+  liveTrain,
+  hms,
+}
 
 /// Én indekserbar kunnskapsbit for DriftPro-assistenten.
 class KnowledgeChunk {
@@ -44,13 +57,17 @@ class KnowledgeChunk {
         return 'Levering & booking';
       case KnowledgeSourceKind.liveTrain:
         return 'Live trening';
+      case KnowledgeSourceKind.hms:
+        return 'HMS-håndbok';
     }
   }
 }
 
-/// Bygger kunnskapsindeks fra SOP, bilutleie og hjelpetekster.
+/// Bygger kunnskapsindeks fra SOP, HMS, bilutleie og hjelpetekster.
 class AssistantCorpus {
   AssistantCorpus._();
+
+  static const _maxChunkChars = 1800;
 
   static Future<List<KnowledgeChunk>> build() async {
     final chunks = <KnowledgeChunk>[
@@ -60,6 +77,8 @@ class AssistantCorpus {
       ..._rentalChunks(),
       ..._helpChunks(),
       ..._catalogChunks(),
+      ..._iso14000Chunks(),
+      ...MontageServicesCorpus.chunks(),
     ];
 
     try {
@@ -71,7 +90,110 @@ class AssistantCorpus {
       // Opplæringsassets kan mangle lokalt — resten av corpus fungerer fortsatt.
     }
 
+    try {
+      chunks.addAll(await _hmsHandbookChunks());
+    } catch (_) {
+      // HMS-assets kan mangle i enkelte builds.
+    }
+
     return _sanitize(chunks);
+  }
+
+  static Future<List<KnowledgeChunk>> _hmsHandbookChunks() async {
+    final out = <KnowledgeChunk>[];
+    for (final doc in MaviHmsHandbook.docs) {
+      try {
+        final raw = await rootBundle.loadString(doc.assetPath);
+        final cleaned = AssistantTextUtils.cleanBody(raw);
+        if (cleaned.trim().length < 40) continue;
+        final pieces = _splitBody(cleaned);
+        for (var i = 0; i < pieces.length; i++) {
+          final suffix = pieces.length == 1 ? '' : ' (${i + 1}/${pieces.length})';
+          out.add(
+            KnowledgeChunk(
+              id: 'hms:${doc.id}:$i',
+              source: KnowledgeSourceKind.hms,
+              title: '${doc.title}$suffix',
+              body: pieces[i],
+              routePath: doc.modulePath ?? AppPaths.hmsHandbok,
+              tags: [
+                'hms',
+                'håndbok',
+                doc.category.title,
+                doc.shortLabel,
+                doc.id,
+                if (doc.vedleggNr != null) 'vedlegg ${doc.vedleggNr}',
+                ...doc.summary
+                    .toLowerCase()
+                    .split(RegExp(r'[^a-zæøå0-9]+'))
+                    .where((t) => t.length >= 4)
+                    .take(8),
+              ],
+            ),
+          );
+        }
+      } catch (_) {
+        // Skip missing asset.
+      }
+    }
+    return out;
+  }
+
+  static List<KnowledgeChunk> _iso14000Chunks() {
+    final out = <KnowledgeChunk>[
+      KnowledgeChunk(
+        id: 'hms:iso14000:series',
+        source: KnowledgeSourceKind.hms,
+        title: Iso14000Guide.seriesTitle,
+        body:
+            '${Iso14000Guide.seriesSubtitle}\n\n'
+            '${Iso14000Guide.disclaimer}\n\n'
+            'PDCA: '
+            '${Iso14000Guide.pdca.map((s) => '${s.letter} ${s.title} (${s.subtitle}): ${s.points.join('; ')}').join(' | ')}',
+        routePath: AppPaths.hmsIso14000,
+        tags: const ['iso', '14000', 'miljø', 'hms', 'pdca'],
+      ),
+    ];
+    for (final s in Iso14000Guide.standards) {
+      out.add(
+        KnowledgeChunk(
+          id: 'hms:iso:${s.id}',
+          source: KnowledgeSourceKind.hms,
+          title: '${s.code} — ${s.title}',
+          body:
+              '${s.role}\n\n${s.summary}\n\n'
+              'For MAVI:\n${s.forMavi.map((e) => '• $e').join('\n')}',
+          routePath: s.modulePath ?? AppPaths.hmsIso14000,
+          tags: [
+            'iso',
+            'miljø',
+            'hms',
+            s.shortTitle,
+            s.code,
+            s.id,
+            if (s.handbookDocId != null) s.handbookDocId!,
+          ],
+        ),
+      );
+    }
+    return out;
+  }
+
+  static List<String> _splitBody(String body) {
+    if (body.length <= _maxChunkChars) return [body];
+    final parts = <String>[];
+    var remaining = body;
+    while (remaining.length > _maxChunkChars) {
+      var cut = remaining.lastIndexOf('\n\n', _maxChunkChars);
+      if (cut < _maxChunkChars ~/ 2) {
+        cut = remaining.lastIndexOf('. ', _maxChunkChars);
+      }
+      if (cut < _maxChunkChars ~/ 2) cut = _maxChunkChars;
+      parts.add(remaining.substring(0, cut).trim());
+      remaining = remaining.substring(cut).trim();
+    }
+    if (remaining.isNotEmpty) parts.add(remaining);
+    return parts;
   }
 
   static List<KnowledgeChunk> _sanitize(List<KnowledgeChunk> raw) {
