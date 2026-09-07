@@ -1,0 +1,67 @@
+Risikobasert forebyggende forbedringsarbeid
+Kilde: Risikobasert forebyggende forbedringsarbeid.docx (Landax / MAVI)
+
+Hensikt
+Prosedyrens formål er å sikre et forebyggende forbedringsarbeid basert på en risikotankegang.
+Prosedyren omfatter både interne aktiviteter og prosjektvirksomhet.
+Omfang
+Prosedyren gjelder for hele virksomheten herav all prosjektvirksomhet.
+Ansvar
+Daglig leder er ansvarlig for utarbeidelse og vedlikehold av denne prosedyren.
+Daglig leder er ansvarlig for at prosedyren tilfredsstiller selskapets behov og er godkjennende instans for prosedyren.
+Beskrivelse
+Det velges område som skal forbedres i forhold til potensielle avvik og hendelser med referanse til tidligere risikovurderinger.
+Alle prosesser og aktiviteter skal inngå i omfanget av denne forebyggende aktiviteten, men den kan deles opp i passende ansvarsområder og kan fordeles over tid.
+Det er en fordel å bruke prosesstankegangen for fordeling av områder for den forebyggende aktiviteten. Det vil si at med prosesstankegangen skal alle prosesser skal gjennomgå et forebyggende arbeid.
+Ansvarlig
+Steg
+Aksjon
+Referanse
+Avdelingsledere/ Verneombud og daglig leder
+1
+Planlegger og setter ned arbeidsgruppe(er) for å gjennomføre et arbeidsmøte.
+Prosess/område/aktivitet velges.
+Det pekes ut en som skal lede gruppa
+Møtereferat
+Avdelingsledere
+2
+Forbereder arbeidsmøte og innhenter erfaringsgrunnlag som kan være:
+Trender fra avvikssystemet
+Revisjonsrapporter
+Status fra tidligere forbedringsarbeid
+Prosess og kvalitetsmålinger
+Evt.interne/eksterne kundeklage
+Eventuelle risikokartlegginger som er gjennomført på dette området.
+Avdelingsledere
+3
+Planlegger og innkaller til arbeidsmøtet og distribuerer nødvendig erfaringsgrunnlag/arbeidsunderlag til deltakerne i gruppa.
+Avdelingsledere
+4
+Gjennomfører arbeidsmøtet.
+Stikkord:
+Presentasjon av området som skal gjennomgås
+Presentasjon av erfaringsgrunnlaget
+Brainstorming om hva som kan inntreffe av avvik og hendelser
+Systematiser de forskjellige type hendelser
+Alle deltakere foreslår tiltak og prioriterer disse som egenvurdering
+Deltakernes tiltak noteres på tavle med max 3 tiltak prioritert fra 1-3.
+Hver deltaker presentere sine 3 tiltak
+Alle stemmer på de tiltakene de mener er det beste med vekting fra 1-3 ( MAX 3 TILTAK FOR HVERT OMRÅDE)
+Stemmende tales opp og prioriteres i forhold til de tiltak som har fått flest stemmer.
+Gruppa tar en samlet gjennomgang av alle tiltak med flest stemmer og setter opp en aktivitetsplan for tiltak
+Avdelingsledere
+5
+Utarbeider en rapport og presenterer for oppdragsgiver (leder/ledergruppa)
+Rapport
+Avdelingsledere /
+Daglig leder /
+Verneombud
+6
+Planlegger og iverksetter tiltak basert på arbeidsgruppas forslag.
+Status legges fram i ledelsens gjennomgåelse
+Handlingsplan
+Ledelsens gjennomgåelse
+Referanser:
+ISO 9001, pkt 10.3
+ISO 14001, pkt. 10.3
+ISO 45001, pkt 10.3

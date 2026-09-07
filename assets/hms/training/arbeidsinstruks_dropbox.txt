@@ -1,0 +1,21 @@
+Arbeidsinstruks Dropbox
+Kilde: Arbeidsinstruks Dropbox.docx (Landax / MAVI)
+
+Arbeidsinstruks for varsling av kjøreoppdragArbeidsinstruks for varsling av kjøreoppdrag
+Arbeidsinstruks for varsling av kjøreoppdrag
+Arbeidsinstruks for varsling av kjøreoppdrag
+Mavi Logistikk ASMavi Logistikk AS
+Mavi Logistikk AS
+Mavi Logistikk AS
+Arbeidsinstruk for varsling av kjøreoppdrag
+Oppgaven å varsle sjåførene er en todelt oppgave. Første del innebærer å hente ut alle transportoppdragene fra SAP TM i pdf-format, og fordele disse ut i sjåførenes respektive dropbox-mapper. Andre del er å varsle alle transportørene med melding om oppmøtetid og at ruten ligger ute, dette gjøres via den webbaserte løsningen Sveve.
+I sap hentes ruten ut fra SAP TM med følgende rutine:
+I steg 1 velger man hvilken dag man ønsker å hente ut ruter for,
+Om stegene følges korrekt vil en rute bli printet der pilen peker, denne kan finnes slik:
+Avslutningsvis skal ruten navngis og legges i riktig dropbox etter følgende formel:
+«xxxxyyxx(år/måned/dag) MAVI xx(sjåførnummer) Sjåførnavn FELT xx(feltnummer)»
+Nå er ruten lagt i dropbox.
+Neste del er nå å varsle sjåføren om at ruten ligger i dropbox via Sveve.
+Nettsiden kan nåes med url: Sveve.no
+Her følges følgende rutine for hver sjåfør:
+Sjåføren må varsles om at ruten er tilgjengelig, hvilket felt varene vil stå på og når sjåføren burde starte å laste ruten sin. Resten er vilkårlig men utvises skjønn.

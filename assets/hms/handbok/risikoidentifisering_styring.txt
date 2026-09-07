@@ -1,0 +1,309 @@
+Risikoidentifisering og risikostyring
+Kilde: Risikoidentifisering og risikostyring.docx (Landax / MAVI)
+
+Formål
+Denne prosedyren skal bidra til at arbeidet med å kartlegge, analysere og vurdere risiko ved bedriften blir gjort på en effektiv og enhetlig måte. Målet er å redusere, eliminere eller isolere risiko i forbindelse med hendelser relatert til det ytre miljø.
+Omfang
+Prosesser, arbeidsoppgaver og utstyr skal analyseres for å:
+Iverksette forebyggende tiltak for potensiell miljøpåvirkning
+Unngå miljøhendelser
+Minimalisere konsekvenser av en miljøhendelse
+Ansvar
+Daglig leder er ansvarlig for å igangsette en risikovurdering.
+Bakgrunn for risikovurdering
+Risikoanalyse står sentralt i gjeldende lover og forskrifter.
+I Internkontrollforskriftens §5, punkt 6. og 7. står det at bedriften har følgende oppgaver/krav:
+Kartlegge farer og problemer og på denne bakgrunn vurdere risiko, samt utarbeide tilhørende planer og tiltak for å redusere risikoforholdene.
+Iverksette rutiner for å avdekke, rette opp og forebygge overtredelser av krav fastsatt i eller i medhold av helse-, miljø- og sikkerhetslovgivningen.
+De ovennevnte kravene skal dokumenteres skriftlig.
+Generell metodikk
+Risikoanalyse og -vurdering gjennomføres ved bruk av et Excel-ark, eller direkte i Landax’ risikoprogram.
+Arbeidsmetodikk
+Fareidentifikasjon – Hva kan skje? Definisjon av sett med uønskede hendelser.
+Identifisering og vurdering av sårbarheten hos analyseobjektet og kvaliteten på eksisterende barrierer for hver hendelse.
+Vurdering og antakelse av sannsynlighet for at hendelsen oppstår og at den medfører konsekvenser.
+Vurdering og antakelse av grad av konsekvens dersom hendelsen inntreffer.
+Beregning av samlet risiko for identifiserte hendelser, basert på antatt sannsynlighet og konsekvens. Vurdering opp mot akseptkriterier.
+Forslag til eventuelle risikoreduserende tiltak.
+Informasjon
+Alle som utfører et arbeid som blir berørt av en eller flere av de risikoanalysene og risikovurderingene som blir gjort, skal gjøres kjent med den risikoen arbeidet deres har vedrørende påvirkning på det ytre miljøet.
+Dette gjøres i opplæringen før operatør starter arbeidet, ved oppslag ved arbeidsbenker, i trucker etc., og på avdelingsmøter.
+Gjennomganger
+I utgangspunktet gjøres denne risikoanalysen og risikovurderingen én gang. Den må like fullt gjennomgås om det kommer nye faktorer i forutsetningene for det arbeidet som er gjort.
+Risikoanalysene og risikovurderingene skal gjennomgås med et intervall på maksimalt tre år.
+Beskrivelse og Ansvarlig
+Ansvarlig
+Trinn
+Beskrivelse
+Avgrenset tema / aktivitet med behov for risikovurdering.
+Daglig leder
+1
+Definerer og delegerer ansvar for gjennomføringen
+Etablere tverrfaglig team, bestående av personer med kunnskap om prosess, utstyr, rutiner, myndighetskrav og andre aktuelle forhold.
+Utpeke teamleder.
+Teamleder og Daglig leder
+2
+Formulere bakgrunnen for å gjennomføre risikovurderingen
+Denne prosedyren er grunnlag for risikovurderingen sammen med gjeldende krav i lover og forskrifter.
+Definere målsetningen med analysen.
+Definere gyldighetsområde, begrensninger og rammebetingelser for aktiviteten / tema som skal risikovurderes. (Kategori)
+Teamleder
+3
+Sammenkaller team til gjennomføring av risikoanalyse
+Sørger for at teknisk underlag, historikk, forskrifter, statistikk og annet aktuelt underlag fremskaffes.
+Valg av datagrunnlag skal beskrives og begrunnes.
+Team
+4
+Gjennomgåelse av denne prosedyren
+Revidere og endre innhold ved behov.
+Team
+5
+Beskrive kategori – Se trinn 2
+Aktivitet/Tema/Prosess/Arbeidsoperasjon/Kravsett/Prosjekt
+Definere analyseobjektet som skal risikovurderes (Risikovurdering)
+Avdeling/Tema/Prosesstrinn/Arbeidsoppgave/Krav/Utstyrskomponent
+Definere og dokumentere ytterligere gyldighetsområde og begrensninger for hvert enkelt analyseobjekt.
+Team
+6
+Kontrollere og bestemme kriterier og innstillinger
+Områder (Fysiske steder, aktører)
+Trusler (Farer)
+Sannsynlighets- og konsekvenstall
+Konsekvensverdier (Akseptkriterier)
+Konsekvenstyper
+Teamleder
+7
+Sette opp handlingsplan for gjennomføringen
+Tidsfrister, rekkefølge etc.
+Teamleder og Daglig leder
+8
+Utføre grovanalyse (Valgfritt)
+Gjennomgå detaljert underlag.
+Definere mulige trusler/hendelser på et generelt område.
+Identifisere mulige årsaker til hver enkelt trussel/hendelse.
+Definere de kontrolltiltak som eksisterer eller er planlagt for å forebygge eller oppdage de aktuelle trusler/hendelser.
+Vurdere sannsynlighet og konsekvens på et generelt grunnlag. (Alltid først sannsynlighet og så konsekvens)
+Team
+9
+Utføre risikovurderingen – analysere hendelser
+Gjennomgå detaljert underlag.
+Registrer «Hendelser» i «Risikovurdering».
+Kopier eventuelt aktuelle hendelser fra Grovanalyse eller andre aktuelle hendelser.
+Definer begrensning ytterligere ved å velge «Område».
+Definer mulige hendelser ved å fylle ut «Trussel» og utdype i feltet «Hva kan skje».
+Beskriv hendelsen.
+Identifiserer mulige årsaker til hver enkelt hendelse.
+Definer de kontrolltiltak som eksisterer eller er planlagt for å forebygge eller oppdage de aktuelle hendelser.
+Vurder sannsynlighet og konsekvens. (Alltid først sannsynlighet og så konsekvens)
+Team
+10
+Overføre til Oppfølging (Handlingsplan) de punktene som overstiger grensene for akseptkriteriene
+Bestem risikoreduserende tiltak.
+Bestem ansvarlige og tidsfrister.
+Teamleder
+11
+Fremlegge forslag til tiltak for Daglig leder.
+Teamleder
+12
+Beslutte tiltak og tidsfrister og utpeke ansvarlige for gjennomføring.
+Ansvarlig for gjennomføring av oppfølging
+13
+Informere og rapportere til Teamleder etter hvert som tiltakene gjennomføres.
+Dokumentasjon legges inn i handlingsplan.
+Team
+14
+Registrere gjennomførte tiltak
+Følg opp effekten av gjennomførte tiltak.
+Rediger sannsynlighet og konsekvens basert på gjennomførte tiltak.
+Nye risikotall beregnes.
+Teamleder
+15
+Rapportere til Daglig leder, evt. til tilsynsmyndighet.
+Utsendelse og utskrift av rapporter fra verktøyet.
+Teamleder
+16
+Resultatet fra arbeidet gjøres kjent for de som er involvert i den aktuelle arbeidsoperasjonen/prosessen.
+Nye rutiner, skjema etc.
+Sannsynlighet, konsekvens og akseptkriterier
+For å beskrive sannsynlighet og konsekvens er det valgt å knytte dette til tall. Hvilke kommer frem av tabellene under.
+Sannsynlighetstall:
+Betegnelse
+Forklaring - Akseptkriterier
+1
+Lite sannsynlig
+Sjeldnere enn én hendelse per 10 år
+2
+Mindre sannsynlig
+En gang per 10 år eller oftere
+3
+Sannsynlig
+En gang per 5 år eller oftere
+4
+Meget sannsynlig
+En gang per år eller oftere
+5
+Svært sannsynlig
+10 ganger per år eller oftere
+Konsekvenstall - (Ytre) Miljø:
+Betegnelse
+Forklaring - Akseptkriterier
+1
+Ufarlig
+Ingen miljøskader.
+2
+Farlig
+Mindre "uregelmessighet" som påviselig ikke forårsaker skader på flora eller fauna, moderate skader, restitusjonstid opptil 1 mnd.
+3
+Kritisk
+Utslipp til vann, luft eller jord som kan forårsake større lokale skader på flora og fauna. Alvorlige skader på flora og fauna, restitusjonstid 1 mnd. - 1 år.
+4
+Meget kritisk
+Utslipp til vann, luft eller jord som kan forårsake lokale skader på flora eller fauna, meget alvorlige skader på flora og fauna, restitusjonstid 1 - 10 år.
+5
+Katastrofalt
+Utslipp til vann, luft eller jord som kan forårsake varige skader på flora og fauna, fare for utryddelse av flora og fauna, restitusjonstid mer enn 10 år.
+Konsekvenstall - Materielle verdier / Økonomisk tap:
+Betegnelse
+Forklaring - Akseptkriterier
+1
+Ufarlig
+Ingen påviselig skade på bygning, og kun ubetydelig skade på maskin, ingen produksjonsstans, skader opptil 20.000.
+2
+Farlig
+Mindre lokal skade på bygning, ikke umiddelbart behov for reparasjon. Mindre maskinskade som er rask å reparere. Produksjonsstans opptil 2 dager. Skader opptil 250.000,-.
+3
+Kritisk
+Alvorlige skader på bygning eller viktige maskiner, produksjonsstans opptil 3 uker, skader opptil 2 mill.
+4
+Meget kritisk
+Tap av eller kritisk skade på bygning eller viktige maskiner, produksjonsstans opptil 3 mnd., skader opptil 5 mill.
+5
+Katastrofalt
+Fullstendige materielle skader, produksjonsstans mer enn 5 mnd., skader over 5 mill.
+Konsekvenstall - Gjenoppretting:
+Betegnelse
+Forklaring - Akseptkriterier
+1
+Ufarlig
+Lite eller ingen behov for gjenoppretting.
+2
+Farlig
+Noe behov for gjenoppretting. Tidsramme innenfor et par dager.
+3
+Kritisk
+Gjenoppretting tar ca. 1-2 uker.
+4
+Meget kritisk
+Gjenoppretting tar 1-2 måneder.
+5
+Katastrofalt
+Full gjenoppretting kan ikke anses som sannsynlig.
+Konsekvenstall - Renommé:
+Betegnelse
+Forklaring
+1
+Ufarlig
+Liten eller ingen konsekvens for renommé.
+2
+Farlig
+Noe svekket renommé. Litt arbeid påkrevd før renommé kan gjenopprettes fullstendig. Tidsramme et par dager.
+3
+Kritisk
+Renommé er svekket. Tidsramme før renommé er gjenopprettet ca. 1-2 uker.
+4
+Meget kritisk
+Renommé er alvorlig svekket. Aktivt arbeid i 1-2 måneder er påkrevd før fullt renommé er gjenopprettet.
+5
+Katastrofalt
+Renommé er varig svekket. Full gjenoppretting av tidligere renommé kan ikke anses som sannsynlig.
+Risikotall - Risikomatrise:
+Ved å sette sannsynlighets- og konsekvenstallene inn i en risikomatrise, som er delt opp i grønne, gule og røde områder, kommer det frem hvilke risikoer som kan aksepteres, og hvilke det må settes inn tiltak på.
+Konsekvens
+Sannsynlighet
+1
+2
+3
+4
+5
+Lav risiko
+Aksepteres, men hvis det er åpenlyse risikoreduserende tiltak bør disse vurderes med hensyn til kost-nytte-effekt.
+5
+5
+10
+15
+20
+25
+4
+4
+8
+12
+16
+20
+Middels risiko
+Kan aksepteres, men det er nødvendig å vurdere risikoreduserende tiltak, eventuelt foreta en mer detaljert analyse.
+3
+3
+6
+9
+12
+15
+2
+2
+4
+6
+8
+10
+Høy risiko
+Kan ikke aksepteres.
+Risikoreduserende tiltak iverksettes.
+1
+1
+2
+3
+4
+5
+Definisjoner
+For risikoverktøyet i Landax gjelder følgende definisjoner. Henvisning til definisjoner i NS 5814 i parentes. Listen er ikke uttømmende.
+Kategori:
+Avgrenset tema/aktivitet med behov for risikovurdering.
+Risikovurdering (Analyseobjekt):
+Geografiske, tekniske, organisatoriske, miljømessige eller menneskelige systemer/forhold som omfattes av risikovurderingen.
+Uønsket hendelse:
+Hendelse som kan medføre tap av verdier – Beskrives i feltet «Hva kan skje».
+Områder:
+Fysisk plassering, sted.
+Trusler (Fare):
+Handling eller forhold som kan føre til uønsket hendelse.
+«Hva kan skje?»:
+Resultat av trussel/fare - Hendelse som kan medføre tap av verdier.
+Konsekvenstyper:
+De ulike typer man knytter konsekvens til. Eksempelvis mennesker, miljø eller materielle verdier.
+Risikotyper:
+De ulike typer man knytter risiko til. Eksempelvis grovanalyse, SJA eller kjemikalieanalyse.
+Konsekvensverdier (Akseptkriterier):
+Kriterier basert på forskrifter, standarder, erfaring og/eller teoretisk kunnskap som legges til grunn for beslutninger om akseptabel risiko.
+Sannsynlighet:
+I hvilken grad det er trolig at en hendelse vil kunne inntreffe.
+Konsekvens:
+Mulig følge av uønsket hendelse.
+Risiko:
+Uttrykk for kombinasjonen av sannsynligheten for og konsekvensen av en uønsket hendelse.
+Risikodiagram:
+Systematisk oppsett av akseptkriterier som ulike soner i en risikomatrise.
+Risikoreduserende tiltak:
+Tiltak med sikte på å redusere sannsynlighet for og/eller konsekvensen av uønskede hendelser.
+Eksisterende tiltak for å hindre at hendelsen oppstår.
+Eksisterende tiltak for å redusere utvikling av hendelsen.
+Deltakere:
+Deltakerne i teamet.
+Oppfølging:
+Handlingsplan for oppfølging av ytterligere risikoreduserende tiltak.
+Sårbarhet:
+Manglende evne hos et analyseobjekt til å motstå virkninger av en uønsket hendelse og til å gjenopprette sin opprinnelige tilstand eller funksjon etter hendelsen.
+Risikoevaluering:
+Prosess for å sammenligne beskrevet eller beregnet risiko med gitte akseptkriterier.
+Gyldighetsområde og rammebetingelser:
+De ulike faktorer som virker begrensende på omfanget av analysen.
+Henvisninger og referanser
+Internkontrollforskriften
+ISO 14001:2015, kapittel 6.1

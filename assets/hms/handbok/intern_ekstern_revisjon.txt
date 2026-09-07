@@ -1,0 +1,146 @@
+Intern og ekstern revisjon
+Kilde: Intern og ekstern revisjon.docx (Landax / MAVI)
+
+Formål
+Prosedyrens formål er å etablere et revisjonssystem hvis hensikt er å:
+Verifisere at selskapets aktiviteter utføres i henhold til selskapets styringssystem og definerte krav og styringsprinsipper.
+Verifisere at leverandører og samarbeidspartnere utfører sine aktiviteter i henhold til spesifiserte krav.
+Identifisere forbedringsområder, internt og eksternt.
+Prosedyren tar for seg både utarbeidelse av revisjonsprogram og utførelse av de enkelte revisjoner.
+Omfang
+Prosedyren omfatter alle interne og eksterne aktiviteter, inkludert andrepartsrevisjon av leverandører.
+Ansvar
+Daglig leder er ansvarlig for implementering av prosedyren.
+Definisjoner og forkortelser
+Verifisere: bekrefte samsvar med.
+Revisjon: systematisk og uavhengig undersøkelse for å fastslå om kvalitetsaktiviteter og tilhørende resultater stemmer overens med det som er planlagt, og om de er effektivt gjennomført og hensiktsmessige for å oppnå målene.
+Beskrivelse
+Utarbeidelse av revisjonsprogrammet
+Ansvarlig
+Trinn
+Aksjon
+Referanse
+Daglig leder
+1
+Planlegging av internrevisjonsprogrammet utføres i forbindelse med ledelsens gjennomgåelse.
+Det skal tas hensyn til:
+Kritiske områder
+Kvalitetsstatus fra foregående revisjonsperiode
+Kvalitetsmål
+Kundetilbakemeldinger
+Endringer i organisasjonen
+Resultater fra tidligere revisjoner
+Ledelsens behov og ønsker (inkludert strategier)
+Revisjon/samsvar i forhold til de standardene som er valgt som referanser
+Revisjonsprogram
+ISO 19011, pkt. 5
+Daglig leder
+2
+Utarbeider et forslag til revisjonsprogram til høringsrunde for aktuelle deltakere i programmet.
+Førsteutkast til revisjonsprogram
+Daglig leder
+3
+Presenterer revisjonsprogrammet i ledelsens gjennomgåelse, som eventuelt gjør noen endringer og godkjenner programmet.
+Revisjons-programmet
+Gjennomføring av de enkelte revisjoner
+Ansvarlig
+Trinn
+Aksjon
+Referanse
+Daglig leder
+1
+Planlegging av revisjon
+Ved planlegging av en revisjon skal man:
+Etablere kontakt med den reviderte
+Bekrefte omfang av revisjonen
+Innhente dokumentasjon
+Se på krav til verneutstyr, konfidensialitet, ledsager etc.
+Avtale tid og sted for revisjonen
+Revisjonsplan/ Agenda ISO 19011, pkt. 5
+Daglig leder
+2
+Revisjonsplan
+Det utarbeides en revisjonsplan/agenda som oversendes den reviderte for aksept.
+Revisjonsplan
+Sjekkliste ISO 9001/ISO 14001
+3
+Gjennomføring av revisjonen
+Revisjoner gjennomføres i henhold til plan med følgende prosess:
+Daglig leder
+3.1
+De reviderte varsles minimum 14 dager før revisjon.
+De reviderte
+3.2
+De reviderte bekrefter avtalt tidsrom for revisjonen.
+Daglig leder
+3.2
+Revisjon gjennomføres, avvik og observasjoner dokumenteres.
+Det skal tas hensyn til:
+Åpningsmøte
+Intervjuer/intervjuteknikk
+Innsamling og verifikasjon av dokumentasjon
+Utarbeidelse av revisjonskonklusjoner
+Avslutningsmøte med avklaring av revisjonsfunn
+Videre aksjoner vedrørende korrigerende tiltak avtales med de reviderte.
+Revisjonsrapport
+Registreringer
+ISO 19011, pkt. 6
+3.3
+Utarbeidelse av revisjonsrapporten
+Revisjonsrapporten utarbeides innen 7 virkedager etter avsluttet revisjon. Det skal tas hensyn til:
+Mål for revisjonen
+Revisjonsomfang
+Referanser
+Datorer og lokaliteter
+Intervjuet personell
+Revisjonskonklusjoner i hvilken grad kriteriet for revisjonen er oppfylt
+Rapporten godkjennes av oppdragsgiver og distribueres i henhold til avtale med oppdragsgiver.
+Landax protokoll
+Daglig leder
+4
+Revisjonsrapporter følges opp ved å:
+Kontrollere at korrigerende tiltak iverksettes.
+Kontrollere korrigerende tiltak for å se om «den valgte medisin fungerer», og at ikke avvikene er flyttet til andre områder i bedriften
+Landax protokoll
+Daglig leder
+5
+Revisjonsrapporter samt korrigerende tiltak legges frem for ledelsens gjennomgåelse.
+Ledelsens gjennomgåelse
+Landax protokoll
+Revisorers kompetanse
+Revisorer skal ha opplæring i revisjonsteknikk (min 16 timer).
+Hvis revisor ikke har fagkompetanse for det området som skal revideres skal det delta en fagkompetent person i revisjonsteamet.
+Referanser
+ISO 9001/14001, pkt. 9.2 Revisjoner
+Prosedyre for registreringer
+Prosedyre for ledelsens gjennomgåelse
+Landax protokoll
+Vedlegg 1: Revisjonsplan/agenda
+Vedlegg 2: Revisjonsprogram
+Vedlegg 1: Eksempel Revisjonsplan/Agenda
+Vedlegg 2 : Eksempel Revisjonsprogram
+Område
+Q1
+Q2
+Q3
+Q4
+Ledelse
+x
+Kvalitet
+x
+Miljø
+x
+Salg
+x
+Innkjøp
+x
+Forretningsprosess Lagervare
+x
+Forretningsprosess Service
+x
+Personal
+x
+Leverandører
+x
+Produktutvikling
+x

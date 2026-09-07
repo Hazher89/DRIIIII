@@ -1,0 +1,30 @@
+Arbeidsinstruks for inventory (CT)
+Kilde: Arbeidsinstruks for inventory (CT).pdf (Landax / MAVI)
+
+Arbeidsinstruks for inventory (CT)
+Hver onsdag, så må alt av varer på HUB skannes med Hubanero (inventory) + alt
+av felt som ikke har blit tat framplukk på. Lista må sendes til
+(controltower.coe@elkjop.no) hver onsdag før kl 11.
+
+1. Varedetaljer vil vise mer informasjon om slutkunden som FU, SO, felt,
+kundenavn osv.
+2. Skaderegistrering med årsak og bilder
+3. Viser kolli som ennå ikke er skannet under inventory
+4. Totalt av skannet vs total på HUB
+5. HUB
+6. Trykkes på når det er ingenting mer å skanne. Resten må merkes som
+«missing».
+
+Eter litsa har blit sendt til CT og eter CT har behandlet det, sender de tilbake
+lista med hvem som er ansvalig på hva. Under ser du en excel fil som CT har sendt
+som også har blit filtrert på HUB som ansvarlig.
+
+Her er det viktig å sjekke hver FU for å se om ingen av FU har gårsdagen dato for
+retur til butikk.
+
+Det er også viktig at vi sjekker ordrene som CT mener tilhører RT. Som for eksmpel
+bilde under. Her ser man at på HUB, så har det blit skannet HU:
+00370727790017293147 fra SO: 2247881821. Men produktet som er på HUB er
+RS som tilhører RT: 6008155895. Her må vi printe ut nyt etikket, utlevere den
+gamle HU i POD in ERP i HUB dash og skanne inn det nye etiket og evt endre dato
+2 dager frem på RS dersom det er gårsdagen dato på RS.

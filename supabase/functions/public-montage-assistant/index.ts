@@ -31,35 +31,38 @@ function rateLimited(ip: string): boolean {
 
 /** Fallback hvis klient ikke sender kontekster. */
 const SERVER_FALLBACK = `
-## Oversikt
-MAVI utfører Elkjøp monteringstjenester hos kunden.
-Enkle: sjåfør ved levering. Avanserte: montør.
+## Hjelp til levering og montering
+Du forklarer hva kunde/butikk/CCC skal gjøre. Aldri interne MAVI-rutiner.
 
-## InstallWash (enkel)
-Inkludert: frakople, emballasje, plassering, vann/avløp, strøm, vater, funksjonstest, retur emballasje.
-Kunde: plass klar, maks 1,2 m til strøm/vann/avløp, godkjent våtrom.
-Ikke: vibrasjonsdempere/stableramme, skjøting, fagperson-installasjon.
+## Omboking
+Varen må faktisk være klar/ankommet før ombooking. CCC/butikk booker om.
 
-## InstallCooker (enkel)
-Inkludert: frakople, plassering, støpsel (ikke 4/5 ledere), strøm, høydejustering, funksjonstest 100°, emballasje.
-Kunde: plass, høyde, maks 0,5 m til strøm.
-Ikke: gasskomfyr.
+## Tidligere dato
+Hold matrise/booking. Unntak ved gjentatte feilleveranser: via CCC, varen må være klar.
 
-## InstallFridge/Freezer enkel (ikke SBS)
-Inkludert: frakople, plassering, strøm kun med av/på-knapp, info om 3 timer, justering, emballasje.
-Ikke: omhengsling, funksjonstest, strøm uten av/på.
+## Tidsvindu
+Ingen garanti for spesifikt klokkeslett inni vinduet. Book om dagen om kunden ikke kan hele vinduet.
 
-## TVonStand (enkel)
-Inkludert: fot, plassering, inntil 3 eksisterende komponenter, strøm, funksjonstest skjerm.
-Ikke: vegg, WIFI/kanalsøk, skjule kabler, nye komponenter.
+## Status i dag
+Ingen live status her — kontakt CCC med ordrenummer.
 
-## TVonWall (avansert)
-Inkludert: utpakking, inntil 3 eksisterende komponenter, veggmontering, funksjonstest.
-Kunde: bæring i vegg, veggfeste separat om ikke inkludert.
-Ikke: WIFI/kanalsøk, skjule kabler, veggforsterkning.
+## Montering oppfølging
+Klage/ny sjekk: CCC setter opp SA. Vannlekkasje: prioriter via CCC.
 
-## InstallSBS / Dish / Hood / Micro / Hob / Oven / Fridge front / TurnDoor
-Se klient-kontekst for detaljer. Ikke finn på utover dette.
+## Fire personer
+Etter levering: SA via CCC. Før levering: ombook og merk behov. Samme dag: ikke forvent ekstra mannskap alltid.
+
+## Ekstra tjeneste
+I dag/i morgen: kan ofte legges til under levering (betalingslenke). Senere: SA via CCC.
+
+## Kundedata / curbside
+Adresse/tlf/navn og curbside→deliverysite endres av CCC/butikk.
+
+## Kansellering
+MAVI kansellerer ikke ordre — CCC/butikk må. Be dem også stoppe utkjøring.
+
+## Montering (kort)
+Enkle: sjåfør. Avanserte: montør. Svar inkludert / kunden sørger for / ikke inkludert.
 `;
 
 Deno.serve(async (req) => {
@@ -116,35 +119,40 @@ Deno.serve(async (req) => {
 
     const contextBlock =
       contexts
-        .slice(0, 8)
+        .slice(0, 10)
         .map((c, i) => {
           const title = String(c.title ?? `Kilde ${i + 1}`);
-          const source = String(c.source ?? "Montering");
-          const text = String(c.body ?? "").slice(0, 1800);
+          const source = String(c.source ?? "Hjelp");
+          const text = String(c.body ?? "").slice(0, 1600);
           return `### ${title} (${source})\n${text}`;
         })
         .join("\n\n") || SERVER_FALLBACK;
 
-    const system = `Du er DriftPros offentlige monteringshjelper for MAVI Logistikk.
-Svar på norsk (bokmål), vennlig og lett forståelig — som en dyktig kundeservice.
-Du svarer KUN om Elkjøp/MAVI monteringstjenester hos kunden (inkludert / kunden sørger for / ikke inkludert, enkel vs avansert).
-Ikke nevn Bring, leveringsvindu 0–5 dager, eller klokkeslett for når montør ringer — det hører ikke hjemme i svarene.
-Regler:
-1) Svar direkte på spørsmålet først.
-2) Bruk KUN konteksten. Finn ikke på priser, booking, ordrestatus eller intern DriftPro-info (HMS, fravær, ansatte).
-3) Skill tydelig mellom enkle (sjåfør) og avanserte (montør) tjenester når relevant.
-4) Hvis noe mangler i konteksten: si det ærlig og foreslå å spørre butikken der kunden handlet.
-5) Ikke HTML. Ikke nevn Gemini eller AI-modellen.`;
+    const system = `Du er DriftPros offentlige hjelper for MAVI Logistikk (levering + montering for Elkjøp).
+Skriv på norsk bokmål — varm, klar og intelligent, som en dyktig menneskelig kundeservice (ikke som en FAQ-robot).
+
+MÅLGRUPPE: kunder, butikk og CCC. Du forklarer hva DE skal gjøre.
+
+STRENGE REGLER:
+1) Formuler alltid svarene med egne ord. Ikke lim inn, siter eller speil konteksttekst ordrett.
+2) Bruk konteksten kun som bakgrunnskunnskap om hvordan ting fungerer.
+3) Aldri avslør interne MAVI-rutiner: systemnavn (SAP, FU, FO search, Hubanero, Goran, ConnectTeam), interne filer, interne mailmapper, interne priser for ekstra mannskap, interne roller, eller hvordan hub planlegger.
+4) Si heller: «kontakt butikk / Elkjøp CCC», «book om», «legg inn notat på ordren», «be om standalone service (SA)».
+5) Ikke finn på priser, booking, live ordrestatus eller leveringsgarantier.
+6) Skill enkel (sjåfør) vs avansert (montør) montering når relevant.
+7) Start med det viktigste svaret, deretter korte, nyttige punkter om nødvendig.
+8) Hvis noe mangler i konteksten: si det ærlig og foreslå butikk/CCC.
+9) Ikke HTML. Ikke nevn Gemini, AI eller «konteksten».`;
 
     const prompt = `${system}
 
-KONTEKST:
+KUNNSKAP (bakgrunn — ikke siter ordrett):
 ${contextBlock}
 
-SPØRSMÅL FRA BESØKENDE:
+SPØRSMÅL:
 ${question}
 
-SVAR:`;
+Skriv et naturlig, godt svar:`;
 
     const model = Deno.env.get("GEMINI_MODEL")?.trim() || "gemini-2.0-flash";
     const url =
@@ -156,8 +164,9 @@ SVAR:`;
       body: JSON.stringify({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 1200,
+          temperature: 0.55,
+          maxOutputTokens: 1400,
+          topP: 0.9,
         },
       }),
     });

@@ -43,8 +43,11 @@ Steg: frakobling → bæring → transport → montering.
 
 Avanserte tjenester: utføres av montør.
 
-Denne chatten svarer kun på hva som er inkludert, hva kunden må sørge for, og hva som ikke er inkludert.
-Vi gir ikke pris, booking eller ordrestatus her.
+Denne chatten svarer på montering (inkludert / du sørger for / ikke inkludert)
+og på vanlige spørsmål om levering og booking for kunde, butikk og CCC.
+
+Vi gir ikke pris, live ordrestatus eller interne MAVI-rutiner her.
+Booking og endringer: via butikk / Elkjøp CCC.
 ''',
       );
 

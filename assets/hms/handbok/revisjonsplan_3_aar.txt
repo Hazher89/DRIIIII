@@ -1,0 +1,333 @@
+3-års revisjonsplan
+Kilde: 3 - års revisjonsplan.docx (Landax / MAVI)
+
+Formål
+Prosedyrens formål er å verifisere ledelsessystemets effektivitet i tråd med interne og eksterne krav på regelmessig basis. Verifisere at selskapets aktiviteter utføres i henhold til selskapets styringssystem og definerte krav og styringsprinsipper.
+Verifisere etterlevelse av markeds- og kundekrav relatert til leveranser av produkter og tjenester
+Verifisere at leverandører leverer iht. leveringsavtale og eventuelt i samsvar med eksterne krav.
+Identifisere og dokumentere forbedringsområder, internt og eksternt.
+Prosedyren tar for seg både utarbeidelse av revisjonsprogram og utførelse av de enkelte revisjoner.
+Minimumskrav internt er; Årlige interne revisjoner basert på en 3-års revisjonsplan.
+Omfang
+Prosedyren omfatter alle interne og eksterne aktiviteter, inkludert andrepartsrevisjon av leverandører.
+Ansvar
+Daglig leder er godkjennende instans for prosedyren og er ansvarlig for implementering av prosedyren.
+Definisjoner og forkortelser
+Verifisere: bekrefte samsvar med.
+Revisjon: systematisk og uavhengig undersøkelse for å fastslå om kvalitetsaktiviteter og tilhørende resultater stemmer overens med det som er planlagt, og om de er effektivt gjennomført og hensiktsmessige for å oppnå målene.
+Revisorers kompetanse
+Revisorer bør ha opplæring i revisjonsteknikk (Landax-kurs)
+Ingen skal revidere eget ansvarsområde
+Hvis revisor ikke har fagkompetanse for det området som skal revideres skal det delta en fagkompetent person i revisjonsteamet.
+Referanser
+ISO 14001:2015 pkt. 9.2 Revisjoner
+Prosess for revisjoner
+Prosess for registreringer
+Prosess for ledelsens gjennomgåelse
+Landax protokoll
+3-års (4) plan (inkl. revisjonsplan for ISO 14001:2015)
+Område
+Standard
+Kap
+Kommentarer
+Omfang
+1
+2
+3
+4
+Kontekst
+9001
+4
+4.1
+x
+Kontekst
+14001
+4
+4.1
+x
+Interesseparter/forventning
+9001/14001
+Analyse m/dokumentasjon
+4.2
+x
+x
+Ledelsessystem/Omfang
+9001/14001
+4.3/4.4
+x
+x
+x
+Årets fokusbaserte tema
+9001/14001
+x
+Statistisk forbedringsbehov
+åpen
+x
+x
+x
+x
+Lederskap
+9001/14001
+5
+x
+x
+Lederskap og forpliktelser
+9001/14001
+5.1.1
+x
+x
+Kundefokus
+9001/14001
+5.1.2
+x
+x
+x
+Kvalitetspolicy
+9001
+5.2
+x
+Miljøpolicy
+14001
+5.2
+x
+x
+Årets fokusbaserte tema
+9001/14001
+x
+Statistisk forbedringsbehov
+åpen
+x
+x
+x
+x
+Planlegging
+9001/14001
+6
+x
+Bestemme risiko/muligheter
+9001/14001
+Analyse m/dokumentasjon
+6.1.1/6.1.2
+x
+x
+Kvalitetsmål
+9001
+6.2 (6.2.1-6.2.2)
+x
+x
+X
+X
+Miljøaspekter
+14001
+6.1.2
+x
+x
+X
+x
+Samsvarsforpliktelser
+14001
+6.1.3 - 6.14
+x
+x
+X
+X
+Miljømål
+14001
+6.2
+x
+x
+X
+x
+Årets fokusbaserte tema
+9001/14001
+x
+Statistisk forbedringsbehov
+åpen
+x
+x
+x
+x
+Støtte
+9001/14001
+7
+x
+Ressurser og Kompetanse
+9001/14001
+7.1 – 7.3
+x
+x
+Infrastruktur
+9001/14001
+7.1.3
+x
+x
+Organisasjonens kunnskap
+9001/14001
+tilstrekkelighet for å nå mål
+7.1.6
+x
+Kommunikasjon (int./ekst.)
+9001/14001
+kundekommunikasjon
+7.4 (7.4.1 – 7.4.3)
+x
+x
+Styring av dok. informasjon
+14001
+Dokumentstyring/versjoner
+7.5.3 / (7.5.2)
+x
+Årets fokusbaserte tema
+9001/14001
+x
+Statistisk forbedringsbehov
+åpen
+x
+x
+x
+x
+Drift
+9001/14001
+8
+x
+Forretningsprosesser drift
+9001/14001
+prosesskart
+8.1 – 8.7
+x
+x
+x
+Miljøprosesser drift
+14001
+8.1 – 8.2
+x
+x
+x
+Årets fokusbaserte tema
+9001/14001
+x
+Statistisk forbedringsbehov
+åpen
+x
+x
+x
+x
+Evaluering av prestasjon
+9001/14001
+9
+x
+Interne revisjoner
+9.2
+x
+x
+x
+x
+Ledelsens Gjennomgåelse
+9.3
+x
+x
+x
+x
+Årets fokusbaserte tema
+9001/14001
+x
+Statistisk forbedringsbehov
+åpen
+x
+x
+x
+x
+Forbedring
+9001/14001
+10
+x
+Avvik og korrigerende tiltak
+10.2
+x
+x
+x
+x
+Kontinuerlig forbedring
+10.3
+x
+x
+x
+x
+Årets fokusbaserte tema
+9001/14001
+x
+Statistisk forbedringsbehov
+åpen
+x
+x
+x
+x
+EKSEMPEL:
+3 års revisjonsplan NS-EN ISO 9001:2015
+Kommentar:3-års planen dekker alle ISO 9001:2015 standardens kapitler
+Område
+2022
+2023
+2024
+Ad-hoc revisjoner
+Kapittel 4
+Kontekst
+pkt. 4.1 – 4.4
+4.2
+Pkt. 4.3 - 4.4
+Planlegges løpende iht. resultater/behov
+og iht. pkt. 9.2 og 9.3
+Kapittel 5
+Ledelse
+pkt. 5.1 – 5.1.2
+pkt. 5.2 – 5.3
+Pkt. 5.1.2
+Pkt. 5.2-5.3
+Planlegges løpende iht. resultater/behov
+og iht. pkt. 9.2 og 9.3
+Kapittel 6
+Planlegging
+pkt. 6.1
+pkt. 6.2 - 6.3
+pkt. 6.1-6.2
+Planlegges løpende iht. resultater/behov
+og iht. pkt. 9.2 og 9.3
+Kapittel 7
+Støtte
+pkt. 7.1.1 – 7.1.2
+pkt. 7.1.4 -7.1.5
+pkt. 7.3 – 7.5
+pkt. 7.1.3
+pkt. 7.1.6
+pkt. 7.2
+Planlegges løpende iht. resultater/behov
+og iht. pkt. 9.2 og 9.3
+Kapittel 8
+Drift
+Unntak: 8.3: D&U
+pkt. 8.1 - 8.2
+pkt. 8.4
+pkt. 8.5 - (8.5.5-8.5.6)
+pkt. 8.7
+Planlegges løpende iht. resultater/behov
+og iht. pkt. 9.2 og 9.3
+Kapittel 9
+Ytelse- og evaluering
+pkt. 9.1.1
+pkt. 9.2
+pkt. 9.3
+pkt. 9.1.2
+pkt. 9.3
+pkt. 9.1.3
+Kommentar:
+Løpende evaluering jf. statistikk i Landax
+Planlegges løpende iht. resultater/behov
+og iht. pkt. 9.2 og 9.3
+Kapittel 10
+Forbedring
+pkt. 10.2-10.3
+pkt. 10.3
+Pkt. 10.1-10.3
+Planlegges løpende iht. resultater/behov
+og iht. pkt. 9.2 og 9.3
+Annet

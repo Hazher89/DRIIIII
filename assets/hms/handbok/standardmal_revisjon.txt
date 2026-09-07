@@ -1,0 +1,557 @@
+Standardmal (revisjon/audit)
+Kilde: - 2025-12-23 -  - (Standardmal).pdf (Landax / MAVI)
+
+Mavi logistikk AS
+Solheimveien 3
+1461 Lørenskog
+E-post: drift@mavilogistikk.no
+Medarbeider Adam Michta
+Nummer:
+0024
+Hovedavdeling:
+Bilpark
+Visningsnavn:
+Adam Michta
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Hellaveien 41 2013 SKJETTEN Akershus no
+Telefon:
+96802615
+Mobil:
++47 96 80 26 15
+E-post:
+Michtaa672@gmail.com
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+Adam
+Brukergrupper:
+Brukere
+Funksjoner:
+Ansatt
+
+Medarbeider Aso Ibrahimi
+Nummer:
+0019
+Hovedavdeling:
+Lager
+Visningsnavn:
+Aso Ibrahimi
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Romsås senter 8 0970 OSLO no
+Telefon:
+96747339
+Mobil:
++47 96 74 73 39
+E-post:
+asso.ebrahimi@gmail.com
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+Aso
+Brukergrupper:
+Brukere
+Funksjoner:
+Ansatt
+
+Medarbeider Awara Rasoulpour
+Nummer:
+152
+Hovedavdeling:
+Lager
+Visningsnavn:
+Awara Rasoulpour
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Strømsveien 55 2010 STRØMMEN no
+Telefon:
+Mobil:
++47 40 88 72 82
+E-post:
+awara038@gmail.com
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+Aware
+Brukergrupper:
+Hazher & Tommy
+Funksjoner:
+
+Medarbeider Azad Khezernia
+Nummer:
+132
+Hovedavdeling:
+Lager
+Visningsnavn:
+Azad Khezernia
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Per O. Lunds gate 14 1475 Finstadjordet no
+Telefon:
+Mobil:
++47 40 17 37 65
+E-post:
+azad.khezernia@gmail.com
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+Azad
+Brukergrupper:
+Brukere
+Funksjoner:
+Ansatt
+
+Medarbeider Hazher Osman Abdullah
+Nummer:
+0007
+Hovedavdeling:
+Administrasjon
+Visningsnavn:
+Hazher Osman Abdullah
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Fredensborgveien 41b 0127 Oslo no
+Telefon:
+45045451
+Mobil:
++47 45 04 54 51
+E-post:
+hazher@mavilogistikk.no
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+Hazher
+Brukergrupper:
+Ferie - Administrator, Fravær Administrator, test
+Funksjoner:
+Verneleder, Administrator
+
+Medarbeider Herish Hameed Alsabaawi
+Nummer:
+0021
+Hovedavdeling:
+Kontor
+Visningsnavn:
+Herish Hameed Alsabaawi
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Prost Stabels vei 416 2019 SKEDSMOKORSET no
+Telefon:
+41619727
+Mobil:
++47 41 61 97 27
+E-post:
+heerish.al@gmail.com
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+heerish.al@gmail.com
+Brukergrupper:
+Brukere
+Funksjoner:
+Ansatt
+
+Medarbeider Ingrid Hoem
+Nummer:
+0011
+Hovedavdeling:
+Kjørekontor
+Visningsnavn:
+Ingrid Hoem
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Solbakken Terrasse 14A 1480 SLATTUM no
+Telefon:
+41263696
+Mobil:
++47 41 26 36 96
+E-post:
+ingrid@mavilogistikk.no
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+ingrid@mavilogistikk.no
+Brukergrupper:
+Brukere
+Funksjoner:
+Ansatt
+
+Medarbeider Jamal Farkhapour
+
+Nummer:
+0020
+Hovedavdeling:
+Lager
+Visningsnavn:
+Jamal Farkhapour
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Statsråd Ihlens vei 117h 1466 STRØMMEN Akershus no
+Telefon:
+40583820
+Mobil:
++47 40 58 38 20
+E-post:
+maqwl@hotmail.com
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+maqwl@hotmail.com
+Brukergrupper:
+Brukere
+Funksjoner:
+Ansatt
+
+Medarbeider Jaspreet Singh
+Nummer:
+0008
+Hovedavdeling:
+Kjørekontor
+Visningsnavn:
+Jaspreet Singh
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Toppen 13 1470 LØRENSKOG no
+Telefon:
+95451389
+Mobil:
++47 95 45 13 89
+E-post:
+jassy@mavilogistikk.no
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+jassy
+Brukergrupper:
+Brukere, Hazher & Tommy
+Funksjoner:
+Personal leder
+
+Medarbeider Julie Sayeeda Eyland Pande-Rolfsen
+Nummer:
+154
+Hovedavdeling:
+Kjørekontor
+Visningsnavn:
+Julie Sayeeda Eyland Pande-Rolfsen
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Heer Terrasse 34 F 1445 Drøbak Akershus no
+Telefon:
+Mobil:
++47 96 90 71 80
+E-post:
+juliesayeeda.pande@gmail.com
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+juliesayeeda.pande@gmail.com
+Brukergrupper:
+Brukere
+Funksjoner:
+Ansatt
+
+Medarbeider Karwan Lian
+Nummer:
+0015
+Hovedavdeling:
+Lager
+Visningsnavn:
+Karwan Lian
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Edvard Greigs vei 2 1472 FJELLHAMAR no
+Telefon:
+46671169
+Mobil:
++47 46 67 11 69
+E-post:
+lager@mavilogistikk.no
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+karwan
+Brukergrupper:
+Brukere
+Funksjoner:
+Personal leder
+
+Medarbeider Madyar Khezernia
+Nummer:
+0016
+Hovedavdeling:
+Lager
+Visningsnavn:
+Madyar Khezernia
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Spellmannsplassen 10 2008 FJERDINGBY no
+Telefon:
+40094570
+Mobil:
++47 40 09 45 70
+E-post:
+madyar.khezernia@hotmail.com
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+madyar.khezernia@hotmail.com
+Brukergrupper:
+Brukere
+Funksjoner:
+Ansatt
+
+Medarbeider MAVI
+Nummer:
+0139
+Hovedavdeling:
+Visningsnavn:
+MAVI
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+no
+Telefon:
+Mobil:
+E-post:
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+MAVI
+Brukergrupper:
+Brukere
+Funksjoner:
+
+Medarbeider Nicola Vino
+Nummer:
+0134
+Hovedavdeling:
+MAVI Logistikk AS
+Visningsnavn:
+Nicola Vino
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Kløverbakken 13 1940 Bjørkelangen no
+Telefon:
+Mobil:
++47 40 17 50 11
+E-post:
+nico@mavilogistikk.no
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+Nicola
+Brukergrupper:
+test
+Funksjoner:
+Daglig leder
+
+Medarbeider Rafal Dopieralski
+
+Nummer:
+107
+Hovedavdeling:
+Lager
+Visningsnavn:
+Rafal Dopieralski
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Jordstjerneveien 52J 1283 Oslo Oslo no
+Telefon:
+Mobil:
++47 40 07 56 45
+E-post:
+abstraksjon.salong@gmail.com
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+abstraksjon.salong@gmail.com
+Brukergrupper:
+Brukere
+Funksjoner:
+
+Medarbeider Tommy Larsen
+Nummer:
+0005
+Hovedavdeling:
+Selskapet
+Visningsnavn:
+Tommy Larsen
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Prost Stabels vei 325 2019 Skedsmokorset no
+Telefon:
+40300519
+Mobil:
++47 40 30 05 19
+E-post:
+tommy@mavilogistikk.no
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+Tommy
+Brukergrupper:
+Ferie - Administrator, Fravær Administrator, Hazher & Tommy, test, Test
+Funksjoner:
+Daglig leder
+
+Medarbeider Zelimhan Zavalovitsj
+Nummer:
+0138
+Hovedavdeling:
+Kontor
+Visningsnavn:
+Zelimhan Zavalovitsj
+Aktiv i selskapet:
+Ja
+
+Informasjon:
+Adresse 1:
+Trygves vei 4 1473 LØRENSKOG Akershus no
+Telefon:
+Mobil:
++47 94 83 39 90
+E-post:
+zelim797@gmail.com
+Tel. pårørende 1:
+Tel. pårørende 2:
+Notater:
+
+Brukeropplysninger:
+Tillat pålogging:
+Ja
+Brukernavn:
+Zelim
+Brukergrupper:
+Brukere
+Funksjoner:
+
+Dato: 23.12.2025 kl. 22.24.48

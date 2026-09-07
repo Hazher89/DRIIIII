@@ -1,0 +1,52 @@
+Utstyr (Landax-eksport)
+Kilde: Equipment-2025-12-23.xlsx (Landax / MAVI)
+
+Ark i arbeidsboken: Worksheet
+
+## Ark 1
+Navn | ID | Godkjent | Godkjent dato | Godkjent av | Status | Nummer | Identifikasjon | Lokasjon | Lokasjon (sti) | Gruppe | Gruppeplassering | Produksjonsdato | Årsmodell | Kjøpsdato | Garantidato | Planlagt utrangering | Faktisk utrangering | Sist servicedato | Neste servicedato | Sist kontrollert | Neste kontroll | Lagerbeholding | Lagerverdi | Tellerstand | Avdeling | Prosesser | Ansvarlig | Kunde | Leverandør | Basert på produkt | Servicepartner | Fabrikat | Modellnummer | Serienummer | Tidløs | Til utlån | Nåværende utlån | Utlånspris | Tillat avviksregistrering | Merkelapper | Breddegrad | Lengdegrad | Tag 1 | Tag 2 | Tag 3 | Tag 4 | Tag 5 | Tag 6 | Tag 7 | Tag 8 | Tag 9 | Tag 10 | Referanse 1 | Referanse 2 | Referanse 3 | Referanse 4 | Referanse 5 | Referanse 6 | Referanse 7 | Referanse 8 | Referanse 9 | Referanse 10
+Varebil | 4 | Ja | Aktiv | DR62082 | Lørenskog | Lørenskog | Leasing | 2019 | 43819.0 | 45646.0 | 44748.0 | 1.0 | 0.0 | Bilpark | Tommy Larsen | Leaseplan | BOS - Lørenskog | Mercedes | Nei | Ja | 0,00 | Ja
+Truck | 6 | Ja | Aktiv | 8FBET16 | Lørenskog | Lørenskog | Elkjøps eierskap | 2019 | 45922.0 | 46286.0 | 1.0 | 0.0 | Lager | Karwan Lian | Elkjøp | Still Norge AS | Toyota | Nei | Ja | 0,00 | Ja
+Truck | 7 | Ja | Aktiv | FN490780 | Lørenskog | Lørenskog | Elkjøps eierskap | 2015 | 45901.0 | 46295.0 | 1.0 | 0.0 | Lager | Karwan Lian | Elkjøp | Still Norge AS | Jungheinrich | Nei | Ja | 0,00 | Ja
+Truck | 8 | Ja | Aktiv | 8FBET15 | Lørenskog | Lørenskog | Elkjøps eierskap | 2011 | 45930.0 | 46295.0 | 1.0 | 0.0 | Lager | Karwan Lian | Elkjøp | Still Norge AS | Toyota | Nei | Ja | 0,00 | Ja
+Truck | 9 | Ja | Aktiv | 8FBET15 | Lørenskog | Lørenskog | Elkjøps eierskap | 2013 | 45901.0 | 46266.0 | 1.0 | 0.0 | Lager | Karwan Lian | Elkjøp | Still Norge AS | Toyota | Nei | Ja | 0,00 | Ja
+Snile | 10 | Ja | Aktiv | SWE140 | Lørenskog | Lørenskog | Elkjøps eierskap | 2015 | 45901.0 | 46295.0 | 1.0 | 0.0 | Lager | Karwan Lian | Elkjøp | Still Norge AS | BT | Nei | Ja | 0,00 | Ja
+Snile | 11 | Nei | Aktiv | SWE140 | Lørenskog | Lørenskog | Elkjøps eierskap | 2015 | 45901.0 | 46295.0 | 1.0 | 0.0 | Lager | Karwan Lian | Elkjøp | Still Norge AS | BT | Nei | Nei | 0,00 | Ja
+Tommys Laptop | 12 | Ja | 45006.0 | Tommy Larsen | Aktiv | 0002 | NANOCV08245543A | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 2022 | 1.0 | 0.0 | Selskapet | Tommy Larsen | Nei | Ja | 0,00 | Ja
+Hazher MacBook | 13 | Ja | 45006.0 | Hazher Osman Abdullah | Aktiv | 0003 | FJWK49C52W | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 2022 | 44819.0 | 1.0 | 0.0 | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Kveins PC | 14 | Ja | 45006.0 | Hazher Osman Abdullah | Aktiv | 0004 | N2N0CX04Y66806C | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 2022 | 44831.0 | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Ingrids PC | 15 | Ja | 45006.0 | Hazher Osman Abdullah | Aktiv | 0005 | 5SC050JZQL | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 2022 | 44831.0 | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Nei
+PC skjerm Tommy | 16 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0006 | HP 24fw | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 2021 | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Skjerm Drift 1 | 17 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0007 | S27E591C | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Skjerm Drift 2 | 18 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0008 | VG270 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Drift 2 | 19 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0009 | Lenovo Desktop | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Nei
+PC Skjerm Herish | 20 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0010 | VL279HE | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Herish | 21 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0011 | Lenovo YOGA-730-15iWL | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Nei
+PC skjerm Zelim | 22 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0012 | U28R550UQR | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Skjerm Adib | 23 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0013 | S27F358FWU | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Adib | 24 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0014 | 20LT-S1W600 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Drift Telefon (Adib | 25 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0015 | Galaxy A8 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Drift 2 | 26 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0016 | ASUS X500MA_X500MA | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Drift Telefon (Hoved) | 27 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0017 | Galaxy A53 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Drift Printer (stor) | 28 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0018 | Xerox C8035 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Nei
+PC Iulia | 29 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0019 | S433E | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Skjerm Iulia 1 | 30 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0020 | L27i-30 | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Skjerm Iulia 2 | 31 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0021 | C27-35 | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Skjerm Nico | 32 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0022 | 27GP850-B | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Ireka | 33 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0023 | NP750XDA | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC skjerm Ireka | 34 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0024 | C20270FLO | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Nei
+PC Skjerm Ireka 2 | 35 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0025 | C20270FL0 | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC for skjerm (ute) | 36 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0026 | Acer Aspire XC-830 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Skjerm Karwan | 37 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0027 | Samsung 24F350 | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Amin | 38 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0028 | 20FV-S0GP00 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Skjerm Amin | 39 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0029 | LS24E390 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Drift Telefon (Herish) | 40 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0030 | SAMSUNG | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Drift PC Skjerm 3 | 41 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0031 | 9VG71AA | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Drift PC Skjerm 4 | 42 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0032 | 9VG71AS | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC AZAD | 43 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0033 | Lenovo DESKTOP | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Skjerm AZAD | 44 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0034 | VG245 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Printer Tommy/Hazher kontor | 45 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0035 | P-C3562i MFP | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Skjerm Hazher | 46 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0036 | G193403G0 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Excel file full oversikt | 47 | Ja | 45028.0 | Hazher Osman Abdullah | Aktiv | 0037 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+Telefon Zelim | 48 | Ja | 45029.0 | Hazher Osman Abdullah | Aktiv | 0038 | Iphone 13 | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja
+PC Zelim | 49 | Ja | 45029.0 | Hazher Osman Abdullah | Aktiv | 0039 | Lenovo Laptop | MAVI Logistikk AS | MAVI Logistikk AS | IT og telefoni | 1.0 | 0.0 | Administrasjon | Hazher Osman Abdullah | Nei | Ja | 0,00 | Ja

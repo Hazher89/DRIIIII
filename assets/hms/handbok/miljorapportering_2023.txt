@@ -1,0 +1,18 @@
+Miljørapportering 2023
+Kilde: Miljørapportering 2023.xlsx (Landax / MAVI)
+
+Ark i arbeidsboken: Miljørapportering 2023
+
+## Ark 1
+Omsetning | 60.06 | Millioner kroner eks mva (avventer realisert budsjett)
+Antall årsverk | 17 | Gjennomsnitt for året
+Totale mengder årlig forbrukt papir | 1700 | kg
+Avfallsmengder | 94117 | kg
+Restavfall | 58000 | kg
+Klar plastfolie | 3817 | kg
+Blandet papp og papir | 32100 | kg
+Blandet EE-avfall | 1603000 | kg
+Energiforbruk Elektrisitet | kWh (avventer gårdeier)
+Oppvarmet areal | 4000 | m2
+Sykefravær i prosent | 0.14630000000000001 | %
+#VALUE!

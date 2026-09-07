@@ -149,7 +149,7 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Svarer ut fra MAVI/Elkjøp monteringsoversikt · ikke pris eller booking',
+                              'Svarer om levering & montering · ikke pris eller live ordrestatus',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 11,
@@ -194,7 +194,7 @@ class _SideRail extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Monteringshjelper',
+              'Levering & montering',
               style: TextStyle(
                 color: Colors.black.withValues(alpha: 0.5),
                 fontSize: 13,
@@ -214,7 +214,7 @@ class _SideRail extends StatelessWidget {
             ),
             const Spacer(),
             Text(
-              'Spør fritt om hva som er inkludert hos deg.',
+              'Spør fritt om levering, booking og montering hos deg.',
               style: TextStyle(
                 fontSize: 12,
                 height: 1.35,
@@ -250,7 +250,7 @@ class _TopBar extends StatelessWidget {
               const SizedBox(width: 4),
             ],
             Text(
-              'Montering',
+              'Hjelp',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -304,7 +304,7 @@ class _EmptyHero extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               Text(
-                'Hva lurer du på om monteringen?',
+                'Hva kan vi hjelpe deg med?',
                 textAlign: TextAlign.center,
                 style: DriftProTheme.headingMd.copyWith(
                   fontWeight: FontWeight.w700,
@@ -314,7 +314,8 @@ class _EmptyHero extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Spør som du vil — inkludert, ikke inkludert, eller hva du må gjøre før levering.',
+                'Spør naturlig om levering, ombooking, tidsvindu eller montering — '
+                'du får klare svar på hva du skal gjøre.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,
@@ -532,7 +533,7 @@ class _Composer extends StatelessWidget {
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => onSend(),
               decoration: const InputDecoration(
-                hintText: 'Spør om hva som helst om monteringen…',
+                hintText: 'Spør om levering, booking eller montering…',
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(
                   horizontal: 18,

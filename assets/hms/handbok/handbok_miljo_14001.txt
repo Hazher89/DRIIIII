@@ -1,0 +1,318 @@
+Håndbok ledelsessystem ytre miljø (ISO 14001)
+Kilde: Håndbok for ledelsessystem for ytre miljø - 14001.docx (Landax / MAVI)
+
+Miljøhåndbok
+MAVI Logistikk AS
+NS-EN ISO 14001:2015
+-Håndbok for ledelsessystem for ytre miljø
+MAVI Logistikk AS
+22.09.2022
+Daglig leder
+Innholdsfortegnelse
+MAVI Logistikk as3
+Om denne Miljøhåndboka3
+Styringssystemer i MAVI Logistikk as3
+Miljøpolicy3
+mavi logistikk as skal:4
+Lederskap og ansatte medvirkning4
+Kontekst4
+Planlegging - Miljørisiko4
+Risikotilnærming av ledelsessystemet for miljø4
+Risikokartlegging og risikostyring av miljø5
+Muligheter for forbedring av miljø5
+Samsvar med myndighetskrav6
+Risikostyring og tiltak6
+Generelt6
+Risikostyring6
+Miljøkartlegging7
+Miljømål7
+Støttefunksjoner7
+Ressurser7
+Kompetanse8
+Bevisstgjøring i miljøforhold8
+Kommunikasjon8
+Dokumentasjon i ledelsessystemet for miljøet9
+Styring av dokumentert informasjon9
+Daglig drift9
+Innkjøp og anskaffelser10
+Beredskap og innsats10
+Prestasjon vedrørende miljø10
+Generelt10
+Samsvarsevaluering av lover og krav11
+Internrevisjon11
+Ledelsens gjennomgåelse11
+Kontinuerlig forbedring12
+Håndtering av hendelser, avvik og korrigerende tiltak12
+Kontinuerlig forbedring12
+MAVI Logistikk AS (MAVI)
+MAVI Logistikk AS ble stiftet i 2013 og har siden den gang jobbet tett med Elkjøp Norge AS som sin største og viktigste kunde i porteføljen.
+Siden stiftelsen av selskapet har MAVI hatt en stabil og god vekst i omsetning og antall årsverk.
+Pr 25.10.22 er det 21 ansatte i MAVI og 40 eksterne samarbeidspartnere.
+Suksessen til selskapet skyldes et bredt tjenestesortiment i en bransje som på generell basis har et begrenset antall tilleggstjenester, samtidig som MAVI har en kultur som setter leveransekvalitet, miljøbevissthet og kundens miljøforventninger i fokus.
+MAVI spesialiserer seg på hjemleveringer til forbrukere og tilbyr en rekke tilleggstjenester, bl.a.
+Innbæring
+Utpakking og retur av emballasje til gjenvinning
+Montering og installasjon
+Funksjonstest av produktene
+Retur av vare til gjenvinning
+Hensikt og mål
+Miljøhåndboka er utarbeidet for å beskrive vårt miljøsystem for interne og eksterne interesseparter.
+Som ISO-sertifisert virksomhet har MAVI har forpliktet seg til å imøtekomme alle miljøkrav- og forventninger som stilles til oss fra kunder, myndigheter og øvrige interesseparter.
+3. Omfang
+MAVI Logistikk utfører distribusjon- og hjemleveringstjenester over hele det sentrale Østlandet.
+Hovedproduktet baseres på hjemlevering av hvite- og brunevarer med tilleggstjenester.
+Lov- og forskriftsreferanser:
+Forurensningsloven og Arbeidsmiljøloven
+Internkontrollforskriften av 1997
+Krav i HMS lovverk og forskrifter
+Nasjonale og lokale miljøkrav
+Ledelsesstandarder:
+MILJØFYRTÅRN: Sertifisert
+NS-EN ISO 14001:2015: Revideres 25.10.2022
+Miljøpolicy
+MAVI Logistikk AS skal fremme en bærekraftig utvikling og er bevisst sitt ansvar iht. samfunnets forventning om å bidra til positiv miljøpåvirkning. Alle medarbeidere i MAVI skal følge lovfestede krav og ta hensyn til ytringer fra kunder, grunneiere, naboer og andre interesseparter som påvirker eller blir påvirket av våre aktiviteter.
+MAVI skal drive en sunn virksomhet preget av ansvar for ansatte, samfunn og miljø. Vi vil, som et minimum, alltid overholde miljølovgivningen samt de lokale miljøkrav som gjelde for vår virksomhet. Vi skal kontinuerlig forbedre vårt miljøarbeid og jobbe mot et mål om å være den ledende innenfor vår bransje.
+Vi forventer samtidig at alle våre leverandører, kunder og samarbeidspartnere, samarbeider med oss for å oppfylle våre miljømessige ambisjoner. Miljøkrav er en sentral del av de avtalene vi inngår. Vi ønsker aktivt å informere om vårt miljøarbeid og ha en god dialog med våre interesseparter om våre vesentlige miljøaspekter.
+Våre miljømål er knyttet til våre regelmessig gjennomførte miljøaspekt- og interessepartsanalyser. Våre miljøaspekter omfatter bl.a. EE-avfall og avfallssortering, CO2-utslipp og forbruk i daglig drift.
+Vårt lederskap og ledelsessystem for miljø skal sikre at våre forpliktelser om å forebygge negativ miljøpåvirkning fra vår virksomhet.
+MAVI Logistikk AS skal:
+Ha et bevisst miljøstandpunkt overfor våre leverandører og samarbeidspartnere
+Arbeide forebyggende og aktivt følge utviklingen innen miljøområdet
+Ta hensyn til ytre miljø ved vurdering av nye tjenester og utstyr
+Jobbe aktivt med ruteoptimalisering for å redusere utslipp og tomtransport
+La kommunikasjonen i miljøspørsmål bygge på fakta, helhetssyn, åpenhet og tydelighet
+Gjennom informasjon, holdningsskapende arbeid og inkludering bidra til å styrke miljø-bevisstheten blant de ansatte
+Stille miljøkrav ovenfor våre samarbeidspartnere
+I tråd med ISO 14001 har vi kartlagt våre interesseparters krav og forventninger, og hvilke muligheter resultatet positivt kan påvirke selskapets fremtidig drift.
+Vi arbeider aktivt for å begrense antall kjørte kilometer hos våre samarbeidspartnere gjennom god ruteplanlegging. I tillegg vektlegges en forventning om at transportørene vi benytter fokuserer på miljøvennlig kjøreadferd og om mulig, benytter null- eller lavutslippsbiler.
+Vi er bevisst på at transportbransjen historisk sett har sluppet ut mye CO2 og gjort det vanskelig å tilfredsstille myndighetenes og våre egne ambisjoner om reduksjon av utslipp. Vår ambisjon er å bevisstgjøre og påvirke våre samarbeidspartnere i en miljøvennlig retning, gjennom våre forpliktende avtaler.
+Den teknologiske utviklingen for lav- eller nullutslipp for aktuelle kjøretøy, begrenser foreløpig de mindre aktørenes investeringsmuligheter. Dette hindrer likevel ikke MAVI Logistikk AS fra å påvirke våre faste samarbeidspartnere i tråd med våre mål og den retningen våre kunder forventer.
+Lederskap og ansatte medvirkning
+Lederskap og medvirkning fra de ansatte er av vesentlig betydning for å lykkes med et hensiktsmessig og praktisk miljøarbeid.
+Øverste leder er ansvarlig for at miljøsystemet tilfredsstiller lovkrav og hensiktsmessighet
+Tildeling av ressurser for kompetanseutvikling og miljøopplæring.
+Fremme eierskap til policy og mål og sikre at disse etterleves av organisasjonen.
+Sikre at nødvendige forbedringstiltak gjennomføres, måles og evalueres regelmessig.
+Ha en åpen dialog med ansatte og eksterne parter.
+Kontekst
+Generelt om kontekst
+For å innhente og vedlikeholde tilstrekkelig kunnskap om bedriftens kontekst relatert til miljøkrav, gjennomfører vi regelmessige evalueringer av interesseparters krav og behov. I denne prosessen vurderes interne- og eksterne forhold som bedriften kan påvirke, eller bli påvirket av.
+Alle vesentlige aspekter tas inn i handlingsplaner, basert på kjente risiko- og mulighetsdefinisjoner. Kunnskapen oppdateres ved endringer i MAVI sin virksomhet herunder nye eller endrede miljøkrav.
+Eksterne og interne forhold
+Marked- og konkurranse
+MAVI skiller seg fra konkurrentene ved å inneha et nettverk av godkjente transportører, som leverer bransjekunnskap til konkurransedyktige priser.
+Kunder
+Kundereferanser, tjenesteomfang er lagt ut på våre hjemmesider www.mavilogistikk.no
+Tjenester og personell
+Vår styrke er forankret i dyktige medarbeidere med solid bransjekunnskap, erfaring og kompetanse. Lovpålagte kompetanser som bedriften må dokumentere er tilgjengelige for våre kunder og øvrige interesseparter etter behov. Vedlikehold og utvikling av spesialkompetanser følger bedriftens strategi og de krav markedene til enhver tid stiller. Eksterne tilsyn hjemlet i lov, samt interne og eksterne revisjoner, sørger for at all kompetanse er gyldig og verifiserbar i ledelsessystemets kompetanseregister.
+Miljø, Kvalitet og HMS-relaterte faktorer
+Interne:
+MAVI Logistikk følger alle lovpålagte, forskriftsmessige og etiske retningslinjer som kreves for å sikre et godt arbeidsmiljø for sine ansatte. Våre arbeidskontrakter følger arbeidsmiljøloven, internasjonale konvensjoner- og regulativer for personvern og lønn. Alle ansatte har ved signering av kontrakt, forpliktet seg til å følge virksomhetens opplæringsaktiviteter innen kvalitet og ytre miljø. HMS-opplæring er forankret i eksisterende lovgiving og «Forskrift for utførelse av arbeid»
+Eksterne:
+MAVI Logistikk sine aktiviteter påvirker ikke ytre miljøfaktorer som utslipp til vann eller jord, men som beskrevet tidligere vil våre transporttjenester slippe ut CO2 med dagens teknologi.
+Likevel inngår alt personell i virksomhetens kompetanseutviklingsprogrammer, herunder opplæring i håndtering av selskapets definerte miljøkrav og ambisjoner. Våre vesentlige miljøaspekter og planer sikrer løpende arbeid for samsvar med myndighetskrav og bestemmelsene i forurensningsloven.
+Vi arbeider for at våre tjenester ikke skal gi utilsiktede miljørelaterte «fotavtrykk» for samfunnet gjennom risikoevalueringer, tiltak og planverk. Våre oppdragsgivere kartlegger egne produkters «livsløp» inkludert framskriving av forhold som kan forhindre et uønsket fremtidig «fotavtrykk».
+MAVI Logistikk bidrar til at kundene ikke blir påført et vanskeligere arbeid med å oppfylle egne miljøforpliktelser gjennom våre aktiviteter og rammebetingelser. Vårt miljøsystem skal bidra til at kundene også oppnår miljøforbedringer og noe som styrker begge parters konkurransesituasjon.
+Planlegging - Miljørisiko
+Risikotilnærming av ledelsessystemet for miljø
+MAVI Logistikk er lokalisert i en region som på generell basis har utfordringer med CO2 og NOx, samt at regionen har utfordringer knyttet til svevestøv og mikroplast relatert til biltrafikk.
+Som følge av den generelle miljøutfordringen har MAVI etablert en miljøpolicy som hensyntar dette. Nåværende risiko- og mulighetsanalyser viser at de vesentlige miljøaspektene kan påvirke utviklingen positivt iht utslipp fra egen biltransport. Vi har kun 2 egeneide biler som ved fornying skal vurderes byttet til lavutslipp eller El. Vår miljøambisjon er å fokusere på «grønne» innkjøp der det forretningsmessig og teknisk kan forsvares. Pr 25.10.22 ligger det i bestilling ett kjøretøy med nullutslipp som blir MAVI sin første egeneide El-skapbil.
+Risikokartlegging og risikostyring av miljø
+I tillegg til ledelsessystemets krav om overordnede risikotilnærming er det etablert en prosess for risikokartlegging av alle typer uønskede hendelser.
+Hensikten med prosessen er å sikre at risiko for negativ miljøpåvirkning blir identifisert samt redusert til et akseptabelt risikonivå eller fjernet helt.
+Prosessen omfatter bl.a. risikokartlegging og risikostyring av forhold relatert til:
+Organisasjon, Infrastruktur, Innkjøp, Drift, Vedlikehold m.m. Kartleggingen oppdateres årlig eller dersom det skjer vesentlige endringer med betydning for miljøet.
+Prosessen er utarbeidet med medvirkning fra våre ansatte.
+Forbedringer relatert til risikobaserte muligheter
+Definisjonen av risiko omfatter også en positiv risiko som innebærer identifisering av muligheter.
+Redusert risiko for ulykker/hendelser gjennom ny teknologi eller organisatoriske endringer.
+Styrket omdømme ved regelmessig informasjon til marked og myndigheter om fremskritt og målbare resultater.
+Konkrete samarbeidsmøter om forbedringer med våre største kunder, basert på hverandres «vesentlige miljøaspekter».
+Midlene vi har for å utnytte mulighetene:
+Vedlikeholde en policy for miljø som blir kommunisert og etterprøvd ved kontroll og revisjonsaktiviteter samt vurdert i ledelsens gjennomgåelse
+Følge opp alle målbare forbedringsmål
+Gjennomføre og overholde metodikken for kontinuerlig forbedring
+Fremme kultur for rapportering av farlige forhold og farlige hendelser
+Overvåke og kommunisere våre miljøprestasjoner til interessepartene regelmessig.
+Prioriter ressurser til kompetanseutvikling innen miljø
+Samsvar med myndighetskrav
+MAVI Logistikk as har etablert rutiner for å sikre etterlevelse og samsvar med lover, forskrifter og andre myndighetskrav. En oversikt over myndighetskrav er etablert og endringer vil bli fulgt opp ved periodisk sjekk med www.regelhjelp.no og en samsvarsvurdering vil bli utført på årlig basis.
+Alle myndighetskrav er innarbeidet i ledelsessystemet for miljø
+Risikostyring og tiltak
+Generelt
+Risiko som er identifisert som følge av risikokartlegging skal klassifiseres for å identifisere risiko som er over et akseptabelt risikonivå.
+Tiltak skal gjennomføres for å redusere risiko så langt som praktisk mulig.
+Tiltakene skal innarbeides i de prosesser, aktiviteter eller arbeidsoperasjoner der tiltakene er relevante.
+Hvis det ikke er mulig å redusere risiko til et akseptabelt risikonivå, selv med alle mulige risikoreduserende tiltak skal denne aktivitet ikke utføres.
+Hierarki for risikoreduksjon eller risikostyring skal følge følgende prioritering:
+Fjerne risiko
+Redusere risiko
+Styre risiko
+Etablere sikkerhetsordninger som hindrer konsekvensen av miljøhendelser
+Risikostyring
+Risikostyring er løpende styring med den restrisikoen som er tilstede etter at risikokartlegging-risikoidentifisering-risikoreduksjon og er gjennomført.
+Risikostyring omfatter:
+Sikre at dokumenterte arbeidsrutiner som er utarbeidet etterleves
+Sikre at risiko er kommunisert til alle berørte
+Miljøkartlegging
+En miljøkartlegging er utført for å synliggjøre vår miljøpåvirkning. Basert på de miljøaspekter som ble kartlagt har vi prioritert og valgt de vesentlige miljøaspekter, og hvilke aktiviteter som påvirker disse. De vesentlige miljøaspektene danner grunnlag for vår miljøstyring og våre forbedringsmål.
+Basert på de miljøaspekter som ble kartlagt har vi prioritert og valgt de vesentlige miljøaspekter, og hvilke aktiviteter som påvirker disse. De vesentlige miljøaspektene danner grunnlag for vår miljøstyring og våre forbedringsmål.
+De vesentlige miljøaspektene er identifisert innen følgende områder:
+Transportørers CO2/NOx utslipp
+Avfallshåndtering
+Innkjøp av varer og tjenester
+Renhold og vedlikehold
+Det er også vurder risiko for hendelser eller ulykker som kan føre til en uforutsett miljøpåvirkning.
+Miljømål
+MAVI Logistikk as har etablert dokumenterte målbare miljømål for alle vesentlige miljøaspekter som bedriften kan påvirke eller bli påvirket av.
+Miljømålene er kommunisert til alle som er under bedriftens styring og holdes oppdatert. (ansatte, innleide og besøkende i den grad det er nødvendig).
+Handlingsplan er utarbeidet for alle miljømål og handlingsplanen vil bli fulgt opp på kvartalsvis basis. Handlingsplanen skal beskrive:
+Hva som skal gjøres
+Hvilke ressurser som skal brukes
+Hvem som er ansvarlig
+Når tiltaket skal være utført
+Måleindikatorer
+Hvordan tiltakene skal integreres i organisasjonens prosesser
+Det er et lederansvar og iverksette tiltak i samarbeid med arbeidstakerne hvis miljømålene ikke nås.
+Årets måloppnåelse av miljømål evalueres på ledelsens gjennomgåelse
+Støttefunksjoner
+Ressurser
+MAVI LOGISTIKK AS har fastsatt de ressursene som er nødvendig for etablering, implementering, vedlikehold og kontinuerlig forbedre ledelsessystemet.
+Kompetanse
+Organisasjonens system for sikring av den kompetanse i miljø som er nødvendig for de ansatte er ivaretatt i en dokumentert rutine for dette.
+I kompetanseoversikten fremgår:
+Lovpålagt kompetanse der dette er påkrevet i miljølovgivningen
+Kompetanse organisasjonen har fastsatt for miljø
+Kompetansekrav fra våre kunder eller samarbeidspartnere som er relatert til leveranser av produkter eller tjenester.
+Kompetansebevis og annen dokumentasjon som bevis for gjennomført kompetansetiltak oppbevares. Effekten av gjennomførte kompetansetiltak evalueres årlig.
+Bevisstgjøring i miljøforhold
+Bevisstgjøring av alle som er berørt av miljøspørsmål vurderes som en forutsetning for å lykkes med vårt miljøarbeid. Derfor sørger MAVI for regelmessig bevisstgjøring av alle ansatte, inkludert innleide transportører som utfører arbeid på vegne av oss.
+Følgende aktiviteter inngår i denne bevisstgjøringen:
+Kommunikasjon av overordnet policy for miljø
+Kommunisere viktigheten av medvirkning fra de ansatte.
+Informasjon til alle berørte om konsekvensen av å ikke etterleve vedtatt politikk med spesiell fokus i utførelse av arbeidsoppgaver
+Informasjon om årsaker til miljøulykker fremkommet fra granskning av hendelser og ulykker
+Kommunikasjon
+Intern kommunikasjon
+Alle ansatte har tilgang til informasjon om MAVI Logistikk AS sitt ledelsessystem.
+Alle nyansatte gis informasjon om miljøstyringssystemet.
+Følgende informasjon skal finnes tilgjengelig for ansatte i MAVI Logistikk AS:
+Miljøhåndbok
+Handlingsprogram for miljø
+Prosesser, rutiner og instrukser
+Opplæring og informasjonsmateriell
+Ekstern kommunikasjon:
+Henvendelser fra eksterne interesseparter vedrørende miljø, besvares løpende.
+Leverandører som har påvirkning på miljøforhold relatert til MAVI, skal få informasjon og nødvendig dokumentasjon som er relatert til dette. Ledelsen holder åpen dialog med sine omgivelser i konkrete saker som angår disse. Henvendelser som omhandler bedriftens miljøarbeid, loggføres og besvares på en slik måte at dette kan dokumenteres i ettertid.
+Dokumentasjon i ledelsessystemet for miljøet
+Dokumentert informasjon omfatter:
+Beskrivelse av Ledelsessystemet (Håndbok)
+Arbeidsprosesser, rutiner og instrukser
+Hjelpeverktøy (evalueringsmodeller, metodikk, analyseresultater, avviksrapportering m.m.)
+Informasjonsmateriell
+Dokumentasjon er tilgjengelig for alle ansatte for korrekt utførelse av arbeidsoppgaver.
+Det arkiveres dokumentasjon for å bevise at aktiviteter er utført f.eks.:
+Risikoanalyser
+Sikkerjobbanalyser
+Kompetansebevis
+Granskingsrapporter fra eventuelle ulykker
+Styring av dokumentert informasjon
+Informasjon som er klassifisert som dokumentert informasjon er underlag styring som vil si at denne i formasjonen har versjonsutgave, eier, godkjenner og er endringsstyrt.
+Den dokumenterte informasjonen omfatter:
+Elektronisk informasjon (intranett)
+Rutiner, instrukser
+Kurs og informasjonsmateriell
+Ekstern informasjon herav også informasjon med link til nettsteder som f.eks lovverk, websider etc.)
+Daglig drift
+Krav til styring av miljø er dokumentert i miljøstyringssystemet.
+Krav til miljø er integrert i operative rutiner
+Rutiner vedrørende miljø er referert til fra operative rutiner
+Krav til miljø er definert i anskaffelsesrutiner
+Kravene til miljø i de enkelte prosessene og aktiviteten avklares enten i planleggingsfasen
+(f.eks. risikokartlegging) eller de er integrert som en fast aktivitet (f.eks. avfallshåndtering).
+Det vil bli oppbevart dokumentert informasjon (rapporter, analyser etc.) som er nødvendig for å bevise at aktiviteter er utført som planlagt.
+Innkjøp og anskaffelser
+Det er etablert miljøkrav til innkjøp og anskaffelser der dette påvirker miljøet.
+Eksempler på dette er innkjøp av transport- og monteringstjenester, renholdstjenester, utstyr, etc.
+Beredskap og innsats
+Det er etablert rutiner og instrukser for identifisering av potensielle nødsituasjoner, miljørisikoen ved disse nødsituasjonene og hvordan minimalisere risiko ved disse nødsituasjonene.
+Prosessen omfatter:
+Respons og innsats i nødsituasjoner.
+Beredskapsøvelser
+Evaluering og læring va beredskapsøvelsene
+Kommunisere relevant informasjon om de enkeltes plikter ved en nødsituasjon
+Fremskaffe nødvendig opplæring vedrørende beredskap og innsats
+Alle trinn i prosessen er kommunisert med våre ansatte og samarbeidspartnere for å sikre involvering.
+Det er utarbeidet en beredskaps og varslingsplan for å sikre at hvis uhellet er ute så håndteres og varsles dette i henhold til hendelsens alvorlighetsgrad.
+Prestasjon vedrørende miljø
+Generelt
+Det er etablert en prosess for overvåking, måling og evaluering av miljø faktorer.
+Som resultat av denne prosessen er det fastsatt hva som er nødvendig å måle inkludert:
+Relevante myndighetskrav vedrørende Miljølovgivningen
+Prosesser og aktiviteter relatert til risiko og muligheter
+Operasjonell styring av miljø
+Miljømål
+Kriterier relatert til miljømål
+Metoder for måling, analyse og evaluering
+Når målinger skal utføres
+Når resultatene fra målingene skal bli analysert, evaluert og kommunisert
+MAVI evaluerer sine miljøprestasjoner og effektivitet løpende i «live» nøkkeltall fra miljøsystemet. Hovedevalueringen skjer minimum årlig i tråd med eksterne krav.
+Samsvarsevaluering av lover og krav
+Prosessen for å sikre samsvar med lover og krav og øvrige krav omfatter:
+Beskrivelse av metode og intervall for samsvarsevalueringen
+Iverksette umiddelbare tiltak ved lovendringer, nye forskriftskrav eller endring i tjenester.
+Vedlikeholde kunnskap om samsvarskriteriene på alle relevante og digitale plattformer.
+Internrevisjon
+Revisjonsmål
+Det skal gjennomføres intern og eksterne revisjoner av MAVI Logistikk AS i henhold til et fastsatt revisjonsprogram som godkjennes av ledelsen. Revisjonsprogrammet tilpasses områder som er kritiske i forhold til MAVI Logistikk as miljøpåvirkning herav også omfattet områder med positive muligheter for å fremme miljø. De vil bli gjennomført samsvarsrevisjon med referanse til ISO 14001:2015 ved fastsatte intervaller.
+Daglig leder skal følge opp at tiltak blir gjennomført og kontrollert.
+Revisjonsprosessen
+Revisjonsprosessen omfatter planlegging, gjennomføring, rapportering og oppfølging av interne- og eksterne revisjoner.
+Revisjonsprosessen omfatter hensyntagen til:
+Hensyntagen til endringer i organisasjonen av betydning
+Forbedring av miljøprestasjon
+Miljørisiko
+Positive muligheter for forbedring av miljø
+Revisjonene skal gjennomføres av revisorer med relevant kompetanse og erfaring.
+Resultatene fra revisjonene skal legges inn i avviks- og forbedringssystemet. Nødvendige korrigerende tiltak skal gjennomføres av de som er ansvarlig for det området avviket berører.
+Revisjonsresultatene skal rapporteres til arbeidstakerne og deres arbeidstakerorganisasjon samt legges frem ved ledelsens gjennomgåelse.
+Ref.: Rutine for intern- og eksternrevisjon
+Ledelsens gjennomgåelse
+Ledelsens gjennomgåelse skal gjennomføres i henhold til en dokumentert rutine to ganger årlig. Ledelsens gjennomgåelse skal baseres på resultater fra det felles miljøarbeidet på overordnet nivå, samt innspill fra organisasjonen. Med bakgrunn i ledelsens gjennomgang skal miljøarbeidet evalueres og eventuelle forbedringer iverksettes.
+Ledelsens gjennomgåelse skal ta hensyn til:
+Status fra tidlige gjennomgåelser
+Endringer i interne og eksterne forhold som har betydning for ytre miljø
+Herav inkludert endringer i Miljølovgivningen og andre krav
+Organisasjonens miljørisiko
+Informasjon om organisasjonens miljøprestasjon inkludert
+Hendelser, avvik, korrigerende tiltak og forbedringer
+Resultater fra overvåking av miljø
+Revisjonsresultater
+Resultater fra samsvarsevalueringer
+Risiko vedørende miljøforhold
+Relevant kommunikasjon med interesseparter
+Muligheter for kontinuerlige forbedringer
+Ref.: Rutine for ledelsens gjennomgåelse
+Kontinuerlig forbedring
+Det er etablert følgende aktiviteter relatert til kontinuerlig forbedring.
+Håndtering av hendelser, avvik og korrigerende tiltak
+Kontinuerlig forbedring av miljø
+Håndtering av hendelser, avvik og korrigerende tiltak
+Det er etablert rutine for håndtering av hendelser, avvik samt korrigerende tiltak.
+Dette for å sikre at vi håndterer hendelser og avvik samt at vi planlegger og gjennomfører korrigerende tiltak for å hindre eller redusere sannsynligheten for at hendelsene eller avvikene gjenoppstår.
+Denne prosessen omfatter
+Strakstiltak
+Håndtere konsekvensene av hendelsen eller avviket
+Vurdere og etablere tiltak for å eliminere rotårsaken til hendelsen
+Endre ledelsessystemet for miljø hvis nødvendig
+Ref: Rutine for avviksbehandling og korrigerende tiltak
+Kontinuerlig forbedring
+Styringssystemet er organisert i henhold til Demings kvalitetssirkel slik NS-EN ISO 14001 er strukturert.
+Ledelsen har etablert ledelsesprosessen i henhold til samme struktur som skal sikre ledelsens engasjement på alle nivåer i organisasjonen.
+De øvrige aktivitetene relatert til kontinuerlig forbedring er:
+Målstyringsprosessen
+Avviks- og forbedringsprosessen
+Revisjonsprosessen
+Miljømøter
+Forbedringsgrupper
+Ref: Rutine for forebyggende miljøarbeid-risikobasert

@@ -1,0 +1,269 @@
+Vedlegg 3 — mal
+Kilde: Vedlegg 3 mal.pdf (Landax / MAVI)
+
+VEDLEGG 3
+Avtale
+om databehandling
+
+Mellom
+Ola Nordmann AS, org. nr. XXX XXX XXX (”Databehandler”)
+og
+MAVI Logistikk AS, org. nr. 912 332 209 ("Behandlingsansvarlig”)
+
+4. november 2021
+
+For: MAVI Logistikk AS
+For: Ola Nordmann AS
+
+____________________________________
+Tommy Larsen
+Daglig leder
+
+____________________________________
+Ola Nordmann
+Daglig leder
+
+Avtalen er utstedt i to originale eksemplarer, hvor partene har mottatt hvert sitt.
+
+Side 2 av 8
+1. Avtalens formål
+Databehandleren vil yte behandlingsansvarlig tjenester etter avtale av 04 november 2021 inngått
+mellom databehandleren som leverandør av varetransporttjenester og behandlingsansvarlige som
+oppdragsgiver av varetransporttjenester (heretter "rammeavtalen"). Gjennomføring av tjenestene etter
+rammeavtalen innebærer at databehandler vil behandle personopplysninger på vegne av
+behandlingsansvarlig.
+Denne avtalen ("avtalen") regulerer hvordan personopplysningene skal behandles. Avtalen skal sikre at
+personopplysningene behandles i samsvar med kravene i
+
+Personopplysningsloven (lov av 15. juni 2018 nr. 38)
+
+Personvernforordningen (forordning (EU) 2016/679)
+
+Tilhørende forskrifter
+
+("Samlet benevnt som personvernregelverket")
+Formålet med avtalen er å sikre at behandlingen av personopplysninger kun skjer etter instruks fra
+behandlingsansvarlig og behandlingsansvarliges autoriserte kunder, og at personopplysningene ikke
+brukes ulovlig, urettmessig eller behandles på måter som fører til uautorisert tilgang, endring, sletting,
+skade, tap eller utilgjenglighet.
+Ved eventuell motstrid mellom rammeavtalen og databehandleravtalen, hva gjelder behandling av
+personopplysninger, skal databehndleravtalen ha forrang.
+Behandlingsansvarlig kan kreve gjennomført endringer i denne avtale, som er nødvendig for å etterleve
+forpliktelser etter personvernregelverket, ved behov.
+2. Hvilke opplysninger som behandles og hva oppdraget går ut på
+Beskrivelsen av databehandlers tjenester er gitt i rammeavtalen. Tjenestene inkluderer blant annet
+innhenting, kjøring og levering av varer til forskjellige hushold i Viken og flere nærfylker, samt utpakking
+og installasjon/montering av varer på vegne av behandlingsansvarlig og behandlingsansvarliges
+kunder. I forbindelse med utførelsen av forannevnte transporttjenester vil det bli behov for at
+databehandler behandler slike personopplysninger som til en hver tid følger ved en
+transportordre/leveringsbestilling fra behandlingsansvarlig og behandlingsansvarliges kunder.
+Kategorier av registrerte, type personopplysninger som behandles og hvordan, er beskrevet i bilag 1 til
+denne avtalen.
+Behandling av personopplysninger som er beskrevet i bilag 1 er nødvendig for å kunne levere avtalte
+tjenester til behandlingsansvarliges kunder og deres sluttkunder, herunder for å sikre at bestilte varer
+leveres til riktig mottaker.
+3. Databehandlers plikter
+Databehandler skal kun behandle personopplysningene på den måten som er beskrevet i denne
+avtalen, samt i henhold til skriftlige instrukser fra behandlingsansvarlig og behandlingsansvarliges
+autoriserte kunder. Databehandler kan ikke behandle personopplysningene på annen måte enn det
+som er nødvendig for å levere tjenestene etter rammeavtalen.
+Databehandler skal etterleve personvernregelverket og skal med hensyn til behandlingens art og i den
+grad det er mulig yte rimelig bistand til behandlingsansvarlig, for å sikre at behandlingsansvarlig
+oppfyller kravene i personvernregelverket. Databehandler skal umiddelbart varsle behandlingsansvarlig
+dersom databehandler mener behandlingsansvarliges instrukser er i strid med personvernregelverket.
+
+Side 3 av 8
+Databehandler skal uten unødig opphold besvare henvendelser fra behandlingsansvarlig om
+behandlingen av personopplysningene. Databehandler plikter videre å bistå behandlingsansvarlig med
+tilgang til personopplysningene ved behov. Henvendelser til databehandleren fra andre som gjelder
+denne avtalen, skal databehandleren videreformidle til behandlingsansvarlig så raskt som mulig,
+herunder eventuelle henvendelser fra registrerte vedrørende innsyn, retting, sletting og øvrige
+rettigheter.
+Databehandleren skal sikre at personopplysninger som behandles for behandlingsansvarlig holdes
+logisk adskilt fra egne og andres opplysninger.
+Databehandler skal ha oversikt over hvilke av sine ansatte og eventuelle oppdragstagere som gis
+tilgang til informasjonssystem, varehus eller til områder og utstyr som inneholder personopplysninger.
+Tilganger skal begrenses til ansatte og oppdragstagere som har tjenstlig behov for informasjonen.
+Enhver bruk av informasjonssystemet skal loggføres.
+Databehandleren plikter å påse at samtlige personer som har tilgang til personopplysningene, er kjent
+med personvernregelverket og forpliktelsene som følger av denne avtalen, jf. også punkt 8 nedenfor.
+Databehandleren skal varsle behandlingsnavsarlig uten unødig forsinkelse hvis den ikke er, eller
+sannsynligvis ikke vil være i stand til å oppfylle sine forpliktelser i henhold til denne
+databehandleravtalen. Etter slik varsel skal behandlingsansvarlig ha rett til etter eget skjønn å enten
+suspendere databehandlerens rett til å behandle personopplysninger i henhold til denne
+databehandleravtalen til databehandleren er i stand til på tilfredsstillende vis dokumentere overholdelse
+av sine forpliktelser etter denne avtalen, eller å terminere denne databehandleravtalen med 10 dagers
+skriftlig varsel.
+4. Bruk av underleverandør
+Databehandler må ikke bruke underleverandører til oppfyllelse av denne avtalen eller rammeavtalen
+med mindre behandlingsansvarlig på forhånd skriftlig har samtykke til det. Behandlingansvarlig har rett
+til å nekte databehandler å bruke underleverandør.
+Databehandler kan bare overføre personopplysninger og annen taushetsbelagt informasjon til
+underleverandører og tredjeparter i den utstrekning dette er nødvendig for gjennomføring av
+rammeavtalen eller lovbestemte pålegg.
+Databehandler skal påse, og er ansvarlig for, at eventuelle underleverandører er kjent med og oppfyller
+de samme forpliktelser som påligger databehandler etter denne avtalen og personvernregelverket. Bruk
+av underleverandør forutsetter skriftlig avtale mellom databehandler og underleverandør, samt
+tilfredsstillende dokumentasjon for at kravet til sikkerhet etter punkt 5 er oppfylt.
+Databehandler er fullt ut ansvarlig for underleverandørens utførelse av tjenestene og pliktene etter
+denne avtalen, på samme måte som om databehandleren selv stod for utførelsen.
+Databehandler skal føre oversikt over underleverandører som benyttes etter denne avtalen, og hvilke
+oppgaver disse utfører. Oversikten er inntatt i bilag 2. Behandlingsansvarlige samtykker ved signering
+av denne avtalen til at Databehandler kan bruke underleverandører listet opp i bilag 2, til de angitte
+formål som nevnes i bilag 2.
+5. Sikkerhet
+Databehandleren skal oppfylle de krav til sikkerhet som stilles etter personvernregelverket.
+Databehandler skal herunder ha etablert en sikkerhetsstrategi, som omfatter organisatoriske og
+tekniske sikkerhetstiltak. Sikkerhetstiltakene skal ivareta kravene til konfidensialitet, integritet og
+tilgjengelighet, og stå i forhold til den risikoen som behandlingen av personopplysningene
+representerer.
+
+Side 4 av 8
+Databehandler skal på forespørsel fra behandlingsansvarlig innen rimelig tid fremvise dokumentasjon
+på sikkerhetsstrategien og sikkerhetstiltakene. Dokumentasjonen skal omfatte sikkerhetstiltak i
+datasystemene, rutiner for bruk av informasjonssystemet og annen informasjon av vesentlig betydning
+for informasjonssikkerheten (ansvar, opplæring av ansatte, fysisk sikkerhet mv).
+All forsendelse av personopplysninger mellom partene skal, enten det skjer i form av datafiler eller på
+annen måte, være tilstrekkelig sikret mot innsyn fra uvedkommende. Det samme gjelder avtalt
+forsendelse eller tilgjengeliggjøring for tredjepart.
+Databehandler skal gi nødvendig opplæring til alt personell med tilgang til personopplysningene eller
+informasjonssystemet, om personvern og sikkerhet og de sikkerhetskravene som følger av avtalen.
+6. Avvik
+Brudd på personopplysningssikkerheten og andre sikkerhetsbrudd, skal behandles som avvik. Dette
+omfatter bruk av personopplysningene eller informasjonssystemet som er i strid med etablerte rutiner,
+denne avtalen og personvernregelverket.
+Databehandler skal ha på plass rutiner og systematiske prosesser for å følge opp avvik. Det skal
+omfatte gjenoppretting av normalsituasjonen, fjerne årsaken til avviket og å hindre gjentakelse.
+Etter å ha fått kjennskap til et brudd på personopplysningssikkerheten skal databehandler uten
+ugrunnet opphold varsle behandlingsansvarlig. Varsel skal sendes behandlingsansvarlig per e-post til:
+tommy@mavilogistikk.no. Varsel og eventuell annen kommunikasjon skal være på norsk. Dersom
+varslet sendes utenom kontortid, skal databehandler i tillegg varsle behandlingsansvarlig per telefon til
+telefonnummer +47 40175038. Utenom kontortid er ukedager etter kl. 17:00 og før kl. 07:00 og helger.
+Meldingen skal inneholde den informasjonen som er påkrevd etter personvernlovgivningen, slik at
+behandlingsansvarlig enkelt kan sende melding videre til Datatilsynet og eventuelt de registrerte.
+Databehandler skal yte rimelig bistand slik at behandlingsansvarlig kan oppfylle sine forpliktelser til å gi
+utfyllende informasjon til Datatilsynet og de registrerte, og for å kunne svare på spørsmål.
+7. Sikkerhetsrevisjoner og kontroll
+Databehandler skal gjennomføre sikkerhetsrevisjoner årlig. Revisjonen skal omfatte gjennomgang av
+sikkerhetsstrategi og rutiner og andre egnede kontrolltiltak. Revisjonen skal dokumenteres.
+Behandlingsansvarlig kan kreve innsyn i dokumentasjonen. Behandlingsansvarlig kan videre kreve
+skriftlig bekreftelse på databehandlers etterlevelse av personvernregelverket og avtalen. Databehandler
+dekker selv egne kostnader som er forbundet med utøvelse av slik revisjon.
+I tillegg kan behandlingsansvarlig, eller tredjepart oppnevnt av behandlingsansvarlig, ved syv (7) dagers
+varsel, gjennomføre kontroll og innsyn i systemer, datadrift, kontroll- og sikkerhetstiltak som er omfattet
+av denne avtalen, for å sikre at den etterleves. Ved slik revisjon utført av behandlingsansvarlig selv eller
+av tredjepart oppnevnt av behandlingsansvarlig vil kostnadene som er forbundet med en slik revisjon
+dekkes fullt ut av behandlingsansvarlig. Tilsvarende rett til kontroll og innsyn gjelder for
+behandlingsansvarliges autoriserte kunder, Datatilsynet eller annet relevant tilsynsorgan med hjemmel
+til innsyn i behandlingsansvarliges virksomhet. Innsyns – og kontrollretten omfatter mulighet for stedlig
+tilsyn. Databehandler er også forpliktet til å svare på direkte spørsmål og å utlevere dokumentasjon.
+8. Taushetsplikt
+Databehandler har taushetsplikt om dokumentasjon og personopplysninger som vedkommende får
+tilgang til i henhold til rammeavtalen og denne avtalen. Det gjelder også øvrig informasjon som
+databehandler blir kjent med i forbindelse med gjennomføringen av rammeavtalen.
+
+Side 5 av 8
+Det innebærer at personopplysningene og øvrig informasjon skal behandles konfidensielt, og ikke
+utleveres eller gjøres tilgjengelig for utenforstående, uten grunnlag i rammeavtalen eller eksplisitt
+pålegg fra behandlingsansvarlig. Ved eventuelt pålegg om utlevering fra offentlig myndighet, skal
+databehandler varsle behandlingsansvarlig.
+Taushetsplikten gjelder databehandlers ansatte, oppdragstagere, samarbeidspartnere og andre som er
+engasjert av virksomheten, og underleverandører som handler på databehandlers vegne i forbindelse
+med gjennomføring av rammeavtalen og denne avtalen.
+Taushetsplikten gjelder også etter at avtalen er opphørt. Ansatte eller andre som fratrer sin tjeneste,
+skal pålegges taushetsplikt også etter fratredelsen.
+9. Overføring til utlandet
+Databehandler skal ikke overføre personopplysninger ut av EU/EØS uten skriftlig godkjennelse fra
+behandlingsansvarlig. Hvis slik overføring skal skje må det inngås avtale om overføringsgrunnlag, for
+eksempel model clauses, binding corporate rules eller privacy shield.
+Hvis databehandleren ønsker å overføre personopplysninger til et land som ikke gir et tilstrekkelig
+beskyttelsesnivå (utenfor EU/EØS området), skal databehandleren informere behandlingsansvarlig om
+den påtenkte overføringen senest 3 måneder før slik overføring finner sted. Hvis behandlingsansvarlig
+ikke samtykker til slik overføring og databehandleren ikke med rimelig innsats kan dekke behovet
+ovenfor behandlingsansvarlig ved et annet alternativ, skal behandlingsnavarlig ha rett til å si opp
+avtalen med øyeblikkelig virkning.
+Behandlingsnsvarlig kan for øvrig når som helst tilbakekalle godkjenningen til tredjelandsoverføring
+med den virkning at databehandleren umiddelbart må stanse overøfringen.
+10. Mislighold
+Tap av personopplysninger, eller personopplysninger på avveie, skal anses som vesentlig mislighold
+dersom databehandler kan klandres for årsaken. Dette gjelder ikke for hendelser som åpenbart må
+anses ubetydelige.
+Databehandleren skal erstatte det økonomiske tap Behandlingsansvarlig påføres som følge av
+databehandlerens mislighold av denne avtalen og/eller overtredelse(r) av personvernregelverket.
+For øvrig gjelder bestemmelser om mislighold i rammeavtalens punkt 13.
+11. Avtalens varighet, pålegg om stans, oppsigelse mv
+Avtalen gjelder så lenge databehandleren utfører tjenester, behandler eller har tilgang til
+personopplysninger på vegne av behandlingsansvarlig etter rammeavtalen.
+Ved brudd på denne avtalen eller personvernregelverket, kan behandlingsansvarlig pålegge
+databehandleren å stoppe den videre behandlingen av opplysningene med øyeblikkelig virkning.
+Regler for oppsigelse følger av rammeavtalens punkt 18.
+12. Plikter ved opphør/oppsigelse
+Ved opphør av avtalen plikter databehandleren, etter behandlingsansvarliges valg, å tilbakelevere eller
+å slette alle personopplysninger som er mottatt på vegne av den behandlingsansvarlige og som
+omfattes av denne avtalen. Ved tilbakelevering skal personopplysningene og andre data overleveres i
+et standardisert format og medium sammen med nødvendige instruksjoner som muliggjør
+behandlingsansvarliges videre bruk av dataene.
+
+Side 6 av 8
+Databehandler plikter å slette eller forsvarlig destruere alle dokumenter, data, lagringsmedier mv., som
+inneholder (kopier av) opplysninger eller data som omfattes av avtalen og som databehandleren ikke
+skal tilbakelevere, eller med hjemmel i annen lov er pålagt å oppbevare. Dette gjelder også for
+eventuelle sikkerhetskopier.
+Databehandleren skal fremlegge skriftlig dokumentasjon på at tilbakelevering eller sletting har funnet
+sted, i henhold til behandlingsansvarliges instruksjoner.
+13. Øvrige plikter og rettigheter
+Øvrige plikter og rettigheter følger av rammeavtalen. Ved eventuell overdragelse av rammeavtalen til
+andre parter, skal denne avtale overdras samtidig.
+14. Lovvalg og verneting
+Avtalen er underlagt norsk rett. Oslo tingrett vedtas som rette verneting.
+
+Bilag 1.
+Type personopplysninger og hvordan de behandles
+
+1. Type opplysninger som behandles:
+
+Behandlingsansvarlig driver egen varetransportvirksomhet med en kundeportefølje som
+omfatter storkunder som Elkjøp. Databehandler driver en selvstendig varetransportvirksomhet,
+disponerer eget egnet kjøretøy og ønsker å utføre transportoppdrag for behandlingsansvarlig. I
+forbindelse med databehandlers utførelse av transportoppdrag for behandlingsansvarlig vil
+databehandler behandle personopplysninger om enkeltpersoner som fremkommer i
+transportordre som oversendes og/eller gjøres tilgjengelig av behandlingsansvarlig og
+behandlingsansvarliges kunder, herunder:
+
+•
+informasjon som normalt fremgår i forbindelse med en bestillingsordre/vareordre, så
+som: opplysninger som navn, telefonnummer, e-postadresse, fysisk adresse, den vare og
+tjeneste som er kjøpt og betalingshistorik.
+
+•
+opplysninger som fremkommer i Elkjøps logistikksystem eller andre system
+databehandler benytter for logistik og loggføring av transportopdragg.
+
+•
+Databehandler vil også behandle kontaktopplysninger om kontaktpersoner hos
+behandlingsansvarliges kunde.
+
+2. Type registrerte:
+Typer registrerte omfatter varemottagere og ansatte hos behandlingsansvarliges kunder, samt
+kontaktpersoner hos behandlingsansvarliges kunder
+
+3. Hvordan opplysningene behandles og hvorfor:
+Personopplysningene behandles for å levere avtalte tjenester til behandlingsansvarlig etter
+rammeavtalen. Dette omfatter innhenting og lagring av personopplysninger for å utføre kjøring
+og levering av varer til riktig varemottager, samt utpakking og installasjon/montering av varene
+hos varemottager.
+
+4. Skal personopplysningene overføres til andre, i så fall hvem:
+Personopplysningene vil overføres til underleverandørene angitt i bilag 2.
+
+5. Hvor dataene oppbevares (lokasjon):
+Data oppbevares innenfor EØS-området.
+
+Bilag 2.
+Oversikt over underleverandører
+
+Leverandør
+Selskapsadresse
+Land data
+oppbevares
+Formål

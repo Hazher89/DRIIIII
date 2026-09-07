@@ -1,0 +1,41 @@
+Arbeidsinstruks ruteplanlegging
+Kilde: Arbeidsinstruks ruteplanlegging.docx (Landax / MAVI)
+
+RUTEPLANLEGGING
+Ruteplanlegging utføres ved å bruke Elkjøps Transportløsning SAP.
+Innlogging:
+Man logger i SAP med brukernavn og passord som blir tildelt av Elkjøp.
+For å logge inn i SAP må man koble seg meg brukernavn og passord til Elkjøp Remote Desktop og deretter velger man SAP Standard 5a: TM Prod – CTP logg inn igjen med brukernavn og passord Planning Transport Cockpit
+I Transport cockpit får man tilgang til en rekke forskjellige profiler:
+NO_OSLO_ALL-DAT-1 (eller 2, 3, …) inneholder alle leveringene for en bestemt dag hvor 1 er dagend dato, 2 er morgendagens dato osv.
+NO_Oslo – 1701 inneholder varene som flyttes intern på Hub fra og til avdeling 1701 med fiktive biler
+NO_OSLO_MILKRUN inneholder alle internkjøringer fra HUB Oslo til forskjellige butikk og motsatt
+Ved å huke av en profil og trykke på Continue kommer man inne i profilen man velger.
+Struktur:
+Når man er inne i en profil ser man 4 forskjellige vinduer:
+Freight Unit Stages: inneholder alle de ordrene som skal behandles (kjøres) i en bestemt dag
+Road freight Orders: inneholder alle de FO (freight orders) som har blitt opprettet i en bestemt dag (en FO består av 1 eller flere ordre som kjøres av samme bil)
+Trucks: inneholder alle de tilgjengelige biler som kan utføre frakt av varer
+NGR FO overview: viser detaljer av en FO som har blitt opprettet når denne er valgt i vinduet Road Freight Orders. Her ser man også geografisk rekkefølge av leveringene, som kan endres
+Alle disse vinduer inneholder flere detaljer som er organisert i kolonner som man kan flytte, fjerne, legge til og endre i størrelse. Man kan lagre egen kolonneoppsett og switcxhe mellom forskjellige oppsett etter behov
+Planlegging:
+Planlegging utføres i hovedsak ved å opprette forskjellige FO.
+Man velger en eller flere linjer ved å huke dem av i vinduet Freight Unit Stages, deretter velger man en bil fra vinduet Trucks og da trykker man på Assign eller Optimizer, og SAP oppretter da en FO som vises i vinduet Road Freight Orders-
+Assign: alle de valgte linjer blir plassert på den valgte bilen uansett og bilen klarer å utføre alle leveringene eller ikke
+Optimizer: SAP velger de linjene som kan faktisk gjennomfores basert på flere parameter som leveringstid, bilens max nyttelast og tidsforbruk hos kundene. Dette betyr at det kan enkelt skje at ikke alle leveringene som har blitt valgt blir plassert på en FO. Optimizer setter leveringer i geografisk rekkefølge.
+Man må hver dag planlegge ordinære leveringene, internkjøringer og 1701-varer. Det finnes flere måter for å utføre dette og man velger sin egen. Videre følger en anbefalt sekvens av alt man skal gjøre for å utføre full ruteplanleggiing
+Anbefalt ruteplanleggingsekvens:
+Man kan starte ret etter cutoff (deadline for salg av vanlige leveringene som skal kjøres 2 dager fram i tid, og «nextday-leveringer» som skal kjøres på kveld dagen etterpå)
+Cut off er rundt kl 20.30 hver kveld. Det betyr at man kan starte med en gang rett etter kl 20.30, eller tidlig dagen etterpå. Planlegging må være klar og ferdig inne kl 09.00 dagen etterpå.
+Følgende sekvens gjelder planlegging som utføres i Dag 1 (på kveld etter cutoff, før midnatt) og gjelder alle linjene som har felt 20 (fra Hub Oslo til kunder
+1701: Velg profil NO_Oslo – 1701. Opprett 1 FO med alle ordrene som skal flyttes fra Hub Oslo til avd 1701 (stage 20) og fra avd 1701 til Hub Oslo (avd 10). Velg bil Outlet 1701 og bruk Assign da disse er fiktive biler.
+Internkjøringer: Velg profil NO_OSLO_MILKRUN. Velg kjøringer med stage 20 for 2 dager fram i tid. Sett dem med Assign på bil OLAV og Mavi 100. Olav tar følgende butikker: Drammen, Buskerud, Gulskogen, Slependen, Sandvika, Skøyen, Fornebu, Ullevål, Alna, Lørenskog, Strømmen. Mavi 100 tar alle de andre. Etter dette er gjort, velg kjøringer med stage 10 for 1 dag fram i tid (morgendagens). Fordeling er samme som forrige, bare at Olav tar Drammen, Buiskerud og Gulskogen på en separat tur. Når disse FO er lagret sender man kopi av kjøreliste via email til Mavis’ driftmail (M100) og Olav sin email. Dette gjør man ved å huke av FO som gjelder i vinduet Road freight Orders, velge Print Print Preview Backup form og kopiere den PDF som genereres og lime den inn i mailen som skal sendes
+Vanlige kjøringer. Man planlegger alle kjøringer som er tilgjengelige for dag 3, og alle kjøringer som fortsatt er tilgjengelige for dag 2 (i hovedsak nextday). For begge anbefales følgende rekkefølge:
+Tjenester: planlegg alle de avanserte tjenester på de bilene som kan utføre dem
+1mannsleveringer: Planlegg alle 1mannsleveringer på 1mannsbiler
+Planlegg alle resterende leveringer på vanlige biler
+Det beste er å velge en god antall leveringer som man vurdere som nok for en tur og sette dem med Optimizer på en bil. Om ikke alle leveringene blir plassert på rute av Optimizer kan man vurdere å legge flere ved bruk av Assign. Det anbefales a lagre etter hver opprettet FO.Merk at Optimizer kan lage 2 forskjellige FO på samme bil hvis totalvekt overstiger maks nyttelast på en bil men samtidig det er nok tid for å utføre begge turene.
+Stowing Lanes: når elle FO som gjelde er opprettet må man dele et feltnummer til hver tur (stowing lane) slik at varene kan plukkes av lagermedarbeidere og plasseres på riktig felt. Feltnummer skriver man selv i kolonne Stowing Lanes. Når det er 2 FO til samme bil setter man dem på samme felt og legger til A og B for å skylle dem (f.eks. felt 3A og 3B). Alle FO i profil 1701 får stowing lane «H». Alle Milkrun-FO får felt «O» hvis de kjører av Olav og «A» hvis de kjøres av Mavi. Når alle feltnummer er på plass velger man alle FOI som har fått feltnummer, trykker på «Save Stowing Lanes» og deretter på SAVE for å lagre alt.Når Stowing Lanes er lagret gir man beskjed til lageret av rutene er klare for plukking.
+Når planlegging er utført og alle FO er opprettet finnes det flere operasjoner man skal utføre:
+Returer til butikk: disse er linjene merket med Stage 10. De er returer fra kunder til Hub Oslo. De fleste av disse følger en levering fra Hub til kunder. Man må da sette med Assign disse returer på de FO som inneholder levering til kundene som gjelder. Det finnes også noen linjer som ikke følger tilsvarende leveringer til kunder. Disse såkalte «standalone» gjelder oppdrag hvor vi skal kun hente noe fra kunden, og ikke levere noe. Disse plasseres med Assign på de FO hvor de passer best
+Rekkefølge: man må gjennom hver FO og sjekke geografisk rekkefølge av leveringene, om det passer bra. Velg en FO i vinduet Road freight Orders, trykk på ikonen i kolonne «Actions», innhold av FO vil da vises i vinduet NGR FO Overview. Her kan man se rekkefølge og endre den hvis det er behov.

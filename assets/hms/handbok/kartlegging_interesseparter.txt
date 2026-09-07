@@ -1,0 +1,119 @@
+Kartlegging av eksterne interesseparter
+Kilde: Kartlegging av eksterne interesseparter samt krav og forventinger.docx (Landax / MAVI)
+
+Hensikt
+Prosedyrens formål er å sikre at krav og forventninger fra eksterne- og interne interesseparter kartlegges, vurderes med tanke på relevans, risiko og positive muligheter som grunnlag for bedriftens
+Kvalitets- og HMS-system,
+Omfang
+Prosedyren omfatter interne og eksterne interesseparter relatert til eiere, kunder, myndighetskrav, samarbeidspartnere, underleverandører samt ansatte.
+Ansvar
+Daglig leder er ansvarlig for utarbeidelse og vedlikehold av denne prosedyren.
+Trinn 1: Beslutte kriterier (ref. Excel-modell – Hovedside)
+Ansvarlig
+Trinn
+Aktivitet
+Referanse
+Daglig leder
+1
+Oppstart av interessepartkartlegging og risikovurdering.
+Etablerer en arbeidsgruppe bestående av personer med erfaring fra:
+Prosjektvirksomhet
+Kunder
+Leverandører
+Myndighetskrav
+Fag
+Denne gruppen vil bli ansvarlig for at krav, forventinger og muligheter blir identifisert og analysert med tanke på risiko og muligheter.
+Excel-modellen
+Daglig leder
+2
+Gruppa beslutter:
+Gruppering av interesseparter
+Kriterier for sannsynlighet (skala)
+Kriterier for konsekvens (skala)
+Risikogradering
+Excel-modellen settes opp.
+Evt. nye fliker i Excel-modellen settes opp.
+Excel-modellen
+Trinn 2: Kartlegge interesseparter (ref. Excel-modell)
+Veiledning: Det anbefales at det først kartlegges interesseparter og krav (ref. kolonne a,b+c), deretter behandle hvert enkelt krav (ref. kolonne e-q)
+Ansvarlig
+Trinn
+Aktivitet
+Referanse
+Daglig leder
+1
+Gruppa gjennomgår systematisk eksterne og interne interesseparter samt krav og forventinger disse har.
+Excel-modellen fylles ut.
+Excel-modellen kolonne a, b + c.
+Daglig leder
+2
+Det avklares hvilke eksisterende tiltak som finnes i dag for å sikre at dette kravet er ivaretatt, f.eks. rutine, sjekkliste, kompetanse etc.)
+Excel-modellen
+Kolonne d
+Daglig leder
+3
+Det foreta en risikovurdering basert på eksisterende tiltak
+Excel-modellen
+Kolonne e-h
+Daglig leder
+4
+Det fastsettes tiltak basert på kriteriene som er definert i Trinn 1
+Excel-modellen
+Kolonne i
+Daglig leder
+5
+Det vurderes risiko etter tiltak (restrisiko)
+Excel-modellen
+Kolonne j-l
+Daglig leder
+6
+Det vurderes hvilke positive muligheter som oppstår som følge av et akseptabelt/lavt risikonivå.
+Excel-modellen
+Kolonne m
+Trinn 3: Handlingsplan
+Ansvarlig
+Trinn
+Aktivitet
+Referanse
+Daglig leder
+1
+Tiltak som er besluttet nødvendige for å redusere risiko til et akseptabelt risikonivå overføres til handlingsplanen som prioriteres i forhold til de tiltak som gir de største resultatene.
+Der nødvendig tas tiltakene med i budsjettprosessen for kommende år.
+Excel-modellen Flik Handlingsplan
+Daglig leder
+2
+Excel-modellen videreføres til en detaljert risikovurdering
+Excel-modellen
+Daglig leder
+3
+Dokumentet vedlikeholdes ved endringer
+Prosedyre endringer av prosesser, produkter og tjenester
+Trinn 4: Vedlikehold av interessparter, krav og endret risikobilde
+Ansvarlig
+Trinn
+Aktivitet
+Referanse
+Daglig leder
+1
+Denne Excel-modellen skal holdes oppdatert med de endringer som er relevante.
+Relevante endringer kan være:
+Nye eller endrede kundekrav
+Endringer i lover- eller myndighetskrav
+Hendelse eller avvik som inntreffer
+Forhold som anmerkes ved eksterne eller interne revisjoner eller tilsyn.
+Excel-modellen Flik Handlingsplan
+Daglig leder
+Ved endringer av ovennevnte forhold skal disse endringen gjennomgås ved en fornyet gjennomgang
+Excel-modellen
+Trinn 1-3
+Daglig leder
+4
+Der nødvendig skal nye tiltak fastsettes
+Excel-modellen Flik Handlingsplan
+Vedlegg
+Excel-modellen, versjon 2017
+Referanser:
+Prosedyre endringer av prosesser, produkter og tjenester
+ISO 9001, pkt 4.2, 6.1
+ISO 14001, pkt. 4.2, 6.1
+ISO 45001, pkt 4.2, 6.1

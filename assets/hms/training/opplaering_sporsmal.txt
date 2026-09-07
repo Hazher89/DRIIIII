@@ -1,0 +1,173 @@
+Opplæring — spørsmål m.m.
+Kilde: Opplæring spørsmål m.mer.pdf (Landax / MAVI)
+
+Vanlige spørsmål fra CCC/butikk til Mavi med mer.
+
+-
+Kan dere skanne inn denne varen på hub så vi kan booke den om?
+-
+Varen returneres kl. x og vil skannes inn da, vi kan ikke skanne inn varen når den ikke er hos
+oss.
+
+-
+Første leveringstid på denne er x dato, kan dere levere denne tidligere?
+-
+Som utgangspunkt må CCC forholde seg til det som er sat opp i matrisen, hvert fall om
+varen/e ikke er ankommet fra NDC/butikk.
+
+Dersom det er slik at vi har forsøkt å levere denne flere ganger og den ikke er levert pga. feil
+fra oss (f. eks «rakk ikke») så skal vi se om det finnes noe ledig tid tidligere og dereter be CCC
+force inn til denne tiden, da må vi huske på å planlegge for denne tiden selv! Husk at varen
+må være in hub for at de skal kunne force ny tid.
+
+-
+Kunde har booket mellom 17-22, kan dere komme eter kl. 19:00?
+-
+Vi må planlegge leveringer slik de er booket og kan ikke ta høyde for slikt, det er mulig denne
+blir bomtur den dagen og ordren kan evt. bookes om til en annen dag hvor kunde kan være
+tilgjengelig hele tidsrommet.
+Obs: Dersom vi har hat flere bomturer på denne tidligere som er vår feil, så skal vi forsøke å
+ta høyde for dete under planlegging, da kan vi sende en internmail for oppfølging eller evt.
+ringe sjåfør dersom ordren allerede er ute på kjøring.
+
+-
+Denne skulle blit levert før kl. 15, klokken er nå passert dete. Blir denne levert i dag?
+-
+Først må vi sjekke om den er på rute for i dag, da kan du åpne den i dashboard og trykke på
+FO search. Dersom den kommer opp på rute må vi se om sjåføren har startet ruten eller ikke
+(er første stopp, hub, grønt? Da har sjåfør lastet varen). Er ruten påbegynt må vi ringe sjåfør
+og be han ta kontakt med kunde for å informere
+
+-
+Kunde klager på monteringen, kan dere sende ut noen for å se på dete?
+-
+Kan dere sete opp en SA for kunde?
+-
+Dersom det er vannlekkasje og det kan komme skader i kundens hjem, så kan vi sende ut
+noen tidligere enn hva matrisen vil tillate, vi må da finne ut hvilken tid og så be CCC force
+denne tiden. Dersom det ikke er tid for å vente på at CCC skal gjøre dete så kan vi manuelt
+printe ut FU og gi til sjåfør med pris, husk da å registrere oppdraget i adhoc-filen og skrive
+mail internt om «Mx drar ut for å se på dete i dag, følg opp».
+
+-
+Oppdraget krever fire personer, kan dere sende ut fire mann for å bære inn kundens
+produkt?
+-
+Dersom produktet er levert og står hos kunde, be CCC sete opp en SA med eksempelvis
+installfridge eller deliveryunp, dete er for å få en ordre å planlegge ut fra. Så må vi skrive mail
+internt om at fire mann skal planlegges for dete oppdraget med dato.
+-
+Dersom produktet er tilbake og ordren kan bookes om, be de booke om levering og gi oss
+beskjed om ny tid + at det trengs fire personer. Så må vi skrive mail internt om at fire mann
+skal planlegges for dete oppdraget med dato.
+-
+Noen ganger er sjåfører hjemme hos kunde og oppdager først da at det trengs fire personer.
+Da kan du si til sjåfør at du skal undersøke om noen er i området og ringe tilbake. Bruk maks 5
+
+minuter på dete. Dersom ingen kan ringer du sjåfør tilbake og sier at ingen er tilgjengelig for
+å hjelpe deg nå, sjåfør kan forsøke uten eller sete bomtur. Dersom noen kan må du sende
+vedkommende adressen + tlfnummer til sjåføren som trenger hjelp, så må du printe ut FU og
+registrere pris for 4 mann i ad hoc-filen, normalt set 1100,- (alt etersom hvor det skal
+uƞøres og hvor vanskelig oppdraget er), makspris er 1500,-.
+
+-
+Kunde ønsker/glemte å legge inn x tjeneste, kan dere ordne dete under leveringen?
+-
+Dersom leveringen er i dag/ i morgen: Er det en ordinær tjeneste som alle bilene kan uƞøre
+og kunde har booket deliverysite, så kan vi be sjåfør legge inn ekstra tjeneste på PDA/Goran
+når han er hos kunde, da motar kunde en payment-link eter uƞørt levering. Dete må vi i så
+fall be sjåføren legge inn når han er hos kunde, enten ved å notere på kjøreliste eller å ringe
+vedkommende.
+-
+Dersom leveringen er lenger frem i tid: CCC kan legge opp en SA (stand alone service) til
+samme tid og dato, så lenge kundeinformasjonen er lik så skal systemet ta høyde for dete
+under planleggingen.
+
+-
+Kan dere endre kundeinformasjon (adresse, telefonnummer, kundenavn) for oss?
+-
+Nei, dete må CCC/butikk endre selv. Leveringen må som oŌest bookes om for å kunne endre
+denne informasjonen. Vi kan noen ganger være behjelpelige med å eksempelvis notere
+korrekt tlf.nummer om leveringen er samme dag/i morgen på dagtid ved å notere det på
+kjøreliste til sjåfør. Da må man sende mail internt ved å videresende mailtråden og skrive
+«noter på kjøreliste at korrekt tlf.nummer er x»
+
+-
+Kan dere utlevere denne?
+-
+Sjåfører kan tidvis få trøbbel med pda og får derfor ikke skannet leveringer som levert. Om
+leveringen var fra i går så kan de vente til Adib har gåt gjennom kjørelisten, det tar normalt
+set én dag, er leveringen eldre enn dete kan vi sende mail til Adib og be han utlevere
+leveringen.
+
+-
+Informasjon som er nyƫg å vite for et oppdrag?
+-
+Legg mailen til oppfølging i passende mappe.
+-
+Oppdrag for i dag: informer sjåfør over tlf.
+-
+For i morgen: legg i morgendagens ruter manuelle eller budmail (Dagtid for i morgen? Husk å
+flagge den slik at de som printer ut kjørelister på dagtid får skrevet ned evt. informasjon)
+-
+For to dager eller lenger frem i tid: fremtidige beskjeder
+
+-
+Kan dere endre denne fra curbside (levering til fortauskant) til deliverysite (levering til
+anvist plass)?
+-
+Nei, dete må CCC/butikk endre selv fra sin side.
+
+-
+Vare ble ikke hentet fra butikk, kan dere fortsat levere til oppsat tid?
+-
+For å se om en levering er fra butikk så kan du sjekke Source i dashboard, dersom det står et
+nummer på fire tall så er det butikk, se butikkoversikt på tavla på kontoret for å se hvilken.
+Dersom det står NDC1 etc., så er det fra NDC. Dersom det står WXAN så betyr det at varen
+skal sendes fra produsent til oss).
+-
+Svaret er: Nei, ordren må bookes om med både pick up og levering.
+-
+Butikk er ved noen tilfeller for sene med å gjøre pick&pack (se definisjon) av varer og det gjør
+at de ikke blir planlagt for henting.
+
+-
+Det hender dessverre noen ganger at internhenting havner i feil profil, dvs. ikke i Milkrun i
+SAP, men blant de vanlige leveringene på day 1, 2 etc. Man kan se om de havner feil dersom
+butikken har gjort p&p innenfor tiden (HU has been assigned to FU) og den ikke ble planlagt
+for internkjøring.
+
+-
+Denne leveringen skal ikke uƞøres, kan dere kansellere den?
+-
+Mavi har ingen tilgang til å kansellere ordre, men vi kan blokkere de for utkjøring. Åpne FU,
+Statuses, Choose item type, velg hele FU (øverste alternativet) og huk av for både planning og
+execution block. Nå skal den ha fåt to røde prikker. Da vil ikke ordren bli planlagt for levering
+eller bli uƞørt. Så kan man svare på mailen og si at den ikke vil bli kjørt, men at de må
+kansellere ordren.
+
+Ellers informasjon som er good to know:
+-
+Vi kan endre dato på returnstore-hentinger fra vår side (FU som begynner på 3900xx), dete
+kan vi gjøre på CCC/butikk sine vegne om det er nødvendig.
+-
+Man kan legge inn tilleggsinformasjon slik at det kommer opp på kjøreliste og popper opp på
+sjåførens pda ved å åpen FU – Notes – Insert – Velge text type WMS delivery instructions og
+fylle inn kommentar på content, så Save.
+
+Ulike betegnelser:
+
+CCC: Elkjøp sit kundesenter.
+
+Force tid: Elkjøp tvinger gjennom et tidsintervall som vi har godkjent utenom matrisen.
+NDC: Elkjøp sit eksternlager i Jønkjøping. Vi motar som regel to lastebiler med varer daglig fra
+Sverige, mellom 04-06 og 08-10 (tidvis 10-13 om det er mange leveranser den kommende dagen).
+
+PDA: Skanneren som sjåførene bruker når de leverer til kunder, appen de bruker heter Goran.
+Pick & pack: Butikkens måte å klargjøre varer for henting, dvs. sete de frem og lage skannelapp på de
+med kollinummer. Dersom varene er grå i dashboard, så betyr det at de ikke er klargjort.
+Åpne FUen det gjelder i SAP og se på «Execution», dersom «HU has been assigned to FU» kommer
+opp senere enn kl. 20:00 dagen før henting (se pick up date i dashboard), så betyr det at butikken har
+gjort det for sent. Dersom «HU has been assigned to FU» ikke kommer opp i det hele tat så betyr det
+at butikk ikke har gjort noe med den.
+SA: stand alone service

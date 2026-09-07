@@ -11,21 +11,27 @@ class HmsHandbookHubScreen extends StatelessWidget {
 
   IconData _iconFor(HmsHandbookCategory c) => switch (c) {
         HmsHandbookCategory.styring => Icons.account_balance_outlined,
+        HmsHandbookCategory.miljo => Icons.eco_outlined,
         HmsHandbookCategory.risiko => Icons.warning_amber_rounded,
+        HmsHandbookCategory.revisjon => Icons.fact_check_outlined,
         HmsHandbookCategory.avvik => Icons.report_problem_outlined,
         HmsHandbookCategory.sja => Icons.assignment_outlined,
         HmsHandbookCategory.beredskap => Icons.emergency_outlined,
+        HmsHandbookCategory.partnere => Icons.handshake_outlined,
         HmsHandbookCategory.instrukser => Icons.menu_book_outlined,
         HmsHandbookCategory.signatur => Icons.draw_outlined,
       };
 
   Color _colorFor(HmsHandbookCategory c) => switch (c) {
         HmsHandbookCategory.styring => DriftProTheme.primaryGreen,
+        HmsHandbookCategory.miljo => const Color(0xFF2E7D32),
         HmsHandbookCategory.risiko => DriftProTheme.riskHigh,
+        HmsHandbookCategory.revisjon => const Color(0xFF546E7A),
         HmsHandbookCategory.avvik => DriftProTheme.error,
         HmsHandbookCategory.sja => DriftProTheme.accentBlue,
         HmsHandbookCategory.beredskap => const Color(0xFFC62828),
-        HmsHandbookCategory.instrukser => const Color(0xFF2E7D32),
+        HmsHandbookCategory.partnere => const Color(0xFF00695C),
+        HmsHandbookCategory.instrukser => const Color(0xFF558B2F),
         HmsHandbookCategory.signatur => Colors.indigo,
       };
 
@@ -59,7 +65,7 @@ class HmsHandbookHubScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'MAVI Logistikk — IK-system',
+                  'MAVI Logistikk — HMS & QHSE',
                   style: DriftProTheme.headingSm.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w800,
@@ -67,8 +73,8 @@ class HmsHandbookHubScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Alle styrende dokumenter og vedlegg på ett sted. '
-                  'Hvert dokument peker til riktig sted i DriftPro når du skal jobbe videre.',
+                  'IK-system, miljø, risiko, beredskap, revisjon og partnerrutiner — '
+                  'fra Landax og MAVI, ryddig fordelt. Hvert dokument peker til riktig modul når du skal jobbe videre.',
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.92),
                     height: 1.4,
@@ -117,6 +123,14 @@ class HmsHandbookHubScreen extends StatelessWidget {
               _QuickChip(
                 label: 'Avvik',
                 onTap: () => context.push(AppPaths.hmsAvvik),
+              ),
+              _QuickChip(
+                label: 'Opplæring',
+                onTap: () => context.push(AppPaths.hmsOpplaering),
+              ),
+              _QuickChip(
+                label: 'Utstyr',
+                onTap: () => context.push(AppPaths.hmsUtstyr),
               ),
             ],
           ),

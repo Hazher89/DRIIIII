@@ -1,0 +1,10 @@
+Audit-objekter (Landax-eksport)
+Kilde: AuditObject-2025-12-23.xlsx (Landax / MAVI)
+
+Ark i arbeidsboken: Worksheet
+
+## Ark 1
+Nummer | Gruppering | Kategori | Dato | Spørsmål og krav | Svar | Dokumentref. | Kilde | Intervjuet | Bekreftet | Vurdering og konklusjon | Referanser | Aktivitet | Avdelinger | Lokasjoner | Deltakere | Saksbehandler | Signatur | Planlagt lukket | Lukket dato | Merkelapper
+039 | 45156.44121527778043 | Nei | Nei | Hazher Osman Abdullah
+040 | 45156.4420717592584 | Nei | Nei | Hazher Osman Abdullah
+041 | 45156.44723379629431 | Nei | Nei | Hazher Osman Abdullah

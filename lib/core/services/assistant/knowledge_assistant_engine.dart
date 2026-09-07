@@ -81,6 +81,11 @@ class KnowledgeAssistantEngine {
       'tørketrommel', 'oppvask', 'ventilator', 'platetopp', 'ovn', 'tv',
       'vegg', 'omhengsling', 'elkjop', 'elkjöp', 'inkludert', 'sbs',
     ],
+    'levering_booking': [
+      'ombook', 'omboking', 'kanseller', 'curbside', 'deliverysite',
+      'tidsvindu', 'ccc', 'butikk', 'adresse', 'telefon', 'fire personer',
+      'returhenting', 'status',
+    ],
   };
 
   void buildIndex() {

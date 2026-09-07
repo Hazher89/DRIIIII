@@ -1,0 +1,160 @@
+Miljøaspekter og samsvar
+Kilde: Miljøaspekter og Samsvar.xlsx (Landax / MAVI)
+
+Ark i arbeidsboken: Hovedside, Intern bilpark, Ekstern bilpark, EE-avfall, Emballasje, Innkjøp , Egen organisasjon, Kunder, Energi - strøm-ideal
+
+## Ark 1
+Hovedside Miljøaspekter MAVI Logistikk AS - Oversikt vesentlige miljøaspekter
+Til denne hovedside er det flyttet over de vesentlige miljøaspekter identifisert innen hvert område som har en score på 4 eller mer og som ønskes prioritert i peridoen 2022-23( ref underliggende faner)
+Miljøaspekt Intern bilpark
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar | Samsvarsvurdering ? | Samsvarsvurdering ?
+1 | CO2 utslipp WLTP g/km | 259 | 2 | 4 | 2 | Gi opplæring til sjåførene i "grønn kjøring" | MAVI Logistikk | Miljørapporteres | Ja, (interne krav) jf. Miljørapportering | Ja / Q4 - 2024
+2 | Kjøredistanse pr år | 76160 | 2 | 2 | 1 | Ruteoptimalisering | MAVI Logistikk | Miljørapporteres | Ja, (interne krav) jf. Miljørapportering | Ja / Q4 - 2024
+3 | Tomtransport | 1 | 1 | 1 | Ruteplanlegging | MAVI Logistikk | Ja, interne krav (KPI) | Ja / Q4 - 2024
+Miljøaspekt Ekstern bilpark
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar | Samsvarsvurdering ?
+1 | Euroklasse | 2 | 4 | 2 | Krav om Euroklasse 5 eller bedre | MAVI Logistikk | Transportør informerer | Ja, interne krav (KPI) | Ja / Q4 - 2024
+2 | Kjøredistanse pr år | 2 | 2 | 1 | Ruteoptimalisering | MAVI Logistikk | Transportør rapporterer | Ja, interne krav (KPI) | Ja / Q4 - 2024
+3 | Tomtransport | 1 | 1 | 1 | Ruteplanlegging | MAVI Logistikk | Transportør rapporterer | Ja, interne krav (KPI) | Ja / Q4 - 2024
+4 | CO2 utslipp WLTP g/km | 2 | 4 | 2 | Gi intern opplæring til sjåførene i "grønn kjøring" | MAVI Logistikk | Transportør rapporterer | Ja, interne krav (KPI) | Ja / Q4 - 2024
+5 | CO2 utslipp WLTP g/km | 2 | 4 | 2 | Sende alle eksisterende samarbeidsparntere pr 01.01.24 til Eco-driving kurs ila driftsåret med formål om redusert utslipp | MAVI Logistikk | Ny 2023. Målsetting 24 | Ja, interne krav (KPI) | Ja / Q4 - 2024
+Miljøaspekt EE-avfall
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar | Samsvarsvurdering ?
+1 | Riktig mengde ee-avfall til gjenvinning - kilo pr år | 1200000 | 2 | 2 | 1 | I samarbeid med Elkjøp og Miljødirektoratet, implementere rutine for kontroller | MAVI Logistikk | Rapporteres i Miljøfyrtårnportalen | Ja, §§ 1-1 - §§ 1-27 (avfallsforskriften) og §§ 3-1 - §§ 3-19 | Ja / Q4 - 2024
+2 | Riktig produkttype og antall returer til gjenvinning | 3 | 6 | 2 | Påvirke Elkjøp for å kategorisere varegruppe på returmiljø. Driftsleder blir ukentlig rapportert om stikkprøver iht rutiner ved krav fra Miljødirektoratet | MAVI Logistikk | Loggføres i Dropbox. Ny 2023. Målsetting 24 | Ja, interne krav (KPI) | Ja / Q4 - 2024
+Miljøaspekt Emballasje
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar | Samsvarsvurdering ?
+1 | Riktig sortering av papp - kilo pr år | 36000 | 1 | 2 | 2 | Periodisk opplæring til sjåførene | MAVI Logistikk | Rapporteres i Miljøfyrtårnportalen | Ja, §§ 7-1 - §§ 7-16(avfallsforskriften) og interne krav (KPI) | Ja / Q4 - 2024
+2 | Riktig sortering av plast - kilo pr år | 6000 | 1 | 2 | 2 | Periodisk opplæring til sjåførene | MAVI Logistikk | Rapporteres i Miljøfyrtårnportalen | Ja, § (avfallsforskriften) og interne krav (KPI) | Ja / Q4 - 2024
+3 | Riktig sortering av restavfall - kilo pr år | 65000 | 1 | 2 | 2 | Periodisk opplæring til sjåførene | MAVI Logistikk | Rapporteres i Miljøfyrtårnportalen | Ja, § (avfallsforskriften Kapittel 10) og interne krav (KPI) | Ja / Q4 - 2024
+Miljøaspekt Innkjøp
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar | Samsvarsvurdering ?
+1 | Biler | 2 | 4 | 2 | Stille miljøkrav til Euroklasse 5 | MAVI Logistikk | Intern rapportering | Ja, interne krav | Ja / Q4 - 2024
+2 | Krav til leverandører | 2 | 4 | 2 | Sjekkliste samt generelle krav iht rammeavtale og flytkart "innkjøp" | MAVI Logistikk | Intern rapportering | Ja, (interne krav) | Ja / Q4 - 2024
+3 | Renhold | 1 | 1 | 1 | Krav til miljømerkede produkter under innkjøp av avtale | MAVI Logistikk | Ja, (interne krav) jf. Ledelsessystemet | Ja / Q4 - 2024
+4 | Biler i egen regi | 2 | 4 | 2 | Alle fremtidige innkjøp av biler i egen regi, varebil og/eller personbil, skal være nullutslipp | MAVI Logistikk | Ny 2023. Målsetting 24 | Ja, (interne krav) | Ja / Q4 - 2024
+Miljøaspekt Egen organisasjon
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar | Samsvarsvurdering ?
+1 | Skru av PC / strøm når du går hjem | 1 | 1 | 1 | Informere innad i organisasjonen | MAVI Logistikk | Intern rapportering | Ja, interne krav | Ja / Q4 - 2024
+2 | Videokonferanse | 1 | 1 | 1 | Legge ønske innad i organisasjonen | MAVI Logistikk | Intern rapportering | Ja, interne krav | Ja / Q4 - 2024
+3 | Redusere papirforbruk (kilo pr år) | 7000 | 2 | 4 | 2 | Nytt transportadministrativt system fører til reduksjon | MAVI Logistikk | Intern rapportering | Ja, (interne krav) jf. Miljørapportering | Ja / Q4 - 2024
+4 | Samle innkjøp av forbruksvarer | 1 | 1 | 1 | Få innkjøpsansvarlig i organisasjonen | MAVI Logistikk | Intern rapportering | Ja, interne krav (innkjøp) | Ja / Q4 - 2024
+5 | Reisepolicy med miljøkrav | 1 | 1 | 1 | Ref internkontrollsystem | MAVI Logistikk | Ja, (interne krav) | Ja / Q4 - 2024
+6 | Miljøkonkonkurranse | 1 | 1 | 1 | Revideres Q2 2022 | MAVI Logistikk | Forbedringstiltak for økt miljøengasjement | Nei | Ja / Q4 - 2024
+Miljøaspekt Kunder
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar | Samsvarsvurdering ?
+1 | Krav om ISO14001 sertifisering | 3 | 3 | 1 | Avtaleinngåelse med sertifisør og Landax | MAVI Logistikk | Landax | Ja, interne krav (kontrakt) | Ja / Q4 - 2024
+2 | Nullutslipp på B2B oppdrag | 2 | 4 | 2 | Minimum 50% av fremtidige anskaffelser av varebil med nullutslipp | MAVI Logistikk | Teknologi forhindrer oss i innkjøp av ren nullutslipp | Ja, interne krav | Ja / Q4 - 2024
+3 | Innsyn i vårt miljøarbeid | 2 | 4 | 2 | Informere om pågående arbeid og gi tilgang til Landax | MAVI Logistikk | Landax og MAVI informerer | Ja, interne krav | Ja / Q4 - 2024
+Miljøaspekt Energi/strøm-ideal
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar | Samsvarsvurdering ?
+1 | Påvirke Elkjøp med fokus på forbruk | > 140 kWh /m2 pr år | 2 | 4 | 2 | Forlag om bruk av lys med lavt forbruk og påvirke Elkjøp med innspill til kjøp av nye matrielle ressurser som vi bemanner | MAVI Logistikk | MAVI informerer | Ja, interne krav (Miljømål) | Ja / Q4 - 2024
+2 | Miljørelevante innkjøp | 2 | 4 | 2 | Ved innkjøp av materielle ressurser skal prosess følges og fokus på strømforbruk skal vurderes under vurdering av produkt/leverandør | MAVI Logistikk | Prosess enkelt innkjøp | Ja, interne krav (Miljømål) | Ja / Q4 - 2024
+
+## Ark 2
+Miljøaspekt Intern bilpark
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar
+1 | CO2 utslipp WLTP g/km | 259 | 2 | 518 | 2 | Gi opplæring til sjåførene i "grønn kjøring" | MAVI Logistikk
+2 | Kjøredistanse pr år | 76160 | 2 | 152320 | 1 | Ruteoptimalisering | MAVI Logistikk
+3 | Tomtransport | 1 | 1 | 2 | Ruteplanlegging | MAVI Logistikk
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+
+## Ark 3
+Miljøaspekt Ekstern Bilpark
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar
+1 | Euroklasse | 2 | 2 | 2 | Krav om Euroklasse 5 eller bedre | MAVI Logistikk
+2 | Kjøredistanse pr år | 2 | 1 | Ruteoptimalisering | MAVI Logistikk
+3 | Tomtransport | 1 | 1 | Ruteplanlegging | MAVI Logistikk
+4 | CO2 utslipp WLTP g/km | 2 | 2 | Gi opplæring til sjåførene i "grønn kjøring" | MAVI Logistikk
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+
+## Ark 4
+Miljøaspekt EE-avfall
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar
+1 | Riktig mengde ee-avfall til gjenvinning - kilo pr år | 1200000 | 2 | 2400000 | 1 | I samarbeid med Elkjøp og Miljødirektoratet, implementere rutine for kontroller | MAVI Logistikk
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+
+## Ark 5
+Miljøaspekt emballasje
+ID | Beskrivelse | Mengde | Påvirkning | Kalkulert | Prioritering | Tiltak | Lokasjon | Kommentar
+1 | Papp - kilo pr år | 36000 | 2 | 72000 | 2 | Periodisk opplæring til sjåførene | MAVI Logistikk
+2 | Plast - kilo pr år | 6000 | 2 | 12000 | 2 | Periodisk opplæring til sjåførene | MAVI Logistikk
+3 | Restavfall - kilo pr år | 65000 | 2 | 130000 | 2 | Periodisk opplæring til sjåførene | MAVI Logistikk
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0
+0

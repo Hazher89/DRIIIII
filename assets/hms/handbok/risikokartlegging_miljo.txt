@@ -1,0 +1,96 @@
+Risikokartlegging av uønsket miljøpåvirkning
+Kilde: Risikokartlegging av uønsket miljøpåvirkning.docx (Landax / MAVI)
+
+Hensikt
+Denne prosedyren skal sikre at potensiell negativ miljøpåvirkning som følge av virksomheten til MAVI Logistikk AS blir redusert til et akseptabelt risikonivå samt identifisere positive muligheter.
+Omfang
+Hele virksomheten til MAVI Logistikk AS herav også eksterne arrangementer.
+Risikovurderingen er basert på en risiko- og mulighetsvurdering av:
+Organisasjonens miljøaspekter (ref. i NS-EN ISO 14001:2015, pkt. 6.1.2)
+Organisasjonens samsvarsforpliktelser (ref. i NS-EN ISO 14001:2015, pkt. 6.1.3)
+Merknad: Risiko- og mulighetsvurdering i forhold til andre krav (ref. i NS-EN ISO 14001:2015 pkt. 4.1 og 4.2 er utført ii forbindelse med interessepart-kartleggingen (ref. Prosedyre kartlegging av interesseparter samt krav og forventninger)
+Denne risikovurderingen gjennomgås årlig eller der det er vesentlige endringer i organisasjonen, produktene eller myndighetskravene.
+Ansvar
+Daglig leder er ansvarlig for vedlikehold av prosedyren.
+De som utfører risikokartlegging skal benytte prosedyren.
+Forberedelse og oppstart av risikovurdering av ytre miljø
+Ansvarlig
+Trinn
+Aktivitet
+Referanse
+Daglig leder
+Videre defineres ansvarlig i flytkart
+1
+Etablerer en arbeidsgruppe som består av ledere/ansvarlige som er eller vil være berørt av aktiviteter med miljøpåvirkning.
+Denne gruppen vil bli ansvarlig for at krav, forventinger og muligheter blir identifisert og analysert mht. risiko og muligheter.
+Underlag som må være tilgjengelig for arbeidsgruppen:
+Resultat fra miljøkartleggingen
+Rapport fra samsvarsvurderingen
+Resultater fra interessepartkartleggingen som er relevant for ytre miljø
+Excel-modellen - miljø
+Resultat fra miljøkartleggingen
+Rapport fra samsvarsvurderingen
+Resultat fra interessepart-kartleggingen
+Risikovurdering 1: Risiko- og mulighetsvurdering miljøaspekter
+Ansvarlig
+Trinn
+Aktivitet
+Referanse
+1
+Gruppa gjennomgår miljøaspektene og utfører en risikovurdering og klassifiserer de enkelte risikoer
+Excel-modellen - miljø
+2
+Det avklares hvilke eksisterende tiltak som finnes i dag for å sikre at dette kravet er ivaretatt f.eks Prosedyre, sjekkliste, kompetanse etc.)
+Excel-modellen
+3
+Det foreta en risikovurdering basert på eksisterende tiltak
+Excel-modellen
+4
+Det fastsettes tiltak basert på kriteriene som er definert ( ref Flik 1)
+Excel-modellen
+5
+Det vurderes risiko etter tiltak (restrisiko)
+Excel-modellen
+6
+Det vurderes hvilke positive muligheter som oppstår som følge av et akseptabelt/lavt risikonivå.
+Excel-modellen
+7
+Tiltak som er besluttet nødvendige for å redusere risiko til et akseptabelt risikonivå overføres til handlingsplanen som prioriteres i forhold til de tiltak som gir de største resultatene.
+Excel-modellen - Flik Handlingsplan
+Risikovurdering 2: Risiko- og mulighetsvurdering av samsvar med myndighetskrav og andre krav
+Ansvarlig
+Trinn
+Aktivitet
+Referanse
+1
+Gruppa gjennomgår oversikt over lover og krav samt rapport fra samsvarsvurdering og utfører en risikovurdering og klassifiserer de enkelte risikoer relatert til krav og samsvar.
+Rapport samsvarsvurdering
+Oversikt over lover og krav
+(www.regelhjelp.no)
+Excel-modellen - miljø
+2
+Det avklares hvilke eksisterende tiltak som finnes i dag for å sikre at dette kravet er ivaretatt f.eks Prosedyre, sjekkliste, kompetanse etc.)
+Excel-modellen
+3
+Det foreta en risikovurdering basert på eksisterende tiltak
+Excel-modellen
+4
+Det fastsettes tiltak basert på kriteriene som er definert ( ref Flik 1)
+Excel-modellen
+5
+Det vurderes risiko etter tiltak (restrisiko)
+Excel-modellen
+6
+Det vurderes hvilke positive muligheter som oppstår som følge av et akseptabelt/lavt risikonivå.
+Excel-modellen
+7
+Tiltak som er besluttet nødvendige for å redusere risiko til et akseptabelt risikonivå overføres til handlingsplanen som prioriteres i forhold til de tiltak som gir de største resultatene.
+Excel-modellen - Flik Handlingsplan
+Vedlegg
+Excel-modellen miljø, versjon 2017
+Referanser:
+Rapport Samsvarsvurdering
+www.regelhjelp.no
+ISO 14001, pkt. 4.2, 6.1, 9.1.2
+Prosedyre lover og krav
+Prosedyre samsvarsvurdering

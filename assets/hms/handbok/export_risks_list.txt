@@ -1,0 +1,578 @@
+Eksport risikoliste
+Kilde: export-risks-list.pdf (Landax / MAVI)
+
+Mavi logistikk AS
+Solheimveien 3
+1461 Lørenskog
+drift@mavilogistikk.no
+2
+Beskrivelse av hendelsen og konsekvens
+Innbrudd, kritisk helsesituasjon eller andre
+nødsituasjoner kan oppstå mens arbeidstaker er
+alene i lokalene.
+Beskrivelse av årsaken til hendelsen
+Kun behov for lav bemanning på kveldstid.
+Ansvarlig
+Karwan Lian
+Ansatte på kjørekontoret jobber alene
+på kveldstid
+1
+2
+ 2
+0
+ 0
+0
+ 0
+0
+ 0
+0
+ 0
+2
+ 2
+Risikoanalyse
+Sannsynlighet
+Lite sannsynlig
+Person (Safety)
+Innenfor
+akseptgrense
+Økonomi
+Ingen risiko
+Ytre Miljø
+Ingen risiko
+Omdømme
+Ingen risiko
+Leveringsevne
+Ingen risiko
+Sikkerhet
+(Security)
+Innenfor
+akseptgrense
+Eksisterende tiltak for å redusere
+sannsynligheten for at hendelsen oppstår
+Ingen
+Eksisterende tiltak for å redusere
+konsekvensen av hendelsen
+Ingen
+Forslag til ytterligere tiltak (Følges eventuelt
+opp som Oppgave)
+17.10.2023 14:40:26 (Tommy Larsen)
+———
+Undersøke muligheter for innkjøp av nødalarm
+tilknyttet alarmsentral
+3
+Beskrivelse av hendelsen og konsekvens
+Arbeid ved komprimator alene er risikofylt da det er
+begrenset vern
+Beskrivelse av årsaken til hendelsen
+Manglende vern og sikkerhet ved flere personer på
+bygg
+Ansvarlig
+Hazher Osman Abdullah
+Arbeid ved komprimatorer kan føre til
+arbeidsulykke
+1
+3
+ 3
+0
+ 0
+2
+ 2
+2
+ 2
+0
+ 0
+0
+ 0
+Risikoanalyse
+Sannsynlighet
+Lite sannsynlig
+Person (Safety)
+Innenfor
+akseptgrense
+Økonomi
+Ingen risiko
+Ytre Miljø
+Innenfor
+akseptgrense
+Omdømme
+Innenfor
+akseptgrense
+Leveringsevne
+Ingen risiko
+Sikkerhet
+(Security)
+Ingen risiko
+Eksisterende tiltak for å redusere
+sannsynligheten for at hendelsen oppstår
+Vern på en av to komprimatorer
+Forslag til ytterligere tiltak (Følges eventuelt
+opp som Oppgave)
+02.06.2023 11:43:10 (Tommy Larsen)
+———
+Vern på begge komprimatorer, ikke tillatt å arbeide
+uten minimum to på bygget og skilte at nødstopp må
+benyttes før arbeidet settes i gang. Ta inn nøkler på
+innsiden om natten for at ikke fremmede skal kunne
+bruke maskinene.
+8
+Beskrivelse av hendelsen og konsekvens
+Det er dårlig ventilasjon og lave temperaturer i
+midlertidige lokaler som kan føre til høyt fravær og
+manglende trivsel på arbeidsplassen.
+Beskrivelse av årsaken til hendelsen
+Gammelt bygg. Gårdeier mangler vilje til å investere
+i bygget
+Høyt sykefravær grunnet dårlig
+inneklima og lave temperaturer i nye
+lokaler
+4
+1
+ 4
+0
+ 0
+0
+ 0
+2
+ 8
+1
+ 4
+1
+ 4
+Risikoanalyse
+Sannsynlighet
+Meget sannsynlig
+Person (Safety)
+Innenfor
+akseptgrense
+Økonomi
+Ingen risiko
+Ytre Miljø
+Ingen risiko
+Omdømme
+Må vurderes /
+ALARP
+Leveringsevne
+Innenfor
+akseptgrense
+Sikkerhet
+(Security)
+Innenfor
+akseptgrense
+Eksisterende tiltak for å redusere
+sannsynligheten for at hendelsen oppstår
+Få inn varmeapparater og garasjetelt til
+omhengsling for å holde på varmen.
+Eksisterende tiltak for å redusere
+konsekvensen av hendelsen
+Få inn varmeapparater og garasjetelt til
+omhengsling for å holde på varmen.
+Forslag til ytterligere tiltak (Følges eventuelt
+opp som Oppgave)
+Kjøpe inn maling for å øke trivsel på kontorene. Det
+vil ikke gjøres store investeringer ettersom det er
+midlertidige lokaler som skal flyttes ut av i mars
+2025
+8
+Beskrivelse av hendelsen og konsekvens
+i dag 31.05.24 var 2 rørlegger på bygget for å fikse
+en tett rør. røret var på taket og de måtte bruke stige
+for å jobbe. Den ene måtte opp i høyde på ca 2
+meter og falt mens han jobbet med røret. Det førte til
+at han fikk skade under øyet og måtte hentes av
+ambulanse pga smerter og blødning.
+Beskrivelse av årsaken til hendelsen
+Årsaken var at det kan være at stigen var ikke stabilt
+nok og han som skulle arbeide med røret brukte
+makt som førte til at han falt av.
+Ansvarlig
+Tommy Larsen
+Jobbe i høyden
+2
+4
+ 8
+1
+ 2
+1
+ 2
+2
+ 4
+1
+ 2
+4
+ 8
+Risikoanalyse
+Sannsynlighet
+Mindre sannsynlig
+Person (Safety)
+Må vurderes /
+ALARP
+Økonomi
+Innenfor
+akseptgrense
+Ytre Miljø
+Innenfor
+akseptgrense
+Omdømme
+Innenfor
+akseptgrense
+Leveringsevne
+Innenfor
+akseptgrense
+Sikkerhet
+(Security)
+Må vurderes /
+ALARP
+Eksisterende tiltak for å redusere
+sannsynligheten for at hendelsen oppstår
+det må alltid være 2 personer på stedet når en skal
+opp i en så høyde.
+Eksisterende tiltak for å redusere
+konsekvensen av hendelsen
+det skal være fri bane for de som jobber i høye med
+minst 3 meter rundt arbeidsplassen.
+Forslag til ytterligere tiltak (Følges eventuelt
+opp som Oppgave)
+31.05.2024 10:34:19 (Tommy Larsen)
+———
+Vedkommende arbeidet for ekstern håndverkerfirma
+ID: 310
+Risikovurdering: 1.1.7 Beredskap og innsats
+Lokasjoner: MAVI Logistikk AS
+Kartlagt dato: 17.10.2023
+Sist endret: 17.10.2023
+ID: 307
+Risikovurdering: 3. Lager og Distribusjon
+Lokasjoner: MAVI Logistikk AS
+Kartlagt dato: 02.06.2023
+Sist endret: 02.06.2023
+ID: 313
+Risikovurdering: 3. Lager og Distribusjon
+Lokasjoner: Lørenskog
+Kartlagt dato: 18.10.2024
+Sist endret: 18.10.2024
+ID: 312
+Risikovurdering: 4. HMS
+Lokasjoner: MAVI Logistikk AS
+Kartlagt dato: 31.05.2024
+Sist endret: 31.05.2024
+
+12
+Beskrivelse av hendelsen og konsekvens
+I dag kl 10:46 losset Rafal bil fra NDC. Når han
+kjørte igjennom passasjen inn til lossesonen, kom et
+kjøleskap borti taket i passasjen og falt ned. Øvre
+del av kjøleskapet traff skulderen/armen til Jamal
+som fikk smerter.
+Ambulanse ble tilkalt som hentet han og tok han
+med til legevakten.
+Ansvarlig
+Karwan Lian
+påkjøring av truck
+3
+4
+ 12
+1
+ 3
+1
+ 3
+2
+ 6
+1
+ 3
+2
+ 6
+Risikoanalyse
+Sannsynlighet
+Sannsynlig
+Person (Safety)
+Uakseptabel risiko /
+Restrisiko
+Økonomi
+Innenfor
+akseptgrense
+Ytre Miljø
+Innenfor
+akseptgrense
+Omdømme
+Innenfor
+akseptgrense
+Leveringsevne
+Innenfor
+akseptgrense
+Sikkerhet
+(Security)
+Innenfor
+akseptgrense
+Eksisterende tiltak for å redusere
+sannsynligheten for at hendelsen oppstår
+de som kjører truck må være ekstra obs på rundt
+seg.
+Forslag til ytterligere tiltak (Følges eventuelt
+opp som Oppgave)
+markering av kjørebane for truck
+6
+Beskrivelse av hendelsen og konsekvens
+Ved bruk av underleverandører som oppdragstakere
+fremfor egne ansatte på bil:
+Mulig større risiko for å opprettholde kvalitet
+grunnet høyt trekk i bilparken
+Risiko for arbeidslivskriminalitet som vil føre til
+svekket omdømme
+Ved bruk av ansatte på bil fremfor
+underleverandører:
+Fare for høyt fravær
+Større risiko for skader på produkter og
+eiendom ettersom de ikke stilles personlig
+ansvarlige
+Risiko for lavere effektivitet
+Mer utfordrende å stille med riktig kapasitet iht
+markedsbehov
+Mer uforutsigbare resultater for selskapet
+økonomisk sett
+Krav till investeringer
+Beskrivelse av årsaken til hendelsen
+Det er gjort løpende vurderinger internt i fordeler og
+ulemper med å øke antall biler i egen regi. Historisk
+sett er dette forsøkt i praksis, hvor det er gjort en
+konklusjon i at ulempene overskygger fordelingene
+med å ta inn flere egeneide biler.
+Ansvarlig
+Tommy Larsen
+Risikovurdering ved bruk av
+underleverandører vs ansatte på bil
+3
+1
+ 3
+2
+ 6
+1
+ 3
+2
+ 6
+2
+ 6
+0
+ 0
+Risikoanalyse
+Sannsynlighet
+Sannsynlig
+Person (Safety)
+Innenfor
+akseptgrense
+Økonomi
+Innenfor
+akseptgrense
+Ytre Miljø
+Innenfor
+akseptgrense
+Omdømme
+Innenfor
+akseptgrense
+Leveringsevne
+Innenfor
+akseptgrense
+Sikkerhet
+(Security)
+Ingen risiko
+Eksisterende tiltak for å redusere
+sannsynligheten for at hendelsen oppstår
+Hatt flere biler i egen regi tidligere
+Eksisterende tiltak for å redusere
+konsekvensen av hendelsen
+Jobber kontinuerlig med tiltak igjennom rutiner og
+prosedyrer for å redusere sannsynligheten for at de
+negative risikoene ved å ha underleverandører
+oppstår. Viser til 1-års plan for audit og daglig
+oppfølging av KPI
+4
+Beskrivelse av hendelsen og konsekvens
+Personer/kunder kan ved uoverensstemmelser
+plassere seg foran kjøretøy og blokkere veien.
+Konsekvens kan være at sjåfør blir utålmodig og
+irritert som fører til at de kjører mot vedkommende
+for å få de til å flytte seg.
+Beskrivelse av årsaken til hendelsen
+Årsak er at det ikke er mulig å utføre flere eller
+enkelte av tjenestene som kunde har eller hevder å
+ha bestilt.
+Ansvarlig
+Tommy Larsen
+Sluttkunder blokkerer transportør fra
+å kjøre videre
+1
+2
+ 2
+0
+ 0
+1
+ 1
+4
+ 4
+2
+ 2
+1
+ 1
+Risikoanalyse
+Sannsynlighet
+Lite sannsynlig
+Person (Safety)
+Innenfor
+akseptgrense
+Økonomi
+Ingen risiko
+Ytre Miljø
+Innenfor
+akseptgrense
+Omdømme
+Innenfor
+akseptgrense
+Leveringsevne
+Innenfor
+akseptgrense
+Sikkerhet
+(Security)
+Innenfor
+akseptgrense
+Eksisterende tiltak for å redusere
+sannsynligheten for at hendelsen oppstår
+Mandat til å utføre tilleggstjenester så sant kunde
+aksepterer tilleggskostnad så sant det er mulig å
+utføre tjenestene uten fare for skade på produkt,
+eiendom, kjøretøy eller person.
+Eksisterende tiltak for å redusere
+konsekvensen av hendelsen
+Kontakte kjørekontoret for bistand.
+Forslag til ytterligere tiltak (Følges eventuelt
+opp som Oppgave)
+01.09.2023 13:52:17 (Tommy Larsen)
+———
+Utarbeide prosedyre og sende ut felles informasjon
+om at man skal sitte i bilen med motor avslått helt
+frem til situasjonen er under kontroll.
+ID: 315
+Risikovurdering: 1.2 Kjerneprosesser
+Kartlagt dato: 11.08.2025
+Sist endret: 11.08.2025
+ID: 314
+Risikovurdering: 4. Leveranse
+Kartlagt dato: 05.05.2025
+Sist endret: 05.05.2025
+ID: 309
+Risikovurdering: 4. Leveranse
+Lokasjoner: MAVI Logistikk AS
+Kartlagt dato: 01.09.2023
+Sist endret: 01.09.2023
+
+12
+Beskrivelse av hendelsen og konsekvens
+Blir blendet mens truckførere er i arbeid. Kan føre til
+alvorlig ulykke
+Beskrivelse av årsaken til hendelsen
+Ingen solskjerming på vinduer over lasteport
+Ansvarlig
+Tommy Larsen
+Sollys skinner igjennom vinduer på
+truckførere som blir blendet
+3
+4
+ 12
+0
+ 0
+1
+ 3
+0
+ 0
+0
+ 0
+0
+ 0
+Risikoanalyse
+Sannsynlighet
+Sannsynlig
+Person (Safety)
+Uakseptabel risiko /
+Restrisiko
+Økonomi
+Ingen risiko
+Ytre Miljø
+Innenfor
+akseptgrense
+Omdømme
+Ingen risiko
+Leveringsevne
+Ingen risiko
+Sikkerhet
+(Security)
+Ingen risiko
+Eksisterende tiltak for å redusere
+sannsynligheten for at hendelsen oppstår
+Sendt henvendelse til gårdeier om å få solskjerming
+på de relevante steder. Ingen svar på 2 mnd, purret.
+Forslag til ytterligere tiltak (Følges eventuelt
+opp som Oppgave)
+12.01.2024 11:33:38 (Tommy Larsen)
+———
+Innkjøp av solskjeming på egenhånd, be gårdeier
+om lån av lift. Gjelder 15 vinduer fra venstre av
+lasteport. Innkjøp av gråpapir
+3
+Beskrivelse av hendelsen og konsekvens
+En brå sving i bakke fører til at trucken velter.
+Mennesker vil da hoppe ut den veien trucken velter
+av natur. Skal bli sittende i trucken
+Beskrivelse av årsaken til hendelsen
+For brå sving
+Ansvarlig
+Karwan Lian
+Truck velter - fare for arbeidsulykke
+1
+3
+ 3
+0
+ 0
+2
+ 2
+0
+ 0
+2
+ 2
+0
+ 0
+Risikoanalyse
+Sannsynlighet
+Lite sannsynlig
+Person (Safety)
+Innenfor
+akseptgrense
+Økonomi
+Ingen risiko
+Ytre Miljø
+Innenfor
+akseptgrense
+Omdømme
+Ingen risiko
+Leveringsevne
+Innenfor
+akseptgrense
+Sikkerhet
+(Security)
+Ingen risiko
+Eksisterende tiltak for å redusere
+sannsynligheten for at hendelsen oppstår
+Opplæring truckkjøring
+Forslag til ytterligere tiltak (Følges eventuelt
+opp som Oppgave)
+02.06.2023 11:55:17 (Tommy Larsen)
+———
+Opplæring i at man skal bli sittende ved en slik
+hendelse. Ber Elkjøp om sikkerhetskurs i truckføring
+ID: 311
+Risikovurdering: 4. HMS
+Lokasjoner: MAVI Logistikk AS
+Kartlagt dato: 12.01.2024
+Sist endret: 12.01.2024
+ID: 308
+Risikovurdering: 3. Lager og Distribusjon
+Lokasjoner: MAVI Logistikk AS
+Kartlagt dato: 02.06.2023
+Sist endret: 02.06.2023

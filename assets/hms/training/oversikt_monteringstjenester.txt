@@ -1,0 +1,31 @@
+Oversikt monteringstjenester
+Kilde: Oversikt monteringstjenester.pdf (Landax / MAVI)
+
+Formål
+Gi ansatte og partnere en rask oversikt over hvilke monteringstjenester MAVI tilbyr i forbindelse med levering av hvitevarer og tilhørende produkter.
+
+Hva dekkes typisk
+- Montering og tilkobling av hvitevarer der avtalen inkluderer montering
+- Enkel installasjon iht. produsentens anvisning og oppdragets servicekode
+- Demontering/fjerning av gammelt produkt når det er bestilt
+- Rapportering av avvik (manglende deler, skade, utilgjengelig installasjonssted)
+
+Viktige regler
+- Utfør kun arbeid som er spesifisert i ordren / servicekoden
+- Ikke utfør elektrisk arbeid uten riktig kompetanse og oppdrag
+- Stopp arbeidet ved usikkerhet om sikkerhet eller kompetanse — kontakt CCC/hub
+- Ta bilder ved skade, avvik eller når kunden ber om dokumentasjon
+- Kunden skal informeres tydelig om hva som er gjort og hva som gjenstår
+
+Når noe ikke kan monteres
+1. Forklar kunden kort og profesjonelt
+2. Registrer årsak i systemet / meld videre til CCC
+3. Ikke etterlat farlige midlertidige løsninger
+4. Avtal videre oppfølging når relevant
+
+Kobling i DriftPro
+- Offentlig monteringshjelp: /montering
+- Interne rutiner: se Hub Driftsrutiner og arbeidsinstrukser under Opplæring
+
+Merk
+Landax-PDF-en er i hovedsak bildebasert. Denne teksten gir den operative oversikten i appen.

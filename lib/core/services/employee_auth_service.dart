@@ -34,9 +34,40 @@ class EmployeeAuthService {
       if (email == null) return null;
       final s = email.toString().trim();
       return s.isEmpty || s == 'null' ? null : s;
-    } catch (_) {
+    } on PostgrestException catch (e) {
+      // Infrastrukturfeil (f.eks. schema cache) — ikke «fant ikke ansatt».
+      throw AuthException(_friendlyInfrastructureError(e.message, e.code));
+    } catch (e) {
+      final msg = e.toString();
+      if (_looksLikeInfrastructureError(msg)) {
+        throw AuthException(_friendlyInfrastructureError(msg, null));
+      }
       return null;
     }
+  }
+
+  static bool _looksLikeInfrastructureError(String msg) {
+    final m = msg.toLowerCase();
+    return m.contains('pgrst002') ||
+        m.contains('schema cache') ||
+        m.contains('could not query the database') ||
+        m.contains('connection') ||
+        m.contains('timeout') ||
+        m.contains('503') ||
+        m.contains('502') ||
+        m.contains('failed host lookup') ||
+        m.contains('socketexception');
+  }
+
+  static String _friendlyInfrastructureError(String message, String? code) {
+    final m = message.toLowerCase();
+    if (m.contains('pgrst002') || m.contains('schema cache')) {
+      return 'DriftPro-databasen er midlertidig utilgjengelig. Prøv igjen om litt.';
+    }
+    if (code != null && code.isNotEmpty) {
+      return 'Innlogging midlertidig utilgjengelig ($code). Prøv igjen om litt.';
+    }
+    return 'Innlogging midlertidig utilgjengelig. Prøv igjen om litt.';
   }
 
   static Future<void> signInWithEmployeeNumber({
@@ -49,10 +80,19 @@ class EmployeeAuthService {
         'Fant ikke ansattnummer. Sjekk nummeret eller kontakt MAVI.',
       );
     }
-    await _client.auth.signInWithPassword(
-      email: email,
-      password: normalizePasswordForAuth(password),
-    );
+    try {
+      await _client.auth.signInWithPassword(
+        email: email,
+        password: normalizePasswordForAuth(password),
+      );
+    } on AuthException {
+      rethrow;
+    } catch (e) {
+      if (_looksLikeInfrastructureError(e.toString())) {
+        throw AuthException(_friendlyInfrastructureError(e.toString(), null));
+      }
+      rethrow;
+    }
   }
 
   /// Bytt passord for innlogget ansatt (direkte i Supabase Auth).

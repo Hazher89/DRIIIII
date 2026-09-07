@@ -1,0 +1,25 @@
+Kontroll av TINA
+Kilde: KONTROLL AV TINA.docx (Landax / MAVI)
+
+KONTROLL AV TINA-FILER
+En Tina-fil er en fil som Elkjøp sender til Mavi via email en gang i uke (vanligvis på søndag) og som inneholder detaljer på alt som har blitt kjørt og utført av våre sjåfører i uke som har gått.
+For at en FO skal komme i en Tinafil må sjåføren ha avsluttet turen på sin applikasjon.
+Når en tinafil kommer har vi i utgangspunktet 7 dager for å gå gjennom den og sjekke om alt stemmer og føre inn eventuelle avvik. Når dette er gjort sender vi filen tilbake til Elkjøp og elkjøp har da 7 dager for å godkjenne eller avvikle våre avvik. Etter dett kan vi sende faktura for Tinafilen som gjelder.
+Tinafilen er en enkel Excelfil som består av flere kolonner som inneholder alle detaljene fra hver FU (Freight Unit) som har blit utført (eller ikke utført i tilfelle av bomtur) av Mavi-sjåfører
+Før man starter med kontroll av filen må man:
+Endre sjåføren på alle linjer som inneholder Turndoor at HUB til Mavi 002
+Fjerne eventuelle linjer som har kommet i filen med sjåfør Olav eller Jim
+Når man kontrollere en Tinafil må man:
+Samle alle kjørelister fra uke som gjelder
+Velge den første kjøreliste, søke etter kjørelistes FO-nummer i filen slik at men ser om den er i filen
+Sjekke at antall FU på kjøreliste matcher antall FU i filen (det hjelper å markere dem midlertidig med egen farge)
+Se om sjåføren har notert noen skriftlige avvik på kjøreliste og sjekke om disse finnes i filen, og legge dem inn som avvik i tilfelle de mangler, med forklarende kommentar som merkes med gul farge
+Ta noen stykkprøver og sjekke om priser på FU er riktige og evt korrigere dem
+Når kjørelista er sjekket ferdig, fortsett med neste kjøreliste
+Mulige avvik:
+En kjøreliste mangler i filen: det kan hende at sjåføren ikke har avsluttet turen på riktig måte. I disse tilfeller må vi vente at turen avsluttes manuelt av kjørekontoret. Disse kjørelister kan beholdes separat fra de andre og skal sjekkes mot neste fil.
+En kjøreliste mangler i en fil og i filene som kommer etter: sjekk med Adib om turen er avsluttet. Hvis turen er avsluttet da kan man velge enten å legge inn hele kjørelista manuelt, eller å sende en email til Elkjøp og be dem å legge inn kjørelista i neste filen.
+Når man er ferdig:
+Sjekk at alle bilnummer stemmer med biler som er i bruk
+Sjekk at det ikke finnes celler med tomme verdier (uten pris)
+Filen lagres i Dropbox og dato av sending av filen inkluderes i filnavn

@@ -77,10 +77,10 @@ class _HmsScreenState extends State<HmsScreen> {
         context,
         icon: Icons.menu_book_rounded,
         title: 'HMS-håndbok',
-        subtitle: 'IK-system og alle vedlegg — ryddig fordelt',
+        subtitle: 'IK, miljø, risiko, beredskap, revisjon og partnere',
         color: DriftProTheme.primaryGreen,
         isDark: isDark,
-        badge: 'MAVI',
+        badge: 'QHSE',
         onTap: () => context.push(AppPaths.hmsHandbok),
       ));
     }
@@ -201,8 +201,8 @@ class _HmsScreenState extends State<HmsScreen> {
         icon: Icons.school_rounded,
         title: 'Opplæring',
         subtitle: isMobile
-            ? 'Søk og lær — SOP og brukerveiledning'
-            : 'Smart søk — DriftPro + SOP Hub',
+            ? 'SOP, arbeidsinstrukser og sjekklister'
+            : 'DriftPro + Landax: instrukser, sjåfør og montering',
         color: const Color(0xFF00695C),
         isDark: isDark,
         onTap: () => context.push(AppPaths.hmsOpplaering),

@@ -155,6 +155,8 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
         return Icons.fact_check_rounded;
       case 'more_horiz':
         return Icons.more_horiz_rounded;
+      case 'build':
+        return Icons.build_rounded;
       default:
         return Icons.menu_book_rounded;
     }
@@ -405,31 +407,46 @@ class _SopTrainingScreenState extends State<SopTrainingScreen> {
 
   List<Widget> _buildLandingSlivers(bool isDark) {
     return [
-      SliverPadding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-        sliver: SliverToBoxAdapter(
-          child: Text('Bibliotek', style: DriftProTheme.headingSm),
-        ),
-      ),
-      SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        sliver: SliverToBoxAdapter(
-          child: Column(
-            children: [
-              for (final meta in TrainingLibraryService.docs) ...[
-                _DocLibraryCard(
-                  meta: meta,
-                  entryCount: _lib.docById(meta.id)?.entries.length ?? 0,
-                  isDark: isDark,
-                  icon: _iconFor(meta.iconName),
-                  onTap: () => _browseDoc(meta),
+      for (final group in TrainingDocGroup.values) ...[
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(group.title, style: DriftProTheme.headingSm),
+                const SizedBox(height: 2),
+                Text(
+                  group.subtitle,
+                  style: DriftProTheme.caption.copyWith(
+                    color: isDark ? Colors.white60 : const Color(0xFF5A6B7C),
+                  ),
                 ),
-                const SizedBox(height: 10),
               ],
-            ],
+            ),
           ),
         ),
-      ),
+        SliverPadding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              children: [
+                for (final meta in TrainingLibraryService.docs
+                    .where((d) => d.group == group)) ...[
+                  _DocLibraryCard(
+                    meta: meta,
+                    entryCount: _lib.docById(meta.id)?.entries.length ?? 0,
+                    isDark: isDark,
+                    icon: _iconFor(meta.iconName),
+                    onTap: () => _browseDoc(meta),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
       SliverPadding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         sliver: SliverToBoxAdapter(

@@ -15,6 +15,7 @@ class TrainingDocMeta {
     required this.subtitle,
     required this.assetPath,
     required this.kind,
+    this.group = TrainingDocGroup.app,
     this.tags = const [],
     this.iconName = 'menu_book',
   });
@@ -24,11 +25,32 @@ class TrainingDocMeta {
   final String subtitle;
   final String assetPath;
   final TrainingDocKind kind;
+  final TrainingDocGroup group;
   final List<String> tags;
   final String iconName;
 }
 
 enum TrainingDocKind { sopDocx, plainText }
+
+enum TrainingDocGroup {
+  app,
+  arbeidsinstruks,
+  opplaering,
+}
+
+extension TrainingDocGroupX on TrainingDocGroup {
+  String get title => switch (this) {
+        TrainingDocGroup.app => 'DriftPro-veiledninger',
+        TrainingDocGroup.arbeidsinstruks => 'Arbeidsinstrukser',
+        TrainingDocGroup.opplaering => 'Opplæring og sjekklister',
+      };
+
+  String get subtitle => switch (this) {
+        TrainingDocGroup.app => 'Hvordan bruke appens moduler',
+        TrainingDocGroup.arbeidsinstruks => 'Hub, inventar, claims, KPI og ruter',
+        TrainingDocGroup.opplaering => 'Sjåfør, drift og montering',
+      };
+}
 
 /// Samlet opplæringsbibliotek (SOP Hub + arbeidsinstrukser).
 class TrainingLibraryService {
@@ -312,6 +334,7 @@ class TrainingLibraryService {
       subtitle: 'SOP-HUB-001 — hovedopplæring lager/hub',
       assetPath: 'assets/hms/sop_hub_driftsrutiner_v4_8.docx',
       kind: TrainingDocKind.sopDocx,
+      group: TrainingDocGroup.arbeidsinstruks,
       tags: ['sop', 'hub', 'driftsrutiner', 'hubanero', 'goran'],
       iconName: 'hub',
     ),
@@ -321,6 +344,7 @@ class TrainingLibraryService {
       subtitle: 'Daglige faner og handlinger i HUB Dashboard',
       assetPath: 'assets/hms/training/arbeidsinstruks_inventory.txt',
       kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.arbeidsinstruks,
       tags: [
         'inventory',
         'waiting area',
@@ -337,6 +361,7 @@ class TrainingLibraryService {
       subtitle: 'Returskjema, etikett og Hubanero intake',
       assetPath: 'assets/hms/training/arbeidsinstruks_returmottak.txt',
       kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.arbeidsinstruks,
       tags: ['retur', 'returmottak', 'returskjema', 'hubanero', 'goran', 'bilag'],
       iconName: 'assignment_return',
     ),
@@ -346,8 +371,129 @@ class TrainingLibraryService {
       subtitle: 'Ad-hoc inventory, Excel-rapport og HUB Dash',
       assetPath: 'assets/hms/training/arbeidsinstruks_1701.txt',
       kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.arbeidsinstruks,
       tags: ['1701', 'ad-hoc', 'inventory', 'hubanero', 'pda', 'excel'],
       iconName: 'local_shipping',
+    ),
+    TrainingDocMeta(
+      id: 'inventory_ct',
+      title: 'Inventory (CT)',
+      subtitle: 'Onsdags-scanning og Control Tower-rapport',
+      assetPath: 'assets/hms/training/arbeidsinstruks_inventory_ct.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.arbeidsinstruks,
+      tags: ['inventory', 'ct', 'control tower', 'hubanero', 'onsdag'],
+      iconName: 'inventory_2',
+    ),
+    TrainingDocMeta(
+      id: 'claims',
+      title: 'Claims',
+      subtitle: 'Arbeidsinstruks for claims-håndtering',
+      assetPath: 'assets/hms/training/arbeidsinstruks_claims.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.arbeidsinstruks,
+      tags: ['claims', 'skade', 'reklamasjon'],
+      iconName: 'report',
+    ),
+    TrainingDocMeta(
+      id: 'dropbox',
+      title: 'Dropbox',
+      subtitle: 'Arbeidsinstruks for Dropbox-rutiner',
+      assetPath: 'assets/hms/training/arbeidsinstruks_dropbox.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.arbeidsinstruks,
+      tags: ['dropbox', 'filer', 'deling'],
+      iconName: 'folder',
+    ),
+    TrainingDocMeta(
+      id: 'kpi',
+      title: 'KPI',
+      subtitle: 'Arbeidsinstruks for KPI-oppfølging',
+      assetPath: 'assets/hms/training/arbeidsinstruks_kpi.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.arbeidsinstruks,
+      tags: ['kpi', 'mål', 'resultat'],
+      iconName: 'dashboard',
+    ),
+    TrainingDocMeta(
+      id: 'ruteplanlegging',
+      title: 'Ruteplanlegging',
+      subtitle: 'Arbeidsinstruks for planlegging av ruter',
+      assetPath: 'assets/hms/training/arbeidsinstruks_ruteplanlegging.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.arbeidsinstruks,
+      tags: ['rute', 'planlegging', 'sap', 'connectteam'],
+      iconName: 'route',
+    ),
+    TrainingDocMeta(
+      id: 'tompaller_ndc',
+      title: 'Tompaller til NDC',
+      subtitle: 'Sending av tompaller til NDC',
+      assetPath: 'assets/hms/training/arbeidsinstruks_tompaller_ndc.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.arbeidsinstruks,
+      tags: ['paller', 'ndc', 'tompaller', 'retur'],
+      iconName: 'local_shipping',
+    ),
+    TrainingDocMeta(
+      id: 'kontroll_tina',
+      title: 'Kontroll av TINA',
+      subtitle: 'Sjekkliste og kontrollrutine',
+      assetPath: 'assets/hms/training/kontroll_av_tina.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.arbeidsinstruks,
+      tags: ['tina', 'kontroll', 'sjekkliste'],
+      iconName: 'fact_check',
+    ),
+    TrainingDocMeta(
+      id: 'checklist_sjafor',
+      title: 'Opplæring sjåfører',
+      subtitle: 'Checklist for sjåføropplæring',
+      assetPath: 'assets/hms/training/checklist_opplaering_sjaforer.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.opplaering,
+      tags: ['sjåfør', 'opplæring', 'checklist', 'intro'],
+      iconName: 'badge',
+    ),
+    TrainingDocMeta(
+      id: 'checklist_drift',
+      title: 'Opplæring drift ansatte',
+      subtitle: 'Sjekkliste for drift / hub',
+      assetPath: 'assets/hms/training/checklist_opplaering_drift.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.opplaering,
+      tags: ['drift', 'opplæring', 'hub', 'sjekkliste'],
+      iconName: 'assignment',
+    ),
+    TrainingDocMeta(
+      id: 'opplaering_sporsmal',
+      title: 'Opplæring — spørsmål m.m.',
+      subtitle: 'Vanlige spørsmål fra CCC/butikk til MAVI',
+      assetPath: 'assets/hms/training/opplaering_sporsmal.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.opplaering,
+      tags: ['spørsmål', 'ccc', 'butikk', 'faq', 'opplæring'],
+      iconName: 'poll',
+    ),
+    TrainingDocMeta(
+      id: 'sjaforintro',
+      title: 'Sjåførintroduksjon',
+      subtitle: 'Kort intro til MAVI for sjåfører',
+      assetPath: 'assets/hms/training/sjaforintroduksjon_kort.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.opplaering,
+      tags: ['sjåfør', 'intro', 'levering', 'curbside'],
+      iconName: 'badge',
+    ),
+    TrainingDocMeta(
+      id: 'montering_oversikt',
+      title: 'Monteringstjenester',
+      subtitle: 'Oversikt over montering ved levering',
+      assetPath: 'assets/hms/training/oversikt_monteringstjenester.txt',
+      kind: TrainingDocKind.plainText,
+      group: TrainingDocGroup.opplaering,
+      tags: ['montering', 'hvitevarer', 'service', 'installasjon'],
+      iconName: 'build',
     ),
   ];
 
@@ -370,6 +516,11 @@ class TrainingLibraryService {
     'Kompetansematrise',
     'Waiting area — hva gjør jeg?',
     'Vareoverføring til 1701',
+    'Opplæring sjåfør',
+    'Claims',
+    'Ruteplanlegging',
+    'Tompaller NDC',
+    'Montering',
   ];
 
   final Map<String, SopTrainingDocument> _byId = {};

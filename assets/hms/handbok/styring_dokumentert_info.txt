@@ -1,0 +1,159 @@
+Styring av dokumentert informasjon
+Kilde: Styring av dokumentert informasjon.docx (Landax / MAVI)
+
+Formål
+Prosedyrens hensikt er å sikre at dokumentert informasjon, herav prosedyrer, beskrivelser, håndbøker og annen dokumentasjon og data som er omfattet av kvalitetssystemet, blir styrt på en hensiktsmessig måte.
+Ansvar
+Daglig leder har ansvaret for etablering og vedlikehold av dette dokumentet.
+Alle ansatte som utarbeider dokumentert informasjon som omfattes av kvalitetssystemet skal etterleve denne prosedyren.
+Definisjoner
+Dokumentert informasjon: Informasjon som kreves formalisert. Kan bestå av prosessbeskrivelser, prosedyrer, rutiner, instrukser, elektroniske data eller liknende som er nødvendig for å sikre styring av bedriftens prosesser og aktiviteter.
+Metadata: Informasjon om dokumenter eller filer som legges inn i Landax’ dokumentdatabase. Metadataene kan bestå av dokumentansvarlig, godkjenner, dokument-ID, beskrivelse av dokumentet, versjonsnummer, dato for godkjenning eller endring.
+Dokumentkontroll
+Alle dokumenter som er beskrevet i kvalitetsstyringssystemet og som kan relateres til å ha innvirkning på kvalitet skal kontrolleres. Kontrollen utføres før publisering av nytt eller redigert dokument og ved revisjoner. Hensikten med dokumentkontroll er for å sikre at:
+Dokumenter er gjennomgått og godkjent før utgivelse
+Kun gjeldende utgave er aktivt i bruk
+Dokumenter er gyldige, identifiserbare og sporbare
+Eksterne dokumenter blir identifisert og distribuert til riktig personell
+Førstegangsutgivelse av dokumentert informasjon
+Trinn
+Ansvarlig
+Beskrivelse
+Referanse
+1
+Dokument-skaper
+Dokument-skaper utarbeider dokument og sikrer signatur.
+2
+Dokument-ansvarlig
+Gjennomgang av dokument og innspill til daglig leder
+3
+Daglig Leder
+Gjør eventuelle endringer og oppdaterer dokumentet, sette revisjonsdato og godkjenne dokumentet.
+Dokumenteres i Landax
+4
+Dokument-ansvarlig
+Arkiverer dokumentet
+Landax / Dropbox / Arkiv
+5
+Dokument-skaper/Avdelings leder
+Nødvendig informasjon og opplæring gis til brukere av den dokumenterte informasjonen. Dokumentet publiseres i Landax.
+Mail
+Opplæring
+Arbeid i Landax’ dokumentdatabase
+Første godkjente versjon vil automatisk angis som utgave 1.
+I Landax vil utgåtte eller arkiverte dokumenter også ligge i systemet. Under «Rediger dokument», «Versjoner» kan man finne arkiverte versjoner av dokumentet. Man kan også se arkiverte og utgåtte versjoner ved å klikke på «Arkiverte» eller «Alle versjoner» i dokumentoversikten.
+Dokumenter med eksternt opphav
+Dokumenter av eksternt opphav som er nødvendige for planlegging og drift av systemet for kvalitetsstyring skal være identifisert og tilgjengeliggjort via Landax.
+Metainformasjon - Bakgrunnsinformasjon
+Dokumentet skal ha metainformasjon, med opplysninger om dokumentnavn/tittel, godkjenner, eventuelt verifisert av, forfatter, versjonsnummer, versjonsdato og fortrinnsvis kort endringsbeskrivelse/-historikk.
+Bakgrunnsinformasjon om et dokument ligger i Landax-systemet. Til hvert dokument finnes ikonet «Rediger dokument». Trykk på ikonet og man kan redigere metainformasjon om dokumentet, dokumentere endringer, lese og godkjenne.
+Henvisninger og referanser
+NS-EN ISO 9001:2015, pkt. 7.5
+Prosedyre for kontroll med registreringer
+Vedlegg 1: Dokumentskjema i LANDAX
+Beskrivelse av dokumentet. Beskrivende tittel, evt. type, kategori eller liknende.Beskrivelse av dokumentet. Beskrivende tittel, evt. type, kategori eller liknende.Knyttes dokumentet til en avdeling vil kun personer knyttet til samme avdeling se dokumentet.Knyttes dokumentet til en avdeling vil kun personer knyttet til samme avdeling se dokumentet.Klikk her for å redigere filen direkte. Endringer lagres direkte i basen.Klikk her for å redigere filen direkte. Endringer lagres direkte i basen.Referanser til andre filer i dokumentbiblioteket.Referanser til andre filer i dokumentbiblioteket.Notater om endringer på dokumentet og andre viktige notater om dokumentet.Tidsstempel benyttes for å finne igjen eldre versjoner av dokumentet i backup.Notater om endringer på dokumentet og andre viktige notater om dokumentet.Tidsstempel benyttes for å finne igjen eldre versjoner av dokumentet i backup.Versjonsbeskrivelse.Versjonsbeskrivelse.Bane for plassering i mappestruktur.Bane for plassering i mappestruktur.Revisjonsdato.Revisjonsdato.Godkjent dato.Godkjent dato.Aktive dokumenter.Aktive dokumenter.Tidløse dokumenter.Tidløse dokumenter.Dokumentets filnavn.Dokumentets filnavn.Man kan velge å legge inn en fil (doc, docx, exe, pdf osv.) eller legge inn en internettadresse som hyperlenke.Man kan velge å legge inn en fil (doc, docx, exe, pdf osv.) eller legge inn en internettadresse som hyperlenke.Godkjenner av dokumentet.Godkjenner av dokumentet.Forfatter av/ansvarlig for dokumentet.Forfatter av/ansvarlig for dokumentet.Livstidsnummer gitt av systemet. Identifiserer dokumentet og skal finnes på dokumentet.Livstidsnummer gitt av systemet. Identifiserer dokumentet og skal finnes på dokumentet.Dato for neste revisjon eller kontroll.Dato for neste revisjon eller kontroll.
+Beskrivelse av dokumentet. Beskrivende tittel, evt. type, kategori eller liknende.
+Beskrivelse av dokumentet. Beskrivende tittel, evt. type, kategori eller liknende.
+Knyttes dokumentet til en avdeling vil kun personer knyttet til samme avdeling se dokumentet.
+Knyttes dokumentet til en avdeling vil kun personer knyttet til samme avdeling se dokumentet.
+Klikk her for å redigere filen direkte. Endringer lagres direkte i basen.
+Klikk her for å redigere filen direkte. Endringer lagres direkte i basen.
+Referanser til andre filer i dokumentbiblioteket.
+Referanser til andre filer i dokumentbiblioteket.
+Notater om endringer på dokumentet og andre viktige notater om dokumentet.
+Tidsstempel benyttes for å finne igjen eldre versjoner av dokumentet i backup.
+Notater om endringer på dokumentet og andre viktige notater om dokumentet.
+Tidsstempel benyttes for å finne igjen eldre versjoner av dokumentet i backup.
+Versjonsbeskrivelse.
+Versjonsbeskrivelse.
+Bane for plassering i mappestruktur.
+Bane for plassering i mappestruktur.
+Revisjonsdato.
+Revisjonsdato.
+Godkjent dato.
+Godkjent dato.
+Aktive dokumenter.
+Aktive dokumenter.
+Tidløse dokumenter.
+Tidløse dokumenter.
+Dokumentets filnavn.
+Dokumentets filnavn.
+Man kan velge å legge inn en fil (doc, docx, exe, pdf osv.) eller legge inn en internettadresse som hyperlenke.
+Man kan velge å legge inn en fil (doc, docx, exe, pdf osv.) eller legge inn en internettadresse som hyperlenke.
+Godkjenner av dokumentet.
+Godkjenner av dokumentet.
+Forfatter av/ansvarlig for dokumentet.
+Forfatter av/ansvarlig for dokumentet.
+Livstidsnummer gitt av systemet. Identifiserer dokumentet og skal finnes på dokumentet.
+Livstidsnummer gitt av systemet. Identifiserer dokumentet og skal finnes på dokumentet.
+Dato for neste revisjon eller kontroll.
+Dato for neste revisjon eller kontroll.
+Alle dokumenter skal ha bunntekst som inneholder:
+Dokumentets ID-nummer
+Utskriftsdato
+Sidetall og antall sider
+Sikkerhetskopiering
+Dokumenter lagres elektronisk i angitt mappe i dokumentmodulen i Landax. Alle data med tilhørende filer lagres på server tilhørende Landax AS.
+Sikkerhetskopiering og backup utføres av Landax AS etter følgende intervall:
+Daglig backup på dataområder – oppbevares 1 måned.
+Ukentlig backup av data og applikasjonsområder – oppbevares 3 måneder.
+Månedlig backup av data og applikasjonsområder – oppbevares 1 år.
+Årlig backup oppbevares uten tidsbegrensning.
+Alternativ Navnestruktur
+Dokumenter skal ha filnavn bestående av tre ledd adskilt med understrek: Ledd1_Ledd2_Ledd3.
+Hvert enkelt ledd angir egenskaper ved dokumentet:
+Ledd1 Angir type dokument og består av en kode på 2 bokstaver.
+Ledd1: Type dokument
+Styrende dokumenter
+HB
+Håndbok.
+FS
+Forskrift
+RG
+Reglement
+PR
+Prosedyre
+Støttedokument
+BR
+Bruksanvisning
+IN
+Instruks
+MAL
+Mal, som grunnlag for å lage et dokument
+SKJ
+Skjema, - for utfylling
+FRM
+Formular, – for utfylling
+RA
+Risikoanalyse/risikovurdering
+SJL
+Sjekkliste, - for utfylling
+Registreringer
+FB
+Funksjonsbeskrivelse.
+SB
+Stillingsbeskrivelse.
+KART
+Oversikter og kart
+MRF
+Møtereferat
+MIK
+Møteinnkalling
+RAP
+Rapport. F.eks. en KPI-rapport, en avviksrapport
+LOG
+En logg, f.eks. en logg for rapporterte alarmsituasjoner
+PLN
+Plan, f.eks. en plan for opplæring
+DB
+Datablad
+KPI
+En KPI (Key Pefomance Indicator)- beskrivelse, et målstyringsdokument.
+OVR
+Oversikt. F.eks. KPI-oversikt og beskrivelser.
+USJL
+Utfylt sjekkliste
+PRS
+Presentasjon
+RE
+Revisjon

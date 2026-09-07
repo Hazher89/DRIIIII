@@ -1,0 +1,16 @@
+Arbeidsinstruks KPI
+Kilde: Arbeidsinstruks KPI.docx (Landax / MAVI)
+
+Arbeidsinstruks for KPI-målingerArbeidsinstruks for KPI-målinger
+Arbeidsinstruks for KPI-målinger
+Arbeidsinstruks for KPI-målinger
+Mavi Logistikk ASMavi Logistikk AS
+Mavi Logistikk AS
+Mavi Logistikk AS
+Arbeidsinstruk for KPI-målinger
+I henhold til arbeid med KPI-målinger rettet mot Mavis kundeforhold med Elkjøp, jobbes det i hovedsak med kundetilbakemeldinger og leveringspresisjon.
+Ved arbeid med kundetilbakemeldinger utføres arbeidet i hovedsak med tall innrapportert via Happy or Not, en ukentlig rapport tatt ut via Elkjøp sitt kundefredsystem.
+Her får de ulike underleverandørene av Mavi tilbakemeldinger fra kunder, med en poengskala fra 1 – 4, hvor 1 er best, samt valgfri kommentar fra kunde. Her blir hver enkelt sjåfør kontaktet hver uke med sine tilbakemeldinger, forbedringspunkter og total kundetilfredshet.
+Resultatet av hver individuelle sjåfør blir vist frem på storskjerm i Mavi sitt lokale og annonsert i felles WhatsApp-gruppe. Resultatene blir også loggført i ekstern excel-fil, for å måle utvikling over tid.
+Ved arbeid med leveringspresisjon brukes FO-search funnet på den webbaserte løsningen Hub Dash, et system utviklet av Elkjøp. Her kan man avgrense på sjåfør, tidsintervall m.m.
+Her sjekkes hver individuelle rute opp for avvik i presisjonen som har oppstått som konsekvens av sjåførfeil, dvs sen ankomst til hub, uforklaringe avvik i leveringstid m.m. Disse feilene følges opp med aktuell transportør og loggføres i ekstern excelfil for videre oppfølging.

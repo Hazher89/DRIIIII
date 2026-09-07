@@ -1,0 +1,27 @@
+Arbeidsinstruks Claims
+Kilde: Arbeidsinstruks claims.docx (Landax / MAVI)
+
+Arbeidsinstruks for ClaimsArbeidsinstruks for Claims
+Arbeidsinstruks for Claims
+Arbeidsinstruks for Claims
+Mavi Logistikk ASMavi Logistikk AS
+Mavi Logistikk AS
+Mavi Logistikk AS
+Arbeidsinstruk for claims
+I henhold til avtale mellom Mavi og Elkjøp, blir ansvaret for den økonomiske byrden ved kompensasjoner behandlet via claims i portalen LogiqRMA. Mavi reserverer også retten til å avvise enhver claim opprettet mer enn 22 dager etter kjøreoppdraget fant sted.
+Ved tilfeller der Mavi, og transportører i regi av Mavi, bryter Elkjøp sine kundeløfter i henhold til hjemlevering. Så har kunde, ved forespørsel, krav på en kompensasjon. Per dagens sats ligger denne på 500kr per påbegynte uke forsinkelse, som da også gjelder ved uteblivende levering grunnet svikt hos Mavi eller underliggende transportør. Mavi plikter å dekke kompensasjon opp til kostprisen av kjøreoppdraget eks mva. Ved tilfeller der sluttkunde er spesielt skadelidende brukes skjønn til å avgjøre kompensasjonskostnad.
+Transportører som leverer for Elkjøp i regi av Mavi er selv økonomisk ansvarlig for sikring av last, og forsvarlig transport. Ved skade som har oppstått på sluttkunders produkt, da både nye og ved henting av produkt i retur, som ikke kan dokumenteres før transportør lastet varen. Så er transportør ansvarlig for den økonomiske byrden dette medfører, dette kan både være en kostreduksjon i utsalgspris for varen og utkjøp av produkt om den dømmes i for dårlig stand til videre salg. Det er Elkjøp sin utsalgspris som er gjeldende for full dekning av produktet.
+Ved skade på eiendom, og utbedring disse skadene, skal disse behandles utenom LogiqRMA via Tommy. De skal da avvises med dette som forklaring. Unntak der Tommy har godkjent claim i forkant.
+I tilfelle der bakgrunn av claim kan begrunnes å være utenfor sjåførens kontroll skal claim avvises med grunnlag i «Force Majeure» og Mavi kan ikke stilles økonomisk ansvarlig.
+Rutinearbeid rundt claims
+Formålet med arbeid rundt claims er å forebygge og forhindre gjentakende forhold, derfor utføres en rekke rutiner ved hver claim for å fremme dette.
+Alle claims skal dokumenteres i en excel-fil «Claims», denne kan finnes her;
+Dropbox (MAVI Group Holding)\MAVI Logistikk Administrasjon\Trekk i oppsummering\CLAIMS.xlsx
+I de tilfeller en transportør i regi av Mavi er avgjort ansvarlig for en claim, skal følgende rutine utføres:
+Sjåførnummer, dato for hendelse, logiqnr, bilagsnr, beløp eks mva, kundenavn og begrunnelse fylles inn i claims-fil.
+Claim skal godkjennes med pris i henhold til retningslinjene, med tekst «Kost ok REF: sjåførnummer».
+Sjåfør skal varsles skriftlig om trekk, og grunnlag
+I de tilfeller Mavi er avgjort ansvarlig for en claim, skal følgende rutine utføres:
+Avdeling, logiqnr, bilagsnr, beløp eks mva og begrunnelse fylles inn i egen fane i claims-fil, under «Godkjente Goodwills».
+Claim skal godkjennes med pris i henhold til retningslinjene, med tekst «kost ok REF: avdeling»
+Avdelingsleder for ansvarlig avdeling varsles via mail, med tilgjengelig dokumentasjon.

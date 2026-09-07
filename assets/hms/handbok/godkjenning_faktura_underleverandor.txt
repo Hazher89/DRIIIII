@@ -1,0 +1,16 @@
+Godkjenning av faktura fra underleverandør
+Kilde: Godkjenning av faktura fra underleverandør.docx (Landax / MAVI)
+
+Godkjenning av faktura fra underleverandør
+Etter at oppsummeringer er lagt inn i Dropbox, har underleverandører 3 uker cirka for å sende en faktura som oppfyller kravene til et salgsdokument. Mavi Logistikk krever at fakturaer er opprettet i et regnskapsprogram, vi aksepterer ikke redigerte PDF-er eller fakturaer i Word.
+For at faktura skal oppfylle disse kravene, må den minst inneholde:
+Fakturanummer og- dato. Dato kan ikke settes i en periode som allerede er lukket i systemet. Fakturaer utbetales ifølge betalingsplanen, bortsett fra når et forskudd er avtalt med ledelsen.
+Informasjon om både kjøper og selger, som navn, organisasjonsnummer eller adresse. På brønnøysundregistrene www.brreg.no sjekker man om at opplysninger på faktura er riktige (org.nr, foretaksnavn, registrering i merverdiavgiftsregisteret). Hvis man finner noen feil, sender man en epost til adressen som er registrert i «Oversikt transportører Mavi Logistikk» eller ringer man kontaktperson for selskap fra arbeidstelefonen 40175037. Trinn 2 utføres hver gang man får en faktura fra en underleverandør.
+Riktig beskrivelse av varen eller tjenesten, inkludert antall eller omfang. Informasjon om faktureringsperiode. For eksempel «Transporttjenester for periode 41-44».
+Pris og frist for betaling. Beløp uten mva. på faktura må tilsvare beløp som står på oppsummering. Hvis beløpet er feil, følg instruks i n.2.
+Eventuell merverdiavgift og andre avgifter knyttet til salget. En virksomhet har plikt til å registrere seg i merverdiavgiftsregisteret med omsetning over 50 000 kr i året. De fleste samarbeidspartnere er oppstarte selskap, derfor fakturerer de uten mva. den første perioden. Ved utbetaling av den første fakturaen med mva., trenger man en kvittering som bekrefter at søknaden har blitt godkjent dersom www.brreg.no ikke enda er oppdatert. Sjekk at MVA-merke er riktig plassert/eller ikke bak organisasjonsnummer.
+Hvis faktura er mottatt i @faktura, videresendes den til 803745090961455@voucher.24sevenoffice.com. EHF-fakturaer mottar ML direkte i Mottak-24SevenOffice.
+Salgsdokumenter sendes alltid til regnskapsprogrammet, uansett disse viser feil og venter på korrigering. Dokumenter som er feil bokføres likevel, men ikke utbetales, disse blir annullert når virksomheten sender en kreditnota som kan regnes mot.
+Man kobler oppsummeringer som grunnlag til tilhørende faktura. Teksten ##GROUP## anbefales å skrive på eposten som sendes til 803745090961455@voucher.24sevenoffice.com., slik at oppsummeringer er eksportert som en fil og ikke flere enkeltstående sider.
+I regnskapssystemet skal man behandle fakturaer i Regnskap – mottak med å sjekke, endre eller fylle ut riktige data. Det er også mulig å legge til en kommentar ved behov. Så sendes fakturaene til Tommy Larsen for videre godkjenning.
+Godkjente dokumenter behandles igjen av økonomiavdelingen, disse bokføres og sendes til betaling i 24SevenOffice- bank, der Nicola Vino godkjenner det siste trinnet.
