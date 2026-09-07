@@ -1,6 +1,5 @@
 import '../../config/supabase_config.dart';
 import '../supabase_service.dart';
-import 'assistant_corpus.dart';
 import 'assistant_text_utils.dart';
 import 'knowledge_assistant_engine.dart';
 import 'montage_services_corpus.dart';
