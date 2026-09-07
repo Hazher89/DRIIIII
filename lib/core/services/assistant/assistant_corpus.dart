@@ -8,7 +8,7 @@ import 'assistant_leave_intelligence.dart';
 import 'assistant_route_intelligence.dart';
 import 'assistant_text_utils.dart';
 
-enum KnowledgeSourceKind { sop, rental, help, montage, publicOps }
+enum KnowledgeSourceKind { sop, rental, help, montage, publicOps, liveTrain }
 
 /// Én indekserbar kunnskapsbit for DriftPro-assistenten.
 class KnowledgeChunk {
@@ -42,6 +42,8 @@ class KnowledgeChunk {
         return 'Monteringstjenester';
       case KnowledgeSourceKind.publicOps:
         return 'Levering & booking';
+      case KnowledgeSourceKind.liveTrain:
+        return 'Live trening';
     }
   }
 }

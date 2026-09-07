@@ -4,6 +4,7 @@ import 'assistant_corpus.dart';
 import 'assistant_text_utils.dart';
 import 'knowledge_assistant_engine.dart';
 import 'montage_services_corpus.dart';
+import 'public_chat_knowledge_service.dart';
 import 'public_external_ops_corpus.dart';
 
 /// Offentlig chat (/montering) — montering + levering/booking for eksterne.
@@ -19,6 +20,41 @@ class PublicMontageAssistantService {
   bool _loading = false;
   /// null = ukjent, false = funksjon mangler/feiler (ikke spør igjen hver gang).
   bool? _geminiAvailable;
+  int _liveChunkCount = 0;
+
+  int get liveChunkCount => _liveChunkCount;
+
+  /// Force rebuild (etter admin har lagret ny kunnskap).
+  Future<void> reloadKnowledge() async {
+    _engine = null;
+    PublicChatKnowledgeService.instance.invalidateCache();
+    await ensureReady(forceRefresh: true);
+  }
+
+  Future<void> ensureReady({bool forceRefresh = false}) async {
+    if (!forceRefresh && (_engine != null || _loading)) {
+      while (_loading) {
+        await Future<void>.delayed(const Duration(milliseconds: 40));
+      }
+      return;
+    }
+    _loading = true;
+    try {
+      final live = await PublicChatKnowledgeService.instance.publishedChunks(
+        forceRefresh: forceRefresh,
+      );
+      _liveChunkCount = live.length;
+      final chunks = <KnowledgeChunk>[
+        ...live,
+        ...MontageServicesCorpus.chunks(),
+        ...PublicExternalOpsCorpus.chunks(),
+      ];
+      final engine = KnowledgeAssistantEngine(chunks)..buildIndex();
+      _engine = engine;
+    } finally {
+      _loading = false;
+    }
+  }
 
   static const suggestedQueries = [
     'Kan kunden få levering tidligere enn booket dato?',
@@ -113,26 +149,6 @@ class PublicMontageAssistantService {
       'deliverysite', 'anvist plass', 'bære inn',
     ],
   };
-
-  Future<void> ensureReady() async {
-    if (_engine != null || _loading) {
-      while (_loading) {
-        await Future<void>.delayed(const Duration(milliseconds: 40));
-      }
-      return;
-    }
-    _loading = true;
-    try {
-      final chunks = <KnowledgeChunk>[
-        ...MontageServicesCorpus.chunks(),
-        ...PublicExternalOpsCorpus.chunks(),
-      ];
-      final engine = KnowledgeAssistantEngine(chunks)..buildIndex();
-      _engine = engine;
-    } finally {
-      _loading = false;
-    }
-  }
 
   String _expandQuery(String raw) {
     final q = raw.toLowerCase();
@@ -330,6 +346,7 @@ class PublicMontageAssistantService {
       final title = h.chunk.title.toLowerCase();
       final id = h.chunk.id.toLowerCase();
       if (intentBoostId != null && id == intentBoostId) bonus += 320;
+      if (h.chunk.source == KnowledgeSourceKind.liveTrain) bonus += 220;
       for (final tag in h.chunk.tags) {
         final t = tag.toLowerCase();
         if (t.length >= 3 && q.contains(t)) bonus += 120;
@@ -393,6 +410,16 @@ class PublicMontageAssistantService {
     }
     if (primary == null && hits.isNotEmpty && hits.first.score >= 12) {
       primary = hits.first.chunk;
+    }
+    // Prefer live-trained knowledge when scores are close.
+    if (hits.isNotEmpty) {
+      for (final h in hits.take(4)) {
+        if (h.chunk.source == KnowledgeSourceKind.liveTrain &&
+            h.score >= (hits.first.score - 80)) {
+          primary = h.chunk;
+          break;
+        }
+      }
     }
     if (primary == null) {
       return const KnowledgeAnswer(found: false, hits: [], text: '');

@@ -174,6 +174,11 @@ class RouteAccessMap {
       areaId: 'more',
       legacyAccessKey: AccessKeys.more,
     ),
+    AppPaths.moreChatLab: RouteAccessRequirement(
+      areaId: 'more',
+      legacyAccessKey: AccessKeys.more,
+      customCheck: (a) => a.profile.isSuperAdmin,
+    ),
     AppPaths.morePersonvern: const RouteAccessRequirement(
       areaId: 'more',
       legacyAccessKey: AccessKeys.more,
