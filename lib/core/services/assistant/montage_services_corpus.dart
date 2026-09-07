@@ -149,6 +149,63 @@ Ikke si «kontakt CCC/butikk». Ingen priser eller live ordrestatus her.
           ],
         ),
         _service(
+          id: 'montage.simple.washw',
+          title: 'InstallWashW (vaskemaskin i våtrom)',
+          tags: [
+            'enkel',
+            'vaskemaskin',
+            'wash',
+            'installwashw',
+            'washw',
+            'våtrom',
+            'vatrom',
+            'wet',
+            'sjåfør',
+          ],
+          included: [
+            'Samme type jobb som InstallWash: frakobling, plassering, vann/avløp/strøm, vater, funksjonstest, emballasjeretur',
+            'Tjenestekoden InstallWashW er Elkjøp sin SKU for montering av vaskemaskin i våtrom (W = våtrom/wet room)',
+          ],
+          customer: [
+            'Anvist plass maks 1,2 m fra strøm, vann og avløp',
+            'Rommet må være godkjent våtrom',
+            'Jordet stikkontakt og stengeventil/ballofix på vann',
+          ],
+          excluded: [
+            'Vibrasjonsdempere/stableramme med mindre det er bestilt',
+            'Montering av tørketrommel oppå vaskemaskin uten egen InstallDryer',
+            'Skjøting av slanger/strøm',
+          ],
+          note:
+              'InstallWashW er Elkjøp-koden kunden kjøper. InstallWash er samme type enkel montering i våre rutiner. '
+              'For CCC: hvis ordren viser InstallWashW, er det våtroms-montering av vaskemaskin — ikke en annen «avansert» tjeneste.',
+        ),
+        KnowledgeChunk(
+          id: 'montage.compare.wash_washw',
+          source: KnowledgeSourceKind.montage,
+          title: 'Forskjell InstallWash vs InstallWashW',
+          tags: const [
+            'installwash',
+            'installwashw',
+            'washw',
+            'forskjell',
+            'vs',
+            'vaskemaskin',
+            'våtrom',
+          ],
+          body: '''
+InstallWash og InstallWashW er samme type enkel vaskemaskin-montering (sjåfør), ikke to helt ulike jobber.
+
+• InstallWashW = Elkjøp sin tjenestekode for montering av vaskemaskin i våtrom (W = våtrom / wet room). Dette er det CCC/butikk ofte ser på ordren.
+• InstallWash = navnet vi bruker for enkel vaskemaskin-montering i DriftPro-rutinene.
+
+Begge inkluderer typisk: frakoble gammel maskin, plassere ny, koble vann/avløp/strøm, sette i vater, funksjonstest og emballasjeretur.
+Krav: godkjent våtrom, maks ca. 1,2 m til uttak, jordet stikk og stengeventil.
+
+Kort svar til CCC: Ser du InstallWashW på ordren, er det våtroms-montering av vaskemaskin — samme type jobb som InstallWash.
+''',
+        ),
+        _service(
           id: 'montage.simple.dryer',
           title: 'InstallDryer (enkel tørketrommel)',
           tags: [

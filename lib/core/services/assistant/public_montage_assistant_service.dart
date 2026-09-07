@@ -122,6 +122,7 @@ class PublicMontageAssistantService {
   static const _synonymMap = <String, List<String>>{
     'wash': [
       'vaskemaskin', 'vaskemaskinen', 'vask', 'vasken', 'laundry', 'installwash',
+      'installwashw', 'washw', 'våtrom', 'vatrom',
     ],
     'dryer': [
       'tørketrommel', 'torketrommel', 'tørke', 'trommel', 'installdryer',
@@ -203,12 +204,10 @@ class PublicMontageAssistantService {
       );
     }
 
-    // Never block the UI on slow network/Gemini.
     try {
       await ensureReady().timeout(const Duration(seconds: 2));
     } catch (_) {}
 
-    // Fresh live knowledge (short timeout) — Chat Lab is source of truth.
     List<KnowledgeChunk> liveChunks = const [];
     try {
       liveChunks = await PublicChatKnowledgeService.instance
@@ -223,13 +222,24 @@ class PublicMontageAssistantService {
     if (liveHits.isEmpty && engine != null) {
       liveHits = _matchLiveKnowledge(q);
     }
+    // Always keep full live library available for Gemini grounding.
+    final allLiveHits = [
+      for (final c in liveChunks)
+        KnowledgeHit(
+          chunk: c,
+          score: 30,
+          snippet: c.body.length > 120 ? '${c.body.substring(0, 120)}…' : c.body,
+        ),
+    ];
 
     final intent = _matchIntent(q);
     final expanded = _expandQuery(q);
+    final codeHits = _forceServiceCodeHits(q);
     final searchHits = <KnowledgeHit>[
       ...liveHits,
-      if (engine != null) ...engine.search(expanded, limit: 14),
-      if (engine != null) ...engine.search(q, limit: 10),
+      ...codeHits,
+      if (engine != null) ...engine.search(expanded, limit: 18),
+      if (engine != null) ...engine.search(q, limit: 12),
       ..._forcedTagHits(expanded),
       ..._forcedTagHits(q),
     ];
@@ -240,22 +250,39 @@ class PublicMontageAssistantService {
       intentBoostId: intent?.chunkId,
     );
 
-    final strongLive = liveHits.isNotEmpty && liveHits.first.score >= 24;
     final local = _composeNatural(
       q,
       hits,
       intent,
-      preferLive: strongLive || liveHits.isNotEmpty,
+      preferLive: liveHits.isNotEmpty,
     );
 
-    // Chat Lab hit → answer immediately. Never wait for Gemini.
+    // Gemini formulerer naturlig — med hele kunnskapsbasen som bakgrunn.
+    if (_geminiAvailable != false) {
+      try {
+        final geminiHits = <KnowledgeHit>[
+          ...liveHits,
+          ...hits,
+          ...allLiveHits,
+          ...codeHits,
+        ];
+        final gemini = await _askGemini(q, geminiHits, intent, localDraft: local.found ? local.text : null)
+            .timeout(const Duration(seconds: 8), onTimeout: () => null);
+        if (gemini != null &&
+            gemini.trim().isNotEmpty &&
+            !_geminiContradictsLive(gemini, liveHits.isNotEmpty ? liveHits : allLiveHits)) {
+          return KnowledgeAnswer(
+            found: hits.isNotEmpty || liveHits.isNotEmpty || local.found,
+            hits: hits.take(4).toList(),
+            text: _sanitizeExternal(gemini.trim()),
+            followUps: _followUpsFrom(hits, excludeId: hits.isEmpty ? null : hits.first.chunk.id),
+          );
+        }
+      } catch (_) {}
+    }
+
     if (liveHits.isNotEmpty) {
-      final liveLocal = _composeNatural(
-        q,
-        liveHits,
-        intent,
-        preferLive: true,
-      );
+      final liveLocal = _composeNatural(q, liveHits, intent, preferLive: true);
       if (liveLocal.found) {
         return KnowledgeAnswer(
           found: true,
@@ -278,22 +305,6 @@ class PublicMontageAssistantService {
       );
     }
 
-    // Gemini only as last resort, hard-capped.
-    if (_geminiAvailable != false) {
-      try {
-        final gemini = await _askGemini(q, [...liveHits, ...hits], intent)
-            .timeout(const Duration(seconds: 3), onTimeout: () => null);
-        if (gemini != null && gemini.trim().isNotEmpty) {
-          return KnowledgeAnswer(
-            found: false,
-            hits: hits.take(3).toList(),
-            text: _sanitizeExternal(gemini.trim()),
-            followUps: _followUpsFrom(hits),
-          );
-        }
-      } catch (_) {}
-    }
-
     return KnowledgeAnswer(
       found: false,
       hits: const [],
@@ -303,6 +314,63 @@ class PublicMontageAssistantService {
           '(ombooking, endre adresse, SA, kansellering, fire personer).',
       followUps: suggestedQueries.take(3).toList(),
     );
+  }
+
+  /// Treffer InstallXxx / servicekoder direkte i spørsmålet.
+  List<KnowledgeHit> _forceServiceCodeHits(String query) {
+    final q = query.toLowerCase();
+    final codes = RegExp(r'install[a-z0-9]+|tvon[a-z]+|turndoor|deliverysite|curbside',
+            caseSensitive: false)
+        .allMatches(query)
+        .map((m) => m.group(0)!.toLowerCase())
+        .toSet();
+    if (codes.isEmpty &&
+        !(q.contains('forskjell') ||
+            q.contains('vs') ||
+            q.contains('versus') ||
+            q.contains('eller'))) {
+      return const [];
+    }
+
+    final out = <KnowledgeHit>[];
+    for (final chunk in [
+      ...MontageServicesCorpus.chunks(),
+      ...PublicExternalOpsCorpus.chunks(),
+    ]) {
+      final id = chunk.id.toLowerCase();
+      final title = chunk.title.toLowerCase();
+      final tags = chunk.tags.map((t) => t.toLowerCase()).join(' ');
+      var score = 0.0;
+      for (final code in codes) {
+        if (id.contains(code) ||
+            title.contains(code) ||
+            tags.contains(code) ||
+            chunk.body.toLowerCase().contains(code)) {
+          score += 200;
+        }
+        // installwash should also boost installwashw comparison docs
+        if (code.startsWith('installwash') &&
+            (id.contains('wash') || title.contains('wash'))) {
+          score += 120;
+        }
+      }
+      if (q.contains('forskjell') &&
+          (id.contains('compare') || title.contains('forskjell'))) {
+        score += 180;
+      }
+      if (score < 100) continue;
+      out.add(
+        KnowledgeHit(
+          chunk: chunk,
+          score: score,
+          snippet: chunk.body.length > 140
+              ? '${chunk.body.substring(0, 140)}…'
+              : chunk.body,
+        ),
+      );
+    }
+    out.sort((a, b) => b.score.compareTo(a.score));
+    return out;
   }
 
   List<KnowledgeHit> _matchLiveAgainst(
@@ -873,31 +941,54 @@ class PublicMontageAssistantService {
   Future<String?> _askGemini(
     String question,
     List<KnowledgeHit> hits,
-    _PublicIntent? intent,
-  ) async {
+    _PublicIntent? intent, {
+    String? localDraft,
+  }) async {
     if (!SupabaseConfig.isConfigured || !SupabaseService.isConfigured) {
       return null;
     }
 
-    final contexts = <Map<String, String>>[
-      for (final h in [
-        ...hits.where((h) => h.chunk.source == KnowledgeSourceKind.liveTrain),
-        ...hits.where((h) => h.chunk.source != KnowledgeSourceKind.liveTrain),
-      ])
-        if (AssistantTextUtils.isUsefulChunk(
-          id: h.chunk.id,
-          title: h.chunk.title,
-          body: h.chunk.body,
-        ))
-          {
-            'title': AssistantTextUtils.cleanTitle(h.chunk.title),
-            'source': h.chunk.sourceLabel,
-            'body': () {
-              final clean = AssistantTextUtils.cleanBody(h.chunk.body);
-              return clean.length > 1600 ? clean.substring(0, 1600) : clean;
-            }(),
-          },
-    ];
+    final seen = <String>{};
+    final contexts = <Map<String, String>>[];
+    void addHit(KnowledgeHit h) {
+      if (!seen.add(h.chunk.id)) return;
+      if (!AssistantTextUtils.isUsefulChunk(
+        id: h.chunk.id,
+        title: h.chunk.title,
+        body: h.chunk.body,
+      )) {
+        return;
+      }
+      final clean = AssistantTextUtils.cleanBody(h.chunk.body);
+      contexts.add({
+        'title': AssistantTextUtils.cleanTitle(h.chunk.title),
+        'source': h.chunk.sourceLabel,
+        'body': clean.length > 1800 ? clean.substring(0, 1800) : clean,
+      });
+    }
+
+    for (final h in hits.where((h) => h.chunk.source == KnowledgeSourceKind.liveTrain)) {
+      addHit(h);
+    }
+    for (final h in hits.where((h) => h.chunk.source != KnowledgeSourceKind.liveTrain)) {
+      addHit(h);
+      if (contexts.length >= 14) break;
+    }
+
+    // Always ground with montage overview so service-code questions work.
+    if (!seen.contains(MontageServicesCorpus.overviewId)) {
+      final overview = MontageServicesCorpus.chunks().firstWhere(
+        (c) => c.id == MontageServicesCorpus.overviewId,
+        orElse: () => MontageServicesCorpus.chunks().first,
+      );
+      contexts.insert(0, {
+        'title': overview.title,
+        'source': overview.sourceLabel,
+        'body': overview.body.length > 1200
+            ? overview.body.substring(0, 1200)
+            : overview.body,
+      });
+    }
 
     if (contexts.isEmpty) {
       contexts.add({
@@ -907,18 +998,19 @@ class PublicMontageAssistantService {
       });
     }
 
-    // Always include compact ops overview for policy grounding.
     contexts.insert(0, {
       'title': 'Retningslinjer for svar',
       'source': 'Policy',
       'body':
-          'Målgruppe: CCC og butikk (Elkjøp). Snakk direkte til dem som operatører. '
-          'Hvis konteksten inneholder «Live trening», er det FASIT — bruk den alltid. '
-          'Aldri si at du mangler info som finnes i Live trening. '
-          'Svar kort og profesjonelt. Ingen unødvendige tips. '
-          'ALDRI si «kontakt CCC», «kontakt butikken» eller «ta kontakt med Elkjøp». '
-          'Aldri nevn interne MAVI-systemer, filer eller hub-rutiner. '
-          '${intent != null ? 'Tema: ${intent.label}.' : ''}',
+          'Målgruppe: CCC og butikk (Elkjøp). Svar som en smart kollega — naturlig, klart og komplett. '
+          'Bruk ALL relevant kunnskap under. '
+          'Hvis Live trening finnes: det er FASIT. '
+          'Ved spørsmål om tjenestekoder (InstallWash, InstallWashW, InstallDish osv.): forklar forskjell/likhet tydelig. '
+          'Ikke si at du mangler info som finnes i kunnskapen. '
+          'Ikke lim inn FAQ ordrett — formuler som Gemini: profesjonelt og lesbart. '
+          'ALDRI «kontakt CCC/butikk». Ingen interne MAVI-systemer. '
+          '${intent != null ? 'Tema: ${intent.label}.' : ''}'
+          '${localDraft != null && localDraft.isNotEmpty ? ' Utkast du kan forbedre: $localDraft' : ''}',
     });
 
     try {
@@ -926,7 +1018,7 @@ class PublicMontageAssistantService {
         'public-montage-assistant',
         body: {
           'question': question,
-          'contexts': contexts.take(10).toList(),
+          'contexts': contexts.take(16).toList(),
         },
       );
 

@@ -905,7 +905,7 @@ class _TypingRow extends StatelessWidget {
             children: [
               DriftProLoadingIndicator(size: 18),
               SizedBox(width: 10),
-              Text('Tenker…', style: TextStyle(color: Colors.black54)),
+              Text('Skriver svar…', style: TextStyle(color: Colors.black54)),
             ],
           ),
         ),

@@ -42,6 +42,14 @@ void main() {
     final chunks = MontageServicesCorpus.chunks();
     expect(chunks.length, greaterThan(10));
     expect(chunks.first.id, MontageServicesCorpus.overviewId);
+    expect(
+      chunks.any((c) => c.id.contains('washw') || c.title.contains('InstallWashW')),
+      isTrue,
+    );
+    expect(
+      chunks.any((c) => c.title.contains('Forskjell InstallWash')),
+      isTrue,
+    );
   });
 
   test('natural language vaskemaskin maps to wash', () async {
