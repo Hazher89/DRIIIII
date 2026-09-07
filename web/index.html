@@ -38,7 +38,7 @@
   <script src="https://unpkg.com/docx-preview@0.3.5/dist/docx-preview.min.js"></script>
 </head>
 <body style="margin:0;background:#e8f5e9;">
-  <div id="loading" style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:system-ui,sans-serif;color:#1b5e20;">
+  <div id="loading" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:#e8f5e9;font-family:system-ui,sans-serif;color:#1b5e20;">
     <p style="margin:0;font-size:18px;">Laster DriftPro…</p>
   </div>
   <script>
@@ -61,7 +61,18 @@
         // Ignore cache cleanup errors; app can still boot normally.
       }
     })();
+
+    // Hide splash when Flutter paints its first frame (or after timeout).
+    (function () {
+      function hideLoading() {
+        const el = document.getElementById('loading');
+        if (el) el.remove();
+      }
+      window.addEventListener('flutter-first-frame', hideLoading, { once: true });
+      // Fallback if event is missed (slow networks / cached bootstrap).
+      setTimeout(hideLoading, 12000);
+    })();
   </script>
-  <script src="flutter_bootstrap.js?v=20260907-hms-handbok-v2" async></script>
+  <script src="flutter_bootstrap.js?v=20260907-hms-boot-v1" async></script>
 </body>
 </html>
