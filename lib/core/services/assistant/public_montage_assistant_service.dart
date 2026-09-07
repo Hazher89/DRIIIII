@@ -193,18 +193,6 @@ class PublicMontageAssistantService {
   }
 
   Future<KnowledgeAnswer> ask(String query) async {
-    // Soft-refresh knowledge every ~20s so Chat Lab updates apply.
-    // Skip network when test engine is injected (_geminiAvailable == false and built now).
-    await ensureReady();
-    final engine = _engine;
-    if (engine == null) {
-      return const KnowledgeAnswer(
-        found: false,
-        hits: [],
-        text: 'Chatten kunne ikke lastes. Prøv igjen.',
-      );
-    }
-
     final q = query.trim();
     if (q.length < 2) {
       return const KnowledgeAnswer(
@@ -215,65 +203,67 @@ class PublicMontageAssistantService {
       );
     }
 
+    // Never block the UI on slow network/Gemini.
+    try {
+      await ensureReady().timeout(const Duration(seconds: 2));
+    } catch (_) {}
+
+    // Fresh live knowledge (short timeout) — Chat Lab is source of truth.
+    List<KnowledgeChunk> liveChunks = const [];
+    try {
+      liveChunks = await PublicChatKnowledgeService.instance
+          .publishedChunks(forceRefresh: false)
+          .timeout(const Duration(seconds: 2), onTimeout: () => const []);
+    } catch (_) {
+      liveChunks = const [];
+    }
+
+    final engine = _engine;
+    var liveHits = _matchLiveAgainst(q, liveChunks);
+    if (liveHits.isEmpty && engine != null) {
+      liveHits = _matchLiveKnowledge(q);
+    }
+
     final intent = _matchIntent(q);
     final expanded = _expandQuery(q);
-    final liveHits = _matchLiveKnowledge(q);
+    final searchHits = <KnowledgeHit>[
+      ...liveHits,
+      if (engine != null) ...engine.search(expanded, limit: 14),
+      if (engine != null) ...engine.search(q, limit: 10),
+      ..._forcedTagHits(expanded),
+      ..._forcedTagHits(q),
+    ];
     final hits = _rankHits(
       q,
       expanded,
-      [
-        ...liveHits,
-        ...engine.search(expanded, limit: 14),
-        ...engine.search(q, limit: 10),
-        ..._forcedTagHits(expanded),
-        ..._forcedTagHits(q),
-      ],
+      searchHits,
       intentBoostId: intent?.chunkId,
     );
 
-    final strongLive = liveHits.isNotEmpty && liveHits.first.score >= 40;
-    final local = _composeNatural(q, hits, intent, preferLive: strongLive);
+    final strongLive = liveHits.isNotEmpty && liveHits.first.score >= 24;
+    final local = _composeNatural(
+      q,
+      hits,
+      intent,
+      preferLive: strongLive || liveHits.isNotEmpty,
+    );
 
-    // Live-trening vinner alltid — raskt, uten å vente på Gemini.
-    if (strongLive && local.found) {
-      return KnowledgeAnswer(
-        found: true,
-        hits: hits.take(3).toList(),
-        text: _sanitizeExternal(local.text),
-        followUps: _followUpsFrom(hits, excludeId: liveHits.first.chunk.id),
+    // Chat Lab hit → answer immediately. Never wait for Gemini.
+    if (liveHits.isNotEmpty) {
+      final liveLocal = _composeNatural(
+        q,
+        liveHits,
+        intent,
+        preferLive: true,
       );
-    }
-
-    // Gemini kun når vi mangler treff — med kort timeout.
-    if (!local.found && _geminiAvailable != false) {
-      try {
-        final gemini = await _askGemini(q, hits, intent)
-            .timeout(const Duration(seconds: 6), onTimeout: () => null);
-        if (gemini != null && gemini.trim().isNotEmpty) {
-          return KnowledgeAnswer(
-            found: hits.isNotEmpty,
-            hits: hits.take(3).toList(),
-            text: _sanitizeExternal(gemini.trim()),
-            followUps: _followUpsFrom(hits),
-          );
-        }
-      } catch (_) {}
-    } else if (local.found && _geminiAvailable != false && !strongLive) {
-      // Valgfri polering — men ikke blokker hvis tregt.
-      try {
-        final gemini = await _askGemini(q, hits, intent)
-            .timeout(const Duration(seconds: 4), onTimeout: () => null);
-        if (gemini != null &&
-            gemini.trim().isNotEmpty &&
-            !_geminiContradictsLive(gemini, hits)) {
-          return KnowledgeAnswer(
-            found: true,
-            hits: hits.take(3).toList(),
-            text: _sanitizeExternal(gemini.trim()),
-            followUps: _followUpsFrom(hits, excludeId: hits.first.chunk.id),
-          );
-        }
-      } catch (_) {}
+      if (liveLocal.found) {
+        return KnowledgeAnswer(
+          found: true,
+          hits: liveHits.take(3).toList(),
+          text: _sanitizeExternal(liveLocal.text),
+          followUps: _followUpsFrom(hits, excludeId: liveHits.first.chunk.id),
+        );
+      }
     }
 
     if (local.found) {
@@ -281,11 +271,27 @@ class PublicMontageAssistantService {
         found: true,
         hits: hits.take(3).toList(),
         text: _sanitizeExternal(local.text),
-          followUps: _followUpsFrom(
-            hits,
-            excludeId: hits.isEmpty ? null : hits.first.chunk.id,
-          ),
+        followUps: _followUpsFrom(
+          hits,
+          excludeId: hits.isEmpty ? null : hits.first.chunk.id,
+        ),
       );
+    }
+
+    // Gemini only as last resort, hard-capped.
+    if (_geminiAvailable != false) {
+      try {
+        final gemini = await _askGemini(q, [...liveHits, ...hits], intent)
+            .timeout(const Duration(seconds: 3), onTimeout: () => null);
+        if (gemini != null && gemini.trim().isNotEmpty) {
+          return KnowledgeAnswer(
+            found: false,
+            hits: hits.take(3).toList(),
+            text: _sanitizeExternal(gemini.trim()),
+            followUps: _followUpsFrom(hits),
+          );
+        }
+      } catch (_) {}
     }
 
     return KnowledgeAnswer(
@@ -297,6 +303,66 @@ class PublicMontageAssistantService {
           '(ombooking, endre adresse, SA, kansellering, fire personer).',
       followUps: suggestedQueries.take(3).toList(),
     );
+  }
+
+  List<KnowledgeHit> _matchLiveAgainst(
+    String query,
+    List<KnowledgeChunk> chunks,
+  ) {
+    final q = query.toLowerCase().trim();
+    final qTokens = q
+        .split(RegExp(r'[^a-zæøå0-9]+', caseSensitive: false))
+        .where((t) => t.length >= 3)
+        .toSet();
+    final out = <KnowledgeHit>[];
+    for (final chunk in chunks) {
+      if (chunk.source != KnowledgeSourceKind.liveTrain &&
+          !chunk.id.startsWith('live.')) {
+        continue;
+      }
+      final hay = '${chunk.title}\n${chunk.body}'.toLowerCase();
+      var score = 0.0;
+      for (final t in qTokens) {
+        if (hay.contains(t)) score += 28;
+      }
+      if (q.contains('steng') && hay.contains('steng')) score += 100;
+      if ((q.contains('åpning') ||
+              q.contains('aapning') ||
+              q.contains('åpent') ||
+              q.contains('aapent') ||
+              q.contains('åpner')) &&
+          (hay.contains('steng') ||
+              hay.contains('åpning') ||
+              hay.contains('17'))) {
+        score += 90;
+      }
+      if ((q.contains('lydplanke') ||
+              q.contains('lydplnake') ||
+              q.contains('soundbar')) &&
+          (hay.contains('lyd') || hay.contains('sound'))) {
+        score += 100;
+      }
+      if (hay.contains(q)) score += 60;
+      final titleTokens = chunk.title
+          .toLowerCase()
+          .split(RegExp(r'[^a-zæøå0-9]+'))
+          .where((t) => t.length >= 3);
+      for (final t in titleTokens) {
+        if (qTokens.contains(t) || q.contains(t)) score += 40;
+      }
+      if (score < 24) continue;
+      out.add(
+        KnowledgeHit(
+          chunk: chunk,
+          score: score,
+          snippet: chunk.body.length > 140
+              ? '${chunk.body.substring(0, 140)}…'
+              : chunk.body,
+        ),
+      );
+    }
+    out.sort((a, b) => b.score.compareTo(a.score));
+    return out;
   }
 
   List<String> _followUpsFrom(
@@ -322,65 +388,15 @@ class PublicMontageAssistantService {
     return out;
   }
 
-  /// Direkte treff mot Chat Lab-kunnskap (tittel/innhold), ikke bare indeks.
+  /// Direkte treff mot Chat Lab-kunnskap i engine.
   List<KnowledgeHit> _matchLiveKnowledge(String query) {
     final engine = _engine;
     if (engine == null) return const [];
-    final q = query.toLowerCase().trim();
-    final qTokens = q
-        .split(RegExp(r'[^a-zæøå0-9]+', caseSensitive: false))
-        .where((t) => t.length >= 3)
-        .toSet();
-    if (qTokens.isEmpty && q.length < 3) return const [];
-
-    final out = <KnowledgeHit>[];
-    for (final chunk in engine.allChunks) {
-      if (chunk.source != KnowledgeSourceKind.liveTrain) continue;
-      final hay = '${chunk.title}\n${chunk.body}'.toLowerCase();
-      var score = 0.0;
-
-      // Substring / phrase overlap
-      for (final t in qTokens) {
-        if (hay.contains(t)) score += 28;
-      }
-      if (q.contains('steng') && hay.contains('steng')) score += 80;
-      if ((q.contains('åpning') || q.contains('aapning')) &&
-          (hay.contains('åpning') ||
-              hay.contains('aapning') ||
-              hay.contains('steng') ||
-              hay.contains('17'))) {
-        score += 70;
-      }
-      if (q.contains('lydplanke') || q.contains('soundbar')) {
-        if (hay.contains('lyd') || hay.contains('sound')) score += 80;
-      }
-      if (hay.contains(q) || q.contains(chunk.title.toLowerCase())) {
-        score += 50;
-      }
-      // Title word overlap
-      final titleTokens = chunk.title
-          .toLowerCase()
-          .split(RegExp(r'[^a-zæøå0-9]+'))
-          .where((t) => t.length >= 3);
-      for (final t in titleTokens) {
-        if (qTokens.contains(t) || q.contains(t)) score += 35;
-      }
-
-      if (score < 28) continue;
-      out.add(
-        KnowledgeHit(
-          chunk: chunk,
-          score: score,
-          snippet: chunk.body.length > 140
-              ? '${chunk.body.substring(0, 140)}…'
-              : chunk.body,
-        ),
-      );
-    }
-    out.sort((a, b) => b.score.compareTo(a.score));
-    return out;
+    return _matchLiveAgainst(query, engine.allChunks);
   }
 
+  // Keep for edge cases / future Gemini guards.
+  // ignore: unused_element
   bool _geminiContradictsLive(String answer, List<KnowledgeHit> hits) {
     final live = hits
         .where((h) => h.chunk.source == KnowledgeSourceKind.liveTrain)
@@ -393,7 +409,6 @@ class PublicMontageAssistantService {
         a.contains('ikke tilgjengelig') ||
         a.contains('kan variere');
     if (!denies) return false;
-    // If live knowledge mentions a concrete fact (clock / number), Gemini denial is wrong.
     for (final h in live) {
       if (RegExp(r'\d').hasMatch(h.chunk.body) ||
           h.chunk.body.toLowerCase().contains('steng') ||
