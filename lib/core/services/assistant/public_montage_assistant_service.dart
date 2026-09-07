@@ -17,6 +17,8 @@ class PublicMontageAssistantService {
 
   KnowledgeAssistantEngine? _engine;
   bool _loading = false;
+  /// null = ukjent, false = funksjon mangler/feiler (ikke spør igjen hver gang).
+  bool? _geminiAvailable;
 
   static const suggestedQueries = [
     'Hva er inkludert når dere monterer vaskemaskin?',
@@ -185,16 +187,24 @@ class PublicMontageAssistantService {
 
     final local = _composeNatural(q, hits, intent);
 
-    try {
-      final gemini = await _askGemini(q, hits, intent);
-      if (gemini != null && gemini.trim().isNotEmpty) {
-        return KnowledgeAnswer(
-          found: hits.isNotEmpty || local.found,
-          hits: hits.take(3).toList(),
-          text: _sanitizeExternal(gemini.trim()),
-        );
-      }
-    } catch (_) {}
+    // Har vi et skarpt intent-svar, bruk det først (raskt + uten lekkasjer).
+    // Gemini er bonus når den er deployet.
+    final preferLocal = intent != null &&
+        local.found &&
+        _naturalAnswers.containsKey(intent.chunkId);
+
+    if (!preferLocal && _geminiAvailable != false) {
+      try {
+        final gemini = await _askGemini(q, hits, intent);
+        if (gemini != null && gemini.trim().isNotEmpty) {
+          return KnowledgeAnswer(
+            found: hits.isNotEmpty || local.found,
+            hits: hits.take(3).toList(),
+            text: _sanitizeExternal(gemini.trim()),
+          );
+        }
+      } catch (_) {}
+    }
 
     if (local.found) {
       return KnowledgeAnswer(
@@ -202,6 +212,19 @@ class PublicMontageAssistantService {
         hits: hits.take(3).toList(),
         text: _sanitizeExternal(local.text),
       );
+    }
+
+    if (_geminiAvailable != false) {
+      try {
+        final gemini = await _askGemini(q, hits, intent);
+        if (gemini != null && gemini.trim().isNotEmpty) {
+          return KnowledgeAnswer(
+            found: hits.isNotEmpty,
+            hits: hits.take(3).toList(),
+            text: _sanitizeExternal(gemini.trim()),
+          );
+        }
+      } catch (_) {}
     }
 
     return const KnowledgeAnswer(
@@ -422,8 +445,86 @@ class PublicMontageAssistantService {
     );
   }
 
+  /// Ferdige, naturlige svar — høres ut som AI, ikke som kopiert FAQ.
+  static const _naturalAnswers = <String, String>{
+    'ext.rebook_scan':
+        'Ja — men først må varen faktisk være hos oss (eller returnert og registrert).\n\n'
+        'Så lenge den er underveis eller ikke ankommet, kan den ikke bookes om «på forskudd». '
+        'Vent til den er klar, og book deretter om via butikk/CCC.\n\n'
+        'Tips: Oppgi ordrenummer når du kontakter CCC, så går det fortest.',
+    'ext.earlier':
+        'Som hovedregel gjelder datoen som allerede er booket i leveringsmatrisen — '
+        'særlig hvis varen ikke har ankommet ennå.\n\n'
+        'Unntak finnes hvis leveringen har feilet flere ganger på vår side (f.eks. «rakk ikke»). '
+        'Da kan CCC spørre om en tidligere tid, men varen må være klar for levering først.\n\n'
+        'Beste neste steg: kontakt CCC med ordrenummer og forklar situasjonen.',
+    'ext.time_window':
+        'Vi planlegger etter det tidsvinduet som er booket — for eksempel 17–22. '
+        'Vi kan dessverre ikke love et spesifikt klokkeslett inni vinduet (som «først etter 19»).\n\n'
+        'Hvis kunden ikke kan være hjemme hele vinduet, er beste løsning å booke om til en dag '
+        'der hele tidsrommet passer.\n\n'
+        'Har det vært flere bomturer tidligere som skyldes leveransen, kan CCC be om ekstra hensyn ved ny planlegging.',
+    'ext.status_today':
+        'Jeg ser ikke live ordrestatus her i chatten.\n\n'
+        'Ta kontakt med butikk eller Elkjøp CCC med ordrenummer. '
+        'De kan sjekke om leveringen er på vei i dag, og eventuelt sørge for at sjåfør ringer kunden.',
+    'ext.montage_followup':
+        'Ved klage på montering, eller hvis noe må sjekkes på nytt, ber du CCC sette opp en '
+        'standalone service (SA) til kunden.\n\n'
+        'Er det vannlekkasje eller fare for skade i hjemmet, si ifra tydelig — da skal det prioriteres raskere enn vanlig.\n\n'
+        'Ta med ordrenummer og en kort beskrivelse av problemet.',
+    'ext.four_person':
+        'Det kommer an på hvor i løpet dere er:\n\n'
+        '• Allerede levert hos kunden: Be CCC opprette en SA (f.eks. for bæring/montering) og oppgi ønsket dato.\n'
+        '• Ikke levert ennå: Book om leveringen og merk tydelig at det trengs fire personer.\n'
+        '• Oppdaget først under levering: Ekstra mannskap samme dag er ikke alltid tilgjengelig. '
+        'Ofte må oppdraget fullføres/avbrytes der og da, og ny planlegging skjer via CCC.\n\n'
+        'Jo tidligere behovet er merket på ordren, jo enklere blir det.',
+    'ext.extra_service':
+        'Glemt en tjeneste? Det går ofte fint — avhengig av tidspunkt:\n\n'
+        '• Levering i dag/i morgen: Vanlige tjenester kan ofte legges til under levering '
+        '(kunden får betalingslenke etterpå). Avklar via CCC/butikk før sjåfør er der.\n'
+        '• Lenger frem i tid: CCC kan legge opp en SA på samme dato/tid, så tjenesten følger med.\n\n'
+        'Si hvilke tjeneste det gjelder, så blir det riktig fra start.',
+    'ext.customer_info':
+        'Adresse, telefon og navn endres av butikk/CCC — ikke av oss som leverandør.\n\n'
+        'Som oftest må leveringen bookes om for at endringen skal gjelde.\n\n'
+        'Er leveringen i dag eller i morgen, kan korrekt telefonnummer noen ganger noteres til sjåfør via CCC, '
+        'men den permanente endringen må fortsatt inn i ordren.',
+    'ext.utlevere':
+        'Noen ganger blir leveringen gjennomført, men registreringen på enheten feiler.\n\n'
+        '• Fra i går: Vent normalt til neste arbeidsdag — status oppdateres ofte da.\n'
+        '• Eldre leveringer: Kontakt CCC og be dem følge opp utlevering/status i systemet.\n\n'
+        'Ha ordrenummer klart.',
+    'ext.curbside_site':
+        'Bytte fra curbside (fortauskant) til deliverysite (inn til anvist plass) '
+        'må gjøres av butikk/CCC i deres system.\n\n'
+        'Vi kan ikke endre tjenestetypen fra vår side. Be dem oppdatere ordren før leveringsdagen.',
+    'ext.store_pickup':
+        'Hvis varen ikke ble hentet fra butikk, kan den normalt ikke leveres til oppsatt tid likevel.\n\n'
+        'Ordren må bookes om med både henting og ny levering. '
+        'Butikk må også ha gjort pick & pack (klargjort varen) i tide.\n\n'
+        'Kontakt butikk/CCC med ordrenummer for å få satt dette riktig.',
+    'ext.cancel':
+        'Vi kan ikke kansellere ordren i Elkjøps system — det må butikk/CCC gjøre.\n\n'
+        'Be dem samtidig bekrefte at leveringen ikke skal kjøres, så den ikke blir planlagt ut.\n\n'
+        'Kort sagt: kansellering skjer hos CCC/butikk, ikke hos leverandør.',
+    'ext.return_pickup':
+        'For returhentinger kan dato ofte justeres ved behov.\n\n'
+        'Send forespørsel via CCC med ordrenummer og ønsket ny dato — så ordner de oppfølgingen.',
+    'ext.notes':
+        'Viktig info til sjåfør (portkode, «ring først», vanskelig adkomst) må ligge på ordren via butikk/CCC.\n\n'
+        '• Levering i dag: Be også CCC sørge for at sjåfør får beskjed.\n'
+        '• I morgen eller senere: Legg inn notatet i god tid, så følger det automatisk med.',
+  };
+
   /// Formulerer naturlig svar — aldri rå dokumentsitering.
   String _rewriteOpsAnswer(KnowledgeChunk chunk, String? topic) {
+    final polished = _naturalAnswers[chunk.id];
+    if (polished != null && polished.trim().isNotEmpty) {
+      return polished.trim();
+    }
+
     final paras = chunk.body
         .split(RegExp(r'\n\s*\n'))
         .map((p) => p.trim())
@@ -437,7 +538,6 @@ class PublicMontageAssistantService {
       buf.writeln();
     }
 
-    // Lead with actionable paragraph(s)
     for (final p in paras.take(3)) {
       var line = p
           .replaceFirst(RegExp(r'^Svar til ekstern:\s*', caseSensitive: false), '')
@@ -612,20 +712,37 @@ class PublicMontageAssistantService {
           '${intent != null ? 'Brukeren spør om: ${intent.label}.' : ''}',
     });
 
-    final res = await SupabaseService.client.functions.invoke(
-      'public-montage-assistant',
-      body: {
-        'question': question,
-        'contexts': contexts.take(10).toList(),
-      },
-    );
+    try {
+      final res = await SupabaseService.client.functions.invoke(
+        'public-montage-assistant',
+        body: {
+          'question': question,
+          'contexts': contexts.take(10).toList(),
+        },
+      );
 
-    final data = res.data;
-    if (data is Map && data['error'] != null) return null;
-    if (data is Map && data['answer'] is String) {
-      return data['answer'] as String;
+      final data = res.data;
+      if (data is Map && data['error'] != null) {
+        final err = '${data['error']}'.toLowerCase();
+        if (err.contains('not_found') || err.contains('404')) {
+          _geminiAvailable = false;
+        }
+        return null;
+      }
+      if (data is Map && data['answer'] is String) {
+        _geminiAvailable = true;
+        return data['answer'] as String;
+      }
+      return null;
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('404') ||
+          msg.contains('not_found') ||
+          msg.contains('requested function was not found')) {
+        _geminiAvailable = false;
+      }
+      return null;
     }
-    return null;
   }
 }
 
