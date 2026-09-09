@@ -128,6 +128,18 @@ const _routeCardGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
   mainAxisSpacing: 10,
 );
 
+/// Farger for flere last (A/B/C) på samme sjåfør — stabil per bil-id.
+const _multiLoadPalette = <Color>[
+  Color(0xFF1565C0),
+  Color(0xFF7B1FA2),
+  Color(0xFF00838F),
+  Color(0xFF558B2F),
+  Color(0xFFC62828),
+  Color(0xFFEF6C00),
+  Color(0xFF4527A0),
+  Color(0xFF00695C),
+];
+
 /// Felles popup: AUTO MASS (manuell PDF) og Ruter fra SAP (auto-import + samme UI).
 class PartnerRouteMassDispatchSheet extends StatefulWidget {
   final List<FleetPartnerVehicleRow> fleet;
@@ -3922,6 +3934,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     required Widget Function(PartnerRouteShare share) itemBuilder,
     EdgeInsets padding = const EdgeInsets.fromLTRB(12, 4, 12, 24),
   }) {
+    return _mixedRouteCardsSliver(
+      itemCount: routes.length,
+      itemBuilder: (i) => itemBuilder(routes[i]),
+      padding: padding,
+    );
+  }
+
+  Widget _mixedRouteCardsSliver({
+    required int itemCount,
+    required Widget Function(int index) itemBuilder,
+    EdgeInsets padding = const EdgeInsets.fromLTRB(12, 4, 12, 24),
+  }) {
     if (DriftProClient.isMobile) {
       return SliverPadding(
         padding: padding,
@@ -3929,9 +3953,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           delegate: SliverChildBuilderDelegate(
             (context, i) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: itemBuilder(routes[i]),
+              child: SizedBox(height: 420, child: itemBuilder(i)),
             ),
-            childCount: routes.length,
+            childCount: itemCount,
           ),
         ),
       );
@@ -3941,9 +3965,168 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       sliver: SliverGrid(
         gridDelegate: _routeCardGridDelegate,
         delegate: SliverChildBuilderDelegate(
-          (context, i) => itemBuilder(routes[i]),
-          childCount: routes.length,
+          (context, i) => itemBuilder(i),
+          childCount: itemCount,
         ),
+      ),
+    );
+  }
+
+  /// Orphans først, deretter grupper samme bil (multi-last A/B/C sammen).
+  List<PartnerRouteShare> _sortSharesGrouped(List<PartnerRouteShare> input) {
+    final orphans = <PartnerRouteShare>[];
+    final byVehicle = <String, List<PartnerRouteShare>>{};
+    for (final s in input) {
+      final vid = s.partnerVehicleId;
+      if (vid == null || _rowForShare(s) == null) {
+        orphans.add(s);
+        continue;
+      }
+      byVehicle.putIfAbsent(vid, () => []).add(s);
+    }
+    for (final list in byVehicle.values) {
+      list.sort((a, b) {
+        final c = (_stowingForShare(a) ?? '').compareTo(_stowingForShare(b) ?? '');
+        if (c != 0) return c;
+        return (a.title ?? '').compareTo(b.title ?? '');
+      });
+    }
+    final vehicleIds = byVehicle.keys.toList()
+      ..sort((a, b) {
+        final am = byVehicle[a]!.length >= 2;
+        final bm = byVehicle[b]!.length >= 2;
+        if (am != bm) return am ? -1 : 1;
+        final la = _maviCodeForShare(byVehicle[a]!.first) ?? a;
+        final lb = _maviCodeForShare(byVehicle[b]!.first) ?? b;
+        return la.compareTo(lb);
+      });
+    return [
+      ...orphans,
+      for (final id in vehicleIds) ...byVehicle[id]!,
+    ];
+  }
+
+  Color? _multiLoadColorForVehicle(String? vehicleId) {
+    if (vehicleId == null) return null;
+    final n = _staged.where((s) => s.partnerVehicleId == vehicleId).length;
+    if (n < 2) return null;
+    return _multiLoadPalette[vehicleId.hashCode.abs() % _multiLoadPalette.length];
+  }
+
+  String? _loadLetterForShare(PartnerRouteShare share) {
+    final vid = share.partnerVehicleId;
+    if (vid == null) return null;
+    final group = _staged.where((s) => s.partnerVehicleId == vid).toList()
+      ..sort((a, b) {
+        final c = (_stowingForShare(a) ?? '').compareTo(_stowingForShare(b) ?? '');
+        if (c != 0) return c;
+        return (a.title ?? '').compareTo(b.title ?? '');
+      });
+    if (group.length < 2) return null;
+    final i = group.indexWhere((s) => s.id == share.id);
+    if (i < 0) return null;
+    return 'Last ${String.fromCharCode(65 + i.clamp(0, 25))}';
+  }
+
+  Widget _buildRoutesOverview(
+    _MassUi ui, {
+    bool forceMissingOnly = false,
+    bool compactChrome = false,
+    bool includeManualAtTop = false,
+  }) {
+    if (_staged.isEmpty && !(includeManualAtTop && _skipped.isNotEmpty)) {
+      return _buildEmptyQueueHero(ui);
+    }
+
+    final baseRoutes = forceMissingOnly
+        ? _routesMissingShift
+        : List<PartnerRouteShare>.from(_filteredQueueRoutes);
+    final routes = _sortSharesGrouped(baseRoutes);
+    final showManual = includeManualAtTop && _skipped.isNotEmpty;
+    final totalCards = (showManual ? _skipped.length : 0) + routes.length;
+
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        if (showManual)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: Text(
+                'Manuelle (${_skipped.length}) øverst — samme størrelse, oransje. Velg sjåfør på kortet.',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Colors.orange.shade900,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+        SliverToBoxAdapter(
+          child: _buildScrollListHeader(
+            ui,
+            showFilters: !forceMissingOnly && !compactChrome,
+            forceMissingOnly: forceMissingOnly,
+            compactChrome: compactChrome,
+          ),
+        ),
+        if (totalCards == 0)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Text(
+                forceMissingOnly
+                    ? 'Ingen ruter mangler skift — bra!'
+                    : (_skipped.isNotEmpty
+                        ? 'Tildel sjåfør på manuelle PDF-er øverst.'
+                        : 'Ingen ruter matcher filteret.'),
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            ),
+          )
+        else
+          _mixedRouteCardsSliver(
+            itemCount: totalCards,
+            itemBuilder: (i) {
+              if (showManual && i < _skipped.length) {
+                return _buildSkippedCompactCard(_skipped[i], ui);
+              }
+              final share = routes[showManual ? i - _skipped.length : i];
+              final row = _rowForShare(share);
+              if (row == null) return _buildOrphanRouteCard(share, ui);
+              return _buildMassRouteCard(share, row, ui);
+            },
+          ),
+      ],
+    );
+  }
+
+  /// Kompakt manuell-grid (samme størrelse som vanlige rute-kort) — brukes i Biler-steget.
+  Widget _buildManualAssignStrip(_MassUi ui) {
+    if (_skipped.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Manuelle PDF-er (${_skipped.length}) — oransje kort, velg sjåfør direkte',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: Colors.orange.shade900,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 8),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _skipped.length,
+            gridDelegate: _routeCardGridDelegate,
+            itemBuilder: (context, i) =>
+                _buildSkippedCompactCard(_skipped[i], ui),
+          ),
+        ],
       ),
     );
   }
@@ -3979,117 +4162,6 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ],
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildRoutesOverview(
-    _MassUi ui, {
-    bool forceMissingOnly = false,
-    bool compactChrome = false,
-    bool includeManualAtTop = false,
-  }) {
-    if (_staged.isEmpty && !(includeManualAtTop && _skipped.isNotEmpty)) {
-      return _buildEmptyQueueHero(ui);
-    }
-
-    final routes = forceMissingOnly
-        ? _routesMissingShift
-        : () {
-            final list = List<PartnerRouteShare>.from(_filteredQueueRoutes);
-            // Manuelle/orphan-ruter alltid øverst.
-            list.sort((a, b) {
-              final ao = _rowForShare(a) == null ? 0 : 1;
-              final bo = _rowForShare(b) == null ? 0 : 1;
-              if (ao != bo) return ao.compareTo(bo);
-              return 0;
-            });
-            return list;
-          }();
-
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        if (includeManualAtTop && _skipped.isNotEmpty)
-          SliverToBoxAdapter(child: _buildManualAssignStrip(ui)),
-        SliverToBoxAdapter(
-          child: _buildScrollListHeader(
-            ui,
-            showFilters: !forceMissingOnly && !compactChrome,
-            forceMissingOnly: forceMissingOnly,
-            compactChrome: compactChrome,
-          ),
-        ),
-        if (routes.isEmpty && _staged.isEmpty)
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Text(
-                _skipped.isNotEmpty
-                    ? 'Tildel sjåfør på manuelle PDF-er øverst.'
-                    : 'Ingen ruter matcher filteret.',
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            ),
-          )
-        else if (routes.isEmpty)
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Text(
-                forceMissingOnly ? 'Ingen ruter mangler skift — bra!' : 'Ingen ruter matcher filteret.',
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            ),
-          )
-        else
-          _routeCardsSliver(
-            routes: routes,
-            itemBuilder: (share) {
-              final row = _rowForShare(share);
-              if (row == null) return _buildOrphanRouteCard(share, ui);
-              return _buildMassRouteCard(share, row, ui);
-            },
-          ),
-      ],
-    );
-  }
-
-  /// Manuelle PDF-er øverst med direkte sjåførvalg (erstatter Mangler-fanen).
-  Widget _buildManualAssignStrip(_MassUi ui) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 0, 4, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            'Manuelle PDF-er (${_skipped.length}) — velg sjåfør direkte',
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              color: Colors.orange.shade900,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 8),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final cross = constraints.maxWidth >= 700 ? 2 : 1;
-              return GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _skipped.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: cross,
-                  mainAxisExtent: 360,
-                  crossAxisSpacing: 10,
-                  mainAxisSpacing: 10,
-                ),
-                itemBuilder: (context, i) =>
-                    _buildSkippedCompactCard(_skipped[i], ui),
-              );
-            },
-          ),
-        ],
       ),
     );
   }
@@ -4166,6 +4238,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
     final shiftId = _effectiveShiftId(share.id);
     final start = _startByShare[share.id] ?? const TimeOfDay(hour: 6, minute: 0);
+    final groupColor = _multiLoadColorForVehicle(share.partnerVehicleId);
+    final loadBadge = _loadLetterForShare(share);
 
     return PartnerMassRouteQueueCard(
       share: share,
@@ -4183,6 +4257,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       routeShifts: _routeShifts,
       maviFleet: _maviFleet,
       noteController: noteCtrl,
+      groupAccent: groupColor,
+      loadBadge: loadBadge,
       notifyBadge: RouteNotifyDeliveryBadge(
         delivery: _deliveryByShare[share.id],
         driverAppReady: share.partnerVehicleId != null &&
@@ -4210,88 +4286,118 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   Widget _buildOrphanRouteCard(PartnerRouteShare share, _MassUi ui) {
     final code = _maviCodeForShare(share);
     final suggested = _fleetRowForMaviCode(code);
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.shade400, width: 2),
-        boxShadow: DriftProTheme.cardShadow,
-      ),
+    return Material(
+      color: Colors.white,
+      elevation: 0,
+      borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          PartnerRoutePdfThumbnail(
-            share: share,
-            driverLabel: 'Velg sjåfør',
-            height: 240,
-            showFullPage: true,
-            zoomTripHeader: true,
-            onTapOpen: () => PartnerRoutePdfActions.openPdf(context, share),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  share.title ?? share.pdfStoragePath.split('/').last,
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                if (code != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    suggested == null
-                        ? '${MaviUnitCodes.compactLabel(code)} ikke i flåten — velg annen bil'
-                        : 'Foreslått: ${MaviUnitCodes.compactLabel(code)}',
-                    style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+      child: Ink(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.orange.shade500, width: 2.5),
+          boxShadow: DriftProTheme.cardShadow,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  PartnerRoutePdfThumbnail(
+                    share: share,
+                    driverLabel: 'Velg sjåfør',
+                    showFullPage: true,
+                    zoomTripHeader: true,
+                    onTapOpen: () => PartnerRoutePdfActions.openPdf(context, share),
                   ),
-                ],
-                const SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: suggested?.vehicle.id,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Velg sjåfør / MAVI-bil',
-                    border: OutlineInputBorder(),
-                    isDense: true,
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(width: 5, color: Colors.orange.shade700),
                   ),
-                  items: _maviFleet
-                      .map(
-                        (r) => DropdownMenuItem(
-                          value: r.vehicle.id,
-                          child: Text(
-                            MaviUnitCodes.fleetDriverLabel(
-                              r.vehicle.unitCode,
-                              r.partner.name,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        'Manuell',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.orange.shade900,
                         ),
-                      )
-                      .toList(),
-                  onChanged: _busyUpload
-                      ? null
-                      : (vid) async {
-                          if (vid == null) return;
-                          await _reassignShare(share, vid);
-                        },
-                ),
-                if (suggested != null) ...[
-                  const SizedBox(height: 8),
-                  FilledButton.tonal(
-                    onPressed: _busyUpload
-                        ? null
-                        : () => _relinkOrphanShare(share),
-                    child: Text(
-                      'Bruk ${MaviUnitCodes.fleetDriverLabel(suggested.vehicle.unitCode, suggested.partner.name)}',
+                      ),
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    share.title ?? share.pdfStoragePath.split('/').last,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                  ),
+                  if (code != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      suggested == null
+                          ? '${MaviUnitCodes.compactLabel(code)} ikke i flåten'
+                          : 'Foreslått: ${MaviUnitCodes.compactLabel(code)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 10, color: Colors.orange.shade900),
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<String>(
+                    value: suggested?.vehicle.id,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Velg sjåfør',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    ),
+                    items: _maviFleet
+                        .map(
+                          (r) => DropdownMenuItem(
+                            value: r.vehicle.id,
+                            child: Text(
+                              MaviUnitCodes.fleetDriverLabel(
+                                r.vehicle.unitCode,
+                                r.partner.name,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _busyUpload
+                        ? null
+                        : (vid) async {
+                            if (vid == null) return;
+                            await _reassignShare(share, vid);
+                          },
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -4443,6 +4549,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final hasPhone = phone != null && phone.trim().length >= 8;
     final lanes = routes.map(_stowingForShare).whereType<String>().toSet().toList()..sort();
     final multi = routes.length >= 2;
+    final groupColor = _multiLoadColorForVehicle(vid) ?? Colors.orange.shade400;
 
     if (routes.isEmpty && !_showAllDrivers) return const SizedBox.shrink();
 
@@ -4452,14 +4559,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: multi
-              ? Colors.orange.shade400
+              ? groupColor
               : routes.isNotEmpty
                   ? ui.accent.withValues(alpha: 0.35)
                   : Colors.grey.shade300,
-          width: multi ? 2 : 1,
+          width: multi ? 2.5 : 1,
         ),
         color: multi
-            ? Colors.orange.shade50.withValues(alpha: 0.65)
+            ? groupColor.withValues(alpha: 0.08)
             : routes.isNotEmpty
                 ? ui.surfaceTint.withValues(alpha: 0.5)
                 : Colors.grey.shade50,
@@ -4607,48 +4714,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     required int loadIndex,
     required bool multi,
   }) {
-    final letter = String.fromCharCode(65 + (loadIndex.clamp(0, 25)));
-    final lane = _stowingForShare(share);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (multi)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6, left: 2),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: ui.accentDark,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    'Last $letter',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                ),
-                if (lane != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    'Lane $lane',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.grey.shade800,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        _buildMassRouteCard(share, row, ui),
-      ],
-    );
+    // Last A/B/C + farge ligger på selve rute-kortet.
+    return _buildMassRouteCard(share, row, ui);
   }
 
   String? _skippedDriverLabel(_SkippedPdf item) {
@@ -4858,38 +4925,63 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final storageError = item.reason?.contains('Lagring feilet') == true;
 
     return Material(
-      color: ui.surfaceTint,
+      color: Colors.white,
       elevation: 0,
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: Ink(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.orange.withValues(alpha: 0.45)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          border: Border.all(color: Colors.orange.shade500, width: 2.5),
+          boxShadow: DriftProTheme.cardShadow,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            PartnerRoutePdfThumbnail(
-              bytes: item.bytes,
-              driverLabel: label,
-              height: 220,
-              showFullPage: true,
-              zoomTripHeader: true,
-              onTapOpen: item.bytes.isEmpty
-                  ? null
-                  : () => PartnerRoutePdfActions.openPdfBytes(
-                        context,
-                        bytes: item.bytes,
-                        title: item.fileName,
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  PartnerRoutePdfThumbnail(
+                    bytes: item.bytes,
+                    driverLabel: label,
+                    showFullPage: true,
+                    zoomTripHeader: true,
+                    onTapOpen: item.bytes.isEmpty
+                        ? null
+                        : () => PartnerRoutePdfActions.openPdfBytes(
+                              context,
+                              bytes: item.bytes,
+                              title: item.fileName,
+                            ),
+                  ),
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
+                    child: Container(width: 5, color: Colors.orange.shade700),
+                  ),
+                  Positioned(
+                    top: 6,
+                    right: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(999),
                       ),
+                      child: Text(
+                        'Manuell',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.orange.shade900,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
@@ -4921,6 +5013,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     const SizedBox(height: 2),
                     Text(
                       _shortSkipReason(item.reason!),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontSize: 10, color: Colors.orange.shade900),
                     ),
                   ],
@@ -5202,7 +5296,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               delegate: SliverChildBuilderDelegate(
                 (context, i) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: _buildSkippedCompactCard(_skipped[i], ui, showDelete: true),
+                  child: SizedBox(
+                    height: 420,
+                    child: _buildSkippedCompactCard(_skipped[i], ui, showDelete: true),
+                  ),
                 ),
                 childCount: _skipped.length,
               ),
@@ -5212,12 +5309,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(10, 4, 10, 20),
             sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 280,
-                childAspectRatio: 0.58,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-              ),
+              gridDelegate: _routeCardGridDelegate,
               delegate: SliverChildBuilderDelegate(
                 (context, i) => _buildSkippedCompactCard(_skipped[i], ui, showDelete: true),
                 childCount: _skipped.length,

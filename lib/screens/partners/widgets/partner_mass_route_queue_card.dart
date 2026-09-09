@@ -34,6 +34,10 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
   final ValueChanged<TimeOfDay> onStartChanged;
   final VoidCallback? onOpenDetails;
   final Widget? notifyBadge;
+  /// Farge for flere last (A/B/C) på samme sjåfør.
+  final Color? groupAccent;
+  /// F.eks. «Last A».
+  final String? loadBadge;
 
   const PartnerMassRouteQueueCard({
     super.key,
@@ -60,6 +64,8 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
     required this.onStartChanged,
     this.onOpenDetails,
     this.notifyBadge,
+    this.groupAccent,
+    this.loadBadge,
   });
 
   String get _fileLabel =>
@@ -85,14 +91,15 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: shiftMissing
-                  ? Colors.amber.shade600
-                  : checked
-                      ? accent.withValues(alpha: 0.55)
-                      : isDark
-                          ? DriftProTheme.dividerDark
-                          : Colors.grey.shade200,
-              width: shiftMissing || checked ? 2 : 1,
+              color: groupAccent ??
+                  (shiftMissing
+                      ? Colors.amber.shade600
+                      : checked
+                          ? accent.withValues(alpha: 0.55)
+                          : isDark
+                              ? DriftProTheme.dividerDark
+                              : Colors.grey.shade200),
+              width: groupAccent != null || shiftMissing || checked ? 2.5 : 1,
             ),
             boxShadow: DriftProTheme.cardShadow,
           ),
@@ -110,6 +117,13 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
                       zoomTripHeader: true,
                       onTapOpen: () => PartnerRoutePdfActions.openPdf(context, share),
                     ),
+                    if (groupAccent != null)
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        bottom: 0,
+                        child: Container(width: 5, color: groupAccent),
+                      ),
                     Positioned(
                       top: 6,
                       left: 2,
@@ -131,6 +145,14 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (loadBadge != null) ...[
+                            _chip(
+                              loadBadge!,
+                              groupAccent ?? accentDark,
+                              (groupAccent ?? accent).withValues(alpha: 0.18),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
                           if (shiftMissing)
                             _chip('Mangler skift', Colors.amber.shade800, Colors.amber.shade100),
                           if (checked && !shiftMissing) ...[
