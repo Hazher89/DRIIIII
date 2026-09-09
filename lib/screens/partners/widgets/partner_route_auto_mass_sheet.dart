@@ -398,21 +398,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       _sapGraphSyncNote = 'Henter alle mail fra Office 365…';
     });
     try {
-      final result = await PartnerService.syncSapMailboxFromGraph();
-      if (!mounted) return;
-      if (result == null) {
-        setState(() => _sapGraphSyncNote =
-            'Kunne ikke nå Office 365-sync. Prøv «Hent» igjen.');
-      } else if (result['error'] != null) {
-        setState(() {
-          _sapGraphSyncNote = _friendlyGraphSyncError('${result['error']}');
-        });
-      } else {
-        _applyGraphSyncResult(result);
-      }
-      await _refreshSapInboxCounts();
+      await _runOffice365Check(importNew: true);
     } finally {
-      if (mounted) setState(() => _sapSyncing = false);
+      _sapSyncing = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -472,11 +461,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       _sapSyncing = true;
       _sapGraphSyncNote = 'Forbereder kø…';
     });
+    String? cid;
     try {
-      final cid = await SupabaseService.getCurrentCompanyId();
+      cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null || _importAborted) return;
 
-      // Gjenåpne «importert» som mangler staged (ellers 47 allerede / 0 i kø).
       final reopened = await PartnerService.reopenOrphanedSapInbox(cid);
       if (mounted && reopened > 0) {
         setState(() {
@@ -484,35 +473,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         });
       }
 
-      // 1) Importer eksisterende innboks FØRST (raskere enn Graph-nedlasting).
+      // 1) Importer eksisterende innboks først.
       await _runSapImportPhase(cid, label: 'Importerer til kø');
-
-      // 2) Rask Office 365-sjekk (hopper over PDF som allerede er i DB).
-      if (mounted) {
-        setState(() => _sapGraphSyncNote = 'Sjekker Office 365 for nye mail…');
-      }
-      final graph = await PartnerService.syncSapMailboxFromGraph();
-      if (mounted && graph != null && graph['error'] == null) {
-        _applyGraphSyncResult(graph);
-      } else if (mounted && graph != null && graph['error'] != null) {
-        setState(() {
-          _sapGraphSyncNote = _friendlyGraphSyncError('${graph['error']}');
-        });
-      } else if (mounted && graph == null) {
-        setState(() {
-          _sapGraphSyncNote =
-              'Kunne ikke nå Office 365-sync. Køen er uendret — prøv «Hent» igjen.';
-        });
-      }
-
-      final inserted = (graph != null && graph['inserted'] is List)
-          ? (graph['inserted'] as List).length
-          : 0;
-      if (inserted > 0 && !_importAborted) {
-        await _runSapImportPhase(cid, label: 'Importerer nye PDF');
-      }
-
-      await _refreshSapInboxCounts();
     } catch (e) {
       if (mounted) {
         setState(() => _sapGraphSyncNote = _friendlyGraphSyncError('$e'));
@@ -524,30 +486,63 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         );
       }
     } finally {
-      // Frigjør «Hent» med en gang — skiftfylling skal ikke låse knappen.
-      if (mounted) setState(() => _sapSyncing = false);
+      // Frigjør Hent med en gang kø-import er ferdig — Graph skal ikke låse knappen.
+      _sapSyncing = false;
+      if (mounted) setState(() {});
     }
 
-    // Skift i bakgrunnen (egen flagg) — ikke blokker Hent.
-    if (!_importAborted &&
-        mounted &&
-        _staged.isNotEmpty &&
-        _missingShiftCount > 0 &&
-        !_fillingShifts) {
-      final priorNote = _sapGraphSyncNote;
+    if (_importAborted || !mounted || cid == null) return;
+
+    // 2) Office 365 i bakgrunnen (egen timeout) — knappen forblir klikkbar.
+    unawaited(_runOffice365Check(importNew: true));
+
+    // 3) Skift uten å låse Hent.
+    if (_staged.isNotEmpty && _missingShiftCount > 0 && !_fillingShifts) {
+      unawaited(_fillAllShiftsForStaged());
+    }
+  }
+
+  /// Office 365-sjekk uten å holde «Hent» disabled.
+  Future<void> _runOffice365Check({required bool importNew}) async {
+    if (!mounted || _importAborted) return;
+    final cid = await SupabaseService.getCurrentCompanyId();
+    if (cid == null || !mounted) return;
+
+    setState(() {
+      _sapGraphSyncNote = 'Sjekker Office 365 for nye mail…';
+    });
+
+    final graph = await PartnerService.syncSapMailboxFromGraph();
+    if (!mounted || _importAborted) return;
+
+    if (graph != null && graph['error'] == null) {
+      _applyGraphSyncResult(graph);
+    } else if (graph != null && graph['error'] != null) {
       setState(() {
-        _sapGraphSyncNote = priorNote == null || priorNote.isEmpty
-            ? 'Fyller skift i bakgrunnen…'
-            : '$priorNote · Fyller skift…';
+        _sapGraphSyncNote = _friendlyGraphSyncError('${graph['error']}');
       });
-      await _fillAllShiftsForStaged();
-      if (!mounted) return;
-      final failed = (_sapGraphSyncNote ?? '').contains('Office 365') ||
-          (_sapGraphSyncNote ?? '').startsWith('Sync feilet');
-      if (!failed) {
-        setState(() => _sapGraphSyncNote = 'Klar: ${_staged.length} ruter i kø');
+    } else {
+      setState(() {
+        _sapGraphSyncNote =
+            'Kunne ikke nå Office 365-sync. Køen er uendret — trykk Hent for å prøve igjen.';
+      });
+    }
+
+    final inserted = (graph != null && graph['inserted'] is List)
+        ? (graph['inserted'] as List).length
+        : 0;
+    if (importNew && inserted > 0 && !_importAborted) {
+      // Kort lås kun mens nye PDF importeres.
+      if (mounted) setState(() => _sapSyncing = true);
+      try {
+        await _runSapImportPhase(cid, label: 'Importerer nye PDF');
+      } finally {
+        _sapSyncing = false;
+        if (mounted) setState(() {});
       }
     }
+
+    await _refreshSapInboxCounts();
   }
 
   String _friendlyGraphSyncError(String raw) {
@@ -2957,8 +2952,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   String _sapWizardCaption(_SapWizardStep step) => switch (step) {
         _SapWizardStep.fetch =>
           _sapSyncing
-              ? 'Henter og importerer alle SAP-PDF…'
-              : 'Steg 1: Alle ruter hentes fra Office 365 og vises her.',
+              ? 'Importerer SAP-PDF til kø…'
+              : (_sapGraphSyncNote?.contains('Office 365-sync mistet') == true ||
+                      _sapGraphSyncNote?.startsWith('Sync feilet') == true)
+                  ? 'Kø klar — Office 365 feilet. Gå videre eller trykk Hent igjen.'
+                  : 'Steg 1: Alle ruter hentes fra Office 365 og vises her.',
         _SapWizardStep.vehicles =>
           'Steg 2: Se hvordan rutene er fordelt på bilene.',
         _SapWizardStep.attention =>
@@ -3031,6 +3029,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final busyFetch = _sapSyncing && total == 0;
     final officeFailed = (_sapGraphSyncNote ?? '').contains('Office 365') ||
         (_sapGraphSyncNote ?? '').startsWith('Sync feilet');
+    final showUpdating = _sapSyncing && !officeFailed;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -3074,8 +3073,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               Text(
                 busyFetch
                     ? 'Henter alle SAP-ruter…'
-                    : _sapSyncing
-                        ? 'Oppdaterer…'
+                    : showUpdating
+                        ? 'Importerer…'
                         : total > 0
                             ? 'SAP-ruter i kø'
                             : 'Ingen ruter ennå',
@@ -3091,7 +3090,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     ? '$total i kø'
                         '${_lastGraphInserted > 0 ? ' · $_lastGraphInserted nye' : ''}'
                         '${_lastGraphAlready > 0 ? ' · $_lastGraphAlready allerede' : ''}'
-                        '${_sapSyncing ? ' · $_sapGraphSyncNote' : ''}'
+                        '${showUpdating && _sapGraphSyncNote != null ? ' · $_sapGraphSyncNote' : ''}'
                     : (_sapGraphSyncNote ??
                         'Trykk «Hent alle på nytt» hvis listen er tom'),
                 textAlign: TextAlign.center,
@@ -3104,7 +3103,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ],
           ),
         ),
-        if (officeFailed && total > 0) ...[
+        if (officeFailed) ...[
           const SizedBox(height: 12),
           Material(
             color: Colors.orange.shade50,
@@ -3117,8 +3116,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Køen er klar med $total ruter. Office 365-sjekken feilet — '
-                      'du kan gå videre eller trykke Hent igjen.',
+                      total > 0
+                          ? 'Køen er klar med $total ruter. Office 365-sjekken feilet — '
+                              'du kan gå videre eller trykke Hent igjen.'
+                          : (_sapGraphSyncNote ??
+                              'Office 365-sjekken feilet. Trykk Hent igjen.'),
                       style: TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600,

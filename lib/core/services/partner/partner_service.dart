@@ -3346,20 +3346,25 @@ class PartnerService {
   /// Hopper over PDF-nedlasting for mail som allerede er i innboks.
   static Future<Map<String, dynamic>?> syncSapMailboxFromGraph({
     int hours = 168,
+    Duration timeout = const Duration(seconds: 45),
   }) async {
     if (!_ok) return null;
     try {
-      final res = await _client.functions.invoke(
-        'ms-graph-sap-routes-sync',
-        body: {
-          'hours': hours,
-          'markRead': true,
-        },
-      );
+      final res = await _client.functions
+          .invoke(
+            'ms-graph-sap-routes-sync',
+            body: {
+              'hours': hours,
+              'markRead': true,
+            },
+          )
+          .timeout(timeout);
       final data = res.data;
       if (data is Map<String, dynamic>) return data;
       if (data is Map) return Map<String, dynamic>.from(data);
       return {'raw': data};
+    } on TimeoutException {
+      return {'error': 'TimeoutException: Office 365-sync tok for lang tid'};
     } catch (e) {
       return {'error': e.toString()};
     }
