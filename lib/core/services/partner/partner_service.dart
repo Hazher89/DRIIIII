@@ -3305,9 +3305,9 @@ class PartnerService {
   }
 
   /// Synk Office 365-postkasse → sap_route_inbox (krever Edge Function + secrets).
+  /// Ingen mail-limit — Edge Function paginerer hele tidsvinduet.
   static Future<Map<String, dynamic>?> syncSapMailboxFromGraph({
-    int hours = 72,
-    int limit = 40,
+    int hours = 168,
   }) async {
     if (!_ok) return null;
     try {
@@ -3315,7 +3315,6 @@ class PartnerService {
         'ms-graph-sap-routes-sync',
         body: {
           'hours': hours,
-          'limit': limit,
           'markRead': true,
         },
       );

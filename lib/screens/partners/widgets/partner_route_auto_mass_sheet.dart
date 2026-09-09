@@ -99,7 +99,15 @@ String _friendlyImportError(Object error) {
 
 enum PartnerRouteMassSource { manual, sap }
 
-/// Enkel filtervisning (erstatter 5-stegs faner).
+/// Fire-stegs SAP-flyt (erstatter gamle filter-faner for SAP).
+enum _SapWizardStep {
+  fetch,
+  vehicles,
+  attention,
+  review,
+}
+
+/// Enkel filtervisning (AUTO MASS — manuell PDF).
 enum _QueueViewFilter {
   all,
   manual,
@@ -190,6 +198,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   RouteNotifyPrefs _notifyPrefs = RouteNotifyPrefs.all;
   Map<String, RouteNotifyDelivery> _deliveryByShare = {};
   Set<String> _appReadyVehicleIds = {};
+  _SapWizardStep _sapWizardStep = _SapWizardStep.fetch;
+  int _lastGraphMatched = 0;
+  int _lastGraphInserted = 0;
+  int _lastGraphAlready = 0;
 
   bool get _isSap => widget.source == PartnerRouteMassSource.sap;
 
@@ -274,7 +286,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (!_isSap || !mounted) return;
       _bindSapLive();
       await _refreshSapInboxCounts();
-      // Ingen auto-import — bruker må trykke «Importer» etter å ha sett ventende PDF-er.
+      // Auto-hent alle SAP-mail + importer til kø ved åpning.
+      await _syncSapInbox();
     });
     _loadPublishLabels();
   }
@@ -382,7 +395,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (!_isSap || _sapSyncing) return;
     setState(() {
       _sapSyncing = true;
-      _sapGraphSyncNote = 'Henter mail fra Office 365…';
+      _sapGraphSyncNote = 'Henter alle mail fra Office 365…';
     });
     try {
       final result = await PartnerService.syncSapMailboxFromGraph();
@@ -395,21 +408,39 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               'Sync feilet: ${result['error']}'.replaceAll(RegExp(r'^Exception:\s*'), '');
         });
       } else {
-        final inserted = (result['inserted'] is List)
-            ? (result['inserted'] as List).length
-            : 0;
-        final scanned = result['scanned'] ?? 0;
-        final matched = result['matched'] ?? 0;
-        setState(() {
-          _sapGraphSyncNote =
-              'Office 365: skannet $scanned mail · $matched SAP-treff · '
-              '$inserted nye PDF lagt i innboks';
-        });
+        _applyGraphSyncResult(result);
       }
       await _refreshSapInboxCounts();
     } finally {
       if (mounted) setState(() => _sapSyncing = false);
     }
+  }
+
+  void _applyGraphSyncResult(Map<String, dynamic> result) {
+    final inserted = (result['inserted'] is List)
+        ? (result['inserted'] as List).length
+        : 0;
+    final already = (result['already'] is List)
+        ? (result['already'] as List).length
+        : 0;
+    final scanned = result['scanned'] ?? 0;
+    final matched = result['matched'] ?? 0;
+    final errors = (result['errors'] is List)
+        ? (result['errors'] as List).length
+        : 0;
+    final skipped = (result['skipped'] is List)
+        ? (result['skipped'] as List).length
+        : 0;
+    _lastGraphMatched = matched is int ? matched : int.tryParse('$matched') ?? 0;
+    _lastGraphInserted = inserted;
+    _lastGraphAlready = already;
+    setState(() {
+      _sapGraphSyncNote =
+          'Office 365: skannet $scanned mail · $matched SAP-treff · '
+          '$inserted nye · $already allerede hentet'
+          '${skipped > 0 ? ' · $skipped uten PDF/feil' : ''}'
+          '${errors > 0 ? ' · $errors feil' : ''}';
+    });
   }
 
   Future<List<_SkippedPdf>> _collectSapManualSkipped(String companyId) async {
@@ -439,16 +470,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (!_isSap || _sapSyncing || _importAborted) return;
     setState(() => _sapSyncing = true);
     try {
-      // 1) Hent nye mail fra Office 365 først (hvis funksjon er deployet).
+      // 1) Hent ALLE mail fra Office 365 (paginert, uten limit).
       final graph = await PartnerService.syncSapMailboxFromGraph();
       if (mounted && graph != null && graph['error'] == null) {
-        final inserted = (graph['inserted'] is List)
-            ? (graph['inserted'] as List).length
-            : 0;
+        _applyGraphSyncResult(graph);
+      } else if (mounted && graph != null && graph['error'] != null) {
         setState(() {
-          _sapGraphSyncNote = inserted > 0
-              ? 'Hentet $inserted nye PDF fra Office 365'
-              : 'Ingen nye SAP-PDF i Office 365 akkurat nå';
+          _sapGraphSyncNote =
+              'Sync feilet: ${graph['error']}'.replaceAll(RegExp(r'^Exception:\s*'), '');
         });
       }
 
@@ -497,6 +526,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       await _autoAssignReadySkipped(newSkipped);
       await _reload(preferRoutesTab: result.imported > 0, expectedMinStaged: result.imported);
       await _refreshSapInboxCounts();
+      if (mounted && (_staged.isNotEmpty || newSkipped.isNotEmpty)) {
+        await _fillAllShiftsForStaged();
+      }
       if (mounted) {
         if (result.imported > 0 && _staged.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -509,17 +541,16 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ),
           );
         } else if (result.imported == 0 && (result.skipped > 0 || _skipped.isNotEmpty)) {
-          setState(() => _viewFilter = _QueueViewFilter.manual);
+          setState(() => _sapWizardStep = _SapWizardStep.attention);
         }
         if (result.imported > 0 || result.skipped > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
                 result.imported > 0
-                    ? 'SAP: ${result.imported} rute(r) i kø.'
-                        '${result.skipped > 0 ? " ${result.skipped} trenger manuell tildeling." : ""} '
-                        'Sjekk PDF-forside på kortene før publisering.'
-                    : 'SAP: ingen auto-fordeling — ${result.skipped} PDF under «Manuell».',
+                    ? 'SAP: ${result.imported} rute(r) hentet og fordelt.'
+                        '${result.skipped > 0 ? " ${result.skipped} trenger manuell tildeling." : ""}'
+                    : 'SAP: ${result.skipped} PDF trenger manuell tildeling (steg 3).',
               ),
               duration: const Duration(seconds: 5),
             ),
@@ -2657,13 +2688,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
 
     final ui = _ui;
+    if (_isSap) {
+      return _buildSapWizard(ui);
+    }
+
     final manualOnly = _skipped.isNotEmpty;
     final missingShift = _missingShiftCount;
-    final ready = _skipped.isEmpty &&
-        _staged.isNotEmpty &&
-        _selected.isNotEmpty &&
-        missingShift == 0 &&
-        _selected.every((id) => _effectiveShiftId(id) != null);
 
     return PartnerRouteWorkflowShell(
       accent: ui.accent,
@@ -2741,6 +2771,523 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       tabCaption: _tabHint(),
       tabBody: _buildTabContent(ui),
       footer: _buildPublishBar(ui),
+    );
+  }
+
+  int get _sapAttentionCount =>
+      _skipped.length + _missingShiftCount + _duplicateExtraCount;
+
+  Widget _buildSapWizard(_MassUi ui) {
+    final step = _sapWizardStep;
+    final attention = _sapAttentionCount;
+    return PartnerRouteWorkflowShell(
+      accent: ui.accent,
+      accentDark: ui.accentDark,
+      icon: ui.icon,
+      title: ui.title,
+      subtitle: _sapWizardSubtitle(step),
+      badge: ui.badge,
+      onBack: step == _SapWizardStep.fetch
+          ? null
+          : () => setState(() {
+                _sapWizardStep = _SapWizardStep.values[step.index - 1];
+              }),
+      metrics: [
+        RouteWorkflowMetric(
+          label: 'Hentet',
+          value: '${_staged.length + _skipped.length}',
+          icon: Icons.cloud_done_outlined,
+          color: ui.accentDark,
+        ),
+        RouteWorkflowMetric(
+          label: 'På bil',
+          value: '$_driversWithRoutesCount',
+          icon: Icons.local_shipping_outlined,
+          color: Colors.blueGrey.shade700,
+        ),
+        RouteWorkflowMetric(
+          label: 'Klare',
+          value: '$_readyShiftCount',
+          icon: Icons.check_circle_outline,
+          color: Colors.green.shade700,
+        ),
+        if (attention > 0)
+          RouteWorkflowMetric(
+            label: 'Mangler',
+            value: '$attention',
+            icon: Icons.warning_amber_rounded,
+            color: Colors.orange.shade800,
+          ),
+      ],
+      sidebar: _buildSapWizardSidebar(ui),
+      guidePanel: null,
+      guideExpanded: false,
+      onGuideToggle: null,
+      topBanner: null,
+      showTabCaption: true,
+      tabLabels: const [
+        '1. Hent',
+        '2. Biler',
+        '3. Mangler',
+        '4. Sjekk',
+      ],
+      tabBadges: [
+        (_staged.length + _skipped.length) > 0
+            ? (_staged.length + _skipped.length)
+            : (_lastGraphMatched > 0 ? _lastGraphMatched : null),
+        _driversWithRoutesCount > 0 ? _driversWithRoutesCount : null,
+        attention > 0 ? attention : null,
+        _selected.isNotEmpty ? _selected.length : null,
+      ],
+      tabBadgeColors: [
+        ui.accentDark,
+        Colors.blueGrey.shade700,
+        Colors.orange.shade800,
+        Colors.green.shade700,
+      ],
+      selectedTabIndex: step.index,
+      onTabSelected: (i) {
+        if (i < 0 || i >= _SapWizardStep.values.length) return;
+        final next = _SapWizardStep.values[i];
+        setState(() {
+          _sapWizardStep = next;
+          if (next == _SapWizardStep.vehicles) {
+            _showAllDrivers = true;
+          }
+        });
+        if (next == _SapWizardStep.review) {
+          _selectReadyNonDuplicates();
+        }
+      },
+      tabCaption: _sapWizardCaption(step),
+      tabBody: switch (step) {
+        _SapWizardStep.fetch => _buildSapFetchStep(ui),
+        _SapWizardStep.vehicles => _buildDriverCentricList(ui),
+        _SapWizardStep.attention => _buildSapAttentionStep(ui),
+        _SapWizardStep.review => _buildSapReviewStep(ui),
+      },
+      footer: _buildSapWizardFooter(ui),
+    );
+  }
+
+  String _sapWizardSubtitle(_SapWizardStep step) => switch (step) {
+        _SapWizardStep.fetch =>
+          'Henter alle Backup Form-mail automatisk — ingen limit',
+        _SapWizardStep.vehicles =>
+          'Ruter fordelt på biler etter MAVI-nummer',
+        _SapWizardStep.attention =>
+          'Uten sjåfør, mangler skift og duplikater',
+        _SapWizardStep.review =>
+          'Kontroller antall og send varsel',
+      };
+
+  String _sapWizardCaption(_SapWizardStep step) => switch (step) {
+        _SapWizardStep.fetch =>
+          _sapSyncing
+              ? 'Henter og importerer alle SAP-PDF…'
+              : 'Steg 1: Alle ruter hentes fra Office 365 og vises her.',
+        _SapWizardStep.vehicles =>
+          'Steg 2: Se hvordan rutene er fordelt på bilene.',
+        _SapWizardStep.attention =>
+          'Steg 3: Tildel sjåfør / skift og rydd duplikater.',
+        _SapWizardStep.review =>
+          'Steg 4: Trippelsjekk og del ut med App / SMS / e-post.',
+      };
+
+  Widget _buildSapWizardSidebar(_MassUi ui) {
+    final dateLabel = DateFormat('d. MMM yyyy', 'nb').format(_routeDate);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'SAP-wizard',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
+              color: ui.accentDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busyUpload || _publishing ? null : _pickDefaultRouteDate,
+            icon: const Icon(Icons.event_outlined, size: 18),
+            label: Text('Dato: $dateLabel'),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _sapSyncing ? null : _syncSapInbox,
+            style: FilledButton.styleFrom(backgroundColor: ui.accentDark),
+            icon: _sapSyncing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.sync),
+            label: Text(_sapSyncing ? 'Henter…' : 'Hent alle på nytt'),
+          ),
+          if (_sapGraphSyncNote != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              _sapGraphSyncNote!,
+              style: TextStyle(fontSize: 11, height: 1.35, color: Colors.grey.shade800),
+            ),
+          ],
+          if (_queueTotalCount > 0) ...[
+            const SizedBox(height: 10),
+            TextButton.icon(
+              onPressed: _busyUpload || _publishing ? null : _clearAllStaged,
+              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+              label: Text('Tøm kø ($_queueTotalCount)'),
+              style: TextButton.styleFrom(foregroundColor: Colors.grey.shade700),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSapFetchStep(_MassUi ui) {
+    final total = _staged.length + _skipped.length;
+    final matched = _lastGraphMatched > 0 ? _lastGraphMatched : total;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [ui.accentDark, ui.accent],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            children: [
+              if (_sapSyncing)
+                const SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                )
+              else
+                const Icon(Icons.mark_email_read_outlined, color: Colors.white, size: 40),
+              const SizedBox(height: 14),
+              Text(
+                '$matched',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 56,
+                  fontWeight: FontWeight.w900,
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _sapSyncing ? 'Henter alle SAP-ruter…' : 'SAP-ruter funnet',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.95),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                total > 0
+                    ? '$total i kø · $_lastGraphInserted nye · $_lastGraphAlready allerede hentet'
+                    : (_sapGraphSyncNote ??
+                        'Trykk «Hent alle på nytt» hvis listen er tom'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  fontSize: 12,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _buildQueueSummaryStrip(ui),
+        if (_staged.isNotEmpty || _skipped.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Ruter i denne hentingen',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+              color: ui.accentDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          ..._staged.take(40).map((s) {
+            final row = _rowForShare(s);
+            final label = row != null
+                ? MaviUnitCodes.fleetDriverLabel(row.vehicle.unitCode, row.partner.name)
+                : (s.title ?? s.pdfStoragePath.split('/').last);
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.description_outlined, color: ui.accentDark, size: 20),
+              title: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+              subtitle: Text(
+                s.title ?? '',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+              ),
+            );
+          }),
+          if (_staged.length > 40)
+            Text('… +${_staged.length - 40} til', style: TextStyle(color: Colors.grey.shade600)),
+          ..._skipped.map(
+            (s) => ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.person_search_outlined, color: Colors.orange.shade800, size: 20),
+              title: Text(
+                s.fileName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+              ),
+              subtitle: Text(
+                s.reason ?? 'Trenger manuell tildeling',
+                style: TextStyle(fontSize: 11, color: Colors.orange.shade900),
+              ),
+            ),
+          ),
+        ] else if (!_sapSyncing) ...[
+          const SizedBox(height: 24),
+          Icon(Icons.cloud_upload_outlined, size: 48, color: Colors.grey.shade400),
+          const SizedBox(height: 12),
+          Text(
+            'Venter på SAP-ruter',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 16,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Systemet henter automatisk alle Backup Form-mail fra '
+            '${SapRoutesConfig.mailbox}.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade700, height: 1.35),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSapAttentionStep(_MassUi ui) {
+    if (_sapAttentionCount == 0) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.verified_outlined, size: 56, color: Colors.green.shade600),
+              const SizedBox(height: 12),
+              const Text(
+                'Alt er fordelt',
+                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Ingen manuelle PDF-er, manglende skift eller ekstra duplikater.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade700),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+      children: [
+        if (_skipped.isNotEmpty) ...[
+          Text(
+            'Uten sjåfør / bil (${_skipped.length})',
+            style: TextStyle(fontWeight: FontWeight.w900, color: Colors.orange.shade900),
+          ),
+          const SizedBox(height: 8),
+          ..._skipped.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _buildSkippedCompactCard(item, ui),
+              )),
+          const SizedBox(height: 12),
+        ],
+        if (_missingShiftCount > 0) ...[
+          Text(
+            'Mangler skift ($_missingShiftCount)',
+            style: TextStyle(fontWeight: FontWeight.w900, color: Colors.red.shade800),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 320,
+            child: _buildRoutesOverview(ui, forceMissingOnly: true),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _fillingShifts ? null : _fillAllShiftsForStaged,
+            icon: const Icon(Icons.auto_fix_high_outlined),
+            label: Text(_fillingShifts ? 'Fyller skift…' : 'Fyll skift fra PDF (alle)'),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (_duplicateExtraCount > 0) ...[
+          Text(
+            'Duplikater ($_duplicateExtraCount ekstra)',
+            style: TextStyle(fontWeight: FontWeight.w900, color: Colors.deepPurple.shade800),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(height: 280, child: _buildDuplicatesTab(ui)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSapReviewStep(_MassUi ui) {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+      children: [
+        _buildQueueSummaryStrip(ui),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _SapStatChip(
+              label: 'Totalt',
+              value: '${_staged.length}',
+              hint: 'I kø',
+            ),
+            _SapStatChip(
+              label: 'Valgt',
+              value: '${_selected.length}',
+              hint: 'Sendes',
+              good: _selected.isNotEmpty,
+            ),
+            _SapStatChip(
+              label: 'Klare',
+              value: '$_readyShiftCount',
+              hint: 'Med skift',
+              good: true,
+            ),
+            if (_sapAttentionCount > 0)
+              _SapStatChip(
+                label: 'Mangler',
+                value: '$_sapAttentionCount',
+                hint: 'Fiks i steg 3',
+                emphasize: true,
+              ),
+            if (_multiLoadDriverCount > 0)
+              _SapStatChip(
+                label: '2+ last',
+                value: '$_multiLoadDriverCount',
+                hint: 'Biler',
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            TextButton(
+              onPressed: () => setState(() {
+                _selected
+                  ..clear()
+                  ..addAll(_staged.map((s) => s.id));
+              }),
+              child: const Text('Velg alle'),
+            ),
+            TextButton(
+              onPressed: _selectReadyNonDuplicates,
+              child: Text('Velg klare ($_readyShiftCount)'),
+            ),
+            TextButton(
+              onPressed: () => setState(() => _selected.clear()),
+              child: const Text('Fjern valg'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: MediaQuery.sizeOf(context).height * 0.45,
+          child: _buildRoutesOverview(ui),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSapWizardFooter(_MassUi ui) {
+    final step = _sapWizardStep;
+    if (step == _SapWizardStep.review) {
+      return _buildPublishBar(ui);
+    }
+
+    final canNext = switch (step) {
+      _SapWizardStep.fetch =>
+        !_sapSyncing && (_staged.isNotEmpty || _skipped.isNotEmpty || _lastGraphMatched > 0),
+      _SapWizardStep.vehicles => _staged.isNotEmpty || _skipped.isNotEmpty,
+      _SapWizardStep.attention => true,
+      _SapWizardStep.review => false,
+    };
+
+    return Row(
+      children: [
+        if (step.index > 0)
+          TextButton(
+            onPressed: () => setState(() {
+              _sapWizardStep = _SapWizardStep.values[step.index - 1];
+            }),
+            child: const Text('Tilbake'),
+          ),
+        const Spacer(),
+        FilledButton.icon(
+          onPressed: !canNext
+              ? null
+              : () async {
+                  final next = _SapWizardStep.values[step.index + 1];
+                  if (next == _SapWizardStep.vehicles) {
+                    setState(() => _showAllDrivers = true);
+                    if (_missingShiftCount > 0) {
+                      await _fillAllShiftsForStaged();
+                    }
+                  }
+                  if (next == _SapWizardStep.review && mounted) {
+                    _selectReadyNonDuplicates();
+                  }
+                  if (mounted) setState(() => _sapWizardStep = next);
+                },
+          style: FilledButton.styleFrom(
+            backgroundColor: ui.accentDark,
+            minimumSize: const Size(160, 48),
+          ),
+          icon: const Icon(Icons.arrow_forward),
+          label: Text(
+            step == _SapWizardStep.attention && _sapAttentionCount > 0
+                ? 'Fortsett likevel'
+                : 'Neste',
+          ),
+        ),
+      ],
     );
   }
 
@@ -4421,18 +4968,19 @@ class _MassUi {
         accentDark: const Color(0xFF1565C0),
         surfaceTint: const Color(0xFFE3F2FD),
         title: 'Ruter fra SAP',
-        badge: 'SAP · e-post',
-        tagline: 'Importer manuelt, kontroller sjåfører og PDF-er, publiser når alt stemmer',
+        badge: 'SAP · wizard',
+        tagline: 'Hent → fordel → mangler → sjekk og send',
         icon: Icons.mark_email_read_outlined,
         steps: [
-          'Importer/last opp PDF-er — systemet fordeler automatisk der MAVI finnes.',
-          'Rydd manuell tildeling, duplikater og manglende skift via filtrene.',
-          'Velg App / SMS / e-post og del ut — eller registrer uten varsel.',
+          'Hent alle Backup Form-mail automatisk (ingen limit).',
+          'Se fordeling på alle biler.',
+          'Tildel sjåfør der det mangler, og rydd duplikater.',
+          'Trippelsjekk antall og del ut med App / SMS / e-post.',
         ],
         emptyHint:
             'Ingen SAP-ruter i kø.\n\n'
             'SAP sender Backup Form til ${SapRoutesConfig.mailbox}. '
-            'Trykk «Hent mail» / «Importer» — ingenting sendes til sjåfør før du publiserer.',
+            'Systemet henter alle mail automatisk ved åpning.',
       );
     }
     return _MassUi(

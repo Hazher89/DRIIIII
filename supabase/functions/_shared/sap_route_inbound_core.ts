@@ -108,16 +108,29 @@ export async function insertSapPdfToInbox(
       category: "sap_inbox",
       bytes,
     });
-    if (!dropbox) {
-      console.error("Dropbox ikke koblet for SAP-opplasting", companyId);
-      return `${fileName}:dropbox_not_connected`;
+    if (dropbox) {
+      storagePath = dropbox.path.startsWith("dropbox://")
+        ? dropbox.path
+        : `dropbox://${dropbox.path}`;
     }
-    storagePath = dropbox.path.startsWith("dropbox://")
-      ? dropbox.path
-      : `dropbox://${dropbox.path}`;
   } catch (e) {
-    console.error("Dropbox SAP upload failed (no Supabase fallback)", e);
-    return `${fileName}:dropbox`;
+    console.warn("Dropbox SAP upload failed — prøver Supabase", e);
+  }
+
+  if (!storagePath) {
+    const path =
+      `company_${companyId}/sap_inbox/${Date.now()}_${safeName}`;
+    const { error: upErr } = await supabase.storage
+      .from("documents")
+      .upload(path, bytes, {
+        contentType: "application/pdf",
+        upsert: false,
+      });
+    if (upErr) {
+      console.error("Supabase SAP upload failed", upErr);
+      return `${fileName}:storage`;
+    }
+    storagePath = path;
   }
 
   const { data: dup } = await supabase

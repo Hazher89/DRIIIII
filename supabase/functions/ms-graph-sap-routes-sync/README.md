@@ -36,10 +36,10 @@ curl -X POST \
   'https://ksnnyccthotjbrmgjgdc.supabase.co/functions/v1/ms-graph-sap-routes-sync' \
   -H 'Content-Type: application/json' \
   -H 'x-sap-graph-sync-secret: DIN_SYNC_SECRET' \
-  -d '{"hours": 72, "limit": 30, "markRead": true}'
+  -d '{"hours": 168, "markRead": true}'
 ```
 
-Filter i kode: avsender `*@elkjop.no`, emne `Backup Form`, PDF-vedlegg.
+Henter **alle** mail i tidsvinduet (paginert, ingen `limit`). Filter i kode: avsender `*@elkjop.no`, emne `Backup Form`, PDF-vedlegg. Dropbox med fallback til Supabase `documents`.
 
 ## SAP
 

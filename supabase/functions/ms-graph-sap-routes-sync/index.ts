@@ -29,6 +29,10 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
+/** Soft safety only — never used as a normal “page size” for SAP days. */
+const HARD_SCAN_CAP = 5000;
+const PAGE_SIZE = 50;
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -58,29 +62,43 @@ function encodeMailbox(mailbox: string): string {
   return encodeURIComponent(mailbox);
 }
 
+/** Henter ALLE meldinger i tidsvinduet (paginert). Ingen praktisk limit. */
 async function listCandidateMessages(
   mailbox: string,
   hours: number,
-  limit: number,
 ): Promise<GraphMessage[]> {
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-  // Graph $filter: received recently + has attachments. Subject filter applied in code
-  // (safer across locales / exact match).
-  const filter = `receivedDateTime ge ${since} and hasAttachments eq true`;
-  const path =
-    `/users/${encodeMailbox(mailbox)}/messages` +
-    `?$filter=${encodeURIComponent(filter)}` +
-    `&$select=id,subject,from,receivedDateTime,hasAttachments,isRead` +
-    `&$orderby=receivedDateTime desc` +
-    `&$top=${Math.min(Math.max(limit, 1), 50)}`;
+  // Ikke filtrer på hasAttachments — noen SAP-mail kan mangle flagget.
+  // Subject/avsender filtreres i kode.
+  const filter = `receivedDateTime ge ${since}`;
+  let next:
+    | string
+    | null =
+      `/users/${encodeMailbox(mailbox)}/messages` +
+      `?$filter=${encodeURIComponent(filter)}` +
+      `&$select=id,subject,from,receivedDateTime,hasAttachments,isRead` +
+      `&$orderby=receivedDateTime desc` +
+      `&$top=${PAGE_SIZE}`;
 
-  const res = await graphFetch(path);
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Graph messages ${res.status}: ${t.slice(0, 500)}`);
+  const all: GraphMessage[] = [];
+  while (next) {
+    const res = await graphFetch(next);
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`Graph messages ${res.status}: ${t.slice(0, 500)}`);
+    }
+    const body = await res.json() as {
+      value?: GraphMessage[];
+      "@odata.nextLink"?: string;
+    };
+    all.push(...(body.value ?? []));
+    if (all.length >= HARD_SCAN_CAP) {
+      console.warn(`SAP Graph scan capped at ${HARD_SCAN_CAP}`);
+      break;
+    }
+    next = body["@odata.nextLink"] ?? null;
   }
-  const body = await res.json() as { value?: GraphMessage[] };
-  return body.value ?? [];
+  return all;
 }
 
 async function listPdfAttachments(
@@ -150,8 +168,6 @@ Deno.serve(async (req) => {
     if (syncSecret) {
       const got = req.headers.get("x-sap-graph-sync-secret")?.trim();
       const auth = req.headers.get("Authorization")?.trim() ?? "";
-      // Tillat app-kall med bruker-JWT (Supabase functions.invoke),
-      // eller cron/curl med sync-secret.
       const hasUserJwt = auth.toLowerCase().startsWith("bearer ") &&
         auth.length > 20;
       if (got !== syncSecret && !hasUserJwt) {
@@ -159,17 +175,17 @@ Deno.serve(async (req) => {
       }
     }
 
-    let hours = 72;
-    let limit = 30;
+    let hours = 168; // 7 dager — fanger hele SAP-uken
     let markRead = true;
     try {
       const body = await req.json() as {
         hours?: number;
-        limit?: number;
+        limit?: number; // ignored — kept for old clients
         markRead?: boolean;
       };
-      if (typeof body.hours === "number") hours = body.hours;
-      if (typeof body.limit === "number") limit = body.limit;
+      if (typeof body.hours === "number" && body.hours > 0) {
+        hours = Math.min(body.hours, 24 * 30);
+      }
       if (typeof body.markRead === "boolean") markRead = body.markRead;
     } catch {
       // empty body ok
@@ -185,12 +201,14 @@ Deno.serve(async (req) => {
     const companyId = sapRoutesCompanyId();
     const mailbox = graphMailbox();
 
-    const messages = await listCandidateMessages(mailbox, hours, limit);
+    const messages = await listCandidateMessages(mailbox, hours);
     const summary = {
       mailbox,
+      hours,
       scanned: messages.length,
       matched: 0,
       inserted: [] as string[],
+      already: [] as string[],
       skipped: [] as string[],
       errors: [] as string[],
     };
@@ -214,13 +232,14 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        let anyInserted = false;
+        let anyStored = false;
         for (const pdf of pdfs) {
           const { fileName, bytes } = await downloadAttachmentBytes(
             mailbox,
             msg.id,
             pdf.id,
           );
+          // ignoreContentDedup: hver Graph-mail skal inn — UI viser evt. duplikater.
           const outcome = await insertSapPdfToInbox(supabase, {
             companyId,
             emailId,
@@ -229,16 +248,20 @@ Deno.serve(async (req) => {
             subject,
             fileName,
             bytes,
+            ignoreContentDedup: true,
           });
           if (outcome === "inserted") {
             summary.inserted.push(fileName);
-            anyInserted = true;
+            anyStored = true;
+          } else if (outcome.includes(":duplicate")) {
+            summary.already.push(fileName);
+            anyStored = true;
           } else {
             summary.skipped.push(outcome);
           }
         }
 
-        if (markRead && (anyInserted || pdfs.length > 0)) {
+        if (markRead && anyStored) {
           await markMessageRead(mailbox, msg.id);
         }
       } catch (e) {
