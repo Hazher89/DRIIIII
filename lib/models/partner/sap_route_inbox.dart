@@ -7,6 +7,7 @@ class SapRouteInboxItem {
   final String? subject;
   final String fileName;
   final String pdfStoragePath;
+  final String? resendEmailId;
   final String? detectedMaviCode;
   final String? rejectReason;
   final String? contentSha256;
@@ -22,6 +23,7 @@ class SapRouteInboxItem {
     this.subject,
     required this.fileName,
     required this.pdfStoragePath,
+    this.resendEmailId,
     this.detectedMaviCode,
     this.rejectReason,
     this.contentSha256,
@@ -39,6 +41,7 @@ class SapRouteInboxItem {
       subject: json['subject'] as String?,
       fileName: json['file_name'] as String,
       pdfStoragePath: json['pdf_storage_path'] as String,
+      resendEmailId: json['resend_email_id'] as String?,
       detectedMaviCode: json['detected_mavi_code'] as String?,
       rejectReason: json['reject_reason'] as String?,
       contentSha256: json['content_sha256'] as String?,
@@ -46,6 +49,37 @@ class SapRouteInboxItem {
       receivedAt: DateTime.parse(json['received_at'] as String),
     );
   }
+}
+
+/// Tydelig status før utsending av SAP-ruter.
+class SapInboxOverview {
+  const SapInboxOverview({
+    required this.pendingMails,
+    required this.pendingPdfs,
+    required this.stagedInQueue,
+    required this.readyToPublish,
+    required this.missingShift,
+    required this.manualPending,
+  });
+
+  final int pendingMails;
+  final int pendingPdfs;
+  final int stagedInQueue;
+  final int readyToPublish;
+  final int missingShift;
+  final int manualPending;
+
+  static const empty = SapInboxOverview(
+    pendingMails: 0,
+    pendingPdfs: 0,
+    stagedInQueue: 0,
+    readyToPublish: 0,
+    missingShift: 0,
+    manualPending: 0,
+  );
+
+  bool get hasAnythingWaiting =>
+      pendingPdfs > 0 || stagedInQueue > 0 || manualPending > 0;
 }
 
 class SapRouteImportLine {

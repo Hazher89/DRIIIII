@@ -432,11 +432,11 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     final sapActive = hasQueue || hasInbox;
     String? sapBadge;
     if (hasQueue && hasInbox) {
-      sapBadge = '$_sapStagedCount · $_sapInboxPending nye';
+      sapBadge = '$_sapInboxPending nye · $_sapStagedCount i kø';
     } else if (hasQueue) {
       sapBadge = '$_sapStagedCount i kø';
     } else if (hasInbox) {
-      sapBadge = '$_sapInboxPending nye';
+      sapBadge = '$_sapInboxPending nye PDF';
     }
 
     return [
@@ -458,7 +458,11 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       RoutePlannerAction(
         icon: sapActive ? Icons.notifications_active_rounded : Icons.inbox_outlined,
         title: 'SAP-innboks',
-        subtitle: hasInbox ? 'Nye ruter fra SAP' : 'Importer og send SAP-ruter',
+        subtitle: hasInbox
+            ? '$_sapInboxPending PDF mottatt — ikke sendt ennå'
+            : hasQueue
+                ? '$_sapStagedCount i kø — klar til kontroll'
+                : 'Hent SAP-mail og send ruter',
         color: const Color(0xFF1565C0),
         badge: sapBadge,
         badgeColor: const Color(0xFFFFC107),

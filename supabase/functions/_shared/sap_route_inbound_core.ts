@@ -15,6 +15,17 @@ export type SapInboundProcessResult = {
   error?: string;
 };
 
+export type SapPdfInsertInput = {
+  companyId: string;
+  emailId: string;
+  attachmentId: string;
+  from: string;
+  subject: string;
+  fileName: string;
+  bytes: Uint8Array;
+  ignoreContentDedup?: boolean;
+};
+
 export function parseEmailAddress(raw: string): string {
   const s = raw.trim();
   const m = s.match(/<([^>]+)>/);
@@ -66,6 +77,91 @@ async function fetchAttachments(
     const ct = (a.content_type ?? "").toLowerCase();
     return ct.includes("pdf") || a.filename.toLowerCase().endsWith(".pdf");
   });
+}
+
+/** Felles insert for Resend- og Microsoft Graph-kilder. */
+export async function insertSapPdfToInbox(
+  supabase: ReturnType<typeof createClient>,
+  input: SapPdfInsertInput,
+): Promise<"inserted" | string> {
+  const {
+    companyId,
+    emailId,
+    attachmentId,
+    from,
+    subject,
+    fileName,
+    bytes,
+    ignoreContentDedup = false,
+  } = input;
+
+  if (!pdfNameOk(fileName)) return `${fileName}:name`;
+  if (bytes.length < 100) return `${fileName}:empty`;
+
+  const hash = await sha256Hex(bytes);
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+
+  let storagePath = "";
+  try {
+    const dropbox = await tryUploadToDropbox(supabase, companyId, {
+      fileName: safeName,
+      category: "sap_inbox",
+      bytes,
+    });
+    if (!dropbox) {
+      console.error("Dropbox ikke koblet for SAP-opplasting", companyId);
+      return `${fileName}:dropbox_not_connected`;
+    }
+    storagePath = dropbox.path.startsWith("dropbox://")
+      ? dropbox.path
+      : `dropbox://${dropbox.path}`;
+  } catch (e) {
+    console.error("Dropbox SAP upload failed (no Supabase fallback)", e);
+    return `${fileName}:dropbox`;
+  }
+
+  const { data: dup } = await supabase
+    .from("sap_route_inbox")
+    .select("id")
+    .eq("resend_email_id", emailId)
+    .eq("attachment_id", attachmentId)
+    .maybeSingle();
+
+  if (dup?.id) return `${fileName}:duplicate`;
+
+  if (!ignoreContentDedup) {
+    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const { data: hashDup } = await supabase
+      .from("sap_route_inbox")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("content_sha256", hash)
+      .in("status", ["pending", "imported"])
+      .gte("received_at", since)
+      .limit(1)
+      .maybeSingle();
+
+    if (hashDup?.id) return `${fileName}:content_duplicate`;
+  }
+
+  const { error: insErr } = await supabase.from("sap_route_inbox").insert({
+    company_id: companyId,
+    status: "pending",
+    sender_email: parseEmailAddress(from),
+    sender_name: from.includes("<") ? from.split("<")[0].trim() : null,
+    subject,
+    file_name: fileName,
+    pdf_storage_path: storagePath,
+    resend_email_id: emailId,
+    attachment_id: attachmentId,
+    content_sha256: hash,
+  });
+
+  if (insErr) {
+    console.error("Inbox insert failed", insErr);
+    return `${fileName}:db`;
+  }
+  return "inserted";
 }
 
 export async function processSapInboundEmail(
@@ -120,10 +216,6 @@ export async function processSapInboundEmail(
   }
 
   for (const att of attachments) {
-    if (!pdfNameOk(att.filename)) {
-      result.skipped.push(`${att.filename}:name`);
-      continue;
-    }
     if (!att.download_url) {
       result.skipped.push(`${att.filename}:no_download_url`);
       continue;
@@ -135,84 +227,21 @@ export async function processSapInboundEmail(
       continue;
     }
     const bytes = new Uint8Array(await dl.arrayBuffer());
-    if (bytes.length < 100) {
-      result.skipped.push(`${att.filename}:empty`);
-      continue;
-    }
-
-    const hash = await sha256Hex(bytes);
-    const safeName = att.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
-    let storagePath = "";
-
-    try {
-      const dropbox = await tryUploadToDropbox(supabase, companyId, {
-        fileName: safeName,
-        category: "sap_inbox",
-        bytes,
-      });
-      if (!dropbox) {
-        console.error("Dropbox ikke koblet for SAP-opplasting", companyId);
-        result.skipped.push(`${att.filename}:dropbox_not_connected`);
-        continue;
-      }
-      storagePath = dropbox.path.startsWith("dropbox://")
-        ? dropbox.path
-        : `dropbox://${dropbox.path}`;
-    } catch (e) {
-      console.error("Dropbox SAP upload failed (no Supabase fallback)", e);
-      result.skipped.push(`${att.filename}:dropbox`);
-      continue;
-    }
-
-    const { data: dup } = await supabase
-      .from("sap_route_inbox")
-      .select("id")
-      .eq("resend_email_id", emailId)
-      .eq("attachment_id", att.id)
-      .maybeSingle();
-
-    if (dup?.id) {
-      result.skipped.push(`${att.filename}:duplicate`);
-      continue;
-    }
-
-    if (!ignoreContentDedup) {
-      const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-      const { data: hashDup } = await supabase
-        .from("sap_route_inbox")
-        .select("id")
-        .eq("company_id", companyId)
-        .eq("content_sha256", hash)
-        .in("status", ["pending", "imported"])
-        .gte("received_at", since)
-        .limit(1)
-        .maybeSingle();
-
-      if (hashDup?.id) {
-        result.skipped.push(`${att.filename}:content_duplicate`);
-        continue;
-      }
-    }
-
-    const { error: insErr } = await supabase.from("sap_route_inbox").insert({
-      company_id: companyId,
-      status: "pending",
-      sender_email: parseEmailAddress(from),
-      sender_name: from.includes("<") ? from.split("<")[0].trim() : null,
+    const outcome = await insertSapPdfToInbox(supabase, {
+      companyId,
+      emailId,
+      attachmentId: att.id,
+      from,
       subject,
-      file_name: att.filename,
-      pdf_storage_path: storagePath,
-      resend_email_id: emailId,
-      attachment_id: att.id,
-      content_sha256: hash,
+      fileName: att.filename,
+      bytes,
+      ignoreContentDedup,
     });
-
-    if (insErr) {
-      console.error("Inbox insert failed", insErr);
-      result.skipped.push(`${att.filename}:db`);
-      continue;
+    if (outcome === "inserted") {
+      result.inserted.push(att.filename);
+    } else {
+      result.skipped.push(outcome);
     }
-    result.inserted.push(att.filename);
   }
 
   return result;

@@ -23,6 +23,9 @@ class AssistantFabPositionStore {
     }
   }
 
+  static Future<({double left, double top})?> loadAsync(String userId) async =>
+      load(userId);
+
   static void save(String userId, {required double left, required double top}) {
     if (userId.isEmpty) return;
     try {

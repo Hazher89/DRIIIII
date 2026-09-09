@@ -3247,7 +3247,7 @@ class PartnerService {
     return PartnerVehicleInspection.fromJson(row);
   }
 
-  // --- SAP rute-innboks (Resend Inbound) ---
+  // --- SAP rute-innboks (Resend / Microsoft Graph) ---
 
   /// Prefiks på [reject_reason] for PDF som ligger i «Manuell»-fanen (ikke «nye»).
   static const String sapInboxManualReasonPrefix = 'MANUAL:';
@@ -3263,6 +3263,68 @@ class PartnerService {
       return (data as List).length;
     } catch (_) {
       return 0;
+    }
+  }
+
+  /// Henter tydelige tall: antall mail, PDF, kø, klar til utsending.
+  static Future<SapInboxOverview> fetchSapInboxOverview(
+    String companyId, {
+    List<PartnerRouteShare>? stagedShares,
+  }) async {
+    if (!_ok) return SapInboxOverview.empty;
+    try {
+      await reconcileSapInboxWithStagedQueue(companyId);
+      final pending = await fetchSapRouteInboxPending(companyId);
+      final manual = await fetchSapRouteInboxManual(companyId);
+      final staged = stagedShares ?? await fetchStagedRouteShares(companyId);
+      final useQueue = staged
+          .where(
+            (s) => (s.stagedImportSource ?? stagedImportManual) == stagedImportSap,
+          )
+          .toList();
+      final missingShift = useQueue.where((s) {
+        final id = (s.shiftId ?? '').trim();
+        return id.isEmpty;
+      }).length;
+      final mailIds = <String>{};
+      for (final p in pending) {
+        final key = (p.resendEmailId ?? '').trim();
+        mailIds.add(key.isEmpty ? p.id : key);
+      }
+      return SapInboxOverview(
+        pendingMails: mailIds.length,
+        pendingPdfs: pending.length,
+        stagedInQueue: useQueue.length,
+        readyToPublish: (useQueue.length - missingShift).clamp(0, 9999),
+        missingShift: missingShift,
+        manualPending: manual.length,
+      );
+    } catch (_) {
+      return SapInboxOverview.empty;
+    }
+  }
+
+  /// Synk Office 365-postkasse → sap_route_inbox (krever Edge Function + secrets).
+  static Future<Map<String, dynamic>?> syncSapMailboxFromGraph({
+    int hours = 72,
+    int limit = 40,
+  }) async {
+    if (!_ok) return null;
+    try {
+      final res = await _client.functions.invoke(
+        'ms-graph-sap-routes-sync',
+        body: {
+          'hours': hours,
+          'limit': limit,
+          'markRead': true,
+        },
+      );
+      final data = res.data;
+      if (data is Map<String, dynamic>) return data;
+      if (data is Map) return Map<String, dynamic>.from(data);
+      return {'raw': data};
+    } catch (e) {
+      return {'error': e.toString()};
     }
   }
 

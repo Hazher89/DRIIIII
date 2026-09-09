@@ -14,9 +14,9 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'driftpro_assistant_sheet.dart';
 
-/// Global chat-knapp — **kun web**, når assistenten er slått på.
+/// Global Spør DriftPro-knapp når assistenten er slått på (web + mobil).
 ///
-/// Kompakt ikon som kan dras fritt. Posisjon huskes per bruker i localStorage.
+/// Kompakt ikon som kan dras fritt. Posisjon huskes per bruker.
 /// Ingen Material/Tooltip (unngår grå hover-overlay på web).
 class DriftProAssistantOverlay extends StatefulWidget {
   const DriftProAssistantOverlay({super.key, required this.child});
@@ -49,14 +49,16 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
   bool _movedEnough = false;
 
   bool get _showFab {
-    if (!kIsWeb || !_flag.enabled) return false;
+    if (!_flag.enabled) return false;
     final candidates = <String>[];
     try {
       candidates.add(GoRouter.of(context).state.uri.path);
     } catch (_) {}
-    try {
-      candidates.add(Uri.base.path);
-    } catch (_) {}
+    if (kIsWeb) {
+      try {
+        candidates.add(Uri.base.path);
+      } catch (_) {}
+    }
     for (final raw in candidates) {
       final path = raw.split('?').first;
       if (AppPaths.isPublicPath(path) ||
@@ -73,7 +75,6 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
   @override
   void initState() {
     super.initState();
-    if (!kIsWeb) return;
     WidgetsBinding.instance.addObserver(this);
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((_) {
       unawaited(_reloadProfile());
@@ -104,7 +105,7 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
       }
       if (userChanged) {
         _userId = userId;
-        _loadFabPosition();
+        unawaited(_loadFabPosition());
       }
     } catch (_) {
       if (!mounted) return;
@@ -117,16 +118,16 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
     }
   }
 
-  void _loadFabPosition() {
+  Future<void> _loadFabPosition() async {
     final uid = _userId;
     if (uid == null || uid.isEmpty) {
-      setState(() => _fabOffset = null);
+      if (mounted) setState(() => _fabOffset = null);
       return;
     }
-    final saved = AssistantFabPositionStore.load(uid);
+    final saved = await AssistantFabPositionStore.loadAsync(uid);
+    if (!mounted) return;
     setState(() {
-      _fabOffset =
-          saved == null ? null : Offset(saved.left, saved.top);
+      _fabOffset = saved == null ? null : Offset(saved.left, saved.top);
     });
   }
 
@@ -243,9 +244,7 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
 
   @override
   void dispose() {
-    if (kIsWeb) {
-      WidgetsBinding.instance.removeObserver(this);
-    }
+    WidgetsBinding.instance.removeObserver(this);
     _authSub?.cancel();
     _flagSub?.cancel();
     _poll?.cancel();
@@ -254,8 +253,6 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
 
   @override
   Widget build(BuildContext context) {
-    if (!kIsWeb) return widget.child;
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final size = Size(constraints.maxWidth, constraints.maxHeight);
