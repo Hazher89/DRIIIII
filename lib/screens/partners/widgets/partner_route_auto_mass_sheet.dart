@@ -2845,9 +2845,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   int get _sapAttentionCount =>
       _skipped.length + _missingShiftCount + _duplicateExtraCount;
 
+  int get _sapTotalPdfs => _staged.length + _skipped.length;
+
   Widget _buildSapWizard(_MassUi ui) {
     final step = _sapWizardStep;
     final attention = _sapAttentionCount;
+    final reviewStep = step == _SapWizardStep.review;
     return PartnerRouteWorkflowShell(
       accent: ui.accent,
       accentDark: ui.accentDark,
@@ -2855,6 +2858,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       title: ui.title,
       subtitle: _sapWizardSubtitle(step),
       badge: ui.badge,
+      showSidebar: !reviewStep,
+      showTabCaption: !reviewStep,
       onBack: step == _SapWizardStep.fetch
           ? null
           : () => setState(() {
@@ -2862,24 +2867,35 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               }),
       metrics: [
         RouteWorkflowMetric(
-          label: 'Hentet',
-          value: '${_staged.length + _skipped.length}',
-          icon: Icons.cloud_done_outlined,
+          label: 'Totalt',
+          value: '$_sapTotalPdfs',
+          icon: Icons.description_outlined,
           color: ui.accentDark,
+          hint: 'PDF hentet',
         ),
         RouteWorkflowMetric(
-          label: 'På bil',
-          value: '$_driversWithRoutesCount',
+          label: 'I kø',
+          value: '${_staged.length}',
           icon: Icons.local_shipping_outlined,
           color: Colors.blueGrey.shade700,
+          hint: 'Fordelt på bil',
         ),
         RouteWorkflowMetric(
-          label: 'Klare',
-          value: '$_readyShiftCount',
+          label: 'Valgt',
+          value: '${_selected.length}',
           icon: Icons.check_circle_outline,
           color: Colors.green.shade700,
+          hint: 'Sendes nå',
         ),
-        if (attention > 0)
+        if (_skipped.isNotEmpty)
+          RouteWorkflowMetric(
+            label: 'Manuelle',
+            value: '${_skipped.length}',
+            icon: Icons.warning_amber_rounded,
+            color: Colors.orange.shade800,
+            hint: 'Uten sjåfør',
+          )
+        else if (attention > 0)
           RouteWorkflowMetric(
             label: 'Mangler',
             value: '$attention',
@@ -2892,7 +2908,6 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       guideExpanded: false,
       onGuideToggle: null,
       topBanner: null,
-      showTabCaption: true,
       tabLabels: const [
         '1. Hent',
         '2. Biler',
@@ -2900,11 +2915,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         '4. Sjekk',
       ],
       tabBadges: [
-        (_staged.length + _skipped.length) > 0
-            ? (_staged.length + _skipped.length)
-            : (_lastGraphMatched > 0 ? _lastGraphMatched : null),
-        _driversWithRoutesCount > 0 ? _driversWithRoutesCount : null,
-        attention > 0 ? attention : null,
+        _sapTotalPdfs > 0 ? _sapTotalPdfs : null,
+        _staged.isNotEmpty ? _staged.length : null,
+        _skipped.isNotEmpty
+            ? _skipped.length
+            : (attention > 0 ? attention : null),
         _selected.isNotEmpty ? _selected.length : null,
       ],
       tabBadgeColors: [
@@ -3248,11 +3263,31 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             'Uten sjåfør / bil (${_skipped.length})',
             style: TextStyle(fontWeight: FontWeight.w900, color: Colors.orange.shade900),
           ),
+          const SizedBox(height: 4),
+          Text(
+            'Hele PDF-forsiden vises — trykk kortet for å tildele sjåfør.',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+          ),
           const SizedBox(height: 8),
-          ..._skipped.map((item) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _buildSkippedCompactCard(item, ui),
-              )),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 700;
+              final cross = wide ? 2 : 1;
+              return GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _skipped.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: cross,
+                  mainAxisExtent: 320,
+                  crossAxisSpacing: 10,
+                  mainAxisSpacing: 10,
+                ),
+                itemBuilder: (context, i) =>
+                    _buildSkippedCompactCard(_skipped[i], ui),
+              );
+            },
+          ),
           const SizedBox(height: 12),
         ],
         if (_missingShiftCount > 0) ...[
@@ -3286,72 +3321,74 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Widget _buildSapReviewStep(_MassUi ui) {
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildQueueSummaryStrip(ui),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _SapStatChip(
-              label: 'Totalt',
-              value: '${_staged.length}',
-              hint: 'I kø',
+        Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_selected.length} av ${_staged.length} ruter valgt'
+                        '${_skipped.isNotEmpty ? ' · ${_skipped.length} manuelle i steg 3' : ''}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          color: ui.accentDark,
+                        ),
+                      ),
+                    ),
+                    if (_skipped.isNotEmpty)
+                      TextButton(
+                        onPressed: () => setState(
+                          () => _sapWizardStep = _SapWizardStep.attention,
+                        ),
+                        child: Text(
+                          'Gå til mangler',
+                          style: TextStyle(color: Colors.orange.shade900),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 0,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    TextButton(
+                      onPressed: _selectReadyNonDuplicates,
+                      child: Text('Velg klare ($_readyShiftCount)'),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _selected
+                          ..clear()
+                          ..addAll(_staged.map((s) => s.id));
+                      }),
+                      child: const Text('Velg alle'),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _selected.clear()),
+                      child: const Text('Fjern valg'),
+                    ),
+                    if (_hasMultipleRouteDates) _buildDateQueueMenu(_stagedByDate),
+                  ],
+                ),
+              ],
             ),
-            _SapStatChip(
-              label: 'Valgt',
-              value: '${_selected.length}',
-              hint: 'Sendes',
-              good: _selected.isNotEmpty,
-            ),
-            _SapStatChip(
-              label: 'Klare',
-              value: '$_readyShiftCount',
-              hint: 'Med skift',
-              good: true,
-            ),
-            if (_sapAttentionCount > 0)
-              _SapStatChip(
-                label: 'Mangler',
-                value: '$_sapAttentionCount',
-                hint: 'Fiks i steg 3',
-                emphasize: true,
-              ),
-            if (_multiLoadDriverCount > 0)
-              _SapStatChip(
-                label: '2+ last',
-                value: '$_multiLoadDriverCount',
-                hint: 'Biler',
-              ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            TextButton(
-              onPressed: () => setState(() {
-                _selected
-                  ..clear()
-                  ..addAll(_staged.map((s) => s.id));
-              }),
-              child: const Text('Velg alle'),
-            ),
-            TextButton(
-              onPressed: _selectReadyNonDuplicates,
-              child: Text('Velg klare ($_readyShiftCount)'),
-            ),
-            TextButton(
-              onPressed: () => setState(() => _selected.clear()),
-              child: const Text('Fjern valg'),
-            ),
-          ],
+          ),
         ),
         const SizedBox(height: 8),
-        SizedBox(
-          height: MediaQuery.sizeOf(context).height * 0.45,
-          child: _buildRoutesOverview(ui),
+        Expanded(
+          child: _buildRoutesOverview(ui, compactChrome: true),
         ),
       ],
     );
@@ -3709,7 +3746,49 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
-  Widget _buildScrollListHeader(_MassUi ui, {bool showFilters = true, bool forceMissingOnly = false}) {
+  Widget _buildScrollListHeader(
+    _MassUi ui, {
+    bool showFilters = true,
+    bool forceMissingOnly = false,
+    bool compactChrome = false,
+  }) {
+    if (compactChrome) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
+        child: Row(
+          children: [
+            Text(
+              '${_filteredQueueRoutes.length} ruter',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade700,
+              ),
+            ),
+            const Spacer(),
+            if (_hasMultipleRouteDates)
+              ..._stagedByDate.entries.take(4).map((e) {
+                final day = e.key;
+                final selected = _filterDay == day;
+                return Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: FilterChip(
+                    visualDensity: VisualDensity.compact,
+                    label: Text(
+                      '${DateFormat('d.M', 'nb').format(day)} (${e.value.length})',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                    selected: selected,
+                    onSelected: (_) => setState(() {
+                      _filterDay = selected ? null : day;
+                    }),
+                  ),
+                );
+              }),
+          ],
+        ),
+      );
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3788,7 +3867,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               TextButton(onPressed: () => setState(() => _selected.clear()), child: const Text('Fjern valg')),
               const Spacer(),
               Text(
-                '${_filteredQueueRoutes.length}/${_staged.length} · zoom header',
+                '${_filteredQueueRoutes.length}/${_staged.length}',
                 style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
               ),
             ],
@@ -4027,7 +4106,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
-  Widget _buildRoutesOverview(_MassUi ui, {bool forceMissingOnly = false}) {
+  Widget _buildRoutesOverview(
+    _MassUi ui, {
+    bool forceMissingOnly = false,
+    bool compactChrome = false,
+  }) {
     if (_staged.isEmpty) {
       return _buildEmptyQueueHero(ui);
     }
@@ -4038,7 +4121,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
         SliverToBoxAdapter(
-          child: _buildScrollListHeader(ui, showFilters: !forceMissingOnly, forceMissingOnly: forceMissingOnly),
+          child: _buildScrollListHeader(
+            ui,
+            showFilters: !forceMissingOnly && !compactChrome,
+            forceMissingOnly: forceMissingOnly,
+            compactChrome: compactChrome,
+          ),
         ),
         if (routes.isEmpty)
           SliverFillRemaining(
@@ -4193,9 +4281,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           PartnerRoutePdfThumbnail(
             share: share,
             driverLabel: 'Ingen sjåfør',
-            height: 170,
+            height: 200,
             showFullPage: true,
-            zoomTripHeader: true,
+            zoomTripHeader: false,
             onTapOpen: () => PartnerRoutePdfActions.openPdf(context, share),
           ),
           Padding(
@@ -4732,9 +4820,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               PartnerRoutePdfThumbnail(
                 bytes: item.bytes,
                 driverLabel: label,
-                height: 170,
+                height: 220,
                 showFullPage: true,
-                zoomTripHeader: true,
+                // Full forside — zoomTripHeader klipper til uleselig utsnitt
+                // når PDF ikke er standard Trip Overview (f.eks. mangler MAVI).
+                zoomTripHeader: false,
                 onTapOpen: item.bytes.isEmpty
                     ? null
                     : () => PartnerRoutePdfActions.openPdfBytes(

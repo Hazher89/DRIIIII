@@ -72,6 +72,8 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
   final bool showBackButton;
   /// Overstyr tilbake-handling (f.eks. steg tilbake i flyt i stedet for å lukke).
   final VoidCallback? onBack;
+  /// Skjul sidepanel (f.eks. Sjekk-steg for mer plass til ruter).
+  final bool showSidebar;
 
   const PartnerRouteWorkflowShell({
     super.key,
@@ -98,6 +100,7 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     this.showTabCaption = true,
     this.showBackButton = true,
     this.onBack,
+    this.showSidebar = true,
   });
 
   static const _railWidth = 340.0;
@@ -142,8 +145,10 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _buildMobileSidebarToggle(context),
-        const SizedBox(height: 8),
+        if (showSidebar) ...[
+          _buildMobileSidebarToggle(context),
+          const SizedBox(height: 8),
+        ],
         Expanded(child: _buildMainPanel(context, nativeMobile: true)),
       ],
     );
@@ -315,6 +320,9 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
   }
 
   Widget _buildWideBody(BuildContext context) {
+    if (!showSidebar) {
+      return _buildMainPanel(context);
+    }
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -329,6 +337,9 @@ class PartnerRouteWorkflowShell extends StatelessWidget {
   }
 
   Widget _buildNarrowBody(BuildContext context) {
+    if (!showSidebar) {
+      return _buildMainPanel(context);
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
