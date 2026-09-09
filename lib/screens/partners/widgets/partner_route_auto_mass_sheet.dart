@@ -401,11 +401,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       final result = await PartnerService.syncSapMailboxFromGraph();
       if (!mounted) return;
       if (result == null) {
-        setState(() => _sapGraphSyncNote = 'Kunne ikke nå sync-tjenesten.');
+        setState(() => _sapGraphSyncNote =
+            'Kunne ikke nå Office 365-sync. Prøv «Hent» igjen.');
       } else if (result['error'] != null) {
         setState(() {
-          _sapGraphSyncNote =
-              'Sync feilet: ${result['error']}'.replaceAll(RegExp(r'^Exception:\s*'), '');
+          _sapGraphSyncNote = _friendlyGraphSyncError('${result['error']}');
         });
       } else {
         _applyGraphSyncResult(result);
@@ -496,8 +496,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         _applyGraphSyncResult(graph);
       } else if (mounted && graph != null && graph['error'] != null) {
         setState(() {
+          _sapGraphSyncNote = _friendlyGraphSyncError('${graph['error']}');
+        });
+      } else if (mounted && graph == null) {
+        setState(() {
           _sapGraphSyncNote =
-              'Sync feilet: ${graph['error']}'.replaceAll(RegExp(r'^Exception:\s*'), '');
+              'Kunne ikke nå Office 365-sync. Køen er uendret — prøv «Hent» igjen.';
         });
       }
 
@@ -509,25 +513,54 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       }
 
       await _refreshSapInboxCounts();
-      if (mounted && _staged.isNotEmpty && _missingShiftCount > 0) {
-        setState(() => _sapGraphSyncNote = 'Fyller skift…');
-        await _fillAllShiftsForStaged();
-      }
-      if (mounted && _staged.isEmpty && _skipped.isEmpty && _lastGraphMatched > 0) {
-        setState(() {
-          _sapGraphSyncNote =
-              '$_sapGraphSyncNote · Ingen ruter i kø — trykk «Hent alle på nytt» eller sjekk Dropbox.';
-        });
-      }
     } catch (e) {
       if (mounted) {
+        setState(() => _sapGraphSyncNote = _friendlyGraphSyncError('$e'));
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('SAP-synk feilet: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(_friendlyGraphSyncError('$e')),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
+      // Frigjør «Hent» med en gang — skiftfylling skal ikke låse knappen.
       if (mounted) setState(() => _sapSyncing = false);
     }
+
+    // Skift i bakgrunnen (egen flagg) — ikke blokker Hent.
+    if (!_importAborted &&
+        mounted &&
+        _staged.isNotEmpty &&
+        _missingShiftCount > 0 &&
+        !_fillingShifts) {
+      final priorNote = _sapGraphSyncNote;
+      setState(() {
+        _sapGraphSyncNote = priorNote == null || priorNote.isEmpty
+            ? 'Fyller skift i bakgrunnen…'
+            : '$priorNote · Fyller skift…';
+      });
+      await _fillAllShiftsForStaged();
+      if (!mounted) return;
+      final failed = (_sapGraphSyncNote ?? '').contains('Office 365') ||
+          (_sapGraphSyncNote ?? '').startsWith('Sync feilet');
+      if (!failed) {
+        setState(() => _sapGraphSyncNote = 'Klar: ${_staged.length} ruter i kø');
+      }
+    }
+  }
+
+  String _friendlyGraphSyncError(String raw) {
+    final msg = raw.replaceAll(RegExp(r'^Exception:\s*'), '').trim();
+    if (msg.contains('Failed to fetch') ||
+        msg.contains('ClientException') ||
+        msg.contains('TimeoutException') ||
+        msg.contains('timed out')) {
+      return 'Office 365-sync mistet nettverk/timeout. '
+          'Rutene i køen er trygge — trykk «Hent alle på nytt» for å prøve igjen.';
+    }
+    if (msg.length > 180) return 'Sync feilet: ${msg.substring(0, 177)}…';
+    return 'Sync feilet: $msg';
   }
 
   Future<void> _runSapImportPhase(String cid, {required String label}) async {
@@ -2995,6 +3028,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   Widget _buildSapFetchStep(_MassUi ui) {
     final total = _staged.length + _skipped.length;
     final matched = _lastGraphMatched > 0 ? _lastGraphMatched : total;
+    final busyFetch = _sapSyncing && total == 0;
+    final officeFailed = (_sapGraphSyncNote ?? '').contains('Office 365') ||
+        (_sapGraphSyncNote ?? '').startsWith('Sync feilet');
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -3010,14 +3046,20 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ),
           child: Column(
             children: [
-              if (_sapSyncing)
+              if (busyFetch)
                 const SizedBox(
                   width: 36,
                   height: 36,
                   child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
                 )
               else
-                const Icon(Icons.mark_email_read_outlined, color: Colors.white, size: 40),
+                Icon(
+                  officeFailed && total > 0
+                      ? Icons.cloud_off_outlined
+                      : Icons.mark_email_read_outlined,
+                  color: Colors.white,
+                  size: 40,
+                ),
               const SizedBox(height: 14),
               Text(
                 '$matched',
@@ -3030,7 +3072,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               ),
               const SizedBox(height: 6),
               Text(
-                _sapSyncing ? 'Henter alle SAP-ruter…' : 'SAP-ruter funnet',
+                busyFetch
+                    ? 'Henter alle SAP-ruter…'
+                    : _sapSyncing
+                        ? 'Oppdaterer…'
+                        : total > 0
+                            ? 'SAP-ruter i kø'
+                            : 'Ingen ruter ennå',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.95),
                   fontWeight: FontWeight.w700,
@@ -3040,7 +3088,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               const SizedBox(height: 8),
               Text(
                 total > 0
-                    ? '$total i kø · $_lastGraphInserted nye · $_lastGraphAlready allerede hentet'
+                    ? '$total i kø'
+                        '${_lastGraphInserted > 0 ? ' · $_lastGraphInserted nye' : ''}'
+                        '${_lastGraphAlready > 0 ? ' · $_lastGraphAlready allerede' : ''}'
+                        '${_sapSyncing ? ' · $_sapGraphSyncNote' : ''}'
                     : (_sapGraphSyncNote ??
                         'Trykk «Hent alle på nytt» hvis listen er tom'),
                 textAlign: TextAlign.center,
@@ -3053,6 +3104,34 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ],
           ),
         ),
+        if (officeFailed && total > 0) ...[
+          const SizedBox(height: 12),
+          Material(
+            color: Colors.orange.shade50,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.orange.shade900),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Køen er klar med $total ruter. Office 365-sjekken feilet — '
+                      'du kan gå videre eller trykke Hent igjen.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.orange.shade900,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         _buildQueueSummaryStrip(ui),
         if (_staged.isNotEmpty || _skipped.isNotEmpty) ...[
