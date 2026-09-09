@@ -98,8 +98,33 @@ export async function insertSapPdfToInbox(
   if (!pdfNameOk(fileName)) return `${fileName}:name`;
   if (bytes.length < 100) return `${fileName}:empty`;
 
+  // Duplikatsjekk FØR lagring/opplasting — sparer Dropbox/Supabase-tid.
+  const { data: dup } = await supabase
+    .from("sap_route_inbox")
+    .select("id")
+    .eq("resend_email_id", emailId)
+    .eq("attachment_id", attachmentId)
+    .maybeSingle();
+
+  if (dup?.id) return `${fileName}:duplicate`;
+
   const hash = await sha256Hex(bytes);
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+
+  if (!ignoreContentDedup) {
+    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const { data: hashDup } = await supabase
+      .from("sap_route_inbox")
+      .select("id")
+      .eq("company_id", companyId)
+      .eq("content_sha256", hash)
+      .in("status", ["pending", "imported"])
+      .gte("received_at", since)
+      .limit(1)
+      .maybeSingle();
+
+    if (hashDup?.id) return `${fileName}:content_duplicate`;
+  }
 
   let storagePath = "";
   try {
@@ -131,30 +156,6 @@ export async function insertSapPdfToInbox(
       return `${fileName}:storage`;
     }
     storagePath = path;
-  }
-
-  const { data: dup } = await supabase
-    .from("sap_route_inbox")
-    .select("id")
-    .eq("resend_email_id", emailId)
-    .eq("attachment_id", attachmentId)
-    .maybeSingle();
-
-  if (dup?.id) return `${fileName}:duplicate`;
-
-  if (!ignoreContentDedup) {
-    const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const { data: hashDup } = await supabase
-      .from("sap_route_inbox")
-      .select("id")
-      .eq("company_id", companyId)
-      .eq("content_sha256", hash)
-      .in("status", ["pending", "imported"])
-      .gte("received_at", since)
-      .limit(1)
-      .maybeSingle();
-
-    if (hashDup?.id) return `${fileName}:content_duplicate`;
   }
 
   const { error: insErr } = await supabase.from("sap_route_inbox").insert({

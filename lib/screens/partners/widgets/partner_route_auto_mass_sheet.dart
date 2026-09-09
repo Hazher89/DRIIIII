@@ -468,9 +468,29 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   Future<void> _syncSapInbox() async {
     if (!_isSap || _sapSyncing || _importAborted) return;
-    setState(() => _sapSyncing = true);
+    setState(() {
+      _sapSyncing = true;
+      _sapGraphSyncNote = 'Forbereder kø…';
+    });
     try {
-      // 1) Hent ALLE mail fra Office 365 (paginert, uten limit).
+      final cid = await SupabaseService.getCurrentCompanyId();
+      if (cid == null || _importAborted) return;
+
+      // Gjenåpne «importert» som mangler staged (ellers 47 allerede / 0 i kø).
+      final reopened = await PartnerService.reopenOrphanedSapInbox(cid);
+      if (mounted && reopened > 0) {
+        setState(() {
+          _sapGraphSyncNote = 'Fant $reopened PDF uten kø — importerer…';
+        });
+      }
+
+      // 1) Importer eksisterende innboks FØRST (raskere enn Graph-nedlasting).
+      await _runSapImportPhase(cid, label: 'Importerer til kø');
+
+      // 2) Rask Office 365-sjekk (hopper over PDF som allerede er i DB).
+      if (mounted) {
+        setState(() => _sapGraphSyncNote = 'Sjekker Office 365 for nye mail…');
+      }
       final graph = await PartnerService.syncSapMailboxFromGraph();
       if (mounted && graph != null && graph['error'] == null) {
         _applyGraphSyncResult(graph);
@@ -481,81 +501,23 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         });
       }
 
-      final cid = await SupabaseService.getCurrentCompanyId();
-      if (cid == null || _importAborted) return;
-      await PartnerService.reconcileSapInboxWithStagedQueue(cid);
-      final pending = await PartnerService.fetchSapRouteInboxPending(cid);
-      if (!mounted || _importAborted) return;
-      setState(() {
-        _sapPendingInbox = pending.length;
-        _pendingInboxItems = pending;
-      });
-      if (pending.isEmpty) {
-        await _reload();
-        await _refreshSapInboxCounts();
-        return;
+      final inserted = (graph != null && graph['inserted'] is List)
+          ? (graph['inserted'] as List).length
+          : 0;
+      if (inserted > 0 && !_importAborted) {
+        await _runSapImportPhase(cid, label: 'Importerer nye PDF');
       }
 
-      final result = await SapRouteImportService.importPendingToStaged(
-        companyId: cid,
-        routeDate: _routeDate,
-        fleet: widget.fleet,
-        rejectOnFailure: false,
-      );
-      if (_importAborted || !mounted) return;
-      final newSkipped = <_SkippedPdf>[];
-      for (final s in result.skippedItems) {
-        final exists = _skipped.any((x) => x.sapInboxId == s.inboxId);
-        if (exists) continue;
-        newSkipped.add(_SkippedPdf(
-          fileName: s.fileName,
-          bytes: Uint8List.fromList(s.bytes),
-          reason: s.reason,
-          detectedCode: s.detectedCode ??
-              RoutePdfTextService.extractResourceIdFromFileName(s.fileName),
-          sapInboxId: s.inboxId,
-        ));
-      }
-
-      if (mounted) {
-        setState(() {
-          _importLog = [..._importLog, ..._mapImportLines(result.lines)];
-          _skipped.addAll(newSkipped);
-        });
-      }
-      await _autoAssignReadySkipped(newSkipped);
-      await _reload(preferRoutesTab: result.imported > 0, expectedMinStaged: result.imported);
       await _refreshSapInboxCounts();
-      if (mounted && (_staged.isNotEmpty || newSkipped.isNotEmpty)) {
+      if (mounted && _staged.isNotEmpty && _missingShiftCount > 0) {
+        setState(() => _sapGraphSyncNote = 'Fyller skift…');
         await _fillAllShiftsForStaged();
       }
-      if (mounted) {
-        if (result.imported > 0 && _staged.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'SAP-ruter ble importert, men køen vises ikke. Prøv å lukke og åpne på nytt.',
-              ),
-              backgroundColor: Colors.orange,
-              duration: Duration(seconds: 8),
-            ),
-          );
-        } else if (result.imported == 0 && (result.skipped > 0 || _skipped.isNotEmpty)) {
-          setState(() => _sapWizardStep = _SapWizardStep.attention);
-        }
-        if (result.imported > 0 || result.skipped > 0) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                result.imported > 0
-                    ? 'SAP: ${result.imported} rute(r) hentet og fordelt.'
-                        '${result.skipped > 0 ? " ${result.skipped} trenger manuell tildeling." : ""}'
-                    : 'SAP: ${result.skipped} PDF trenger manuell tildeling (steg 3).',
-              ),
-              duration: const Duration(seconds: 5),
-            ),
-          );
-        }
+      if (mounted && _staged.isEmpty && _skipped.isEmpty && _lastGraphMatched > 0) {
+        setState(() {
+          _sapGraphSyncNote =
+              '$_sapGraphSyncNote · Ingen ruter i kø — trykk «Hent alle på nytt» eller sjekk Dropbox.';
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -565,6 +527,84 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       }
     } finally {
       if (mounted) setState(() => _sapSyncing = false);
+    }
+  }
+
+  Future<void> _runSapImportPhase(String cid, {required String label}) async {
+    if (_importAborted) return;
+    await PartnerService.reconcileSapInboxWithStagedQueue(cid);
+    final pending = await PartnerService.fetchSapRouteInboxPending(cid);
+    if (!mounted || _importAborted) return;
+    setState(() {
+      _sapPendingInbox = pending.length;
+      _pendingInboxItems = pending;
+      _sapGraphSyncNote = pending.isEmpty
+          ? '$label: ingen ventende PDF'
+          : '$label: 0/${pending.length}…';
+    });
+    if (pending.isEmpty) {
+      await _reload();
+      return;
+    }
+
+    final result = await SapRouteImportService.importPendingToStaged(
+      companyId: cid,
+      routeDate: _routeDate,
+      fleet: widget.fleet,
+      rejectOnFailure: false,
+      onProgress: (done, total) {
+        if (!mounted) return;
+        setState(() => _sapGraphSyncNote = '$label: $done/$total');
+      },
+    );
+    if (_importAborted || !mounted) return;
+
+    final newSkipped = <_SkippedPdf>[];
+    for (final s in result.skippedItems) {
+      if (_skipped.any((x) => x.sapInboxId == s.inboxId)) continue;
+      newSkipped.add(_SkippedPdf(
+        fileName: s.fileName,
+        bytes: Uint8List.fromList(s.bytes),
+        reason: s.reason,
+        detectedCode: s.detectedCode ??
+            RoutePdfTextService.extractResourceIdFromFileName(s.fileName),
+        sapInboxId: s.inboxId,
+      ));
+    }
+
+    setState(() {
+      _importLog = [..._importLog, ..._mapImportLines(result.lines)];
+      _skipped.addAll(newSkipped);
+    });
+    await _autoAssignReadySkipped(newSkipped);
+    await _reload(preferRoutesTab: result.imported > 0, expectedMinStaged: result.imported);
+
+    if (!mounted) return;
+    if (result.imported > 0 && _staged.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'SAP-ruter ble importert, men køen vises ikke. Prøv å lukke og åpne på nytt.',
+          ),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 8),
+        ),
+      );
+    } else if (result.imported == 0 && (result.skipped > 0 || _skipped.isNotEmpty)) {
+      setState(() => _sapWizardStep = _SapWizardStep.attention);
+    }
+    if (result.imported > 0 || result.skipped > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            result.imported > 0
+                ? 'SAP: ${result.imported} rute(r) i kø.'
+                    '${result.skipped > 0 ? " ${result.skipped} trenger manuell tildeling." : ""}'
+                : 'SAP: ${result.skipped} PDF trenger manuell tildeling (steg 3).',
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
@@ -3244,7 +3284,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
     final canNext = switch (step) {
       _SapWizardStep.fetch =>
-        !_sapSyncing && (_staged.isNotEmpty || _skipped.isNotEmpty || _lastGraphMatched > 0),
+        _staged.isNotEmpty || _skipped.isNotEmpty || (!_sapSyncing && _lastGraphMatched > 0),
       _SapWizardStep.vehicles => _staged.isNotEmpty || _skipped.isNotEmpty,
       _SapWizardStep.attention => true,
       _SapWizardStep.review => false,

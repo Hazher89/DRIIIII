@@ -13,13 +13,7 @@ import {
  * Synker SAP Backup Form-PDF fra Office 365 (driftpro@mavilogistikk.no)
  * inn i sap_route_inbox via Microsoft Graph.
  *
- * Secrets:
- * - MS_GRAPH_TENANT_ID
- * - MS_GRAPH_CLIENT_ID
- * - MS_GRAPH_CLIENT_SECRET
- * - MS_GRAPH_MAILBOX (valgfri, default driftpro@mavilogistikk.no)
- * - SAP_ROUTES_COMPANY_ID
- * - SAP_GRAPH_SYNC_SECRET (valgfri, men anbefalt for manuell/cron-kall)
+ * Rask path: hopper over Graph-nedlasting når mail allerede ligger i innboks.
  */
 
 const cors = {
@@ -29,7 +23,6 @@ const cors = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-/** Soft safety only — never used as a normal “page size” for SAP days. */
 const HARD_SCAN_CAP = 5000;
 const PAGE_SIZE = 50;
 
@@ -58,18 +51,21 @@ type GraphAttachment = {
   contentBytes?: string;
 };
 
+type ExistingInboxRow = {
+  resend_email_id: string | null;
+  attachment_id: string | null;
+  file_name: string | null;
+};
+
 function encodeMailbox(mailbox: string): string {
   return encodeURIComponent(mailbox);
 }
 
-/** Henter ALLE meldinger i tidsvinduet (paginert). Ingen praktisk limit. */
 async function listCandidateMessages(
   mailbox: string,
   hours: number,
 ): Promise<GraphMessage[]> {
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
-  // Ikke filtrer på hasAttachments — noen SAP-mail kan mangle flagget.
-  // Subject/avsender filtreres i kode.
   const filter = `receivedDateTime ge ${since}`;
   let next:
     | string
@@ -155,6 +151,37 @@ async function markMessageRead(mailbox: string, messageId: string): Promise<void
   }
 }
 
+/** Laster kjente Graph-innboks-rader slik at vi slipper å laste ned PDF på nytt. */
+async function loadExistingGraphInbox(
+  supabase: ReturnType<typeof createClient>,
+  companyId: string,
+): Promise<{
+  byEmail: Map<string, ExistingInboxRow[]>;
+  keys: Set<string>;
+}> {
+  const { data, error } = await supabase
+    .from("sap_route_inbox")
+    .select("resend_email_id, attachment_id, file_name")
+    .eq("company_id", companyId)
+    .like("resend_email_id", "graph:%");
+  if (error) {
+    console.warn("Could not preload inbox", error.message);
+    return { byEmail: new Map(), keys: new Set() };
+  }
+  const byEmail = new Map<string, ExistingInboxRow[]>();
+  const keys = new Set<string>();
+  for (const row of (data ?? []) as ExistingInboxRow[]) {
+    const emailId = (row.resend_email_id ?? "").trim();
+    if (!emailId) continue;
+    const list = byEmail.get(emailId) ?? [];
+    list.push(row);
+    byEmail.set(emailId, list);
+    const att = (row.attachment_id ?? "").trim();
+    if (att) keys.add(`${emailId}|${att}`);
+  }
+  return { byEmail, keys };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: cors });
@@ -175,12 +202,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    let hours = 168; // 7 dager — fanger hele SAP-uken
+    let hours = 168;
     let markRead = true;
     try {
       const body = await req.json() as {
         hours?: number;
-        limit?: number; // ignored — kept for old clients
+        limit?: number;
         markRead?: boolean;
       };
       if (typeof body.hours === "number" && body.hours > 0) {
@@ -201,7 +228,11 @@ Deno.serve(async (req) => {
     const companyId = sapRoutesCompanyId();
     const mailbox = graphMailbox();
 
-    const messages = await listCandidateMessages(mailbox, hours);
+    const [messages, existing] = await Promise.all([
+      listCandidateMessages(mailbox, hours),
+      loadExistingGraphInbox(supabase, companyId),
+    ]);
+
     const summary = {
       mailbox,
       hours,
@@ -211,6 +242,7 @@ Deno.serve(async (req) => {
       already: [] as string[],
       skipped: [] as string[],
       errors: [] as string[],
+      downloads: 0,
     };
 
     for (const msg of messages) {
@@ -225,6 +257,15 @@ Deno.serve(async (req) => {
       summary.matched += 1;
 
       const emailId = `graph:${msg.id}`;
+      const knownRows = existing.byEmail.get(emailId) ?? [];
+      // Allerede i DB → ingen Graph attachment-kall / PDF-nedlasting.
+      if (knownRows.length > 0) {
+        for (const row of knownRows) {
+          summary.already.push(row.file_name || emailId);
+        }
+        continue;
+      }
+
       try {
         const pdfs = await listPdfAttachments(mailbox, msg.id);
         if (pdfs.length === 0) {
@@ -234,12 +275,20 @@ Deno.serve(async (req) => {
 
         let anyStored = false;
         for (const pdf of pdfs) {
+          const key = `${emailId}|${pdf.id}`;
+          if (existing.keys.has(key)) {
+            summary.already.push(pdf.name || pdf.id);
+            anyStored = true;
+            continue;
+          }
+
           const { fileName, bytes } = await downloadAttachmentBytes(
             mailbox,
             msg.id,
             pdf.id,
           );
-          // ignoreContentDedup: hver Graph-mail skal inn — UI viser evt. duplikater.
+          summary.downloads += 1;
+
           const outcome = await insertSapPdfToInbox(supabase, {
             companyId,
             emailId,
@@ -253,6 +302,14 @@ Deno.serve(async (req) => {
           if (outcome === "inserted") {
             summary.inserted.push(fileName);
             anyStored = true;
+            existing.keys.add(key);
+            const list = existing.byEmail.get(emailId) ?? [];
+            list.push({
+              resend_email_id: emailId,
+              attachment_id: pdf.id,
+              file_name: fileName,
+            });
+            existing.byEmail.set(emailId, list);
           } else if (outcome.includes(":duplicate")) {
             summary.already.push(fileName);
             anyStored = true;

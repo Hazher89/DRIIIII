@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import 'mavi_unit_codes.dart';
@@ -11,6 +12,8 @@ import 'staged_route_duplicate_helper.dart';
 class SapRouteImportService {
   SapRouteImportService._();
 
+  static const _downloadConcurrency = 6;
+
   static Future<SapRouteImportResult> importPendingToStaged({
     required String companyId,
     required DateTime routeDate,
@@ -18,6 +21,7 @@ class SapRouteImportService {
     List<String>? inboxIds,
     /// Når false: feilede PDF-er returneres til UI for manuell tildeling (ikke avvist i DB).
     bool rejectOnFailure = true,
+    void Function(int done, int total)? onProgress,
   }) async {
     final pending = await PartnerService.fetchSapRouteInboxPending(companyId);
     final targets = inboxIds == null
@@ -43,24 +47,60 @@ class SapRouteImportService {
     final skippedItems = <SapRouteImportSkippedItem>[];
     var imported = 0;
     var skipped = 0;
+    final total = targets.length;
+    var progressDone = 0;
 
-    for (final item in targets) {
-      try {
+    void bumpProgress() {
+      progressDone++;
+      onProgress?.call(progressDone, total);
+    }
+
+    for (var offset = 0; offset < targets.length; offset += _downloadConcurrency) {
+      final slice = targets.skip(offset).take(_downloadConcurrency).toList();
+      final downloaded = await Future.wait(slice.map((item) async {
         if (item.importedRouteShareId != null) {
+          return _DownloadOutcome.already(item);
+        }
+        try {
+          final bytes =
+              await PartnerService.downloadRoutePdfBytes(item.pdfStoragePath);
+          if (bytes == null || bytes.isEmpty) {
+            return _DownloadOutcome.fail(item, 'Kunne ikke lese PDF');
+          }
+          final bundle = RoutePdfTextService.parseBundle(
+            bytes,
+            fallbackDate: fallbackDay,
+            fileName: item.fileName,
+          );
+          final code = bundle.meta.maviCode ??
+              RoutePdfTextService.extractResourceIdFromBytes(bytes);
+          return _DownloadOutcome.ok(
+            item: item,
+            bytes: bytes,
+            bundle: bundle,
+            code: code,
+          );
+        } catch (e) {
+          return _DownloadOutcome.fail(item, e.toString());
+        }
+      }));
+
+      for (final row in downloaded) {
+        final item = row.item;
+        if (row.kind == _DownloadKind.already) {
           lines.add(SapRouteImportLine(
             fileName: item.fileName,
             ok: true,
             message: 'Allerede importert',
           ));
+          bumpProgress();
           continue;
         }
-
-        final bytes = await PartnerService.downloadRoutePdfBytes(item.pdfStoragePath);
-        if (bytes == null || bytes.isEmpty) {
+        if (row.kind == _DownloadKind.fail) {
           await _failItem(
             item: item,
             rejectOnFailure: rejectOnFailure,
-            reason: 'Kunne ikke lese PDF',
+            reason: row.error ?? 'Feil',
             bytes: null,
             skippedItems: skippedItems,
           );
@@ -68,17 +108,16 @@ class SapRouteImportService {
           lines.add(SapRouteImportLine(
             fileName: item.fileName,
             ok: false,
-            message: 'Kunne ikke lese PDF',
+            message: row.error,
           ));
+          bumpProgress();
           continue;
         }
 
-        final bundle = RoutePdfTextService.parseBundle(
-          bytes,
-          fallbackDate: fallbackDay,
-          fileName: item.fileName,
-        );
-        final code = bundle.meta.maviCode ?? RoutePdfTextService.extractResourceIdFromBytes(bytes);
+        final bytes = row.bytes!;
+        final bundle = row.bundle!;
+        final code = row.code;
+
         if (code == null) {
           await _failItem(
             item: item,
@@ -94,6 +133,7 @@ class SapRouteImportService {
             ok: false,
             message: 'Fant ikke MAVI-nummer i PDF',
           ));
+          bumpProgress();
           continue;
         }
 
@@ -114,10 +154,11 @@ class SapRouteImportService {
             maviCode: code,
             message: 'Ingen bil matcher $code',
           ));
+          bumpProgress();
           continue;
         }
 
-        final partner = partnerById[vehicle.partnerId];
+        final Partner? partner = partnerById[vehicle.partnerId];
         if (partner == null) {
           await _failItem(
             item: item,
@@ -134,6 +175,7 @@ class SapRouteImportService {
             maviCode: code,
             message: 'Partner mangler',
           ));
+          bumpProgress();
           continue;
         }
 
@@ -156,6 +198,7 @@ class SapRouteImportService {
             maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
             message: 'Allerede i kø',
           ));
+          bumpProgress();
           continue;
         }
 
@@ -177,50 +220,55 @@ class SapRouteImportService {
             maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
             message: 'Duplikat — allerede i kø',
           ));
+          bumpProgress();
           continue;
         }
 
-        final shareId = await PartnerService.createStagedRouteShareFromPdf(
-          companyId: companyId,
-          partner: partner,
-          vehicle: vehicle,
-          fileName: item.fileName,
-          bytes: bytes,
-          routeDate: bundle.schedule.routeDate,
-          parsed: bundle,
-          stagedImportSource: PartnerService.stagedImportSap,
-        );
+        try {
+          final shareId = await PartnerService.createStagedRouteShareFromPdf(
+            companyId: companyId,
+            partner: partner,
+            vehicle: vehicle,
+            fileName: item.fileName,
+            bytes: bytes,
+            routeDate: bundle.schedule.routeDate,
+            parsed: bundle,
+            stagedImportSource: PartnerService.stagedImportSap,
+          );
 
-        await PartnerService.markSapRouteInboxImported(
-          inboxId: item.id,
-          routeShareId: shareId,
-          detectedMaviCode: MaviUnitCodes.normalize(vehicle.unitCode),
-        );
+          await PartnerService.markSapRouteInboxImported(
+            inboxId: item.id,
+            routeShareId: shareId,
+            detectedMaviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+          );
 
-        imported++;
-        staged = await PartnerService.fetchStagedRouteShares(
-          companyId,
-          importSource: PartnerService.stagedImportSap,
-        );
-        lines.add(SapRouteImportLine(
-          fileName: item.fileName,
-          ok: true,
-          maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
-        ));
-      } catch (e) {
-        await _failItem(
-          item: item,
-          rejectOnFailure: rejectOnFailure,
-          reason: e.toString(),
-          bytes: null,
-          skippedItems: skippedItems,
-        );
-        skipped++;
-        lines.add(SapRouteImportLine(
-          fileName: item.fileName,
-          ok: false,
-          message: e.toString(),
-        ));
+          imported++;
+          final created = await PartnerService.fetchRouteShareById(shareId);
+          if (created != null) {
+            staged = [...staged, created];
+          }
+          lines.add(SapRouteImportLine(
+            fileName: item.fileName,
+            ok: true,
+            maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+          ));
+        } catch (e) {
+          await _failItem(
+            item: item,
+            rejectOnFailure: rejectOnFailure,
+            reason: e.toString(),
+            bytes: bytes,
+            detectedCode: code,
+            skippedItems: skippedItems,
+          );
+          skipped++;
+          lines.add(SapRouteImportLine(
+            fileName: item.fileName,
+            ok: false,
+            message: e.toString(),
+          ));
+        }
+        bumpProgress();
       }
     }
 
@@ -273,4 +321,44 @@ class SapRouteImportService {
       registrationOf: (v) => v.registrationNumber,
     );
   }
+}
+
+enum _DownloadKind { already, fail, ok }
+
+class _DownloadOutcome {
+  final SapRouteInboxItem item;
+  final _DownloadKind kind;
+  final Uint8List? bytes;
+  final RoutePdfParseBundle? bundle;
+  final String? code;
+  final String? error;
+
+  const _DownloadOutcome._({
+    required this.item,
+    required this.kind,
+    this.bytes,
+    this.bundle,
+    this.code,
+    this.error,
+  });
+
+  factory _DownloadOutcome.already(SapRouteInboxItem item) =>
+      _DownloadOutcome._(item: item, kind: _DownloadKind.already);
+
+  factory _DownloadOutcome.fail(SapRouteInboxItem item, String error) =>
+      _DownloadOutcome._(item: item, kind: _DownloadKind.fail, error: error);
+
+  factory _DownloadOutcome.ok({
+    required SapRouteInboxItem item,
+    required Uint8List bytes,
+    required RoutePdfParseBundle bundle,
+    required String? code,
+  }) =>
+      _DownloadOutcome._(
+        item: item,
+        kind: _DownloadKind.ok,
+        bytes: bytes,
+        bundle: bundle,
+        code: code,
+      );
 }

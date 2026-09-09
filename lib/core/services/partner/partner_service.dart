@@ -3304,8 +3304,46 @@ class PartnerService {
     }
   }
 
+  /// Importerte SAP-PDF der staged-ruten er slettet → sett pending igjen.
+  static Future<int> reopenOrphanedSapInbox(String companyId) async {
+    if (!_ok) return 0;
+    try {
+      final rows = await _client
+          .from('sap_route_inbox')
+          .select('id, imported_route_share_id')
+          .eq('company_id', companyId)
+          .eq('status', 'imported') as List<dynamic>;
+      if (rows.isEmpty) return 0;
+
+      final staged = await fetchStagedRouteShares(
+        companyId,
+        importSource: stagedImportSap,
+      );
+      final stagedIds = staged.map((s) => s.id).toSet();
+      var n = 0;
+      for (final raw in rows) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        final id = m['id'] as String?;
+        final shareId = m['imported_route_share_id'] as String?;
+        if (id == null) continue;
+        if (shareId != null && stagedIds.contains(shareId)) continue;
+        await _client.from('sap_route_inbox').update({
+          'status': 'pending',
+          'imported_route_share_id': null,
+          'processed_at': null,
+          'processed_by': null,
+        }).eq('id', id);
+        n++;
+      }
+      return n;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// Synk Office 365-postkasse → sap_route_inbox (krever Edge Function + secrets).
   /// Ingen mail-limit — Edge Function paginerer hele tidsvinduet.
+  /// Hopper over PDF-nedlasting for mail som allerede er i innboks.
   static Future<Map<String, dynamic>?> syncSapMailboxFromGraph({
     int hours = 168,
   }) async {
