@@ -2848,155 +2848,118 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (!_isSap) return const SizedBox.shrink();
     final o = _sapOverview;
     final hasPending = o.pendingPdfs > 0;
-    final bg = hasPending ? Colors.orange.shade50 : ui.surfaceTint;
-    final border = hasPending ? Colors.orange.shade300 : ui.accent.withValues(alpha: 0.35);
     final titleColor = hasPending ? Colors.orange.shade900 : ui.accentDark;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Container(
         decoration: BoxDecoration(
-          color: bg,
+          color: hasPending ? Colors.orange.shade50 : ui.surfaceTint,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: border),
+          border: Border.all(
+            color: hasPending
+                ? Colors.orange.shade300
+                : ui.accent.withValues(alpha: 0.3),
+          ),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.mark_email_unread_outlined, color: titleColor),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'SAP-status før utsending',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 15,
-                        color: titleColor,
-                      ),
+        padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  hasPending
+                      ? Icons.mark_email_unread_outlined
+                      : Icons.inbox_outlined,
+                  color: titleColor,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    hasPending
+                        ? '${o.pendingMails} mail · ${o.pendingPdfs} PDF venter'
+                        : o.stagedInQueue > 0
+                            ? '${o.stagedInQueue} i kø · ikke sendt ennå'
+                            : 'Ingen nye SAP-mail',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 13.5,
+                      color: titleColor,
                     ),
                   ),
-                  TextButton.icon(
-                    onPressed: _sapSyncing ? null : _pullFromOffice365,
-                    icon: _sapSyncing
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.sync, size: 18),
-                    label: const Text('Hent mail'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Postkasse: ${SapRoutesConfig.mailbox}',
-                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700),
-              ),
-              if (_sapGraphSyncNote != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  _sapGraphSyncNote!,
-                  style: TextStyle(
-                    fontSize: 12,
-                    height: 1.35,
-                    color: titleColor,
-                    fontWeight: FontWeight.w600,
-                  ),
+                ),
+                TextButton(
+                  onPressed: _sapSyncing ? null : _pullFromOffice365,
+                  child: _sapSyncing
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Hent'),
                 ),
               ],
-              const SizedBox(height: 12),
+            ),
+            if (_sapGraphSyncNote != null) ...[
+              Text(
+                _sapGraphSyncNote!,
+                style: TextStyle(fontSize: 11, color: titleColor, height: 1.3),
+              ),
+              const SizedBox(height: 4),
+            ],
+            if (hasPending || o.stagedInQueue > 0 || o.missingShift > 0)
               Wrap(
-                spacing: 8,
-                runSpacing: 8,
+                spacing: 6,
+                runSpacing: 6,
                 children: [
-                  _SapStatChip(
-                    label: 'Mail mottatt',
-                    value: '${o.pendingMails}',
-                    hint: 'SAP e-poster som venter',
-                    emphasize: o.pendingMails > 0,
-                  ),
-                  _SapStatChip(
-                    label: 'PDF mottatt',
-                    value: '${o.pendingPdfs}',
-                    hint: 'Filer klare til import',
-                    emphasize: o.pendingPdfs > 0,
-                  ),
-                  _SapStatChip(
-                    label: 'I kø',
-                    value: '${o.stagedInQueue}',
-                    hint: 'Importert, ikke sendt',
-                  ),
-                  _SapStatChip(
-                    label: 'Klar til utsending',
-                    value: '${o.readyToPublish}',
-                    hint: 'Har skift tildelt',
-                    good: o.readyToPublish > 0 && o.missingShift == 0,
-                  ),
+                  if (o.pendingPdfs > 0)
+                    _SapStatChip(
+                      label: 'Nye PDF',
+                      value: '${o.pendingPdfs}',
+                      hint: 'Importer først',
+                      emphasize: true,
+                    ),
+                  if (o.stagedInQueue > 0)
+                    _SapStatChip(
+                      label: 'I kø',
+                      value: '${o.stagedInQueue}',
+                      hint: 'Ikke sendt',
+                    ),
+                  if (o.readyToPublish > 0)
+                    _SapStatChip(
+                      label: 'Klar',
+                      value: '${o.readyToPublish}',
+                      hint: 'Kan deles',
+                      good: true,
+                    ),
                   if (o.missingShift > 0)
                     _SapStatChip(
                       label: 'Mangler skift',
                       value: '${o.missingShift}',
-                      hint: 'Må fikses før send',
-                      emphasize: true,
-                    ),
-                  if (o.manualPending > 0)
-                    _SapStatChip(
-                      label: 'Manuell',
-                      value: '${o.manualPending}',
-                      hint: 'Krever tildeling',
+                      hint: 'Fiks før send',
                       emphasize: true,
                     ),
                 ],
               ),
-              const SizedBox(height: 10),
-              Text(
-                hasPending
-                    ? 'Steg 1: Trykk «Importer ${o.pendingPdfs} SAP-PDF til kø». '
-                        'Steg 2: Kontroller sjåfører/skift. '
-                        'Steg 3: Publiser — først da får sjåførene rutene.'
-                    : o.stagedInQueue > 0
-                        ? 'Ingen nye mail venter. Du har ${o.stagedInQueue} ruter i kø — '
-                            'kontroller og publiser når alt stemmer. Ingenting er sendt ennå.'
-                        : 'Ingen SAP-mail eller ruter i kø akkurat nå. '
-                            'Trykk «Hent mail» etter at SAP har sendt Backup Form.',
-                style: TextStyle(fontSize: 12.5, height: 1.4, color: titleColor),
+            if (_pendingInboxItems.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              ..._pendingInboxItems.take(4).map(
+                (item) => Text(
+                  '• ${item.fileName}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade800),
+                ),
               ),
-              if (_pendingInboxItems.isNotEmpty) ...[
-                const SizedBox(height: 10),
+              if (_pendingInboxItems.length > 4)
                 Text(
-                  'Ventende PDF-er:',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 12,
-                    color: titleColor,
-                  ),
+                  '… +${_pendingInboxItems.length - 4} til',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
-                const SizedBox(height: 4),
-                ..._pendingInboxItems.take(8).map(
-                  (item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 3),
-                    child: Text(
-                      '• ${item.fileName}'
-                      '${item.detectedMaviCode != null ? ' → ${MaviUnitCodes.compactLabel(item.detectedMaviCode!)}' : ''}'
-                      '  (${DateFormat('dd.MM HH:mm').format(item.receivedAt.toLocal())})',
-                      style: TextStyle(fontSize: 11.5, color: Colors.grey.shade800),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ),
-                if (_pendingInboxItems.length > 8)
-                  Text(
-                    '… og ${_pendingInboxItems.length - 8} til',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                  ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -3621,50 +3584,62 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         _skipped.isEmpty &&
         _duplicateExtraCount == 0;
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final statusText = _staged.isEmpty
-            ? 'Ingen ruter i kø ennå — last opp PDF eller hent fra SAP'
-            : _skipped.isNotEmpty
-                ? 'Fullfør manuell tildeling før du deler ruter'
-                : _duplicateExtraCount > 0
-                    ? 'Rydd $_duplicateExtraCount duplikat før utsending'
-                    : selectedMissing > 0
-                        ? '$selectedMissing valgte rute(r) mangler skift'
-                        : canPublish
-                            ? 'Klar — ${_selected.length} rute(r) · velg varsel nedenfor'
-                            : 'Huk av ruter du vil dele';
-
-        final status = Text(
-          statusText,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: _skipped.isNotEmpty || _duplicateExtraCount > 0
-                ? Colors.orange.shade900
+    final statusText = _staged.isEmpty
+        ? (_isSap
+            ? 'Hent eller importer SAP-PDF først — deretter del ut'
+            : 'Last opp PDF-er først — deretter del ut')
+        : _skipped.isNotEmpty
+            ? 'Fullfør manuell tildeling før du deler ruter'
+            : _duplicateExtraCount > 0
+                ? 'Rydd $_duplicateExtraCount duplikat før utsending'
                 : selectedMissing > 0
-                    ? Colors.red.shade800
+                    ? '$selectedMissing valgte rute(r) mangler skift'
                     : canPublish
-                        ? Colors.green.shade800
-                        : Colors.grey.shade800,
-          ),
-        );
+                        ? 'Klar: ${_selected.length} rute(r) valgt'
+                        : 'Huk av ruter du vil dele';
 
-        final publishButtons = RoutePublishNotifyButtons(
+    final statusColor = _skipped.isNotEmpty || _duplicateExtraCount > 0
+        ? Colors.orange.shade900
+        : selectedMissing > 0
+            ? Colors.red.shade800
+            : canPublish
+                ? Colors.green.shade800
+                : Colors.grey.shade800;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: statusColor.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: statusColor.withValues(alpha: 0.2)),
+          ),
+          child: Text(
+            statusText,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: statusColor,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        RoutePublishNotifyButtons(
           busy: _publishing || !canPublish,
           compact: true,
-          onPublish: canPublish ? _publishWithPrefs : (_) async {},
-        );
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            status,
-            const SizedBox(height: 10),
-            publishButtons,
-          ],
-        );
-      },
+          initialPrefs: _notifyPrefs,
+          onPublish: canPublish
+              ? (prefs) async {
+                  if (prefs != null) {
+                    setState(() => _notifyPrefs = prefs);
+                  }
+                  await _publishWithPrefs(prefs);
+                }
+              : (_) async {},
+        ),
+      ],
     );
   }
 
