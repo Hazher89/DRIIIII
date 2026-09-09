@@ -184,6 +184,7 @@ class SapRouteImportService {
             share: s,
             fileName: item.fileName,
             vehicleId: vehicle.id,
+            pdfStoragePath: item.pdfStoragePath,
           ),
         ).firstOrNull;
         if (existing != null) {

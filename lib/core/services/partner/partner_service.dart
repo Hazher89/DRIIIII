@@ -3304,32 +3304,83 @@ class PartnerService {
     }
   }
 
-  /// Importerte SAP-PDF der staged-ruten er slettet → sett pending igjen.
-  static Future<int> reopenOrphanedSapInbox(String companyId) async {
+  /// Importerte/avviste SAP-PDF som ikke har unik plass i staged-kø → pending igjen.
+  /// Retter feil der generiske filnavn (Backup Form) ble «reconcilet» til samme rute.
+  static Future<int> reopenOrphanedSapInbox(String companyId, {int hours = 168}) async {
     if (!_ok) return 0;
     try {
+      final since = DateTime.now().toUtc().subtract(Duration(hours: hours));
       final rows = await _client
           .from('sap_route_inbox')
-          .select('id, imported_route_share_id')
+          .select(
+            'id, status, imported_route_share_id, file_name, pdf_storage_path, reject_reason, received_at',
+          )
           .eq('company_id', companyId)
-          .eq('status', 'imported') as List<dynamic>;
+          .gte('received_at', since.toIso8601String())
+          .order('received_at', ascending: true) as List<dynamic>;
       if (rows.isEmpty) return 0;
 
       final staged = await fetchStagedRouteShares(
         companyId,
         importSource: stagedImportSap,
       );
-      final stagedIds = staged.map((s) => s.id).toSet();
+      final stagedById = {for (final s in staged) s.id: s};
+      final stagedPaths = {
+        for (final s in staged)
+          if (s.pdfStoragePath.trim().isNotEmpty) s.pdfStoragePath.trim(),
+      };
+      final claimedShares = <String>{};
+      final claimedPaths = <String>{};
+
       var n = 0;
       for (final raw in rows) {
         final m = Map<String, dynamic>.from(raw as Map);
         final id = m['id'] as String?;
-        final shareId = m['imported_route_share_id'] as String?;
         if (id == null) continue;
-        if (shareId != null && stagedIds.contains(shareId)) continue;
+        final status = (m['status'] as String?) ?? '';
+        final shareId = m['imported_route_share_id'] as String?;
+        final path = (m['pdf_storage_path'] as String?)?.trim() ?? '';
+        final reject = (m['reject_reason'] as String?) ?? '';
+        final isManualReject =
+            status == 'rejected' && reject.startsWith(sapInboxManualReasonPrefix);
+
+        // Manuelle rejects vises via fetchSapRouteInboxManual — ikke nullstill dem.
+        if (isManualReject) continue;
+
+        // Hard reject (ikke manuell) skal ikke graves frem automatisk.
+        if (status == 'rejected') continue;
+
+        // Unik korrekt kobling: samme storage-path som staged-share, én inbox per share.
+        if (shareId != null && stagedById.containsKey(shareId)) {
+          final sharePath = stagedById[shareId]!.pdfStoragePath.trim();
+          final pathOk = path.isNotEmpty && path == sharePath;
+          if (pathOk &&
+              !claimedShares.contains(shareId) &&
+              !claimedPaths.contains(path)) {
+            claimedShares.add(shareId);
+            claimedPaths.add(path);
+            continue;
+          }
+          // Feil/duplikat-kobling → åpne på nytt.
+        } else if (path.isNotEmpty &&
+            stagedPaths.contains(path) &&
+            !claimedPaths.contains(path)) {
+          // Path ligger allerede i kø (uten korrekt id-link) — ikke dobbel-importer.
+          claimedPaths.add(path);
+          if (status == 'pending') continue;
+          // La den stå; import/reconcile fikser id ved path-match.
+          continue;
+        } else if (status == 'pending') {
+          continue;
+        }
+
+        // Importert uten unik korrekt staged-kobling → hent inn i kø igjen.
+        if (status != 'imported' && status != 'pending') continue;
+
         await _client.from('sap_route_inbox').update({
           'status': 'pending',
           'imported_route_share_id': null,
+          'reject_reason': null,
           'processed_at': null,
           'processed_by': null,
         }).eq('id', id);
@@ -3453,30 +3504,26 @@ class PartnerService {
     if ((share.stagedImportSource ?? stagedImportManual) == stagedImportManual) {
       return false;
     }
-    if (share.pdfStoragePath.trim() == item.pdfStoragePath.trim()) return true;
-    if (share.stagedImportSource != stagedImportSap) return false;
-    final title = (share.title ?? '').toLowerCase();
-    final fileName = item.fileName.toLowerCase();
-    if (title.contains(fileName)) return true;
-    if (share.pdfStoragePath.toLowerCase().contains(fileName)) return true;
-    final base = fileName.replaceAll('.pdf', '');
-    if (base.isNotEmpty && title.contains(base)) return true;
-    return false;
+    // Kun eksakt storage-path — generiske Backup Form-filnavn må ikke
+    // «spise» andre unike SAP-mail.
+    final a = share.pdfStoragePath.trim();
+    final b = item.pdfStoragePath.trim();
+    return a.isNotEmpty && a == b;
   }
 
   static bool stagedShareMatchesSapFile({
     required PartnerRouteShare share,
     required String fileName,
     required String vehicleId,
+    String? pdfStoragePath,
   }) {
     if (share.partnerVehicleId != vehicleId || !share.isStaged) return false;
     if ((share.stagedImportSource ?? stagedImportManual) != stagedImportSap) {
       return false;
     }
-    final fn = fileName.toLowerCase();
-    final title = (share.title ?? '').toLowerCase();
-    if (title.contains(fn)) return true;
-    return share.pdfStoragePath.toLowerCase().contains(fn);
+    final path = (pdfStoragePath ?? '').trim();
+    if (path.isEmpty) return false;
+    return share.pdfStoragePath.trim() == path;
   }
 
   static Future<List<SapRouteInboxItem>> fetchSapRouteInboxPending(
