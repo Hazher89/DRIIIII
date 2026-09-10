@@ -121,6 +121,12 @@ enum _RouteQueueFilter { all, missingShift, ready, selected }
 
 enum _DateQueueAction { clearAll, publishNoSms, publishSms }
 
+/// Farger i Biler-steget (faste).
+const _routeColorNormal = Color(0xFF2E7D32); // grønn
+const _routeColorMultiLoad = Color(0xFF7B1FA2); // lilla — 2+ last
+const _routeColorMissingDriver = Color(0xFFC62828); // rød — mangler sjåfør
+const _routeColorDuplicate = Color(0xFFEF6C00); // oransje — dobbel/identisk PDF
+
 const _routeCardMaxExtent = 240.0;
 const _routeCardAspectRatio = 0.62;
 
@@ -136,18 +142,6 @@ Size get _routeCardSize => Size(
       _routeCardMaxExtent,
       _routeCardMaxExtent / _routeCardAspectRatio,
     );
-
-/// Farger for flere last (A/B/C) på samme sjåfør — stabil per bil-id.
-const _multiLoadPalette = <Color>[
-  Color(0xFF1565C0),
-  Color(0xFF7B1FA2),
-  Color(0xFF00838F),
-  Color(0xFF558B2F),
-  Color(0xFFC62828),
-  Color(0xFFEF6C00),
-  Color(0xFF4527A0),
-  Color(0xFF00695C),
-];
 
 /// Felles popup: AUTO MASS (manuell PDF) og Ruter fra SAP (auto-import + samme UI).
 class PartnerRouteMassDispatchSheet extends StatefulWidget {
@@ -3915,12 +3909,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           _summaryTile('Totalt', '$_receivedRouteTotal', ui.accentDark),
           _summaryTile('I kø', '${_staged.length}', Colors.blueGrey.shade700),
           if (_skipped.isNotEmpty)
-            _summaryTile('Manuelle', '${_skipped.length}', Colors.orange.shade800),
+            _summaryTile('Manuelle', '${_skipped.length}', _routeColorMissingDriver),
           _summaryTile('Med skift', '$_readyShiftCount', Colors.green.shade700),
           _summaryTile('Mangler skift', '$_missingShiftCount', Colors.red.shade700),
           _summaryTile('Valgt', '${_selected.length}', Colors.blueGrey.shade700),
           if (_multiLoadDriverCount > 0)
-            _summaryTile('2+ last', '$_multiLoadDriverCount', Colors.orange.shade900),
+            _summaryTile('2+ last', '$_multiLoadDriverCount', _routeColorMultiLoad),
+          if (_duplicateExtraCount > 0)
+            _summaryTile('Dobbel', '$_duplicateExtraCount', _routeColorDuplicate),
         ],
       ),
     );
@@ -4046,9 +4042,45 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   Color? _multiLoadColorForVehicle(String? vehicleId) {
     if (vehicleId == null) return null;
-    final n = _staged.where((s) => s.partnerVehicleId == vehicleId).length;
-    if (n < 2) return null;
-    return _multiLoadPalette[vehicleId.hashCode.abs() % _multiLoadPalette.length];
+    final group = _staged.where((s) => s.partnerVehicleId == vehicleId).toList();
+    if (group.length < 2) return null;
+    if (_groupHasContentDuplicates(group)) return _routeColorDuplicate;
+    return _routeColorMultiLoad;
+  }
+
+  bool _groupHasContentDuplicates(List<PartnerRouteShare> routes) {
+    if (routes.length < 2) return false;
+    final counts = <String, int>{};
+    for (final s in routes) {
+      final fp = StagedRouteDuplicateHelper.fingerprint(s);
+      counts[fp] = (counts[fp] ?? 0) + 1;
+    }
+    return counts.values.any((n) => n >= 2);
+  }
+
+  bool _shareIsContentDuplicate(PartnerRouteShare share) =>
+      _duplicateRouteIds.contains(share.id);
+
+  /// Kort-/panel-farge: mangler sjåfør → rød, dobbel → oransje, 2+ last → lilla, ellers grønn.
+  Color _routeCardAccent({
+    required PartnerRouteShare share,
+    required bool missingDriver,
+  }) {
+    if (missingDriver) return _routeColorMissingDriver;
+    if (_shareIsContentDuplicate(share)) return _routeColorDuplicate;
+    final multi = _multiLoadColorForVehicle(share.partnerVehicleId);
+    if (multi != null) return multi;
+    return _routeColorNormal;
+  }
+
+  Color _driverGroupAccent(List<PartnerRouteShare> routes) {
+    if (routes.isEmpty) return _routeColorNormal;
+    if (routes.any((s) => s.partnerVehicleId == null)) {
+      return _routeColorMissingDriver;
+    }
+    if (_groupHasContentDuplicates(routes)) return _routeColorDuplicate;
+    if (routes.length >= 2) return _routeColorMultiLoad;
+    return _routeColorNormal;
   }
 
   String? _loadLetterForShare(PartnerRouteShare share) {
@@ -4063,7 +4095,34 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (group.length < 2) return null;
     final i = group.indexWhere((s) => s.id == share.id);
     if (i < 0) return null;
-    return 'Last ${String.fromCharCode(65 + i.clamp(0, 25))}';
+    final letter = String.fromCharCode(65 + i.clamp(0, 25));
+    if (_groupHasContentDuplicates(group)) return 'Dobbel $letter';
+    return 'Last $letter';
+  }
+
+  Future<void> _removeSelectedShares() async {
+    final ids = _selected.toList();
+    if (ids.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Slett valgte ruter?'),
+        content: Text(
+          'Fjerner ${ids.length} rute(r) fra køen. '
+          'Gjelder vanlige, dobler og ruter som mangler skift.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
+            child: const Text('Slett'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _removeSharesByIds(ids);
   }
 
   Widget _buildRoutesOverview(
@@ -4148,10 +4207,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Manuelle PDF-er (${_skipped.length}) — oransje kort, velg sjåfør direkte',
+            'Manuelle PDF-er (${_skipped.length}) — røde kort, velg sjåfør eller slett',
             style: TextStyle(
               fontWeight: FontWeight.w900,
-              color: Colors.orange.shade900,
+              color: Colors.red.shade900,
               fontSize: 13,
             ),
           ),
@@ -4162,7 +4221,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             itemCount: _skipped.length,
             gridDelegate: _routeCardGridDelegate,
             itemBuilder: (context, i) =>
-                _buildSkippedCompactCard(_skipped[i], ui),
+                _buildSkippedCompactCard(_skipped[i], ui, showDelete: true),
           ),
         ],
       ),
@@ -4276,14 +4335,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
     final shiftId = _effectiveShiftId(share.id);
     final start = _startByShare[share.id] ?? const TimeOfDay(hour: 6, minute: 0);
-    final groupColor = _multiLoadColorForVehicle(share.partnerVehicleId);
+    final accent = _routeCardAccent(share: share, missingDriver: false);
     final loadBadge = _loadLetterForShare(share);
 
     return PartnerMassRouteQueueCard(
       share: share,
       row: row,
-      accent: ui.accent,
-      accentDark: ui.accentDark,
+      accent: accent.withValues(alpha: 0.85),
+      accentDark: accent,
       checked: _selected.contains(share.id),
       shiftMissing: shiftId == null,
       busy: _busyUpload || _publishing,
@@ -4295,7 +4354,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       routeShifts: _routeShifts,
       maviFleet: _maviFleet,
       noteController: noteCtrl,
-      groupAccent: groupColor,
+      groupAccent: accent,
       loadBadge: loadBadge,
       notifyBadge: RouteNotifyDeliveryBadge(
         delivery: _deliveryByShare[share.id],
@@ -4324,6 +4383,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   Widget _buildOrphanRouteCard(PartnerRouteShare share, _MassUi ui) {
     final code = _maviCodeForShare(share);
     final suggested = _fleetRowForMaviCode(code);
+    final accent = _routeColorMissingDriver;
     return Material(
       color: Colors.white,
       elevation: 0,
@@ -4332,7 +4392,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       child: Ink(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.orange.shade500, width: 2.5),
+          border: Border.all(color: accent, width: 2.5),
           boxShadow: DriftProTheme.cardShadow,
         ),
         child: Column(
@@ -4353,7 +4413,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     left: 0,
                     top: 0,
                     bottom: 0,
-                    child: Container(width: 5, color: Colors.orange.shade700),
+                    child: Container(width: 5, color: accent),
                   ),
                   Positioned(
                     top: 6,
@@ -4361,15 +4421,15 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: Colors.orange.shade100,
+                        color: Colors.red.shade50,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        'Manuell',
+                        'Mangler sjåfør',
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
-                          color: Colors.orange.shade900,
+                          color: Colors.red.shade900,
                         ),
                       ),
                     ),
@@ -4382,11 +4442,25 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    share.title ?? share.pdfStoragePath.split('/').last,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          share.title ?? share.pdfStoragePath.split('/').last,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Slett rute',
+                        onPressed: _busyUpload ? null : () => _removeShare(share),
+                        icon: Icon(Icons.delete_outline, size: 18, color: Colors.red.shade700),
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                      ),
+                    ],
                   ),
                   if (code != null) ...[
                     const SizedBox(height: 2),
@@ -4396,7 +4470,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                           : 'Foreslått: ${MaviUnitCodes.compactLabel(code)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 10, color: Colors.orange.shade900),
+                      style: TextStyle(fontSize: 10, color: Colors.red.shade900),
                     ),
                   ],
                   const SizedBox(height: 6),
@@ -4549,15 +4623,31 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
                 child: Text(
                   multiN > 0
-                      ? '$multiN bil(er) med 2+ last — lastene vises side om side under hver bil'
-                      : 'Fordeling per bil',
+                      ? '$multiN bil(er) med 2+ last (lilla) · dobler (oransje) · mangler sjåfør (rød)'
+                      : 'Fordeling per bil · grønn = vanlig · rød = mangler sjåfør · oransje = dobbel',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: multiN > 0 ? Colors.orange.shade900 : Colors.grey.shade700,
+                    color: multiN > 0 ? _routeColorMultiLoad : Colors.grey.shade700,
                   ),
                 ),
               ),
+              if (_selected.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.tonalIcon(
+                      onPressed:
+                          _busyUpload || _publishing ? null : _removeSelectedShares,
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      label: Text('Slett valgte (${_selected.length})'),
+                      style: FilledButton.styleFrom(
+                        foregroundColor: Colors.red.shade800,
+                      ),
+                    ),
+                  ),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
                 child: Row(
@@ -4637,8 +4727,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         return (a.title ?? '').compareTo(b.title ?? '');
       });
     final multi = sorted.length >= 2;
-    final groupColor =
-        _multiLoadColorForVehicle(vehicleId) ?? ui.accentDark;
+    final isDupe = _groupHasContentDuplicates(sorted);
+    final groupColor = _driverGroupAccent(sorted);
     final mavi = row != null
         ? MaviUnitCodes.compactLabel(row.vehicle.unitCode)
         : (_maviCodeForShare(sorted.first) != null
@@ -4651,15 +4741,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final lanes =
         sorted.map(_stowingForShare).whereType<String>().toSet().toList()
           ..sort();
+    final badgeLabel = isDupe
+        ? '${sorted.length} DOBBEL'
+        : (multi ? '${sorted.length} LAST' : null);
 
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: multi ? groupColor : ui.accent.withValues(alpha: 0.3),
-          width: multi ? 2.5 : 1,
+          color: groupColor,
+          width: multi || isDupe ? 2.5 : 1.5,
         ),
-        color: multi ? groupColor.withValues(alpha: 0.06) : Colors.white,
+        color: groupColor.withValues(alpha: 0.06),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -4667,20 +4760,20 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         children: [
           Container(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            color: multi
-                ? groupColor.withValues(alpha: 0.12)
-                : ui.surfaceTint.withValues(alpha: 0.55),
+            color: groupColor.withValues(alpha: 0.12),
             child: Row(
               children: [
                 CircleAvatar(
                   radius: 14,
-                  backgroundColor: multi
-                      ? groupColor.withValues(alpha: 0.25)
-                      : ui.accent.withValues(alpha: 0.2),
+                  backgroundColor: groupColor.withValues(alpha: 0.25),
                   child: Icon(
-                    multi ? Icons.layers_outlined : Icons.local_shipping_outlined,
+                    isDupe
+                        ? Icons.copy_all_outlined
+                        : (multi
+                            ? Icons.layers_outlined
+                            : Icons.local_shipping_outlined),
                     size: 16,
-                    color: multi ? groupColor : ui.accentDark,
+                    color: groupColor,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -4698,9 +4791,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                         ),
                       ),
                       Text(
-                        multi
-                            ? '${sorted.length} last · Lane ${lanes.join(", ")} · ${hasPhone ? "SMS OK" : "uten telefon"}'
-                            : '1 rute · ${lanes.isNotEmpty ? "Lane ${lanes.first} · " : ""}${hasPhone ? "SMS OK" : "uten telefon"}',
+                        isDupe
+                            ? '${sorted.length} identiske · Lane ${lanes.join(", ")} · ${hasPhone ? "SMS OK" : "uten telefon"}'
+                            : multi
+                                ? '${sorted.length} last · Lane ${lanes.join(", ")} · ${hasPhone ? "SMS OK" : "uten telefon"}'
+                                : '1 rute · ${lanes.isNotEmpty ? "Lane ${lanes.first} · " : ""}${hasPhone ? "SMS OK" : "uten telefon"}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -4712,7 +4807,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     ],
                   ),
                 ),
-                if (multi)
+                if (badgeLabel != null)
                   Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -4721,7 +4816,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
-                      '${sorted.length} LAST',
+                      badgeLabel,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,
@@ -4973,7 +5068,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       child: Ink(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.orange.shade500, width: 2.5),
+          border: Border.all(color: _routeColorMissingDriver, width: 2.5),
           boxShadow: DriftProTheme.cardShadow,
         ),
         child: Column(
@@ -5000,7 +5095,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     left: 0,
                     top: 0,
                     bottom: 0,
-                    child: Container(width: 5, color: Colors.orange.shade700),
+                    child: Container(width: 5, color: _routeColorMissingDriver),
                   ),
                   Positioned(
                     top: 6,
@@ -5008,15 +5103,15 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: Colors.orange.shade100,
+                        color: Colors.red.shade50,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        'Manuell',
+                        'Mangler sjåfør',
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
-                          color: Colors.orange.shade900,
+                          color: Colors.red.shade900,
                         ),
                       ),
                     ),
@@ -5056,7 +5151,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                       _shortSkipReason(item.reason!),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 10, color: Colors.orange.shade900),
+                      style: TextStyle(fontSize: 10, color: Colors.red.shade900),
                     ),
                   ],
                   const SizedBox(height: 6),
