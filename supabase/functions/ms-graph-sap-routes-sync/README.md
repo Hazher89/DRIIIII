@@ -6,9 +6,11 @@ Synker PDF-er fra **Office 365** (`driftpro@mavilogistikk.no`) inn i `sap_route_
 
 1. App registration: **DriftPro Route Inbox** (single tenant MAVI Logistikk AS)
 2. Client secret opprettet
-3. API permission: Microsoft Graph **Application** → `Mail.Read`
+3. API permission: Microsoft Graph **Application** → `Mail.Read` + **`Mail.Send`**
 4. **Grant admin consent**
 5. (Anbefalt) Application Access Policy som begrenser appen til kun `driftpro@mavilogistikk.no`
+
+> `Mail.Send` brukes også av `send-email-outbox` (utgående varsler fra samme postkasse).
 
 ## Supabase secrets
 

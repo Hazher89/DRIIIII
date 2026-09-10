@@ -1,6 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { readSmtpConfig, sendViaSmtp } from "../_shared/domeneshop_smtp.ts";
 import { readResendSendConfig, sendViaResend } from "../_shared/resend_send.ts";
+import { readGraphSendConfig, sendViaGraph } from "../_shared/ms_graph_send.ts";
 
 type EmailRow = {
   id: string;
@@ -34,25 +35,38 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  const graphCfg = readGraphSendConfig();
   const resendCfg = readResendSendConfig();
   const smtpCfg = readSmtpConfig();
-  const useResend = !("error" in resendCfg);
-  const useSmtp = !("error" in smtpCfg);
+  const useGraph = !("error" in graphCfg);
+  const useResend = !useGraph && !("error" in resendCfg);
+  const useSmtp = !useGraph && !useResend && !("error" in smtpCfg);
 
-  if (!useResend && !useSmtp) {
+  if (!useGraph && !useResend && !useSmtp) {
     return json({
       error:
-        "Mangler RESEND_API_KEY (anbefalt) eller SMTP_USER/SMTP_PASS (fallback)",
+        "Mangler MS Graph (anbefalt), RESEND_API_KEY eller SMTP_USER/SMTP_PASS",
+      graph: "error" in graphCfg ? graphCfg.error : null,
+      resend: "error" in resendCfg ? resendCfg.error : null,
+      smtp: "error" in smtpCfg ? smtpCfg.error : null,
     }, 500);
   }
 
-  const provider = useResend ? "resend" : "smtp";
-  const testMode = useResend
+  const provider = useGraph ? "graph" : useResend ? "resend" : "smtp";
+  const testMode = useGraph
+    ? graphCfg.test
+    : useResend
     ? resendCfg.test
     : useSmtp
     ? smtpCfg.test
     : false;
-  const from = useResend ? resendCfg.from : useSmtp ? smtpCfg.from : "";
+  const from = useGraph
+    ? `"${graphCfg.fromName}" <${graphCfg.mailbox}>`
+    : useResend
+    ? resendCfg.from
+    : useSmtp
+    ? smtpCfg.from
+    : "";
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -100,6 +114,10 @@ Deno.serve(async (req) => {
     subject: string,
     body: string,
   ): Promise<SendResult> {
+    if (useGraph) {
+      const r = await sendViaGraph(graphCfg, to, subject, body);
+      return r.ok ? { ok: true } : { ok: false, error: r.error };
+    }
     if (useResend) {
       const r = await sendViaResend(resendCfg, to, subject, body);
       return r.ok ? { ok: true } : { ok: false, error: r.error };
@@ -133,9 +151,10 @@ Deno.serve(async (req) => {
       details.push({ id: row.id, ok: false, error: result.error });
     }
 
-    // Resend: 5 req/s — SMTP: ~1/s hos Domeneshop
+    // Graph ~4/s soft; Resend 5/s; SMTP ~1/s
     if (!testMode && pending.length > 1) {
-      await new Promise((r) => setTimeout(r, useResend ? 220 : 1100));
+      const delayMs = useGraph ? 280 : useResend ? 220 : 1100;
+      await new Promise((r) => setTimeout(r, delayMs));
     }
   }
 
