@@ -14,6 +14,7 @@ import 'partner_route_dispatch_history_screen.dart';
 import 'widgets/partner_available_vehicles_bar.dart';
 import 'widgets/partner_route_master_scheduler.dart';
 import 'widgets/partner_route_pdf_search_panel.dart';
+import 'widgets/partner_route_planner_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
 /// Ruteplanlegging: én arbeidsflate for fordeling + publisering.
@@ -37,6 +38,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
   List<FleetPartnerVehicleRow> _fleet = [];
   List<PartnerRouteShare> _sharesToday = [];
   bool _loading = true;
+  bool _chatEnabled = true;
 
   @override
   void initState() {
@@ -57,10 +59,16 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
         fromDay: day,
         toDay: day,
       );
+      var chatOn = true;
+      try {
+        final flag = await ChatFlagService.fetchForCompany(cid);
+        chatOn = flag.maviEnabled;
+      } catch (_) {}
       if (mounted) {
         setState(() {
           _fleet = PartnerService.filterMaviFleetOnly(fleet);
           _sharesToday = shares;
+          _chatEnabled = chatOn;
           if (!silent) _loading = false;
         });
       }
@@ -91,29 +99,51 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
     );
   }
 
-  Future<void> _openChat() async {
+  void _openStats() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
+    );
+  }
+
+  void _openChat() {
     context.push(AppPaths.partnersChat);
   }
 
-  Widget _chatAction() {
-    return FutureBuilder<String?>(
-      future: SupabaseService.getCurrentCompanyId(),
-      builder: (context, cidSnap) {
-        final cid = cidSnap.data;
-        if (cid == null) return const SizedBox.shrink();
-        return StreamBuilder<ChatFlag>(
-          stream: ChatFlagService.watch(cid),
-          builder: (context, snap) {
-            if (!(snap.data?.maviEnabled ?? true)) return const SizedBox.shrink();
-            return IconButton(
-              tooltip: 'Meldinger',
-              onPressed: _openChat,
-              icon: const Icon(Icons.forum_outlined),
-            );
-          },
-        );
-      },
-    );
+  List<RoutePlannerTool> _tools() {
+    return [
+      RoutePlannerTool(
+        icon: Icons.history_rounded,
+        label: 'Historikk',
+        onPressed: _openHistory,
+      ),
+      RoutePlannerTool(
+        icon: Icons.schedule_outlined,
+        label: 'Skiftplan',
+        onPressed: _openShiftAdmin,
+      ),
+      RoutePlannerTool(
+        icon: Icons.insights_outlined,
+        label: 'MAVI-statistikk',
+        onPressed: _openStats,
+        emphasized: true,
+      ),
+      RoutePlannerTool(
+        icon: Icons.manage_search_outlined,
+        label: 'Søk PDF',
+        onPressed: _openPdfSearch,
+      ),
+      if (_chatEnabled)
+        RoutePlannerTool(
+          icon: Icons.forum_outlined,
+          label: 'Meldinger',
+          onPressed: _openChat,
+        ),
+      RoutePlannerTool(
+        icon: Icons.refresh_rounded,
+        label: 'Oppdater',
+        onPressed: () => reload(),
+      ),
+    ];
   }
 
   @override
@@ -150,79 +180,11 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-              child: DriftProClient.isMobile
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).push<void>(
-                              MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
-                            );
-                          },
-                          icon: const Icon(Icons.insights_outlined, size: 18),
-                          label: const Text('MAVI-statistikk'),
-                        ),
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: _openHistory,
-                          icon: const Icon(Icons.history_rounded, size: 18),
-                          label: const Text('Rutehistorikk'),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: _openShiftAdmin,
-                                icon: const Icon(Icons.schedule_outlined, size: 18),
-                                label: const Text('Skiftplan'),
-                              ),
-                            ),
-                            _chatAction(),
-                            IconButton(
-                              tooltip: 'Søk i rute-PDF',
-                              onPressed: _openPdfSearch,
-                              icon: const Icon(Icons.manage_search_outlined),
-                            ),
-                          ],
-                        ),
-                      ],
-                    )
-                  : Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () {
-                              Navigator.of(context).push<void>(
-                                MaterialPageRoute(builder: (_) => const FleetRouteDriverStatsScreen()),
-                              );
-                            },
-                            icon: const Icon(Icons.insights_outlined, size: 18),
-                            label: const Text('MAVI-statistikk'),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        OutlinedButton.icon(
-                          onPressed: _openHistory,
-                          icon: const Icon(Icons.history_rounded, size: 18),
-                          label: const Text('Historikk'),
-                        ),
-                        const SizedBox(width: 6),
-                        TextButton.icon(
-                          onPressed: _openShiftAdmin,
-                          icon: const Icon(Icons.schedule_outlined, size: 18),
-                          label: const Text('Skiftplan'),
-                        ),
-                        IconButton(
-                          tooltip: 'Søk i rute-PDF',
-                          onPressed: _openPdfSearch,
-                          icon: const Icon(Icons.manage_search_outlined),
-                        ),
-                        _chatAction(),
-                      ],
-                    ),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+              child: RoutePlannerUi.toolChipGroup(
+                context: context,
+                tools: _tools(),
+              ),
             ),
           ),
         ],
@@ -233,20 +195,6 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Ruter & planlegging'),
-        actions: [
-          _chatAction(),
-          IconButton(
-            tooltip: 'Rutehistorikk',
-            onPressed: _openHistory,
-            icon: const Icon(Icons.history_rounded),
-          ),
-          IconButton(
-            tooltip: 'Søk i rute-PDF',
-            onPressed: _openPdfSearch,
-            icon: const Icon(Icons.manage_search_outlined),
-          ),
-          IconButton(tooltip: 'Oppdater', onPressed: reload, icon: const Icon(Icons.refresh_rounded)),
-        ],
       ),
       body: body,
     );

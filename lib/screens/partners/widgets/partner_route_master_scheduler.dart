@@ -546,7 +546,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             ? '$_sapInboxPending PDF mottatt — ikke sendt ennå'
             : hasQueue
                 ? '$_sapStagedCount i kø — klar til kontroll'
-                : 'Hent SAP-mail og send ruter',
+                : 'Ingen nye',
         color: const Color(0xFF1565C0),
         badge: sapBadge,
         badgeColor: const Color(0xFFFFC107),
@@ -733,49 +733,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               onPickDay: _busy ? null : _pickFocusDay,
             ),
             const SizedBox(height: 12),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final sideBySide = constraints.maxWidth >= 720;
-                if (sideBySide) {
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: RoutePlannerUi.searchField(controller: _searchCtrl),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        flex: 3,
-                        child: RoutePlannerUi.focusDayActions(
-                          context: context,
-                          focusDay: _focusDay,
-                          pendingAck: _pendingAckCountForDay(_focusDay),
-                          routeCount: _weekRouteCount(_focusDay),
-                          onNudge: _busy ? null : () => _nudgePendingForDay(_focusDay),
-                          onClear: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
-                        ),
-                      ),
-                    ],
-                  );
-                }
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    RoutePlannerUi.searchField(controller: _searchCtrl),
-                    const SizedBox(height: 10),
-                    RoutePlannerUi.focusDayActions(
-                      context: context,
-                      focusDay: _focusDay,
-                      pendingAck: _pendingAckCountForDay(_focusDay),
-                      routeCount: _weekRouteCount(_focusDay),
-                      onNudge: _busy ? null : () => _nudgePendingForDay(_focusDay),
-                      onClear: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
-                    ),
-                  ],
-                );
-              },
-            ),
+            RoutePlannerUi.searchField(controller: _searchCtrl),
             const SizedBox(height: 14),
             RoutePlannerUi.actionGrid(
               context: context,
@@ -983,7 +941,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         ...widget.leadingSlivers,
         SliverToBoxAdapter(child: _buildMobileToolbar(isDark, borderCol)),
         SliverToBoxAdapter(child: _buildMobileDayStrip(isDark, borderCol)),
-        SliverToBoxAdapter(child: _buildMobileDayActions(isDark)),
         if (_filteredFleet.isEmpty)
           const SliverToBoxAdapter(
             child: Padding(
@@ -1159,21 +1116,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             );
           },
         ),
-      ),
-    );
-  }
-
-  Widget _buildMobileDayActions(bool isDark) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-      child: RoutePlannerUi.focusDayActions(
-        context: context,
-        focusDay: _focusDay,
-        pendingAck: _pendingAckCountForDay(_focusDay),
-        routeCount: _weekRouteCount(_focusDay),
-        compact: true,
-        onNudge: _busy ? null : () => _nudgePendingForDay(_focusDay),
-        onClear: _busy ? null : () => _clearAllRoutesForDay(_focusDay),
       ),
     );
   }

@@ -5,9 +5,10 @@ import '../../../core/config/driftpro_client.dart';
 import '../../../core/constants/mavi_fleet_roles.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner_links.dart';
 
-/// Ledige MAVI-biler — 4 kompakte knapper + MAVI-liste.
+/// Ledige MAVI-biler — kompakt status per biltype.
 class PartnerAvailableVehiclesPanel extends StatefulWidget {
   final List<FleetPartnerVehicleRow> fleet;
   final List<PartnerRouteShare> sharesToday;
@@ -68,27 +69,41 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
     final role = MaviFleetRoles.all[_roleIndex];
     final list = byRole[role] ?? [];
     final untyped = available.where((r) => MaviFleetRoles.normalize(r.vehicle.fleetRoles).isEmpty).length;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF8E1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFFB300).withValues(alpha: 0.5)),
+        color: isDark ? const Color(0xFF1A222C) : const Color(0xFFF7F9FB),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Text(
-                'Ledige i dag · $dayLabel',
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              Icon(
+                Icons.directions_car_outlined,
+                size: 16,
+                color: DriftProTheme.primaryGreen,
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ledige i dag · $dayLabel',
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                ),
+              ),
               Text(
                 '${available.length} totalt',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade600,
+                ),
               ),
             ],
           ),
@@ -100,7 +115,7 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
                 style: TextStyle(fontSize: 10, color: Colors.orange.shade800),
               ),
             ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           DriftProClient.isMobile
               ? SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -128,7 +143,7 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
                     final selected = _roleIndex == i;
                     return Expanded(
                       child: Padding(
-                        padding: EdgeInsets.only(left: i == 0 ? 0 : 4),
+                        padding: EdgeInsets.only(left: i == 0 ? 0 : 6),
                         child: _roleFilterChip(
                           role: r,
                           count: n,
@@ -139,14 +154,16 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
                     );
                   }),
                 ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Container(
             constraints: const BoxConstraints(maxHeight: 88),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade300),
+              color: isDark ? Colors.black26 : Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isDark ? Colors.white10 : const Color(0xFFE8EEF4),
+              ),
             ),
             child: list.isEmpty
                 ? Center(
@@ -164,9 +181,11 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
                         return Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFE8F5E9),
+                            color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFF81C784)),
+                            border: Border.all(
+                              color: DriftProTheme.primaryGreen.withValues(alpha: 0.28),
+                            ),
                           ),
                           child: Text(
                             mavi,
@@ -189,15 +208,25 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
     required VoidCallback onTap,
   }) {
     return Material(
-      color: selected ? const Color(0xFFE65100) : Colors.white,
-      borderRadius: BorderRadius.circular(8),
+      color: selected
+          ? DriftProTheme.primaryGreen
+          : Colors.white.withValues(alpha: 0.9),
+      borderRadius: BorderRadius.circular(10),
       child: InkWell(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         onTap: onTap,
-        child: Padding(
+        child: Container(
           padding: EdgeInsets.symmetric(
             vertical: DriftProClient.isMobile ? 10 : 8,
             horizontal: DriftProClient.isMobile ? 14 : 4,
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected
+                  ? DriftProTheme.primaryGreen
+                  : const Color(0xFFE2E8F0),
+            ),
           ),
           child: Column(
             children: [
@@ -206,7 +235,7 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 16,
-                  color: selected ? Colors.white : const Color(0xFFE65100),
+                  color: selected ? Colors.white : DriftProTheme.primaryGreen,
                 ),
               ),
               Text(

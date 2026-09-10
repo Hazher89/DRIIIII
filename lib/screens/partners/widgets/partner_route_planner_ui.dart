@@ -137,104 +137,30 @@ class RoutePlannerUi {
     );
   }
 
-  static Widget focusDayActions({
+  /// Samlet verktøyrad — like chips, grupperte handlinger.
+  static Widget toolChipGroup({
     required BuildContext context,
-    required DateTime focusDay,
-    required int pendingAck,
-    required int routeCount,
-    required VoidCallback? onNudge,
-    required VoidCallback? onClear,
-    bool compact = false,
+    required List<RoutePlannerTool> tools,
   }) {
-    if (pendingAck == 0 && routeCount == 0) {
-      return focusDayChip(context, focusDay);
-    }
-
     final drift = context.driftColors;
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: drift.surfaceMuted,
         borderRadius: BorderRadius.circular(_radius),
         border: Border.all(color: drift.borderSubtle),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
         children: [
-          Row(
-            children: [
-              Icon(Icons.event_available_outlined, size: 18, color: drift.textMuted),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Valgt dag · ${DateFormat('EEEE d. MMMM', 'nb').format(focusDay)}',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: compact ? 12 : 13,
-                    color: drift.textPrimary,
-                  ),
-                ),
-              ),
-              if (routeCount > 0)
-                _CountBadge(
-                  label: '$routeCount rute${routeCount == 1 ? '' : 'r'}',
-                  color: DriftProTheme.primaryGreen,
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (pendingAck > 0)
-                _SoftActionButton(
-                  icon: Icons.notifications_active_outlined,
-                  label: 'Send purring',
-                  detail: '$pendingAck venter',
-                  color: const Color(0xFFE65100),
-                  background: const Color(0xFFFFF3E0),
-                  onPressed: onNudge,
-                ),
-              if (routeCount > 0)
-                _SoftActionButton(
-                  icon: Icons.delete_sweep_outlined,
-                  label: 'Tøm dag',
-                  detail: '$routeCount rute${routeCount == 1 ? '' : 'r'}',
-                  color: DriftProTheme.error,
-                  background: const Color(0xFFFFEBEE),
-                  onPressed: onClear,
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  static Widget focusDayChip(BuildContext context, DateTime focusDay) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(99),
-        border: Border.all(
-          color: DriftProTheme.primaryGreen.withValues(alpha: 0.25),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.event_outlined, size: 16, color: DriftProTheme.primaryGreen),
-          const SizedBox(width: 6),
-          Text(
-            DateFormat('EEEE d. MMM', 'nb').format(focusDay),
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-              color: DriftProTheme.primaryGreenDark,
+          for (final t in tools)
+            _ToolChip(
+              icon: t.icon,
+              label: t.label,
+              onPressed: t.onPressed,
+              emphasized: t.emphasized,
             ),
-          ),
         ],
       ),
     );
@@ -330,17 +256,21 @@ class RoutePlannerUi {
         children: [
           Row(
             children: [
-              Text(
-                '$accepted av $total akseptert',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                  letterSpacing: -0.2,
+              Expanded(
+                child: Text(
+                  '$accepted av $total akseptert',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 16,
+                    letterSpacing: -0.2,
+                  ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               Text(
-                '$pct %',
+                '$pct%',
                 style: TextStyle(
                   fontWeight: FontWeight.w900,
                   fontSize: 16,
@@ -487,6 +417,20 @@ class RoutePlannerUi {
 
 enum RoutePlannerViewMode { week, month }
 
+class RoutePlannerTool {
+  const RoutePlannerTool({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.emphasized = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final bool emphasized;
+}
+
 class RoutePlannerAction {
   const RoutePlannerAction({
     required this.icon,
@@ -507,6 +451,64 @@ class RoutePlannerAction {
   final String? badge;
   final Color? badgeColor;
   final bool glow;
+}
+
+class _ToolChip extends StatelessWidget {
+  const _ToolChip({
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+    this.emphasized = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback? onPressed;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final drift = context.driftColors;
+    final enabled = onPressed != null;
+    return Material(
+      color: emphasized
+          ? DriftProTheme.primaryGreen.withValues(alpha: 0.12)
+          : drift.card,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: enabled
+                    ? (emphasized ? DriftProTheme.primaryGreen : drift.textPrimary)
+                    : drift.iconMuted,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: enabled
+                      ? (emphasized
+                          ? DriftProTheme.primaryGreenDark
+                          : drift.textPrimary)
+                      : drift.textMuted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ActionCard extends StatelessWidget {
@@ -644,63 +646,6 @@ class _NavPill extends StatelessWidget {
         border: Border.all(color: Colors.grey.withValues(alpha: 0.25)),
       ),
       child: child,
-    );
-  }
-}
-
-class _SoftActionButton extends StatelessWidget {
-  const _SoftActionButton({
-    required this.icon,
-    required this.label,
-    required this.detail,
-    required this.color,
-    required this.background,
-    required this.onPressed,
-  });
-
-  final IconData icon;
-  final String label;
-  final String detail;
-  final Color color;
-  final Color background;
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: background,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 18, color: color),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13,
-                      color: color,
-                    ),
-                  ),
-                  Text(
-                    detail,
-                    style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.8)),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

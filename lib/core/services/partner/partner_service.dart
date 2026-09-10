@@ -35,6 +35,7 @@ import 'route_pdf_auto_assign.dart';
 import 'route_pdf_bytes_cache.dart';
 import 'route_shift_resolver.dart';
 import 'fleet_mavi_day_sync.dart';
+import 'staged_route_duplicate_helper.dart';
 import 'vehicle_inspection_pdf.dart';
 
 class PartnerLifecycleReport {
@@ -3472,77 +3473,138 @@ class PartnerService {
   }
 
   /// Pending som allerede finnes som rute (kø ELLER sendt) — marker importert.
-  /// Fjerner også staged-duplikater som har samme PDF som en allerede sendt rute
-  /// (typisk etter feil «reopen» som importerte på nytt etter utsending).
+  /// Fjerner staged-duplikater etter feil reopen/re-import (ny path / samme bil+dag).
   static Future<int> reconcileSapInboxWithStagedQueue(String companyId) async {
     if (!_ok) return 0;
     var reconciled = 0;
 
     final allShares = await fetchRouteSharesForCompany(companyId, limit: 800);
-    final staged = allShares.where((s) => s.isStaged).toList();
+    var staged = allShares.where((s) => s.isStaged).toList();
     final published = allShares.where((s) => !s.isStaged).toList();
     final publishedPaths = {
       for (final s in published)
         if (s.pdfStoragePath.trim().isNotEmpty) s.pdfStoragePath.trim(),
     };
-    final publishedById = {for (final s in published) s.id: s};
 
-    // Rydd staged-kladd som er duplikat av allerede sendt PDF.
+    // Sendte SAP-ruter indeksert på bil+kalenderdag.
+    final publishedByVehicleDay = <String, PartnerRouteShare>{};
+    for (final s in published) {
+      final vid = s.partnerVehicleId;
+      if (vid == null || vid.isEmpty) continue;
+      final isSap =
+          (s.stagedImportSource ?? stagedImportManual) == stagedImportSap;
+      if (!isSap && s.pdfStoragePath.trim().isEmpty) continue;
+      final key = '$vid|${_dayOnly(routeDayForShare(s)).toIso8601String()}';
+      publishedByVehicleDay.putIfAbsent(key, () => s);
+    }
+
+    // Rydd staged SAP-kladd som er duplikat av allerede sendt rute.
     for (final s in List<PartnerRouteShare>.from(staged)) {
+      if ((s.stagedImportSource ?? stagedImportManual) != stagedImportSap) {
+        continue;
+      }
       final path = s.pdfStoragePath.trim();
-      if (path.isEmpty || !publishedPaths.contains(path)) continue;
-      if ((s.stagedImportSource ?? stagedImportManual) != stagedImportSap) continue;
+      final vid = s.partnerVehicleId;
+      final dayKey = vid == null || vid.isEmpty
+          ? null
+          : '$vid|${_dayOnly(routeDayForShare(s)).toIso8601String()}';
+      final pathDup = path.isNotEmpty && publishedPaths.contains(path);
+      final dayDup =
+          dayKey != null && publishedByVehicleDay.containsKey(dayKey);
+      if (!pathDup && !dayDup) continue;
       try {
         await deleteRouteShare(s);
       } catch (_) {}
     }
 
+    // Oppdater staged-liste etter eventuell sletting.
+    staged = (await fetchStagedRouteShares(companyId));
+
     final pending = await fetchSapRouteInboxPending(companyId);
     if (pending.isEmpty) return reconciled;
 
-    final stagedFresh = await fetchStagedRouteShares(companyId);
+    // Tidligere håndterte inbox-rader (hash-dedup).
+    final recentHandled = await fetchSapRouteInboxRecent(companyId, limit: 400);
+    final handledByHash = <String, SapRouteInboxItem>{};
+    for (final row in recentHandled) {
+      if (row.status != 'imported' && row.status != 'duplicate') continue;
+      final h = (row.contentSha256 ?? '').trim();
+      if (h.isNotEmpty) handledByHash.putIfAbsent(h, () => row);
+    }
+
+    final fleet = await fetchCompanyFleet(companyId, forPlanning: true);
+    final vehicleIdByMavi = <String, String>{};
+    for (final row in fleet) {
+      final code = MaviUnitCodes.normalize(row.vehicle.unitCode);
+      if (code.isNotEmpty) vehicleIdByMavi[code] = row.vehicle.id;
+    }
+
     final pathToShare = <String, PartnerRouteShare>{};
-    for (final s in [...stagedFresh, ...published]) {
+    for (final s in [...staged, ...published]) {
       final p = s.pdfStoragePath.trim();
       if (p.isNotEmpty) pathToShare.putIfAbsent(p, () => s);
     }
     final shareById = {
-      for (final s in [...stagedFresh, ...published]) s.id: s,
+      for (final s in [...staged, ...published]) s.id: s,
     };
 
     for (final item in pending) {
+      PartnerRouteShare? match;
+
       if (item.importedRouteShareId != null) {
-        final linked = shareById[item.importedRouteShareId];
-        if (linked != null) {
-          await markSapRouteInboxImported(
-            inboxId: item.id,
-            routeShareId: linked.id,
-            detectedMaviCode: item.detectedMaviCode,
-          );
-          reconciled++;
-          continue;
-        }
+        match = shareById[item.importedRouteShareId];
       }
 
-      PartnerRouteShare? match;
       final itemPath = item.pdfStoragePath.trim();
-      if (itemPath.isNotEmpty) {
-        match = pathToShare[itemPath];
-      }
+      match ??= itemPath.isNotEmpty ? pathToShare[itemPath] : null;
+
       if (match == null) {
-        for (final s in stagedFresh) {
+        for (final s in staged) {
           if (_sapInboxMatchesStagedShare(item, s)) {
             match = s;
             break;
           }
         }
       }
-      // Fallback: sendt rute med samme storage-path.
-      if (match == null && itemPath.isNotEmpty) {
-        match = publishedById.values
-            .where((s) => s.pdfStoragePath.trim() == itemPath)
-            .firstOrNull;
+
+      // content_sha256 ↔ allerede importert/duplikat, eller staged-fingerprint.
+      final hash = (item.contentSha256 ?? '').trim();
+      if (match == null && hash.isNotEmpty) {
+        final prior = handledByHash[hash];
+        if (prior?.importedRouteShareId != null) {
+          match = shareById[prior!.importedRouteShareId!];
+        }
+        if (match == null) {
+          match = StagedRouteDuplicateHelper.findDuplicateInStaged(
+            staged: [...staged, ...published],
+            contentSha256: hash,
+          );
+        }
+        // Hash kjent som håndtert, men share borte — marker duplicate uten share.
+        if (match == null && prior != null) {
+          try {
+            await _client.from('sap_route_inbox').update({
+              'status': 'duplicate',
+              'reject_reason': 'Duplikat av allerede håndtert SAP-PDF',
+              'processed_at': DateTime.now().toUtc().toIso8601String(),
+            }).eq('id', item.id);
+            reconciled++;
+          } catch (_) {}
+          continue;
+        }
       }
+
+      // MAVI + mottaksdag allerede dekket av sendt rute.
+      if (match == null) {
+        final mavi = MaviUnitCodes.normalize(item.detectedMaviCode ?? '');
+        final vid = mavi.isNotEmpty ? vehicleIdByMavi[mavi] : null;
+        if (vid != null) {
+          final day = _dayOnly(item.receivedAt.toLocal());
+          final key = '$vid|${day.toIso8601String()}';
+          match = publishedByVehicleDay[key];
+        }
+      }
+
       if (match == null) continue;
 
       await markSapRouteInboxImported(
@@ -3553,7 +3615,10 @@ class PartnerService {
       if (match.isStaged &&
           (match.stagedImportSource ?? stagedImportManual) != stagedImportSap) {
         try {
-          await updateRouteShareFields(match.id, {'staged_import_source': stagedImportSap});
+          await updateRouteShareFields(
+            match.id,
+            {'staged_import_source': stagedImportSap},
+          );
         } catch (_) {}
       }
       reconciled++;
