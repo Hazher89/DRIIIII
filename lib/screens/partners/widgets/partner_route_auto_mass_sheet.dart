@@ -121,12 +121,21 @@ enum _RouteQueueFilter { all, missingShift, ready, selected }
 
 enum _DateQueueAction { clearAll, publishNoSms, publishSms }
 
+const _routeCardMaxExtent = 240.0;
+const _routeCardAspectRatio = 0.62;
+
 const _routeCardGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
-  maxCrossAxisExtent: 260,
-  childAspectRatio: 0.62,
+  maxCrossAxisExtent: _routeCardMaxExtent,
+  childAspectRatio: _routeCardAspectRatio,
   crossAxisSpacing: 10,
   mainAxisSpacing: 10,
 );
+
+/// Samme kortstørrelse som grid (manuelle øverst = multi-last under).
+Size get _routeCardSize => Size(
+      _routeCardMaxExtent,
+      _routeCardMaxExtent / _routeCardAspectRatio,
+    );
 
 /// Farger for flere last (A/B/C) på samme sjåfør — stabil per bil-id.
 const _multiLoadPalette = <Color>[
@@ -293,6 +302,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   @override
   void initState() {
     super.initState();
+    RoutePdfThumbPanController.instance.reset();
     _routeDate = DateTime(
       widget.initialRouteDate.year,
       widget.initialRouteDate.month,
@@ -4520,6 +4530,26 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   ),
                 ),
               ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.touch_app_outlined,
+                        size: 16, color: Colors.grey.shade700),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Hold inne og dra på PDF-en for å justere alle forhåndsvisninger (sjåfør/strekkode).',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => RoutePdfThumbPanController.instance.reset(),
+                      child: const Text('Nullstill zoom'),
+                    ),
+                  ],
+                ),
+              ),
               SwitchListTile(
                 contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                 dense: true,
@@ -4676,31 +4706,17 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final w = constraints.maxWidth;
-                final cols = sorted.length == 1
-                    ? 1
-                    : (w >= 900
-                        ? (sorted.length >= 3 ? 3 : 2)
-                        : (w >= 520 ? 2 : 1));
-                final gap = 10.0;
-                final cardW = cols == 1
-                    ? w
-                    : (w - gap * (cols - 1)) / cols;
-                // Kompakte kort — samme topp-utsnitt uansett bredde (ikke 460px-høye).
-                final cardH = cols == 1
-                    ? 340.0
-                    : (cardW / 0.62).clamp(250.0, 340.0);
-
+            child: Builder(
+              builder: (context) {
+                final size = _routeCardSize;
                 return Wrap(
-                  spacing: gap,
-                  runSpacing: gap,
+                  spacing: 10,
+                  runSpacing: 10,
                   children: [
                     for (var i = 0; i < sorted.length; i++)
                       SizedBox(
-                        width: cardW,
-                        height: cardH,
+                        width: size.width,
+                        height: size.height,
                         child: row != null
                             ? _buildMassRouteCard(sorted[i], row, ui)
                             : _buildOrphanRouteCard(sorted[i], ui),
