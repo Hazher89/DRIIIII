@@ -619,7 +619,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     final p = _partner!;
     final isOwner = widget.portalAccountKind == 'owner';
     final isStaff = widget.portalAccountKind == 'staff';
-    void goToRoutes({int tabIndex = 1, String? vehicleId}) {
+    void goToRoutes({int tabIndex = 0, String? vehicleId}) {
       setState(() {
         _index = 1;
         _routesFocus = OwnerPortalRoutesFocus(tabIndex: tabIndex, vehicleId: vehicleId);

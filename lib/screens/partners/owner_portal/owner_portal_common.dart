@@ -87,14 +87,11 @@ class OwnerPortalData {
   List<PartnerRouteShare> get routesToday =>
       routes.where(ownerRouteIsToday).toList();
 
+  /// Kun ruter som trenger aksept (ikke alle kommende).
   List<PartnerRouteShare> get routesNew {
-    final active = routes.where(ownerRouteIsActive).toList();
-    active.sort((a, b) {
-      if (a.requiresAck && !b.requiresAck) return -1;
-      if (b.requiresAck && !a.requiresAck) return 1;
-      return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
-    });
-    return active;
+    final pending = routes.where(ownerRouteNeedsPortalAck).toList();
+    pending.sort((a, b) => ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b)));
+    return pending;
   }
 
   List<PartnerRouteShare> get routesUpcoming =>

@@ -154,9 +154,9 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                         ),
                       PartnerSmartAction(
                         label: 'Se alle ruter',
-                        hint: 'Kommende, i dag og tidligere',
+                        hint: 'Nye ruter og tidligere',
                         icon: Icons.map_outlined,
-                        onTap: () => widget.onGoToRoutes?.call(tabIndex: 1),
+                        onTap: () => widget.onGoToRoutes?.call(tabIndex: 0),
                       ),
                       PartnerSmartAction(
                         label: 'Dokumenter og avtaler',
@@ -249,7 +249,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                       onTap: widget.onGoToRoutes == null
                           ? null
                           : () => widget.onGoToRoutes!(
-                                tabIndex: 1,
+                                tabIndex: 0,
                                 vehicleId: s.vehicle.id,
                               ),
                     ),
@@ -285,7 +285,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
       );
       return;
     }
-    widget.onGoToRoutes?.call(tabIndex: 1);
+    widget.onGoToRoutes?.call(tabIndex: 0);
   }
 
   Widget _pendingRoutesBanner(BuildContext context, {VoidCallback? onTap}) {

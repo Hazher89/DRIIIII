@@ -5,8 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/auth/employee_oauth_sign_in.dart';
-import '../../core/config/driftpro_client.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/services/employee_auth_service.dart';
 import '../../core/services/partner/partner_service.dart';
@@ -150,7 +148,7 @@ class _GateCard extends StatelessWidget {
   }
 }
 
-/// Intern innlogging — ansattnummer (Google kun på web).
+/// Intern innlogging — ansattnummer og passord.
 class EmployeeLoginScreen extends StatefulWidget {
   const EmployeeLoginScreen({super.key});
 
@@ -232,44 +230,8 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
     }
   }
 
-  Future<void> _oauth(OAuthProvider provider) async {
-    if (_loading) return;
-    setState(() => _loading = true);
-    try {
-      final launched = await startEmployeeOAuthSignIn(provider);
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Kunne ikke åpne innlogging. Prøv igjen eller sjekk popup-blokkering.',
-            ),
-            backgroundColor: DriftProTheme.error,
-          ),
-        );
-        return;
-      }
-      // OAuth via deep link + auth listener.
-      if (Supabase.instance.client.auth.currentSession != null) {
-        await SupabaseService.ensureSessionLinkedToCompany();
-        if (mounted) _leaveLoginScreen();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Innlogging feilet: $e'),
-            backgroundColor: DriftProTheme.error,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return AuthScreenShell(
       showBack: true,
       child: Column(
@@ -277,11 +239,8 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
           Text('MAVI ansatte', style: authTitleStyle(context)),
           const SizedBox(height: 8),
           Text(
-            DriftProClient.isMobile
-                ? 'Logg inn med ansattnummer og passord. '
-                    'Nye kontoer får standard ansatt-tilgang.'
-                : 'Logg inn med ansattnummer, eller fortsett med Google. '
-                    'Nye kontoer får standard ansatt-tilgang.',
+            'Logg inn med ansattnummer og passord. '
+            'Nye kontoer får standard ansatt-tilgang.',
             textAlign: TextAlign.center,
             style: authMutedStyle(context, size: 12),
           ),
@@ -336,95 +295,7 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
                     ),
             ),
           ),
-          if (!DriftProClient.isMobile) ...[
-            const SizedBox(height: 28),
-            Row(
-              children: [
-                Expanded(
-                  child: Divider(color: isDark ? Colors.white24 : Colors.black12),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('eller', style: authMutedStyle(context, size: 12)),
-                ),
-                Expanded(
-                  child: Divider(color: isDark ? Colors.white24 : Colors.black12),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-            _AuthButton(
-              loading: _loading,
-              onTap: () => _oauth(OAuthProvider.google),
-              background: isDark ? Colors.white : Colors.grey[900]!,
-              foreground: isDark ? Colors.black : Colors.white,
-              icon: Icons.g_mobiledata_rounded,
-              label: 'Fortsett med Google',
-            ),
-          ],
         ],
-      ),
-    );
-  }
-}
-
-class _AuthButton extends StatelessWidget {
-  final bool loading;
-  final VoidCallback onTap;
-  final Color background;
-  final Color foreground;
-  final IconData icon;
-  final String label;
-
-  const _AuthButton({
-    required this.loading,
-    required this.onTap,
-    required this.background,
-    required this.foreground,
-    required this.icon,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: Material(
-        color: background,
-        borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-        child: InkWell(
-          onTap: loading ? null : onTap,
-          borderRadius: BorderRadius.circular(DriftProTheme.radiusLg),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: loading
-                ? Center(
-                    child: SizedBox(
-                      height: 22,
-                      width: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: foreground,
-                      ),
-                    ),
-                  )
-                : Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(icon, color: foreground, size: 26),
-                      const SizedBox(width: 10),
-                      Text(
-                        label,
-                        style: TextStyle(
-                          color: foreground,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-          ),
-        ),
       ),
     );
   }

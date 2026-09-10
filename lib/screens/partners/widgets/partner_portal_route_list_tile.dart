@@ -32,38 +32,54 @@ class PartnerPortalRouteListTile extends StatelessWidget {
     final start = route.routeStartAt != null
         ? NbDateFormat.format(route.routeStartAt!.toLocal(), 'HH:mm')
         : '—';
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      elevation: pending ? 3 : 0,
-      color: pending ? Colors.orange.shade50 : null,
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: pending ? 2 : 0,
+      color: pending
+          ? (isDark ? Colors.orange.shade900.withValues(alpha: 0.22) : Colors.orange.shade50)
+          : null,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         side: BorderSide(
           color: pending ? Colors.orange.shade400 : Colors.black12,
-          width: pending ? 2 : 1,
+          width: pending ? 1.5 : 1,
         ),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                PartnerRoutePdfActions.ackDot(route, size: 12),
-                const SizedBox(width: 10),
-                SizedBox(
-                  width: 56,
-                  child: Text(
-                    start,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: DriftProTheme.accentBlue,
-                    ),
+                Container(
+                  width: 64,
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: DriftProTheme.accentBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: [
+                      Text(
+                        start,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: DriftProTheme.accentBlue,
+                          height: 1.1,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      PartnerRoutePdfActions.ackDot(route, size: 10),
+                    ],
                   ),
                 ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -74,12 +90,13 @@ class PartnerPortalRouteListTile extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 2),
+                      const SizedBox(height: 4),
                       Text(
                         NbDateFormat.format(day, 'EEE d. MMM'),
                         style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
                       ),
-                      if (vehicleLabel != null)
+                      if (vehicleLabel != null) ...[
+                        const SizedBox(height: 2),
                         Text(
                           vehicleLabel!,
                           style: const TextStyle(
@@ -90,15 +107,17 @@ class PartnerPortalRouteListTile extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                      ],
                     ],
                   ),
                 ),
                 if (pending)
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    margin: const EdgeInsets.only(left: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: Colors.orange.shade200,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
                       'NY',
@@ -114,7 +133,7 @@ class PartnerPortalRouteListTile extends StatelessWidget {
             const SizedBox(height: 12),
             if (pending)
               SizedBox(
-                height: 50,
+                height: 48,
                 child: FilledButton.icon(
                   onPressed: () => PartnerRoutePdfActions.openPdfWithAcceptFlow(
                     context,
@@ -124,8 +143,11 @@ class PartnerPortalRouteListTile extends StatelessWidget {
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor: DriftProTheme.primaryGreen,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
-                  icon: const Icon(Icons.picture_as_pdf, size: 22),
+                  icon: const Icon(Icons.picture_as_pdf, size: 20),
                   label: const Text(
                     'Les PDF og aksepter',
                     style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
@@ -158,7 +180,7 @@ class PartnerPortalRouteListTile extends StatelessWidget {
                 ],
               ),
             if (pending) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               TextButton(
                 onPressed: () => PartnerPortalRouteDetailPage.open(
                   context,

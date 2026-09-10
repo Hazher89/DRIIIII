@@ -3304,8 +3304,9 @@ class PartnerService {
     }
   }
 
-  /// Importerte/avviste SAP-PDF som ikke har unik plass i staged-kø → pending igjen.
-  /// Retter feil der generiske filnavn (Backup Form) ble «reconcilet» til samme rute.
+  /// Importerte SAP-PDF uten gyldig rute-share (slettet/mistet) → pending igjen.
+  /// Åpner IKKE på nytt når ruten allerede er sendt/registrert — bare når share
+  /// mangler helt (ellers dukker «28 nye» opp etter full utsending).
   static Future<int> reopenOrphanedSapInbox(String companyId, {int hours = 168}) async {
     if (!_ok) return 0;
     try {
@@ -3320,10 +3321,22 @@ class PartnerService {
           .order('received_at', ascending: true) as List<dynamic>;
       if (rows.isEmpty) return 0;
 
-      final staged = await fetchStagedRouteShares(
-        companyId,
-        importSource: stagedImportSap,
-      );
+      // Alle rute-shares (staged + sendt) — publish fjerner fra staged, men PDF finnes fortsatt.
+      final allShares = await fetchRouteSharesForCompany(companyId, limit: 800);
+      final shareById = {for (final s in allShares) s.id: s};
+      final pathToShare = <String, PartnerRouteShare>{};
+      for (final s in allShares) {
+        final p = s.pdfStoragePath.trim();
+        if (p.isNotEmpty) pathToShare.putIfAbsent(p, () => s);
+      }
+
+      final staged = allShares
+          .where(
+            (s) =>
+                s.isStaged &&
+                ((s.stagedImportSource ?? stagedImportManual) == stagedImportSap),
+          )
+          .toList();
       final stagedById = {for (final s in staged) s.id: s};
       final stagedPaths = {
         for (final s in staged)
@@ -3344,13 +3357,21 @@ class PartnerService {
         final isManualReject =
             status == 'rejected' && reject.startsWith(sapInboxManualReasonPrefix);
 
-        // Manuelle rejects vises via fetchSapRouteInboxManual — ikke nullstill dem.
         if (isManualReject) continue;
-
-        // Hard reject (ikke manuell) skal ikke graves frem automatisk.
         if (status == 'rejected') continue;
 
-        // Unik korrekt kobling: samme storage-path som staged-share, én inbox per share.
+        // Allerede koblet til eksisterende rute (inkl. sendt) — ikke åpne på nytt.
+        if (shareId != null && shareById.containsKey(shareId)) {
+          claimedShares.add(shareId);
+          if (path.isNotEmpty) claimedPaths.add(path);
+          continue;
+        }
+        if (path.isNotEmpty && pathToShare.containsKey(path)) {
+          claimedPaths.add(path);
+          continue;
+        }
+
+        // Unik korrekt kobling i staged-kø.
         if (shareId != null && stagedById.containsKey(shareId)) {
           final sharePath = stagedById[shareId]!.pdfStoragePath.trim();
           final pathOk = path.isNotEmpty && path == sharePath;
@@ -3361,20 +3382,16 @@ class PartnerService {
             claimedPaths.add(path);
             continue;
           }
-          // Feil/duplikat-kobling → åpne på nytt.
         } else if (path.isNotEmpty &&
             stagedPaths.contains(path) &&
             !claimedPaths.contains(path)) {
-          // Path ligger allerede i kø (uten korrekt id-link) — ikke dobbel-importer.
           claimedPaths.add(path);
-          if (status == 'pending') continue;
-          // La den stå; import/reconcile fikser id ved path-match.
           continue;
         } else if (status == 'pending') {
           continue;
         }
 
-        // Importert uten unik korrekt staged-kobling → hent inn i kø igjen.
+        // Importert, men share er slettet / path borte → hent inn i kø igjen.
         if (status != 'imported' && status != 'pending') continue;
 
         await _client.from('sap_route_inbox').update({
@@ -3454,18 +3471,48 @@ class PartnerService {
     }
   }
 
-  /// Pending som allerede finnes som kladd — marker importert (unngår «26 nye» + duplikat).
+  /// Pending som allerede finnes som rute (kø ELLER sendt) — marker importert.
+  /// Fjerner også staged-duplikater som har samme PDF som en allerede sendt rute
+  /// (typisk etter feil «reopen» som importerte på nytt etter utsending).
   static Future<int> reconcileSapInboxWithStagedQueue(String companyId) async {
     if (!_ok) return 0;
-    final pending = await fetchSapRouteInboxPending(companyId);
-    if (pending.isEmpty) return 0;
-    final staged = await fetchStagedRouteShares(companyId);
-    if (staged.isEmpty) return 0;
-
     var reconciled = 0;
+
+    final allShares = await fetchRouteSharesForCompany(companyId, limit: 800);
+    final staged = allShares.where((s) => s.isStaged).toList();
+    final published = allShares.where((s) => !s.isStaged).toList();
+    final publishedPaths = {
+      for (final s in published)
+        if (s.pdfStoragePath.trim().isNotEmpty) s.pdfStoragePath.trim(),
+    };
+    final publishedById = {for (final s in published) s.id: s};
+
+    // Rydd staged-kladd som er duplikat av allerede sendt PDF.
+    for (final s in List<PartnerRouteShare>.from(staged)) {
+      final path = s.pdfStoragePath.trim();
+      if (path.isEmpty || !publishedPaths.contains(path)) continue;
+      if ((s.stagedImportSource ?? stagedImportManual) != stagedImportSap) continue;
+      try {
+        await deleteRouteShare(s);
+      } catch (_) {}
+    }
+
+    final pending = await fetchSapRouteInboxPending(companyId);
+    if (pending.isEmpty) return reconciled;
+
+    final stagedFresh = await fetchStagedRouteShares(companyId);
+    final pathToShare = <String, PartnerRouteShare>{};
+    for (final s in [...stagedFresh, ...published]) {
+      final p = s.pdfStoragePath.trim();
+      if (p.isNotEmpty) pathToShare.putIfAbsent(p, () => s);
+    }
+    final shareById = {
+      for (final s in [...stagedFresh, ...published]) s.id: s,
+    };
+
     for (final item in pending) {
       if (item.importedRouteShareId != null) {
-        final linked = staged.where((s) => s.id == item.importedRouteShareId).firstOrNull;
+        final linked = shareById[item.importedRouteShareId];
         if (linked != null) {
           await markSapRouteInboxImported(
             inboxId: item.id,
@@ -3478,19 +3525,33 @@ class PartnerService {
       }
 
       PartnerRouteShare? match;
-      for (final s in staged) {
-        if (_sapInboxMatchesStagedShare(item, s)) {
-          match = s;
-          break;
+      final itemPath = item.pdfStoragePath.trim();
+      if (itemPath.isNotEmpty) {
+        match = pathToShare[itemPath];
+      }
+      if (match == null) {
+        for (final s in stagedFresh) {
+          if (_sapInboxMatchesStagedShare(item, s)) {
+            match = s;
+            break;
+          }
         }
       }
+      // Fallback: sendt rute med samme storage-path.
+      if (match == null && itemPath.isNotEmpty) {
+        match = publishedById.values
+            .where((s) => s.pdfStoragePath.trim() == itemPath)
+            .firstOrNull;
+      }
       if (match == null) continue;
+
       await markSapRouteInboxImported(
         inboxId: item.id,
         routeShareId: match.id,
         detectedMaviCode: item.detectedMaviCode,
       );
-      if ((match.stagedImportSource ?? stagedImportManual) != stagedImportSap) {
+      if (match.isStaged &&
+          (match.stagedImportSource ?? stagedImportManual) != stagedImportSap) {
         try {
           await updateRouteShareFields(match.id, {'staged_import_source': stagedImportSap});
         } catch (_) {}

@@ -150,7 +150,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         fromDay: _weekStart,
         toDay: _weekEnd,
       );
-      if (!light) await PartnerService.reconcileSapInboxWithStagedQueue(cid);
+      await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final sapInbox = await PartnerService.countSapRouteInboxPending(cid);
       final manualStaged = await PartnerService.countStagedRouteShares(
         cid,
