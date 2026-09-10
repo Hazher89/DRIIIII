@@ -3554,16 +3554,13 @@ class PartnerService {
   }) async {
     if (!_ok) return const [];
     try {
-      var q = _client
-          .from('sap_route_inbox')
-          .select()
-          .eq('company_id', companyId)
-          .order('received_at', ascending: false)
-          .range(offset, offset + limit - 1);
+      var q = _client.from('sap_route_inbox').select().eq('company_id', companyId);
       if (status != null && status.trim().isNotEmpty) {
         q = q.eq('status', status.trim());
       }
-      final data = await q as List<dynamic>;
+      final data = await q
+          .order('received_at', ascending: false)
+          .range(offset, offset + limit - 1) as List<dynamic>;
       return data
           .map((e) => SapRouteInboxItem.fromJson(e as Map<String, dynamic>))
           .toList();
