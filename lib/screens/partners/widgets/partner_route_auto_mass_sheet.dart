@@ -587,9 +587,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     setState(() {
       _sapPendingInbox = pending.length;
       _pendingInboxItems = pending;
+      final received = _receivedRouteTotalForProgress(pending.length);
       _sapGraphSyncNote = pending.isEmpty
           ? '$label: ingen ventende PDF'
-          : '$label: 0/${pending.length}…';
+          : '$label: ${_progressHandled(0, pending.length)}/$received…';
     });
     if (pending.isEmpty) {
       final manuals = await _collectSapManualSkipped(cid);
@@ -608,7 +609,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       rejectOnFailure: false,
       onProgress: (done, total) {
         if (!mounted) return;
-        setState(() => _sapGraphSyncNote = '$label: $done/$total');
+        final received = _receivedRouteTotalForProgress(total);
+        final handled = _progressHandled(done, total);
+        setState(() => _sapGraphSyncNote = '$label: $handled/$received');
       },
     );
     if (_importAborted || !mounted) return;
@@ -2353,6 +2356,25 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   int get _queueTotalCount => _staged.length + _skipped.length;
 
+  /// Mottatt-total under import (Graph-fasit vinner over bare pending).
+  int _receivedRouteTotalForProgress(int pendingBatchSize) {
+    final visible = _staged.length + _skipped.length;
+    final batchFloor = pendingBatchSize + _skipped.length;
+    var n = visible;
+    if (batchFloor > n) n = batchFloor;
+    if (_lastGraphMatched > n) n = _lastGraphMatched;
+    return n;
+  }
+
+  /// Hvor mange av mottatte som er «håndtert» (importert + allerede manuelle/utenfor pending).
+  int _progressHandled(int doneInBatch, int pendingBatchSize) {
+    final outsidePending = (_lastGraphMatched - pendingBatchSize)
+        .clamp(0, _lastGraphMatched);
+    final handled = doneInBatch + outsidePending;
+    final cap = _receivedRouteTotalForProgress(pendingBatchSize);
+    return handled > cap ? cap : handled;
+  }
+
   Future<void> _clearAllStaged() async {
     if (_staged.isEmpty && _skipped.isEmpty) return;
     final stagedN = _staged.length;
@@ -2839,8 +2861,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   int get _sapAttentionCount =>
       _skipped.length + _missingShiftCount + _duplicateExtraCount;
 
-  /// Synlig i veiviseren (kø + manuelle). SAP Graph / upload-fasit når høyere.
-  int get _sapTotalPdfs {
+  /// Totalt mottatte ruter (Graph/upload-fasit, aldri bare «i kø»).
+  int get _receivedRouteTotal {
     final visible = _staged.length + _skipped.length;
     if (_isSap) {
       if (_lastGraphMatched > visible) return _lastGraphMatched;
@@ -2849,6 +2871,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (_lastUploadRouteCount > visible) return _lastUploadRouteCount;
     return visible;
   }
+
+  /// Synlig i veiviseren (kø + manuelle). SAP Graph / upload-fasit når høyere.
+  int get _sapTotalPdfs => _receivedRouteTotal;
 
   int get _sapMissingFromQueue {
     final visible = _staged.length + _skipped.length;
@@ -2887,10 +2912,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       metrics: [
         RouteWorkflowMetric(
           label: 'Totalt',
-          value: '$_sapTotalPdfs',
+          value: '$_receivedRouteTotal',
           icon: Icons.description_outlined,
           color: missing > 0 ? Colors.orange.shade800 : ui.accentDark,
-          hint: totalHint,
+          hint: totalHint.isNotEmpty ? totalHint : 'Mottatte ruter',
         ),
         RouteWorkflowMetric(
           label: 'I kø',
@@ -3050,7 +3075,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Widget _buildSapFetchStep(_MassUi ui) {
-    final total = _staged.length + _skipped.length;
+    final total = _receivedRouteTotal;
     final busy = _isSap ? _sapSyncing : _busyUpload;
     final busyFetch = busy && total == 0;
     final showUpdating = busy;
@@ -3887,7 +3912,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         runSpacing: 8,
         alignment: WrapAlignment.spaceAround,
         children: [
-          _summaryTile('Totalt', '${_staged.length}', ui.accentDark),
+          _summaryTile('Totalt', '$_receivedRouteTotal', ui.accentDark),
+          _summaryTile('I kø', '${_staged.length}', Colors.blueGrey.shade700),
+          if (_skipped.isNotEmpty)
+            _summaryTile('Manuelle', '${_skipped.length}', Colors.orange.shade800),
           _summaryTile('Med skift', '$_readyShiftCount', Colors.green.shade700),
           _summaryTile('Mangler skift', '$_missingShiftCount', Colors.red.shade700),
           _summaryTile('Valgt', '${_selected.length}', Colors.blueGrey.shade700),
