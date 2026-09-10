@@ -139,20 +139,10 @@ class _PartnerRoutePdfThumbnailState extends State<PartnerRoutePdfThumbnail> {
           widget.zoomTripHeader
               ? LayoutBuilder(
                   builder: (context, constraints) {
-                    final w = constraints.maxWidth;
-                    // Top-venstre: SAP Trip Overview har sjåfør/strekkode til venstre.
-                    return ClipRect(
-                      child: Align(
-                        alignment: Alignment.topLeft,
-                        child: Transform.scale(
-                          scale: 2.55,
-                          alignment: Alignment.topLeft,
-                          child: SizedBox(
-                            width: w,
-                            child: Image.memory(_png!, fit: BoxFit.fitWidth),
-                          ),
-                        ),
-                      ),
+                    return _TripHeaderCrop(
+                      png: _png!,
+                      maxWidth: constraints.maxWidth,
+                      maxHeight: constraints.maxHeight,
                     );
                   },
                 )
@@ -251,6 +241,65 @@ class _PartnerRoutePdfThumbnailState extends State<PartnerRoutePdfThumbnail> {
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       child: child,
+    );
+  }
+}
+
+/// Fast topp-utsnitt av SAP-forsiden (strekkode/sjåfør), uavhengig av kort-høyde.
+///
+/// Tidligere Transform.scale(2.55) viste mer av midtsiden i høye multi-last-kort.
+class _TripHeaderCrop extends StatelessWidget {
+  final Uint8List png;
+  final double maxWidth;
+  final double maxHeight;
+
+  /// Andel av A4-høyden som alltid skal være synlig (topp).
+  static const double topFraction = 0.40;
+
+  /// A4 portrait height/width.
+  static const double a4HeightOverWidth = 1.414213562;
+
+  const _TripHeaderCrop({
+    required this.png,
+    required this.maxWidth,
+    required this.maxHeight,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final w = maxWidth;
+    final h = maxHeight;
+    if (w <= 0 || h <= 0) return const SizedBox.shrink();
+
+    // Toppstripe av siden i «layout-piksler», deretter cover inn i thumb-boksen.
+    final stripHeight = w * a4HeightOverWidth * topFraction;
+
+    return ClipRect(
+      child: SizedBox(
+        width: w,
+        height: h,
+        child: FittedBox(
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          child: SizedBox(
+            width: w,
+            height: stripHeight,
+            child: ClipRect(
+              child: Align(
+                alignment: Alignment.topCenter,
+                heightFactor: topFraction,
+                child: Image.memory(
+                  png,
+                  width: w,
+                  fit: BoxFit.fitWidth,
+                  alignment: Alignment.topCenter,
+                  filterQuality: FilterQuality.medium,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

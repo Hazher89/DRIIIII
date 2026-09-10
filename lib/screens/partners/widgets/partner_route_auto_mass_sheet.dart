@@ -122,8 +122,8 @@ enum _RouteQueueFilter { all, missingShift, ready, selected }
 enum _DateQueueAction { clearAll, publishNoSms, publishSms }
 
 const _routeCardGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
-  maxCrossAxisExtent: 280,
-  childAspectRatio: 0.54,
+  maxCrossAxisExtent: 260,
+  childAspectRatio: 0.62,
   crossAxisSpacing: 10,
   mainAxisSpacing: 10,
 );
@@ -4688,8 +4688,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 final cardW = cols == 1
                     ? w
                     : (w - gap * (cols - 1)) / cols;
-                // Fast høyde så PDF-forside + footer får plass i samme format.
-                final cardH = cols == 1 ? 380.0 : (cardW / 0.54).clamp(300.0, 460.0);
+                // Kompakte kort — samme topp-utsnitt uansett bredde (ikke 460px-høye).
+                final cardH = cols == 1
+                    ? 340.0
+                    : (cardW / 0.62).clamp(250.0, 340.0);
 
                 return Wrap(
                   spacing: gap,
