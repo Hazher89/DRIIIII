@@ -7,12 +7,10 @@ import '../../core/theme/app_theme.dart';
 import '../../models/partner/fleet_shift.dart';
 import '../../models/partner/mavi_driver_day_assignment.dart';
 import '../../models/partner/partner_links.dart';
-import 'fleet_route_overview_tab.dart';
 import 'widgets/partner_modern_ui.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
-import '../../core/layout/web_layout.dart';
 
-/// MAVI rute-statistikk: rettferdig fordeling + ruteoversikt.
+/// MAVI rute-statistikk: rettferdig fordeling.
 class FleetRouteDriverStatsScreen extends StatefulWidget {
   const FleetRouteDriverStatsScreen({super.key});
 
@@ -20,10 +18,7 @@ class FleetRouteDriverStatsScreen extends StatefulWidget {
   State<FleetRouteDriverStatsScreen> createState() => _FleetRouteDriverStatsScreenState();
 }
 
-class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScreen>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
-
+class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScreen> {
   FleetCalendarPeriod _period = FleetCalendarPeriod.month;
   FleetDriverSortKey _driverSort = FleetDriverSortKey.routesDesc;
   FleetDriverFilterKey _filter = FleetDriverFilterKey.withRoutes;
@@ -55,22 +50,12 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
-    _tabs.addListener(_onTabChanged);
     _load();
     _maviSearch.addListener(() => setState(() {}));
   }
 
-  void _onTabChanged() {
-    if (_tabs.indexIsChanging) return;
-    setState(() {});
-    if (_tabs.index == 0) _load();
-  }
-
   @override
   void dispose() {
-    _tabs.removeListener(_onTabChanged);
-    _tabs.dispose();
     _maviSearch.dispose();
     super.dispose();
   }
@@ -173,13 +158,6 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
         backgroundColor: PartnerModernUi.surface(context),
         foregroundColor: PartnerModernUi.textPrimary(context),
         title: const Text('MAVI rute-statistikk'),
-        bottom: TabBar(
-          controller: _tabs,
-          tabs: const [
-            Tab(text: 'Rettferdig fordeling'),
-            Tab(text: 'Ruteoversikt'),
-          ],
-        ),
         actions: [
           IconButton(
             tooltip: 'Oppdater',
@@ -194,16 +172,8 @@ class _FleetRouteDriverStatsScreenState extends State<FleetRouteDriverStatsScree
               ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!)))
               : Column(
                   children: [
-                    if (_tabs.index == 0) _headerPanel(),
-                    Expanded(
-                      child: DriftProTabView(
-                        controller: _tabs,
-                        children: [
-                          _fairnessTab(),
-                          FleetRouteOverviewTab(onDataChanged: _load),
-                        ],
-                      ),
-                    ),
+                    _headerPanel(),
+                    Expanded(child: _fairnessTab()),
                   ],
                 ),
     );

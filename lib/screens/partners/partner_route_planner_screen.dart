@@ -9,6 +9,7 @@ import '../../models/partner/partner_links.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'fleet_route_driver_stats_screen.dart';
+import 'fleet_route_overview_screen.dart';
 import 'fleet_shift_admin_screen.dart';
 import 'partner_route_dispatch_history_screen.dart';
 import 'widgets/partner_available_vehicles_bar.dart';
@@ -105,12 +106,24 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
     );
   }
 
+  void _openRouteOverview() {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const FleetRouteOverviewScreen()),
+    );
+  }
+
   void _openChat() {
     context.push(AppPaths.partnersChat);
   }
 
   List<RoutePlannerTool> _tools() {
     return [
+      RoutePlannerTool(
+        icon: Icons.grid_view_rounded,
+        label: 'Ruteoversikt',
+        onPressed: _openRouteOverview,
+        emphasized: true,
+      ),
       RoutePlannerTool(
         icon: Icons.history_rounded,
         label: 'Historikk',
@@ -125,7 +138,6 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
         icon: Icons.insights_outlined,
         label: 'MAVI-statistikk',
         onPressed: _openStats,
-        emphasized: true,
       ),
       RoutePlannerTool(
         icon: Icons.manage_search_outlined,
