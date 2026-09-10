@@ -99,7 +99,7 @@ class MobileDialogBody extends StatelessWidget {
   }
 }
 
-/// Bunnfelt rett over shell-dock — ingen ekstra safe-area-gap.
+/// Bunnfelt for input — respekterer Android system-nav / hjem-indikator.
 class DockInputBar extends StatelessWidget {
   const DockInputBar({
     super.key,
@@ -107,22 +107,29 @@ class DockInputBar extends StatelessWidget {
     this.color,
     this.padding = const EdgeInsets.fromLTRB(12, 8, 12, 8),
     this.border,
+    this.includeBottomSafeArea = true,
   });
 
   final Widget child;
   final Color? color;
   final EdgeInsetsGeometry padding;
   final Border? border;
+  /// Løfter feltet over systemnav (tilbake/hjem) på Android/iOS.
+  final bool includeBottomSafeArea;
 
   @override
   Widget build(BuildContext context) {
+    final bottomSafe = includeBottomSafeArea
+        ? MediaQuery.viewPaddingOf(context).bottom
+        : 0.0;
+    final resolved = padding.resolve(Directionality.of(context));
     return DecoratedBox(
       decoration: BoxDecoration(
         color: color,
         border: border,
       ),
       child: Padding(
-        padding: padding,
+        padding: resolved.copyWith(bottom: resolved.bottom + bottomSafe),
         child: child,
       ),
     );
