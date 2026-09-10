@@ -5,7 +5,7 @@ import '../../../core/constants/route_dispatch_status.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 
-/// Kalender-rute med farge etter lese/aksept-status og hover-tooltip (web/desktop).
+/// Kalender-rute med liquid glass og tydelig statusfarge.
 class RouteCalendarChip extends StatelessWidget {
   const RouteCalendarChip({
     super.key,
@@ -29,55 +29,85 @@ class RouteCalendarChip extends StatelessWidget {
     final start = TimeOfDay.fromDateTime(
       share.routeStartAt?.toLocal() ?? DateTime(day.year, day.month, day.day, 6),
     ).format(context);
+    final status = RouteDispatchStatus.cellColorForShare(share);
+    final label = RouteDispatchStatus.simpleLabelForShare(share);
 
     final chip = Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 6 : 10,
-        vertical: compact ? 5 : 8,
+        horizontal: compact ? 7 : 10,
+        vertical: compact ? 6 : 8,
       ),
       decoration: BoxDecoration(
-        color: RouteDispatchStatus.cellFillForShare(share, isDark: isDark),
-        borderRadius: BorderRadius.circular(compact ? 6 : 10),
-        border: Border(left: BorderSide(color: shiftColor, width: compact ? 4 : 4)),
+        borderRadius: BorderRadius.circular(compact ? 12 : 14),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: isDark ? 0.14 : 0.72),
+            status.withValues(alpha: isDark ? 0.28 : 0.20),
+          ],
+        ),
+        border: Border.all(
+          color: status.withValues(alpha: 0.55),
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: status.withValues(alpha: 0.18),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              _statusDot(),
-              SizedBox(width: compact ? 4 : 6),
-              if (compact)
-                Expanded(
-                  child: Text(
-                    start,
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 10),
-                  ),
-                )
-              else
-                Text(start, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
-              if (!compact) ...[
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    share.title?.split('—').first ?? 'Rute',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12),
+              Container(
+                width: compact ? 8 : 9,
+                height: compact ? 8 : 9,
+                decoration: BoxDecoration(
+                  color: status,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: status.withValues(alpha: 0.45),
+                      blurRadius: 4,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  start,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: compact ? 10 : 12,
+                    color: isDark ? Colors.white : const Color(0xFF1A1A1A),
                   ),
                 ),
-              ],
+              ),
             ],
           ),
-          if (compact)
-            Text(
-              share.title?.split('—').first ?? 'Rute',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 9, height: 1.15),
+          const SizedBox(height: 2),
+          Text(
+            compact
+                ? label
+                : (share.title?.split('—').first.trim().isNotEmpty == true
+                    ? share.title!.split('—').first.trim()
+                    : label),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: compact ? 9 : 11,
+              fontWeight: FontWeight.w700,
+              height: 1.15,
+              color: status.withValues(alpha: 0.95),
             ),
+          ),
         ],
       ),
     );
@@ -87,20 +117,6 @@ class RouteCalendarChip extends StatelessWidget {
       preferBelow: false,
       waitDuration: const Duration(milliseconds: 350),
       child: chip,
-    );
-  }
-
-  Widget _statusDot() {
-    final color = RouteDispatchStatus.cellColorForShare(share);
-    final size = compact ? 8.0 : 9.0;
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 1),
-      ),
     );
   }
 }

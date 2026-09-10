@@ -42,6 +42,13 @@ DateTime _monday(DateTime d) {
 
 DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
+enum _FleetSortMode {
+  driver,
+  waitingAck,
+  draft,
+  earliestRoute,
+}
+
 /// Løsemiddel-visning inspirert av arbeidsplan: MAVI-navigasjon til venstre, kalender til høyre.
 class PartnerRouteMasterScheduler extends StatefulWidget {
   final List<FleetPartnerVehicleRow> fleet;
@@ -68,6 +75,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   DateTime _weekStart = _monday(DateTime.now());
   DateTime _focusDay = _dayOnly(DateTime.now());
   late final TextEditingController _searchCtrl;
+  _FleetSortMode _fleetSort = _FleetSortMode.driver;
 
   List<FleetShiftDefinition> _shifts = [];
   List<PartnerRouteShare> _shares = [];
@@ -201,13 +209,65 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   List<FleetPartnerVehicleRow> get _filteredFleet {
     final q = _searchCtrl.text.trim().toLowerCase();
-    if (q.isEmpty) return _maviFleet;
-    return _maviFleet
-        .where((r) =>
-            r.vehicle.unitCode.toLowerCase().contains(q) ||
-            r.partner.name.toLowerCase().contains(q))
-        .toList();
+    var list = q.isEmpty
+        ? List<FleetPartnerVehicleRow>.from(_maviFleet)
+        : _maviFleet
+            .where((r) =>
+                r.vehicle.unitCode.toLowerCase().contains(q) ||
+                r.partner.name.toLowerCase().contains(q))
+            .toList();
+
+    int waitingCount(String vehicleId) => _shares
+        .where((s) =>
+            s.partnerVehicleId == vehicleId &&
+            RouteDispatchStatus.isWaitingAck(s))
+        .length;
+    int draftCount(String vehicleId) =>
+        _shares.where((s) => s.partnerVehicleId == vehicleId && s.isStaged).length;
+    DateTime? earliest(String vehicleId) {
+      DateTime? best;
+      for (final s in _shares) {
+        if (s.partnerVehicleId != vehicleId) continue;
+        final t = s.routeStartAt?.toLocal() ?? s.shareDate;
+        if (best == null || t.isBefore(best)) best = t;
+      }
+      return best;
+    }
+
+    list.sort((a, b) {
+      switch (_fleetSort) {
+        case _FleetSortMode.waitingAck:
+          final c = waitingCount(b.vehicle.id).compareTo(waitingCount(a.vehicle.id));
+          if (c != 0) return c;
+          break;
+        case _FleetSortMode.draft:
+          final c = draftCount(b.vehicle.id).compareTo(draftCount(a.vehicle.id));
+          if (c != 0) return c;
+          break;
+        case _FleetSortMode.earliestRoute:
+          final ea = earliest(a.vehicle.id);
+          final eb = earliest(b.vehicle.id);
+          if (ea == null && eb == null) break;
+          if (ea == null) return 1;
+          if (eb == null) return -1;
+          final c = ea.compareTo(eb);
+          if (c != 0) return c;
+          break;
+        case _FleetSortMode.driver:
+          break;
+      }
+      return MaviUnitCodes.normalize(a.vehicle.unitCode)
+          .compareTo(MaviUnitCodes.normalize(b.vehicle.unitCode));
+    });
+    return list;
   }
+
+  int get _weekTotalRoutes => _shares.length;
+  int get _weekAcceptedRoutes =>
+      _shares.where((s) => s.ackStatus == 'accepted').length;
+  int get _weekDraftRoutes => _shares.where((s) => s.isStaged).length;
+  int get _weekWaitingRoutes =>
+      _shares.where(RouteDispatchStatus.isWaitingAck).length;
 
   List<PartnerRouteShare> _sharesCell(String vehicleId, DateTime day) {
     final dn = _dayOnly(day);
@@ -220,7 +280,13 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       if (sd != dn && (rs == null || rs != dn)) continue;
       out.add(s);
     }
-    out.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    out.sort((a, b) {
+      final ta = a.routeStartAt?.toLocal() ?? a.shareDate;
+      final tb = b.routeStartAt?.toLocal() ?? b.shareDate;
+      final c = ta.compareTo(tb);
+      if (c != 0) return c;
+      return b.createdAt.compareTo(a.createdAt);
+    });
     return out;
   }
 
@@ -242,7 +308,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     return sd == dn || rs == dn;
   }
 
-  bool _needsAck(PartnerRouteShare s) => s.requiresAck;
+  bool _needsAck(PartnerRouteShare s) => RouteDispatchStatus.isWaitingAck(s);
 
   int _pendingAckCountForDay(DateTime day) =>
       _shares.where((s) => _shareOnDay(s, day) && _needsAck(s)).length;
@@ -409,19 +475,37 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   Color? _vehicleAckDotColor(String vehicleId) {
     final routes = _shares.where((s) => s.partnerVehicleId == vehicleId).toList();
     if (routes.isEmpty) return null;
-    routes.sort((a, b) => _shareDotPriority(a).compareTo(_shareDotPriority(b)));
-    return RouteDispatchStatus.cellColorForShare(routes.first);
+    // Prioritet: venter (rød) → kladd (oransje) → ellers ingen prikk (alt OK).
+    if (routes.any(RouteDispatchStatus.isWaitingAck)) {
+      return RouteDispatchStatus.colorWaiting;
+    }
+    if (routes.any((s) => s.isStaged)) {
+      return RouteDispatchStatus.colorDraft;
+    }
+    if (routes.every((s) => s.ackStatus == 'accepted')) {
+      return RouteDispatchStatus.colorAccepted;
+    }
+    return null;
   }
 
   int _shareDotPriority(PartnerRouteShare s) {
-    if (s.isStaged) return 0;
-    if (s.isRegistered) return 1;
-    if (s.ackStatus == 'rejected') return 2;
-    if (s.requiresAck) return 3;
-    if (s.isSentWithNotify && !s.pdfWasOpened) return 4;
-    if (s.pdfWasOpened && s.requiresAck) return 5;
-    if (s.ackStatus == 'accepted') return 6;
-    return 7;
+    if (RouteDispatchStatus.isWaitingAck(s)) return 0;
+    if (s.isStaged) return 1;
+    if (s.ackStatus == 'accepted') return 2;
+    return 3;
+  }
+
+  String _fleetSortLabel(_FleetSortMode mode) {
+    switch (mode) {
+      case _FleetSortMode.driver:
+        return 'Sjåfør';
+      case _FleetSortMode.waitingAck:
+        return 'Ikke akseptert';
+      case _FleetSortMode.draft:
+        return 'Kladd først';
+      case _FleetSortMode.earliestRoute:
+        return 'Tidligst rute';
+    }
   }
 
   String? _shiftName(String? shiftId) => shiftNameFor(_shifts, shiftId);
@@ -699,6 +783,36 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               trailing: RoutePlannerUi.refreshButton(
                 onPressed: _busy ? null : _reload,
               ),
+            ),
+            const SizedBox(height: 12),
+            RoutePlannerUi.acceptanceOverview(
+              total: _weekTotalRoutes,
+              accepted: _weekAcceptedRoutes,
+              draft: _weekDraftRoutes,
+              waiting: _weekWaitingRoutes,
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  'Sorter sjåfører',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                for (final mode in _FleetSortMode.values)
+                  ChoiceChip(
+                    label: Text(_fleetSortLabel(mode)),
+                    selected: _fleetSort == mode,
+                    onSelected: (_) => setState(() => _fleetSort = mode),
+                    visualDensity: VisualDensity.compact,
+                  ),
+              ],
             ),
             const SizedBox(height: 10),
             RoutePlannerUi.statusLegend(),
@@ -1293,12 +1407,25 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           return Expanded(
             child: Container(
             decoration: BoxDecoration(
-              color: isFocus
-                  ? DriftProTheme.primaryGreen.withValues(alpha: 0.1)
-                  : isToday
-                      ? Colors.lightBlue.withValues(alpha: 0.1)
-                      : null,
-              border: Border(right: BorderSide(color: borderCol)),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: isFocus
+                    ? [
+                        DriftProTheme.primaryGreen.withValues(alpha: 0.16),
+                        Colors.white.withValues(alpha: 0.55),
+                      ]
+                    : isToday
+                        ? [
+                            Colors.lightBlue.withValues(alpha: 0.14),
+                            Colors.white.withValues(alpha: 0.5),
+                          ]
+                        : [
+                            Colors.white.withValues(alpha: 0.7),
+                            Colors.white.withValues(alpha: 0.35),
+                          ],
+              ),
+              border: Border(right: BorderSide(color: borderCol.withValues(alpha: 0.5))),
             ),
             padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
             alignment: Alignment.topLeft,

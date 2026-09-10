@@ -3,11 +3,18 @@ import 'package:intl/intl.dart';
 
 import '../../models/partner/partner_links.dart';
 
-/// Visuell status for rute-fordeling i kalender og lister.
+/// Visuell status for rute-fordeling — tre tydelige farger:
+/// oransje = kladd, rød = venter på aksept, grønn = akseptert.
 abstract final class RouteDispatchStatus {
   static const staged = 'staged';
   static const registered = 'registered';
   static const sent = 'sent';
+
+  static const colorDraft = Color(0xFFEF6C00);
+  static const colorWaiting = Color(0xFFC62828);
+  static const colorAccepted = Color(0xFF2E7D32);
+  static const colorRejected = Color(0xFF8E24AA);
+  static const colorNeutral = Color(0xFF78909C);
 
   static final _timeFmt = DateFormat('dd.MM.yyyy HH:mm', 'nb');
 
@@ -24,49 +31,74 @@ abstract final class RouteDispatchStatus {
     }
   }
 
-  static String labelForShare(PartnerRouteShare share) {
+  /// Enkel etikett for UI (3 hovedtilstander).
+  static String simpleLabelForShare(PartnerRouteShare share) {
     if (share.isStaged) return 'Kladd';
-    if (share.isRegistered) return 'Lagt ut uten varsel';
     if (share.ackStatus == 'accepted') return 'Akseptert';
     if (share.ackStatus == 'rejected') return 'Avvist';
-    if (share.pdfWasOpened && share.requiresAck) return 'PDF lest — venter aksept';
-    if (share.isSentWithNotify) return 'Varslet — PDF ikke lest';
+    if (share.isRegistered || share.isSentWithNotify || share.requiresAck) {
+      return 'Venter på aksept';
+    }
     return shortLabel(share.dispatchStatus);
   }
 
+  static String labelForShare(PartnerRouteShare share) {
+    if (share.isStaged) return 'Kladd — ikke delt ut';
+    if (share.ackStatus == 'accepted') return 'Akseptert';
+    if (share.ackStatus == 'rejected') return 'Avvist';
+    if (share.pdfWasOpened && share.requiresAck) {
+      return 'Venter på aksept (PDF lest)';
+    }
+    if (share.isSentWithNotify) return 'Venter på aksept';
+    if (share.isRegistered) return 'Venter på aksept (uten SMS)';
+    return shortLabel(share.dispatchStatus);
+  }
+
+  /// Grønn kun ved aksept · oransje kun kladd · rød når utsendt og venter.
   static Color cellColorForShare(PartnerRouteShare share) {
-    if (share.isStaged) return const Color(0xFFFF9800);
-    if (share.isRegistered) return const Color(0xFF78909C);
-    if (share.ackStatus == 'accepted') return const Color(0xFF1B5E20);
-    if (share.ackStatus == 'rejected') return const Color(0xFFC62828);
-    if (share.pdfWasOpened && share.requiresAck) return const Color(0xFF1565C0);
-    if (share.isSentWithNotify) return const Color(0xFF2E7D32);
-    return const Color(0xFF546E7A);
+    if (share.isStaged) return colorDraft;
+    if (share.ackStatus == 'accepted') return colorAccepted;
+    if (share.ackStatus == 'rejected') return colorRejected;
+    if (share.isRegistered ||
+        share.isSentWithNotify ||
+        share.requiresAck ||
+        share.pdfWasOpened) {
+      return colorWaiting;
+    }
+    return colorNeutral;
   }
 
   /// Bakgrunnsfarge i kalender-rute (legacy dispatch_status).
   static Color cellColor(String status) {
     switch (status) {
       case staged:
-        return const Color(0xFFFF9800);
+        return colorDraft;
       case registered:
-        return const Color(0xFF78909C);
+        return colorWaiting;
       case sent:
-        return const Color(0xFF2E7D32);
+        return colorWaiting;
       default:
-        return const Color(0xFF546E7A);
+        return colorNeutral;
     }
   }
 
   static Color cellFillForShare(PartnerRouteShare share, {required bool isDark}) {
-    return cellColorForShare(share).withValues(alpha: isDark ? 0.32 : 0.42);
+    final c = cellColorForShare(share);
+    return c.withValues(alpha: isDark ? 0.28 : 0.22);
   }
 
   static Color cellFill(String status, {required bool isDark}) {
-    return cellColor(status).withValues(alpha: isDark ? 0.32 : 0.42);
+    return cellColor(status).withValues(alpha: isDark ? 0.28 : 0.22);
   }
 
   static bool isVisibleInDriverPortal(String status) => status == sent;
+
+  static bool isWaitingAck(PartnerRouteShare share) {
+    if (share.isStaged) return false;
+    if (share.ackStatus == 'accepted') return false;
+    if (share.ackStatus == 'rejected') return true;
+    return share.isRegistered || share.isSentWithNotify || share.requiresAck;
+  }
 
   static String tooltipForShare(PartnerRouteShare share, {String? shiftName}) {
     final buf = <String>[labelForShare(share)];
@@ -112,7 +144,9 @@ abstract final class RouteDispatchStatus {
     if (share.ackStatus == 'accepted' && share.ackAt != null) {
       buf.add('Akseptert: ${_timeFmt.format(share.ackAt!.toLocal())}');
     } else if (share.ackStatus == 'rejected') {
-      buf.add('Avvist${share.ackAt != null ? ' ${_timeFmt.format(share.ackAt!.toLocal())}' : ''}');
+      buf.add(
+        'Avvist${share.ackAt != null ? ' ${_timeFmt.format(share.ackAt!.toLocal())}' : ''}',
+      );
     } else if (share.requiresAck) {
       buf.add('Venter på aksept fra sjåfør');
     }

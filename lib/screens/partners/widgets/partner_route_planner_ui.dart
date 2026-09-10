@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/constants/route_dispatch_status.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/driftpro_theme_context.dart';
 
@@ -262,11 +263,17 @@ class RoutePlannerUi {
 
   static Widget statusLegend({bool scrollable = false}) {
     const items = [
-      _LegendItem('Kladd', Color(0xFFFF9800), 'Ikke sendt ennå'),
-      _LegendItem('Uten varsel', Color(0xFF78909C), 'Registrert uten SMS/push'),
-      _LegendItem('Varslet', Color(0xFF2E7D32), 'Sendt til sjåfør/eier'),
-      _LegendItem('PDF lest', Color(0xFF1565C0), 'Sjåfør har åpnet PDF'),
-      _LegendItem('Akseptert', Color(0xFF1B5E20), 'Rute godkjent'),
+      _LegendItem('Kladd', RouteDispatchStatus.colorDraft, 'Ikke delt ut til sjåfør'),
+      _LegendItem(
+        'Venter',
+        RouteDispatchStatus.colorWaiting,
+        'Sendt — venter på aksept',
+      ),
+      _LegendItem(
+        'Akseptert',
+        RouteDispatchStatus.colorAccepted,
+        'Sjåfør har akseptert',
+      ),
     ];
 
     final chips = items.map((e) => _LegendChip(item: e)).toList();
@@ -282,6 +289,96 @@ class RoutePlannerUi {
         itemCount: chips.length,
         separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (_, i) => chips[i],
+      ),
+    );
+  }
+
+  /// Glass-statistikk: akseptert av totalt + kladd/venter.
+  static Widget acceptanceOverview({
+    required int total,
+    required int accepted,
+    required int draft,
+    required int waiting,
+  }) {
+    if (total <= 0) {
+      return const SizedBox.shrink();
+    }
+    final pct = ((accepted / total) * 100).round();
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.85),
+            RouteDispatchStatus.colorAccepted.withValues(alpha: 0.08),
+          ],
+        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                '$accepted av $total akseptert',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$pct %',
+                style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 16,
+                  color: RouteDispatchStatus.colorAccepted,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(
+              value: accepted / total,
+              minHeight: 8,
+              backgroundColor: Colors.black.withValues(alpha: 0.06),
+              color: RouteDispatchStatus.colorAccepted,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _CountBadge(
+                label: '$draft kladd',
+                color: RouteDispatchStatus.colorDraft,
+              ),
+              _CountBadge(
+                label: '$waiting venter',
+                color: RouteDispatchStatus.colorWaiting,
+              ),
+              _CountBadge(
+                label: '$accepted akseptert',
+                color: RouteDispatchStatus.colorAccepted,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -644,20 +741,46 @@ class _LegendChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Tooltip(
       message: item.hint,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: item.color,
-              borderRadius: BorderRadius.circular(3),
-            ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(999),
+          gradient: LinearGradient(
+            colors: [
+              Colors.white.withValues(alpha: 0.9),
+              item.color.withValues(alpha: 0.14),
+            ],
           ),
-          const SizedBox(width: 6),
-          Text(item.label, style: TextStyle(fontSize: 11, color: Colors.grey[700])),
-        ],
+          border: Border.all(color: item.color.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(
+                color: item.color,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: item.color.withValues(alpha: 0.45),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              item.label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: item.color,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
