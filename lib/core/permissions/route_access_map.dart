@@ -132,6 +132,10 @@ class RouteAccessMap {
       areaId: 'more.varsler',
       legacyAccessKey: AccessKeys.varsler,
     ),
+    AppPaths.moreEpost: const RouteAccessRequirement(
+      areaId: 'more.varsler',
+      legacyAccessKey: AccessKeys.varsler,
+    ),
     AppPaths.moreUndersokelser: const RouteAccessRequirement(
       areaId: 'more.undersokelser',
       legacyAccessKey: AccessKeys.undersokelser,

@@ -168,7 +168,7 @@ class NotificationLogToolbar extends StatelessWidget {
                   ? '«I kø» betyr at utsending ikke er ferdig ennå (sjelden). '
                       'Varsler sendes automatisk ved opprettelse. '
                       'Bruk ▶ kun ved feilsøking.'
-                  : 'Varsler sendes automatisk (e-post via Resend, SMS via Sveve). '
+                  : 'Varsler sendes automatisk (e-post via Microsoft Graph / Office 365, SMS via Sveve). '
                       '«I kø» = venter eller retry — oppdater loggen etter noen sekunder.',
               style: DriftProTheme.caption,
             ),

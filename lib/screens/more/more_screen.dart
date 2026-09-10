@@ -214,6 +214,14 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 'Varsler',
                 isDark,
               ),
+            if (_profile!.access.canNotifications)
+              _buildMenuItem(
+                context,
+                Icons.mark_email_read_outlined,
+                'E-post',
+                isDark,
+                badge: 'NY',
+              ),
             if (_profile!.access.canSurveysMenu || _profile!.access.canSurveys)
               if (!DriftProClient.isMobile)
                 _buildMenuItem(
@@ -512,6 +520,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Min profil' => AppPaths.moreProfil,
             'Personalmappe' => AppPaths.morePersonalmappe,
             'Varsler' => AppPaths.moreVarsler,
+            'E-post' => AppPaths.moreEpost,
             'Hjelp & støtte' => AppPaths.moreHjelp,
             'Personvern' => AppPaths.morePersonvern,
             'Om DriftPro' => AppPaths.moreOm,

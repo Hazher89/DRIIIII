@@ -37,6 +37,7 @@ import '../../screens/more/assistant_settings_screen.dart';
 import '../../screens/more/public_chat_lab_screen.dart';
 import '../../core/services/assistant/public_chat_knowledge_service.dart';
 import '../../screens/more/more_screen.dart';
+import '../../screens/more/mail_hub_screen.dart';
 import '../../screens/more/organization_chart_screen.dart';
 import '../../screens/more/privacy_screen.dart';
 import '../../screens/more/whistleblowing_screen.dart';
@@ -541,6 +542,16 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                       NotificationsHubScreen(
                         initialTab: state.uri.queryParameters['tab'],
                         initialSettingsTab: state.uri.queryParameters['settings'],
+                      ),
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'epost',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      MailHubScreen(
+                        initialTab: state.uri.queryParameters['tab'],
                       ),
                     ),
                   ),

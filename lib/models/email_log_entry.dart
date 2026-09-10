@@ -38,7 +38,7 @@ class EmailLogEntry {
     required this.triggeredByName,
     this.triggeredByUserId,
     required this.deliveryStatus,
-    this.senderName = 'ikkesvar@driftpro.no',
+    this.senderName = 'driftpro@mavilogistikk.no',
     this.partnerName,
     this.contextLabel,
   });
@@ -65,7 +65,7 @@ class EmailLogEntry {
           json['triggered_by_name'] as String? ?? 'System (automatisk)',
       triggeredByUserId: json['triggered_by_user_id'] as String?,
       deliveryStatus: json['delivery_status'] as String? ?? 'i_ko',
-      senderName: json['sender_name'] as String? ?? 'ikkesvar@driftpro.no',
+      senderName: json['sender_name'] as String? ?? 'driftpro@mavilogistikk.no',
       partnerName: json['partner_name'] as String?,
       contextLabel: json['context_label'] as String?,
     );

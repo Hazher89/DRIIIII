@@ -3545,6 +3545,33 @@ class PartnerService {
     }
   }
 
+  /// Alle innkommende SAP/Office 365-PDF (for Mer → E-post hub).
+  static Future<List<SapRouteInboxItem>> fetchSapRouteInboxRecent(
+    String companyId, {
+    int limit = 80,
+    int offset = 0,
+    String? status,
+  }) async {
+    if (!_ok) return const [];
+    try {
+      var q = _client
+          .from('sap_route_inbox')
+          .select()
+          .eq('company_id', companyId)
+          .order('received_at', ascending: false)
+          .range(offset, offset + limit - 1);
+      if (status != null && status.trim().isNotEmpty) {
+        q = q.eq('status', status.trim());
+      }
+      final data = await q as List<dynamic>;
+      return data
+          .map((e) => SapRouteInboxItem.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
   static Future<void> dismissSapRouteInbox(String inboxId) async {
     if (!_ok) return;
     await _client.from('sap_route_inbox').update({

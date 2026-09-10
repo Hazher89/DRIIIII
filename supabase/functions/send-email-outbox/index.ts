@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { readSmtpConfig, sendViaSmtp } from "../_shared/domeneshop_smtp.ts";
 import { readResendSendConfig, sendViaResend } from "../_shared/resend_send.ts";
 import { readGraphSendConfig, sendViaGraph } from "../_shared/ms_graph_send.ts";
+import { wrapDriftProEmailHtml } from "../_shared/email_brand_template.ts";
 
 type EmailRow = {
   id: string;
@@ -126,7 +127,13 @@ Deno.serve(async (req) => {
   }
 
   for (const row of pending) {
-    const result = await deliver(row.to_email, row.subject, row.body);
+    const brandedBody = wrapDriftProEmailHtml(row.body, {
+      subject: row.subject,
+      fromLabel: useGraph
+        ? `DriftPro · ${graphCfg.mailbox}`
+        : "DriftPro",
+    });
+    const result = await deliver(row.to_email, row.subject, brandedBody);
 
     if (result.ok) {
       await supabase
