@@ -1,117 +1,156 @@
 import 'dart:typed_data';
-import 'dart:ui' show Rect;
 
 import 'package:intl/intl.dart';
-import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 import '../../../models/safety_round.dart';
-import '../pdf/pdf_watermark.dart';
+import 'hms_pdf_builder.dart';
 
-/// Genererer PDF-rapport for arkivert vernerunde.
+/// Genererer profesjonell PDF-rapport for arkivert vernerunde
+/// (MAVI-vannmerke, sideskift, oversiktlig layout — samme stil som øvrige HMS-eksport).
 class SafetyRoundPdfGenerator {
   static Future<Uint8List> generate(SafetyRound round) async {
-    final doc = PdfDocument();
-    final page = doc.pages.add();
-    final g = page.graphics;
-    final titleFont = PdfStandardFont(PdfFontFamily.helvetica, 16, style: PdfFontStyle.bold);
-    final headFont = PdfStandardFont(PdfFontFamily.helvetica, 11, style: PdfFontStyle.bold);
-    final bodyFont = PdfStandardFont(PdfFontFamily.helvetica, 9);
-    final smallFont = PdfStandardFont(PdfFontFamily.helvetica, 8);
-
-    var y = 20.0;
-    const margin = 40.0;
-    final width = page.getClientSize().width - margin * 2;
-
-    g.drawString('VERNERUNDE – HMS RAPPORT', titleFont, bounds: Rect.fromLTWH(margin, y, width, 24));
-    y += 28;
-    g.drawString(round.title, headFont, bounds: Rect.fromLTWH(margin, y, width, 18));
-    y += 22;
+    final b = HmsPdfBuilder()
+      ..brandHeader = 'DRIFTPRO HMS'
+      ..footerLeft =
+          'DriftPro — vernerunde / internkontroll · konfidensielt';
 
     final completed = round.completedAt ?? round.createdAt ?? DateTime.now();
-    final df = DateFormat('dd.MM.yyyy HH:mm');
-    g.drawString('Arkivnr: ${round.archiveNumber ?? "—"}', bodyFont, bounds: Rect.fromLTWH(margin, y, width, 14));
-    y += 14;
-    g.drawString('Fullført: ${df.format(completed)}', bodyFont, bounds: Rect.fromLTWH(margin, y, width, 14));
-    y += 14;
-    g.drawString('Utført av: ${round.conductorName ?? round.conductedBy}', bodyFont,
-        bounds: Rect.fromLTWH(margin, y, width, 14));
-    y += 14;
-    if (round.location != null && round.location!.isNotEmpty) {
-      g.drawString('Sted: ${round.location}', bodyFont, bounds: Rect.fromLTWH(margin, y, width, 14));
-      y += 14;
-    }
-    if (round.signerRole != null) {
-      g.drawString('Rolle: ${round.signerRole}', bodyFont, bounds: Rect.fromLTWH(margin, y, width, 14));
-      y += 14;
-    }
-    if (round.signedAt != null) {
-      g.drawString(
-        'Signert/stemplet: ${df.format(round.signedAt!)} – ${round.signedByName ?? ""}',
-        bodyFont,
-        bounds: Rect.fromLTWH(margin, y, width, 14),
-      );
-      y += 18;
+    final df = DateFormat('dd.MM.yyyy');
+    final dtf = DateFormat('dd.MM.yyyy HH:mm');
+    final participants = round.participantNames
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    final hasAvvik = round.avvikCount > 0 || round.findings.isNotEmpty;
+
+    b.drawDocumentHeader(
+      documentType: 'Vernerunde · HMS-rapport',
+      title: round.title.trim().isEmpty ? 'Vernerunde' : round.title.trim(),
+      subtitle: 'Dokumentasjon for internkontroll og Arbeidstilsynet',
+      reference: round.archiveNumber,
+      documentDate: completed,
+    );
+
+    b.statusBanner(
+      title: hasAvvik
+          ? 'Avvik registrert (${round.avvikCount} punkt)'
+          : 'Ingen avvik — alle sjekket OK',
+      detail:
+          '${round.okCount} OK · ${round.avvikCount} avvik · ${round.checklist.length} punkter totalt',
+      isAlert: hasAvvik,
+    );
+
+    b.section('Rundeoversikt');
+    b.keyValueGrid([
+      ('Dato', dtf.format(completed)),
+      ('Sted', (round.location ?? '').trim().isEmpty ? '—' : round.location!.trim()),
+      (
+        'Utført av',
+        (round.conductorName ?? round.conductedBy).trim().isEmpty
+            ? '—'
+            : (round.conductorName ?? round.conductedBy).trim(),
+      ),
+      (
+        'Deltakere',
+        participants.isEmpty
+            ? 'Ikke registrert'
+            : participants.join(', '),
+      ),
+      if (round.signerRole != null && round.signerRole!.trim().isNotEmpty)
+        ('Rolle', round.signerRole!.trim()),
+      if (round.signedAt != null)
+        (
+          'Signert / stemplet',
+          '${dtf.format(round.signedAt!)}${round.signedByName != null && round.signedByName!.trim().isNotEmpty ? ' · ${round.signedByName!.trim()}' : ''}',
+        ),
+      if (round.scheduledDate != null)
+        ('Planlagt dato', df.format(round.scheduledDate!)),
+      if (round.nextRoundDate != null)
+        ('Neste runde', df.format(round.nextRoundDate!)),
+      ('Status', _overallLabel(round.overallStatus)),
+      if (round.archiveNumber != null && round.archiveNumber!.trim().isNotEmpty)
+        ('Arkivnr', round.archiveNumber!.trim()),
+    ]);
+
+    final notes = (round.roundNotes ?? '').trim();
+    if (notes.isNotEmpty) {
+      b.section('Notater fra runden');
+      b.paragraph(notes);
     }
 
-    g.drawString('SJEKKLISTE', headFont, bounds: Rect.fromLTWH(margin, y, width, 16));
-    y += 18;
+    if (round.checklist.isNotEmpty) {
+      b.section('Sjekkliste');
+      final rows = <List<String>>[];
+      final marks = <String?>[];
+      String? lastSection;
 
-    String? lastSection;
-    for (final item in round.checklist) {
-      final section = item['section_title'] as String?;
-      if (section != null && section != lastSection) {
-        lastSection = section;
-        if (y > page.getClientSize().height - 80) {
-          doc.pages.add();
-          y = 20;
+      for (final item in round.checklist) {
+        final section = (item['section_title'] as String?)?.trim();
+        final task = (item['task'] ?? item['item'] ?? '').toString().trim();
+        if (task.isEmpty) continue;
+        final status = _statusLabel(item['status'] as String?);
+        final comment = (item['comment'] as String?)?.trim() ?? '';
+        final legal = (item['legal_ref'] as String?)?.trim() ?? '';
+
+        var punkt = task;
+        if (section != null && section.isNotEmpty && section != lastSection) {
+          lastSection = section;
+          punkt = '$section — $task';
         }
-        g.drawString(section, headFont, bounds: Rect.fromLTWH(margin, y, width, 14));
-        y += 14;
-        final legal = item['legal_ref'] as String?;
-        if (legal != null && legal.isNotEmpty) {
-          g.drawString(legal, smallFont, bounds: Rect.fromLTWH(margin, y, width, 12));
-          y += 12;
+        if (legal.isNotEmpty) {
+          punkt = '$punkt ($legal)';
         }
+
+        rows.add([status, punkt, comment.isEmpty ? '—' : comment]);
+        marks.add(switch (item['status'] as String?) {
+          'avvik' => 'alert',
+          'n/a' => 'warn',
+          _ => null,
+        });
       }
-      final task = item['task'] ?? item['item'] ?? '';
-      final status = _statusLabel(item['status'] as String?);
-      final comment = item['comment'] as String? ?? '';
-      final line = '[$status] $task${comment.isNotEmpty ? " – $comment" : ""}';
-      if (y > page.getClientSize().height - 40) {
-        doc.pages.add();
-        y = 20;
+
+      if (rows.isNotEmpty) {
+        b.table(
+          headers: const ['Status', 'Kontrollpunkt', 'Kommentar'],
+          rows: rows,
+          rowMarks: marks,
+        );
       }
-      g.drawString(line, bodyFont, bounds: Rect.fromLTWH(margin + 8, y, width - 8, 28));
-      y += 14;
     }
 
     if (round.findings.isNotEmpty) {
-      y += 10;
-      if (y > page.getClientSize().height - 60) {
-        doc.pages.add();
-        y = 20;
-      }
-      g.drawString('AVVIK / FUNN', headFont, bounds: Rect.fromLTWH(margin, y, width, 16));
-      y += 16;
+      b.section('Avvik / funn');
+      final findingRows = <List<String>>[];
+      final findingMarks = <String?>[];
       for (final f in round.findings) {
-        final line =
-            '• ${f['description']} (${f['severity'] ?? "—"})';
-        g.drawString(line, bodyFont, bounds: Rect.fromLTWH(margin, y, width, 28));
-        y += 14;
+        final desc = (f['description'] ?? f['title'] ?? '').toString().trim();
+        if (desc.isEmpty) continue;
+        final sev = (f['severity'] ?? '—').toString().trim();
+        final action = (f['action'] ?? f['tiltak'] ?? '').toString().trim();
+        findingRows.add([
+          sev.isEmpty ? '—' : sev,
+          desc,
+          action.isEmpty ? '—' : action,
+        ]);
+        findingMarks.add('alert');
+      }
+      if (findingRows.isNotEmpty) {
+        b.table(
+          headers: const ['Alvorlighet', 'Beskrivelse', 'Tiltak'],
+          rows: findingRows,
+          rowMarks: findingMarks,
+        );
       }
     }
 
-    y += 20;
-    g.drawString(
-      'Generert av DriftPro – dokumentasjon for internkontroll og Arbeidstilsynet.',
-      smallFont,
-      bounds: Rect.fromLTWH(margin, y, width, 24),
+    b.section('Bekreftelse');
+    b.paragraph(
+      'Denne rapporten er generert fra DriftPro og utgjør dokumentasjon '
+      'av gjennomført vernerunde. MAVI Logistikk-merket i bakgrunnen '
+      'bekrefter offisiell DriftPro-eksport.',
     );
 
-    await PdfWatermark.finalizeDocument(doc);
-    final bytes = Uint8List.fromList(await doc.save());
-    doc.dispose();
-    return bytes;
+    return b.build();
   }
 
   static String _statusLabel(String? s) {
@@ -124,6 +163,23 @@ class SafetyRoundPdfGenerator {
         return 'N/A';
       default:
         return '—';
+    }
+  }
+
+  static String _overallLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'completed':
+      case 'fullført':
+      case 'ferdig':
+        return 'Fullført';
+      case 'planlagt':
+      case 'scheduled':
+        return 'Planlagt';
+      case 'pågående':
+      case 'in_progress':
+        return 'Pågående';
+      default:
+        return status.isEmpty ? '—' : status;
     }
   }
 }

@@ -201,7 +201,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   String? _sapGraphSyncNote;
   bool _importAborted = false;
   RealtimeChannel? _sapLiveChannel;
-  bool _showAllDrivers = false;
+  bool _showAllDrivers = true;
   bool _guideExpanded = false;
   bool _fillingShifts = false;
   bool _initialFilterSet = false;
@@ -4475,19 +4475,28 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       return _buildEmptyQueueHero(ui);
     }
 
-    final rows = _maviFleet.where((r) {
-      final count = _visibleStaged.where((s) => s.partnerVehicleId == r.vehicle.id).length;
-      if (_showAllDrivers) return count > 0;
-      return count >= 2;
-    }).toList();
-    rows.sort((a, b) {
-      final aMulti = _visibleStaged.where((s) => s.partnerVehicleId == a.vehicle.id).length >= 2;
-      final bMulti = _visibleStaged.where((s) => s.partnerVehicleId == b.vehicle.id).length >= 2;
-      if (aMulti != bMulti) return aMulti ? -1 : 1;
-      final ac = _visibleStaged.where((s) => s.partnerVehicleId == a.vehicle.id).length;
-      final bc = _visibleStaged.where((s) => s.partnerVehicleId == b.vehicle.id).length;
-      return bc.compareTo(ac);
-    });
+    // Bygg fra faktiske ruter i kø — ikke fra flåteliste (ellers mangler biler).
+    final allEntries = _routesByVehicle.entries.toList()
+      ..sort((a, b) {
+        final am = a.value.length >= 2;
+        final bm = b.value.length >= 2;
+        if (am != bm) return am ? -1 : 1;
+        final cmp = b.value.length.compareTo(a.value.length);
+        if (cmp != 0) return cmp;
+        final ra = _rowForVehicleId(a.key);
+        final rb = _rowForVehicleId(b.key);
+        final ma = ra != null
+            ? MaviUnitCodes.normalize(ra.vehicle.unitCode)
+            : a.key;
+        final mb = rb != null
+            ? MaviUnitCodes.normalize(rb.vehicle.unitCode)
+            : b.key;
+        return ma.compareTo(mb);
+      });
+    final entries = _showAllDrivers
+        ? allEntries
+        : allEntries.where((e) => e.value.length >= 2).toList();
+    final multiN = allEntries.where((e) => e.value.length >= 2).length;
 
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -4498,13 +4507,26 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             children: [
               if (_skipped.isNotEmpty) _buildManualAssignStrip(ui),
               _buildScrollListHeader(ui, showFilters: false),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                child: Text(
+                  multiN > 0
+                      ? '$multiN bil(er) med 2+ last — lastene vises side om side under hver bil'
+                      : 'Fordeling per bil',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: multiN > 0 ? Colors.orange.shade900 : Colors.grey.shade700,
+                  ),
+                ),
+              ),
               SwitchListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
                 dense: true,
                 title: Text(
                   _showAllDrivers
-                      ? 'Viser alle $_driversWithRoutesCount biler med rute'
-                      : 'Kun biler med 2+ last/rute ($_multiLoadDriverCount)',
+                      ? 'Viser alle ${allEntries.length} biler med rute'
+                      : 'Kun biler med 2+ last ($multiN)',
                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
                 value: _showAllDrivers,
@@ -4514,7 +4536,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ],
           ),
         ),
-        if (rows.isEmpty)
+        if (entries.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
@@ -4527,195 +4549,168 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ),
           )
         else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 24),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, i) => _buildDriverSection(rows[i], ui),
-                childCount: rows.length,
+          for (final e in entries)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: _buildDriverGroupPanel(
+                  vehicleId: e.key,
+                  routes: e.value,
+                  ui: ui,
+                ),
               ),
             ),
-          ),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
       ],
     );
   }
 
-  Widget _buildDriverSection(FleetPartnerVehicleRow row, _MassUi ui) {
-    final vid = row.vehicle.id;
-    final routes = _visibleStaged.where((s) => s.partnerVehicleId == vid).toList();
-    final mavi = MaviUnitCodes.compactLabel(row.vehicle.unitCode);
-    final portal = _portalByVehicle[vid];
-    final phone = portal?.phone ?? row.vehicle.phone;
-    final hasPhone = phone != null && phone.trim().length >= 8;
-    final lanes = routes.map(_stowingForShare).whereType<String>().toSet().toList()..sort();
-    final multi = routes.length >= 2;
-    final groupColor = _multiLoadColorForVehicle(vid) ?? Colors.orange.shade400;
-
-    if (routes.isEmpty && !_showAllDrivers) return const SizedBox.shrink();
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: multi
-              ? groupColor
-              : routes.isNotEmpty
-                  ? ui.accent.withValues(alpha: 0.35)
-                  : Colors.grey.shade300,
-          width: multi ? 2.5 : 1,
-        ),
-        color: multi
-            ? groupColor.withValues(alpha: 0.08)
-            : routes.isNotEmpty
-                ? ui.surfaceTint.withValues(alpha: 0.5)
-                : Colors.grey.shade50,
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          initiallyExpanded: routes.isNotEmpty,
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          leading: CircleAvatar(
-            radius: 16,
-            backgroundColor: multi
-                ? Colors.orange.shade100
-                : routes.isNotEmpty
-                    ? ui.accent.withValues(alpha: 0.2)
-                    : Colors.grey.shade200,
-            child: Icon(
-              multi
-                  ? Icons.layers_outlined
-                  : routes.isNotEmpty
-                      ? Icons.check
-                      : Icons.more_horiz,
-              size: 18,
-              color: multi ? Colors.orange.shade900 : routes.isNotEmpty ? ui.accentDark : Colors.grey,
-            ),
-          ),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text('$mavi · ${row.partner.name}', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-              ),
-              if (multi)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade800,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '${routes.length} LAST',
-                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900),
-                  ),
-                ),
-            ],
-          ),
-          subtitle: Text(
-            routes.isEmpty
-                ? 'Venter på PDF'
-                : multi
-                    ? '${routes.length} last · Lane ${lanes.join(", ")} · ${hasPhone ? "SMS OK" : "uten telefon"}'
-                    : '${routes.length} rute · ${lanes.isNotEmpty ? "Lane ${lanes.first}" : "PDF"} · ${hasPhone ? "SMS OK" : "uten telefon"}',
-            style: TextStyle(
-              fontSize: 11,
-              color: routes.isEmpty ? Colors.grey : Colors.grey.shade700,
-              fontWeight: multi ? FontWeight.w600 : FontWeight.w500,
-            ),
-          ),
-          children: routes.isEmpty
-              ? [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(12, 0, 12, 12),
-                    child: Text('Ingen rute ennå.', style: TextStyle(fontSize: 12)),
-                  ),
-                ]
-              : [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-                    child: _buildDriverLoadCards(row, ui, routes),
-                  ),
-                ],
-        ),
-      ),
-    );
-  }
-
-  /// Flere last på samme bil → side om side (Last A / B / C) når det er plass.
-  Widget _buildDriverLoadCards(
-    FleetPartnerVehicleRow row,
-    _MassUi ui,
-    List<PartnerRouteShare> routes,
-  ) {
+  /// Én bil med alle last synlige side om side (ikke skjult i ExpansionTile).
+  Widget _buildDriverGroupPanel({
+    required String vehicleId,
+    required List<PartnerRouteShare> routes,
+    required _MassUi ui,
+  }) {
+    final row = _rowForVehicleId(vehicleId);
     final sorted = List<PartnerRouteShare>.from(routes)
       ..sort((a, b) {
-        final la = _stowingForShare(a) ?? '';
-        final lb = _stowingForShare(b) ?? '';
-        final c = la.compareTo(lb);
+        final c = (_stowingForShare(a) ?? '').compareTo(_stowingForShare(b) ?? '');
         if (c != 0) return c;
         return (a.title ?? '').compareTo(b.title ?? '');
       });
+    final multi = sorted.length >= 2;
+    final groupColor =
+        _multiLoadColorForVehicle(vehicleId) ?? ui.accentDark;
+    final mavi = row != null
+        ? MaviUnitCodes.compactLabel(row.vehicle.unitCode)
+        : (_maviCodeForShare(sorted.first) != null
+            ? MaviUnitCodes.compactLabel(_maviCodeForShare(sorted.first)!)
+            : 'Ukjent');
+    final partnerName = row?.partner.name ?? 'Ukjent partner';
+    final portal = _portalByVehicle[vehicleId];
+    final phone = portal?.phone ?? row?.vehicle.phone;
+    final hasPhone = phone != null && phone.trim().length >= 8;
+    final lanes =
+        sorted.map(_stowingForShare).whereType<String>().toSet().toList()
+          ..sort();
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final wideEnough = constraints.maxWidth >= 420;
-        final sideBySide = sorted.length > 1 && wideEnough;
-
-        if (!sideBySide) {
-          return Column(
-            children: [
-              for (var i = 0; i < sorted.length; i++)
-                Padding(
-                  padding: EdgeInsets.only(bottom: i == sorted.length - 1 ? 0 : 10),
-                  child: _buildLabeledLoadCard(
-                    share: sorted[i],
-                    row: row,
-                    ui: ui,
-                    loadIndex: i,
-                    multi: sorted.length > 1,
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: multi ? groupColor : ui.accent.withValues(alpha: 0.3),
+          width: multi ? 2.5 : 1,
+        ),
+        color: multi ? groupColor.withValues(alpha: 0.06) : Colors.white,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            color: multi
+                ? groupColor.withValues(alpha: 0.12)
+                : ui.surfaceTint.withValues(alpha: 0.55),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: multi
+                      ? groupColor.withValues(alpha: 0.25)
+                      : ui.accent.withValues(alpha: 0.2),
+                  child: Icon(
+                    multi ? Icons.layers_outlined : Icons.local_shipping_outlined,
+                    size: 16,
+                    color: multi ? groupColor : ui.accentDark,
                   ),
                 ),
-            ],
-          );
-        }
-
-        final cols = sorted.length == 2
-            ? 2
-            : (constraints.maxWidth >= 900 ? 3 : 2);
-        final gap = 10.0;
-        final cardW = (constraints.maxWidth - gap * (cols - 1)) / cols;
-
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (var i = 0; i < sorted.length; i++)
-              SizedBox(
-                width: cardW,
-                child: _buildLabeledLoadCard(
-                  share: sorted[i],
-                  row: row,
-                  ui: ui,
-                  loadIndex: i,
-                  multi: true,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '$mavi · $partnerName',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        multi
+                            ? '${sorted.length} last · Lane ${lanes.join(", ")} · ${hasPhone ? "SMS OK" : "uten telefon"}'
+                            : '1 rute · ${lanes.isNotEmpty ? "Lane ${lanes.first} · " : ""}${hasPhone ? "SMS OK" : "uten telefon"}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-          ],
-        );
-      },
-    );
-  }
+                if (multi)
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: groupColor,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '${sorted.length} LAST',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final w = constraints.maxWidth;
+                final cols = sorted.length == 1
+                    ? 1
+                    : (w >= 900
+                        ? (sorted.length >= 3 ? 3 : 2)
+                        : (w >= 520 ? 2 : 1));
+                final gap = 10.0;
+                final cardW = cols == 1
+                    ? w
+                    : (w - gap * (cols - 1)) / cols;
+                // Fast høyde så PDF-forside + footer får plass i samme format.
+                final cardH = cols == 1 ? 380.0 : (cardW / 0.54).clamp(300.0, 460.0);
 
-  Widget _buildLabeledLoadCard({
-    required PartnerRouteShare share,
-    required FleetPartnerVehicleRow row,
-    required _MassUi ui,
-    required int loadIndex,
-    required bool multi,
-  }) {
-    // Last A/B/C + farge ligger på selve rute-kortet.
-    return _buildMassRouteCard(share, row, ui);
+                return Wrap(
+                  spacing: gap,
+                  runSpacing: gap,
+                  children: [
+                    for (var i = 0; i < sorted.length; i++)
+                      SizedBox(
+                        width: cardW,
+                        height: cardH,
+                        child: row != null
+                            ? _buildMassRouteCard(sorted[i], row, ui)
+                            : _buildOrphanRouteCard(sorted[i], ui),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   String? _skippedDriverLabel(_SkippedPdf item) {
