@@ -8,14 +8,18 @@ import 'package:intl/intl.dart';
 
 import '../../core/case_trace/case_trace_chip.dart';
 import '../../core/services/hms/hms_ecosystem_service.dart';
+import '../../core/services/hms/hms_follow_up_service.dart';
 import '../../core/services/hms/hms_pdf_generators.dart';
 import '../../core/services/native_permissions_service.dart';
 import '../../core/services/nav_badge_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/services/ticket_service.dart';
+import '../hms/widgets/hms_follow_up_notify_sheet.dart';
+import '../hms/widgets/hms_follow_up_panel.dart';
 import '../hms/widgets/hms_pdf_export_button.dart';
 import '../../core/layout/mobile_layout.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/hms/hms_follow_up.dart';
 import '../../models/ticket.dart';
 import '../../models/user_profile.dart';
 import '../../widgets/resolved_storage_image.dart';
@@ -39,6 +43,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   late Ticket _ticket;
   UserProfile? _me;
   List<TicketComment> _comments = [];
+  List<HmsFollowUp> _followUps = [];
   bool _loading = true;
   final _commentController = TextEditingController();
   final _rootCauseController = TextEditingController();
@@ -150,9 +155,53 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
         _internalController.text = fresh.internalNotes ?? '';
       }
       _me = profile;
+      await _loadFollowUps();
       if (mounted) setState(() {});
     } catch (e) {
       debugPrint('refresh ticket: $e');
+    }
+  }
+
+  Future<void> _loadFollowUps() async {
+    try {
+      final list = await HmsFollowUpService.fetchForReference(
+        referenceType: 'tickets',
+        referenceId: _ticket.id,
+      );
+      if (mounted) setState(() => _followUps = list);
+    } catch (e) {
+      debugPrint('follow-ups: $e');
+    }
+  }
+
+  Future<void> _sendFollowUpNotify() async {
+    final involved = <String>{
+      if (_ticket.assignedTo != null) _ticket.assignedTo!,
+      _ticket.reportedBy,
+      if (_me != null) _me!.id,
+    };
+    final sent = await HmsFollowUpNotifySheet.show(
+      context,
+      config: HmsFollowUpNotifyConfig(
+        companyId: _ticket.companyId,
+        module: 'ticket',
+        referenceType: 'tickets',
+        referenceId: _ticket.id,
+        title: _ticket.title,
+        summary: _ticket.description,
+        deviationCount: 1,
+        involvedProfileIds: involved.toList(),
+        requireDueDate: true,
+        initialDueAt: _ticket.dueDate,
+        headline: 'Send oppfølging / varsel',
+        subtitle: 'E-post og/eller push til valgte mottakere.',
+      ),
+    );
+    if (sent && mounted) {
+      await _loadFollowUps();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Oppfølging sendt')),
+      );
     }
   }
 
@@ -398,6 +447,12 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       appBar: AppBar(
         title: Text(_ticket.displayTraceRef),
         actions: [
+          if (!_isClosed)
+            IconButton(
+              icon: const Icon(Icons.mail_outline),
+              tooltip: 'Send e-post / push',
+              onPressed: _sendFollowUpNotify,
+            ),
           HmsPdfExportButton(
             fileName: _ticket.ticketNumber != null
                 ? 'avvik_${_ticket.ticketNumber}'
@@ -426,6 +481,14 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                     padding: const EdgeInsets.all(16),
                     children: [
                       _buildHero(isDark),
+                      if (_followUps.any((e) => e.isOpen)) ...[
+                        const SizedBox(height: 16),
+                        HmsFollowUpPanel(
+                          items: _followUps,
+                          canClose: _canProcess || _isReporter,
+                          onChanged: _loadFollowUps,
+                        ),
+                      ],
                       if (_isClosed) ...[
                         const SizedBox(height: 16),
                         _buildOutcomeCard(isDark),

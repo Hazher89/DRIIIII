@@ -8,6 +8,7 @@ import '../../../core/services/hms/hms_ecosystem_service.dart';
 import '../../../core/services/hms/hms_pdf_generators.dart';
 import '../../../core/services/nav_badge_service.dart';
 import '../../../core/services/supabase_service.dart';
+import '../widgets/hms_follow_up_notify_sheet.dart';
 import '../widgets/hms_pdf_export_button.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/risk_assessment.dart';
@@ -272,6 +273,41 @@ class _RiskAssessmentDetailScreenState extends State<RiskAssessmentDetailScreen>
     super.dispose();
   }
 
+  Future<void> _sendNotify() async {
+    final involved = <String>{
+      _ra.createdBy,
+      if (_responsibleId != null) _responsibleId!,
+      if (_ra.responsiblePerson != null) _ra.responsiblePerson!,
+      if (_profile != null) _profile!.id,
+    };
+    final sent = await HmsFollowUpNotifySheet.show(
+      context,
+      config: HmsFollowUpNotifyConfig(
+        companyId: _ra.companyId,
+        module: 'risk_assessment',
+        referenceType: 'risk_assessments',
+        referenceId: _ra.id,
+        title: _titleController.text.trim().isEmpty
+            ? _ra.title
+            : _titleController.text.trim(),
+        summary: _descController.text.trim().isEmpty
+            ? _ra.description
+            : _descController.text.trim(),
+        deviationCount: 1,
+        involvedProfileIds: involved.toList(),
+        requireDueDate: false,
+        initialDueAt: _deadline ?? _reviewDate,
+        headline: 'Send risikoanalyse-varsel',
+        subtitle: 'E-post og/eller push til involverte eller flere.',
+      ),
+    );
+    if (sent && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Varsel sendt')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final fmt = DateFormat('dd.MM.yyyy');
@@ -280,6 +316,11 @@ class _RiskAssessmentDetailScreenState extends State<RiskAssessmentDetailScreen>
       appBar: AppBar(
         title: Text(_ra.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.mail_outline),
+            tooltip: 'Send e-post / push',
+            onPressed: _loading ? null : _sendNotify,
+          ),
           HmsPdfExportButton(
             fileName: 'ros_${_ra.id.substring(0, 8)}',
             onGenerate: () => HmsPdfGenerators.riskAssessment(_ra),

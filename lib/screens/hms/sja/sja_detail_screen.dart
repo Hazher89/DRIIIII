@@ -7,6 +7,7 @@ import 'package:signature/signature.dart';
 import '../../../core/services/hms/hms_ecosystem_service.dart';
 import '../../../core/services/hms/hms_pdf_generators.dart';
 import '../../../core/services/native_permissions_service.dart';
+import '../widgets/hms_follow_up_notify_sheet.dart';
 import '../widgets/hms_pdf_export_button.dart';
 import '../../../core/services/storage/company_file_storage.dart';
 import '../../../core/services/supabase_service.dart';
@@ -223,6 +224,36 @@ class _SjaDetailScreenState extends State<SjaDetailScreen> {
     super.dispose();
   }
 
+  Future<void> _sendNotify() async {
+    final involved = <String>{
+      _sja.createdBy,
+      if (_sja.responsiblePerson != null) _sja.responsiblePerson!,
+      if (_me != null) _me!.id,
+      ..._signatures.map((s) => s.profileId),
+    };
+    final sent = await HmsFollowUpNotifySheet.show(
+      context,
+      config: HmsFollowUpNotifyConfig(
+        companyId: _sja.companyId,
+        module: 'sja',
+        referenceType: 'sja_forms',
+        referenceId: _sja.id,
+        title: _sja.title,
+        summary: _sja.workDescription,
+        deviationCount: 1,
+        involvedProfileIds: involved.toList(),
+        requireDueDate: false,
+        headline: 'Send SJA-varsel',
+        subtitle: 'E-post og/eller push til involverte eller flere.',
+      ),
+    );
+    if (sent && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Varsel sendt')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -234,6 +265,11 @@ class _SjaDetailScreenState extends State<SjaDetailScreen> {
       appBar: AppBar(
         title: Text(_sja.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.mail_outline),
+            tooltip: 'Send e-post / push',
+            onPressed: _loading ? null : _sendNotify,
+          ),
           HmsPdfExportButton(
             fileName: 'sja_${_sja.id.substring(0, 8)}',
             onGenerate: () => HmsPdfGenerators.sja(

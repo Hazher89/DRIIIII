@@ -9,6 +9,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/safety_round.dart';
 import '../../../core/permissions/user_access.dart';
 import '../../../models/user_profile.dart';
+import '../widgets/hms_follow_up_notify_sheet.dart';
 import 'safety_round_detail_screen.dart';
 
 /// Gjennomfør vernerunde med norsk lov-mal, signatur og arkivering.
@@ -301,6 +302,43 @@ class _SafetyRoundConductScreenState extends State<SafetyRoundConductScreen> {
         id: widget.existing?.id,
       );
       round = await SafetyRoundService.finalizeWithPdf(round);
+
+      if (!mounted) return;
+
+      final avvikCount = round.avvikCount;
+      if (avvikCount > 0) {
+        final avvikLines = round.checklist
+            .where((e) => e['status'] == 'avvik')
+            .map((e) {
+              final task = (e['task'] ?? '').toString();
+              final com = (e['comment'] ?? '').toString().trim();
+              return com.isEmpty ? '• $task' : '• $task — $com';
+            })
+            .take(12)
+            .join('\n');
+        final involved = <String>{
+          ..._participantIds,
+          if (_profile != null) _profile!.id,
+        };
+        await HmsFollowUpNotifySheet.show(
+          context,
+          config: HmsFollowUpNotifyConfig(
+            companyId: round.companyId,
+            module: 'safety_round',
+            referenceType: 'safety_rounds',
+            referenceId: round.id,
+            title: round.title,
+            summary: avvikLines,
+            deviationCount: avvikCount,
+            involvedProfileIds: involved.toList(),
+            requireDueDate: true,
+            headline: 'Avvik i vernerunden — send oppfølging?',
+            subtitle:
+                '$avvikCount avvik funnet. Sett frist og mottakere. '
+                'Påminnelse dagen før hvis ikke lukket.',
+          ),
+        );
+      }
 
       if (!mounted) return;
       final roundId = round.id;

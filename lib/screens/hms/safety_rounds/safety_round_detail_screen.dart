@@ -3,10 +3,16 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/hms/hms_pdf_generators.dart';
+import '../../../core/services/hms/hms_follow_up_service.dart';
 import '../../../core/services/hms/safety_round_service.dart';
+import '../../../core/services/supabase_service.dart';
+import '../widgets/hms_follow_up_notify_sheet.dart';
+import '../widgets/hms_follow_up_panel.dart';
 import '../widgets/hms_pdf_export_button.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../models/hms/hms_follow_up.dart';
 import '../../../models/safety_round.dart';
+import '../../../models/user_profile.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Arkivvisning – søkbar vernerunde med PDF-nedlasting.
@@ -22,6 +28,8 @@ class SafetyRoundDetailScreen extends StatefulWidget {
 
 class _SafetyRoundDetailScreenState extends State<SafetyRoundDetailScreen> {
   SafetyRound? _round;
+  UserProfile? _me;
+  List<HmsFollowUp> _followUps = [];
   bool _loading = true;
   String _filter = '';
 
@@ -33,8 +41,57 @@ class _SafetyRoundDetailScreenState extends State<SafetyRoundDetailScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
+    _me = await SupabaseService.fetchCurrentUserProfile();
     _round = await SafetyRoundService.fetchById(widget.roundId);
+    await _loadFollowUps();
     if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _loadFollowUps() async {
+    final list = await HmsFollowUpService.fetchForReference(
+      referenceType: 'safety_rounds',
+      referenceId: widget.roundId,
+    );
+    if (mounted) setState(() => _followUps = list);
+  }
+
+  Future<void> _sendFollowUp() async {
+    final r = _round;
+    if (r == null) return;
+    final avvikCount = r.avvikCount;
+    final summary = r.checklist
+        .where((e) => e['status'] == 'avvik')
+        .map((e) => '• ${e['task'] ?? ''}')
+        .take(12)
+        .join('\n');
+    final involved = <String>{
+      r.conductedBy,
+      ...r.participantIds,
+      if (_me != null) _me!.id,
+    };
+    final sent = await HmsFollowUpNotifySheet.show(
+      context,
+      config: HmsFollowUpNotifyConfig(
+        companyId: r.companyId,
+        module: 'safety_round',
+        referenceType: 'safety_rounds',
+        referenceId: r.id,
+        title: r.title,
+        summary: summary.isEmpty ? r.roundNotes : summary,
+        deviationCount: avvikCount > 0 ? avvikCount : 1,
+        involvedProfileIds: involved.toList(),
+        requireDueDate: avvikCount > 0,
+        headline: avvikCount > 0
+            ? 'Send oppfølging for avvik'
+            : 'Send varsel om vernerunde',
+      ),
+    );
+    if (sent && mounted) {
+      await _loadFollowUps();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Varsel sendt')),
+      );
+    }
   }
 
   Future<void> _downloadPdf() async {
@@ -120,6 +177,11 @@ class _SafetyRoundDetailScreenState extends State<SafetyRoundDetailScreen> {
       appBar: AppBar(
         title: const Text('Vernerunde – arkiv'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.mail_outline),
+            tooltip: 'Send e-post / push',
+            onPressed: _sendFollowUp,
+          ),
           HmsPdfExportButton(
             fileName: 'vernerunde_${r.archiveNumber ?? r.id.substring(0, 8)}',
             onGenerate: () => HmsPdfGenerators.safetyRound(r),
@@ -139,6 +201,18 @@ class _SafetyRoundDetailScreenState extends State<SafetyRoundDetailScreen> {
       body: Column(
         children: [
           _stampHeader(r, df),
+          if (_followUps.any((e) => e.isOpen))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              child: HmsFollowUpPanel(
+                items: _followUps,
+                canClose: _me != null &&
+                    (_me!.id == r.conductedBy ||
+                        r.participantIds.contains(_me!.id) ||
+                        _me!.isAdmin),
+                onChanged: _loadFollowUps,
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: TextField(

@@ -16,6 +16,7 @@ import '../../models/ticket_assignee_options.dart';
 import '../../models/user_profile.dart';
 import '../../models/whistleblowing_report.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import '../hms/widgets/hms_follow_up_notify_sheet.dart';
 
 /// Enkel, rask innrapportering for ansatte (tekst + bilder + alvor).
 class NewTicketScreen extends StatefulWidget {
@@ -287,11 +288,39 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
       }
       if (!mounted) return;
       final avvikId = created.traceRef ?? created.displayTraceRef;
+
+      final involved = <String>{
+        if (created.assignedTo != null) created.assignedTo!,
+        if (!_isAnonymous) user.id,
+        ...anonymousIds,
+      };
+
+      final sentFollowUp = await HmsFollowUpNotifySheet.show(
+        context,
+        config: HmsFollowUpNotifyConfig(
+          companyId: companyId,
+          module: 'ticket',
+          referenceType: 'tickets',
+          referenceId: created.id,
+          title: created.title,
+          summary: created.description,
+          deviationCount: 1,
+          involvedProfileIds: involved.toList(),
+          requireDueDate: true,
+          headline: 'Send oppfølging for $avvikId',
+          subtitle:
+              'Sett frist og velg mottakere. Dagen før fristen purrer systemet '
+              'hvis avviket ikke er lukket.',
+        ),
+      );
+
+      if (!mounted) return;
       if (failedUploads > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '$avvikId sendt. Saksbehandler får varsel. '
+              '$avvikId lagret. '
+              '${sentFollowUp ? 'Oppfølging sendt. ' : ''}'
               '$failedUploads bilde(r) kunne ikke lastes opp.',
             ),
           ),
@@ -300,10 +329,11 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _isAnonymous
-                  ? '$avvikId er registrert anonymt. Valgte mottakere får varsel.'
-                  : '$avvikId er registrert. Saksbehandler får varsel nå, '
-                      'og du får SMS ved statusendringer (under arbeid og ferdig).',
+              sentFollowUp
+                  ? '$avvikId er registrert og oppfølging er sendt.'
+                  : (_isAnonymous
+                      ? '$avvikId er registrert anonymt.'
+                      : '$avvikId er registrert. Saksbehandler får varsel.'),
             ),
           ),
         );
