@@ -35,6 +35,8 @@ class UserProfile {
   final String? partnerId;
   /// Når satt, ser portalbrukeren kun ruter for dette MAVI-kjøretøyet.
   final String? partnerVehicleId;
+  /// Når true: innlogging åpner låst leiebil-sporing (kiosk).
+  final bool driveMonitorDevice;
   /// Minimal profil uten DB-rad — kun for whitelisted eier-e-post (midlertidig nødbo).
   final bool isRecoverySession;
 
@@ -67,6 +69,7 @@ class UserProfile {
     this.accessSettings,
     this.partnerId,
     this.partnerVehicleId,
+    this.driveMonitorDevice = false,
     this.isRecoverySession = false,
   });
 
@@ -141,6 +144,7 @@ class UserProfile {
       accessSettings: json['access_settings'] as Map<String, dynamic>?,
       partnerId: json['partner_id'] as String?,
       partnerVehicleId: json['partner_vehicle_id'] as String?,
+      driveMonitorDevice: json['drive_monitor_device'] as bool? ?? false,
     );
   }
 
@@ -170,6 +174,7 @@ class UserProfile {
     'is_approved': isApproved,
     'partner_id': partnerId,
     'partner_vehicle_id': partnerVehicleId,
+    'drive_monitor_device': driveMonitorDevice,
     'recovery_session': isRecoverySession,
   };
 
@@ -188,6 +193,7 @@ class UserProfile {
     String? companyId,
     String? partnerId,
     String? partnerVehicleId,
+    bool? driveMonitorDevice,
     bool? isRecoverySession,
     Map<String, dynamic>? accessSettings,
   }) {
@@ -223,6 +229,7 @@ class UserProfile {
       accessSettings: accessSettings ?? this.accessSettings,
       partnerId: partnerId ?? this.partnerId,
       partnerVehicleId: partnerVehicleId ?? this.partnerVehicleId,
+      driveMonitorDevice: driveMonitorDevice ?? this.driveMonitorDevice,
       isRecoverySession: isRecoverySession ?? this.isRecoverySession,
     );
   }

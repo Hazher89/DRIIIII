@@ -21,6 +21,7 @@ class AccessKeys {
 
   // ── Uniform-monitor (MAVI logo + vernesko) ─────────────────────────────────
   static const uniformMonitorAdmin = 'uniform_monitor_admin';
+  static const driveMonitor = 'drive_monitor';
 
   // ── Mer-meny ───────────────────────────────────────────────────────────────
   static const avdelinger = 'avdelinger';
@@ -112,6 +113,7 @@ class AccessKeys {
     more,
     stemplingAdmin,
     uniformMonitorAdmin,
+    driveMonitor,
     stemplingMobile,
     stemplingInnstillinger,
     avdelinger,
@@ -183,6 +185,7 @@ class AccessKeys {
     uniformMonitor: 'Uniform-monitor (fane)',
     more: 'Mer-meny',
     uniformMonitorAdmin: 'Uniform-monitor – kamera og innstillinger',
+    driveMonitor: 'Leiebil-sporing (Mer)',
     stemplingAdmin: 'Stempling – oversikt og timeliste',
     stemplingMobile: 'Stempling – mobil/nett',
     stemplingInnstillinger: 'Stempling – kiosk-innstillinger',

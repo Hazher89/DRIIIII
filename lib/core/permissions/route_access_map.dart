@@ -170,6 +170,11 @@ class RouteAccessMap {
     AppPaths.moreVisionEvents: const RouteAccessRequirement(
       areaId: 'more.vision_events',
     ),
+    AppPaths.moreDriveMonitor: RouteAccessRequirement(
+      areaId: 'more',
+      legacyAccessKey: AccessKeys.driveMonitor,
+      customCheck: (a) => a.canDriveMonitor,
+    ),
     AppPaths.moreHjelp: const RouteAccessRequirement(
       areaId: 'more',
       legacyAccessKey: AccessKeys.more,

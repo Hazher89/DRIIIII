@@ -291,6 +291,14 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 'Partner-chat',
                 isDark,
               ),
+            if (_profile!.isSuperAdmin || _profile!.access.canDriveMonitor)
+              _buildMenuItem(
+                context,
+                Icons.speed_outlined,
+                'Leiebil-sporing',
+                isDark,
+                badge: 'NY',
+              ),
             if (_profile!.access.canWhistleblowing)
               _buildMenuItem(
                 context,
@@ -390,7 +398,9 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
         p.isSuperAdmin ||
         a.canKiosk ||
         a.canHomeFeedAdmin ||
-        a.canWhistleblowing;
+        a.canWhistleblowing ||
+        a.canDriveMonitor ||
+        p.isSuperAdmin;
   }
 
   bool get _hasMobileModules {
@@ -526,6 +536,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Om DriftPro' => AppPaths.moreOm,
             'Kameraer' => AppPaths.moreVisionCameras,
             'Kamerahendelser' => AppPaths.moreVisionEvents,
+            'Leiebil-sporing' => AppPaths.moreDriveMonitor,
             _ => null,
           };
           if (path != null) context.push(path);

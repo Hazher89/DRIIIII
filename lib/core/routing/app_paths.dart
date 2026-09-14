@@ -149,6 +149,8 @@ abstract final class AppPaths {
   static const morePartnerChat = '/more/partner-chat';
   static const moreVisionCameras = '/more/vision-cameras';
   static const moreVisionEvents = '/more/vision-events';
+  static const moreDriveMonitor = '/more/leiebil-sporing';
+  static const driveMonitorKiosk = '/drive-monitor-kiosk';
 
   /// Hovedfaner i [MainShell] — rekkefølge = bottom nav + skjult avvik-gren.
   static const shellTabs = <({String path, String access})>[

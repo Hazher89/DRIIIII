@@ -116,6 +116,10 @@ class UserAccess {
   bool get canStempling => can(AccessKeys.stempling);
   bool get canUniformMonitor => can(AccessKeys.uniformMonitor);
   bool get canUniformMonitorAdmin => can(AccessKeys.uniformMonitorAdmin);
+  bool get canDriveMonitor =>
+      profile.isSuperAdmin ||
+      profile.role == UserRole.admin ||
+      can(AccessKeys.driveMonitor);
   bool get canStemplingAdmin => can(AccessKeys.stemplingAdmin);
   bool get canStemplingMobile => can(AccessKeys.stemplingMobile);
   bool get canStemplingSettings => can(AccessKeys.stemplingInnstillinger);

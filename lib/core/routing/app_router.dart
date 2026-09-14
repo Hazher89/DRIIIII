@@ -31,6 +31,7 @@ import '../../screens/hms/sja/sja_list_screen.dart';
 import '../../screens/more/about_driftpro_screen.dart';
 import '../../screens/more/vision/vision_cameras_screen.dart';
 import '../../screens/more/vision/vision_events_screen.dart';
+import '../../screens/drive_monitor/drive_monitor_hub_screen.dart';
 import '../../screens/uniform/uniform_monitor_screen.dart';
 import '../../screens/more/help_support_screen.dart';
 import '../../screens/more/assistant_settings_screen.dart';
@@ -672,6 +673,13 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     builder: (context, state) => _guardPath(
                       state,
                       const VisionEventsScreen()),
+                  ),
+                  GoRoute(
+                    path: 'leiebil-sporing',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const DriveMonitorHubScreen()),
                   ),
                 ],
               ),

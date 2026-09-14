@@ -14,6 +14,7 @@ import '../../core/constants/app_strings.dart';
 import '../../core/constants/app_icons.dart';
 import '../auth/onboarding_screen.dart';
 import '../auth/pending_approval_screen.dart';
+import '../drive_monitor/drive_monitor_kiosk_screen.dart';
 import '../../models/user_profile.dart';
 import '../../core/services/chat/chat_flag_service.dart';
 import '../../core/services/chat/chat_unread_service.dart';
@@ -150,6 +151,19 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         if (!mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()),
+          (_) => false,
+        );
+      });
+      return true;
+    }
+
+    if (profile.driveMonitorDevice) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(
+            builder: (_) => DriveMonitorKioskScreen(profile: profile),
+          ),
           (_) => false,
         );
       });
