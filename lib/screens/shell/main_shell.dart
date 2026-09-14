@@ -134,7 +134,22 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   /// true = vi forlater MainShell (onboarding / ventende godkjenning).
+  /// true = vi forlater MainShell (onboarding / ventende godkjenning / bil-kiosk).
   bool _scheduleProfileGate(UserProfile profile) {
+    // Sporingsenhet: alltid låst kiosk — ikke portal, ikke «venter på godkjenning».
+    if (profile.driveMonitorDevice) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(
+            builder: (_) => DriveMonitorKioskScreen(profile: profile),
+          ),
+          (_) => false,
+        );
+      });
+      return true;
+    }
+
     if (!profile.isOnboarded) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -151,19 +166,6 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         if (!mounted) return;
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute<void>(builder: (_) => const PendingApprovalScreen()),
-          (_) => false,
-        );
-      });
-      return true;
-    }
-
-    if (profile.driveMonitorDevice) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute<void>(
-            builder: (_) => DriveMonitorKioskScreen(profile: profile),
-          ),
           (_) => false,
         );
       });

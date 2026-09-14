@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/permissions/access_session_cache.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/services/employee_auth_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../screens/drive_monitor/drive_monitor_kiosk_screen.dart';
 import '../../widgets/auth_screen_shell.dart';
 
 /// Første valg: MAVI-ansatte (ansattnummer) eller samarbeidspartner (brukernavn/passord).
@@ -205,7 +207,21 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
         password: pw,
       );
       await SupabaseService.ensureSessionLinkedToCompany();
-      if (mounted) _leaveLoginScreen();
+      final profile = await SupabaseService.fetchEffectiveUserProfile();
+      if (profile != null) {
+        AccessSessionCache.setProfile(profile);
+      }
+      if (!mounted) return;
+      if (profile?.driveMonitorDevice == true) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute<void>(
+            builder: (_) => DriveMonitorKioskScreen(profile: profile!),
+          ),
+          (_) => false,
+        );
+        return;
+      }
+      _leaveLoginScreen();
     } on AuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

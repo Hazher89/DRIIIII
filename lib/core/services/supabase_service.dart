@@ -78,6 +78,7 @@ class SupabaseService {
     final em = (email ?? currentUser?.email)?.trim().toLowerCase() ?? '';
     if (_isMaviEmployeeEmail(em) || _isSuperadminEmail(em)) return true;
     if (profile != null) {
+      if (profile.driveMonitorDevice) return true;
       if (_isMaviEmployeeEmail(profile.email) || _isSuperadminEmail(profile.email)) {
         return true;
       }

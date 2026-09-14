@@ -138,8 +138,14 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
       final user = Supabase.instance.client.auth.currentUser;
       final email = user?.email?.trim().toLowerCase() ?? '';
       final looksLikePortal = SupabaseService.emailLooksLikePortal(email);
+      final internalStaff = SupabaseService.isInternalStaffSession(
+        email: email,
+        profile: AccessSessionCache.profile,
+      );
 
       if (looksLikePortal &&
+          !internalStaff &&
+          AccessSessionCache.profile?.driveMonitorDevice != true &&
           path != AppPaths.portal &&
           !path.startsWith('${AppPaths.portal}/') &&
           path != AppPaths.login &&

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/routing/app_paths.dart';
 import '../../core/routing/route_url_sync.dart';
@@ -6,6 +7,7 @@ import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/partner/partner_links.dart';
 import '../../models/user_profile.dart';
+import '../../screens/drive_monitor/drive_monitor_kiosk_screen.dart';
 import 'partner_shell.dart';
 import 'widgets/partner_portal_access_revoked.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
@@ -67,12 +69,29 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
       final email =
           SupabaseService.currentUser?.email?.trim().toLowerCase() ?? '';
 
-      // MAVI-ansatt / superadmin (f.eks. #25) skal aldri inn i partnerportal.
+      // MAVI-ansatt / superadmin / leiebil-sporing skal aldri bli værende i partnerportal.
       if (SupabaseService.isInternalStaffSession(
-        profile: profile,
-        email: email,
-      )) {
+            profile: profile,
+            email: email,
+          ) ||
+          profile?.driveMonitorDevice == true) {
         if (!mounted) return;
+        if (profile?.driveMonitorDevice == true && profile != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute<void>(
+                builder: (_) => DriveMonitorKioskScreen(profile: profile!),
+              ),
+              (_) => false,
+            );
+          });
+        } else {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            context.go(AppPaths.dashboard);
+          });
+        }
         setState(() {
           _profile = profile;
           _portalAccountKind = null;
