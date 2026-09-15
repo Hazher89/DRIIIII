@@ -33,14 +33,23 @@ class _VehicleRentalCheckoutFlowScreenState
   final _fuel = TextEditingController();
   final _km = TextEditingController();
   final _comment = TextEditingController();
-  bool _agreementRead = false;
+  late List<bool> _acks;
   bool _submitting = false;
 
   VehicleRental get rental => widget.rental;
 
+  bool get _allAcksChecked => _acks.every((v) => v);
+
+  bool get _photosComplete =>
+      VehicleRentalPhotoSlot.requiredKeys.every((k) => (_photos[k] ?? '').isNotEmpty);
+
   @override
   void initState() {
     super.initState();
+    _acks = List<bool>.filled(
+      VehicleRentalAgreement.borrowerAckChecklist.length,
+      false,
+    );
     _photos = Map<String, String>.from(rental.photos);
     if ((rental.fuelLevel ?? '').trim().isNotEmpty) {
       _fuel.text = rental.fuelLevel!.trim();
@@ -78,9 +87,11 @@ class _VehicleRentalCheckoutFlowScreenState
   }
 
   Future<void> _submit() async {
-    if (!_agreementRead) {
+    if (!_allAcksChecked) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bekreft at du har lest avtalen')),
+        const SnackBar(
+          content: Text('Kryss av alle punktene under avtalen før du signerer'),
+        ),
       );
       return;
     }
@@ -125,11 +136,11 @@ class _VehicleRentalCheckoutFlowScreenState
     }
   }
 
-  bool get _photosComplete =>
-      VehicleRentalPhotoSlot.requiredKeys.every((k) => (_photos[k] ?? '').isNotEmpty);
-
   @override
   Widget build(BuildContext context) {
+    final ackCount = _acks.where((v) => v).length;
+    final ackTotal = _acks.length;
+
     return MobileAppScaffold(
       title: 'Dokumenter utleie',
       leading: const BackButton(),
@@ -213,13 +224,43 @@ class _VehicleRentalCheckoutFlowScreenState
               ],
             ),
           ),
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _agreementRead,
-            onChanged: (v) => setState(() => _agreementRead = v == true),
-            title: const Text('Jeg har lest og aksepterer avtalen', style: TextStyle(fontSize: 14)),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            decoration: BoxDecoration(
+              color: Colors.amber.shade50,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.amber.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Bekreftelser før signering ($ackCount/$ackTotal)',
+                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Låntaker må krysse av hvert punkt. Signering er ikke mulig før alle er bekreftet.',
+                  style: TextStyle(fontSize: 12, height: 1.35, color: Colors.grey.shade800),
+                ),
+                const SizedBox(height: 4),
+                for (var i = 0; i < VehicleRentalAgreement.borrowerAckChecklist.length; i++)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: _acks[i],
+                    onChanged: (v) => setState(() => _acks[i] = v == true),
+                    title: Text(
+                      VehicleRentalAgreement.borrowerAckChecklist[i],
+                      style: const TextStyle(fontSize: 13, height: 1.35),
+                    ),
+                  ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           const Text('6 bilder (obligatorisk)', style: TextStyle(fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
           Text(
@@ -250,7 +291,7 @@ class _VehicleRentalCheckoutFlowScreenState
           ),
           const SizedBox(height: 20),
           FilledButton.icon(
-            onPressed: _submitting ? null : _submit,
+            onPressed: _submitting || !_allAcksChecked ? null : _submit,
             style: FilledButton.styleFrom(
               backgroundColor: DriftProTheme.primaryGreen,
               minimumSize: const Size(double.infinity, 52),
@@ -258,7 +299,11 @@ class _VehicleRentalCheckoutFlowScreenState
             icon: _submitting
                 ? const SizedBox(width: 18, height: 18, child: DriftProLoadingIndicator(size: 18))
                 : const Icon(Icons.send),
-            label: const Text('Send til godkjenning'),
+            label: Text(
+              _allAcksChecked
+                  ? 'Send til godkjenning'
+                  : 'Kryss av alle punkter ($ackCount/$ackTotal)',
+            ),
           ),
         ],
       ),
