@@ -103,7 +103,7 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
     if (oldWidget.year != widget.year ||
         oldWidget.employees != widget.employees ||
         oldWidget.vacations != widget.vacations) {
-      _rebuild();
+      setState(_rebuild);
     }
   }
 

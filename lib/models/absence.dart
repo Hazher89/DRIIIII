@@ -158,6 +158,50 @@ class Absence {
     return !today.isBefore(s) && !today.isAfter(e);
   }
 
+  Absence copyWith({
+    String? id,
+    String? userId,
+    String? companyId,
+    String? departmentId,
+    AbsenceType? type,
+    DateTime? startDate,
+    DateTime? endDate,
+    AbsenceStatus? status,
+    String? comment,
+    String? decisionComment,
+    int? quotaYear,
+    int? totalDays,
+    int? vacationDayCount,
+    String? approvedBy,
+    DateTime? approvedAt,
+    List<String>? attachmentUrls,
+    DateTime? createdAt,
+    String? userName,
+    String? userAvatarUrl,
+  }) {
+    return Absence(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      companyId: companyId ?? this.companyId,
+      departmentId: departmentId ?? this.departmentId,
+      type: type ?? this.type,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      status: status ?? this.status,
+      comment: comment ?? this.comment,
+      decisionComment: decisionComment ?? this.decisionComment,
+      quotaYear: quotaYear ?? this.quotaYear,
+      totalDays: totalDays ?? this.totalDays,
+      vacationDayCount: vacationDayCount ?? this.vacationDayCount,
+      approvedBy: approvedBy ?? this.approvedBy,
+      approvedAt: approvedAt ?? this.approvedAt,
+      attachmentUrls: attachmentUrls ?? this.attachmentUrls,
+      createdAt: createdAt ?? this.createdAt,
+      userName: userName ?? this.userName,
+      userAvatarUrl: userAvatarUrl ?? this.userAvatarUrl,
+    );
+  }
+
   /// Kalenderdato uten tidssone-forskyvning (viktig for «fravær i dag»).
   static DateTime _parseCalendarDate(String raw) {
     final datePart = raw.split('T').first;

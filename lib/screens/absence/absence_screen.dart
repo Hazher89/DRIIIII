@@ -26,6 +26,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/absence.dart';
 import '../../models/department.dart';
 import '../../models/user_profile.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/user_access.dart';
@@ -83,6 +84,10 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   String? _calendarUserFilter;
   String? _pendingTabSlug;
 
+  RealtimeChannel? _absenceChannel;
+  Timer? _absenceDebounce;
+  bool _absenceRefreshing = false;
+
   @override
   void initState() {
     super.initState();
@@ -92,9 +97,104 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
   @override
   void dispose() {
+    _stopAbsenceRealtime();
+    _absenceDebounce?.cancel();
     _tabController?.removeListener(_onAbsenceTabChanged);
     _tabController?.dispose();
     super.dispose();
+  }
+
+  void _stopAbsenceRealtime() {
+    final ch = _absenceChannel;
+    _absenceChannel = null;
+    if (ch != null) {
+      unawaited(SupabaseService.client.removeChannel(ch));
+    }
+  }
+
+  void _startAbsenceRealtime(String companyId) {
+    _stopAbsenceRealtime();
+    void bump() {
+      _absenceDebounce?.cancel();
+      _absenceDebounce = Timer(const Duration(milliseconds: 350), () {
+        if (!mounted) return;
+        unawaited(_softRefreshAbsences());
+      });
+    }
+
+    _absenceChannel = SupabaseService.client
+        .channel('absences_live_$companyId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'absences',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'company_id',
+            value: companyId,
+          ),
+          callback: (_) => bump(),
+        )
+        .subscribe();
+  }
+
+  /// Lett refresh uten fullskjerm-spinner — for kalender live-oppdatering.
+  Future<void> _softRefreshAbsences() async {
+    if (_absenceRefreshing) return;
+    _absenceRefreshing = true;
+    try {
+      await _refreshScopedLists();
+      final profile = _profile;
+      if (profile != null) {
+        unawaited(_loadSaldo(profile));
+        if (_canManageTeamLeave) {
+          unawaited(_loadTeamOverview(profile));
+        }
+      }
+      unawaited(NavBadgeService.refresh());
+    } finally {
+      _absenceRefreshing = false;
+    }
+  }
+
+  void _patchLocalAbsenceStatus(
+    String id,
+    AbsenceStatus status, {
+    String? decisionComment,
+  }) {
+    Absence mapOne(Absence a) {
+      if (a.id != id) return a;
+      return a.copyWith(
+        status: status,
+        decisionComment: decisionComment ?? a.decisionComment,
+        approvedAt: status == AbsenceStatus.godkjent
+            ? DateTime.now()
+            : a.approvedAt,
+        approvedBy: status == AbsenceStatus.godkjent
+            ? (_profile?.id ?? a.approvedBy)
+            : a.approvedBy,
+      );
+    }
+
+    setState(() {
+      _scopedAbsences = _scopedAbsences.map(mapOne).toList();
+      _myAbsences = _myAbsences.map(mapOne).toList();
+      if (status != AbsenceStatus.ventende) {
+        _pendingApprovals.removeWhere((a) => a.id == id);
+        _approvalOverlaps.remove(id);
+      }
+      _teamOverlaps = _computeTeamOverlaps(_scopedAbsences);
+    });
+  }
+
+  void _removeLocalAbsence(String id) {
+    setState(() {
+      _scopedAbsences = _scopedAbsences.where((a) => a.id != id).toList();
+      _myAbsences = _myAbsences.where((a) => a.id != id).toList();
+      _pendingApprovals.removeWhere((a) => a.id == id);
+      _approvalOverlaps.remove(id);
+      _teamOverlaps = _computeTeamOverlaps(_scopedAbsences);
+    });
   }
 
   int _indexForSlug(String? slug, int tabCount) {
@@ -410,6 +510,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         _loadSaldo(profile),
         _loadTeamOverview(profile),
       ]);
+      _startAbsenceRealtime(companyId);
     } catch (e) {
       debugPrint('Error loading absence data: $e');
       setState(() => _loadError = 'Kunne ikke laste fravær: $e');
@@ -1545,14 +1646,15 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       absence: a,
       profile: profile,
       days: days,
-      onChanged: _refreshScopedLists,
+      onChanged: _softRefreshAbsences,
+      onDeleted: _removeLocalAbsence,
       onDecide: managerView
           ? (id, status, {decisionComment}) =>
               _updateStatus(id, status, decisionComment: decisionComment)
           : null,
     );
     if (changed == true) {
-      unawaited(NavBadgeService.refresh());
+      await _softRefreshAbsences();
     }
   }
 
@@ -1715,10 +1817,12 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       }
     }
 
-    setState(() {
-      _pendingApprovals.removeWhere((a) => a.id == id);
-      _approvalOverlaps.remove(id);
-    });
+    // Oppdater kalender/lister med en gang — ikke vent på nettverk.
+    _patchLocalAbsenceStatus(
+      id,
+      status,
+      decisionComment: decisionComment,
+    );
 
     try {
       await SupabaseService.updateAbsenceStatus(
@@ -1726,8 +1830,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         status,
         decisionComment: decisionComment,
       );
-      await _refreshScopedLists();
-      unawaited(NavBadgeService.refresh());
+      await _softRefreshAbsences();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1740,6 +1843,8 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         );
       }
     } catch (e) {
+      // Rull tilbake ved feil.
+      await _softRefreshAbsences();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Feil: $e')));
       }

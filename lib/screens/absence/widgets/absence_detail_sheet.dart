@@ -15,6 +15,7 @@ Future<bool?> showAbsenceDetailSheet(
   required UserProfile profile,
   required int days,
   required Future<void> Function() onChanged,
+  void Function(String id)? onDeleted,
   Future<void> Function(String id, AbsenceStatus status, {String? decisionComment})?
       onDecide,
 }) async {
@@ -29,6 +30,7 @@ Future<bool?> showAbsenceDetailSheet(
       profile: profile,
       days: days,
       onChanged: onChanged,
+      onDeleted: onDeleted,
       onDecide: onDecide,
     ),
   );
@@ -40,6 +42,7 @@ class _AbsenceDetailSheet extends StatefulWidget {
     required this.profile,
     required this.days,
     required this.onChanged,
+    this.onDeleted,
     this.onDecide,
   });
 
@@ -47,6 +50,7 @@ class _AbsenceDetailSheet extends StatefulWidget {
   final UserProfile profile;
   final int days;
   final Future<void> Function() onChanged;
+  final void Function(String id)? onDeleted;
   final Future<void> Function(String id, AbsenceStatus status, {String? decisionComment})?
       onDecide;
 
@@ -120,6 +124,7 @@ class _AbsenceDetailSheetState extends State<_AbsenceDetailSheet> {
     setState(() => _busy = true);
     try {
       await SupabaseService.deleteAbsence(_absence.id);
+      widget.onDeleted?.call(_absence.id);
       await widget.onChanged();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
