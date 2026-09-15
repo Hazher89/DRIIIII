@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -31,9 +33,10 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
   List<Map<String, dynamic>> _mapEvents = [];
   List<Map<String, dynamic>> _mapSessions = [];
 
-  DateTime _archiveDate = DateTime.now().subtract(const Duration(days: 1));
+  DateTime _archiveDate = DateTime.now();
   String? _selectedSessionId;
   bool _mapLoading = false;
+  bool _archiveLoaded = false;
 
   final _df = DateFormat('dd.MM.yyyy HH:mm');
   final _day = DateFormat('dd.MM.yyyy');
@@ -42,6 +45,13 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
   void initState() {
     super.initState();
     _tabs = TabController(length: 4, vsync: this);
+    _tabs.addListener(() {
+      if (_tabs.indexIsChanging) return;
+      if (_tabs.index == 1 && !_archiveLoaded) {
+        _archiveLoaded = true;
+        unawaited(_loadArchiveMap());
+      }
+    });
     _bootstrap();
   }
 
@@ -556,7 +566,8 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
       padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Forrige dager arkiveres automatisk. Velg dato for full rute, hastighet og hendelser.',
+          'Velg dato for full rute. Dagens kjøring: ${_day.format(DateTime.now())}. '
+          'Live-fanen viser aktive sesjoner + i dag.',
           style: DriftProTheme.bodySm.copyWith(color: Colors.grey[700]),
         ),
         const SizedBox(height: 12),
@@ -569,13 +580,14 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
             final d = await showDatePicker(
               context: context,
               firstDate: DateTime(2024),
-              lastDate: DateTime.now(),
+              lastDate: DateTime.now().add(const Duration(days: 1)),
               initialDate: _archiveDate,
             );
             if (d == null) return;
             setState(() {
               _archiveDate = d;
               _selectedSessionId = null;
+              _archiveLoaded = true;
             });
             await _loadArchiveMap();
           },
@@ -583,7 +595,22 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
         FilledButton.icon(
           onPressed: _mapLoading ? null : _loadArchiveMap,
           icon: const Icon(Icons.map_outlined),
-          label: const Text('Vis arkiv på kart'),
+          label: Text(_mapLoading ? 'Laster…' : 'Vis arkiv på kart'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _mapLoading
+              ? null
+              : () async {
+                  setState(() {
+                    _archiveDate = DateTime.now();
+                    _selectedSessionId = null;
+                    _archiveLoaded = true;
+                  });
+                  await _loadArchiveMap();
+                },
+          icon: const Icon(Icons.today),
+          label: const Text('Vis i dag'),
         ),
         const SizedBox(height: 12),
         if (_mapSessions.isNotEmpty)

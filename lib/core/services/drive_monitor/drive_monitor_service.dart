@@ -68,12 +68,28 @@ class DriveMonitorService {
     final patch = <String, dynamic>{
       'drive_monitor_device': enabled,
     };
-    if (unitName != null) {
-      patch['drive_monitor_unit_name'] =
-          unitName.trim().isEmpty ? null : unitName.trim();
-    }
     if (!enabled) {
-      patch['drive_monitor_unit_name'] = null;
+      try {
+        await _db.from('profiles').update({
+          ...patch,
+          'drive_monitor_unit_name': null,
+        }).eq('id', profileId);
+        return;
+      } catch (_) {
+        await _db.from('profiles').update(patch).eq('id', profileId);
+        return;
+      }
+    }
+    if (unitName != null && unitName.trim().isNotEmpty) {
+      try {
+        await _db.from('profiles').update({
+          ...patch,
+          'drive_monitor_unit_name': unitName.trim(),
+        }).eq('id', profileId);
+        return;
+      } catch (_) {
+        // Kolonne mangler før migrasjon — aktiver enhet likevel.
+      }
     }
     await _db.from('profiles').update(patch).eq('id', profileId);
   }
@@ -203,9 +219,104 @@ class DriveMonitorService {
         'p_archive_date':
             '${archiveDate.year.toString().padLeft(4, '0')}-${archiveDate.month.toString().padLeft(2, '0')}-${archiveDate.day.toString().padLeft(2, '0')}',
     };
-    final res = await _db.rpc('get_drive_monitor_map_payload', params: params);
-    if (res is Map) return Map<String, dynamic>.from(res);
-    return {'sessions': [], 'samples': [], 'events': []};
+    try {
+      final res = await _db.rpc('get_drive_monitor_map_payload', params: params);
+      if (res is Map) {
+        final map = Map<String, dynamic>.from(res);
+        final samples = map['samples'];
+        // Fallback hvis live RPC er gammel og returnerer tomt for i dag.
+        if (sessionId == null &&
+            archiveDate == null &&
+            (samples is! List || samples.isEmpty)) {
+          final today = await fetchMapPayload(
+            companyId: companyId,
+            archiveDate: DateTime.now(),
+          );
+          if ((today['samples'] as List?)?.isNotEmpty == true) {
+            return today;
+          }
+        }
+        return map;
+      }
+    } catch (_) {
+      // RPC mangler / feilet — fall tilbake til direkte lesing.
+    }
+    return _fetchMapPayloadDirect(
+      companyId: companyId,
+      sessionId: sessionId,
+      archiveDate: archiveDate,
+    );
+  }
+
+  static Future<Map<String, dynamic>> _fetchMapPayloadDirect({
+    required String companyId,
+    String? sessionId,
+    DateTime? archiveDate,
+  }) async {
+    final now = DateTime.now();
+    final day = archiveDate ?? now;
+    final dayStart = DateTime(day.year, day.month, day.day);
+    final dayEnd = dayStart.add(const Duration(days: 1));
+
+    List<Map<String, dynamic>> sessions;
+    if (sessionId != null) {
+      final rows = await _db
+          .from('drive_monitor_sessions')
+          .select()
+          .eq('id', sessionId)
+          .limit(1);
+      sessions = List<Map<String, dynamic>>.from(rows as List);
+    } else if (archiveDate != null) {
+      final rows = await listSessions(
+        companyId: companyId,
+        limit: 200,
+        archiveDate: archiveDate,
+      );
+      // Also include sessions started that calendar day even if archive_date null.
+      final all = await listSessions(companyId: companyId, limit: 200);
+      final merged = <String, Map<String, dynamic>>{};
+      for (final s in [...rows, ...all]) {
+        final id = '${s['id']}';
+        final started = DateTime.tryParse('${s['started_at']}')?.toLocal();
+        final ad = s['archive_date']?.toString();
+        final dayStr =
+            '${day.year.toString().padLeft(4, '0')}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+        final onDay = ad == dayStr ||
+            (started != null &&
+                !started.isBefore(dayStart) &&
+                started.isBefore(dayEnd));
+        if (onDay) merged[id] = s;
+      }
+      sessions = merged.values.toList();
+    } else {
+      final all = await listSessions(companyId: companyId, limit: 200);
+      sessions = all.where((s) {
+        if (s['status'] == 'active') return true;
+        final started = DateTime.tryParse('${s['started_at']}')?.toLocal();
+        if (started == null) return false;
+        return started.year == now.year &&
+            started.month == now.month &&
+            started.day == now.day;
+      }).toList();
+    }
+
+    final ids = sessions.map((s) => '${s['id']}').toList();
+    var samples = <Map<String, dynamic>>[];
+    var events = <Map<String, dynamic>>[];
+    for (final id in ids.take(20)) {
+      samples.addAll(await listSamples(sessionId: id, limit: 5000));
+      events.addAll(
+        await listEvents(companyId: companyId, sessionId: id, limit: 1000),
+      );
+    }
+    samples.sort((a, b) => '${a['recorded_at']}'.compareTo('${b['recorded_at']}'));
+    events.sort((a, b) => '${a['recorded_at']}'.compareTo('${b['recorded_at']}'));
+
+    return {
+      'sessions': sessions,
+      'samples': samples,
+      'events': events,
+    };
   }
 
   static Future<int> archivePreviousDays(String companyId) async {
@@ -333,6 +444,8 @@ class DriveMonitorTracker {
   DateTime? _idleSince;
   bool _flushing = false;
   bool _online = true;
+  String? _lastSyncError;
+  int _pendingQueued = 0;
 
   final _sampleBuf = <Map<String, dynamic>>[];
   final _eventBuf = <Map<String, dynamic>>[];
@@ -342,6 +455,7 @@ class DriveMonitorTracker {
   double get km => _km;
   int get eventCount => _eventCount;
   int get roughCount => _roughCount;
+  String? get lastSyncError => _lastSyncError;
   double get score {
     final penalty = (_roughCount * 12) + ((_eventCount - _roughCount) * 4);
     return (100 - penalty).clamp(0, 100).toDouble();
@@ -671,11 +785,24 @@ class DriveMonitorTracker {
     unawaited(_flush());
   }
 
+  static List<Map<String, dynamic>> _stripSampleExtras(
+    List<Map<String, dynamic>> rows,
+  ) {
+    return rows
+        .map((r) {
+          final m = Map<String, dynamic>.from(r);
+          m.remove('accuracy_m');
+          m.remove('altitude_m');
+          m.remove('turn_rate_deg_s');
+          return m;
+        })
+        .toList();
+  }
+
   Future<void> _flush({bool force = false}) async {
     if (_flushing) return;
     _flushing = true;
     try {
-      // Always persist in-memory buffer to disk first (survive kill).
       if (_sampleBuf.isNotEmpty) {
         final copy = List<Map<String, dynamic>>.from(_sampleBuf);
         _sampleBuf.clear();
@@ -687,14 +814,15 @@ class DriveMonitorTracker {
         await _queue.enqueueEvents(copy);
       }
 
+      var (samples, events) = await _queue.peek();
+      _pendingQueued = samples.length + events.length;
+
       if (!_online && !force) {
         _emit();
         return;
       }
 
-      var (samples, events) = await _queue.peek();
       if (samples.isEmpty && events.isEmpty) {
-        // Still update session KPIs when online.
         if (_online) {
           await DriveMonitorService._db.from('drive_monitor_sessions').update({
             'km': _km,
@@ -705,17 +833,34 @@ class DriveMonitorTracker {
             'avg_speed_kmh': _speedN == 0 ? 0 : _speedSum / _speedN,
           }).eq('id', sessionId);
         }
+        _lastSyncError = null;
         return;
       }
 
-      // Upload in chunks.
       while (samples.isNotEmpty) {
         final chunk = samples.take(80).toList();
-        await DriveMonitorService._db
-            .from('drive_monitor_samples')
-            .insert(chunk);
+        try {
+          await DriveMonitorService._db
+              .from('drive_monitor_samples')
+              .insert(chunk);
+        } catch (e) {
+          // Eldre DB uten accuracy/altitude-kolonner — prøv minimal payload.
+          final msg = '$e';
+          if (msg.contains('accuracy_m') ||
+              msg.contains('altitude_m') ||
+              msg.contains('turn_rate') ||
+              msg.contains('PGRST204') ||
+              msg.contains('column')) {
+            await DriveMonitorService._db
+                .from('drive_monitor_samples')
+                .insert(_stripSampleExtras(chunk));
+          } else {
+            rethrow;
+          }
+        }
         samples = samples.skip(80).toList();
         await _queue.replace(samples: samples, events: events);
+        _pendingQueued = samples.length + events.length;
       }
       while (events.isNotEmpty) {
         final chunk = events.take(40).toList();
@@ -724,6 +869,7 @@ class DriveMonitorTracker {
             .insert(chunk);
         events = events.skip(40).toList();
         await _queue.replace(samples: samples, events: events);
+        _pendingQueued = samples.length + events.length;
       }
 
       await DriveMonitorService._db.from('drive_monitor_sessions').update({
@@ -736,9 +882,12 @@ class DriveMonitorTracker {
       }).eq('id', sessionId);
 
       await _queue.clear();
-    } catch (_) {
-      // Keep disk queue; retry when connectivity returns.
+      _pendingQueued = 0;
+      _online = true;
+      _lastSyncError = null;
+    } catch (e) {
       _online = false;
+      _lastSyncError = '$e';
     } finally {
       _flushing = false;
       _emit();
@@ -760,7 +909,8 @@ class DriveMonitorTracker {
       eventCount: _eventCount,
       roughCount: _roughCount,
       online: _online,
-      pendingSamples: _sampleBuf.length,
+      pendingSamples: _sampleBuf.length + _pendingQueued,
+      lastError: _lastSyncError,
     ));
   }
 }
@@ -775,6 +925,7 @@ class DriveMonitorLiveStatus {
     required this.roughCount,
     this.online = true,
     this.pendingSamples = 0,
+    this.lastError,
   });
 
   final double speedKmh;
@@ -785,4 +936,5 @@ class DriveMonitorLiveStatus {
   final int roughCount;
   final bool online;
   final int pendingSamples;
+  final String? lastError;
 }

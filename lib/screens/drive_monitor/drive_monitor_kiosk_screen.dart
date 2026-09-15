@@ -295,8 +295,12 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
                   const Spacer(),
                   Text(
                     _live?.online == false
-                        ? 'Offline — rute lagres lokalt og synces når nett er tilbake'
-                        : 'GPS-rute lagres fortløpende · bakgrunnssporet aktivt',
+                        ? (_live?.lastError != null
+                            ? 'Sync-feil — lagres lokalt. ${_live!.pendingSamples} i kø'
+                            : 'Offline — rute lagres lokalt (${_live?.pendingSamples ?? 0} i kø)')
+                        : (_live?.pendingSamples ?? 0) > 0
+                            ? 'Synker ${_live!.pendingSamples} GPS-punkter…'
+                            : 'GPS-rute lagres fortløpende · bakgrunnssporet aktivt',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.55),
