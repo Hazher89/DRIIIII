@@ -24,24 +24,17 @@ const kWorkStepsShortPurpose =
     'Ingen sporing. Du kan slå av når som helst.';
 
 /// Vises før systemet ber om HealthKit / Health Connect (Apple/Google-krav).
-const kWorkStepsConsentHeadline = 'Vil du dele skritt med DriftPro — kun på jobb?';
+/// Kort, én hensikt — deretter native systemdialog. Ikke lang «policy»-sheet.
+const kWorkStepsConsentHeadline = '«Skritt på jobb»';
 
-const kWorkStepsConsentBody = '''
-Dette er en frivillig funksjon for MAVI og MAVI-ansatte.
+/// Matcher Info.plist / Health Connect purpose (Apple HIG / Google Play).
+const kWorkStepsConsentBody =
+    'DriftPro vil lese skrittene dine fra Apple Helse / Health Connect '
+    'for å vise en frivillig skrittoppsummering mens du er på MAVI arbeidssted. '
+    'Data deles ikke med tredjeparter. Du kan slå av når som helst.';
 
-Hva skjer?
-• Appen kan lese skritt fra Apple Helse eller Google Health Connect — bare hvis du sier ja.
-• Skritt lagres bare når telefonen er innenfor MAVI sitt arbeidsområde (geofence).
-• Vi lagrer kun dags-total for skritt på jobb — ikke GPS-spor, ikke rutehistorikk.
-• Data brukes ikke til annonser, og deles ikke med tredjeparter.
-
-Hva skjer ikke?
-• Ingen kontinuerlig sporing av hvor du er.
-• Ingen bakgrunnssporing av posisjon for denne funksjonen.
-• Ingen innsamling når funksjonen er slått av.
-
-Du kan når som helst slå av deling under Mer → Skritt på jobb. Da stopper all lesing.
-''';
+const kWorkStepsConsentDetail =
+    'Kun dags-total på jobb lagres. Ingen GPS-sporing i bakgrunnen.';
 
 const kWorkStepsOnlyAtWorkBanner =
     'Virker kun på jobb: skritt synkes bare når du er innenfor MAVI arbeidssted.';

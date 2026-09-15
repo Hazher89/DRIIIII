@@ -10,6 +10,7 @@ import 'leave_calendar_rules_section.dart';
 import 'leave_employee_timeline.dart';
 import 'leave_public_holidays_panel.dart';
 import 'team_leave_calendar.dart';
+import 'vacation_year_matrix.dart';
 import '../../../core/layout/web_layout.dart';
 
 /// To kalendere: ferie og øvrig fravær — avansert oversikt for hele teamet.
@@ -237,6 +238,22 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (vacationOnly) ...[
+              VacationYearMatrix(
+                year: year,
+                employees: filteredEmployees,
+                vacations: filtered,
+                onYearChanged: (y) {
+                  widget.onMonthChanged(DateTime(y, widget.month.month, 1));
+                },
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Månedskalender',
+                style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 8),
+            ],
             TeamLeaveCalendar(
               month: widget.month,
               absences: filtered,
@@ -267,8 +284,10 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab>
                 departmentNames: widget.departmentNames,
               ),
             ],
-            const SizedBox(height: 12),
-            LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
+            if (!vacationOnly) ...[
+              const SizedBox(height: 12),
+              LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
+            ],
             const SizedBox(height: 10),
             LeaveCalendarRulesSection(
               vacationTab: vacationOnly,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/services/chat/chat_advanced_service.dart';
@@ -189,6 +191,50 @@ class _MembersSheetState extends State<_MembersSheet> {
     }
   }
 
+  Future<void> _renameChatName(ChatRoomMember member) async {
+    final ctrl = TextEditingController(text: member.fullName);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text('Chat-navn for ${member.fullName}'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: 40,
+          decoration: const InputDecoration(
+            labelText: 'Visningsnavn i chat',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('Avbryt')),
+          FilledButton(
+            onPressed: () => Navigator.pop(d, ctrl.text.trim()),
+            child: const Text('Lagre'),
+          ),
+        ],
+      ),
+    );
+    if (name == null || name.length < 2) return;
+    try {
+      await PartnerChatService.adminSetChatDisplayName(
+        userId: member.userId,
+        name: name,
+      );
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Chat-navn oppdatert til «$name»')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kunne ikke endre navn: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return DraggableScrollableSheet(
@@ -254,11 +300,23 @@ class _MembersSheetState extends State<_MembersSheet> {
                               onPressed: () => _approveMember(m),
                               child: const Text('Godkjenn'),
                             )
-                          : _isSuperAdmin && !isMe
-                              ? IconButton(
-                                  tooltip: 'Fjern fra chat',
-                                  icon: const Icon(Icons.person_remove_outlined, color: Colors.red),
-                                  onPressed: () => _removeMember(m),
+                          : _isSuperAdmin
+                              ? PopupMenuButton<String>(
+                                  onSelected: (v) {
+                                    if (v == 'rename') unawaited(_renameChatName(m));
+                                    if (v == 'remove' && !isMe) unawaited(_removeMember(m));
+                                  },
+                                  itemBuilder: (_) => [
+                                    const PopupMenuItem(
+                                      value: 'rename',
+                                      child: Text('Endre chat-navn'),
+                                    ),
+                                    if (!isMe)
+                                      const PopupMenuItem(
+                                        value: 'remove',
+                                        child: Text('Fjern fra chat', style: TextStyle(color: Colors.red)),
+                                      ),
+                                  ],
                                 )
                               : null,
                     );

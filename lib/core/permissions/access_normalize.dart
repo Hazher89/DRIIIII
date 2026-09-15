@@ -215,6 +215,8 @@ class AccessNormalize {
       doc.set('admin.avdelinger_rediger', AccessAction.view, false);
       doc.set('more.tilgangskontroll', AccessAction.view, false);
       doc.set('more.brukergodkjenning', AccessAction.view, false);
+      // Avvik / RUH skjules for ansatte (også om gammel lagring hadde det på).
+      doc.setAreaAll('avvik', false, cascadeChildren: true);
     }
 
     doc.set('more', AccessAction.view, true);

@@ -5,6 +5,7 @@ import 'assistant_route_intelligence.dart';
 import 'assistant_text_utils.dart';
 import 'knowledge_assistant_engine.dart';
 import 'public_chat_knowledge_service.dart';
+import '../partner/delivery_postal_zones.dart';
 import '../supabase_service.dart';
 
 /// DriftPro-assistent: FAQ + HMS + opplæring + live trening + ruter/fravær.
@@ -32,6 +33,8 @@ class KnowledgeAssistantService {
     'Hva koster bilutleie per dag?',
     'Hvem godkjenner bilutleie?',
     'Hva er ISO 14001?',
+    'Leverer vi til postnummer 3015?',
+    'Hvilke postnummer leverer MAVI til?',
   ];
 
   Future<void> reload() async {
@@ -80,6 +83,12 @@ class KnowledgeAssistantService {
         return KnowledgeAnswer(found: true, hits: const [], text: leave.trim());
       }
     } catch (_) {}
+
+    // 1b) Leveringsområde / postnummer (fasit fra soneoversikt).
+    final postal = DeliveryPostalZones.tryAnswer(query, audience: 'internal');
+    if (postal != null && postal.trim().isNotEmpty) {
+      return KnowledgeAnswer(found: true, hits: const [], text: postal.trim());
+    }
 
     // 2) Live ruter for alle biler.
     try {

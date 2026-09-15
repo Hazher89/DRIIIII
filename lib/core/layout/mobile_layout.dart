@@ -122,6 +122,8 @@ class DockInputBar extends StatelessWidget {
     final bottomSafe = includeBottomSafeArea
         ? MediaQuery.viewPaddingOf(context).bottom
         : 0.0;
+    // iPhone hjem-indikator: minst ~10 ekstra når viewPadding er 0 (sjeldent).
+    final lift = bottomSafe > 0 ? bottomSafe : (includeBottomSafeArea ? 10.0 : 0.0);
     final resolved = padding.resolve(Directionality.of(context));
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -129,7 +131,7 @@ class DockInputBar extends StatelessWidget {
         border: border,
       ),
       child: Padding(
-        padding: resolved.copyWith(bottom: resolved.bottom + bottomSafe),
+        padding: resolved.copyWith(bottom: resolved.bottom + lift),
         child: child,
       ),
     );

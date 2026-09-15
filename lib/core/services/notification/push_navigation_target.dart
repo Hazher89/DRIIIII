@@ -93,6 +93,9 @@ class PushNavigationTarget {
         kind = PushNavKind.partnerTimesheet;
         id = entryId ?? refId;
       case 'chat_message':
+      case 'chat_reply':
+      case 'chat_thread_reply':
+      case 'chat_reaction':
         kind = PushNavKind.chatMessage;
         id = _str(data['room_id']) ?? refId;
       case 'absence_request':

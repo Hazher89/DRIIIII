@@ -314,7 +314,9 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Sporing aktiv',
+                          _live?.online == false
+                              ? 'Offline — lagrer lokalt'
+                              : 'Sporing aktiv · kontinuerlig',
                           style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
                         ),
                       ],
@@ -344,7 +346,9 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
                   ),
                   const Spacer(),
                   Text(
-                    'Hold telefonen festet i bilen. Data sendes til DriftPro.',
+                    _live?.online == false
+                        ? 'Ingen nett — data lagres på telefonen og sendes automatisk når nett er tilbake.'
+                        : 'Hold telefonen festet i bilen. Data sendes kontinuerlig til DriftPro (også i bakgrunn).',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.45),

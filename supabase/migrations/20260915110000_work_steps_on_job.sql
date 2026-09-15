@@ -147,6 +147,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+#variable_conflict use_column
 DECLARE
   v_company UUID := public.get_user_company_id();
 BEGIN
@@ -168,40 +169,41 @@ BEGIN
 
   RETURN QUERY
   SELECT
-    p.id,
-    coalesce(nullif(trim(p.full_name), ''), p.email, 'Ukjent')::text,
-    nullif(trim(p.employee_number), '')::text,
-    coalesce(c.enabled, false),
+    p.id AS profile_id,
+    coalesce(nullif(trim(p.full_name), ''), p.email, 'Ukjent')::text AS full_name,
+    nullif(trim(p.employee_number), '')::text AS employee_number,
+    coalesce(c.enabled, false) AS consent_enabled,
     coalesce((
       SELECT d.steps_at_work
       FROM public.employee_work_steps_daily d
       WHERE d.profile_id = p.id AND d.work_date = CURRENT_DATE
-    ), 0)::int,
+    ), 0)::int AS steps_today,
     coalesce((
       SELECT sum(d.steps_at_work)::int
       FROM public.employee_work_steps_daily d
       WHERE d.profile_id = p.id
         AND d.work_date BETWEEN p_from AND p_to
-    ), 0),
+    ), 0) AS steps_period,
     coalesce((
       SELECT count(*)::int
       FROM public.employee_work_steps_daily d
       WHERE d.profile_id = p.id
         AND d.work_date BETWEEN p_from AND p_to
         AND d.steps_at_work > 0
-    ), 0),
+    ), 0) AS days_with_data,
     (
       SELECT max(d.synced_at)
       FROM public.employee_work_steps_daily d
       WHERE d.profile_id = p.id
-    )
+    ) AS last_synced_at
   FROM public.profiles p
   LEFT JOIN public.employee_work_steps_consent c ON c.profile_id = p.id
   WHERE p.company_id = v_company
     AND coalesce(p.is_active, true)
     AND p.role IS DISTINCT FROM 'samarbeidspartner'::public.user_role
     AND p.partner_id IS NULL
-  ORDER BY coalesce(c.enabled, false) DESC, full_name;
+  ORDER BY coalesce(c.enabled, false) DESC,
+           coalesce(nullif(trim(p.full_name), ''), p.email, 'Ukjent');
 END;
 $$;
 

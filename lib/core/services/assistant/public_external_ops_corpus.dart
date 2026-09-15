@@ -1,4 +1,5 @@
 import 'assistant_corpus.dart';
+import '../partner/delivery_postal_zones.dart';
 
 /// Kunnskap for offentlig chat — målgruppe: CCC og butikk (Elkjøp).
 /// Forteller hva DU skal gjøre i booking/ordre — aldri «kontakt CCC/butikk».
@@ -21,6 +22,7 @@ abstract final class PublicExternalOpsCorpus {
         _cancelOrder(),
         _returnPickup(),
         _orderNotes(),
+        _deliveryPostalZones(),
       ];
 
   static String compactServerCorpus() {
@@ -328,5 +330,23 @@ Legg viktige notater (portkode, ring først, adkomst) direkte på ordren slik at
 I dag: sørg for at beskjeden også når frem raskt.
 I morgen eller senere: legg inn notatet i god tid.
 ''',
+      );
+
+  static KnowledgeChunk _deliveryPostalZones() => KnowledgeChunk(
+        id: 'ext.delivery_postal',
+        source: KnowledgeSourceKind.publicOps,
+        title: 'Hvilke postnummer leverer vi til?',
+        tags: const [
+          'postnummer',
+          'postkode',
+          'leverer',
+          'levering',
+          'leveringsområde',
+          'sone',
+          'zone',
+          'dekning',
+          'utkjøring',
+        ],
+        body: DeliveryPostalZones.knowledgeBody(forCcc: true),
       );
 }

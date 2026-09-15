@@ -6,8 +6,9 @@ import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import 'drive_monitor_map_view.dart';
 
-/// Oversikt for leiebil-sporing (Mer) — superadmin / tilgang.
+/// Avansert hub for leiebil-sporing — live kart, arkiv per dato, enheter.
 class DriveMonitorHubScreen extends StatefulWidget {
   const DriveMonitorHubScreen({super.key});
 
@@ -21,16 +22,26 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
   UserProfile? _profile;
   bool _loading = true;
   String? _error;
+
   List<Map<String, dynamic>> _sessions = [];
   List<Map<String, dynamic>> _events = [];
   List<Map<String, dynamic>> _devices = [];
+  List<Map<String, dynamic>> _mapSamples = [];
+  List<Map<String, dynamic>> _mapEvents = [];
+  List<Map<String, dynamic>> _mapSessions = [];
+
+  DateTime _archiveDate = DateTime.now().subtract(const Duration(days: 1));
+  String? _selectedSessionId;
+  bool _mapLoading = false;
+
   final _df = DateFormat('dd.MM.yyyy HH:mm');
+  final _day = DateFormat('dd.MM.yyyy');
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
-    _load();
+    _tabs = TabController(length: 4, vsync: this);
+    _bootstrap();
   }
 
   @override
@@ -39,7 +50,7 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _bootstrap() async {
     setState(() {
       _loading = true;
       _error = null;
@@ -48,6 +59,7 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
       final profile = await SupabaseService.fetchEffectiveUserProfile();
       final cid = profile?.companyId;
       if (cid == null) throw Exception('Fant ikke bedrift.');
+      await DriveMonitorService.archivePreviousDays(cid);
       final sessions = await DriveMonitorService.listSessions(companyId: cid);
       final events = await DriveMonitorService.listEvents(companyId: cid);
       final devices = await DriveMonitorService.listDeviceUsers(cid);
@@ -59,6 +71,7 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
         _devices = devices;
         _loading = false;
       });
+      await _loadLiveMap();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -68,47 +81,100 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
     }
   }
 
+  Future<void> _loadLiveMap() async {
+    final cid = _profile?.companyId;
+    if (cid == null) return;
+    setState(() => _mapLoading = true);
+    try {
+      final payload = await DriveMonitorService.fetchMapPayload(companyId: cid);
+      if (!mounted) return;
+      setState(() {
+        _mapSessions = _asMapList(payload['sessions']);
+        _mapSamples = _asMapList(payload['samples']);
+        _mapEvents = _asMapList(payload['events']);
+        _selectedSessionId = null;
+        _mapLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _mapLoading = false;
+        _error = 'Kart: $e';
+      });
+    }
+  }
+
+  Future<void> _loadArchiveMap() async {
+    final cid = _profile?.companyId;
+    if (cid == null) return;
+    setState(() => _mapLoading = true);
+    try {
+      final payload = await DriveMonitorService.fetchMapPayload(
+        companyId: cid,
+        archiveDate: _archiveDate,
+        sessionId: _selectedSessionId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _mapSessions = _asMapList(payload['sessions']);
+        _mapSamples = _asMapList(payload['samples']);
+        _mapEvents = _asMapList(payload['events']);
+        _mapLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _mapLoading = false;
+        _error = 'Arkiv: $e';
+      });
+    }
+  }
+
+  Future<void> _loadSessionMap(String sessionId) async {
+    final cid = _profile?.companyId;
+    if (cid == null) return;
+    setState(() {
+      _selectedSessionId = sessionId;
+      _mapLoading = true;
+    });
+    try {
+      final payload = await DriveMonitorService.fetchMapPayload(
+        companyId: cid,
+        sessionId: sessionId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _mapSessions = _asMapList(payload['sessions']);
+        _mapSamples = _asMapList(payload['samples']);
+        _mapEvents = _asMapList(payload['events']);
+        _mapLoading = false;
+        _tabs.index = 0;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _mapLoading = false);
+    }
+  }
+
+  List<Map<String, dynamic>> _asMapList(dynamic raw) {
+    if (raw is! List) return [];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
   int get _activeCount =>
       _sessions.where((s) => s['status'] == 'active').length;
+
   int get _roughToday {
     final now = DateTime.now();
     return _events.where((e) {
       if (e['severity'] != 'rough') return false;
-      final raw = e['recorded_at'];
-      if (raw == null) return false;
-      final d = DateTime.tryParse('$raw')?.toLocal();
+      final d = DateTime.tryParse('${e['recorded_at']}')?.toLocal();
       if (d == null) return false;
       return d.year == now.year && d.month == now.month && d.day == now.day;
     }).length;
-  }
-
-  double get _avgScore {
-    final scored = _sessions
-        .where((s) => s['score'] != null)
-        .map((s) => (s['score'] as num).toDouble())
-        .toList();
-    if (scored.isEmpty) return 100;
-    return scored.reduce((a, b) => a + b) / scored.length;
-  }
-
-  Color _sessionColor(Map<String, dynamic> s) {
-    final rough = (s['rough_event_count'] as num?)?.toInt() ?? 0;
-    if (s['status'] == 'active') {
-      return rough > 0 ? const Color(0xFFDC2626) : const Color(0xFF15803D);
-    }
-    if (rough > 0) return const Color(0xFFDC2626);
-    final score = (s['score'] as num?)?.toDouble() ?? 100;
-    if (score < 70) return const Color(0xFFD97706);
-    return const Color(0xFF15803D);
-  }
-
-  String _sessionStatusLabel(Map<String, dynamic> s) {
-    final rough = (s['rough_event_count'] as num?)?.toInt() ?? 0;
-    if (s['status'] == 'active') {
-      return rough > 0 ? 'Aktiv · rå kjøring' : 'Aktiv · OK';
-    }
-    if (rough > 0) return 'Arkiv · rå kjøring';
-    return 'Arkiv · OK';
   }
 
   Future<void> _addDeviceUser() async {
@@ -127,7 +193,7 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  'Velg en ansatt. Ved innlogging går telefonen automatisk i låst leiebil-sporing.',
+                  'Ved innlogging går telefonen automatisk i låst leiebil-sporing.',
                   style: TextStyle(fontSize: 13, height: 1.35),
                 ),
                 const SizedBox(height: 12),
@@ -154,13 +220,7 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
                       return ListTile(
                         dense: true,
                         title: Text(p['full_name'] ?? ''),
-                        subtitle: Text(
-                          [
-                            if ((p['employee_number'] ?? '').toString().isNotEmpty)
-                              'nr ${p['employee_number']}',
-                            p['email'] ?? '',
-                          ].join(' · '),
-                        ),
+                        subtitle: Text('${p['employee_number'] ?? ''} · ${p['email'] ?? ''}'),
                         trailing: already
                             ? const Text('Allerede', style: TextStyle(fontSize: 11))
                             : const Icon(Icons.add_circle_outline),
@@ -172,7 +232,7 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
                                   true,
                                 );
                                 if (ctx.mounted) Navigator.pop(ctx);
-                                await _load();
+                                await _bootstrap();
                               },
                       );
                     },
@@ -190,22 +250,21 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
     search.dispose();
   }
 
-  Future<void> _setExitPin() async {
+  Future<void> _savePin() async {
     final cid = _profile?.companyId;
     if (cid == null) return;
     final ctrl = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Hemmelig utgangs-PIN'),
+        title: const Text('Ny exit-PIN'),
         content: TextField(
           controller: ctrl,
           obscureText: true,
           keyboardType: TextInputType.number,
           decoration: const InputDecoration(
-            labelText: 'Ny PIN (min. 4 siffer)',
+            labelText: 'PIN (minst 4 siffer)',
             border: OutlineInputBorder(),
-            helperText: 'Brukes for å låse opp sporingstelefonen',
           ),
         ),
         actions: [
@@ -214,20 +273,15 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
         ],
       ),
     );
-    if (ok != true) return;
-    final pin = ctrl.text.trim();
-    if (pin.length < 4) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('PIN må være minst 4 siffer')),
-      );
-      return;
+    if (ok == true && ctrl.text.trim().length >= 4) {
+      await DriveMonitorService.saveExitPin(cid, ctrl.text.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Exit-PIN lagret')),
+        );
+      }
     }
-    await DriveMonitorService.saveExitPin(cid, pin);
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Utgangs-PIN lagret')),
-    );
+    ctrl.dispose();
   }
 
   @override
@@ -238,282 +292,298 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
         actions: [
           IconButton(
             tooltip: 'Oppdater',
-            onPressed: _loading ? null : _load,
+            onPressed: _loading ? null : _bootstrap,
             icon: const Icon(Icons.refresh),
           ),
         ],
         bottom: TabBar(
           controller: _tabs,
+          isScrollable: true,
           tabs: const [
-            Tab(text: 'Oversikt'),
+            Tab(text: 'Live kart'),
             Tab(text: 'Arkiv'),
+            Tab(text: 'Sesjoner'),
             Tab(text: 'Enheter'),
           ],
         ),
       ),
       body: _loading
-          ? const DriftProLoadingCenter()
-          : _error != null
+          ? const Center(child: DriftProLoadingIndicator())
+          : _error != null && _sessions.isEmpty
               ? Center(child: Text(_error!))
               : TabBarView(
                   controller: _tabs,
                   children: [
-                    _overviewTab(),
+                    _liveMapTab(),
                     _archiveTab(),
+                    _sessionsTab(),
                     _devicesTab(),
                   ],
                 ),
     );
   }
 
-  Widget _overviewTab() {
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+  Widget _kpiRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(child: _kpi('Aktive', '$_activeCount', const Color(0xFF15803D))),
-              const SizedBox(width: 8),
-              Expanded(child: _kpi('Rå i dag', '$_roughToday', const Color(0xFFDC2626))),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _kpi('Snittscore', _avgScore.toStringAsFixed(0), DriftProTheme.primaryGreen),
-              ),
-            ],
+          Expanded(child: _kpi('Aktive', '$_activeCount', Icons.directions_car)),
+          const SizedBox(width: 8),
+          Expanded(child: _kpi('Rå i dag', '$_roughToday', Icons.warning_amber)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _kpi(
+              'Punkter',
+              '${_mapSamples.length}',
+              Icons.timeline,
+            ),
           ),
-          const SizedBox(height: 16),
-          _legend(),
-          const SizedBox(height: 16),
-          Text(
-            'Siste økter',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-              color: PartnerText.primary(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _kpi(String label, String value, IconData icon) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: DriftProTheme.primaryGreen, size: 20),
+            const SizedBox(height: 6),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+            Text(label, style: DriftProTheme.bodySm),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _liveMapTab() {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await _bootstrap();
+        await _loadLiveMap();
+      },
+      child: ListView(
+        padding: const EdgeInsets.only(bottom: 24),
+        children: [
+          _kpiRow(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Live rute med hastighet (farge), rå brems, rå sving, fartsovertredelse og stillstand. '
+              'Data lagres lokalt ved nettbrudd og synkes automatisk.',
+              style: DriftProTheme.bodySm.copyWith(color: Colors.grey[700]),
             ),
           ),
           const SizedBox(height: 8),
-          if (_sessions.isEmpty)
-            Text(
-              'Ingen sporingsøkter ennå. Logg inn med en enhetsbruker i bilen for å starte.',
-              style: TextStyle(color: Colors.grey.shade700, height: 1.4),
+          if (_mapLoading)
+            const Padding(
+              padding: EdgeInsets.all(40),
+              child: Center(child: CircularProgressIndicator()),
             )
           else
-            ..._sessions.take(20).map(_sessionCard),
-          const SizedBox(height: 20),
-          Text(
-            'Siste hendelser',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 15,
-              color: PartnerText.primary(context),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: DriveMonitorMapView(
+                samples: _mapSamples,
+                events: _mapEvents,
+                height: MediaQuery.sizeOf(context).height * 0.48,
+              ),
             ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text('Aktive sesjoner', style: DriftProTheme.labelLg),
           ),
-          const SizedBox(height: 8),
-          if (_events.isEmpty)
-            Text('Ingen hendelser registrert.', style: TextStyle(color: Colors.grey.shade700))
-          else
-            ..._events.take(25).map(_eventTile),
+          ..._mapSessions.map((s) => _sessionTile(s, openOnMap: true)),
+          if (_mapEvents.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('Hendelser', style: DriftProTheme.labelLg),
+            ),
+            ..._mapEvents.reversed.take(40).map(_eventTile),
+          ],
         ],
       ),
     );
   }
 
   Widget _archiveTab() {
-    final archived = _sessions.where((s) => s['status'] != 'active').toList();
-    if (archived.isEmpty) {
-      return const Center(child: Text('Ingen arkiverte økter ennå.'));
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-      itemCount: archived.length,
-      itemBuilder: (_, i) => _sessionCard(archived[i]),
-    );
-  }
-
-  Widget _devicesTab() {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      padding: const EdgeInsets.all(16),
       children: [
         Text(
-          'Enhetsbrukere logger inn på telefonen i leiebilen. '
-          'Appen går da automatisk i låst sporingsmodus.',
-          style: TextStyle(fontSize: 13, height: 1.4, color: Colors.grey.shade800),
+          'Forrige dager arkiveres automatisk. Velg dato for full rute, hastighet og hendelser.',
+          style: DriftProTheme.bodySm.copyWith(color: Colors.grey[700]),
         ),
         const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: _addDeviceUser,
-          icon: const Icon(Icons.person_add_alt_1),
-          label: const Text('Legg til bruker'),
-          style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: _setExitPin,
-          icon: const Icon(Icons.pin_outlined),
-          label: const Text('Sett hemmelig utgangs-PIN'),
-        ),
-        const SizedBox(height: 16),
-        if (_devices.isEmpty)
-          Text(
-            'Ingen enhetsbrukere ennå. Ansatt 010101 merkes automatisk hvis kontoen finnes.',
-            style: TextStyle(color: Colors.grey.shade700),
-          )
-        else
-          ..._devices.map((d) {
-            return Card(
-              child: ListTile(
-                leading: const Icon(Icons.phone_android),
-                title: Text(d['full_name'] ?? ''),
-                subtitle: Text(
-                  [
-                    if ((d['employee_number'] ?? '').toString().isNotEmpty)
-                      'nr ${d['employee_number']}',
-                    d['email'] ?? '',
-                  ].join(' · '),
-                ),
-                trailing: IconButton(
-                  tooltip: 'Fjern',
-                  icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                  onPressed: () async {
-                    await DriveMonitorService.setDeviceUser(d['id'] as String, false);
-                    await _load();
-                  },
-                ),
-              ),
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Arkivdato'),
+          subtitle: Text(_day.format(_archiveDate)),
+          trailing: const Icon(Icons.calendar_today),
+          onTap: () async {
+            final d = await showDatePicker(
+              context: context,
+              firstDate: DateTime(2024),
+              lastDate: DateTime.now(),
+              initialDate: _archiveDate,
             );
-          }),
-      ],
-    );
-  }
-
-  Widget _kpi(String label, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        children: [
-          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color)),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: color)),
-        ],
-      ),
-    );
-  }
-
-  Widget _legend() {
-    Widget chip(Color c, String t) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: c.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: c.withValues(alpha: 0.35)),
-          ),
-          child: Text(t, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: c)),
-        );
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        chip(const Color(0xFF15803D), 'Grønn = OK'),
-        chip(const Color(0xFFD97706), 'Gul = advarsel'),
-        chip(const Color(0xFFDC2626), 'Rød = rå kjøring'),
-        chip(Colors.blueGrey, 'Bråbrems / hard akselerasjon'),
-      ],
-    );
-  }
-
-  Widget _sessionCard(Map<String, dynamic> s) {
-    final color = _sessionColor(s);
-    final started = DateTime.tryParse('${s['started_at']}')?.toLocal();
-    final ended = DateTime.tryParse('${s['ended_at'] ?? ''}')?.toLocal();
-    final label = (s['vehicle_label'] as String?)?.trim().isNotEmpty == true
-        ? s['vehicle_label'] as String
-        : 'Leiebil';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(label, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.14),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  _sessionStatusLabel(s),
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
-                ),
-              ),
+            if (d == null) return;
+            setState(() {
+              _archiveDate = d;
+              _selectedSessionId = null;
+            });
+            await _loadArchiveMap();
+          },
+        ),
+        FilledButton.icon(
+          onPressed: _mapLoading ? null : _loadArchiveMap,
+          icon: const Icon(Icons.map_outlined),
+          label: const Text('Vis arkiv på kart'),
+        ),
+        const SizedBox(height: 12),
+        if (_mapSessions.isNotEmpty)
+          DropdownButtonFormField<String>(
+            value: _selectedSessionId ?? '',
+            decoration: const InputDecoration(labelText: 'Sesjon (valgfritt)'),
+            items: [
+              const DropdownMenuItem(value: '', child: Text('Alle denne dagen')),
+              ..._mapSessions.map((s) {
+                final id = '${s['id']}';
+                final label = s['vehicle_label'] ?? 'Sesjon';
+                return DropdownMenuItem(value: id, child: Text('$label'));
+              }),
             ],
+            onChanged: (v) async {
+              setState(() => _selectedSessionId = (v == null || v.isEmpty) ? null : v);
+              await _loadArchiveMap();
+            },
           ),
-          const SizedBox(height: 6),
-          Text(
-            [
-              if (started != null) _df.format(started),
-              if (ended != null) '→ ${_df.format(ended)}',
-              'score ${(s['score'] as num?)?.toStringAsFixed(0) ?? '—'}',
-              '${((s['km'] as num?)?.toDouble() ?? 0).toStringAsFixed(1)} km',
-              '${s['event_count'] ?? 0} hendelser',
-            ].join(' · '),
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade700, height: 1.35),
+        const SizedBox(height: 12),
+        if (_mapLoading)
+          const Center(child: CircularProgressIndicator())
+        else
+          DriveMonitorMapView(
+            samples: _mapSamples,
+            events: _mapEvents,
+            height: MediaQuery.sizeOf(context).height * 0.42,
           ),
-        ],
+        const SizedBox(height: 12),
+        Text(
+          '${_mapSamples.length} GPS-punkter · ${_mapEvents.length} hendelser · ${_mapSessions.length} sesjoner',
+          style: DriftProTheme.bodySm,
+        ),
+        ..._mapEvents.reversed.take(50).map(_eventTile),
+      ],
+    );
+  }
+
+  Widget _sessionsTab() {
+    return RefreshIndicator(
+      onRefresh: _bootstrap,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: _sessions.length,
+        itemBuilder: (_, i) => _sessionTile(_sessions[i], openOnMap: true),
+      ),
+    );
+  }
+
+  Widget _sessionTile(Map<String, dynamic> s, {bool openOnMap = false}) {
+    final rough = (s['rough_event_count'] as num?)?.toInt() ?? 0;
+    final active = s['status'] == 'active';
+    final color = rough > 0
+        ? const Color(0xFFDC2626)
+        : active
+            ? const Color(0xFF15803D)
+            : Colors.grey;
+    final started = DateTime.tryParse('${s['started_at']}')?.toLocal();
+    return Card(
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: color.withValues(alpha: 0.15),
+          child: Icon(Icons.directions_car, color: color),
+        ),
+        title: Text(s['vehicle_label']?.toString() ?? 'Leiebil'),
+        subtitle: Text(
+          [
+            if (started != null) _df.format(started),
+            '${((s['km'] as num?)?.toDouble() ?? 0).toStringAsFixed(1)} km',
+            'score ${(s['score'] as num?)?.toStringAsFixed(0) ?? '—'}',
+            if (s['max_speed_kmh'] != null)
+              'maks ${(s['max_speed_kmh'] as num).toStringAsFixed(0)} km/t',
+            active ? 'LIVE' : (s['is_archived'] == true ? 'Arkiv' : 'Avsluttet'),
+          ].join(' · '),
+        ),
+        trailing: openOnMap ? const Icon(Icons.map_outlined) : null,
+        onTap: openOnMap
+            ? () => _loadSessionMap('${s['id']}')
+            : null,
       ),
     );
   }
 
   Widget _eventTile(Map<String, dynamic> e) {
-    final rough = e['severity'] == 'rough';
-    final at = DateTime.tryParse('${e['recorded_at']}')?.toLocal();
-    final type = switch (e['event_type']) {
-      'hard_brake' => 'Bråbrems',
-      'hard_accel' => 'Hard akselerasjon',
-      'sharp_turn' => 'Skarp sving',
-      'speeding' => 'Høy fart',
-      'idle' => 'Stillstand',
-      _ => '${e['event_type']}',
-    };
+    final t = DateTime.tryParse('${e['recorded_at']}')?.toLocal();
+    final type = '${e['event_type']}';
     return ListTile(
       dense: true,
-      contentPadding: EdgeInsets.zero,
       leading: Icon(
-        rough ? Icons.warning_amber_rounded : Icons.info_outline,
-        color: rough ? const Color(0xFFDC2626) : const Color(0xFFD97706),
+        Icons.warning_amber,
+        color: DriveMonitorMapView.eventColor(type, '${e['severity']}'),
       ),
-      title: Text(type, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+      title: Text(DriveMonitorMapView.eventLabel(type)),
       subtitle: Text(
         [
-          if (at != null) _df.format(at),
+          if (t != null) _df.format(t),
           if (e['speed_kmh'] != null)
             '${(e['speed_kmh'] as num).toStringAsFixed(0)} km/t',
+          if (e['accel_ms2'] != null)
+            '${(e['accel_ms2'] as num).toStringAsFixed(1)} m/s²',
+          '${e['severity']}',
         ].join(' · '),
-        style: const TextStyle(fontSize: 11),
       ),
     );
   }
-}
 
-/// Lokal helper for tekstfarge uten å dra inn partner_modern_ui.
-abstract final class PartnerText {
-  static Color primary(BuildContext context) =>
-      Theme.of(context).colorScheme.onSurface;
+  Widget _devicesTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        FilledButton.icon(
+          onPressed: _addDeviceUser,
+          icon: const Icon(Icons.person_add_alt),
+          label: const Text('Legg til sporingsbruker'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _savePin,
+          icon: const Icon(Icons.pin),
+          label: const Text('Sett exit-PIN'),
+        ),
+        const SizedBox(height: 16),
+        ..._devices.map((d) {
+          return Card(
+            child: ListTile(
+              title: Text(d['full_name'] ?? ''),
+              subtitle: Text('${d['employee_number'] ?? ''} · ${d['email'] ?? ''}'),
+              trailing: IconButton(
+                icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                onPressed: () async {
+                  await DriveMonitorService.setDeviceUser(d['id'] as String, false);
+                  await _bootstrap();
+                },
+              ),
+            ),
+          );
+        }),
+      ],
+    );
+  }
 }

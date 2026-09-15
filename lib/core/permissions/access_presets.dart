@@ -51,11 +51,11 @@ class AccessPresets {
     on('more.profil');
     on('fravaer', {AccessAction.view, AccessAction.create});
     on('fravaer.mine', {AccessAction.view, AccessAction.create});
-    on('avvik', {AccessAction.view, AccessAction.create});
-    on('avvik.nytt', {AccessAction.view, AccessAction.create});
+    // Avvik / RUH: ikke for vanlige ansatte (kun leder/admin via egne presets).
     on('more.whistleblowing', {AccessAction.view, AccessAction.create});
     on('stempling');
     on('stempling.mobile');
+    on('more.work_steps');
     return doc.toJson();
   }
 
@@ -116,6 +116,8 @@ class AccessPresets {
     on('stempling.admin', {AccessAction.view, AccessAction.edit});
     on('stempling.innstillinger', {AccessAction.view, AccessAction.edit});
     on('more.partnere');
+    on('more.work_steps');
+    on('more.work_steps_hub');
     return doc.toJson();
   }
 

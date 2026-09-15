@@ -69,12 +69,18 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
       final email =
           SupabaseService.currentUser?.email?.trim().toLowerCase() ?? '';
 
-      // MAVI-ansatt / superadmin / leiebil-sporing skal aldri bli værende i partnerportal.
-      if (SupabaseService.isInternalStaffSession(
+      // MAVI-ansatt / leder / admin / leiebil — aldri partnerportal.
+      final isStaff = SupabaseService.isInternalStaffSession(
             profile: profile,
             email: email,
           ) ||
-          profile?.driveMonitorDevice == true) {
+          profile?.driveMonitorDevice == true ||
+          (profile != null &&
+              !profile.isPartnerPortalUser &&
+              profile.role != UserRole.samarbeidspartner &&
+              !SupabaseService.emailLooksLikePortal(email));
+
+      if (isStaff) {
         if (!mounted) return;
         if (profile?.driveMonitorDevice == true && profile != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -159,8 +165,11 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
         (profile == null || profile.isPartnerPortalUser)) {
       return const PartnerPortalAccessRevoked();
     }
-    return const Scaffold(
-      body: Center(child: Text('Ingen portal-tilgang for denne kontoen.')),
-    );
+    // Ansatt uten portal — aldri «Ingen portal-tilgang»; send til dashboard.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.go(AppPaths.dashboard);
+    });
+    return const DriftProLoadingPage();
   }
 }

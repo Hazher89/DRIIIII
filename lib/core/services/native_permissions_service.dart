@@ -129,6 +129,52 @@ abstract final class NativePermissionsService {
   static Future<bool> ensureLocation({BuildContext? context}) =>
       ensure(AppPermissionKind.location, context: context);
 
+  /// Bakgrunnslokasjon — kun for leiebil-kiosk (Apple Always / Android BACKGROUND).
+  /// Krever først when-in-use (Google Play / iOS-krav).
+  static Future<bool> ensureBackgroundLocation({BuildContext? context}) async {
+    if (!_native) return true;
+
+    final whenInUse = await ensureLocation(context: context);
+    if (!whenInUse) return false;
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.whileInUse ||
+        permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.whileInUse) {
+      // iOS/Android: second step may upgrade to Always when Info.plist /
+      // ACCESS_BACKGROUND_LOCATION are declared.
+      permission = await Geolocator.requestPermission();
+    }
+
+    final alwaysOk = permission == LocationPermission.always;
+    if (!alwaysOk && context != null && context.mounted) {
+      _snack(
+        context,
+        'Leiebil-sporing trenger «Alltid»-posisjon. Åpne Innstillinger → DriftPro → Posisjon.',
+        actionLabel: 'Innstillinger',
+        onAction: openAppSettings,
+      );
+    }
+
+    // Android 10+: også permission_handler for BACKGROUND.
+    if (Platform.isAndroid) {
+      final bg = await Permission.locationAlways.status;
+      if (!bg.isGranted) {
+        final req = await Permission.locationAlways.request();
+        if (!req.isGranted) {
+          // Foreground service + when-in-use still works with persistent notification.
+          return whenInUse;
+        }
+      }
+      return true;
+    }
+
+    // iOS bakgrunn krever Always (Info.plist UIBackgroundModes=location).
+    return alwaysOk;
+  }
+
   static Future<bool> ensureMicrophone({BuildContext? context}) =>
       ensure(AppPermissionKind.microphone, context: context);
 

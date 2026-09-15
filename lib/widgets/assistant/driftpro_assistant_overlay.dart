@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/routing/app_router.dart';
 import '../../core/services/assistant/assistant_fab_position_store.dart';
+import '../../core/services/assistant/assistant_fab_prefs.dart';
 import '../../core/services/assistant/assistant_flag_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -17,6 +18,7 @@ import 'driftpro_assistant_sheet.dart';
 /// Global Spør DriftPro-knapp når assistenten er slått på (web + mobil).
 ///
 /// Kompakt ikon som kan dras fritt. Posisjon huskes per bruker.
+/// Kun MAVI-ansatte — ikke partnere / partner-ansatte.
 /// Ingen Material/Tooltip (unngår grå hover-overlay på web).
 class DriftProAssistantOverlay extends StatefulWidget {
   const DriftProAssistantOverlay({super.key, required this.child});
@@ -40,6 +42,8 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
   String? _userId;
   AssistantFlag _flag = AssistantFlag.disabled;
   bool _sheetOpen = false;
+  bool _isMaviEmployee = false;
+  bool _userFabEnabled = true;
 
   /// Top-left of FAB in logical pixels. Null = use default bottom-right.
   Offset? _fabOffset;
@@ -49,6 +53,8 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
   bool _movedEnough = false;
 
   bool get _showFab {
+    if (!_isMaviEmployee) return false;
+    if (!_userFabEnabled) return false;
     if (!_flag.enabled) return false;
     final candidates = <String>[];
     try {
@@ -95,8 +101,10 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
       final companyId = profile?.companyId;
       final userId = profile?.id ??
           Supabase.instance.client.auth.currentUser?.id;
+      final isMavi = profile?.isMaviEmployee == true;
       if (!mounted) return;
       final userChanged = userId != _userId;
+      setState(() => _isMaviEmployee = isMavi);
       if (companyId != _companyId) {
         _companyId = companyId;
         _bindFlag(companyId);
@@ -106,6 +114,9 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
       if (userChanged) {
         _userId = userId;
         unawaited(_loadFabPosition());
+        unawaited(_loadUserFabPref());
+      } else if (userId != null) {
+        unawaited(_loadUserFabPref());
       }
     } catch (_) {
       if (!mounted) return;
@@ -114,7 +125,19 @@ class _DriftProAssistantOverlayState extends State<DriftProAssistantOverlay>
         _userId = null;
         _flag = AssistantFlag.disabled;
         _fabOffset = null;
+        _isMaviEmployee = false;
+        _userFabEnabled = true;
       });
+    }
+  }
+
+  Future<void> _loadUserFabPref() async {
+    final uid = _userId;
+    if (uid == null || uid.isEmpty) return;
+    final enabled = await AssistantFabPrefs.isEnabled(uid);
+    if (!mounted) return;
+    if (enabled != _userFabEnabled) {
+      setState(() => _userFabEnabled = enabled);
     }
   }
 

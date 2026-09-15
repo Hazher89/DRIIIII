@@ -217,7 +217,11 @@ class ChatReactionGroup {
       if (emoji == null || emoji.isEmpty) continue;
       final profile = r['profiles'];
       String? name;
-      if (profile is Map) name = (profile['full_name'] as String?)?.trim();
+      if (profile is Map) {
+        final chat = (profile['chat_display_name'] as String?)?.trim();
+        final full = (profile['full_name'] as String?)?.trim();
+        name = (chat != null && chat.isNotEmpty) ? chat : full;
+      }
       map.putIfAbsent(emoji, () => []).add(name ?? 'Bruker');
       if (uid == myId) mine.add(emoji);
     }

@@ -44,6 +44,14 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Android / Play Store signing (never commit)
+android/key.properties
+android/app/upload-keystore.jks
+android/app/*.jks
+android/app/*.keystore
+.secrets/
+release_store_*/
+
 # Firebase (local secrets — use ios/Firebase.env.example)
 ios/Firebase.env
 ios/Runner/GoogleService-Info.plist

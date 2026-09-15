@@ -21,6 +21,7 @@ abstract final class PushNotificationService {
   static bool _firebaseReady = false;
   static bool _lastRegistrationOk = false;
   static String? _lastRegisteredToken;
+  static String? _lastRegisteredUserId;
 
   static bool get lastRegistrationOk => _lastRegistrationOk;
 
@@ -71,7 +72,10 @@ abstract final class PushNotificationService {
   static Future<void> deactivateOnLogout() async {
     _lastRegistrationOk = false;
     _lastRegisteredToken = null;
+    _lastRegisteredUserId = null;
     if (!SupabaseService.isConfigured) return;
+    // Må kalles før auth.signOut — ellers er auth.uid() null.
+    if (SupabaseService.currentUser == null) return;
     try {
       await SupabaseService.client.rpc('deactivate_push_devices');
     } catch (e) {
@@ -267,7 +271,13 @@ abstract final class PushNotificationService {
 
   static Future<void> _persistToken(String token) async {
     if (!SupabaseService.isConfigured) return;
-    if (_lastRegisteredToken == token && _lastRegistrationOk) return;
+    final uid = SupabaseService.currentUser?.id;
+    if (uid == null) return;
+    if (_lastRegisteredToken == token &&
+        _lastRegistrationOk &&
+        _lastRegisteredUserId == uid) {
+      return;
+    }
 
     try {
       await SupabaseService.client.rpc('upsert_push_device', params: {
@@ -275,6 +285,7 @@ abstract final class PushNotificationService {
         'p_platform': Platform.isIOS ? 'ios' : 'android',
       });
       _lastRegisteredToken = token;
+      _lastRegisteredUserId = uid;
       _lastRegistrationOk = true;
       debugPrint('upsert_push_device OK (${token.substring(0, 12)}...)');
     } catch (e) {

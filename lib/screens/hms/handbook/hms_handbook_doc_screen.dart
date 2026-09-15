@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/hms/mavi_hms_handbook.dart';
 import '../../../core/routing/app_paths.dart';
@@ -283,21 +284,22 @@ class _DocHero extends StatelessWidget {
           const SizedBox(height: 14),
           Text(
             doc.title,
-            style: const TextStyle(
+            style: GoogleFonts.sourceSerif4(
               color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
+              fontSize: 24,
+              fontWeight: FontWeight.w600,
               height: 1.25,
-              letterSpacing: -0.3,
+              letterSpacing: -0.35,
             ),
           ),
           const SizedBox(height: 10),
           Text(
             doc.summary,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.92),
+            style: GoogleFonts.inter(
+              color: Colors.white.withValues(alpha: 0.9),
               fontSize: 14.5,
-              height: 1.45,
+              height: 1.5,
+              fontWeight: FontWeight.w400,
             ),
           ),
         ],
@@ -381,17 +383,25 @@ class _BlockView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bodyStyle = GoogleFonts.sourceSerif4(
+      fontSize: 16.5,
+      height: 1.65,
+      fontWeight: FontWeight.w400,
+      color: ink,
+      letterSpacing: 0.05,
+    );
+
     switch (block.kind) {
       case _BlockKind.heading:
         return Padding(
-          padding: const EdgeInsets.only(top: 4),
+          padding: const EdgeInsets.only(top: 8, bottom: 2),
           child: Text(
             block.lines.first,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              height: 1.3,
-              letterSpacing: -0.2,
+            style: GoogleFonts.inter(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+              letterSpacing: -0.15,
               color: isDark
                   ? DriftProTheme.primaryGreen.withValues(alpha: 0.95)
                   : DriftProTheme.primaryGreenDark,
@@ -403,28 +413,21 @@ class _BlockView extends StatelessWidget {
           children: [
             for (final line in block.lines)
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      width: 6,
-                      height: 6,
-                      margin: const EdgeInsets.only(top: 8, right: 10),
-                      decoration: BoxDecoration(
+                      width: 5,
+                      height: 5,
+                      margin: const EdgeInsets.only(top: 10, right: 12),
+                      decoration: const BoxDecoration(
                         color: DriftProTheme.primaryGreen,
                         shape: BoxShape.circle,
                       ),
                     ),
                     Expanded(
-                      child: SelectableText(
-                        line,
-                        style: TextStyle(
-                          fontSize: 15,
-                          height: 1.5,
-                          color: ink,
-                        ),
-                      ),
+                      child: SelectableText(line, style: bodyStyle),
                     ),
                   ],
                 ),
@@ -434,11 +437,7 @@ class _BlockView extends StatelessWidget {
       case _BlockKind.paragraph:
         return SelectableText(
           block.lines.join('\n'),
-          style: TextStyle(
-            fontSize: 15.5,
-            height: 1.55,
-            color: ink,
-          ),
+          style: bodyStyle,
         );
     }
   }

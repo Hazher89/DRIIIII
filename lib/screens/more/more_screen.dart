@@ -314,6 +314,14 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 'Skritt på jobb — hub',
                 isDark,
               ),
+            if (_profile!.access.canWorkStepsPersonal &&
+                _profile!.access.canWorkStepsHub)
+              _buildMenuItem(
+                context,
+                Icons.directions_walk_outlined,
+                'Mine skritt på jobb',
+                isDark,
+              ),
             if (_profile!.access.canWhistleblowing)
               _buildMenuItem(
                 context,
@@ -346,6 +354,12 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
 
           const SizedBox(height: 20),
           _buildSectionLabel(context, 'Innstillinger'),
+          _buildMenuItem(
+            context,
+            Icons.forum_outlined,
+            'Chat-innstillinger',
+            isDark,
+          ),
           if (_profile?.access.canProfile ?? true)
             _buildMenuItem(
               context,
@@ -541,6 +555,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Forside-innhold' => AppPaths.moreForside,
             'DriftPro-assistent' => AppPaths.moreAssistent,
             'Assistent-lab' => AppPaths.moreAssistentLab,
+            'Chat-innstillinger' => AppPaths.moreChatSettings,
             'CCC Chat Lab' => AppPaths.moreChatLab,
             'Partner-chat' => AppPaths.morePartnerChat,
             'Fillagring' => AppPaths.moreDropbox,
@@ -555,6 +570,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Kamerahendelser' => AppPaths.moreVisionEvents,
             'Leiebil-sporing' => AppPaths.moreDriveMonitor,
             'Skritt på jobb' => AppPaths.moreWorkSteps,
+            'Mine skritt på jobb' => AppPaths.moreWorkSteps,
             'Skritt på jobb — hub' => AppPaths.moreWorkStepsHub,
             _ => null,
           };

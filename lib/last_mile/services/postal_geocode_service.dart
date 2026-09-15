@@ -56,6 +56,72 @@ class PostalGeocodeService {
     return null;
   }
 
+  /// Geokod full adresse (f.eks. «Alf Bjerckes vei 26B, Oslo») via Nominatim.
+  static Future<({double lat, double lng, String displayName})?> resolveAddress(
+    String address,
+  ) async {
+    final q = address.trim();
+    if (q.isEmpty) return null;
+    final cached = _cache['addr:${q.toLowerCase()}'];
+    if (cached != null) {
+      return (lat: cached.lat, lng: cached.lng, displayName: q);
+    }
+    try {
+      final query = Uri.encodeComponent('$q, Norway');
+      final res = await http
+          .get(
+            Uri.parse(
+              'https://nominatim.openstreetmap.org/search?q=$query&format=json&limit=1&countrycodes=no',
+            ),
+            headers: {'User-Agent': 'DriftPro-WorkSteps/1.0 (MAVI)'},
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) return null;
+      final list = jsonDecode(res.body) as List<dynamic>;
+      if (list.isEmpty) return null;
+      final first = list.first as Map<String, dynamic>;
+      final lat = double.tryParse(first['lat'].toString());
+      final lng = double.tryParse(first['lon'].toString());
+      if (lat == null || lng == null) return null;
+      _cache['addr:${q.toLowerCase()}'] = (lat: lat, lng: lng);
+      final display = (first['display_name'] as String?)?.trim();
+      return (lat: lat, lng: lng, displayName: display?.isNotEmpty == true ? display! : q);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Omvendt geokoding: GPS → adresse (for «Min posisjon»).
+  static Future<({double lat, double lng, String displayName})?> reverse({
+    required double lat,
+    required double lng,
+  }) async {
+    try {
+      final res = await http
+          .get(
+            Uri.parse(
+              'https://nominatim.openstreetmap.org/reverse?lat=$lat&lon=$lng&format=json',
+            ),
+            headers: {'User-Agent': 'DriftPro-WorkSteps/1.0 (MAVI)'},
+          )
+          .timeout(const Duration(seconds: 10));
+      if (res.statusCode != 200) {
+        return (lat: lat, lng: lng, displayName: '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}');
+      }
+      final map = jsonDecode(res.body) as Map<String, dynamic>;
+      final display = (map['display_name'] as String?)?.trim();
+      return (
+        lat: lat,
+        lng: lng,
+        displayName: display?.isNotEmpty == true
+            ? display!
+            : '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}',
+      );
+    } catch (_) {
+      return (lat: lat, lng: lng, displayName: '${lat.toStringAsFixed(5)}, ${lng.toStringAsFixed(5)}');
+    }
+  }
+
   /// Grov interpolasjon innen Norge (til VRPTW når Nominatim feiler).
   static ({double lat, double lng})? _approximateNorway(String pc) {
     final n = int.tryParse(pc);

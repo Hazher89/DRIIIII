@@ -60,11 +60,25 @@ abstract final class ChatUiHelpers {
   }
 
   static String replySnippet(ChatMessage msg) {
+    switch (msg.messageType) {
+      case ChatMessageType.location:
+        return '📍 Posisjon';
+      case ChatMessageType.image:
+        return '📷 Bilde';
+      case ChatMessageType.video:
+        return '🎬 Video';
+      case ChatMessageType.document:
+        return '📄 Dokument';
+      case ChatMessageType.voice:
+        return '🎤 Lydmelding';
+      default:
+        break;
+    }
     if (msg.body.trim().isNotEmpty) return msg.body.trim();
     if (msg.attachments.isNotEmpty) {
       final att = msg.attachments.first;
-      if (att.isVideo || msg.messageType == ChatMessageType.video) return 'Video';
-      if (att.isImage || msg.messageType == ChatMessageType.image) return 'Bilde';
+      if (att.isVideo || msg.messageType == ChatMessageType.video) return '🎬 Video';
+      if (att.isImage || msg.messageType == ChatMessageType.image) return '📷 Bilde';
     }
     return mediaPreviewLabel(msg);
   }

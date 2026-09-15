@@ -69,7 +69,9 @@ class UserAccess {
     if (profile.role == UserRole.ansatt &&
         (areaId == 'more.avdelinger' ||
             areaId == 'admin.avdelinger_rediger' ||
-            areaId.startsWith('more.avdelinger'))) {
+            areaId.startsWith('more.avdelinger') ||
+            areaId == 'avvik' ||
+            areaId.startsWith('avvik.'))) {
       return false;
     }
     final def = AccessAreaCatalog.byId[areaId];
@@ -110,29 +112,29 @@ class UserAccess {
   bool get canDashboard => can(AccessKeys.dashboard);
   bool get canSurveys => can(AccessKeys.surveys);
   bool get canFravaer => can(AccessKeys.fravaer);
-  bool get canAvvik => can(AccessKeys.avvik);
+  bool get canAvvik =>
+      profile.role != UserRole.ansatt && can(AccessKeys.avvik);
   bool get canHms => can(AccessKeys.hms);
   bool get canPartnersTab => can(AccessKeys.partners);
   bool get canStempling => can(AccessKeys.stempling);
   bool get canUniformMonitor => can(AccessKeys.uniformMonitor);
   bool get canUniformMonitorAdmin => can(AccessKeys.uniformMonitorAdmin);
-  bool get canDriveMonitor =>
-      profile.isSuperAdmin ||
-      profile.role == UserRole.admin ||
-      can(AccessKeys.driveMonitor);
-  /// Alle MAVI-ansatte kan se egen skritt-side (partnerportal ikke).
+  bool get canDriveMonitor => can(AccessKeys.driveMonitor);
+
+  /// Personlig skritt-side (ansatt-app).
   bool get canWorkSteps =>
       profile.role != UserRole.samarbeidspartner &&
-      (can(AccessKeys.workSteps) ||
-          profile.isSuperAdmin ||
-          profile.role == UserRole.admin ||
-          profile.role == UserRole.leder ||
-          profile.role == UserRole.ansatt);
-  bool get canWorkStepsHub =>
-      profile.isSuperAdmin ||
-      profile.role == UserRole.admin ||
-      profile.role == UserRole.leder ||
-      can(AccessKeys.workStepsHub);
+      profile.partnerId == null &&
+      can(AccessKeys.workSteps);
+
+  /// Hub for leder/admin — styres via tilgangskontroll.
+  bool get canWorkStepsHub => can(AccessKeys.workStepsHub);
+
+  /// Ledere/hub kan åpne egen deling («Mine skritt»).
+  bool get canWorkStepsPersonal =>
+      profile.role != UserRole.samarbeidspartner &&
+      profile.partnerId == null &&
+      (can(AccessKeys.workSteps) || canWorkStepsHub);
   bool get canStemplingAdmin => can(AccessKeys.stemplingAdmin);
   bool get canStemplingMobile => can(AccessKeys.stemplingMobile);
   bool get canStemplingSettings => can(AccessKeys.stemplingInnstillinger);

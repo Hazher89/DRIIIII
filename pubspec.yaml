@@ -1,7 +1,7 @@
 name: driftpro
 description: "DriftPro - Enterprise ERP & HMS Platform"
 publish_to: 'none'
-version: 1.0.0+19
+version: 1.0.0+20
 
 environment:
   sdk: ^3.10.7
@@ -39,6 +39,7 @@ dependencies:
   crypto: ^3.0.7
   pluto_grid: ^8.1.0
   printing: ^5.14.3
+  pdf: ^3.11.3
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   geolocator: ^13.0.2

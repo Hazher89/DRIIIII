@@ -221,7 +221,8 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
         );
         return;
       }
-      _leaveLoginScreen();
+      // Alltid ansatt-dashboard — ignorer gammel returnTo=/portal fra partner.
+      context.go(AppPaths.dashboard);
     } on AuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

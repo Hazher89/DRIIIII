@@ -533,6 +533,13 @@ class AccessAreaCatalog {
       legacyViewKey: AccessKeys.workStepsHub,
     ),
     AccessAreaDef(
+      id: 'more.drive_monitor',
+      title: 'Leiebil-sporing (hub)',
+      parentId: 'more',
+      routePath: '/more/leiebil-sporing',
+      legacyViewKey: AccessKeys.driveMonitor,
+    ),
+    AccessAreaDef(
       id: 'more.partnere',
       title: 'Samarbeidspartnere (meny)',
       parentId: 'more',

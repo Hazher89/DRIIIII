@@ -16,6 +16,10 @@ Future<void> signOutFromPortal(BuildContext context) async {
   await Future<void>.delayed(Duration.zero);
 
   AccessSessionCache.clear();
+
+  // Deaktiver push MENS sesjonen fortsatt er gyldig (ellers no-op i RPC).
+  await PushNotificationService.deactivateOnLogout();
+
   final auth = Supabase.instance.client.auth;
   try {
     await auth.signOut(scope: SignOutScope.local);
@@ -29,8 +33,8 @@ Future<void> signOutFromPortal(BuildContext context) async {
       await auth.signOut(scope: SignOutScope.global);
     } catch (_) {}
   }
-  await PushNotificationService.deactivateOnLogout();
   if (context.mounted) {
+    // Ren login-URL uten returnTo=/portal (ellers kan neste ansatt-innlogging feile).
     GoRouter.of(context).go(AppPaths.login);
   }
 }

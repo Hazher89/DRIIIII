@@ -78,7 +78,8 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
       'Når kommer varene inn på HUB?',
       'Vare ikke hentet fra butikk — kan den leveres likevel?',
       'Blir denne levert i dag hvis den er forsinket?',
-      'Hvordan kansellerer vi leveringen riktig?',
+      'Leverer dere til postnummer 3015?',
+      'Hvilke postnummer leverer vi til?',
     ],
   };
 
@@ -168,7 +169,9 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width >= 980;
-    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final media = MediaQuery.of(context);
+    final bottomInset = media.viewInsets.bottom;
+    final safeBottom = media.viewPadding.bottom;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle.dark,
@@ -242,7 +245,9 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
                         wide ? 40 : 14,
                         0,
                         wide ? 40 : 14,
-                        10 + bottomInset,
+                        10 +
+                            bottomInset +
+                            (bottomInset > 0 ? 0 : safeBottom),
                       ),
                       child: Center(
                         child: ConstrainedBox(

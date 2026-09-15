@@ -121,7 +121,7 @@ abstract final class PartnerChatService {
 
   static Future<List<ChatMessage>> fetchMessages(
     String roomId, {
-    int limit = 80,
+    int limit = 40,
     DateTime? before,
   }) async {
     var filter = _client
@@ -130,7 +130,7 @@ abstract final class PartnerChatService {
           'id, room_id, sender_id, body, message_type, created_at, is_edited, deleted_at, '
           'moderation_state, reply_to_id, expires_at, translated_body, thread_root_id, '
           'chat_message_attachments(id, storage_path, mime_type, file_name, byte_size, width, height, duration_ms), '
-          'chat_message_reactions(emoji, user_id, profiles(full_name))',
+          'chat_message_reactions(emoji, user_id, profiles(full_name, chat_display_name))',
         )
         .eq('room_id', roomId);
 
@@ -147,8 +147,10 @@ abstract final class PartnerChatService {
         .toList();
 
     await _attachSenderNames(messages);
-    await _attachReplyPreviews(messages);
     await _signAttachmentUrls(messages);
+    await _attachReplyPreviews(messages);
+    // Sørg for at sitert media også har signerte URLer.
+    await _signReplyAttachmentUrls(messages);
     return messages;
   }
 
@@ -201,7 +203,38 @@ abstract final class PartnerChatService {
     return added;
   }
 
-  static const quickReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '✅'];
+  static const quickReactionEmojis = [
+    '👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '✅',
+    '👏', '🎉', '💯', '😍', '🤔', '👀', '🙌', '💪',
+    '😅', '😭', '🫡', '🤝', '⭐', '🚀', '☕', '🎯',
+  ];
+
+  /// Utvidet sett for emoji-bibliotek (hold inne → +).
+  static const reactionEmojiLibrary = [
+    '😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂',
+    '🙂', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘',
+    '😗', '😚', '😋', '😛', '😜', '🤪', '😝', '🤑',
+    '🤗', '🤭', '🤫', '🤔', '🫡', '🤐', '🤨', '😐',
+    '😑', '😶', '😏', '😒', '🙄', '😬', '😮‍💨', '🤥',
+    '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕',
+    '🤢', '🤮', '🥵', '🥶', '🥴', '😵', '🤯', '🤠',
+    '🥳', '🥸', '😎', '🤓', '🧐', '😕', '😟', '🙁',
+    '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧',
+    '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣',
+    '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠',
+    '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹',
+    '👍', '👎', '👊', '✊', '🤛', '🤜', '👏', '🙌',
+    '👐', '🤲', '🤝', '🙏', '✍️', '💅', '🤳', '💪',
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍',
+    '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖',
+    '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️',
+    '🔥', '✨', '🌟', '💫', '⭐', '🌈', '☀️', '🌤️',
+    '🎉', '🎊', '🎈', '🎁', '🏆', '🥇', '🎯', '🚀',
+    '💯', '✅', '❌', '⚠️', '🛑', '📌', '📍', '💬',
+    '👀', '🐶', '🐱', '🦊', '🐻', '🐼', '🐨', '🐯',
+    '🍕', '🍔', '🍟', '🌮', '🍣', '☕', '🍺', '🍷',
+    '⚽', '🏀', '🏈', '⚾', '🎾', '🏐', '🏉', '🎱',
+  ];
 
   static Future<ChatMessage> hydrateMessage(ChatMessage message) async {
     var msg = message;
@@ -223,49 +256,108 @@ abstract final class PartnerChatService {
     }
 
     await _attachSenderNames([msg]);
+    await _signAttachmentUrls([msg]);
     if (msg.replyToId != null) {
       await _attachReplyPreviews([msg]);
+      await _signReplyAttachmentUrls([msg]);
     }
-    await _signAttachmentUrls([msg]);
     return msg;
   }
 
   static Future<void> _attachSenderNames(List<ChatMessage> messages) async {
     if (messages.isEmpty) return;
     final ids = messages.map((m) => m.senderId).toSet().toList();
-    final rows = await _client.from('profiles').select('id, full_name').inFilter('id', ids);
-    final names = <String, String>{
-      for (final r in rows as List)
-        (r as Map)['id'] as String: ((r)['full_name'] as String?)?.trim() ?? 'Bruker',
-    };
+    final rows = await _client
+        .from('profiles')
+        .select('id, full_name, chat_display_name')
+        .inFilter('id', ids);
+    final names = <String, String>{};
+    for (final r in rows as List) {
+      final m = Map<String, dynamic>.from(r as Map);
+      final id = m['id'] as String;
+      final chat = (m['chat_display_name'] as String?)?.trim();
+      final full = (m['full_name'] as String?)?.trim();
+      names[id] = (chat != null && chat.isNotEmpty)
+          ? chat
+          : (full != null && full.isNotEmpty ? full : 'Bruker');
+    }
     for (var i = 0; i < messages.length; i++) {
       messages[i] = messages[i].copyWith(senderName: names[messages[i].senderId]);
     }
   }
 
+  static Future<Map<String, dynamic>> fetchMyChatDisplayName() async {
+    final uid = _uid;
+    final row = await _client
+        .from('profiles')
+        .select('full_name, chat_display_name, chat_display_name_changed_at')
+        .eq('id', uid)
+        .maybeSingle();
+    return Map<String, dynamic>.from(row ?? const {});
+  }
+
+  static Future<void> setMyChatDisplayName(String name) async {
+    await _client.rpc('set_my_chat_display_name', params: {'p_name': name.trim()});
+  }
+
+  static Future<void> adminSetChatDisplayName({
+    required String userId,
+    required String name,
+  }) async {
+    await _client.rpc(
+      'admin_set_chat_display_name',
+      params: {'p_user_id': userId, 'p_name': name.trim()},
+    );
+  }
+
   static Future<void> _signAttachmentUrls(List<ChatMessage> messages) async {
+    final tasks = <Future<void>>[];
     for (var i = 0; i < messages.length; i++) {
       final m = messages[i];
       if (m.attachments.isEmpty) continue;
-      final signed = <ChatAttachment>[];
-      for (final a in m.attachments) {
-        try {
-          String? url;
-          if (CompanyFileStorage.isDropboxReference(a.storagePath)) {
-            url = await CompanyFileStorage.resolveDisplayUrl(a.storagePath);
-          } else {
-            try {
-              url = await _client.storage.from(_mediaBucket).createSignedUrl(a.storagePath, 3600);
-            } catch (_) {
-              url = await StorageFileAccess.resolveViewUrl(a.storagePath);
+      final idx = i;
+      tasks.add(() async {
+        final signed = await Future.wait(m.attachments.map((a) async {
+          if (_skipSigning(a)) return a;
+          try {
+            String? url;
+            if (CompanyFileStorage.isDropboxReference(a.storagePath)) {
+              url = await CompanyFileStorage.resolveDisplayUrl(a.storagePath);
+            } else {
+              try {
+                url = await _client.storage.from(_mediaBucket).createSignedUrl(a.storagePath, 3600);
+              } catch (_) {
+                url = await StorageFileAccess.resolveViewUrl(a.storagePath);
+              }
             }
+            return a.copyWith(signedUrl: url);
+          } catch (_) {
+            return a;
           }
-          signed.add(a.copyWith(signedUrl: url));
-        } catch (_) {
-          signed.add(a);
-        }
-      }
-      messages[i] = m.copyWith(attachments: signed);
+        }));
+        messages[idx] = m.copyWith(attachments: signed);
+      }());
+    }
+    if (tasks.isNotEmpty) await Future.wait(tasks);
+  }
+
+  static bool _skipSigning(ChatAttachment a) {
+    final path = a.storagePath.trim().toLowerCase();
+    final mime = a.mimeType.toLowerCase();
+    return path.startsWith('geo://') ||
+        mime == 'application/geo' ||
+        path.isEmpty ||
+        (a.signedUrl != null && a.signedUrl!.isNotEmpty);
+  }
+
+  static Future<void> _signReplyAttachmentUrls(List<ChatMessage> messages) async {
+    for (var i = 0; i < messages.length; i++) {
+      final reply = messages[i].replyTo;
+      if (reply == null || reply.attachments.isEmpty) continue;
+      if (reply.attachments.every((a) => a.signedUrl != null)) continue;
+      final batch = [reply];
+      await _signAttachmentUrls(batch);
+      messages[i] = messages[i].copyWith(replyTo: batch.first);
     }
   }
 
@@ -362,7 +454,7 @@ abstract final class PartnerChatService {
           'id, room_id, sender_id, body, message_type, created_at, is_edited, deleted_at, '
           'moderation_state, reply_to_id, expires_at, translated_body, thread_root_id, '
           'chat_message_attachments(id, storage_path, mime_type, file_name, byte_size, width, height, duration_ms), '
-          'chat_message_reactions(emoji, user_id, profiles(full_name))',
+          'chat_message_reactions(emoji, user_id, profiles(full_name, chat_display_name))',
         )
         .or('id.eq.$threadRootId,thread_root_id.eq.$threadRootId')
         .order('created_at');
@@ -371,8 +463,9 @@ abstract final class PartnerChatService {
         .map((e) => _messageFromRow(Map<String, dynamic>.from(e as Map), myId))
         .toList();
     await _attachSenderNames(messages);
-    await _attachReplyPreviews(messages);
     await _signAttachmentUrls(messages);
+    await _attachReplyPreviews(messages);
+    await _signReplyAttachmentUrls(messages);
     return messages;
   }
 

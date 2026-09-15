@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
@@ -76,7 +75,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
   String? _rulesText;
   bool _rulesDismissed = false;
   List<ChatOnlineUser> _onlineUsers = const [];
-  String? _activeThreadId;
   List<ChatMentionCandidate> _mentionCandidates = const [];
   StreamSubscription<String>? _roomLiveSub;
   Timer? _liveSyncDebounce;
@@ -92,8 +90,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
   bool get _canModerate => widget.profile.access.canPartnersChatModerate;
   bool get _isSuperAdmin => widget.profile.role == UserRole.superadmin;
   bool get _canModerateMessages => _canModerate || _isSuperAdmin;
-  bool get _showSenderNames => _room.roomType.isGroup;
-
   @override
   void initState() {
     super.initState();
@@ -276,6 +272,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
   }
 
   List<ChatMessage> get _visibleMessages {
+    // WhatsApp-stil: alle meldinger i hovedfeeden med sitat-svar.
     final q = _searchQuery.trim().toLowerCase();
     if (q.isEmpty) return _messages;
     return _messages.where((m) {
@@ -283,6 +280,34 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
       final name = (m.senderName ?? '').toLowerCase();
       return body.contains(q) || name.contains(q);
     }).toList();
+  }
+
+
+  Future<void> _openPrivateWith(ChatMessage m) async {
+    if (m.senderId == widget.profile.id) return;
+    try {
+      final roomId = await PartnerChatService.createPartnerPrivateChat(m.senderId);
+      if (!mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChatRoomScreen(
+            room: ChatRoom(
+              id: roomId,
+              companyId: widget.room.companyId,
+              roomType: ChatRoomType.partnerPrivate,
+              title: m.senderName,
+            ),
+            profile: widget.profile,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke åpne privat chat: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _toggleReaction(ChatMessage message, String emoji) async {
@@ -320,7 +345,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
         roomId: widget.room.id,
         body: text,
         replyToId: replyId,
-        threadRootId: _activeThreadId,
         mentionIds: mentions.isEmpty ? null : mentions,
         expiresHours: _expiresHours,
         translatedBody: _translatedBody,
@@ -471,16 +495,19 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
       if (perm == LocationPermission.denied) await Geolocator.requestPermission();
       final pos = await Geolocator.getCurrentPosition();
       final label = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+      final replyId = _replyTo?.id;
       await PartnerChatService.sendMessage(
         roomId: widget.room.id,
         body: label,
         messageType: ChatMessageType.location,
+        replyToId: replyId,
         attachment: {
           'storage_path': 'geo://${pos.latitude},${pos.longitude}',
           'mime_type': 'application/geo',
           'file_name': 'Posisjon',
         },
       );
+      setState(() => _replyTo = null);
       await _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Posisjon: $e')));
@@ -531,17 +558,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rapport sendt')));
   }
 
-  void _openThread(ChatMessage m) {
-    setState(() => _activeThreadId = m.id);
-  }
 
-  ChatMessage? get _threadRoot {
-    if (_activeThreadId == null) return null;
-    for (final m in _messages) {
-      if (m.id == _activeThreadId) return m;
-    }
-    return null;
-  }
 
   Future<void> _createSubgroup() async {
     final title = await showDialog<String>(
@@ -835,31 +852,6 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
           if (_rulesText != null && _rulesText!.isNotEmpty && !_rulesDismissed)
             ChatRulesBanner(rules: _rulesText!, onDismiss: () => setState(() => _rulesDismissed = true)),
           ChatOnlineStrip(users: _onlineUsers),
-          if (_activeThreadId != null && _threadRoot != null)
-            Material(
-              color: Colors.blue.withValues(alpha: 0.08),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  children: [
-                    const Icon(Icons.forum_outlined, size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Tråd: ${ChatUiHelpers.replySnippet(_threadRoot!)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () => setState(() => _activeThreadId = null),
-                      child: const Text('Lukk'),
-                    ),
-                  ],
-                ),
-              ),
-            ),
           if (_searchOpen)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -914,7 +906,7 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
                     ? Center(
                         child: Text(
                           _searchQuery.isEmpty
-                              ? 'Ingen meldinger ennå.\nSwipe på en melding for å svare.'
+                              ? 'Ingen meldinger ennå.\nHold inne for å svare eller reagere.'
                               : 'Ingen treff for «$_searchQuery»',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.grey.shade600),
@@ -944,19 +936,28 @@ class _ChatRoomScreenState extends State<ChatRoomScreen> with WidgetsBindingObse
                                   ChatSwipeMessage(
                                     message: m,
                                     mine: m.senderId == me,
-                                    showSender: _showSenderNames,
+                                    showSender: true,
                                     onReply: (ChatMessage msg) => setState(() => _replyTo = msg),
                                     onOpenImage: _openImage,
                                     onReact: (e) => _toggleReaction(m, e),
                                     onDelete: m.senderId == me && !m.isDeleted ? () => _deleteMessage(m) : null,
-                                    onHide: _canModerate && !m.isDeleted ? () => _hideMessage(m) : null,
-                                    onModeratorDelete: _canModerateMessages && !m.isDeleted
+                                    onHide: _canModerate && !m.isDeleted && m.senderId != me
+                                        ? () => _hideMessage(m)
+                                        : null,
+                                    onModeratorDelete: _isSuperAdmin &&
+                                            m.senderId != me &&
+                                            !m.isDeleted
                                         ? () => _moderatorDeleteMessage(m)
                                         : null,
                                     onShowRead: m.senderId == me ? () => _showReadReceipts(m) : null,
                                     onPin: _canModerateMessages ? () => _pinMessage(m) : null,
-                                    onReport: !m.isDeleted ? () => _reportMessage(m) : null,
-                                    onThread: _room.roomType.isGroup ? () => _openThread(m) : null,
+                                    onReport: !m.isDeleted && m.senderId != me ? () => _reportMessage(m) : null,
+                                    onPrivate: widget.profile.isPartnerPortalUser &&
+                                            m.senderId != me &&
+                                            _room.roomType != ChatRoomType.partnerPrivate &&
+                                            !m.isDeleted
+                                        ? () => _openPrivateWith(m)
+                                        : null,
                                     showTranslation: _showTranslation,
                                   ),
                                 ],

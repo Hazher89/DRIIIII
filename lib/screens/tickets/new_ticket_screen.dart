@@ -567,8 +567,10 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text(AppStrings.newTicket),
       ),
@@ -576,255 +578,292 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
           isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
       body: Form(
         key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+        child: Column(
           children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Row(
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
-                  Icon(Icons.sms_outlined, color: DriftProTheme.primaryGreen),
-                  SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Velg hvem som skal behandle avviket. '
-                      'Valgt person får SMS med en gang.',
-                      style: TextStyle(fontSize: 13),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-            if (_templates.isNotEmpty) ...[
-              Text('Hurtigmaler', style: DriftProTheme.labelLg),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 42,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _templates.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) {
-                    final t = _templates[i];
-                    return ActionChip(
-                      avatar: Icon(
-                        t.domain == HmsDomain.logistikk
-                            ? Icons.local_shipping_outlined
-                            : Icons.report_outlined,
-                        size: 18,
-                      ),
-                      label: Text(t.title),
-                      onPressed: () => _applyTemplate(t),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            Row(
-              children: [
-                Expanded(
-                  child: Text('Område', style: DriftProTheme.labelLg),
-                ),
-                if (_capturingGps)
-                  SizedBox(width: 16, height: 16, child: DriftProLoadingIndicator(size: 16))
-                else if (_gpsLat != null)
-                  Text(
-                    'GPS OK',
-                    style: TextStyle(
-                      color: DriftProTheme.success,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                IconButton(
-                  icon: const Icon(Icons.my_location_outlined, size: 20),
-                  onPressed: _captureGps,
-                  tooltip: 'Oppdater posisjon',
-                ),
-              ],
-            ),
-            Wrap(
-              spacing: 8,
-              children: HmsDomain.values.map((d) {
-                final sel = _domain == d;
-                return FilterChip(
-                  label: Text(d.label),
-                  selected: sel,
-                  onSelected: (_) => setState(() => _domain = d),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 16),
-            SwitchListTile.adaptive(
-              value: _isAnonymous,
-              onChanged: (v) => setState(() => _isAnonymous = v),
-              title: const Text(AppStrings.anonymous),
-              subtitle: const Text(
-                'Navnet ditt skjules. Kun Tommy, Nico eller Hazher kan motta — '
-                'ikke avdelingsledere.',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-            const SizedBox(height: 8),
-            if (_loadingHandlers)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: DriftProLoadingCenter(),
-              )
-            else if (_isAnonymous)
-              _buildAnonymousRecipientPicker()
-            else
-              _buildAssigneePicker(),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Hva skjedde?',
-                hintText: 'Kort tittel',
-                border: OutlineInputBorder(),
-              ),
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Påkrevd' : null,
-            ),
-            const SizedBox(height: 14),
-            TextFormField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Beskriv situasjonen',
-                alignLabelWithHint: true,
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 5,
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Påkrevd' : null,
-            ),
-            const SizedBox(height: 18),
-            Text('Kategori', style: DriftProTheme.labelLg),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _categories.map((c) {
-                final sel = _category == c;
-                return FilterChip(
-                  label: Text(c),
-                  selected: sel,
-                  onSelected: (_) => setState(() => _category = sel ? null : c),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 18),
-            Text(AppStrings.severity, style: DriftProTheme.labelLg),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: TicketSeverity.values.map((s) {
-                final selected = s == _severity;
-                return ChoiceChip(
-                  label: Text(s.label),
-                  selected: selected,
-                  onSelected: (_) => setState(() => _severity = s),
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 14),
-            SwitchListTile.adaptive(
-              value: _hasPersonalInjury,
-              onChanged: (v) => setState(() => _hasPersonalInjury = v),
-              title: const Text('Personskade / sensitive opplysninger'),
-              subtitle: const Text(
-                'Navn på skadde lagres kryptert og kun synlig for leder/HR.',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text('Bilder', style: DriftProTheme.labelLg),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickGallery,
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Galleri'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickCamera,
-                    icon: const Icon(Icons.camera_alt_outlined),
-                    label: const Text('Kamera'),
-                  ),
-                ),
-              ],
-            ),
-            if (_images.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 88,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _images.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) {
-                    return Stack(
+                    child: const Row(
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(
-                            _images[i].bytes,
-                            width: 88,
-                            height: 88,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        Positioned(
-                          top: 2,
-                          right: 2,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.black54,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.all(4),
-                            ),
-                            iconSize: 18,
-                            onPressed: () =>
-                                setState(() => _images.removeAt(i)),
-                            icon: const Icon(Icons.close),
+                        Icon(Icons.sms_outlined,
+                            color: DriftProTheme.primaryGreen),
+                        SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            'Beskriv hva som skjedde. Velg mottaker under — '
+                            'valgt person får SMS med en gang.',
+                            style: TextStyle(fontSize: 13),
                           ),
                         ),
                       ],
-                    );
-                  },
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // Tekstfeltene først — synlige når tastaturet er oppe.
+                  TextFormField(
+                    controller: _titleController,
+                    textInputAction: TextInputAction.next,
+                    scrollPadding: const EdgeInsets.only(bottom: 140),
+                    decoration: const InputDecoration(
+                      labelText: 'Hva skjedde?',
+                      hintText: 'Kort tittel',
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Påkrevd' : null,
+                  ),
+                  const SizedBox(height: 14),
+                  TextFormField(
+                    controller: _descriptionController,
+                    scrollPadding: const EdgeInsets.only(bottom: 180),
+                    decoration: const InputDecoration(
+                      labelText: 'Beskriv situasjonen',
+                      alignLabelWithHint: true,
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 4,
+                    minLines: 3,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Påkrevd' : null,
+                  ),
+                  const SizedBox(height: 18),
+                  if (_templates.isNotEmpty) ...[
+                    Text('Hurtigmaler', style: DriftProTheme.labelLg),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 42,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _templates.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (_, i) {
+                          final t = _templates[i];
+                          return ActionChip(
+                            avatar: Icon(
+                              t.domain == HmsDomain.logistikk
+                                  ? Icons.local_shipping_outlined
+                                  : Icons.report_outlined,
+                              size: 18,
+                            ),
+                            label: Text(t.title),
+                            onPressed: () => _applyTemplate(t),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('Område', style: DriftProTheme.labelLg),
+                      ),
+                      if (_capturingGps)
+                        SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: DriftProLoadingIndicator(size: 16))
+                      else if (_gpsLat != null)
+                        Text(
+                          'GPS OK',
+                          style: TextStyle(
+                            color: DriftProTheme.success,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      IconButton(
+                        icon: const Icon(Icons.my_location_outlined, size: 20),
+                        onPressed: _captureGps,
+                        tooltip: 'Oppdater posisjon',
+                      ),
+                    ],
+                  ),
+                  Wrap(
+                    spacing: 8,
+                    children: HmsDomain.values.map((d) {
+                      final sel = _domain == d;
+                      return FilterChip(
+                        label: Text(d.label),
+                        selected: sel,
+                        onSelected: (_) => setState(() => _domain = d),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 16),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: _isAnonymous,
+                    onChanged: (v) => setState(() => _isAnonymous = v),
+                    title: const Text(AppStrings.anonymous),
+                    subtitle: const Text(
+                      'Navnet ditt skjules. Kun Tommy, Nico eller Hazher kan motta — '
+                      'ikke avdelingsledere.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  if (_loadingHandlers)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 12),
+                      child: DriftProLoadingCenter(),
+                    )
+                  else if (_isAnonymous)
+                    _buildAnonymousRecipientPicker()
+                  else
+                    _buildAssigneePicker(),
+                  const SizedBox(height: 18),
+                  Text('Kategori', style: DriftProTheme.labelLg),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _categories.map((c) {
+                      final sel = _category == c;
+                      return FilterChip(
+                        label: Text(c),
+                        selected: sel,
+                        onSelected: (_) =>
+                            setState(() => _category = sel ? null : c),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 18),
+                  Text(AppStrings.severity, style: DriftProTheme.labelLg),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: TicketSeverity.values.map((s) {
+                      final selected = s == _severity;
+                      return ChoiceChip(
+                        label: Text(s.label),
+                        selected: selected,
+                        onSelected: (_) => setState(() => _severity = s),
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 14),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: _hasPersonalInjury,
+                    onChanged: (v) => setState(() => _hasPersonalInjury = v),
+                    title: const Text('Personskade / sensitive opplysninger'),
+                    subtitle: const Text(
+                      'Navn på skadde lagres kryptert og kun synlig for leder/HR.',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Bilder', style: DriftProTheme.labelLg),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickGallery,
+                          icon: const Icon(Icons.photo_library_outlined),
+                          label: const Text('Galleri'),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _pickCamera,
+                          icon: const Icon(Icons.camera_alt_outlined),
+                          label: const Text('Kamera'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_images.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 88,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _images.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (_, i) {
+                          return Stack(
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.memory(
+                                  _images[i].bytes,
+                                  width: 88,
+                                  height: 88,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Positioned(
+                                top: 2,
+                                right: 2,
+                                child: IconButton(
+                                  style: IconButton.styleFrom(
+                                    backgroundColor: Colors.black54,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.all(4),
+                                  ),
+                                  iconSize: 18,
+                                  onPressed: () =>
+                                      setState(() => _images.removeAt(i)),
+                                  icon: const Icon(Icons.close),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      _error!,
+                      style: const TextStyle(
+                          color: DriftProTheme.error, fontSize: 13),
+                    ),
+                  ],
+                  // Luft slik at siste felt ikke skjules bak Send-knappen.
+                  SizedBox(height: keyboard > 0 ? 8 : 16),
+                ],
+              ),
+            ),
+            Material(
+              elevation: 8,
+              color: isDark ? DriftProTheme.cardDark : Colors.white,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: FilledButton(
+                    onPressed: _isSubmitting ||
+                            _loadingHandlers ||
+                            (_isAnonymous
+                                ? _resolveAnonymousProfileIds().isEmpty
+                                : (_assignees.isEmpty ||
+                                    _selectedHandlerId == null))
+                        ? null
+                        : _submit,
+                    child: _isSubmitting
+                        ? SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: DriftProLoadingIndicator(size: 22),
+                          )
+                        : const Text('Send avvik'),
+                  ),
                 ),
               ),
-            ],
-            if (_error != null) ...[
-              const SizedBox(height: 16),
-              Text(
-                _error!,
-                style: const TextStyle(color: DriftProTheme.error, fontSize: 13),
-              ),
-            ],
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _isSubmitting ||
-                      _loadingHandlers ||
-                      (_isAnonymous
-                          ? _resolveAnonymousProfileIds().isEmpty
-                          : (_assignees.isEmpty || _selectedHandlerId == null))
-                  ? null
-                  : _submit,
-              child: _isSubmitting
-                  ? SizedBox(width: 22, height: 22, child: DriftProLoadingIndicator(size: 22))
-                  : const Text('Send avvik'),
             ),
           ],
         ),

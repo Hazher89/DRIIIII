@@ -56,7 +56,7 @@ Future<void> showDriftProAssistantSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
+    useSafeArea: false,
     backgroundColor: Theme.of(context).scaffoldBackgroundColor,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -131,15 +131,18 @@ class _DriftProAssistantSheetState extends State<DriftProAssistantSheet> {
   @override
   Widget build(BuildContext context) {
     final drift = context.driftColors;
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    final media = MediaQuery.of(context);
+    final keyboard = media.viewInsets.bottom;
+    final safeBottom = media.viewPadding.bottom;
     final height = kIsWeb
-        ? MediaQuery.sizeOf(context).height
-        : MediaQuery.sizeOf(context).height * 0.88;
+        ? media.size.height
+        : media.size.height * 0.88;
 
     return SizedBox(
       height: height,
       child: Padding(
-        padding: EdgeInsets.only(bottom: bottom),
+        // Keyboard only — safe area håndteres på input-raden (unngå dobbel/null).
+        padding: EdgeInsets.only(bottom: keyboard),
         child: Column(
           children: [
             const SizedBox(height: 8),
@@ -237,7 +240,13 @@ class _DriftProAssistantSheetState extends State<DriftProAssistantSheet> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+              padding: EdgeInsets.fromLTRB(
+                12,
+                8,
+                12,
+                // Løft over hjem-indikator (iPhone) — minst 12 + safe area.
+                12 + (keyboard > 0 ? 0 : safeBottom),
+              ),
               child: Row(
                 children: [
                   Expanded(

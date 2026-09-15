@@ -145,6 +145,7 @@ abstract final class AppPaths {
   static const moreOm = '/more/om';
   static const moreAssistent = '/more/assistent';
   static const moreAssistentLab = '/more/assistent-lab';
+  static const moreChatSettings = '/more/chat-innstillinger';
   static const moreChatLab = '/more/chat-lab';
   static const morePartnerChat = '/more/partner-chat';
   static const moreVisionCameras = '/more/vision-cameras';

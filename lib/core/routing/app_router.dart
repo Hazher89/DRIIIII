@@ -37,6 +37,7 @@ import '../../screens/work_steps/work_steps_hub_screen.dart';
 import '../../screens/uniform/uniform_monitor_screen.dart';
 import '../../screens/more/help_support_screen.dart';
 import '../../screens/more/assistant_settings_screen.dart';
+import '../../screens/more/chat_user_settings_screen.dart';
 import '../../screens/more/public_chat_lab_screen.dart';
 import '../../core/services/assistant/public_chat_knowledge_service.dart';
 import '../../screens/more/more_screen.dart';
@@ -140,14 +141,25 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
       final user = Supabase.instance.client.auth.currentUser;
       final email = user?.email?.trim().toLowerCase() ?? '';
       final looksLikePortal = SupabaseService.emailLooksLikePortal(email);
+      final cached = AccessSessionCache.profile;
       final internalStaff = SupabaseService.isInternalStaffSession(
         email: email,
-        profile: AccessSessionCache.profile,
+        profile: cached,
       );
-
-      if (looksLikePortal &&
+      final isPartnerSession = looksLikePortal &&
           !internalStaff &&
-          AccessSessionCache.profile?.driveMonitorDevice != true &&
+          cached?.driveMonitorDevice != true &&
+          (cached == null || cached.isPartnerPortalUser);
+
+      // Ansatt/admin skal aldri bli værende på /portal (f.eks. etter
+      // partner-utlogging med returnTo=/portal).
+      if ((path == AppPaths.portal ||
+              path.startsWith('${AppPaths.portal}/')) &&
+          !isPartnerSession) {
+        return AppPaths.dashboard;
+      }
+
+      if (isPartnerSession &&
           path != AppPaths.portal &&
           !path.startsWith('${AppPaths.portal}/') &&
           path != AppPaths.login &&
@@ -160,9 +172,19 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
       if (path == AppPaths.login) {
         final returnTo = state.uri.queryParameters['returnTo'];
         if (returnTo != null && returnTo.isNotEmpty) {
-          return Uri.decodeComponent(returnTo);
+          final decoded = Uri.decodeComponent(returnTo);
+          final portalReturn = decoded == AppPaths.portal ||
+              decoded.startsWith('${AppPaths.portal}/');
+          // Ikke send ansatte tilbake til partnerportal via gammel returnTo.
+          if (portalReturn && !isPartnerSession) {
+            return AppPaths.dashboard;
+          }
+          if (!portalReturn && isPartnerSession) {
+            return AppPaths.portal;
+          }
+          return decoded;
         }
-        return AppPaths.dashboard;
+        return isPartnerSession ? AppPaths.portal : AppPaths.dashboard;
       }
       if (state.uri.queryParameters['dropbox'] == 'connected' &&
           path != AppPaths.moreDropbox) {
@@ -629,6 +651,13 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     builder: (context, state) => _guardPath(
                       state,
                       const AssistantSettingsScreen()),
+                  ),
+                  GoRoute(
+                    path: 'chat-innstillinger',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const ChatUserSettingsScreen()),
                   ),
                   GoRoute(
                     path: 'assistent-lab',

@@ -1,4 +1,5 @@
 import '../../config/supabase_config.dart';
+import '../partner/delivery_postal_zones.dart';
 import '../supabase_service.dart';
 import 'assistant_corpus.dart';
 import 'assistant_text_utils.dart';
@@ -93,6 +94,8 @@ class PublicMontageAssistantService {
     'Hva er inkludert ved montering av vaskemaskin?',
     'Er side-by-side enkel eller avansert montering?',
     'Vare ikke hentet fra butikk — kan den leveres likevel?',
+    'Leverer dere til postnummer 3015?',
+    'Hvilke postnummer leverer vi til?',
   ];
 
   /// Interne ord/fraser som aldri skal komme ut til eksterne.
@@ -202,6 +205,20 @@ class PublicMontageAssistantService {
         hits: [],
         text:
             'Skriv gjerne hva du lurer på — f.eks. montering, ombooking, tidsvindu eller endring av adresse.',
+      );
+    }
+
+    // Fasit: leveringsområde / postnummer (før Gemini / generisk søk).
+    final postal = DeliveryPostalZones.tryAnswer(q, audience: 'ccc');
+    if (postal != null && postal.trim().isNotEmpty) {
+      return KnowledgeAnswer(
+        found: true,
+        hits: const [],
+        text: postal.trim(),
+        followUps: const [
+          'Leverer dere til 3015?',
+          'Hvilke postnummer leverer vi til?',
+        ],
       );
     }
 
@@ -619,6 +636,19 @@ class PublicMontageAssistantService {
     if (any(['portkode', 'ring først', 'beskjed til sjåfør', 'info til sjåfør'])) {
       return const _PublicIntent('ext.notes', 'beskjed på ordre');
     }
+    if (any([
+          'postnummer',
+          'postkode',
+          'leveringsområde',
+          'leveringsomrade',
+          'leverer dere til',
+          'leverer vi til',
+          'dekker dere',
+        ]) ||
+        (any(['leverer', 'sone', 'zone']) &&
+            RegExp(r'\b\d{4}\b').hasMatch(q))) {
+      return const _PublicIntent('ext.delivery_postal', 'leveringsområde');
+    }
     return null;
   }
 
@@ -882,6 +912,9 @@ class PublicMontageAssistantService {
         'Legg viktige beskjeder (portkode, ring først, adkomst) direkte på ordren.\n\n'
         '• I dag: sørg for at beskjeden når frem raskt.\n'
         '• I morgen eller senere: legg inn notatet i god tid, så følger det sjåføren.',
+    'ext.delivery_postal':
+        'Vi leverer bare til postnummer innenfor de registrerte fra–til-intervallene (sone 1–4).\n\n'
+        'Spør med et konkret postnummer — f.eks. «leverer dere til 3015?» — så får du ja/nei + sone.',
   };
 
   /// Formulerer naturlig svar — aldri rå dokumentsitering.

@@ -178,7 +178,7 @@ class RouteAccessMap {
     AppPaths.moreWorkSteps: RouteAccessRequirement(
       areaId: 'more',
       legacyAccessKey: AccessKeys.workSteps,
-      customCheck: (a) => a.canWorkSteps,
+      customCheck: (a) => a.canWorkStepsPersonal,
     ),
     AppPaths.moreWorkStepsHub: RouteAccessRequirement(
       areaId: 'more.work_steps_hub',

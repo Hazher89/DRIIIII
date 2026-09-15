@@ -1,4 +1,6 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -9,7 +11,9 @@ import '../../../core/theme/app_theme.dart';
 import '../../../models/chat/chat_models.dart';
 import 'chat_media_viewer.dart';
 import 'chat_link_text.dart';
+import 'chat_location_map_bubble.dart';
 import 'chat_ui_helpers.dart';
+import 'chat_whatsapp_actions.dart';
 
 /// Meldingsboble med swipe-for-svar, avatars og inline media.
 class ChatSwipeMessage extends StatefulWidget {
@@ -28,7 +32,10 @@ class ChatSwipeMessage extends StatefulWidget {
     this.onPin,
     this.onReport,
     this.onThread,
+    this.onPrivate,
+    this.threadReplyCount = 0,
     this.showTranslation = false,
+    this.inThreadView = false,
   });
 
   final ChatMessage message;
@@ -44,7 +51,10 @@ class ChatSwipeMessage extends StatefulWidget {
   final VoidCallback? onPin;
   final VoidCallback? onReport;
   final VoidCallback? onThread;
+  final VoidCallback? onPrivate;
+  final int threadReplyCount;
   final bool showTranslation;
+  final bool inThreadView;
 
   @override
   State<ChatSwipeMessage> createState() => _ChatSwipeMessageState();
@@ -137,7 +147,7 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
               padding: EdgeInsets.only(
                 left: mine ? 48 : (widget.showSender ? 0 : 4),
                 right: mine ? 4 : 48,
-                bottom: 4,
+                bottom: m.reactions.isNotEmpty && !m.isDeleted ? 14 : 4,
               ),
               child: Row(
                 mainAxisAlignment: mine ? MainAxisAlignment.end : MainAxisAlignment.start,
@@ -163,19 +173,31 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
                               ),
                             ),
                           ),
-                        Column(
-                          crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        Stack(
+                          clipBehavior: Clip.none,
                           children: [
-                            _ChatBubbleBody(
-                              message: widget.showTranslation ? m.copyWith(showTranslation: true) : m,
-                              mine: mine,
-                              onOpenImage: widget.onOpenImage,
+                            Padding(
+                              padding: EdgeInsets.only(
+                                bottom: m.reactions.isNotEmpty && !m.isDeleted ? 10 : 0,
+                              ),
+                              child: _ChatBubbleBody(
+                                message: widget.showTranslation
+                                    ? m.copyWith(showTranslation: true)
+                                    : m,
+                                mine: mine,
+                                onOpenImage: widget.onOpenImage,
+                              ),
                             ),
                             if (m.reactions.isNotEmpty && !m.isDeleted)
-                              _ReactionBar(
-                                reactions: m.reactions,
-                                mine: mine,
-                                onReact: widget.onReact,
+                              Positioned(
+                                // WhatsApp: reaksjon nederst til høyre på boblen.
+                                right: 8,
+                                bottom: -4,
+                                child: _ReactionBar(
+                                  reactions: m.reactions,
+                                  mine: mine,
+                                  onReact: widget.onReact,
+                                ),
                               ),
                           ],
                         ),
@@ -191,122 +213,33 @@ class _ChatSwipeMessageState extends State<ChatSwipeMessage> with SingleTickerPr
     );
   }
 
-  void _showActions(BuildContext context, ChatMessage m) {
-    showModalBottomSheet<void>(
+  Future<void> _showActions(BuildContext context, ChatMessage m) async {
+    await showChatWhatsAppActions(
       context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  for (final e in PartnerChatService.quickReactionEmojis)
-                    IconButton(
-                      tooltip: e,
-                      icon: Text(e, style: const TextStyle(fontSize: 26)),
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        widget.onReact?.call(e);
-                      },
-                    ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            ListTile(
-              leading: CircleAvatar(
-                backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
-                child: Icon(Icons.reply_rounded, color: DriftProTheme.primaryGreen),
-              ),
-              title: Text('Svar ${m.senderName ?? ''}'),
-              subtitle: Text(ChatUiHelpers.replySnippet(m), maxLines: 1, overflow: TextOverflow.ellipsis),
-              onTap: () {
-                Navigator.pop(ctx);
-                _onReply();
-              },
-            ),
-            if (m.body.isNotEmpty && !m.isDeleted)
-              ListTile(
-                leading: const Icon(Icons.copy_rounded),
-                title: const Text('Kopier tekst'),
-                onTap: () {
-                  Clipboard.setData(ClipboardData(text: m.body));
-                  Navigator.pop(ctx);
-                },
-              ),
-                if (widget.onThread != null)
-                  ListTile(
-                    leading: const Icon(Icons.forum_outlined),
-                    title: const Text('Svar i tråd'),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      widget.onThread!();
-                    },
-                  ),
-                if (widget.onPin != null)
-                  ListTile(
-                    leading: const Icon(Icons.push_pin_outlined),
-                    title: const Text('Fest melding'),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      widget.onPin!();
-                    },
-                  ),
-                if (widget.onReport != null)
-                  ListTile(
-                    leading: const Icon(Icons.flag_outlined, color: Colors.orange),
-                    title: const Text('Rapporter'),
-                    onTap: () {
-                      Navigator.pop(ctx);
-                      widget.onReport!();
-                    },
-                  ),
-                if (widget.onShowRead != null)
-              ListTile(
-                leading: const Icon(Icons.done_all_rounded),
-                title: const Text('Lest av'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  widget.onShowRead!();
-                },
-              ),
-            if (widget.onDelete != null)
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text('Slett melding'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  widget.onDelete!();
-                },
-              ),
-            if (widget.onModeratorDelete != null)
-              ListTile(
-                leading: const Icon(Icons.delete_forever_outlined, color: Colors.red),
-                title: const Text('Slett melding (moderator)'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  widget.onModeratorDelete!();
-                },
-              ),
-            if (widget.onHide != null)
-              ListTile(
-                leading: const Icon(Icons.visibility_off_outlined, color: Colors.orange),
-                title: const Text('Skjul melding (moderator)'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  widget.onHide!();
-                },
-              ),
-          ],
+      mine: widget.mine,
+      messagePreview: IgnorePointer(
+        child: _ChatBubbleBody(
+          message: widget.showTranslation ? m.copyWith(showTranslation: true) : m,
+          mine: widget.mine,
+          onOpenImage: null,
         ),
       ),
+      onReact: widget.onReact,
+      onReply: _onReply,
+      onPrivate: widget.onPrivate,
+      onCopy: (m.body.isNotEmpty && !m.isDeleted)
+          ? () => Clipboard.setData(ClipboardData(text: m.body))
+          : null,
+      onPin: widget.onPin,
+      onReport: widget.onReport,
+      onShowRead: widget.onShowRead,
+      onDelete: widget.onDelete,
+      onSuperAdminDelete: widget.onModeratorDelete,
+      onHide: widget.onHide,
     );
   }
 }
+
 
 class _ChatBubbleBody extends StatelessWidget {
   const _ChatBubbleBody({
@@ -322,7 +255,16 @@ class _ChatBubbleBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final m = message;
-    final mediaOnly = m.hasMedia && m.body.trim().isEmpty && !m.isDeleted;
+    final isLocation = m.messageType == ChatMessageType.location;
+    final locationCoords = isLocation
+        ? ChatLocationMapBubble.parseCoords(
+            body: m.body,
+            storagePath: m.attachments.isNotEmpty ? m.attachments.first.storagePath : null,
+          )
+        : null;
+    final mediaOnly = (m.hasMedia || locationCoords != null) &&
+        (m.body.trim().isEmpty || isLocation) &&
+        !m.isDeleted;
     final bg = mine
         ? DriftProTheme.primaryGreen
         : Colors.white;
@@ -333,12 +275,18 @@ class _ChatBubbleBody extends StatelessWidget {
         : Border.all(color: Colors.black.withValues(alpha: 0.06));
 
     return Container(
-      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.74),
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * (locationCoords != null ? 0.82 : 0.74),
+      ),
       decoration: BoxDecoration(
-        color: m.isBlocked ? Colors.red.shade50 : (mediaOnly ? Colors.transparent : bg),
+        color: m.isBlocked
+            ? Colors.red.shade50
+            : (mediaOnly && locationCoords != null
+                ? (mine ? DriftProTheme.primaryGreen : Colors.white)
+                : (mediaOnly ? Colors.transparent : bg)),
         borderRadius: BorderRadius.circular(18),
-        border: mediaOnly ? null : border,
-        boxShadow: mediaOnly
+        border: mediaOnly && locationCoords == null ? null : border,
+        boxShadow: mediaOnly && locationCoords == null
             ? null
             : [
                 BoxShadow(
@@ -355,6 +303,16 @@ class _ChatBubbleBody extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (m.replyTo != null) _ReplyPreview(reply: m.replyTo!, mine: mine),
+              if (locationCoords != null && !m.hasMedia)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+                  child: ChatLocationMapBubble(
+                    latitude: locationCoords.lat,
+                    longitude: locationCoords.lng,
+                    label: m.body,
+                    mine: mine,
+                  ),
+                ),
               if (m.hasMedia)
                 for (final att in m.attachments)
                   _AttachmentView(
@@ -363,13 +321,13 @@ class _ChatBubbleBody extends StatelessWidget {
                     mine: mine,
                     onOpenImage: onOpenImage,
                   ),
-              if (!mediaOnly)
+              if (!mediaOnly || (isLocation && m.body.trim().isNotEmpty && locationCoords == null))
                 Padding(
-                  padding: EdgeInsets.fromLTRB(14, m.hasMedia ? 8 : 10, 14, 8),
+                  padding: EdgeInsets.fromLTRB(14, m.hasMedia || locationCoords != null ? 8 : 10, 14, 8),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      if (m.body.isNotEmpty)
+                      if (m.body.isNotEmpty && !isLocation)
                         m.isDeleted
                             ? Text('[Slettet]', style: TextStyle(color: fg, height: 1.4, fontSize: 15))
                             : ChatLinkText(
@@ -402,9 +360,28 @@ class _ChatBubbleBody extends StatelessWidget {
                     ],
                   ),
                 ),
+              // Kart uten bilde-overlay: én tid nederst til høyre.
+              if (mediaOnly && locationCoords != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(time, style: TextStyle(fontSize: 10, color: fg.withValues(alpha: 0.65))),
+                        if (mine) ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.done_all_rounded, size: 12, color: fg.withValues(alpha: 0.65)),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
-          if (mediaOnly)
+          // Bilde/video: kun overlay-tid (ikke ekstra tid under).
+          if (mediaOnly && locationCoords == null)
             Positioned(
               right: 10,
               bottom: 10,
@@ -446,38 +423,44 @@ class _ReactionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (reactions.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
-      child: Wrap(
-        spacing: 4,
-        runSpacing: 4,
-        children: [
-          for (final r in reactions)
-            GestureDetector(
-              onTap: onReact == null ? null : () => onReact!(r.emoji),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: r.mine
-                      ? DriftProTheme.primaryGreen.withValues(alpha: 0.15)
-                      : Colors.black.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: r.mine
-                        ? DriftProTheme.primaryGreen.withValues(alpha: 0.4)
-                        : Colors.black.withValues(alpha: 0.06),
-                  ),
-                ),
-                child: Text(
-                  '${r.emoji} ${r.count}',
+    return GestureDetector(
+      onTap: () => showChatReactionDetails(
+        context: context,
+        reactions: reactions,
+        onToggle: onReact,
+      ),
+      child: Material(
+        elevation: 2,
+        shadowColor: Colors.black26,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.black.withValues(alpha: 0.08)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < reactions.length; i++) ...[
+                if (i > 0) const SizedBox(width: 2),
+                Text(reactions[i].emoji, style: const TextStyle(fontSize: 14)),
+              ],
+              if (reactions.any((r) => r.count > 1) || reactions.length > 1) ...[
+                const SizedBox(width: 4),
+                Text(
+                  '${reactions.fold<int>(0, (s, r) => s + r.count)}',
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: r.mine ? FontWeight.w800 : FontWeight.w600,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade800,
                   ),
                 ),
-              ),
-            ),
-        ],
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -491,59 +474,155 @@ class _ReplyPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = mine ? Colors.white : ChatUiHelpers.senderColor(reply.senderId);
+    final accent = ChatUiHelpers.senderColor(reply.senderId);
+    final barColor = mine ? Colors.white : accent;
     final replyName = reply.senderName?.trim().isNotEmpty == true ? reply.senderName! : 'Bruker';
-    final hasThumb = reply.attachments.isNotEmpty &&
-        PartnerChatService.attachmentIsImage(reply.attachments.first, reply.messageType) &&
-        reply.attachments.first.signedUrl != null;
+    final thumb = replyMediaThumb(reply, size: 48);
+    final snippet = ChatUiHelpers.replySnippet(reply);
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(8, 8, 8, 0),
-      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.fromLTRB(6, 6, 6, 0),
       decoration: BoxDecoration(
-        color: (mine ? Colors.white : accent).withValues(alpha: mine ? 0.14 : 0.08),
-        borderRadius: BorderRadius.circular(12),
-        border: Border(left: BorderSide(color: accent, width: 3)),
+        color: mine
+            ? Colors.white.withValues(alpha: 0.16)
+            : accent.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(10),
       ),
-      child: Row(
-        children: [
-          if (hasThumb) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: reply.attachments.first.signedUrl!,
-                width: 42,
-                height: 42,
-                fit: BoxFit.cover,
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: barColor),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(8, 7, 8, 7),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            replyName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: mine ? Colors.white : accent,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            snippet,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              height: 1.25,
+                              color: mine
+                                  ? Colors.white.withValues(alpha: 0.88)
+                                  : const Color(0xFF3A3A3A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (thumb != null) ...[
+                      const SizedBox(width: 8),
+                      thumb,
+                    ],
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 8),
           ],
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  replyName,
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: accent),
-                ),
-                Text(
-                  ChatUiHelpers.replySnippet(reply),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: mine ? Colors.white.withValues(alpha: 0.85) : Colors.black54,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
+}
+
+Widget? replyMediaThumb(ChatMessage reply, {double size = 48}) {
+  final type = reply.messageType;
+  if (type == ChatMessageType.location ||
+      (reply.attachments.isNotEmpty && reply.attachments.first.mimeType == 'application/geo')) {
+    final coords = ChatLocationMapBubble.parseCoords(
+      body: reply.body,
+      storagePath: reply.attachments.isNotEmpty ? reply.attachments.first.storagePath : null,
+    );
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (coords != null)
+              FlutterMap(
+                options: MapOptions(
+                  initialCenter: LatLng(coords.lat, coords.lng),
+                  initialZoom: 14,
+                  interactionOptions: const InteractionOptions(flags: InteractiveFlag.none),
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'no.driftpro.driftpro',
+                  ),
+                ],
+              )
+            else
+              ColoredBox(color: const Color(0xFFD1D5DB)),
+            const Center(
+              child: Icon(Icons.location_on_rounded, color: Color(0xFFE11D48), size: 22),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  if (reply.attachments.isEmpty) return null;
+  final att = reply.attachments.first;
+  final isImage = PartnerChatService.attachmentIsImage(att, type);
+  final isVideo = PartnerChatService.attachmentIsVideo(att, type);
+
+  if (isImage && att.signedUrl != null) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: CachedNetworkImage(
+        imageUrl: att.signedUrl!,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+      ),
+    );
+  }
+
+  if (isVideo) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(color: Colors.black.withValues(alpha: 0.55)),
+            const Center(
+              child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 26),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  return null;
 }
 
 class _AttachmentView extends StatelessWidget {
@@ -565,6 +644,24 @@ class _AttachmentView extends StatelessWidget {
     final isVideo = PartnerChatService.attachmentIsVideo(att, message.messageType);
 
     if (message.messageType == ChatMessageType.location || att.mimeType == 'application/geo') {
+      final coords = ChatLocationMapBubble.parseCoords(
+        body: message.body,
+        storagePath: att.storagePath,
+      );
+      if (coords != null) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+          child: SizedBox(
+            width: 240,
+            child: ChatLocationMapBubble(
+              latitude: coords.lat,
+              longitude: coords.lng,
+              label: message.body,
+              mine: mine,
+            ),
+          ),
+        );
+      }
       return InkWell(
         onTap: () async {
           final uri = Uri.parse('https://maps.google.com/?q=${Uri.encodeComponent(message.body)}');
@@ -711,9 +808,7 @@ class ChatReplyBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = reply.senderName?.trim().isNotEmpty == true ? reply.senderName! : 'Bruker';
     final color = ChatUiHelpers.senderColor(reply.senderId);
-    final hasThumb = reply.attachments.isNotEmpty &&
-        PartnerChatService.attachmentIsImage(reply.attachments.first, reply.messageType) &&
-        reply.attachments.first.signedUrl != null;
+    final thumb = replyMediaThumb(reply, size: 44);
 
     return Material(
       elevation: 6,
@@ -723,20 +818,10 @@ class ChatReplyBar extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 10, 4, 10),
         child: Row(
           children: [
-            ChatSenderAvatar(name: reply.senderName, userId: reply.senderId, radius: 16),
+            Container(width: 4, height: 48, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
             const SizedBox(width: 10),
-            Container(width: 3, height: 42, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
-            const SizedBox(width: 10),
-            if (hasThumb) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(
-                  imageUrl: reply.attachments.first.signedUrl!,
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                ),
-              ),
+            if (thumb != null) ...[
+              thumb,
               const SizedBox(width: 10),
             ],
             Expanded(
@@ -745,13 +830,14 @@ class ChatReplyBar extends StatelessWidget {
                 children: [
                   Text(
                     'Svarer $name',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: color),
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: color),
                   ),
+                  const SizedBox(height: 2),
                   Text(
                     ChatUiHelpers.replySnippet(reply),
-                    maxLines: 2,
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.25),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade800, height: 1.3),
                   ),
                 ],
               ),

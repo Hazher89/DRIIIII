@@ -49,9 +49,26 @@ class AccessCatalog {
         AccessKeys.undersokelser,
         AccessKeys.whistleblowing,
         AccessKeys.kiosk,
+        AccessKeys.forsideRedigering,
+        AccessKeys.workSteps,
+        AccessKeys.workStepsHub,
+        AccessKeys.driveMonitor,
         AccessKeys.samarbeidspartnere,
         AccessKeys.tilgangskontroll,
         AccessKeys.brukergodkjenning,
+      ],
+    ),
+    AccessSection(
+      id: 'nye_moduler',
+      title: 'Nye funksjoner (Forside, skritt, leiebil)',
+      subtitle:
+          'Gi til enkeltpersoner eller flere. Hub-oversikt er ment for leder/admin.',
+      keys: [
+        AccessKeys.forsideRedigering,
+        AccessKeys.workSteps,
+        AccessKeys.workStepsHub,
+        AccessKeys.driveMonitor,
+        AccessKeys.uniformMonitorAdmin,
       ],
     ),
     AccessSection(

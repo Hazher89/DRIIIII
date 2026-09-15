@@ -53,56 +53,41 @@ class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
   }
 
   Future<void> _showConsentThenEnable() async {
-    final accepted = await showModalBottomSheet<bool>(
+    // Apple/Google: short in-app purpose → then OS permission dialog.
+    final accepted = await showDialog<bool>(
       context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
+      barrierDismissible: false,
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    kWorkStepsConsentHeadline,
-                    style: DriftProTheme.labelLg.copyWith(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 18,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    kWorkStepsConsentBody,
-                    style: DriftProTheme.bodySm.copyWith(height: 1.45),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      kWorkStepsOnlyAtWorkBanner,
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: () => Navigator.pop(ctx, true),
-                    child: const Text('Jeg forstår — fortsett'),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: () => Navigator.pop(ctx, false),
-                    child: const Text('Ikke nå'),
-                  ),
-                ],
-              ),
-            ),
+        return AlertDialog(
+          icon: Icon(
+            Icons.directions_walk,
+            color: DriftProTheme.primaryGreen,
+            size: 36,
           ),
+          title: const Text(kWorkStepsConsentHeadline),
+          content: const Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(kWorkStepsConsentBody),
+              SizedBox(height: 12),
+              Text(
+                kWorkStepsConsentDetail,
+                style: TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.spaceBetween,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Ikke tillat'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Tillat'),
+            ),
+          ],
         );
       },
     );
@@ -110,24 +95,27 @@ class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
 
     setState(() => _busy = true);
     try {
-      // Apple/Google: in-app explanation first, THEN system permission.
+      // Native Apple Health / Google Health Connect prompt next.
       if (!kIsWeb && await WorkStepsHealthBridge.isSupported()) {
         final granted = await WorkStepsHealthBridge.requestAuthorization();
         if (!granted && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Tillatelse til skritt ble ikke gitt. Du kan prøve igjen senere '
-                'eller åpne Apple Helse / Health Connect.',
+                'Tillatelse ble ikke gitt. Du kan endre dette i '
+                'Apple Helse eller Health Connect.',
               ),
             ),
           );
+          setState(() => _busy = false);
+          return;
         }
       }
       await WorkStepsService.setConsentEnabled(true);
       await _load();
       if (!mounted) return;
-      setState(() => _status = 'Skritt på jobb er på. Synk bare virker på arbeidsstedet.');
+      setState(() =>
+          _status = 'Deling er på. Synk virker bare på MAVI arbeidssted.');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

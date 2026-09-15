@@ -1,4 +1,5 @@
 import '../../routing/app_paths.dart';
+import '../partner/delivery_postal_zones.dart';
 import 'assistant_corpus.dart';
 
 /// Komplett FAQ om DriftPro-appen — det ansatte typisk spør om.
@@ -6,8 +7,8 @@ import 'assistant_corpus.dart';
 class AssistantAppFaq {
   AssistantAppFaq._();
 
-  static List<KnowledgeChunk> chunks() => const [
-        KnowledgeChunk(
+  static List<KnowledgeChunk> chunks() => [
+        const KnowledgeChunk(
           id: 'faq:whistleblowing-who',
           source: KnowledgeSourceKind.help,
           title: 'Hvem kan sende anonym anmeldelse?',
@@ -251,15 +252,34 @@ class AssistantAppFaq {
           tags: ['partner', 'rute', 'sjåfør', 'bilutleie', 'logistikk'],
         ),
         KnowledgeChunk(
+          id: 'faq:delivery-postal-zones',
+          source: KnowledgeSourceKind.help,
+          title: 'Hvilke postnummer leverer MAVI til?',
+          body: DeliveryPostalZones.knowledgeBody(forCcc: false),
+          tags: [
+            'postnummer',
+            'postkode',
+            'leverer',
+            'levering',
+            'leveringsområde',
+            'sone',
+            'zone',
+            'dekning',
+            'mavi',
+            'utkjøring',
+          ],
+        ),
+        KnowledgeChunk(
           id: 'faq:chat-assistant',
           source: KnowledgeSourceKind.help,
           title: 'Hva kan DriftPro-assistenten?',
           body:
               'Jeg er DriftPro-assistenten. Spør om hva som helst i appen: '
               'fravær, ferie, egenmelding, avvik, anonym anmeldelse, HMS, partnere, '
-              'innlogging, varsler, organisasjon, bilutleie, SOP/opplæring.\n\n'
+              'innlogging, varsler, organisasjon, bilutleie, SOP/opplæring, '
+              'leveringsområder/postnummer.\n\n'
               'Still spørsmålet med egne ord — f.eks. «hvem godkjenner ferie?», '
-              '«hvor mange egenmeldingsdager har jeg?», «hvordan melder jeg anonymt?».',
+              '«leverer vi til 3015?», «hvordan melder jeg anonymt?».',
           routePath: AppPaths.moreAssistent,
           tags: ['assistent', 'chat', 'hjelp', 'spør', 'hva kan'],
         ),

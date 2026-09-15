@@ -20,7 +20,7 @@ extension HmsHandbookCategoryX on HmsHandbookCategory {
         HmsHandbookCategory.miljo => 'Miljø (ISO 14001)',
         HmsHandbookCategory.risiko => 'Risikovurdering',
         HmsHandbookCategory.revisjon => 'Revisjon og kontroll',
-        HmsHandbookCategory.avvik => 'Avvik og RUH',
+        HmsHandbookCategory.avvik => 'Avvik og uønskede hendelser',
         HmsHandbookCategory.sja => 'Sikker jobbanalyse',
         HmsHandbookCategory.beredskap => 'Beredskap',
         HmsHandbookCategory.partnere => 'Samarbeidspartnere',
@@ -37,7 +37,8 @@ extension HmsHandbookCategoryX on HmsHandbookCategory {
           'ROS, SWOT, interesseparter og risikoregistre',
         HmsHandbookCategory.revisjon =>
           'Revisjonsplaner, program og Landax-eksport',
-        HmsHandbookCategory.avvik => 'Rapportering av uønskede hendelser',
+        HmsHandbookCategory.avvik =>
+          'Rutiner for rapportering og oppfølging av hendelser',
         HmsHandbookCategory.sja => 'Mal for sikker jobbanalyse',
         HmsHandbookCategory.beredskap =>
           'Alvorlig ulykke, brann og beredskapsplaner',
