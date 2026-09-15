@@ -203,7 +203,7 @@ class WorkStepsService {
       'consented_at': enabled ? now : null,
       'revoked_at': enabled ? null : now,
       'updated_at': now,
-    });
+    }, onConflict: 'profile_id');
   }
 
   static Future<List<WorkStepsDaily>> fetchMyHistory({int days = 14}) async {
