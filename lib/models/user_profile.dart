@@ -37,6 +37,8 @@ class UserProfile {
   final String? partnerVehicleId;
   /// Når true: innlogging åpner låst leiebil-sporing (kiosk).
   final bool driveMonitorDevice;
+  /// Visningsnavn for sporingsenhet (valgfritt — ikke MAVI-bil).
+  final String? driveMonitorUnitName;
   /// Minimal profil uten DB-rad — kun for whitelisted eier-e-post (midlertidig nødbo).
   final bool isRecoverySession;
 
@@ -70,6 +72,7 @@ class UserProfile {
     this.partnerId,
     this.partnerVehicleId,
     this.driveMonitorDevice = false,
+    this.driveMonitorUnitName,
     this.isRecoverySession = false,
   });
 
@@ -145,6 +148,8 @@ class UserProfile {
       partnerId: json['partner_id'] as String?,
       partnerVehicleId: json['partner_vehicle_id'] as String?,
       driveMonitorDevice: json['drive_monitor_device'] as bool? ?? false,
+      driveMonitorUnitName: (json['drive_monitor_unit_name'] as String?)?.trim(),
+      isRecoverySession: json['recovery_session'] as bool? ?? false,
     );
   }
 
@@ -175,6 +180,7 @@ class UserProfile {
     'partner_id': partnerId,
     'partner_vehicle_id': partnerVehicleId,
     'drive_monitor_device': driveMonitorDevice,
+    'drive_monitor_unit_name': driveMonitorUnitName,
     'recovery_session': isRecoverySession,
   };
 
@@ -194,6 +200,7 @@ class UserProfile {
     String? partnerId,
     String? partnerVehicleId,
     bool? driveMonitorDevice,
+    String? driveMonitorUnitName,
     bool? isRecoverySession,
     Map<String, dynamic>? accessSettings,
   }) {
@@ -230,6 +237,7 @@ class UserProfile {
       partnerId: partnerId ?? this.partnerId,
       partnerVehicleId: partnerVehicleId ?? this.partnerVehicleId,
       driveMonitorDevice: driveMonitorDevice ?? this.driveMonitorDevice,
+      driveMonitorUnitName: driveMonitorUnitName ?? this.driveMonitorUnitName,
       isRecoverySession: isRecoverySession ?? this.isRecoverySession,
     );
   }

@@ -180,74 +180,204 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
   Future<void> _addDeviceUser() async {
     final cid = _profile?.companyId;
     if (cid == null) return;
-    final search = TextEditingController();
+
+    final unitNameCtrl = TextEditingController();
+    final empNoCtrl = TextEditingController();
+    final searchCtrl = TextEditingController();
+    var mode = 0; // 0 = ny enhet, 1 = eksisterende bruker
     List<Map<String, dynamic>> hits = [];
+    String? error;
+
     await showDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: const Text('Legg til sporingsbruker'),
+          title: const Text('Legg til sporingsenhet'),
           content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Ved innlogging går telefonen automatisk i låst leiebil-sporing.',
-                  style: TextStyle(fontSize: 13, height: 1.35),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: search,
-                  decoration: const InputDecoration(
-                    hintText: 'Søk navn eller ansattnr…',
-                    border: OutlineInputBorder(),
-                    isDense: true,
+            width: 440,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Hver enhet har sitt eget navn (f.eks. «Bil 3» eller «iPad lager»). '
+                    'Ikke knyttet til MAVI-biler.',
+                    style: TextStyle(fontSize: 13, height: 1.35),
                   ),
-                  onChanged: (q) async {
-                    hits = await DriveMonitorService.searchEmployees(cid, q);
-                    setLocal(() {});
-                  },
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 220,
-                  child: ListView.builder(
-                    itemCount: hits.length,
-                    itemBuilder: (_, i) {
-                      final p = hits[i];
-                      final already = p['drive_monitor_device'] == true;
-                      return ListTile(
-                        dense: true,
-                        title: Text(p['full_name'] ?? ''),
-                        subtitle: Text('${p['employee_number'] ?? ''} · ${p['email'] ?? ''}'),
-                        trailing: already
-                            ? const Text('Allerede', style: TextStyle(fontSize: 11))
-                            : const Icon(Icons.add_circle_outline),
-                        onTap: already
-                            ? null
-                            : () async {
-                                await DriveMonitorService.setDeviceUser(
-                                  p['id'] as String,
-                                  true,
-                                );
-                                if (ctx.mounted) Navigator.pop(ctx);
-                                await _bootstrap();
-                              },
-                      );
-                    },
+                  const SizedBox(height: 12),
+                  SegmentedButton<int>(
+                    segments: const [
+                      ButtonSegment(value: 0, label: Text('Ny enhet')),
+                      ButtonSegment(value: 1, label: Text('Eksisterende')),
+                    ],
+                    selected: {mode},
+                    onSelectionChanged: (s) => setLocal(() => mode = s.first),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: unitNameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Enhetsnavn *',
+                      hintText: 'F.eks. Bil 3, Varebil Øst…',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                  if (mode == 0) ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: empNoCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Innloggingsnr (ansattnr) *',
+                        hintText: 'Unikt nummer for denne enheten',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Standardpassord: 000000 — byttes under Profil.',
+                      style: TextStyle(fontSize: 11, color: Colors.black54),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: searchCtrl,
+                      decoration: const InputDecoration(
+                        hintText: 'Søk navn eller ansattnr…',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      onChanged: (q) async {
+                        hits = await DriveMonitorService.searchEmployees(cid, q);
+                        setLocal(() {});
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 180,
+                      child: ListView.builder(
+                        itemCount: hits.length,
+                        itemBuilder: (_, i) {
+                          final p = hits[i];
+                          final already = p['drive_monitor_device'] == true;
+                          return ListTile(
+                            dense: true,
+                            title: Text(p['full_name'] ?? ''),
+                            subtitle: Text(
+                              '${p['employee_number'] ?? ''} · '
+                              '${p['drive_monitor_unit_name'] ?? 'ingen enhet'}',
+                            ),
+                            trailing: already
+                                ? const Text('Allerede', style: TextStyle(fontSize: 11))
+                                : const Icon(Icons.add_circle_outline),
+                            onTap: already
+                                ? null
+                                : () async {
+                                    final name = unitNameCtrl.text.trim();
+                                    if (name.isEmpty) {
+                                      setLocal(
+                                        () => error = 'Skriv enhetsnavn først',
+                                      );
+                                      return;
+                                    }
+                                    await DriveMonitorService.setDeviceUser(
+                                      p['id'] as String,
+                                      true,
+                                      unitName: name,
+                                    );
+                                    if (ctx.mounted) Navigator.pop(ctx);
+                                    await _bootstrap();
+                                  },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                  if (error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(error!, style: const TextStyle(color: Colors.red)),
+                  ],
+                ],
+              ),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Lukk')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Lukk'),
+            ),
+            if (mode == 0)
+              FilledButton(
+                onPressed: () async {
+                  final name = unitNameCtrl.text.trim();
+                  final emp = empNoCtrl.text.trim();
+                  if (name.isEmpty || emp.isEmpty) {
+                    setLocal(() => error = 'Enhetsnavn og innloggingsnr er påkrevd');
+                    return;
+                  }
+                  try {
+                    await DriveMonitorService.createTrackingUnit(
+                      companyId: cid,
+                      unitName: name,
+                      employeeNumber: emp,
+                    );
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    await _bootstrap();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Enhet «$name» opprettet. Innlogging: $emp / 000000',
+                          ),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    setLocal(() => error = '$e');
+                  }
+                },
+                child: const Text('Opprett'),
+              ),
           ],
         ),
       ),
     );
-    search.dispose();
+    unitNameCtrl.dispose();
+    empNoCtrl.dispose();
+    searchCtrl.dispose();
+  }
+
+  Future<void> _renameDevice(Map<String, dynamic> d) async {
+    final ctrl = TextEditingController(
+      text: '${d['drive_monitor_unit_name'] ?? d['full_name'] ?? ''}',
+    );
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Endre enhetsnavn'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(
+            labelText: 'Enhetsnavn',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Lagre')),
+        ],
+      ),
+    );
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      await DriveMonitorService.renameDeviceUnit(
+        d['id'] as String,
+        ctrl.text.trim(),
+      );
+      await _bootstrap();
+    }
+    ctrl.dispose();
   }
 
   Future<void> _savePin() async {
@@ -558,8 +688,8 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
       children: [
         FilledButton.icon(
           onPressed: _addDeviceUser,
-          icon: const Icon(Icons.person_add_alt),
-          label: const Text('Legg til sporingsbruker'),
+          icon: const Icon(Icons.add_box_outlined),
+          label: const Text('Legg til sporingsenhet'),
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
@@ -567,18 +697,44 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
           icon: const Icon(Icons.pin),
           label: const Text('Sett exit-PIN'),
         ),
+        const SizedBox(height: 8),
+        Text(
+          'Enheter logger inn med eget ansattnr. Ved innlogging starter GPS-sporing '
+          'automatisk under enhetsnavnet — ikke knyttet til MAVI-biler.',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.35),
+        ),
         const SizedBox(height: 16),
         ..._devices.map((d) {
+          final unit = (d['drive_monitor_unit_name'] as String?)?.trim();
           return Card(
             child: ListTile(
-              title: Text(d['full_name'] ?? ''),
-              subtitle: Text('${d['employee_number'] ?? ''} · ${d['email'] ?? ''}'),
-              trailing: IconButton(
-                icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                onPressed: () async {
-                  await DriveMonitorService.setDeviceUser(d['id'] as String, false);
-                  await _bootstrap();
-                },
+              leading: const Icon(Icons.phone_android_outlined),
+              title: Text(
+                (unit != null && unit.isNotEmpty) ? unit : (d['full_name'] ?? 'Enhet'),
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+              subtitle: Text(
+                'Login: ${d['employee_number'] ?? '—'} · ${d['full_name'] ?? ''}',
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Endre navn',
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: () => _renameDevice(d),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
+                    onPressed: () async {
+                      await DriveMonitorService.setDeviceUser(
+                        d['id'] as String,
+                        false,
+                      );
+                      await _bootstrap();
+                    },
+                  ),
+                ],
               ),
             ),
           );

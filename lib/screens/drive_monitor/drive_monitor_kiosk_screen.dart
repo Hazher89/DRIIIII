@@ -8,7 +8,7 @@ import '../../core/services/drive_monitor/drive_monitor_service.dart';
 import '../../models/user_profile.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
-/// Låst fullskjerm for leiebil-sporing (enhetskonto).
+/// Låst fullskjerm for sporingsenhet — ikke knyttet til MAVI-biler.
 class DriveMonitorKioskScreen extends StatefulWidget {
   const DriveMonitorKioskScreen({super.key, required this.profile});
 
@@ -23,19 +23,23 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
   StreamSubscription<DriveMonitorLiveStatus>? _sub;
   DriveMonitorLiveStatus? _live;
   String? _sessionId;
-  String? _vehicleLabel;
-  bool _starting = false;
-  bool _loadingVehicles = true;
-  List<Map<String, dynamic>> _vehicles = [];
+  String? _unitLabel;
+  bool _starting = true;
   int _secretTaps = 0;
   DateTime? _secretWindowStart;
   final _pinCtrl = TextEditingController();
+
+  String get _defaultUnitName {
+    final named = widget.profile.driveMonitorUnitName?.trim();
+    if (named != null && named.isNotEmpty) return named;
+    return widget.profile.fullName;
+  }
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _loadVehicles();
+    unawaited(_autoStart());
   }
 
   @override
@@ -47,40 +51,18 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
     super.dispose();
   }
 
-  Future<void> _loadVehicles() async {
+  Future<void> _autoStart() async {
     final cid = widget.profile.companyId;
     if (cid == null) {
-      setState(() => _loadingVehicles = false);
+      if (mounted) setState(() => _starting = false);
       return;
     }
     try {
-      final list = await DriveMonitorService.listVehicles(cid);
-      if (!mounted) return;
-      setState(() {
-        _vehicles = list;
-        _loadingVehicles = false;
-      });
-    } catch (_) {
-      if (mounted) setState(() => _loadingVehicles = false);
-    }
-  }
-
-  Future<void> _startForVehicle(Map<String, dynamic> v) async {
-    final cid = widget.profile.companyId;
-    if (cid == null || _starting) return;
-    setState(() => _starting = true);
-    try {
-      final unit = (v['unit_code'] as String?)?.trim() ?? '';
-      final reg = (v['registration_number'] as String?)?.trim() ?? '';
-      final label = [
-        if (unit.isNotEmpty) unit,
-        if (reg.isNotEmpty && reg != '—') reg,
-      ].join(' · ');
+      final label = _defaultUnitName;
       final sessionId = await DriveMonitorService.startSession(
         companyId: cid,
         deviceProfileId: widget.profile.id,
-        partnerVehicleId: v['id'] as String?,
-        vehicleLabel: label.isEmpty ? 'Leiebil' : label,
+        vehicleLabel: label,
       );
       final tracker = DriveMonitorTracker(companyId: cid, sessionId: sessionId);
       await tracker.start();
@@ -91,14 +73,17 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
       setState(() {
         _tracker = tracker;
         _sessionId = sessionId;
-        _vehicleLabel = label.isEmpty ? 'Leiebil' : label;
+        _unitLabel = label;
         _starting = false;
       });
     } catch (e) {
       if (mounted) {
         setState(() => _starting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke starte sporing: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Kunne ikke starte sporing: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
@@ -193,78 +178,32 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loadingVehicles) {
-      return const Scaffold(body: DriftProLoadingCenter());
-    }
-
-    if (_sessionId == null) {
+    if (_starting || _sessionId == null) {
       return Scaffold(
         backgroundColor: const Color(0xFF0F172A),
-        body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Leiebil-sporing',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Velg bilen som skal spores. Enheten låses etter start.',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.75), height: 1.35),
-                ),
-                const SizedBox(height: 20),
-                Expanded(
-                  child: _vehicles.isEmpty
-                      ? Center(
-                          child: Text(
-                            'Ingen aktive biler funnet.',
-                            style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
-                          ),
-                        )
-                      : ListView.separated(
-                          itemCount: _vehicles.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 8),
-                          itemBuilder: (ctx, i) {
-                            final v = _vehicles[i];
-                            final unit = v['unit_code'] ?? '';
-                            final reg = v['registration_number'] ?? '';
-                            return Material(
-                              color: Colors.white.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(14),
-                              child: ListTile(
-                                title: Text(
-                                  '$unit',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  '$reg',
-                                  style: TextStyle(color: Colors.white.withValues(alpha: 0.65)),
-                                ),
-                                trailing: _starting
-                                    ? const SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      )
-                                    : const Icon(Icons.play_circle_fill, color: Color(0xFF4ADE80)),
-                                onTap: _starting ? null : () => _startForVehicle(v),
-                              ),
-                            );
-                          },
-                        ),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const DriftProLoadingCenter(),
+              const SizedBox(height: 16),
+              Text(
+                _starting
+                    ? 'Starter sporing for $_defaultUnitName…'
+                    : 'Venter på GPS…',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              if (!_starting) ...[
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: () {
+                    setState(() => _starting = true);
+                    unawaited(_autoStart());
+                  },
+                  child: const Text('Prøv igjen'),
                 ),
               ],
-            ),
+            ],
           ),
         ),
       );
@@ -285,7 +224,7 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    _vehicleLabel ?? 'Leiebil',
+                    _unitLabel ?? _defaultUnitName,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.85),
@@ -297,63 +236,71 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
                   Container(
                     padding: const EdgeInsets.symmetric(vertical: 28),
                     decoration: BoxDecoration(
-                      color: _statusColor.withValues(alpha: 0.18),
+                      color: Colors.white.withValues(alpha: 0.06),
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _statusColor, width: 2),
                     ),
                     child: Column(
                       children: [
                         Text(
-                          _statusLabel,
-                          style: TextStyle(
-                            color: _statusColor,
+                          '${speed.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 72,
                             fontWeight: FontWeight.w900,
-                            fontSize: 28,
-                            letterSpacing: 1.2,
+                            height: 1,
                           ),
                         ),
-                        const SizedBox(height: 8),
                         Text(
-                          _live?.online == false
-                              ? 'Offline — lagrer lokalt'
-                              : 'Sporing aktiv · kontinuerlig',
-                          style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+                          'km/t',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 24),
-                  Row(
-                    children: [
-                      Expanded(child: _metric('Hastighet', '${speed.toStringAsFixed(0)} km/t')),
-                      const SizedBox(width: 10),
-                      Expanded(child: _metric('Score', score.toStringAsFixed(0))),
-                      const SizedBox(width: 10),
-                      Expanded(child: _metric('Km', km.toStringAsFixed(1))),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
-                        child: _metric('Hendelser', '${_live?.eventCount ?? 0}'),
+                        child: _kpi('Km', km.toStringAsFixed(1)),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: _metric('Rå', '${_live?.roughCount ?? 0}', alert: true),
+                        child: _kpi('Score', score.toStringAsFixed(0)),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          decoration: BoxDecoration(
+                            color: _statusColor.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: _statusColor),
+                          ),
+                          child: Text(
+                            _statusLabel,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: _statusColor,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                   const Spacer(),
                   Text(
                     _live?.online == false
-                        ? 'Ingen nett — data lagres på telefonen og sendes automatisk når nett er tilbake.'
-                        : 'Hold telefonen festet i bilen. Data sendes kontinuerlig til DriftPro (også i bakgrunn).',
+                        ? 'Offline — rute lagres lokalt og synces når nett er tilbake'
+                        : 'GPS-rute lagres fortløpende · bakgrunnssporet aktivt',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.45),
+                      color: Colors.white.withValues(alpha: 0.55),
                       fontSize: 12,
-                      height: 1.35,
                     ),
                   ),
                 ],
@@ -361,11 +308,11 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
             ),
           ),
           Positioned(
+            top: 0,
             right: 0,
-            bottom: 0,
             child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
               onTap: _onSecretTap,
+              behavior: HitTestBehavior.opaque,
               child: const SizedBox(width: 72, height: 72),
             ),
           ),
@@ -374,31 +321,28 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
     );
   }
 
-  Widget _metric(String label, String value, {bool alert = false}) {
+  Widget _kpi(String label, String value) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Column(
         children: [
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w900,
+              fontSize: 20,
+            ),
+          ),
           Text(
             label,
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.55),
               fontSize: 11,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: alert ? const Color(0xFFF87171) : Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
             ),
           ),
         ],

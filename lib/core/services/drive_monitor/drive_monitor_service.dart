@@ -12,6 +12,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../native_permissions_service.dart';
 import '../supabase_service.dart';
+import '../../../models/user_profile.dart';
 import 'drive_monitor_offline_queue.dart';
 
 /// Leiebil-sporing: GPS + sensorer → sessions/events i Supabase (+ offline-kø).
@@ -28,7 +29,9 @@ class DriveMonitorService {
   static Future<List<Map<String, dynamic>>> listDeviceUsers(String companyId) async {
     final rows = await _db
         .from('profiles')
-        .select('id, full_name, employee_number, email, drive_monitor_device')
+        .select(
+          'id, full_name, employee_number, email, drive_monitor_device, drive_monitor_unit_name',
+        )
         .eq('company_id', companyId)
         .eq('drive_monitor_device', true)
         .order('full_name');
@@ -42,7 +45,9 @@ class DriveMonitorService {
     final q = query.trim();
     final filter = _db
         .from('profiles')
-        .select('id, full_name, employee_number, email, drive_monitor_device')
+        .select(
+          'id, full_name, employee_number, email, drive_monitor_device, drive_monitor_unit_name',
+        )
         .eq('company_id', companyId)
         .eq('is_active', true)
         .isFilter('partner_id', null);
@@ -55,10 +60,56 @@ class DriveMonitorService {
     return List<Map<String, dynamic>>.from(rows as List);
   }
 
-  static Future<void> setDeviceUser(String profileId, bool enabled) async {
-    await _db.from('profiles').update({
+  static Future<void> setDeviceUser(
+    String profileId,
+    bool enabled, {
+    String? unitName,
+  }) async {
+    final patch = <String, dynamic>{
       'drive_monitor_device': enabled,
+    };
+    if (unitName != null) {
+      patch['drive_monitor_unit_name'] =
+          unitName.trim().isEmpty ? null : unitName.trim();
+    }
+    if (!enabled) {
+      patch['drive_monitor_unit_name'] = null;
+    }
+    await _db.from('profiles').update(patch).eq('id', profileId);
+  }
+
+  static Future<void> renameDeviceUnit(String profileId, String unitName) async {
+    final name = unitName.trim();
+    if (name.isEmpty) {
+      throw ArgumentError('Enhetsnavn er påkrevd');
+    }
+    await _db.from('profiles').update({
+      'drive_monitor_unit_name': name,
+      'drive_monitor_device': true,
     }).eq('id', profileId);
+  }
+
+  /// Opprett ny innloggingsbruker kun for sporing + sett enhetsnavn.
+  static Future<UserProfile> createTrackingUnit({
+    required String companyId,
+    required String unitName,
+    required String employeeNumber,
+    String? loginDisplayName,
+  }) async {
+    final name = unitName.trim();
+    if (name.isEmpty) throw ArgumentError('Enhetsnavn er påkrevd');
+    final profile = await SupabaseService.createEmployeeProfile(
+      companyId: companyId,
+      fullName: (loginDisplayName ?? name).trim(),
+      employeeNumber: employeeNumber.trim(),
+      jobTitle: 'Sporingsenhet',
+      role: UserRole.ansatt,
+    );
+    await setDeviceUser(profile.id, true, unitName: name);
+    return profile.copyWith(
+      driveMonitorDevice: true,
+      driveMonitorUnitName: name,
+    );
   }
 
   static Future<Map<String, dynamic>?> fetchSettings(String companyId) async {
@@ -259,13 +310,16 @@ class DriveMonitorTracker {
   StreamSubscription<List<ConnectivityResult>>? _netSub;
   Timer? _flushTimer;
   Timer? _dayTimer;
+  Timer? _pollTimer;
 
   late final DriveMonitorOfflineQueue _queue =
       DriveMonitorOfflineQueue(sessionId);
 
   double? _lastSpeed;
   DateTime? _lastPosAt;
+  DateTime? _lastSampleAt;
   Position? _lastPos;
+  Position? _lastSamplePos;
   double? _lastHeading;
   double _km = 0;
   int _eventCount = 0;
@@ -307,6 +361,11 @@ class DriveMonitorTracker {
     _posSub = Geolocator.getPositionStream(locationSettings: settings)
         .listen(_onPosition, onError: (_) {});
 
+    // Ekstra tett polling — stream kan hoppe over punkter i bakgrunn.
+    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      unawaited(_pollPosition());
+    });
+
     _accelSub = accelerometerEventStream(
       samplingPeriod: SensorInterval.gameInterval,
     ).listen(_onAccel, onError: (_) {});
@@ -315,7 +374,7 @@ class DriveMonitorTracker {
       samplingPeriod: SensorInterval.uiInterval,
     ).listen(_onGyro, onError: (_) {});
 
-    _flushTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+    _flushTimer = Timer.periodic(const Duration(seconds: 3), (_) {
       unawaited(_flush());
     });
 
@@ -337,12 +396,12 @@ class DriveMonitorTracker {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 2,
-        intervalDuration: const Duration(seconds: 2),
+        distanceFilter: 1,
+        intervalDuration: const Duration(seconds: 1),
         foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'Leiebil-sporing aktiv',
+          notificationTitle: 'Kjøresporing aktiv',
           notificationText:
-              'MAVI DriftPro registrerer kjøring kontinuerlig (også i bakgrunn).',
+              'DriftPro registrerer ruten kontinuerlig (også i bakgrunn).',
           enableWakeLock: true,
           setOngoing: true,
         ),
@@ -351,7 +410,7 @@ class DriveMonitorTracker {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       return AppleSettings(
         accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 3,
+        distanceFilter: 1,
         activityType: ActivityType.automotiveNavigation,
         pauseLocationUpdatesAutomatically: false,
         showBackgroundLocationIndicator: true,
@@ -360,8 +419,20 @@ class DriveMonitorTracker {
     }
     return const LocationSettings(
       accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 3,
+      distanceFilter: 1,
     );
+  }
+
+  Future<void> _pollPosition() async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.bestForNavigation,
+          timeLimit: Duration(seconds: 2),
+        ),
+      );
+      _onPosition(pos);
+    } catch (_) {}
   }
 
   Future<void> stop() async {
@@ -371,6 +442,7 @@ class DriveMonitorTracker {
     await _netSub?.cancel();
     _flushTimer?.cancel();
     _dayTimer?.cancel();
+    _pollTimer?.cancel();
     await _flush(force: true);
     await DriveMonitorService.endSession(
       sessionId,
@@ -387,22 +459,35 @@ class DriveMonitorTracker {
   }
 
   void _onPosition(Position pos) {
+    // Dropp ekstremt dårlige GPS-fiks (unntatt første punkt).
+    if (_lastSamplePos != null &&
+        pos.accuracy.isFinite &&
+        pos.accuracy > 55) {
+      return;
+    }
+
+    // Filtrer GPS-glitches (teleportering).
+    if (_lastSamplePos != null && _lastSampleAt != null) {
+      final jump = Geolocator.distanceBetween(
+        _lastSamplePos!.latitude,
+        _lastSamplePos!.longitude,
+        pos.latitude,
+        pos.longitude,
+      );
+      final dt = DateTime.now().difference(_lastSampleAt!).inMilliseconds /
+          1000.0;
+      if (dt > 0 && dt < 8 && jump / dt > 55) {
+        // > ~200 km/t — urealistisk, hopp over.
+        return;
+      }
+    }
+
     final speed = (pos.speed.isFinite ? pos.speed * 3.6 : 0).clamp(0, 250).toDouble();
     _liveSpeed = speed;
     if (speed > _maxSpeed) _maxSpeed = speed;
     if (speed > 1) {
       _speedSum += speed;
       _speedN++;
-    }
-
-    if (_lastPos != null) {
-      final d = Geolocator.distanceBetween(
-        _lastPos!.latitude,
-        _lastPos!.longitude,
-        pos.latitude,
-        pos.longitude,
-      );
-      if (d > 0 && d < 800) _km += d / 1000.0;
     }
 
     // Hard brake / accel from GPS delta-v.
@@ -466,10 +551,35 @@ class DriveMonitorTracker {
     _lastPos = pos;
     if (pos.heading.isFinite) _lastHeading = pos.heading;
 
+    // Lagre sample: minst hvert 1. sekund ELLER når man har beveget seg ≥1 m.
+    final now = DateTime.now();
+    var moved = 999.0;
+    if (_lastSamplePos != null) {
+      moved = Geolocator.distanceBetween(
+        _lastSamplePos!.latitude,
+        _lastSamplePos!.longitude,
+        pos.latitude,
+        pos.longitude,
+      );
+    }
+    final elapsedMs = _lastSampleAt == null
+        ? 9999
+        : now.difference(_lastSampleAt!).inMilliseconds;
+    if (moved < 0.8 && elapsedMs < 1000) {
+      _emit();
+      return;
+    }
+
+    if (moved > 0 && moved < 800 && _lastSamplePos != null) {
+      _km += moved / 1000.0;
+    }
+
+    _lastSampleAt = now;
+    _lastSamplePos = pos;
     _sampleBuf.add({
       'company_id': companyId,
       'session_id': sessionId,
-      'recorded_at': DateTime.now().toUtc().toIso8601String(),
+      'recorded_at': now.toUtc().toIso8601String(),
       'lat': pos.latitude,
       'lng': pos.longitude,
       'speed_kmh': speed,
@@ -478,7 +588,7 @@ class DriveMonitorTracker {
       'altitude_m': pos.altitude.isFinite ? pos.altitude : null,
       'turn_rate_deg_s': turnRate,
     });
-    if (_sampleBuf.length >= 8) unawaited(_flush());
+    if (_sampleBuf.length >= 6) unawaited(_flush());
     _emit();
   }
 

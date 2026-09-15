@@ -5,7 +5,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../core/theme/app_theme.dart';
 
-/// Avansert kart for leiebil-sporing: rute, hastighet, rå brems/sving m.m.
+/// Kart for kjøresporing: faktisk GPS-rute (punkt for punkt), hastighet og hendelser.
 class DriveMonitorMapView extends StatelessWidget {
   const DriveMonitorMapView({
     super.key,
@@ -60,14 +60,64 @@ class DriveMonitorMapView extends StatelessWidget {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final points = <LatLng>[];
-    for (final s in samples) {
+  /// Rydd GPS: sorter, dropp glitches, behold lat/lng.
+  static List<Map<String, dynamic>> cleanSamples(
+    List<Map<String, dynamic>> raw,
+  ) {
+    final parsed = <({DateTime t, double lat, double lng, Map<String, dynamic> row})>[];
+    for (final s in raw) {
       final lat = (s['lat'] as num?)?.toDouble();
       final lng = (s['lng'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
-      points.add(LatLng(lat, lng));
+      if (lat.abs() < 0.01 && lng.abs() < 0.01) continue;
+      final t = DateTime.tryParse('${s['recorded_at']}') ?? DateTime.fromMillisecondsSinceEpoch(0);
+      parsed.add((t: t, lat: lat, lng: lng, row: s));
+    }
+    parsed.sort((a, b) => a.t.compareTo(b.t));
+
+    final out = <Map<String, dynamic>>[];
+    for (final p in parsed) {
+      if (out.isEmpty) {
+        out.add(p.row);
+        continue;
+      }
+      final prev = out.last;
+      final plat = (prev['lat'] as num).toDouble();
+      final plng = (prev['lng'] as num).toDouble();
+      final d = const Distance().as(
+        LengthUnit.Meter,
+        LatLng(plat, plng),
+        LatLng(p.lat, p.lng),
+      );
+      final prevT = DateTime.tryParse('${prev['recorded_at']}');
+      if (prevT != null) {
+        final dt = p.t.difference(prevT).inMilliseconds / 1000.0;
+        if (dt > 0 && dt < 10 && d / dt > 60) {
+          // Urealistisk hopp — hopp over.
+          continue;
+        }
+      }
+      if (d < 0.4) {
+        // Nesten samme punkt — behold siste for hastighetsfarge.
+        out[out.length - 1] = p.row;
+        continue;
+      }
+      out.add(p.row);
+    }
+    return out;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cleaned = cleanSamples(samples);
+    final points = <LatLng>[];
+    for (final s in cleaned) {
+      points.add(
+        LatLng(
+          (s['lat'] as num).toDouble(),
+          (s['lng'] as num).toDouble(),
+        ),
+      );
     }
 
     final center = points.isNotEmpty
@@ -75,26 +125,47 @@ class DriveMonitorMapView extends StatelessWidget {
         : const LatLng(59.91, 10.75);
 
     final polylines = <Polyline>[];
-    for (var i = 1; i < samples.length; i++) {
-      final a = samples[i - 1];
-      final b = samples[i];
-      final lat1 = (a['lat'] as num?)?.toDouble();
-      final lng1 = (a['lng'] as num?)?.toDouble();
-      final lat2 = (b['lat'] as num?)?.toDouble();
-      final lng2 = (b['lng'] as num?)?.toDouble();
-      if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) continue;
+    for (var i = 1; i < cleaned.length; i++) {
+      final a = cleaned[i - 1];
+      final b = cleaned[i];
       final speed = (b['speed_kmh'] as num?)?.toDouble() ?? 0;
       polylines.add(
         Polyline(
-          points: [LatLng(lat1, lng1), LatLng(lat2, lng2)],
+          points: [
+            LatLng((a['lat'] as num).toDouble(), (a['lng'] as num).toDouble()),
+            LatLng((b['lat'] as num).toDouble(), (b['lng'] as num).toDouble()),
+          ],
           color: speedColor(speed),
-          strokeWidth: 4.5,
+          strokeWidth: points.length < 40 ? 5.5 : 4.0,
         ),
       );
     }
 
     final markers = <Marker>[];
     final df = DateFormat('HH:mm:ss');
+
+    // Breadcrumb for tette ruter — viser at det er ekte GPS-punkter, ikke strek.
+    if (points.length >= 2 && points.length <= 600) {
+      final step = points.length > 200 ? 3 : 1;
+      for (var i = 0; i < points.length; i += step) {
+        if (i == 0 || i == points.length - 1) continue;
+        markers.add(
+          Marker(
+            point: points[i],
+            width: 8,
+            height: 8,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF2563EB), width: 1.5),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
     for (final e in events) {
       final lat = (e['lat'] as num?)?.toDouble();
       final lng = (e['lng'] as num?)?.toDouble();
@@ -143,12 +214,25 @@ class DriveMonitorMapView extends StatelessWidget {
     if (points.isNotEmpty) {
       markers.add(
         Marker(
+          point: points.first,
+          width: 28,
+          height: 28,
+          child: const Icon(Icons.flag, color: Color(0xFF15803D), size: 26),
+        ),
+      );
+      markers.add(
+        Marker(
           point: points.last,
           width: 44,
           height: 44,
           child: const Icon(Icons.navigation, color: Color(0xFF15803D), size: 36),
         ),
       );
+    }
+
+    LatLngBounds? bounds;
+    if (points.length >= 2) {
+      bounds = LatLngBounds.fromPoints(points);
     }
 
     return Column(
@@ -158,23 +242,50 @@ class DriveMonitorMapView extends StatelessWidget {
           height: height,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: FlutterMap(
-              options: MapOptions(
-                initialCenter: center,
-                initialZoom: points.length > 2 ? 13 : 11,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'no.driftpro.driftpro',
-                ),
-                if (polylines.isNotEmpty) PolylineLayer(polylines: polylines),
-                if (markers.isNotEmpty) MarkerLayer(markers: markers),
-              ],
-            ),
+            child: points.isEmpty
+                ? Container(
+                    color: Colors.grey.shade100,
+                    alignment: Alignment.center,
+                    child: const Text(
+                      'Ingen GPS-punkter ennå.\nKjør med enheten for å se nøyaktig rute.',
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                : FlutterMap(
+                    options: MapOptions(
+                      initialCenter: center,
+                      initialZoom: points.length > 2 ? 14 : 12,
+                      initialCameraFit: bounds == null
+                          ? null
+                          : CameraFit.bounds(
+                              bounds: bounds,
+                              padding: const EdgeInsets.all(36),
+                              maxZoom: 17,
+                            ),
+                    ),
+                    children: [
+                      TileLayer(
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        userAgentPackageName: 'no.driftpro.driftpro',
+                      ),
+                      if (polylines.isNotEmpty)
+                        PolylineLayer(polylines: polylines),
+                      if (markers.isNotEmpty) MarkerLayer(markers: markers),
+                    ],
+                  ),
           ),
         ),
         const SizedBox(height: 8),
+        if (cleaned.length <= 3 && cleaned.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              'Kun ${cleaned.length} GPS-punkter — ruten blir mer nøyaktig med flere punkter '
+              '(oppdater appen på enheten og kjør med sporing aktiv).',
+              style: TextStyle(fontSize: 11, color: Colors.orange.shade900),
+            ),
+          ),
         Wrap(
           spacing: 10,
           runSpacing: 6,
@@ -194,7 +305,11 @@ class DriveMonitorMapView extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(width: 12, height: 12, decoration: BoxDecoration(color: c, shape: BoxShape.circle)),
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+        ),
         const SizedBox(width: 4),
         Text(label, style: const TextStyle(fontSize: 11)),
       ],
