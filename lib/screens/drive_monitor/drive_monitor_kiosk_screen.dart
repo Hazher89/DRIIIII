@@ -300,7 +300,7 @@ class _DriveMonitorKioskScreenState extends State<DriveMonitorKioskScreen> {
                             : 'Offline — rute lagres lokalt (${_live?.pendingSamples ?? 0} i kø)')
                         : (_live?.pendingSamples ?? 0) > 0
                             ? 'Synker ${_live!.pendingSamples} GPS-punkter…'
-                            : 'GPS-rute lagres fortløpende · bakgrunnssporet aktivt',
+                            : 'Logger kun under kjøring (≥8 km/t) · pauset når bilen står',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.55),

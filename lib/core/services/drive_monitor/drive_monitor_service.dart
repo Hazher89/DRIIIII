@@ -473,8 +473,13 @@ class DriveMonitorTracker {
   DateTime? _idleSince;
   bool _flushing = false;
   bool _online = true;
+  bool _wasDriving = false;
   String? _lastSyncError;
   int _pendingQueued = 0;
+
+  /// Kun lagre GPS-punkter når bilen faktisk kjører (ikke parkert / GPS-drift).
+  static const double _minDriveSpeedKmh = 8;
+  static const double _minDriveMoveM = 15;
 
   final _sampleBuf = <Map<String, dynamic>>[];
   final _eventBuf = <Map<String, dynamic>>[];
@@ -560,7 +565,7 @@ class DriveMonitorTracker {
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: 'Kjøresporing aktiv',
           notificationText:
-              'DriftPro registrerer ruten kontinuerlig (også i bakgrunn).',
+              'DriftPro logger rute kun mens bilen kjører (også i bakgrunn).',
           enableWakeLock: true,
           setOngoing: true,
         ),
@@ -641,58 +646,89 @@ class DriveMonitorTracker {
       }
     }
 
-    final speed = (pos.speed.isFinite ? pos.speed * 3.6 : 0).clamp(0, 250).toDouble();
+    final speed =
+        (pos.speed.isFinite ? pos.speed * 3.6 : 0).clamp(0, 250).toDouble();
     _liveSpeed = speed;
     if (speed > _maxSpeed) _maxSpeed = speed;
-    if (speed > 1) {
-      _speedSum += speed;
-      _speedN++;
+
+    var moved = 0.0;
+    if (_lastSamplePos != null) {
+      moved = Geolocator.distanceBetween(
+        _lastSamplePos!.latitude,
+        _lastSamplePos!.longitude,
+        pos.latitude,
+        pos.longitude,
+      );
+    } else if (_lastPos != null) {
+      moved = Geolocator.distanceBetween(
+        _lastPos!.latitude,
+        _lastPos!.longitude,
+        pos.latitude,
+        pos.longitude,
+      );
     }
 
-    // Hard brake / accel from GPS delta-v.
-    if (_lastSpeed != null && _lastPosAt != null) {
-      final dt = DateTime.now().difference(_lastPosAt!).inMilliseconds / 1000.0;
-      if (dt > 0.35 && dt < 6) {
-        final dv = (speed - _lastSpeed!) / 3.6;
-        final a = dv / dt;
-        if (a <= -hardBrakeMs2) {
-          _pushEvent('hard_brake', 'rough', speed, a, pos);
-        } else if (a >= hardAccelMs2) {
-          _pushEvent('hard_accel', 'warning', speed, a, pos);
+    final now = DateTime.now();
+    final elapsedMs = _lastSampleAt == null
+        ? (_lastPosAt == null
+            ? 9999
+            : now.difference(_lastPosAt!).inMilliseconds)
+        : now.difference(_lastSampleAt!).inMilliseconds;
+
+    final driving = _isDriving(
+      gpsSpeedKmh: speed,
+      movedM: moved,
+      elapsedMs: elapsedMs,
+    );
+
+    // Hard brake / accel / turn / speeding — kun under faktisk kjøring.
+    if (driving) {
+      if (speed > 1) {
+        _speedSum += speed;
+        _speedN++;
+      }
+
+      if (_lastSpeed != null && _lastPosAt != null) {
+        final dt =
+            DateTime.now().difference(_lastPosAt!).inMilliseconds / 1000.0;
+        if (dt > 0.35 && dt < 6) {
+          final dv = (speed - _lastSpeed!) / 3.6;
+          final a = dv / dt;
+          if (a <= -hardBrakeMs2) {
+            _pushEvent('hard_brake', 'rough', speed, a, pos);
+          } else if (a >= hardAccelMs2) {
+            _pushEvent('hard_accel', 'warning', speed, a, pos);
+          }
         }
       }
-    }
 
-    // Sharp turn from heading change.
-    if (_lastHeading != null &&
-        pos.heading.isFinite &&
-        speed >= 18 &&
-        _lastPosAt != null) {
-      final dt = DateTime.now().difference(_lastPosAt!).inMilliseconds / 1000.0;
-      if (dt > 0.2 && dt < 3) {
-        var dHead = (pos.heading - _lastHeading!).abs();
-        if (dHead > 180) dHead = 360 - dHead;
-        final rate = dHead / dt;
-        if (dHead >= sharpTurnDeg && rate > 25) {
-          _pushEvent('sharp_turn', 'rough', speed, rate, pos, turnRate: rate);
+      if (_lastHeading != null &&
+          pos.heading.isFinite &&
+          speed >= 18 &&
+          _lastPosAt != null) {
+        final dt =
+            DateTime.now().difference(_lastPosAt!).inMilliseconds / 1000.0;
+        if (dt > 0.2 && dt < 3) {
+          var dHead = (pos.heading - _lastHeading!).abs();
+          if (dHead > 180) dHead = 360 - dHead;
+          final rate = dHead / dt;
+          if (dHead >= sharpTurnDeg && rate > 25) {
+            _pushEvent('sharp_turn', 'rough', speed, rate, pos, turnRate: rate);
+          }
         }
       }
-    }
 
-    // Speeding.
-    if (speed >= speedingKmh) {
-      _pushEvent('speeding', 'warning', speed, 0, pos);
-    }
-
-    // Idle.
-    if (speed < 3) {
+      if (speed >= speedingKmh) {
+        _pushEvent('speeding', 'warning', speed, 0, pos);
+      }
+      _idleSince = null;
+    } else {
+      // Stillestående — ikke spam idle-hendelser hvert 3. min; én markør er nok.
       _idleSince ??= DateTime.now();
-      if (DateTime.now().difference(_idleSince!).inMinutes >= 3) {
+      if (DateTime.now().difference(_idleSince!).inMinutes >= 10) {
         _pushEvent('idle', 'info', speed, 0, pos);
         _idleSince = DateTime.now();
       }
-    } else {
-      _idleSince = null;
     }
 
     var turnRate = 0.0;
@@ -706,33 +742,62 @@ class DriveMonitorTracker {
     }
 
     _lastSpeed = speed;
-    _lastPosAt = DateTime.now();
+    _lastPosAt = now;
     _lastPos = pos;
     if (pos.heading.isFinite) _lastHeading = pos.heading;
 
-    // Lagre sample: minst hvert 1. sekund ELLER når man har beveget seg ≥1 m.
-    final now = DateTime.now();
-    var moved = 999.0;
-    if (_lastSamplePos != null) {
-      moved = Geolocator.distanceBetween(
-        _lastSamplePos!.latitude,
-        _lastSamplePos!.longitude,
-        pos.latitude,
-        pos.longitude,
-      );
-    }
-    final elapsedMs = _lastSampleAt == null
-        ? 9999
-        : now.difference(_lastSampleAt!).inMilliseconds;
-    if (moved < 0.8 && elapsedMs < 1000) {
+    // Ikke lagre GPS-punkter når bilen står — kun mens den kjører.
+    if (!driving) {
+      if (_wasDriving) {
+        // Ett siste punkt ved stopp, så ruten avsluttes pent.
+        _appendSample(pos, speed, turnRate, now);
+        _wasDriving = false;
+      }
       _emit();
       return;
+    }
+
+    // Under kjøring: sample minst hvert 2. sekund ELLER ≥8 m bevegelse.
+    if (_lastSampleAt != null && moved < 8 && elapsedMs < 2000) {
+      _emit();
+      return;
+    }
+
+    if (!_wasDriving) {
+      _wasDriving = true;
     }
 
     if (moved > 0 && moved < 800 && _lastSamplePos != null) {
       _km += moved / 1000.0;
     }
 
+    _appendSample(pos, speed, turnRate, now);
+    if (_sampleBuf.length >= 2 || _online) {
+      unawaited(_flush(force: true));
+    }
+    _emit();
+  }
+
+  bool _isDriving({
+    required double gpsSpeedKmh,
+    required double movedM,
+    required int elapsedMs,
+  }) {
+    if (gpsSpeedKmh >= _minDriveSpeedKmh) return true;
+    // GPS-speed kan henge: bruk forflytning → implisitt fart.
+    if (elapsedMs > 400 && elapsedMs < 8000 && movedM >= _minDriveMoveM) {
+      final impliedKmh = (movedM / (elapsedMs / 1000.0)) * 3.6;
+      if (impliedKmh >= _minDriveSpeedKmh) return true;
+    }
+    return false;
+  }
+
+  void _appendSample(
+    Position pos,
+    double speed,
+    double turnRate,
+    DateTime now,
+  ) {
     _lastSampleAt = now;
     _lastSamplePos = pos;
     _sampleBuf.add({
@@ -747,14 +812,11 @@ class DriveMonitorTracker {
       'altitude_m': pos.altitude.isFinite ? pos.altitude : null,
       'turn_rate_deg_s': turnRate,
     });
-    // Synk fortløpende — ikke vent på batch.
-    if (_sampleBuf.length >= 2 || _online) {
-      unawaited(_flush(force: true));
-    }
-    _emit();
   }
 
   void _onAccel(AccelerometerEvent e) {
+    // Ignorer sensor-støy når bilen står stille.
+    if (_liveSpeed < _minDriveSpeedKmh && !_wasDriving) return;
     final mag = math.sqrt(e.x * e.x + e.y * e.y + e.z * e.z);
     final spike = (mag - 9.8).abs();
     if (spike < 4.2) return;
@@ -775,7 +837,7 @@ class DriveMonitorTracker {
   void _onGyro(GyroscopeEvent e) {
     // High yaw rate at speed ≈ sharp turn assist.
     final yaw = e.z.abs(); // rad/s
-    if (yaw < 1.2 || _liveSpeed < 20) return;
+    if (yaw < 1.2 || _liveSpeed < _minDriveSpeedKmh) return;
     final now = DateTime.now();
     if (_lastEventAt != null && now.difference(_lastEventAt!).inSeconds < 3) {
       return;
