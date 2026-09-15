@@ -13,6 +13,7 @@ import '../../../widgets/common/team_kpi_strip.dart';
 import '../../departments/widgets/department_member_leave_card.dart';
 import 'leave_dual_calendar_tab.dart';
 import 'leave_employee_stats_panel.dart';
+import 'vacation_rest_guide.dart';
 
 enum _EmployeeFilter { alle, borte, ventende, kommende }
 
@@ -150,18 +151,6 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
           a.status == AbsenceStatus.godkjent)
       .length;
 
-  int get _pendingEmployeeCount => _employees
-      .where((p) =>
-          _absencesFor(p.id).any((a) => a.status == AbsenceStatus.ventende))
-      .length;
-
-  int get _awayEmployeeCount =>
-      _employees.where((p) => _absencesFor(p.id).any(_activeToday)).length;
-
-  int get _upcomingEmployeeCount => _employees
-      .where((p) => _absencesFor(p.id).any((a) => _upcomingWithin(a, 21)))
-      .length;
-
   List<UserProfile> get _filteredEmployees {
     return _employees.where((p) {
       final abs = _absencesFor(p.id);
@@ -194,12 +183,12 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
             items: const [
               TeamEqualSegmentItem(
                 value: _TeamLeaveView.oversikt,
-                label: 'Oversikt',
-                icon: Icons.dashboard_outlined,
+                label: 'Ansatte',
+                icon: Icons.groups_outlined,
               ),
               TeamEqualSegmentItem(
                 value: _TeamLeaveView.kalender,
-                label: 'Ferie & fravær',
+                label: 'Kalender',
                 icon: Icons.calendar_month_outlined,
               ),
             ],
@@ -233,12 +222,24 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
                       DriftProClient.isMobile ? 88 : 24,
                     ),
                     children: [
-                      TeamHubIntro(
-                        title: 'Mine ansatte',
-                        subtitle:
-                            'Saldo ${widget.selectedYear} · egenmelding/sykt barn følger 12 mnd fra ansettelse · ${_employees.length} ansatte',
+                      Text(
+                        'Team ${widget.selectedYear}',
+                        style: DriftProTheme.headingSm.copyWith(
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Se restferie, hvem som er borte, og trykk en ansatt for detaljer.',
+                        style: DriftProTheme.caption,
+                      ),
+                      const SizedBox(height: 12),
+                      TeamVacationRestSummary(
+                        quotas: widget.teamQuotas,
+                        company: widget.companySettings,
+                        year: widget.selectedYear,
+                      ),
+                      const SizedBox(height: 12),
                       TeamKpiStrip(
                         children: [
                           TeamKpiTile(
@@ -279,67 +280,31 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 14),
+                      const SizedBox(height: 12),
                       TeamEqualSearchField(
                         controller: _searchCtrl,
                         hintText: 'Søk navn eller ansattnr…',
                       ),
-                      const SizedBox(height: 10),
-                      TeamEqualFilterGrid<_EmployeeFilter>(
-                        value: _filter,
-                        onChanged: (v) => setState(() => _filter = v),
-                        items: [
-                          TeamEqualFilterItem(
-                            value: _EmployeeFilter.alle,
-                            label: 'Alle',
-                            icon: Icons.people_outline,
-                            badge: '${_employees.length}',
-                          ),
-                          TeamEqualFilterItem(
-                            value: _EmployeeFilter.borte,
-                            label: 'Borte nå',
-                            icon: Icons.event_busy_outlined,
-                            badge: '$_awayEmployeeCount',
-                            accent: AbsencePalette.indigo,
-                          ),
-                          TeamEqualFilterItem(
-                            value: _EmployeeFilter.ventende,
-                            label: 'Ventende',
-                            icon: Icons.hourglass_top_rounded,
-                            badge: '$_pendingEmployeeCount',
-                            accent: DriftProTheme.warning,
-                          ),
-                          TeamEqualFilterItem(
-                            value: _EmployeeFilter.kommende,
-                            label: 'Kommende',
-                            icon: Icons.upcoming_outlined,
-                            badge: '$_upcomingEmployeeCount',
-                            accent: DriftProTheme.absenceVacation,
-                          ),
-                        ],
-                      ),
                       if (pending.isNotEmpty) ...[
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 16),
                         TeamSectionHeader(
                           title: 'Trenger handling',
-                          subtitle: '${pending.length} søknader venter på deg',
+                          subtitle: '${pending.length} søknader venter',
                         ),
-                        ...pending.take(5).map((a) => _pendingCard(a, isDark)),
-                        if (pending.length > 5)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: Text(
-                              '+ ${pending.length - 5} til under Inkommende',
-                              style: DriftProTheme.caption,
-                            ),
-                          ),
+                        ...pending.take(4).map((a) => _pendingCard(a, isDark)),
                       ],
                       const SizedBox(height: 12),
                       TeamSectionHeader(
-                        title: 'Ansatte',
+                        title: _filter == _EmployeeFilter.alle
+                            ? 'Alle ansatte'
+                            : _filter == _EmployeeFilter.borte
+                                ? 'Borte nå'
+                                : _filter == _EmployeeFilter.ventende
+                                    ? 'Med ventende søknad'
+                                    : 'Kommende ferie',
                         subtitle: employees.isEmpty
-                            ? 'Ingen treff — prøv et annet filter'
-                            : '${employees.length} vist · trykk for detaljer',
+                            ? 'Ingen treff'
+                            : '${employees.length} vist · trykk for restferie og detaljer',
                       ),
                       if (employees.isEmpty)
                         Padding(

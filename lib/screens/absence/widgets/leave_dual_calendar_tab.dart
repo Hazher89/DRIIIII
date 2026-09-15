@@ -248,52 +248,72 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
                 widget.onMonthChanged(DateTime(y, widget.month.month, 1));
               },
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Månedskalender',
-              style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 8),
-          ],
-          TeamLeaveCalendar(
-            month: widget.month,
-            absences: filtered,
-            employees: filteredEmployees,
-            filterUserId: _userFilter,
-            colorForType: widget.colorForType,
-            typesFilter: types,
-            includePending: true,
-            onMonthChanged: widget.onMonthChanged,
-            onDayTap: _handleDayTap,
-          ),
-          const SizedBox(height: 12),
-          LeaveCalendarMonthDigest(
-            month: widget.month,
-            absences: filtered,
-            colorForType: widget.colorForType,
-            vacationOnly: vacationOnly,
-            showEntryList: hasEmployeeFilter,
-          ),
-          if (hasEmployeeFilter) ...[
             const SizedBox(height: 12),
-            EmployeeLeaveTimeline(
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                initiallyExpanded: false,
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: 8),
+                title: Text(
+                  'Månedskalender',
+                  style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
+                ),
+                subtitle: const Text('Valgfritt — uke/måned-visning'),
+                children: [
+                  TeamLeaveCalendar(
+                    month: widget.month,
+                    absences: filtered,
+                    employees: filteredEmployees,
+                    filterUserId: _userFilter,
+                    colorForType: widget.colorForType,
+                    typesFilter: types,
+                    includePending: true,
+                    onMonthChanged: widget.onMonthChanged,
+                    onDayTap: _handleDayTap,
+                  ),
+                ],
+              ),
+            ),
+          ] else ...[
+            TeamLeaveCalendar(
               month: widget.month,
+              absences: filtered,
               employees: filteredEmployees,
+              filterUserId: _userFilter,
+              colorForType: widget.colorForType,
+              typesFilter: types,
+              includePending: true,
+              onMonthChanged: widget.onMonthChanged,
+              onDayTap: _handleDayTap,
+            ),
+            const SizedBox(height: 12),
+            LeaveCalendarMonthDigest(
+              month: widget.month,
               absences: filtered,
               colorForType: widget.colorForType,
-              vacationOnly: vacationOnly,
-              departmentNames: widget.departmentNames,
+              vacationOnly: false,
+              showEntryList: hasEmployeeFilter,
             ),
-          ],
-          if (!vacationOnly) ...[
+            if (hasEmployeeFilter) ...[
+              const SizedBox(height: 12),
+              EmployeeLeaveTimeline(
+                month: widget.month,
+                employees: filteredEmployees,
+                absences: filtered,
+                colorForType: widget.colorForType,
+                vacationOnly: false,
+                departmentNames: widget.departmentNames,
+              ),
+            ],
             const SizedBox(height: 12),
             LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
+            const SizedBox(height: 10),
+            LeaveCalendarRulesSection(
+              vacationTab: false,
+              companySettings: widget.companySettings,
+            ),
           ],
-          const SizedBox(height: 10),
-          LeaveCalendarRulesSection(
-            vacationTab: vacationOnly,
-            companySettings: widget.companySettings,
-          ),
           if (!widget.isManager && !hasEmployeeFilter)
             Padding(
               padding: const EdgeInsets.only(top: 8),

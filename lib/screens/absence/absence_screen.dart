@@ -732,70 +732,42 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       _scopedAbsences.where((a) => a.status == AbsenceStatus.godkjent).toList(),
       DateTime.now(),
     );
-    final pendingVacation = _scopedAbsences
-        .where((a) => a.type == AbsenceType.ferie && a.status == AbsenceStatus.ventende)
-        .length;
-    final approvedVacationDays =
-        AbsenceService.approvedVacationDaysInYear(_scopedAbsences, _selectedYear);
-    final ferieIgjen = _quota?.vacationDaysRemaining;
+    final canAdmin =
+        _profile?.isAdmin == true && _profile?.access.canVacationAdmin == true;
 
     return RefreshIndicator(
       onRefresh: _loadAllData,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDark ? DriftProTheme.cardDark : Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
-              ),
-              boxShadow: DriftProTheme.cardShadow,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Fraværssenter', style: DriftProTheme.headingSm),
-                const SizedBox(height: 4),
-                Text(
-                  isManager
-                      ? 'Godkjenn søknader, se teamoversikt og planlegg ferie i to kalendere.'
-                      : 'Søk ferie og fravær — full oversikt over saldo, status og kollegaer i avdelingen.',
-                  style: DriftProTheme.bodySm,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Oversikt',
+                  style: DriftProTheme.headingSm.copyWith(fontWeight: FontWeight.w900),
                 ),
-                const SizedBox(height: 12),
-                _statRow(isDark, [
-                  _StatChip(
-                    label: 'Fravær i dag',
-                    value: '${todayOut.length}',
-                    icon: Icons.people_outline,
-                    color: DriftProTheme.primaryGreen,
-                  ),
-                  _StatChip(
-                    label: 'Venter godkjenning',
-                    value: '${_pendingApprovals.length}',
-                    icon: Icons.hourglass_top,
-                    color: DriftProTheme.warning,
-                  ),
-                  _StatChip(
-                    label: 'Ferie igjen',
-                    value: ferieIgjen != null ? '$ferieIgjen d' : '—',
-                    icon: Icons.beach_access,
-                    color: DriftProTheme.absenceVacation,
-                  ),
-                  _StatChip(
-                    label: 'Ferie venter',
-                    value: '$pendingVacation',
-                    icon: Icons.pending_actions,
-                    color: Colors.blue,
-                  ),
-                ]),
-              ],
-            ),
+              ),
+              DropdownButton<int>(
+                value: _selectedYear,
+                underline: const SizedBox.shrink(),
+                items: VacationYearWindow.years
+                    .map((y) => DropdownMenuItem(value: y, child: Text('$y')))
+                    .toList(),
+                onChanged: (v) async {
+                  if (v == null || _profile == null) return;
+                  setState(() => _selectedYear = v);
+                  await _loadSaldo(_profile!);
+                },
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 4),
+          Text(
+            'Restferie, saldo og hva som skjer ved årsskifte — enkelt forklart.',
+            style: DriftProTheme.caption,
+          ),
+          const SizedBox(height: 12),
           LeaveQuickActions(
             onTypeSelected: (t) => _openNewRequest(t),
             egenmeldingBlocked: _egenmeldingBlockedForSelf,
@@ -809,25 +781,18 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
               );
             },
           ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Text('Din saldo $_selectedYear', style: DriftProTheme.headingSm),
-              const Spacer(),
-              DropdownButton<int>(
-                value: _selectedYear,
-                items: VacationYearWindow.years
-                    .map((y) => DropdownMenuItem(value: y, child: Text('$y')))
-                    .toList(),
-                onChanged: (v) async {
-                  if (v == null || _profile == null) return;
-                  setState(() => _selectedYear = v);
-                  await _loadSaldo(_profile!);
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
+          if (isManager && _pendingApprovals.isNotEmpty) ...[
+            _actionBanner(
+              isDark,
+              icon: Icons.fact_check_outlined,
+              color: DriftProTheme.warning,
+              title: '${_pendingApprovals.length} søknader venter',
+              subtitle: 'Godkjenn eller avvis under Godkjenn',
+              onTap: () => _goToTab(_godkjennTabIndex),
+            ),
+            const SizedBox(height: 10),
+          ],
           LeaveSaldoPanel(
             quota: _quota,
             periodUsage: _periodUsage,
@@ -840,6 +805,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
             onRetry: () {
               if (_profile != null) _loadSaldo(_profile!);
             },
+            onOpenAdminCarryover: canAdmin ? _openVacationAdmin : null,
             onRequestSetup: _profile == null
                 ? null
                 : () async {
@@ -855,92 +821,43 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
                     }
                   },
           ),
-          const SizedBox(height: 20),
-          Text('På fravær i dag', style: DriftProTheme.headingSm),
-          const SizedBox(height: 8),
-          if (todayOut.isEmpty)
-            Text('Ingen godkjent fravær i dag.', style: DriftProTheme.bodySm)
-          else
-            ...todayOut.take(8).map((a) => _absenceListTile(a, isDark)),
-          if (isManager && _pendingApprovals.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _actionBanner(
-              isDark,
-              icon: Icons.fact_check_outlined,
-              color: DriftProTheme.warning,
-              title: '${_pendingApprovals.length} søknader venter på deg',
-              subtitle: _overlapPendingCount() > 0
-                  ? '${_overlapPendingCount()} har overlapp med kollegaer i avdelingen'
-                  : 'Trykk for å godkjenne eller avvise',
-              onTap: () => _goToTab(_godkjennTabIndex),
+          if (todayOut.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Text(
+              'Borte i dag (${todayOut.length})',
+              style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
             ),
+            const SizedBox(height: 8),
+            ...todayOut.take(6).map((a) => _absenceListTile(a, isDark)),
           ],
           if (isManager) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 14),
             _actionBanner(
               isDark,
               icon: Icons.calendar_month_outlined,
               color: DriftProTheme.absenceVacation,
               title: 'Team & kalender',
-              subtitle: 'Saldo, kalender og alle søknader for ansatte',
+              subtitle: 'Ansatte, restferie og ferie-/fraværskalender',
               onTap: () => _goToTab(_teamCalendarTabIndex),
             ),
           ],
-          const SizedBox(height: 12),
-          Text(
-            'Godkjente feriedager i $_selectedYear: $approvedVacationDays',
-            style: DriftProTheme.caption,
-          ),
         ],
       ),
     );
   }
 
-  Widget _statRow(bool isDark, List<_StatChip> chips) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = (constraints.maxWidth - 8) / 2;
-        return Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: chips
-              .map(
-                (c) => SizedBox(
-                  width: w,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isDark ? DriftProTheme.cardDark : Colors.white,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade100,
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(c.icon, color: c.color, size: 22),
-                        const SizedBox(height: 6),
-                        Text(c.value, style: DriftProTheme.labelLg),
-                        Text(
-                          c.label,
-                          textAlign: TextAlign.center,
-                          style: DriftProTheme.caption,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              )
-              .toList(),
-        );
-      },
+  Future<void> _openVacationAdmin() async {
+    if (_profile?.companyId == null) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => VacationAdminScreen(
+          companyId: _profile!.companyId!,
+          companySettings: _companySettings,
+        ),
+      ),
     );
-  }
-
-  int _overlapPendingCount() {
-    return _pendingApprovals
-        .where((a) => (_approvalOverlaps[a.id] ?? []).isNotEmpty)
-        .length;
+    await _loadAllData();
   }
 
   Widget _actionBanner(
@@ -1887,19 +1804,6 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   }
 
   Widget _empty(String msg) => Center(child: Text(msg, style: DriftProTheme.bodyMd.copyWith(color: Colors.grey)));
-}
-
-class _StatChip {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color color;
-  const _StatChip({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.color,
-  });
 }
 
 class _InfoBox extends StatelessWidget {

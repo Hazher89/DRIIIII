@@ -6,6 +6,7 @@ import '../../../models/absence.dart';
 import '../../../models/leave_period_usage.dart';
 import 'leave_egenmelding_blocked_sheet.dart';
 import 'vacation_balance_card.dart';
+import 'vacation_rest_guide.dart';
 
 /// Viser ferie-, egenmeldings- og sykt-barn-saldo — aldri evig «laster».
 class LeaveSaldoPanel extends StatelessWidget {
@@ -19,6 +20,7 @@ class LeaveSaldoPanel extends StatelessWidget {
   final String? error;
   final VoidCallback? onRetry;
   final VoidCallback? onRequestSetup;
+  final VoidCallback? onOpenAdminCarryover;
 
   const LeaveSaldoPanel({
     super.key,
@@ -32,6 +34,7 @@ class LeaveSaldoPanel extends StatelessWidget {
     this.error,
     this.onRetry,
     this.onRequestSetup,
+    this.onOpenAdminCarryover,
   });
 
   @override
@@ -160,32 +163,22 @@ class LeaveSaldoPanel extends StatelessWidget {
           ),
           const SizedBox(height: 12),
         ],
-        VacationBalanceCard(
+        VacationRestGuide(
           quota: quota!,
           company: company,
-          plannedNextYearDays: quota!.vacationDaysTotal,
+          onOpenAdminCarryover: onOpenAdminCarryover,
         ),
         const SizedBox(height: 12),
+        Text(
+          'Annet fravær (12-månedersperiode)',
+          style: DriftProTheme.labelMd.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 8),
         if (periodUsage != null) ...[
-          _card(
-            isDark,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(
-                children: [
-                  const Icon(Icons.date_range_outlined,
-                      size: 18, color: DriftProTheme.primaryGreen),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Egenmelding/sykt barn: periode ${periodUsage!.window.formatRange()} '
-                      '(12 mnd fra ansettelsesdato, nullstilles ikke 1. januar).',
-                      style: DriftProTheme.caption,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          Text(
+            'Egenmelding og sykt barn følger 12 mnd fra ansettelse '
+            '(${periodUsage!.window.formatRange()}) — ikke kalenderår.',
+            style: DriftProTheme.caption,
           ),
           const SizedBox(height: 8),
         ],
@@ -209,26 +202,6 @@ class LeaveSaldoPanel extends StatelessWidget {
               : childrenUnder12 == 1
                   ? '1 barn under 12 → ${LeaveRules.syktBarnDaysPerChildUnder12} dager'
                   : 'Registrer barn i Min profil for riktig kvote',
-        ),
-        const SizedBox(height: 8),
-        _card(
-          isDark,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(
-              children: [
-                const Icon(Icons.info_outline, size: 18, color: DriftProTheme.primaryGreen),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Ferie telles per kalenderår ($selectedYear). '
-                    'Egenmelding og sykt barn telles løpende i 12-månedersperioden over.',
-                    style: DriftProTheme.caption,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ),
       ],
     );
