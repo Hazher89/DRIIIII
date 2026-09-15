@@ -5,8 +5,8 @@ import '../../../models/partner/partner_links.dart';
 import 'eco_driving_badge.dart';
 import 'partner_modern_ui.dart';
 
-/// Bedriftskort: tydelig oversikt + ekstra synlig ECO Driving.
-class PartnerCompanyGridCard extends StatelessWidget {
+/// Smart bedriftskort: rolig oversikt først, detaljer ved hover/utvid.
+class PartnerCompanyGridCard extends StatefulWidget {
   const PartnerCompanyGridCard({
     super.key,
     required this.name,
@@ -44,106 +44,111 @@ class PartnerCompanyGridCard extends StatelessWidget {
   final DateTime? ecoDrivingDeadline;
   final DateTime? ecoDrivingCompletedAt;
 
-  bool get _ecoDone => ecoDrivingStatus == EcoDrivingStatus.completed;
-  bool get _ecoOverdue => ecoDrivingStatus == EcoDrivingStatus.overdue;
+  @override
+  State<PartnerCompanyGridCard> createState() => _PartnerCompanyGridCardState();
+}
+
+class _PartnerCompanyGridCardState extends State<PartnerCompanyGridCard> {
+  bool _hover = false;
+  bool _pinnedOpen = false;
+
+  bool get _ecoDone => widget.ecoDrivingStatus == EcoDrivingStatus.completed;
+  bool get _ecoOverdue => widget.ecoDrivingStatus == EcoDrivingStatus.overdue;
+  bool get _detailsOpen => _hover || _pinnedOpen;
 
   @override
   Widget build(BuildContext context) {
-    final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : '?';
+    final initial =
+        widget.name.trim().isNotEmpty ? widget.name.trim()[0].toUpperCase() : '?';
     final maviList = PartnerMaviVehicleOverview.filterMavi(
-      maviVehicles,
-      includeInactive: !isActive,
+      widget.maviVehicles,
+      includeInactive: !widget.isActive,
     );
-    const ecoGreen = Color(0xFF166534);
     const accent = Color(0xFF15803D);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    final surface = !isActive
-        ? PartnerModernUi.border(context).withValues(alpha: 0.22)
-        : _ecoDone
-            ? (isDark ? const Color(0xFF14532D).withValues(alpha: 0.28) : const Color(0xFFF0FDF4))
-            : _ecoOverdue
-                ? (isDark ? const Color(0xFF7C2D12).withValues(alpha: 0.22) : const Color(0xFFFFF7ED))
-                : PartnerModernUi.surface(context);
+    final surface = !widget.isActive
+        ? PartnerModernUi.border(context).withValues(alpha: 0.18)
+        : PartnerModernUi.surface(context);
 
-    final borderColor = !isActive
+    final borderColor = !widget.isActive
+        ? const Color(0xFF9CA3AF)
+        : _ecoOverdue
+            ? const Color(0xFFFDBA74)
+            : _ecoDone
+                ? const Color(0xFF86EFAC)
+                : PartnerModernUi.border(context);
+
+    final accentBar = !widget.isActive
         ? const Color(0xFF9CA3AF)
         : _ecoDone
-            ? const Color(0xFF4ADE80)
+            ? const Color(0xFF16A34A)
             : _ecoOverdue
-                ? const Color(0xFFFDBA74)
-                : PartnerModernUi.border(context).withValues(alpha: 0.9);
+                ? const Color(0xFFEA580C)
+                : accent;
 
-    return Opacity(
-      opacity: isActive ? 1 : 0.78,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Ink(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              color: surface,
-              border: Border.all(
-                color: borderColor,
-                width: (_ecoDone || _ecoOverdue) && isActive ? 1.5 : 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: (_ecoDone && isActive
-                          ? ecoGreen
-                          : const Color(0xFF0F172A))
-                      .withValues(alpha: _ecoDone && isActive ? 0.12 : 0.05),
-                  blurRadius: _ecoDone && isActive ? 16 : 12,
-                  offset: const Offset(0, 5),
-                  spreadRadius: -2,
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hover = true),
+      onExit: (_) => setState(() => _hover = false),
+      child: Opacity(
+        opacity: widget.isActive ? 1 : 0.82,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: widget.onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                color: surface,
+                border: Border.all(
+                  color: _detailsOpen
+                      ? accent.withValues(alpha: 0.55)
+                      : borderColor,
+                  width: _detailsOpen ? 1.4 : 1,
                 ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    height: 4,
-                    color: !isActive
-                        ? const Color(0xFF9CA3AF)
-                        : _ecoDone
-                            ? const Color(0xFF16A34A)
-                            : _ecoOverdue
-                                ? const Color(0xFFEA580C)
-                                : accent,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0F172A).withValues(
+                      alpha: _detailsOpen ? 0.08 : 0.04,
+                    ),
+                    blurRadius: _detailsOpen ? 16 : 10,
+                    offset: const Offset(0, 4),
                   ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(height: 3, color: accentBar),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Container(
-                                width: 40,
-                                height: 40,
+                                width: 36,
+                                height: 36,
                                 alignment: Alignment.center,
                                 decoration: BoxDecoration(
-                                  color: _ecoDone && isActive
-                                      ? const Color(0xFFDCFCE7)
-                                      : PartnerModernUi.border(context)
-                                          .withValues(alpha: 0.35),
-                                  borderRadius: BorderRadius.circular(11),
+                                  color: accent.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Text(
                                   initial,
                                   style: TextStyle(
                                     fontWeight: FontWeight.w900,
-                                    fontSize: 16,
-                                    color: _ecoDone && isActive
-                                        ? ecoGreen
-                                        : PartnerModernUi.textPrimary(context),
+                                    fontSize: 15,
+                                    color: PartnerModernUi.textPrimary(context),
                                   ),
                                 ),
                               ),
@@ -153,24 +158,30 @@ class PartnerCompanyGridCard extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Text(
-                                      name,
-                                      maxLines: 2,
+                                      widget.name,
+                                      maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontWeight: FontWeight.w800,
                                         fontSize: 14,
                                         height: 1.2,
-                                        letterSpacing: -0.25,
-                                        color: PartnerModernUi.textPrimary(context),
+                                        letterSpacing: -0.2,
+                                        color: PartnerModernUi.textPrimary(
+                                          context,
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: 2),
                                     Text(
                                       [
-                                        if ((orgNumber ?? '').trim().isNotEmpty)
-                                          orgNumber!.trim(),
-                                        if ((ownerName ?? '').trim().isNotEmpty)
-                                          ownerName!.trim(),
+                                        if ((widget.orgNumber ?? '')
+                                            .trim()
+                                            .isNotEmpty)
+                                          widget.orgNumber!.trim(),
+                                        if ((widget.ownerName ?? '')
+                                            .trim()
+                                            .isNotEmpty)
+                                          widget.ownerName!.trim(),
                                       ].where((e) => e.isNotEmpty).join(' · '),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -183,71 +194,77 @@ class PartnerCompanyGridCard extends StatelessWidget {
                                 ),
                               ),
                               _statusPill(context),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                tooltip: _detailsOpen
+                                    ? 'Skjul detaljer'
+                                    : 'Vis detaljer',
+                                onPressed: () => setState(
+                                  () => _pinnedOpen = !_pinnedOpen,
+                                ),
+                                icon: Icon(
+                                  _detailsOpen
+                                      ? Icons.expand_less_rounded
+                                      : Icons.expand_more_rounded,
+                                  size: 20,
+                                  color: PartnerModernUi.muted(context),
+                                ),
+                              ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          EcoDrivingBadge(
-                            status: ecoDrivingStatus,
-                            prominent: true,
-                            deadline: ecoDrivingDeadline,
-                            completedAt: ecoDrivingCompletedAt,
-                          ),
-                          const SizedBox(height: 10),
-                          Row(
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            crossAxisAlignment: WrapCrossAlignment.center,
                             children: [
-                              Expanded(
-                                child: _Kpi(
-                                  label: 'MAVI',
-                                  value: '$maviCount',
-                                  color: accent,
-                                ),
+                              EcoDrivingBadge(
+                                status: widget.ecoDrivingStatus,
+                                compact: true,
+                                deadline: widget.ecoDrivingDeadline,
+                                completedAt: widget.ecoDrivingCompletedAt,
                               ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: _Kpi(
-                                  label: 'Portaler',
-                                  value: '${ownerAccounts + driverAccounts}',
-                                  hint: '$ownerAccounts BA · $driverAccounts sjåfør',
-                                  color: const Color(0xFF2563EB),
-                                ),
+                              _metaChip(
+                                context,
+                                Icons.directions_car_outlined,
+                                '${widget.maviCount} MAVI',
                               ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: _Kpi(
-                                  label: 'SMS',
-                                  value: '${smsPhones.length}',
-                                  hint: routesOwnerOnly ? 'Kun BA' : 'BA+sjåfør',
-                                  color: const Color(0xFF7C3AED),
-                                ),
+                              _metaChip(
+                                context,
+                                Icons.people_outline,
+                                '${widget.ownerAccounts + widget.driverAccounts} portal',
+                              ),
+                              _metaChip(
+                                context,
+                                Icons.sms_outlined,
+                                '${widget.smsPhones.length} SMS',
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          Flexible(
-                            child: SingleChildScrollView(
-                              physics: const BouncingScrollPhysics(),
-                              child: PartnerMaviVehicleOverview(
-                                vehicles: maviList,
-                                dense: true,
-                                muted: !isActive,
+                          AnimatedCrossFade(
+                            firstChild: const SizedBox(width: double.infinity),
+                            secondChild: Padding(
+                              padding: const EdgeInsets.only(top: 10),
+                              child: _detailsPanel(
+                                context,
+                                maviList,
+                                isDark: isDark,
                               ),
                             ),
+                            crossFadeState: _detailsOpen
+                                ? CrossFadeState.showSecond
+                                : CrossFadeState.showFirst,
+                            duration: const Duration(milliseconds: 180),
+                            sizeCurve: Curves.easeOutCubic,
                           ),
-                          if (regCount > 0) ...[
-                            const SizedBox(height: 4),
-                            Text(
-                              '$regCount registrering${regCount == 1 ? '' : 'er'} (kun skilt)',
-                              style: TextStyle(
-                                fontSize: 10,
-                                color: PartnerModernUi.muted(context),
-                              ),
-                            ),
-                          ],
-                          if (onActivate != null) ...[
+                          if (widget.onActivate != null) ...[
                             const SizedBox(height: 8),
                             FilledButton.icon(
-                              onPressed: onActivate,
-                              icon: const Icon(Icons.play_circle_outline, size: 18),
+                              onPressed: widget.onActivate,
+                              icon: const Icon(
+                                Icons.play_circle_outline,
+                                size: 18,
+                              ),
                               label: const Text('Aktiver'),
                               style: FilledButton.styleFrom(
                                 minimumSize: const Size(double.infinity, 36),
@@ -258,8 +275,8 @@ class PartnerCompanyGridCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -268,48 +285,114 @@ class PartnerCompanyGridCard extends StatelessWidget {
     );
   }
 
-  Widget _statusPill(BuildContext context) {
+  Widget _detailsPanel(
+    BuildContext context,
+    List<PartnerVehicle> maviList, {
+    required bool isDark,
+  }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: (isActive ? const Color(0xFF22C55E) : const Color(0xFF9CA3AF))
-            .withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        isActive ? 'Aktiv' : 'Av',
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          color: isActive ? const Color(0xFF15803D) : const Color(0xFF6B7280),
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.04)
+            : const Color(0xFFF8FAF9),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: PartnerModernUi.border(context).withValues(alpha: 0.7),
         ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _detailStat(
+                  context,
+                  'BA',
+                  '${widget.ownerAccounts}',
+                  const Color(0xFF2563EB),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _detailStat(
+                  context,
+                  'Sjåfør',
+                  '${widget.driverAccounts}',
+                  const Color(0xFF0F766E),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _detailStat(
+                  context,
+                  'SMS',
+                  widget.routesOwnerOnly ? 'Kun BA' : 'BA+sjåfør',
+                  const Color(0xFF7C3AED),
+                ),
+              ),
+            ],
+          ),
+          if (maviList.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            PartnerMaviVehicleOverview(
+              vehicles: maviList.take(6).toList(),
+              dense: true,
+              muted: !widget.isActive,
+            ),
+            if (maviList.length > 6)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '+${maviList.length - 6} flere — åpne bedrift',
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: PartnerModernUi.muted(context),
+                  ),
+                ),
+              ),
+          ] else
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                widget.regCount > 0
+                    ? '${widget.regCount} registrering(er) uten MAVI-kode'
+                    : 'Ingen MAVI-biler registrert',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: PartnerModernUi.muted(context),
+                ),
+              ),
+            ),
+          const SizedBox(height: 6),
+          Text(
+            'Trykk kortet for å åpne bedriften',
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: PartnerModernUi.muted(context),
+            ),
+          ),
+        ],
       ),
     );
   }
-}
 
-class _Kpi extends StatelessWidget {
-  const _Kpi({
-    required this.label,
-    required this.value,
-    required this.color,
-    this.hint,
-  });
-
-  final String label;
-  final String value;
-  final String? hint;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _detailStat(
+    BuildContext context,
+    String label,
+    String value,
+    Color color,
+  ) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       decoration: BoxDecoration(
-        color: PartnerModernUi.border(context).withValues(alpha: 0.22),
-        borderRadius: BorderRadius.circular(10),
+        color: PartnerModernUi.surface(context),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: PartnerModernUi.border(context).withValues(alpha: 0.55),
+          color: PartnerModernUi.border(context).withValues(alpha: 0.6),
         ),
       ),
       child: Column(
@@ -318,36 +401,71 @@ class _Kpi extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontSize: 9.5,
+              fontSize: 9,
               fontWeight: FontWeight.w700,
               color: PartnerModernUi.muted(context),
             ),
           ),
-          const SizedBox(height: 1),
           Text(
             value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              height: 1.05,
-              letterSpacing: -0.3,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
               color: color,
             ),
           ),
-          if (hint != null) ...[
-            const SizedBox(height: 1),
-            Text(
-              hint!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w600,
-                color: PartnerModernUi.muted(context),
-              ),
-            ),
-          ],
         ],
+      ),
+    );
+  }
+
+  Widget _metaChip(BuildContext context, IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: PartnerModernUi.border(context).withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: PartnerModernUi.muted(context)),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: PartnerModernUi.textPrimary(context),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusPill(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: (widget.isActive
+                ? const Color(0xFF22C55E)
+                : const Color(0xFF9CA3AF))
+            .withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        widget.isActive ? 'Aktiv' : 'Av',
+        style: TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: widget.isActive
+              ? const Color(0xFF15803D)
+              : const Color(0xFF6B7280),
+        ),
       ),
     );
   }
@@ -364,48 +482,92 @@ class PartnerCompanyAddCard extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Ink(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             color: PartnerModernUi.surface(context),
             border: Border.all(
               color: PartnerModernUi.border(context),
-              width: 1.4,
+              width: 1.2,
+              strokeAlign: BorderSide.strokeAlignInside,
             ),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF15803D).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(Icons.add_rounded, size: 28, color: Color(0xFF15803D)),
+          child: CustomPaint(
+            painter: _DashedBorderPainter(
+              color: PartnerModernUi.border(context),
+              radius: 14,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF15803D).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.add_rounded,
+                      size: 26,
+                      color: Color(0xFF15803D),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Ny bedrift',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                      letterSpacing: -0.2,
+                      color: PartnerModernUi.textPrimary(context),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Én eller Brreg-masse',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: PartnerModernUi.muted(context),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 10),
-              Text(
-                'Ny bedrift',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 14,
-                  letterSpacing: -0.2,
-                  color: PartnerModernUi.textPrimary(context),
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Én eller masse Brreg',
-                style: TextStyle(fontSize: 11, color: PartnerModernUi.muted(context)),
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _DashedBorderPainter extends CustomPainter {
+  _DashedBorderPainter({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final r = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    );
+    final path = Path()..addRRect(r);
+    // Lightweight dashed feel via opacity — full dash path is overkill here.
+    canvas.drawPath(path, paint..color = color.withValues(alpha: 0.55));
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.radius != radius;
 }

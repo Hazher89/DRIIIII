@@ -1010,61 +1010,90 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
                 ('Arkiv', '${_count('returned')}'),
               ],
             ),
-            // Prosedyreboks (samme tekst som i "Ny bilutleie" og checkout-flow).
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.blue.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
+            // Prosedyre — kollapset som standard (progressive disclosure).
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+              child: Material(
+                color: PartnerModernUi.surface(context),
+                borderRadius: BorderRadius.circular(12),
+                child: Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    initiallyExpanded: false,
+                    tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+                    childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+                    leading: Icon(
+                      Icons.rule_folder_outlined,
+                      size: 20,
+                      color: PartnerModernUi.muted(context),
+                    ),
+                    title: Text(
+                      'Prosedyre før utlevering og retur',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: PartnerModernUi.textPrimary(context),
+                      ),
+                    ),
                     children: [
-                      Icon(Icons.rule_folder_outlined, size: 18),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Prosedyre før utlevering og retur',
-                          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+                      Text(
+                        VehicleRentalAgreement.approverPriorityText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          height: 1.35,
+                          color: PartnerModernUi.textPrimary(context),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'Før utlevering',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: PartnerModernUi.textPrimary(context),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      ...VehicleRentalAgreement.handoutChecklist.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '• $item',
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.35,
+                              color: PartnerModernUi.muted(context),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Ved retur',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: PartnerModernUi.textPrimary(context),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      ...VehicleRentalAgreement.returnChecklist.map(
+                        (item) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '• $item',
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.35,
+                              color: PartnerModernUi.muted(context),
+                            ),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
-                  Text(
-                    VehicleRentalAgreement.approverPriorityText,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, height: 1.35),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    'Før utlevering',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 4),
-                  ...VehicleRentalAgreement.handoutChecklist.map(
-                    (item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text('• $item', style: const TextStyle(fontSize: 12, height: 1.35)),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Ved retur',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 4),
-                  ...VehicleRentalAgreement.returnChecklist.map(
-                    (item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text('• $item', style: const TextStyle(fontSize: 12, height: 1.35)),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
             Padding(
@@ -1082,14 +1111,6 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
               ),
             ),
             const SizedBox(height: 10),
-            VehicleRentalStatsRow(
-              pendingOwner: _count('pending_owner'),
-              pendingMavi: _count('pending_mavi'),
-              onLoan: _count('approved'),
-              pendingReturn: _count('pending_return_mavi'),
-              returned: _count('returned'),
-            ),
-            const SizedBox(height: 8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),

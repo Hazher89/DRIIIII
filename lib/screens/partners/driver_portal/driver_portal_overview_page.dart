@@ -6,11 +6,11 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
 import '../owner_portal/owner_portal_common.dart';
-import '../widgets/partner_ui.dart';
-import 'driver_portal_common.dart';
+import '../widgets/partner_modern_ui.dart';
 import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_portal_route_detail_page.dart';
 import '../widgets/partner_portal_route_list_tile.dart';
+import 'driver_portal_common.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 import '../../../widgets/home_feed_banner.dart';
 import '../../../models/home_feed_item.dart';
@@ -83,14 +83,62 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                     portal: 'driver',
                     compact: true,
                   ),
-                  PartnerHeroBanner(
-                    title: v != null
-                        ? 'MAVI ${MaviUnitCodes.normalize(v.unitCode)}'
-                        : 'Sjåfør-portal',
-                    subtitle: v != null
-                        ? '${v.registrationNumber}${v.driverName != null && v.driverName!.trim().isNotEmpty ? ' · ${v.driverName}' : ''}'
-                        : 'Dine tildelte ruter',
-                    leading: const Icon(Icons.local_shipping_outlined, color: Colors.white, size: 32),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.local_shipping_outlined,
+                            color: DriftProTheme.primaryGreenDark,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                v != null
+                                    ? 'MAVI ${MaviUnitCodes.normalize(v.unitCode)}'
+                                    : 'Sjåfør-portal',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  color: PartnerModernUi.textPrimary(context),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                v != null
+                                    ? '${v.registrationNumber}${v.driverName != null && v.driverName!.trim().isNotEmpty ? ' · ${v.driverName}' : ''}'
+                                    : 'Dine tildelte ruter',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.35,
+                                  color: PartnerModernUi.muted(context),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PartnerModernKpiGrid(
+                    items: [
+                      ('Ruter i dag', '${_data!.routesToday.length}'),
+                      ('Til svar', '${_data!.pendingAck}'),
+                      ('Kommende', '${_data!.routesUpcoming.length}'),
+                      ('Arkiv', '${_data!.routesArchive.length}'),
+                    ],
                   ),
                   if (_data!.pendingAck > 0)
                     Padding(
@@ -137,56 +185,26 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                     ),
                   ] else
                     Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(20),
-                          child: Text(
-                            _data!.partner.routesOwnerOnly
-                                ? 'Ruter for denne bedriften håndteres av bil-eier. '
-                                    'Kontakt bil-eier hvis du lurer på ruter.'
-                                : 'Ingen ruter i dag. Du får SMS når MAVI tildeler en ny rute.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(color: PartnerUi.mutedText(context)),
-                          ),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: PartnerModernUi.surface(context),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: PartnerModernUi.border(context)),
+                        ),
+                        child: Text(
+                          _data!.partner.routesOwnerOnly
+                              ? 'Ruter for denne bedriften håndteres av bil-eier. '
+                                  'Kontakt bil-eier hvis du lurer på ruter.'
+                              : 'Ingen ruter i dag. Du får SMS når MAVI tildeler en ny rute.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: PartnerModernUi.muted(context)),
                         ),
                       ),
                     ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                    child: GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childAspectRatio: 1.25,
-                      children: [
-                        OwnerKpiCard(
-                          label: 'Ruter i dag',
-                          value: '${_data!.routesToday.length}',
-                          icon: Icons.today,
-                          accent: DriftProTheme.accentBlue,
-                        ),
-                        OwnerKpiCard(
-                          label: 'Til svar',
-                          value: '${_data!.pendingAck}',
-                          icon: Icons.hourglass_top,
-                          accent: _data!.pendingAck > 0 ? Colors.orange : Colors.grey,
-                        ),
-                        OwnerKpiCard(
-                          label: 'Kommende',
-                          value: '${_data!.routesUpcoming.length}',
-                          icon: Icons.upcoming,
-                        ),
-                        OwnerKpiCard(
-                          label: 'Arkiv',
-                          value: '${_data!.routesArchive.length}',
-                          icon: Icons.inventory_2_outlined,
-                        ),
-                      ],
-                    ),
-                  ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),

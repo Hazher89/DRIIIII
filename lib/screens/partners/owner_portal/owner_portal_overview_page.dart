@@ -121,10 +121,61 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     portal: 'owner',
                     compact: true,
                   ),
-                  PartnerHeroBanner(
-                    title: 'Bil-eier oversikt',
-                    subtitle: '${_data!.vehicles.length} kjøretøy · ${_data!.routes.length} ruter (90 d)',
-                    leading: const Icon(Icons.business_center, color: Colors.white, size: 32),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.business_center_outlined,
+                            color: DriftProTheme.primaryGreenDark,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Bil-eier oversikt',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  color: PartnerModernUi.textPrimary(context),
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${_data!.vehicles.length} kjøretøy · ${_data!.routes.length} ruter (90 d)',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  height: 1.35,
+                                  color: PartnerModernUi.muted(context),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  PartnerModernKpiGrid(
+                    items: [
+                      ('Ruter i dag', '${_data!.routesToday.length}'),
+                      ('Til godkjenning', '${_data!.pendingAckTotal}'),
+                      ('Utnyttelse 90d', '${_data!.summary90.utilizationPercent.toStringAsFixed(0)}%'),
+                      ('Jobbdager', '${_data!.summary90.harRuteDays}'),
+                      ('Ledige', '${_data!.summary90.ledigDays}'),
+                      ('Dokumenter', '${_data!.documents.length}'),
+                      ('Trekk', '$_trekkCount'),
+                    ],
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -185,59 +236,6 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                           onTap: widget.onGoToTimesheet,
                         ),
                     ],
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: GridView.count(
-                      crossAxisCount: MediaQuery.sizeOf(context).width > 520 ? 3 : 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 8,
-                      crossAxisSpacing: 8,
-                      childAspectRatio: MediaQuery.sizeOf(context).width > 520 ? 2.4 : 2.55,
-                      children: [
-                        OwnerKpiCard(
-                          label: 'Ruter i dag',
-                          value: '${_data!.routesToday.length}',
-                          icon: Icons.today,
-                          accent: DriftProTheme.accentBlue,
-                        ),
-                        OwnerKpiCard(
-                          label: 'Til godkjenning',
-                          value: '${_data!.pendingAckTotal}',
-                          icon: Icons.hourglass_top,
-                          accent: _data!.pendingAckTotal > 0 ? Colors.orange : Colors.grey,
-                        ),
-                        OwnerKpiCard(
-                          label: 'Utnyttelse 90d',
-                          value: '${_data!.summary90.utilizationPercent.toStringAsFixed(0)}%',
-                          icon: Icons.insights,
-                        ),
-                        OwnerKpiCard(
-                          label: 'Jobbdager',
-                          value: '${_data!.summary90.harRuteDays}',
-                          icon: Icons.work_history,
-                        ),
-                        OwnerKpiCard(
-                          label: 'Ledige dager',
-                          value: '${_data!.summary90.ledigDays}',
-                          icon: Icons.pause_circle_outline,
-                          accent: Colors.orange,
-                        ),
-                        OwnerKpiCard(
-                          label: 'Dokumenter',
-                          value: '${_data!.documents.length}',
-                          icon: Icons.folder_open,
-                        ),
-                        OwnerKpiCard(
-                          label: 'Trekk',
-                          value: '$_trekkCount',
-                          icon: Icons.gavel_rounded,
-                          accent: _trekkCount > 0 ? const Color(0xFF9A3412) : Colors.grey,
-                          onTap: widget.onGoToTrekk,
-                        ),
-                      ],
-                    ),
                   ),
                   const OwnerSectionTitle(
                     title: 'Dine biler — jobb vs. ledig',
@@ -361,23 +359,26 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
           ? 'Skal tas innen ${ownerFmtDate(p.ecoDrivingDeadline!)}'
           : 'Skal tas innen 3 måneder',
     };
-    return Card(
+    return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            _row(Icons.person_outline, 'Kontakt', p.ownerName ?? '—'),
-            _row(Icons.phone_outlined, 'Telefon', p.phone ?? '—'),
-            _row(Icons.email_outlined, 'E-post', p.email ?? '—'),
-            _row(Icons.local_shipping_outlined, 'Kjøretøy registrert', '${p.vehicleCountRegistered}'),
-            _row(Icons.eco_rounded, 'ECO Driving Kurs', ecoLabel),
-            if (p.nextMeetingAt != null)
-              _row(Icons.event_outlined, 'Neste møte', ownerFmtDateTime(p.nextMeetingAt!)),
-            if (p.nextAuditAt != null)
-              _row(Icons.fact_check_outlined, 'Neste revisjon', ownerFmtDate(p.nextAuditAt!)),
-          ],
-        ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+      decoration: BoxDecoration(
+        color: PartnerModernUi.surface(context),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: PartnerModernUi.border(context)),
+      ),
+      child: Column(
+        children: [
+          _row(Icons.person_outline, 'Kontakt', p.ownerName ?? '—'),
+          _row(Icons.phone_outlined, 'Telefon', p.phone ?? '—'),
+          _row(Icons.email_outlined, 'E-post', p.email ?? '—'),
+          _row(Icons.local_shipping_outlined, 'Kjøretøy registrert', '${p.vehicleCountRegistered}'),
+          _row(Icons.eco_rounded, 'ECO Driving Kurs', ecoLabel),
+          if (p.nextMeetingAt != null)
+            _row(Icons.event_outlined, 'Neste møte', ownerFmtDateTime(p.nextMeetingAt!)),
+          if (p.nextAuditAt != null)
+            _row(Icons.fact_check_outlined, 'Neste revisjon', ownerFmtDate(p.nextAuditAt!)),
+        ],
       ),
     );
   }

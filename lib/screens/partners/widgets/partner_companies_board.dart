@@ -138,19 +138,9 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
   }
 
   int _crossAxisCount(double width) {
-    if (width >= 1400) return 4;
-    if (width >= 1100) return 3;
-    if (width >= 700) return 2;
+    if (width >= 1400) return 3;
+    if (width >= 980) return 2;
     return 1;
-  }
-
-  double _childAspectRatio(double width) {
-    final cols = _crossAxisCount(width);
-    // Litt høyere kort for ECO-stripe + KPI-rad.
-    if (cols >= 4) return 0.70;
-    if (cols >= 3) return 0.68;
-    if (cols >= 2) return 0.64;
-    return 0.58;
   }
 
   Future<void> _openNew() async {
@@ -256,41 +246,80 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
             handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
           ),
         SliverToBoxAdapter(
-          child: PartnerModernPageHeader(
-            title: 'Bedrifter',
-            subtitle: _showingDeactivated
-                ? '$inactiveCount deaktiverte · $activeCount aktive totalt'
-                : '$activeCount aktive · $maviTotal MAVI',
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.domain_rounded,
+                    color: DriftProTheme.primaryGreenDark,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Bedrifter',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: PartnerModernUi.textPrimary(context),
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Hold over eller utvid for detaljer. Trykk for å åpne.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: PartnerModernUi.muted(context),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          _boardChip(
+                            context,
+                            _showingDeactivated
+                                ? '$inactiveCount deaktiverte'
+                                : '$activeCount aktive',
+                          ),
+                          if (!_showingDeactivated)
+                            _boardChip(context, '$maviTotal MAVI'),
+                          if (!_showingDeactivated)
+                            _boardChip(context, '$totalSmsPhones SMS'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
                 if (_canRegister)
                   IconButton.filled(
                     style: IconButton.styleFrom(
-                      backgroundColor: PartnerModernUi.textPrimary(context),
-                      foregroundColor: PartnerModernUi.surface(context),
+                      backgroundColor: DriftProTheme.primaryGreen,
+                      foregroundColor: Colors.white,
                     ),
                     onPressed: _openRegister,
                     icon: const Icon(Icons.add, size: 20),
+                    tooltip: 'Ny bedrift',
                   ),
               ],
             ),
           ),
         ),
-        SliverToBoxAdapter(
-          child: PartnerModernKpiGrid(
-            items: _showingDeactivated
-                ? [
-                    ('Deaktiverte', '$inactiveCount'),
-                    ('Aktive', '$activeCount'),
-                  ]
-                : [
-                    ('Aktive', '$activeCount'),
-                    ('MAVI', '$maviTotal'),
-                    ('SMS-numre', '$totalSmsPhones'),
-                  ],
-          ),
-        ),
+        // KPI-grid fjernet — tall ligger i header-chips.
         SliverToBoxAdapter(
           child: Material(
             color: PartnerModernUi.surface(context),
@@ -298,8 +327,8 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
               controller: _listTabs,
               labelColor: DriftProTheme.primaryGreen,
               tabs: [
-                Tab(text: 'Aktive bedrifter ($activeCount)'),
-                Tab(text: 'Deaktiverte bedrifter ($inactiveCount)'),
+                Tab(text: 'Aktive ($activeCount)'),
+                Tab(text: 'Deaktiverte ($inactiveCount)'),
               ],
             ),
           ),
@@ -307,14 +336,13 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
         if (_showSummaryButton && !_showingDeactivated)
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: FilledButton.icon(
-                onPressed: _openSummaryDispatch,
-                icon: const Icon(Icons.outbox_outlined),
-                label: const Text('Send ut oppsummeringer'),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 48),
-                  backgroundColor: DriftProTheme.primaryGreen,
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  onPressed: _openSummaryDispatch,
+                  icon: const Icon(Icons.outbox_outlined, size: 18),
+                  label: const Text('Send oppsummeringer'),
                 ),
               ),
             ),
@@ -333,7 +361,8 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
           ),
         ),
         SliverToBoxAdapter(child: _filterSortBar()),
-        if (!_showingDeactivated && widget.partners.where((p) => p.isActive).isEmpty)
+        if (!_showingDeactivated &&
+            widget.partners.where((p) => p.isActive).isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
             child: PartnerEmptyState(
@@ -341,7 +370,11 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
               title: 'Ingen aktive bedrifter',
               subtitle: 'Opprett første bedrift med Brreg og MAVI.',
               action: _canRegister
-                  ? FilledButton.icon(onPressed: _openRegister, icon: const Icon(Icons.add), label: const Text('Kom i gang'))
+                  ? FilledButton.icon(
+                      onPressed: _openRegister,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Kom i gang'),
+                    )
                   : null,
             ),
           )
@@ -361,60 +394,119 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
             child: Center(child: Text('Ingen treff')),
           )
         else
+          // Intrinsic-height list of cards — ekspandering bryter ikke grid-celler.
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 100),
-            sliver: SliverGrid(
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: _crossAxisCount(width),
-                mainAxisSpacing: 12,
-                crossAxisSpacing: 12,
-                childAspectRatio: _childAspectRatio(width),
-              ),
+            sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  if (_canRegister && !_showingDeactivated && index == 0) {
-                    return PartnerCompanyAddCard(onTap: _openRegister);
+                  final cols = _crossAxisCount(width);
+                  final addTile = _canRegister && !_showingDeactivated;
+                  final totalItems =
+                      filtered.length + (addTile ? 1 : 0);
+                  final rowCount = (totalItems / cols).ceil();
+                  if (index >= rowCount) return null;
+
+                  final children = <Widget>[];
+                  for (var c = 0; c < cols; c++) {
+                    final itemIndex = index * cols + c;
+                    if (itemIndex >= totalItems) {
+                      children.add(const Expanded(child: SizedBox()));
+                      continue;
+                    }
+                    Widget card;
+                    if (addTile && itemIndex == 0) {
+                      card = PartnerCompanyAddCard(onTap: _openRegister);
+                    } else {
+                      final i = addTile ? itemIndex - 1 : itemIndex;
+                      final hit = filtered[i];
+                      final mavi = _maviCodes(hit);
+                      final maviVehicles = hit.vehicles
+                          .where(
+                            (v) =>
+                                v.vehicleKind != 'registration' &&
+                                !MaviUnitCodes.isRegistrationOnlyUnit(
+                                  v.unitCode,
+                                ),
+                          )
+                          .toList();
+                      card = PartnerCompanyGridCard(
+                        name: hit.partner.name,
+                        orgNumber: hit.partner.orgNumber,
+                        ownerName: hit.partner.ownerName,
+                        maviVehicles: maviVehicles,
+                        maviCount: mavi.length,
+                        regCount: _regCount(hit),
+                        isActive: hit.partner.isActive,
+                        routesOwnerOnly: hit.partner.routesOwnerOnly,
+                        ecoDrivingStatus: hit.partner.ecoDrivingStatus,
+                        ecoDrivingDeadline: hit.partner.ecoDrivingDeadline,
+                        ecoDrivingCompletedAt:
+                            hit.partner.ecoDrivingCompletedAt,
+                        ownerAccounts: widget
+                                .portalAccountsByPartner[hit.partner.id]
+                                ?.where((a) => a.isOwner)
+                                .length ??
+                            0,
+                        driverAccounts: widget
+                                .portalAccountsByPartner[hit.partner.id]
+                                ?.where((a) => a.isDriver)
+                                .length ??
+                            0,
+                        smsPhones: _smsPhonesForHit(hit),
+                        onTap: () => _openCompany(hit.partner),
+                        onActivate: !hit.partner.isActive
+                            ? () => _activateCompany(hit.partner)
+                            : null,
+                      );
+                    }
+                    children.add(
+                      Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            right: c < cols - 1 ? 12 : 0,
+                            bottom: 12,
+                          ),
+                          child: card,
+                        ),
+                      ),
+                    );
                   }
-                  final i = (_canRegister && !_showingDeactivated) ? index - 1 : index;
-                  final hit = filtered[i];
-                  final mavi = _maviCodes(hit);
-                  final maviVehicles = hit.vehicles
-                      .where(
-                        (v) =>
-                            v.vehicleKind != 'registration' &&
-                            !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode),
-                      )
-                      .toList();
-                  return PartnerCompanyGridCard(
-                    name: hit.partner.name,
-                    orgNumber: hit.partner.orgNumber,
-                    ownerName: hit.partner.ownerName,
-                    maviVehicles: maviVehicles,
-                    maviCount: mavi.length,
-                    regCount: _regCount(hit),
-                    isActive: hit.partner.isActive,
-                    routesOwnerOnly: hit.partner.routesOwnerOnly,
-                    ecoDrivingStatus: hit.partner.ecoDrivingStatus,
-                    ecoDrivingDeadline: hit.partner.ecoDrivingDeadline,
-                    ecoDrivingCompletedAt: hit.partner.ecoDrivingCompletedAt,
-                    ownerAccounts: widget.portalAccountsByPartner[hit.partner.id]
-                            ?.where((a) => a.isOwner)
-                            .length ??
-                        0,
-                    driverAccounts: widget.portalAccountsByPartner[hit.partner.id]
-                            ?.where((a) => a.isDriver)
-                            .length ??
-                        0,
-                    smsPhones: _smsPhonesForHit(hit),
-                    onTap: () => _openCompany(hit.partner),
-                    onActivate: !hit.partner.isActive ? () => _activateCompany(hit.partner) : null,
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: children,
                   );
                 },
-                childCount: filtered.length + ((_canRegister && !_showingDeactivated) ? 1 : 0),
+                childCount:
+                    ((filtered.length +
+                                ((_canRegister && !_showingDeactivated)
+                                    ? 1
+                                    : 0)) /
+                            _crossAxisCount(width))
+                        .ceil(),
               ),
             ),
           ),
       ],
+    );
+  }
+
+  Widget _boardChip(BuildContext context, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: PartnerModernUi.surface(context),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: PartnerModernUi.border(context)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: PartnerModernUi.textPrimary(context),
+        ),
+      ),
     );
   }
 

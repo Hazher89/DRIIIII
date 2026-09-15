@@ -38,14 +38,9 @@ class PartnerModernPageHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: PartnerModernUi.surface(context),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: PartnerModernUi.border(context)),
-      ),
+    // Slim header — same language as SMS/Bot hubs (no boxed card chrome).
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -57,19 +52,26 @@ class PartnerModernPageHeader extends StatelessWidget {
                   title,
                   style: TextStyle(
                     fontSize: 18,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w900,
                     color: PartnerModernUi.textPrimary(context),
                     letterSpacing: -0.3,
                   ),
                 ),
                 if (subtitle != null) ...[
-                  const SizedBox(height: 4),
-                  Text(subtitle!, style: TextStyle(fontSize: 13, color: PartnerModernUi.muted(context), height: 1.35)),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle!,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.35,
+                      color: PartnerModernUi.muted(context),
+                    ),
+                  ),
                 ],
               ],
             ),
           ),
-          trailing ?? const SizedBox.shrink(),
+          if (trailing != null) trailing!,
         ],
       ),
     );
@@ -268,41 +270,44 @@ class PartnerModernKpiGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Compact chip strip — not a dense KPI dashboard.
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
         children: [
-          for (var i = 0; i < items.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                decoration: BoxDecoration(
-                  color: PartnerModernUi.surface(context),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: PartnerModernUi.border(context)),
-                ),
-                child: Column(
+          for (final item in items)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: PartnerModernUi.surface(context),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: PartnerModernUi.border(context)),
+              ),
+              child: Text.rich(
+                TextSpan(
                   children: [
-                    Text(
-                      items[i].$2,
+                    TextSpan(
+                      text: '${item.$2} ',
                       style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
                         color: PartnerModernUi.textPrimary(context),
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      items[i].$1,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 10, color: PartnerModernUi.muted(context)),
+                    TextSpan(
+                      text: item.$1,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                        color: PartnerModernUi.muted(context),
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-          ],
         ],
       ),
     );

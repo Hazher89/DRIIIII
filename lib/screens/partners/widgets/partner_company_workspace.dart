@@ -230,10 +230,8 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
 
   Widget _header(BuildContext context) {
     final loc = [_p.city, _p.postalCode].whereType<String>().where((s) => s.isNotEmpty).join(' · ');
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(4, 6, 4, 8),
-      color: isDark ? null : const Color(0xFFF5F5F7),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
       child: Row(
         children: [
           IconButton(

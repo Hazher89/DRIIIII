@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/layout/web_layout.dart';
 import '../../../core/theme/app_theme.dart';
+import 'partner_modern_ui.dart';
 
 /// Delte UI-komponenter for bedrifter / samarbeidspartnere.
 class PartnerUi {
@@ -590,178 +591,39 @@ class PartnerDetailTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final web = WebLayout.prefersPointerNav;
-
-    return AnimatedBuilder(
-      animation: controller,
-      builder: (context, _) {
-        if (web) {
-          return Container(
-            margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            decoration: BoxDecoration(
-              color: isDark ? const Color(0xFF151820) : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
-              ),
-            ),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  for (var i = 0; i < tabs.length; i++)
-                    _WebTab(
-                      icon: tabs[i].$1,
-                      label: tabs[i].$2,
-                      selected: controller.index == i,
-                      onTap: () => controller.animateTo(i),
-                    ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return Container(
-          margin: const EdgeInsets.fromLTRB(12, 4, 12, 8),
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isDark ? Colors.white12 : const Color(0xFFE2E8F0),
-            ),
-          ),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (var i = 0; i < tabs.length; i++) ...[
-                  if (i > 0) const SizedBox(width: 4),
-                  _TabChip(
-                    icon: tabs[i].$1,
-                    label: tabs[i].$2,
-                    selected: controller.index == i,
-                    onTap: () => controller.animateTo(i),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _WebTab extends StatelessWidget {
-  const _WebTab({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: selected ? DriftProTheme.primaryGreen : Colors.transparent,
-              width: 2.5,
-            ),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 16,
-              color: selected
-                  ? DriftProTheme.primaryGreen
-                  : PartnerUi.mutedText(context),
-            ),
-            const SizedBox(width: 7),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                color: selected
-                    ? DriftProTheme.primaryGreenDark
-                    : PartnerUi.mutedText(context),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TabChip extends StatelessWidget {
-  const _TabChip({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
-      color: selected
-          ? (isDark ? Colors.white.withValues(alpha: 0.1) : Colors.white)
-          : Colors.transparent,
-      elevation: selected && !isDark ? 1.5 : 0,
-      shadowColor: Colors.black26,
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 16,
-                color: selected
-                    ? DriftProTheme.primaryGreen
-                    : PartnerUi.mutedText(context),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                  color: selected
-                      ? DriftProTheme.primaryGreen
-                      : PartnerUi.mutedText(context),
+      color: PartnerModernUi.surface(context),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TabBar(
+            controller: controller,
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            indicatorColor: DriftProTheme.primaryGreen,
+            indicatorWeight: 3,
+            labelColor: DriftProTheme.primaryGreenDark,
+            unselectedLabelColor: PartnerModernUi.muted(context),
+            labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+            unselectedLabelStyle:
+                const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+            tabs: [
+              for (final t in tabs)
+                Tab(
+                  height: 46,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(t.$1, size: 18),
+                      const SizedBox(width: 8),
+                      Text(t.$2),
+                    ],
+                  ),
                 ),
-              ),
             ],
           ),
-        ),
+          Divider(height: 1, color: PartnerModernUi.border(context)),
+        ],
       ),
     );
   }

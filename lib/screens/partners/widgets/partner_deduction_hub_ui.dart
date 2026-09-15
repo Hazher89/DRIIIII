@@ -116,32 +116,52 @@ class PartnerDeductionHubUi {
       ('Bevis', evidenceCount, const Color(0xFF7C3AED)),
     ];
 
-    if (wide) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-        child: Row(
-          children: [
-            for (var i = 0; i < items.length; i++) ...[
-              if (i > 0) const SizedBox(width: 10),
-              Expanded(child: _KpiCard(label: items[i].$1, value: items[i].$2, color: items[i].$3)),
-            ],
-          ],
-        ),
-      );
-    }
-
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+      padding: EdgeInsets.fromLTRB(wide ? 20 : 14, 0, wide ? 20 : 14, 10),
       child: Wrap(
         spacing: 8,
-        runSpacing: 8,
+        runSpacing: 6,
         children: [
-          for (final item in items)
-            SizedBox(
-              width: (MediaQuery.sizeOf(context).width - 36) / 2,
-              child: _KpiCard(label: item.$1, value: item.$2, color: item.$3),
-            ),
+          for (final item in items) _metaChip(context, item.$2, item.$1, item.$3),
         ],
+      ),
+    );
+  }
+
+  static Widget _metaChip(
+    BuildContext context,
+    String value,
+    String label,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: PartnerModernUi.surface(context),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: PartnerModernUi.border(context)),
+      ),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '$value ',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                fontSize: 13,
+                color: color,
+              ),
+            ),
+            TextSpan(
+              text: label,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+                color: PartnerModernUi.muted(context),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -344,60 +364,6 @@ class PartnerDeductionHubUi {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _KpiCard extends StatelessWidget {
-  const _KpiCard({required this.label, required this.value, required this.color});
-
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: PartnerModernUi.surface(context),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label.toUpperCase(),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.4,
-              color: PartnerModernUi.muted(context),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.4,
-              color: color,
-              height: 1.05,
-            ),
-          ),
-        ],
       ),
     );
   }
