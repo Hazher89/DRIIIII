@@ -503,6 +503,14 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
   }
 
   Widget _liveMapTab() {
+    final todaySessions = _sessions.where((s) {
+      if (s['status'] == 'active') return true;
+      final t = DateTime.tryParse('${s['started_at']}')?.toLocal();
+      if (t == null) return false;
+      final n = DateTime.now();
+      return t.year == n.year && t.month == n.month && t.day == n.day;
+    }).toList();
+
     return RefreshIndicator(
       onRefresh: () async {
         await _bootstrap();
@@ -512,11 +520,38 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
         padding: const EdgeInsets.only(bottom: 24),
         children: [
           _kpiRow(),
+          if (_sessions.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: _diagCard(
+                title: 'Ingen sporingsdata i databasen',
+                body:
+                    'Huben er tom fordi det ikke finnes noen sesjoner ennå.\n\n'
+                    '1) På Android: logg inn med sporingsenhet (kiosk) — ikke vanlig bruker.\n'
+                    '2) Oppdater appen (nyeste APK) — eldre versjon krevde MAVI-bil og startet ofte ikke.\n'
+                    '3) Gi «Alltid»-posisjonstilgang og hold skjermen/kiosk åpen under kjøring.\n'
+                    '4) Se «Sesjoner»-fanen etter tur — der dukker km/score opp først.',
+                color: Colors.orange.shade800,
+              ),
+            )
+          else if (_mapSamples.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: _diagCard(
+                title:
+                    '${todaySessions.length} sesjon(er) i dag, men 0 GPS-punkter',
+                body:
+                    'Sesjoner finnes, men punkter er ikke synket. '
+                    'Sjekk at Android har nett, at kiosk viser «Synker…»/OK, '
+                    'og trykk oppdater her. Eventuelt reinstallér nyeste APK.',
+                color: Colors.deepOrange.shade700,
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              'Live rute med hastighet (farge), rå brems, rå sving, fartsovertredelse og stillstand. '
-              'Data lagres lokalt ved nettbrudd og synkes automatisk.',
+              'Live = aktive + i dag. ${_sessions.length} sesjoner totalt · '
+              '${todaySessions.length} i dag · ${_devices.length} enheter.',
               style: DriftProTheme.bodySm.copyWith(color: Colors.grey[700]),
             ),
           ),
@@ -545,9 +580,12 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
           const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text('Aktive sesjoner', style: DriftProTheme.labelLg),
+            child: Text('Aktive / i dag', style: DriftProTheme.labelLg),
           ),
-          ..._mapSessions.map((s) => _sessionTile(s, openOnMap: true)),
+          if (_mapSessions.isEmpty && todaySessions.isNotEmpty)
+            ...todaySessions.map((s) => _sessionTile(s, openOnMap: true))
+          else
+            ..._mapSessions.map((s) => _sessionTile(s, openOnMap: true)),
           if (_mapEvents.isNotEmpty) ...[
             const SizedBox(height: 8),
             Padding(
@@ -556,6 +594,36 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
             ),
             ..._mapEvents.reversed.take(40).map(_eventTile),
           ],
+        ],
+      ),
+    );
+  }
+
+  Widget _diagCard({
+    required String title,
+    required String body,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              color: color,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(body, style: DriftProTheme.bodySm.copyWith(height: 1.4)),
         ],
       ),
     );
