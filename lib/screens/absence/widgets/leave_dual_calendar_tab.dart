@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/constants/leave_rules.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/absence.dart';
 import '../../../models/user_profile.dart';
-import '../../../core/constants/leave_rules.dart';
-import '../../../core/utils/norwegian_holidays.dart';
+import '../../../widgets/common/team_equal_controls.dart';
 import 'leave_calendar_month_digest.dart';
 import 'leave_calendar_rules_section.dart';
 import 'leave_employee_timeline.dart';
 import 'leave_public_holidays_panel.dart';
 import 'team_leave_calendar.dart';
 import 'vacation_year_matrix.dart';
-import '../../../core/layout/web_layout.dart';
 
-/// To kalendere: ferie og øvrig fravær — avansert oversikt for hele teamet.
+enum _CalKind { ferie, fravaer }
+
+/// To kalendere: ferie og øvrig fravær — alt scroller med siden.
 class LeaveDualCalendarTab extends StatefulWidget {
   final bool isManager;
   final DateTime month;
@@ -52,10 +53,9 @@ class LeaveDualCalendarTab extends StatefulWidget {
   State<LeaveDualCalendarTab> createState() => _LeaveDualCalendarTabState();
 }
 
-class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab>
-    with SingleTickerProviderStateMixin {
-  late TabController _inner;
+class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
   String? _userFilter;
+  _CalKind _kind = _CalKind.ferie;
 
   static const _vacationTypes = {AbsenceType.ferie};
   static const _leaveTypes = {
@@ -69,7 +69,6 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab>
   void initState() {
     super.initState();
     _userFilter = widget.initialUserFilter;
-    _inner = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -78,12 +77,6 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab>
     if (widget.initialUserFilter != oldWidget.initialUserFilter) {
       _userFilter = widget.initialUserFilter;
     }
-  }
-
-  @override
-  void dispose() {
-    _inner.dispose();
-    super.dispose();
   }
 
   List<Absence> get _calendarPool {
@@ -101,87 +94,39 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab>
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final year = widget.month.year;
-
-    return Column(
-      children: [
-        _heroHeader(isDark, year),
-        Material(
-          color: isDark ? DriftProTheme.cardDark : Colors.white,
-          child: TabBar(
-            controller: _inner,
-            labelColor: DriftProTheme.primaryGreen,
-            unselectedLabelColor: isDark ? Colors.white54 : Colors.grey.shade600,
-            indicatorColor: DriftProTheme.primaryGreen,
-            tabs: const [
-              Tab(icon: Icon(Icons.beach_access_outlined, size: 20), text: 'Feriekalender'),
-              Tab(icon: Icon(Icons.sick_outlined, size: 20), text: 'Fraværskalender'),
-            ],
-          ),
-        ),
-        Expanded(
-          child: DriftProTabView(
-            controller: _inner,
-            children: [
-              _calendarPane(vacationOnly: true, types: _vacationTypes),
-              _calendarPane(vacationOnly: false, types: _leaveTypes),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _heroHeader(bool isDark, int year) {
+    final vacationOnly = _kind == _CalKind.ferie;
+    final types = vacationOnly ? _vacationTypes : _leaveTypes;
     final employees = widget.teamProfiles.isNotEmpty
         ? widget.teamProfiles
         : (widget.profile != null ? [widget.profile!] : <UserProfile>[]);
+    final filtered = _filterTypes(types);
+    final hasEmployeeFilter = _userFilter != null;
+    final filteredEmployees = hasEmployeeFilter
+        ? employees.where((e) => e.id == _userFilter).toList()
+        : employees;
+    final year = widget.month.year;
     final showEmployeePicker = employees.length > 1;
-    final nextHoliday = NorwegianHolidays.upcomingFrom(DateTime.now()).firstOrNull;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-      decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : const Color(0xFFF4FAF5),
-        border: Border(
-          bottom: BorderSide(
-            color: DriftProTheme.primaryGreen.withValues(alpha: 0.15),
-          ),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+    return RefreshIndicator(
+      onRefresh: widget.onRefresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Kalender $year', style: DriftProTheme.headingSm),
-                    const SizedBox(height: 2),
-                    Text(
-                      showEmployeePicker
-                          ? 'Velg ansatt for detaljer, eller se hele teamet i kalenderen.'
-                          : 'Måned, uke og år — markert med ferie og fravær.',
-                      style: DriftProTheme.caption.copyWith(
-                        color: isDark ? Colors.white54 : Colors.grey.shade700,
-                      ),
-                    ),
-                  ],
-                ),
+          TeamEqualSegmentBar<_CalKind>(
+            value: _kind,
+            onChanged: (v) => setState(() => _kind = v),
+            items: const [
+              TeamEqualSegmentItem(
+                value: _CalKind.ferie,
+                label: 'Ferie',
+                icon: Icons.beach_access_outlined,
               ),
-              if (nextHoliday != null)
-                Padding(
-                  padding: const EdgeInsets.only(left: 8, top: 2),
-                  child: Icon(
-                    Icons.event_busy,
-                    size: 18,
-                    color: Colors.red.shade700,
-                  ),
-                ),
+              TeamEqualSegmentItem(
+                value: _CalKind.fravaer,
+                label: 'Fravær',
+                icon: Icons.sick_outlined,
+              ),
             ],
           ),
           if (showEmployeePicker) ...[
@@ -194,9 +139,14 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab>
                 prefixIcon: const Icon(Icons.person_outline, size: 20),
                 filled: true,
                 fillColor: isDark ? DriftProTheme.surfaceDark : Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
               ),
               items: [
                 const DropdownMenuItem(
@@ -204,108 +154,82 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab>
                   child: Text('Alle — teamkalender'),
                 ),
                 ...employees.map(
-                  (p) => DropdownMenuItem(value: p.id, child: Text(p.fullName)),
+                  (p) => DropdownMenuItem(
+                    value: p.id,
+                    child: Text(p.fullName),
+                  ),
                 ),
               ],
               onChanged: (v) => setState(() => _userFilter = v),
             ),
           ],
-        ],
-      ),
-    );
-  }
-
-  Widget _calendarPane({
-    required bool vacationOnly,
-    required Set<AbsenceType> types,
-  }) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final employees = widget.teamProfiles.isNotEmpty
-        ? widget.teamProfiles
-        : (widget.profile != null ? [widget.profile!] : <UserProfile>[]);
-    final filtered = _filterTypes(types);
-    final hasEmployeeFilter = _userFilter != null;
-    final filteredEmployees = hasEmployeeFilter
-        ? employees.where((e) => e.id == _userFilter).toList()
-        : employees;
-    final year = widget.month.year;
-
-    return RefreshIndicator(
-      onRefresh: widget.onRefresh,
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 28),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (vacationOnly) ...[
-              VacationYearMatrix(
-                year: year,
-                employees: filteredEmployees,
-                vacations: filtered,
-                onYearChanged: (y) {
-                  widget.onMonthChanged(DateTime(y, widget.month.month, 1));
-                },
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Månedskalender',
-                style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-            ],
-            TeamLeaveCalendar(
-              month: widget.month,
-              absences: filtered,
+          const SizedBox(height: 12),
+          if (vacationOnly) ...[
+            VacationYearMatrix(
+              year: year,
               employees: filteredEmployees,
-              filterUserId: _userFilter,
-              colorForType: widget.colorForType,
-              typesFilter: types,
-              includePending: true,
-              onMonthChanged: widget.onMonthChanged,
-              onDayTap: widget.onDayTap,
+              vacations: filtered,
+              onYearChanged: (y) {
+                widget.onMonthChanged(DateTime(y, widget.month.month, 1));
+              },
             ),
+            const SizedBox(height: 16),
+            Text(
+              'Månedskalender',
+              style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 8),
+          ],
+          TeamLeaveCalendar(
+            month: widget.month,
+            absences: filtered,
+            employees: filteredEmployees,
+            filterUserId: _userFilter,
+            colorForType: widget.colorForType,
+            typesFilter: types,
+            includePending: true,
+            onMonthChanged: widget.onMonthChanged,
+            onDayTap: widget.onDayTap,
+          ),
+          const SizedBox(height: 12),
+          LeaveCalendarMonthDigest(
+            month: widget.month,
+            absences: filtered,
+            colorForType: widget.colorForType,
+            vacationOnly: vacationOnly,
+            showEntryList: hasEmployeeFilter,
+          ),
+          if (hasEmployeeFilter) ...[
             const SizedBox(height: 12),
-            LeaveCalendarMonthDigest(
+            EmployeeLeaveTimeline(
               month: widget.month,
+              employees: filteredEmployees,
               absences: filtered,
               colorForType: widget.colorForType,
               vacationOnly: vacationOnly,
-              showEntryList: hasEmployeeFilter,
+              departmentNames: widget.departmentNames,
             ),
-            if (hasEmployeeFilter) ...[
-              const SizedBox(height: 12),
-              EmployeeLeaveTimeline(
-                month: widget.month,
-                employees: filteredEmployees,
-                absences: filtered,
-                colorForType: widget.colorForType,
-                vacationOnly: vacationOnly,
-                departmentNames: widget.departmentNames,
-              ),
-            ],
-            if (!vacationOnly) ...[
-              const SizedBox(height: 12),
-              LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
-            ],
-            const SizedBox(height: 10),
-            LeaveCalendarRulesSection(
-              vacationTab: vacationOnly,
-              companySettings: widget.companySettings,
-            ),
-            if (!widget.isManager && !hasEmployeeFilter)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Velg en kollega i listen over for å se detaljer. '
-                  'Sjekk kalenderen før du søker ferie.',
-                  style: DriftProTheme.caption.copyWith(
-                    color: isDark ? Colors.white54 : Colors.grey.shade600,
-                  ),
+          ],
+          if (!vacationOnly) ...[
+            const SizedBox(height: 12),
+            LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
+          ],
+          const SizedBox(height: 10),
+          LeaveCalendarRulesSection(
+            vacationTab: vacationOnly,
+            companySettings: widget.companySettings,
+          ),
+          if (!widget.isManager && !hasEmployeeFilter)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                'Velg en kollega for detaljer. Sjekk kalenderen før du søker ferie.',
+                style: DriftProTheme.caption.copyWith(
+                  color: isDark ? Colors.white54 : Colors.grey.shade600,
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

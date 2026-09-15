@@ -9,7 +9,7 @@ import '../../../models/absence.dart';
 import '../../../models/user_profile.dart';
 import 'leave_public_holidays_panel.dart';
 
-/// Årsmatrise: ansatte × uker/måneder — smart ferieoversikt.
+/// Årsmatrise: ansatte × uker/måneder — sticky navn/sum, scroller med siden.
 class VacationYearMatrix extends StatefulWidget {
   const VacationYearMatrix({
     super.key,
@@ -31,11 +31,15 @@ class VacationYearMatrix extends StatefulWidget {
 }
 
 class _VacationYearMatrixState extends State<VacationYearMatrix> {
-  static const _nameW = 132.0;
-  static const _cellW = 28.0;
-  static const _cellH = 34.0;
+  static const _nameW = 118.0;
+  static const _sumW = 40.0;
+  static const _cellW = 26.0;
+  static const _monthH = 26.0;
+  static const _weekH = 22.0;
+  static const _rowH = 32.0;
 
   bool _exporting = false;
+  bool _tipsOpen = false;
   late VacationYearMatrixModel _model;
 
   @override
@@ -102,50 +106,52 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
     final holidayWeeks = <int>{
       for (final h in holidays) VacationYearMatrixModel.isoWeekNumber(h.date),
     };
+    final withVacation =
+        _model.employeeRows.where((e) => e.totalWorkDays > 0).length;
+    final border = isDark ? DriftProTheme.dividerDark : const Color(0xFFE6EBE8);
+    final headerBg = isDark ? DriftProTheme.surfaceDark : const Color(0xFFF3F7F4);
+    final nameBg = isDark ? DriftProTheme.cardDark : const Color(0xFFFAFCFA);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _header(isDark),
-        const SizedBox(height: 10),
-        _tips(isDark),
+        _toolbar(isDark, withVacation),
+        const SizedBox(height: 8),
+        _tipsChip(isDark),
         const SizedBox(height: 10),
         Container(
           decoration: BoxDecoration(
             color: isDark ? DriftProTheme.cardDark : Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
-            ),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: border),
           ),
           clipBehavior: Clip.antiAlias,
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _monthHeader(isDark),
-                    _weekHeader(isDark, holidayWeeks),
-                    ..._model.employeeRows.map((r) => _employeeRow(r, isDark, holidayWeeks)),
-                  ],
-                ),
+              _grid(
+                isDark: isDark,
+                holidayWeeks: holidayWeeks,
+                border: border,
+                headerBg: headerBg,
+                nameBg: nameBg,
               ),
+              Divider(height: 1, color: border),
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
-                child: Row(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                child: Wrap(
+                  spacing: 14,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     _legendDot(DriftProTheme.primaryGreen, 'Godkjent'),
-                    const SizedBox(width: 12),
                     _legendDot(Colors.orange.shade700, 'Ventende'),
-                    const SizedBox(width: 12),
                     _legendDot(Colors.red.shade300, 'Rød uke'),
-                    const Spacer(),
                     Text(
-                      'Hold over celle for dager',
+                      'Hold over celle for periode',
                       style: DriftProTheme.caption.copyWith(
                         color: isDark ? Colors.white54 : Colors.grey.shade600,
+                        fontSize: 11,
                       ),
                     ),
                   ],
@@ -155,298 +161,409 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
           ),
         ),
         const SizedBox(height: 12),
-        LeavePublicHolidaysPanel(year: widget.year, initiallyExpanded: true),
+        LeavePublicHolidaysPanel(year: widget.year, initiallyExpanded: false),
       ],
     );
   }
 
-  Widget _header(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            DriftProTheme.primaryGreen.withValues(alpha: 0.12),
-            isDark ? DriftProTheme.cardDark : const Color(0xFFF8FBF8),
-          ],
+  Widget _toolbar(bool isDark, int withVacation) {
+    return Row(
+      children: [
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: 'Forrige år',
+          onPressed: widget.onYearChanged == null
+              ? null
+              : () => widget.onYearChanged!(widget.year - 1),
+          icon: const Icon(Icons.chevron_left_rounded),
         ),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: DriftProTheme.primaryGreen.withValues(alpha: 0.2),
-        ),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            tooltip: 'Forrige år',
-            onPressed: widget.onYearChanged == null
-                ? null
-                : () => widget.onYearChanged!(widget.year - 1),
-            icon: const Icon(Icons.chevron_left_rounded),
-          ),
-          Expanded(
-            child: Column(
-              children: [
-                Text(
-                  'Ferie ${widget.year}',
-                  style: DriftProTheme.headingSm.copyWith(
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.3,
-                  ),
+        Expanded(
+          child: Column(
+            children: [
+              Text(
+                'Ferie ${widget.year}',
+                style: DriftProTheme.headingSm.copyWith(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.2,
                 ),
-                Text(
-                  '${_model.employeeRows.length} ansatte · '
-                  '${_model.employeeRows.where((e) => e.totalWorkDays > 0).length} med ferie',
-                  style: DriftProTheme.caption,
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: 'Neste år',
-            onPressed: widget.onYearChanged == null
-                ? null
-                : () => widget.onYearChanged!(widget.year + 1),
-            icon: const Icon(Icons.chevron_right_rounded),
-          ),
-          PopupMenuButton<String>(
-            tooltip: 'Eksporter',
-            enabled: !_exporting,
-            onSelected: (v) => _export(v == 'pdf'),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'xlsx', child: Text('Eksporter Excel')),
-              PopupMenuItem(value: 'pdf', child: Text('Eksporter PDF')),
+              ),
+              Text(
+                '${_model.employeeRows.length} ansatte · $withVacation med ferie',
+                style: DriftProTheme.caption.copyWith(fontSize: 11),
+              ),
             ],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: _exporting
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(Icons.ios_share_rounded, color: DriftProTheme.primaryGreen),
-            ),
           ),
-        ],
-      ),
+        ),
+        IconButton(
+          visualDensity: VisualDensity.compact,
+          tooltip: 'Neste år',
+          onPressed: widget.onYearChanged == null
+              ? null
+              : () => widget.onYearChanged!(widget.year + 1),
+          icon: const Icon(Icons.chevron_right_rounded),
+        ),
+        PopupMenuButton<String>(
+          tooltip: 'Eksporter',
+          enabled: !_exporting,
+          onSelected: (v) => _export(v == 'pdf'),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'xlsx', child: Text('Eksporter Excel')),
+            PopupMenuItem(value: 'pdf', child: Text('Eksporter PDF')),
+          ],
+          child: Padding(
+            padding: const EdgeInsets.only(left: 4, right: 2),
+            child: _exporting
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    Icons.ios_share_rounded,
+                    size: 22,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _tips(bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF8E7),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.shade200),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.lightbulb_outline, color: Colors.amber.shade800, size: 20),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Tips for ${widget.year}',
-                  style: DriftProTheme.labelLg.copyWith(
-                    fontWeight: FontWeight.w800,
+  Widget _tipsChip(bool isDark) {
+    return Material(
+      color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFFFF8E7),
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => setState(() => _tipsOpen = !_tipsOpen),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.lightbulb_outline,
+                    size: 16,
+                    color: Colors.amber.shade800,
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Tips for ${widget.year}',
+                      style: DriftProTheme.caption.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: Colors.amber.shade900,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    _tipsOpen
+                        ? Icons.expand_less_rounded
+                        : Icons.expand_more_rounded,
+                    size: 18,
                     color: Colors.amber.shade900,
                   ),
-                ),
-                const SizedBox(height: 4),
+                ],
+              ),
+              if (_tipsOpen) ...[
+                const SizedBox(height: 6),
                 Text(
                   '• Hovedferie (18 dager) bør tas 1. juni–30. september.\n'
-                  '• Tall i cellen = virkedager i den uken (ikke helg/røde dager).\n'
-                  '• Sammenhengende ferie over flere uker vises som én periode ved hover.\n'
+                  '• Tall i cellen = virkedager den uken (ikke helg/røde dager).\n'
+                  '• Sammenhengende ferie over flere uker = én periode ved hover.\n'
                   '• ${LeaveRules.ferieLegalMinimumDays} feriedager er lovens minimum.',
                   style: DriftProTheme.bodySm.copyWith(
                     height: 1.35,
+                    fontSize: 12,
                     color: Colors.brown.shade900,
                   ),
                 ),
               ],
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _monthHeader(bool isDark) {
+  Widget _grid({
+    required bool isDark,
+    required Set<int> holidayWeeks,
+    required Color border,
+    required Color headerBg,
+    required Color nameBg,
+  }) {
+    final weeksW = _cellW * _model.weeks.length;
+
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Sticky name column
         SizedBox(
           width: _nameW,
-          height: 28,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 10),
-              child: Text(
+          child: Column(
+            children: [
+              _cornerCell(
                 'Ansatt',
-                style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w800),
+                headerBg,
+                border,
+                height: _monthH + _weekH,
+                alignCenter: false,
+                rightBorder: true,
+              ),
+              ..._model.employeeRows.map(
+                (r) => _nameCell(r.name, nameBg, border),
+              ),
+            ],
+          ),
+        ),
+        // Scrollable weeks
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: weeksW,
+              child: Column(
+                children: [
+                  _monthRow(headerBg, border),
+                  _weekRow(holidayWeeks, headerBg, border),
+                  ..._model.employeeRows.map(
+                    (r) => _weekCells(r, holidayWeeks, border, isDark),
+                  ),
+                ],
               ),
             ),
           ),
         ),
-        ..._model.monthSpans.map((m) {
+        // Sticky sum column
+        SizedBox(
+          width: _sumW,
+          child: Column(
+            children: [
+              _cornerCell(
+                'Σ',
+                headerBg,
+                border,
+                height: _monthH + _weekH,
+                alignCenter: true,
+                rightBorder: false,
+                leftBorder: true,
+              ),
+              ..._model.employeeRows.map((r) => _sumCell(r, nameBg, border)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _cornerCell(
+    String label,
+    Color bg,
+    Color border, {
+    required double height,
+    required bool alignCenter,
+    bool rightBorder = false,
+    bool leftBorder = false,
+  }) {
+    return Container(
+      width: double.infinity,
+      height: height,
+      alignment: alignCenter ? Alignment.center : Alignment.centerLeft,
+      padding: alignCenter
+          ? EdgeInsets.zero
+          : const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border(
+          bottom: BorderSide(color: border),
+          right: rightBorder ? BorderSide(color: border) : BorderSide.none,
+          left: leftBorder ? BorderSide(color: border) : BorderSide.none,
+        ),
+      ),
+      child: Text(
+        label,
+        style: DriftProTheme.caption.copyWith(
+          fontWeight: FontWeight.w800,
+          fontSize: 11,
+        ),
+      ),
+    );
+  }
+
+  Widget _nameCell(String name, Color bg, Color border) {
+    return Container(
+      width: double.infinity,
+      height: _rowH,
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border(
+          bottom: BorderSide(color: border.withValues(alpha: 0.7)),
+          right: BorderSide(color: border),
+        ),
+      ),
+      child: Text(
+        name,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+
+  Widget _sumCell(VacationEmployeeRow row, Color bg, Color border) {
+    return Container(
+      width: double.infinity,
+      height: _rowH,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border(
+          bottom: BorderSide(color: border.withValues(alpha: 0.7)),
+          left: BorderSide(color: border),
+        ),
+      ),
+      child: Text(
+        row.totalWorkDays > 0 ? '${row.totalWorkDays}' : '—',
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: row.totalWorkDays > 0
+              ? DriftProTheme.primaryGreen
+              : Colors.grey.shade500,
+        ),
+      ),
+    );
+  }
+
+  Widget _monthRow(Color headerBg, Color border) {
+    return SizedBox(
+      height: _monthH,
+      child: Row(
+        children: _model.monthSpans.map((m) {
           return Container(
             width: _cellW * m.weekCount,
-            height: 28,
+            height: _monthH,
             alignment: Alignment.center,
             decoration: BoxDecoration(
+              color: headerBg,
               border: Border(
-                left: BorderSide(color: Colors.black.withValues(alpha: 0.06)),
+                bottom: BorderSide(color: border),
+                left: BorderSide(color: border.withValues(alpha: 0.5)),
               ),
-              color: DriftProTheme.primaryGreen.withValues(alpha: 0.06),
             ),
             child: Text(
               m.label,
               style: DriftProTheme.caption.copyWith(
                 fontWeight: FontWeight.w800,
-                fontSize: 11,
+                fontSize: 10.5,
               ),
             ),
           );
-        }),
-        SizedBox(
-          width: 44,
-          height: 28,
-          child: Center(
-            child: Text(
-              'Σ',
-              style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w900),
-            ),
-          ),
-        ),
-      ],
+        }).toList(),
+      ),
     );
   }
 
-  Widget _weekHeader(bool isDark, Set<int> holidayWeeks) {
-    return Row(
-      children: [
-        SizedBox(width: _nameW, height: 26),
-        ..._model.weeks.map((w) {
+  Widget _weekRow(Set<int> holidayWeeks, Color headerBg, Color border) {
+    return SizedBox(
+      height: _weekH,
+      child: Row(
+        children: _model.weeks.map((w) {
           final red = holidayWeeks.contains(w.week);
           return Container(
             width: _cellW,
-            height: 26,
+            height: _weekH,
             alignment: Alignment.center,
-            color: red ? Colors.red.withValues(alpha: 0.08) : null,
+            decoration: BoxDecoration(
+              color: red
+                  ? Colors.red.withValues(alpha: 0.08)
+                  : headerBg.withValues(alpha: 0.65),
+              border: Border(
+                bottom: BorderSide(color: border),
+                left: BorderSide(color: border.withValues(alpha: 0.35)),
+              ),
+            ),
             child: Text(
               '${w.week}',
               style: TextStyle(
-                fontSize: 9,
+                fontSize: 8.5,
                 fontWeight: FontWeight.w700,
                 color: red ? Colors.red.shade700 : Colors.grey.shade600,
               ),
             ),
           );
-        }),
-        const SizedBox(width: 44),
-      ],
+        }).toList(),
+      ),
     );
   }
 
-  Widget _employeeRow(
+  Widget _weekCells(
     VacationEmployeeRow row,
-    bool isDark,
     Set<int> holidayWeeks,
+    Color border,
+    bool isDark,
   ) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(color: Colors.black.withValues(alpha: 0.05)),
-        ),
-      ),
+    return SizedBox(
+      height: _rowH,
       child: Row(
-        children: [
-          SizedBox(
-            width: _nameW,
-            height: _cellH,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  row.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
-          ),
-          ..._model.weeks.map((w) {
-            final days = row.daysInWeek[w.week] ?? 0;
-            final span = _model.spanForWeek(row, w.week);
-            final red = holidayWeeks.contains(w.week);
-            final pending = span?.status == AbsenceStatus.ventende;
-            final color = days == 0
-                ? Colors.transparent
-                : (pending
-                    ? Colors.orange.shade600
-                    : DriftProTheme.primaryGreen);
-            final tip = span == null
-                ? (days > 0 ? '${row.name}: $days dager i uke ${w.week}' : null)
-                : span.tooltip(row.name);
+        children: _model.weeks.map((w) {
+          final days = row.daysInWeek[w.week] ?? 0;
+          final span = _model.spanForWeek(row, w.week);
+          final red = holidayWeeks.contains(w.week);
+          final pending = span?.status == AbsenceStatus.ventende;
+          final color = days == 0
+              ? Colors.transparent
+              : (pending
+                  ? Colors.orange.shade600
+                  : DriftProTheme.primaryGreen);
+          final tip = span == null
+              ? (days > 0 ? '${row.name}: $days dager i uke ${w.week}' : '')
+              : span.tooltip(row.name);
 
-            return Tooltip(
-              message: tip ?? '',
-              waitDuration: const Duration(milliseconds: 250),
-              child: Container(
-                width: _cellW,
-                height: _cellH,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: red ? Colors.red.withValues(alpha: 0.04) : null,
-                  border: Border(
-                    left: BorderSide(color: Colors.black.withValues(alpha: 0.04)),
-                  ),
-                ),
-                child: days > 0
-                    ? Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: color.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '$days',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
-            );
-          }),
-          SizedBox(
-            width: 44,
-            height: _cellH,
-            child: Center(
-              child: Text(
-                row.totalWorkDays > 0 ? '${row.totalWorkDays}' : '—',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: row.totalWorkDays > 0
-                      ? DriftProTheme.primaryGreen
-                      : Colors.grey,
-                ),
+          final cell = Container(
+            width: _cellW,
+            height: _rowH,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: red ? Colors.red.withValues(alpha: 0.035) : null,
+              border: Border(
+                bottom: BorderSide(color: border.withValues(alpha: 0.55)),
+                left: BorderSide(color: border.withValues(alpha: 0.35)),
               ),
             ),
-          ),
-        ],
+            child: days > 0
+                ? Container(
+                    width: _cellW - 4,
+                    height: _rowH - 10,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: 0.92),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '$days',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  )
+                : null,
+          );
+
+          if (tip.isEmpty) return cell;
+          return Tooltip(
+            message: tip,
+            waitDuration: const Duration(milliseconds: 220),
+            child: cell,
+          );
+        }).toList(),
       ),
     );
   }
@@ -456,12 +573,15 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 10,
-          height: 10,
-          decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(3)),
+          width: 9,
+          height: 9,
+          decoration: BoxDecoration(
+            color: c,
+            borderRadius: BorderRadius.circular(2.5),
+          ),
         ),
         const SizedBox(width: 4),
-        Text(label, style: DriftProTheme.caption),
+        Text(label, style: DriftProTheme.caption.copyWith(fontSize: 11)),
       ],
     );
   }
