@@ -22,6 +22,8 @@ class AccessKeys {
   // ── Uniform-monitor (MAVI logo + vernesko) ─────────────────────────────────
   static const uniformMonitorAdmin = 'uniform_monitor_admin';
   static const driveMonitor = 'drive_monitor';
+  static const workSteps = 'work_steps';
+  static const workStepsHub = 'work_steps_hub';
 
   // ── Mer-meny ───────────────────────────────────────────────────────────────
   static const avdelinger = 'avdelinger';
@@ -114,6 +116,8 @@ class AccessKeys {
     stemplingAdmin,
     uniformMonitorAdmin,
     driveMonitor,
+    workSteps,
+    workStepsHub,
     stemplingMobile,
     stemplingInnstillinger,
     avdelinger,
@@ -186,6 +190,8 @@ class AccessKeys {
     more: 'Mer-meny',
     uniformMonitorAdmin: 'Uniform-monitor – kamera og innstillinger',
     driveMonitor: 'Leiebil-sporing (Mer)',
+    workSteps: 'Skritt på jobb (ansatt)',
+    workStepsHub: 'Skritt på jobb — hub-oversikt',
     stemplingAdmin: 'Stempling – oversikt og timeliste',
     stemplingMobile: 'Stempling – mobil/nett',
     stemplingInnstillinger: 'Stempling – kiosk-innstillinger',

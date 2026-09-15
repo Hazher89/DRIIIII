@@ -519,6 +519,20 @@ class AccessAreaCatalog {
       legacyViewKey: AccessKeys.forsideRedigering,
     ),
     AccessAreaDef(
+      id: 'more.work_steps',
+      title: 'Skritt på jobb (ansatt)',
+      parentId: 'more',
+      routePath: '/more/skritt-pa-jobb',
+      legacyViewKey: AccessKeys.workSteps,
+    ),
+    AccessAreaDef(
+      id: 'more.work_steps_hub',
+      title: 'Skritt på jobb — hub-oversikt',
+      parentId: 'more',
+      routePath: '/more/skritt-pa-jobb-hub',
+      legacyViewKey: AccessKeys.workStepsHub,
+    ),
+    AccessAreaDef(
       id: 'more.partnere',
       title: 'Samarbeidspartnere (meny)',
       parentId: 'more',

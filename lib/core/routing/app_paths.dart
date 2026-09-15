@@ -150,6 +150,8 @@ abstract final class AppPaths {
   static const moreVisionCameras = '/more/vision-cameras';
   static const moreVisionEvents = '/more/vision-events';
   static const moreDriveMonitor = '/more/leiebil-sporing';
+  static const moreWorkSteps = '/more/skritt-pa-jobb';
+  static const moreWorkStepsHub = '/more/skritt-pa-jobb-hub';
   static const driveMonitorKiosk = '/drive-monitor-kiosk';
 
   /// Hovedfaner i [MainShell] — rekkefølge = bottom nav + skjult avvik-gren.

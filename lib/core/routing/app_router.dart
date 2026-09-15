@@ -32,6 +32,8 @@ import '../../screens/more/about_driftpro_screen.dart';
 import '../../screens/more/vision/vision_cameras_screen.dart';
 import '../../screens/more/vision/vision_events_screen.dart';
 import '../../screens/drive_monitor/drive_monitor_hub_screen.dart';
+import '../../screens/work_steps/work_steps_employee_screen.dart';
+import '../../screens/work_steps/work_steps_hub_screen.dart';
 import '../../screens/uniform/uniform_monitor_screen.dart';
 import '../../screens/more/help_support_screen.dart';
 import '../../screens/more/assistant_settings_screen.dart';
@@ -686,6 +688,20 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     builder: (context, state) => _guardPath(
                       state,
                       const DriveMonitorHubScreen()),
+                  ),
+                  GoRoute(
+                    path: 'skritt-pa-jobb',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const WorkStepsEmployeeScreen()),
+                  ),
+                  GoRoute(
+                    path: 'skritt-pa-jobb-hub',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const WorkStepsHubScreen()),
                   ),
                 ],
               ),

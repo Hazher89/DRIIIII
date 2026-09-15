@@ -4,6 +4,11 @@
 <dict>
 	<key>aps-environment</key>
 	<string>production</string>
+	<key>com.apple.developer.healthkit</key>
+	<true/>
+	<!-- MAVI Work Steps only: read steps after employee opt-in. No write. No tracking. -->
+	<key>com.apple.developer.healthkit.access</key>
+	<array/>
 	<key>com.apple.developer.applesignin</key>
 	<array>
 		<string>Default</string>

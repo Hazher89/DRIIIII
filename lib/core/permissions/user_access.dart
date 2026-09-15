@@ -120,6 +120,19 @@ class UserAccess {
       profile.isSuperAdmin ||
       profile.role == UserRole.admin ||
       can(AccessKeys.driveMonitor);
+  /// Alle MAVI-ansatte kan se egen skritt-side (partnerportal ikke).
+  bool get canWorkSteps =>
+      profile.role != UserRole.samarbeidspartner &&
+      (can(AccessKeys.workSteps) ||
+          profile.isSuperAdmin ||
+          profile.role == UserRole.admin ||
+          profile.role == UserRole.leder ||
+          profile.role == UserRole.ansatt);
+  bool get canWorkStepsHub =>
+      profile.isSuperAdmin ||
+      profile.role == UserRole.admin ||
+      profile.role == UserRole.leder ||
+      can(AccessKeys.workStepsHub);
   bool get canStemplingAdmin => can(AccessKeys.stemplingAdmin);
   bool get canStemplingMobile => can(AccessKeys.stemplingMobile);
   bool get canStemplingSettings => can(AccessKeys.stemplingInnstillinger);

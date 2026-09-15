@@ -175,6 +175,16 @@ class RouteAccessMap {
       legacyAccessKey: AccessKeys.driveMonitor,
       customCheck: (a) => a.canDriveMonitor,
     ),
+    AppPaths.moreWorkSteps: RouteAccessRequirement(
+      areaId: 'more',
+      legacyAccessKey: AccessKeys.workSteps,
+      customCheck: (a) => a.canWorkSteps,
+    ),
+    AppPaths.moreWorkStepsHub: RouteAccessRequirement(
+      areaId: 'more.work_steps_hub',
+      legacyAccessKey: AccessKeys.workStepsHub,
+      customCheck: (a) => a.canWorkStepsHub,
+    ),
     AppPaths.moreHjelp: const RouteAccessRequirement(
       areaId: 'more',
       legacyAccessKey: AccessKeys.more,
