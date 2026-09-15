@@ -35,21 +35,63 @@ class VacationYearMatrix extends StatefulWidget {
 }
 
 class _VacationYearMatrixState extends State<VacationYearMatrix> {
-  static const _nameW = 118.0;
-  static const _sumW = 40.0;
-  static const _cellW = 26.0;
-  static const _monthH = 26.0;
-  static const _weekH = 22.0;
-  static const _rowH = 32.0;
-
   bool _exporting = false;
   bool _tipsOpen = false;
   late VacationYearMatrixModel _model;
+  final _hScroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _rebuild();
+  }
+
+  @override
+  void dispose() {
+    _hScroll.dispose();
+    super.dispose();
+  }
+
+  /// Skalerer matrisen etter tilgjengelig bredde — fyller laptop, scroller på smalt.
+  _MatrixMetrics _metricsFor(double maxWidth) {
+    final width = maxWidth.isFinite && maxWidth > 0 ? maxWidth : 720.0;
+    final nameW = width >= 1200
+        ? 160.0
+        : width >= 900
+            ? 136.0
+            : width >= 600
+                ? 118.0
+                : 96.0;
+    final sumW = width >= 900 ? 48.0 : 40.0;
+    final weeksN = _model.weeks.length.clamp(1, 60);
+    final weeksAvail = (width - nameW - sumW).clamp(120.0, 4000.0);
+    const minCell = 22.0;
+    final fillCell = weeksAvail / weeksN;
+    final needsScroll = fillCell < minCell;
+    final cellW = needsScroll ? minCell : fillCell;
+    final monthH = width >= 900 ? 30.0 : 26.0;
+    final weekH = width >= 900 ? 26.0 : 22.0;
+    final rowH = width >= 1100
+        ? 40.0
+        : width >= 800
+            ? 36.0
+            : 32.0;
+    final weekFont = cellW >= 34 ? 11.0 : cellW >= 28 ? 9.5 : 8.5;
+    final dayFont = cellW >= 34 ? 12.0 : cellW >= 28 ? 10.5 : 9.5;
+    final nameFont = nameW >= 130 ? 13.0 : 11.5;
+    return _MatrixMetrics(
+      nameW: nameW,
+      sumW: sumW,
+      cellW: cellW,
+      weeksW: cellW * weeksN,
+      monthH: monthH,
+      weekH: weekH,
+      rowH: rowH,
+      weekFont: weekFont,
+      dayFont: dayFont,
+      nameFont: nameFont,
+      needsScroll: needsScroll,
+    );
   }
 
   @override
@@ -377,67 +419,95 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
     required Color headerBg,
     required Color nameBg,
   }) {
-    final weeksW = _cellW * _model.weeks.length;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final m = _metricsFor(constraints.maxWidth);
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Sticky name column
-        SizedBox(
-          width: _nameW,
-          child: Column(
-            children: [
-              _cornerCell(
-                'Ansatt',
-                headerBg,
-                border,
-                height: _monthH + _weekH,
-                alignCenter: false,
-                rightBorder: true,
-              ),
-              ..._model.employeeRows.map(
-                (r) => _nameCell(r.name, nameBg, border),
-              ),
-            ],
-          ),
-        ),
-        // Scrollable weeks
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(
-              width: weeksW,
-              child: Column(
-                children: [
-                  _monthRow(headerBg, border),
-                  _weekRow(holidayWeeks, headerBg, border),
-                  ..._model.employeeRows.map(
-                    (r) => _weekCells(r, holidayWeeks, border, isDark),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (m.needsScroll)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                child: Text(
+                  '← Bla sidelengs for hele året →',
+                  textAlign: TextAlign.center,
+                  style: DriftProTheme.caption.copyWith(
+                    fontSize: 11,
+                    color: isDark ? Colors.white54 : Colors.grey.shade600,
                   ),
-                ],
+                ),
               ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: m.nameW,
+                  child: Column(
+                    children: [
+                      _cornerCell(
+                        'Ansatt',
+                        headerBg,
+                        border,
+                        height: m.monthH + m.weekH,
+                        alignCenter: false,
+                        rightBorder: true,
+                      ),
+                      ..._model.employeeRows.map(
+                        (r) => _nameCell(r.name, nameBg, border, m),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Scrollbar(
+                    controller: _hScroll,
+                    thumbVisibility: m.needsScroll,
+                    scrollbarOrientation: ScrollbarOrientation.bottom,
+                    child: SingleChildScrollView(
+                      controller: _hScroll,
+                      scrollDirection: Axis.horizontal,
+                      primary: false,
+                      child: SizedBox(
+                        width: m.weeksW,
+                        child: Column(
+                          children: [
+                            _monthRow(headerBg, border, m),
+                            _weekRow(holidayWeeks, headerBg, border, m),
+                            ..._model.employeeRows.map(
+                              (r) =>
+                                  _weekCells(r, holidayWeeks, border, isDark, m),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: m.sumW,
+                  child: Column(
+                    children: [
+                      _cornerCell(
+                        'Σ',
+                        headerBg,
+                        border,
+                        height: m.monthH + m.weekH,
+                        alignCenter: true,
+                        rightBorder: false,
+                        leftBorder: true,
+                      ),
+                      ..._model.employeeRows.map(
+                        (r) => _sumCell(r, nameBg, border, m),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ),
-        ),
-        // Sticky sum column
-        SizedBox(
-          width: _sumW,
-          child: Column(
-            children: [
-              _cornerCell(
-                'Σ',
-                headerBg,
-                border,
-                height: _monthH + _weekH,
-                alignCenter: true,
-                rightBorder: false,
-                leftBorder: true,
-              ),
-              ..._model.employeeRows.map((r) => _sumCell(r, nameBg, border)),
-            ],
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 
@@ -475,10 +545,15 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
     );
   }
 
-  Widget _nameCell(String name, Color bg, Color border) {
+  Widget _nameCell(
+    String name,
+    Color bg,
+    Color border,
+    _MatrixMetrics m,
+  ) {
     return Container(
       width: double.infinity,
-      height: _rowH,
+      height: m.rowH,
       alignment: Alignment.centerLeft,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
@@ -492,15 +567,20 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
         name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600),
+        style: TextStyle(fontSize: m.nameFont, fontWeight: FontWeight.w600),
       ),
     );
   }
 
-  Widget _sumCell(VacationEmployeeRow row, Color bg, Color border) {
+  Widget _sumCell(
+    VacationEmployeeRow row,
+    Color bg,
+    Color border,
+    _MatrixMetrics m,
+  ) {
     return Container(
       width: double.infinity,
-      height: _rowH,
+      height: m.rowH,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: bg,
@@ -512,7 +592,7 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
       child: Text(
         row.totalWorkDays > 0 ? '${row.totalWorkDays}' : '—',
         style: TextStyle(
-          fontSize: 11.5,
+          fontSize: m.nameFont,
           fontWeight: FontWeight.w800,
           color: row.totalWorkDays > 0
               ? DriftProTheme.primaryGreen
@@ -522,14 +602,14 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
     );
   }
 
-  Widget _monthRow(Color headerBg, Color border) {
+  Widget _monthRow(Color headerBg, Color border, _MatrixMetrics m) {
     return SizedBox(
-      height: _monthH,
+      height: m.monthH,
       child: Row(
-        children: _model.monthSpans.map((m) {
+        children: _model.monthSpans.map((month) {
           return Container(
-            width: _cellW * m.weekCount,
-            height: _monthH,
+            width: m.cellW * month.weekCount,
+            height: m.monthH,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: headerBg,
@@ -539,10 +619,10 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
               ),
             ),
             child: Text(
-              m.label,
+              month.label,
               style: DriftProTheme.caption.copyWith(
                 fontWeight: FontWeight.w800,
-                fontSize: 10.5,
+                fontSize: m.cellW >= 30 ? 12 : 10.5,
               ),
             ),
           );
@@ -551,15 +631,20 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
     );
   }
 
-  Widget _weekRow(Set<int> holidayWeeks, Color headerBg, Color border) {
+  Widget _weekRow(
+    Set<int> holidayWeeks,
+    Color headerBg,
+    Color border,
+    _MatrixMetrics m,
+  ) {
     return SizedBox(
-      height: _weekH,
+      height: m.weekH,
       child: Row(
         children: _model.weeks.map((w) {
           final red = holidayWeeks.contains(w.week);
           return Container(
-            width: _cellW,
-            height: _weekH,
+            width: m.cellW,
+            height: m.weekH,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: red
@@ -573,7 +658,7 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
             child: Text(
               '${w.week}',
               style: TextStyle(
-                fontSize: 8.5,
+                fontSize: m.weekFont,
                 fontWeight: FontWeight.w700,
                 color: red ? Colors.red.shade700 : Colors.grey.shade600,
               ),
@@ -589,9 +674,10 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
     Set<int> holidayWeeks,
     Color border,
     bool isDark,
+    _MatrixMetrics m,
   ) {
     return SizedBox(
-      height: _rowH,
+      height: m.rowH,
       child: Row(
         children: _model.weeks.map((w) {
           final days = row.daysInWeek[w.week] ?? 0;
@@ -607,9 +693,12 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
               ? (days > 0 ? '${row.name}: $days dager i uke ${w.week}' : '')
               : span.tooltip(row.name);
 
+          final padX = (m.cellW * 0.08).clamp(1.5, 4.0);
+          final padY = (m.rowH * 0.14).clamp(3.0, 8.0);
+
           final cell = Container(
-            width: _cellW,
-            height: _rowH,
+            width: m.cellW,
+            height: m.rowH,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: red ? Colors.red.withValues(alpha: 0.035) : null,
@@ -620,8 +709,8 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
             ),
             child: days > 0
                 ? Container(
-                    width: _cellW - 4,
-                    height: _rowH - 10,
+                    width: m.cellW - padX * 2,
+                    height: m.rowH - padY * 2,
                     decoration: BoxDecoration(
                       color: color.withValues(alpha: 0.92),
                       borderRadius: BorderRadius.circular(5),
@@ -629,9 +718,9 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
                     alignment: Alignment.center,
                     child: Text(
                       '$days',
-                      style: const TextStyle(
+                      style: TextStyle(
                         color: Colors.white,
-                        fontSize: 9.5,
+                        fontSize: m.dayFont,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -679,4 +768,32 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
       ],
     );
   }
+}
+
+class _MatrixMetrics {
+  const _MatrixMetrics({
+    required this.nameW,
+    required this.sumW,
+    required this.cellW,
+    required this.weeksW,
+    required this.monthH,
+    required this.weekH,
+    required this.rowH,
+    required this.weekFont,
+    required this.dayFont,
+    required this.nameFont,
+    required this.needsScroll,
+  });
+
+  final double nameW;
+  final double sumW;
+  final double cellW;
+  final double weeksW;
+  final double monthH;
+  final double weekH;
+  final double rowH;
+  final double weekFont;
+  final double dayFont;
+  final double nameFont;
+  final bool needsScroll;
 }

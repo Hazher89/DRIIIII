@@ -168,11 +168,14 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
     final year = widget.month.year;
     final showEmployeePicker = employees.length > 1;
 
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final padH = wide ? 20.0 : 12.0;
+
     return RefreshIndicator(
       onRefresh: widget.onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+        padding: EdgeInsets.fromLTRB(padH, 8, padH, 28),
         children: [
           TeamEqualSegmentBar<_CalKind>(
             value: _kind,
