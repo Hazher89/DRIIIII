@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/services/home_feed_service.dart';
 import '../../core/services/storage/storage_file_actions.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/home_feed_item.dart';
 import '../../models/home_feed_layout_config.dart';
+import '../../screens/chat/widgets/chat_media_viewer.dart';
 import '../platform_media_view.dart';
 
 /// Én forside-rad — brukes i app, web og admin-forhåndsvisning.
@@ -80,7 +80,23 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
 
   Future<void> _openMedia() async {
     if (!widget.interactive || _url == null) return;
-    await launchUrl(Uri.parse(_url!), mode: LaunchMode.externalApplication);
+    final title = widget.item.title.isNotEmpty
+        ? widget.item.title
+        : widget.item.fileName ?? 'Media';
+    switch (widget.item.contentType) {
+      case HomeFeedContentType.image:
+        await ChatMediaViewer.openImage(context, _url!);
+      case HomeFeedContentType.video:
+        await ChatMediaViewer.openVideo(context, _url!);
+      case HomeFeedContentType.document:
+        await StorageFileActions.open(
+          context,
+          storagePath: widget.item.storagePath,
+          title: title,
+        );
+      default:
+        break;
+    }
   }
 
   @override
