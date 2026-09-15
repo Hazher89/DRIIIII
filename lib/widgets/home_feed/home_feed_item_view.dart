@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/services/home_feed_service.dart';
 import '../../core/services/storage/storage_file_actions.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/home_feed_content_config.dart';
 import '../../models/home_feed_item.dart';
 import '../../models/home_feed_layout_config.dart';
 import '../../screens/chat/widgets/chat_media_viewer.dart';
@@ -168,12 +169,40 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
               child: mediaArea,
             ),
             if (textBelow) _buildTextBlock(isDark, overlay: false),
+            if (_contentAttachments.isNotEmpty) _buildAttachmentsStrip(),
           ],
         ),
       ),
     );
 
     return card;
+  }
+
+  List<HomeFeedAttachment> get _contentAttachments =>
+      widget.item.contentConfig.attachments
+          .where((a) => a.storagePath.isNotEmpty)
+          .toList();
+
+  Widget _buildAttachmentsStrip() {
+    final attachments = _contentAttachments;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+      child: SizedBox(
+        height: 72,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: attachments.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            final a = attachments[index];
+            return _AttachmentThumb(
+              attachment: a,
+              interactive: widget.interactive,
+            );
+          },
+        ),
+      ),
+    );
   }
 
   LinearGradient _overlayGradient(HomeFeedLayoutConfig layout) {
@@ -351,5 +380,90 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
       case HomeFeedContentType.carousel:
         return const SizedBox.shrink();
     }
+  }
+}
+
+class _AttachmentThumb extends StatefulWidget {
+  const _AttachmentThumb({
+    required this.attachment,
+    required this.interactive,
+  });
+
+  final HomeFeedAttachment attachment;
+  final bool interactive;
+
+  @override
+  State<_AttachmentThumb> createState() => _AttachmentThumbState();
+}
+
+class _AttachmentThumbState extends State<_AttachmentThumb> {
+  String? _url;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final url = await HomeFeedService.resolveDisplayUrl(
+      widget.attachment.storagePath,
+      mimeType: widget.attachment.mimeType,
+      fileName: widget.attachment.fileName,
+    );
+    if (mounted) setState(() => _url = url);
+  }
+
+  Future<void> _open() async {
+    if (!widget.interactive || _url == null) return;
+    if (widget.attachment.isVideo) {
+      await ChatMediaViewer.openVideo(context, _url!);
+    } else if (widget.attachment.isDocument) {
+      await StorageFileActions.open(
+        context,
+        storagePath: widget.attachment.storagePath,
+        title: widget.attachment.fileName ?? 'Dokument',
+      );
+    } else {
+      await ChatMediaViewer.openImage(context, _url!);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black12,
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: widget.interactive ? _open : null,
+        child: SizedBox(
+          width: 96,
+          height: 72,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (_url != null && widget.attachment.isImage)
+                Image.network(_url!, fit: BoxFit.cover)
+              else
+                Center(
+                  child: Icon(
+                    widget.attachment.isVideo
+                        ? Icons.videocam_outlined
+                        : widget.attachment.isDocument
+                            ? Icons.description_outlined
+                            : Icons.image_outlined,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+                ),
+              if (widget.attachment.isVideo)
+                const Center(
+                  child: Icon(Icons.play_circle_fill, color: Colors.white70),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

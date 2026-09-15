@@ -243,20 +243,36 @@ class _HomeFeedAdminScreenState extends State<HomeFeedAdminScreen> {
   }
 
   Future<void> _openEditor(HomeFeedItem item) async {
-    final ok = await HomeFeedBlockEditor.open(
+    await HomeFeedBlockEditor.open(
       context,
       item: item,
       allItems: _items,
-      onSave: (updated) async {
-        await HomeFeedService.updateItem(updated);
+      onFeedReordered: (ordered) async {
+        setState(() => _items = ordered);
+        await HomeFeedService.reorderItems(ordered);
+      },
+      onSave: (updated, {required bool withNotification}) async {
+        final notified = await HomeFeedService.publishItem(
+          updated,
+          withNotification: withNotification,
+        );
         await _load();
+        if (!mounted) return;
+        final who = updated.audience == HomeFeedAudience.partner
+            ? 'partnere'
+            : 'ansatte';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              withNotification
+                  ? 'Publisert. Varsel sendt til $who'
+                      '${notified > 0 ? ' ($notified enheter)' : ''}.'
+                  : 'Publisert uten varsel.',
+            ),
+          ),
+        );
       },
     );
-    if (ok == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lagret — vises live i app og web.')),
-      );
-    }
   }
 
   Future<void> _duplicateToPartner(HomeFeedItem item) async {

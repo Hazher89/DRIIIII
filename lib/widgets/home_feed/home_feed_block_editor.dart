@@ -1,12 +1,18 @@
+import 'dart:io' show File;
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/services/home_feed_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/home_feed_content_config.dart';
 import '../../models/home_feed_item.dart';
 import '../../models/home_feed_layout_config.dart';
-import 'home_feed_block_view.dart';
 import 'home_feed_color_field.dart';
 import 'home_feed_interactive_preview.dart';
+import 'home_feed_iphone_preview.dart';
 
 /// Samlet studio: mobil-forhåndsvisning + alle tilpasninger på ett sted.
 class HomeFeedBlockEditor extends StatefulWidget {
@@ -15,17 +21,26 @@ class HomeFeedBlockEditor extends StatefulWidget {
     required this.item,
     required this.onSave,
     this.allItems = const [],
+    this.onFeedReordered,
   });
 
   final HomeFeedItem item;
-  final Future<void> Function(HomeFeedItem updated) onSave;
+  final Future<void> Function(
+    HomeFeedItem updated, {
+    required bool withNotification,
+  }) onSave;
   final List<HomeFeedItem> allItems;
+  final Future<void> Function(List<HomeFeedItem> ordered)? onFeedReordered;
 
   static Future<bool?> open(
     BuildContext context, {
     required HomeFeedItem item,
-    required Future<void> Function(HomeFeedItem updated) onSave,
+    required Future<void> Function(
+      HomeFeedItem updated, {
+      required bool withNotification,
+    }) onSave,
     List<HomeFeedItem> allItems = const [],
+    Future<void> Function(List<HomeFeedItem> ordered)? onFeedReordered,
   }) {
     return Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -34,6 +49,7 @@ class HomeFeedBlockEditor extends StatefulWidget {
           item: item,
           onSave: onSave,
           allItems: allItems,
+          onFeedReordered: onFeedReordered,
         ),
       ),
     );
@@ -60,6 +76,8 @@ class _HomeFeedBlockEditorState extends State<HomeFeedBlockEditor> {
   bool _pinned = false;
   bool _saving = false;
   bool _previewAsWeb = false;
+  bool _uploadingAttachment = false;
+  late List<HomeFeedItem> _feedItems;
 
   final Set<String> _expanded = {'innhold', 'tekst'};
 
@@ -75,14 +93,23 @@ class _HomeFeedBlockEditorState extends State<HomeFeedBlockEditor> {
         targetPortals: _portals.toList(),
         priority: _priority,
         pinned: _pinned,
+        isActive: true,
       );
 
   bool get _overlayMode => _layout.textPosition.isOverlay;
+
+  String get _audienceLabel =>
+      widget.item.audience == HomeFeedAudience.partner
+          ? 'partnere'
+          : 'ansatte';
 
   @override
   void initState() {
     super.initState();
     final item = widget.item;
+    _feedItems = List<HomeFeedItem>.from(
+      widget.allItems.isEmpty ? [item] : widget.allItems,
+    );
     _titleCtrl = TextEditingController(text: item.title);
     _captionCtrl = TextEditingController(text: item.caption ?? '');
     _bodyCtrl = TextEditingController(text: item.contentConfig.textBlock.body);
@@ -141,20 +168,74 @@ class _HomeFeedBlockEditorState extends State<HomeFeedBlockEditor> {
     super.dispose();
   }
 
-  Future<void> _save() async {
+  Future<void> _publish() async {
+    final choice = await showModalBottomSheet<bool>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Publiser på forsiden',
+                  style: DriftProTheme.labelLg.copyWith(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Innholdet blir synlig på MAVI-hovedsiden. '
+                  'Velg om $_audienceLabel skal få push-varsel.',
+                  style: DriftProTheme.bodySm.copyWith(color: Colors.grey[700]),
+                ),
+                const SizedBox(height: 20),
+                FilledButton.icon(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  icon: const Icon(Icons.notifications_active_outlined),
+                  label: Text('Publiser med varsel til $_audienceLabel'),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  icon: const Icon(Icons.notifications_off_outlined),
+                  label: const Text('Publiser uten varsel'),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Avbryt'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (choice == null || !mounted) return;
+
     setState(() => _saving = true);
     try {
-      await widget.onSave(_previewItem);
+      await widget.onSave(_previewItem, withNotification: choice);
       if (!mounted) return;
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Kunne ikke lagre: $e')),
+        SnackBar(content: Text('Kunne ikke publisere: $e')),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _reorderFeed(List<HomeFeedItem> ordered) async {
+    setState(() => _feedItems = ordered);
+    await widget.onFeedReordered?.call(ordered);
   }
 
   void _setTextMode({required bool overlay, required bool hidden}) {
@@ -174,34 +255,102 @@ class _HomeFeedBlockEditorState extends State<HomeFeedBlockEditor> {
     });
   }
 
+  Future<void> _addAttachments() async {
+    setState(() => _uploadingAttachment = true);
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        withData: true,
+        allowMultiple: true,
+        type: FileType.custom,
+        allowedExtensions: const [
+          'png',
+          'jpg',
+          'jpeg',
+          'webp',
+          'gif',
+          'mp4',
+          'mov',
+          'webm',
+          'pdf',
+          'doc',
+          'docx',
+          'txt',
+        ],
+      );
+      if (picked == null || picked.files.isEmpty) return;
+
+      final next = List<HomeFeedAttachment>.from(_content.attachments);
+      for (final file in picked.files) {
+        final bytes = file.bytes ??
+            (!kIsWeb && file.path != null
+                ? await File(file.path!).readAsBytes()
+                : null);
+        if (bytes == null || bytes.isEmpty) continue;
+        final type = HomeFeedService.guessContentType(
+          file.name,
+          mime: file.extension,
+        );
+        if (type == null) continue;
+        final path = await HomeFeedService.uploadMedia(
+          audience: widget.item.audience,
+          contentType: type,
+          fileName: file.name,
+          bytes: Uint8List.fromList(bytes),
+        );
+        next.add(
+          HomeFeedAttachment(
+            storagePath: path,
+            fileName: file.name,
+            mimeType: file.extension,
+            contentType: type.dbValue,
+          ),
+        );
+      }
+      if (!mounted) return;
+      setState(() {
+        _content = _content.copyWith(attachments: next);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kunne ikke legge til vedlegg: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingAttachment = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('Rediger ${widget.item.contentType.label.toLowerCase()}'),
         actions: [
-          TextButton(
-            onPressed: _saving ? null : _save,
+          FilledButton(
+            onPressed: _saving ? null : _publish,
             child: _saving
                 ? const SizedBox(
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Text('Lagre'),
+                : const Text('Publiser'),
           ),
+          const SizedBox(width: 12),
         ],
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final wide = constraints.maxWidth >= 920;
-          final preview = _PhoneAppPreview(
-            item: _previewItem,
+          final preview = HomeFeedIphonePreview(
+            editingItem: _previewItem,
+            feedItems: _feedItems,
             layout: _layout,
             asWeb: _previewAsWeb,
             onAsWebChanged: (v) => setState(() => _previewAsWeb = v),
             onLayoutChanged: (layout) => setState(() => _layout = layout),
             onContentChanged: (content) => setState(() => _content = content),
+            onReorder: _reorderFeed,
           );
           final controls = _buildControls();
 
@@ -233,7 +382,7 @@ class _HomeFeedBlockEditorState extends State<HomeFeedBlockEditor> {
           return Column(
             children: [
               SizedBox(
-                height: (constraints.maxHeight * 0.42).clamp(280.0, 420.0),
+                height: (constraints.maxHeight * 0.46).clamp(300.0, 460.0),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     color: Theme.of(context).brightness == Brightness.dark
@@ -477,6 +626,58 @@ class _HomeFeedBlockEditorState extends State<HomeFeedBlockEditor> {
           style: DriftProTheme.labelMd,
         ),
       ],
+      const Divider(height: 28),
+      Text('Vedlegg', style: DriftProTheme.labelLg),
+      const SizedBox(height: 4),
+      Text(
+        'Legg til flere bilder, videoer eller dokumenter som følger med dette innholdet.',
+        style: DriftProTheme.bodySm.copyWith(color: Colors.grey[600]),
+      ),
+      const SizedBox(height: 10),
+      if (_content.attachments.isNotEmpty)
+        ..._content.attachments.asMap().entries.map((entry) {
+          final i = entry.key;
+          final a = entry.value;
+          return ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(
+              a.isVideo
+                  ? Icons.videocam_outlined
+                  : a.isDocument
+                      ? Icons.description_outlined
+                      : Icons.image_outlined,
+              color: DriftProTheme.primaryGreen,
+            ),
+            title: Text(
+              a.fileName ?? a.storagePath.split('/').last,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Text(a.contentType),
+            trailing: IconButton(
+              tooltip: 'Fjern',
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => setState(() {
+                final next = List<HomeFeedAttachment>.from(_content.attachments)
+                  ..removeAt(i);
+                _content = _content.copyWith(attachments: next);
+              }),
+            ),
+          );
+        }),
+      OutlinedButton.icon(
+        onPressed: _uploadingAttachment ? null : _addAttachments,
+        icon: _uploadingAttachment
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.attach_file),
+        label: Text(
+          _uploadingAttachment ? 'Laster opp…' : 'Legg til vedlegg',
+        ),
+      ),
       const Divider(height: 28),
       TextField(
         controller: _badgeCtrl,
@@ -841,306 +1042,4 @@ class _PlacementCard extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Mobilramme som viser innholdet nøyaktig som i appen.
-class _PhoneAppPreview extends StatefulWidget {
-  const _PhoneAppPreview({
-    required this.item,
-    required this.layout,
-    required this.asWeb,
-    required this.onAsWebChanged,
-    required this.onLayoutChanged,
-    required this.onContentChanged,
-  });
-
-  final HomeFeedItem item;
-  final HomeFeedLayoutConfig layout;
-  final bool asWeb;
-  final ValueChanged<bool> onAsWebChanged;
-  final ValueChanged<HomeFeedLayoutConfig> onLayoutChanged;
-  final ValueChanged<HomeFeedContentConfig> onContentChanged;
-
-  @override
-  State<_PhoneAppPreview> createState() => _PhoneAppPreviewState();
-}
-
-class _PhoneAppPreviewState extends State<_PhoneAppPreview> {
-  double? _dragHeight;
-  bool _dragging = false;
-
-  bool get _isSpacer => widget.item.contentType == HomeFeedContentType.spacer;
-
-  double get _minH => _isSpacer ? 8 : 80;
-  double get _maxH => _isSpacer ? 120 : 720;
-
-  double get _baseHeight {
-    if (_isSpacer) {
-      return widget.asWeb
-          ? widget.item.contentConfig.spacer.heightWeb
-          : widget.item.contentConfig.spacer.heightApp;
-    }
-    return widget.layout.resolveHeight(
-      isWeb: widget.asWeb,
-      compactPreview: false,
-    );
-  }
-
-  double get _displayHeight =>
-      (_dragHeight ?? _baseHeight).clamp(_minH, _maxH);
-
-  void _applyHeight(double height) {
-    final clamped = height.clamp(_minH, _maxH);
-    if (_isSpacer) {
-      final spacer = widget.item.contentConfig.spacer;
-      widget.onContentChanged(
-        widget.item.contentConfig.copyWith(
-          spacer: HomeFeedSpacerConfig(
-            heightApp: widget.asWeb ? spacer.heightApp : clamped,
-            heightWeb: widget.asWeb ? clamped : spacer.heightWeb,
-          ),
-        ),
-      );
-      return;
-    }
-    widget.onLayoutChanged(
-      widget.layout.copyWith(
-        customHeightApp:
-            widget.asWeb ? widget.layout.customHeightApp : clamped,
-        customHeightWeb:
-            widget.asWeb ? clamped : widget.layout.customHeightWeb,
-      ),
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant _PhoneAppPreview oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!_dragging &&
-        (oldWidget.layout != widget.layout ||
-            oldWidget.asWeb != widget.asWeb ||
-            oldWidget.item.contentConfig != widget.item.contentConfig)) {
-      _dragHeight = null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final feedBg = isDark ? const Color(0xFF0E1114) : const Color(0xFFF7F8FA);
-
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-          child: Row(
-            children: [
-              Icon(
-                widget.asWeb ? Icons.laptop_mac : Icons.phone_iphone,
-                size: 18,
-                color: DriftProTheme.primaryGreen,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  widget.asWeb
-                      ? 'Web-forhåndsvisning'
-                      : 'Slik ser det ut i appen',
-                  style: DriftProTheme.labelMd.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              SegmentedButton<bool>(
-                style: const ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                segments: const [
-                  ButtonSegment(value: false, label: Text('App')),
-                  ButtonSegment(value: true, label: Text('Web')),
-                ],
-                selected: {widget.asWeb},
-                onSelectionChanged: (s) => widget.onAsWebChanged(s.first),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
-              child: AspectRatio(
-                aspectRatio: widget.asWeb ? 9 / 14 : 9 / 19.5,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    borderRadius: BorderRadius.circular(
-                      widget.asWeb ? 16 : 36,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.25),
-                        blurRadius: 24,
-                        offset: const Offset(0, 10),
-                      ),
-                    ],
-                  ),
-                  padding: EdgeInsets.all(widget.asWeb ? 8 : 10),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(
-                      widget.asWeb ? 10 : 28,
-                    ),
-                    child: ColoredBox(
-                      color: feedBg,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          if (!widget.asWeb) _statusBar(isDark),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-                            child: Text(
-                              'Forside',
-                              style: DriftProTheme.labelLg.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            child: SingleChildScrollView(
-                              padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
-                              child: HomeFeedBlockView(
-                                item: widget.item.copyWith(
-                                  layoutConfig: widget.layout,
-                                ),
-                                previewPlatform: widget.asWeb
-                                    ? HomeFeedPreviewPlatform.web
-                                    : HomeFeedPreviewPlatform.app,
-                                compactPreview: false,
-                                interactive: false,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          child: Column(
-            children: [
-              Text(
-                'Høyde: ${_displayHeight.round()} px'
-                '${_dragging ? ' (dra)' : ''}',
-                style: DriftProTheme.bodySm.copyWith(
-                  color: _dragging
-                      ? DriftProTheme.primaryGreen
-                      : Colors.grey[600],
-                  fontWeight: _dragging ? FontWeight.w700 : FontWeight.normal,
-                ),
-              ),
-              const SizedBox(height: 6),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onVerticalDragUpdate: (d) {
-                  final next = (_displayHeight + d.delta.dy)
-                      .clamp(_minH, _maxH);
-                  setState(() {
-                    _dragging = true;
-                    _dragHeight = next;
-                  });
-                  _applyHeight(next);
-                },
-                onVerticalDragEnd: (_) => setState(() {
-                  _dragging = false;
-                  _dragHeight = null;
-                }),
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.resizeUpDown,
-                  child: Container(
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: DriftProTheme.primaryGreen.withValues(
-                        alpha: _dragging ? 0.2 : 0.1,
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: DriftProTheme.primaryGreen.withValues(
-                          alpha: _dragging ? 0.7 : 0.3,
-                        ),
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.drag_handle_rounded,
-                          color: DriftProTheme.primaryGreen,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          'Dra for høyde',
-                          style: DriftProTheme.bodySm.copyWith(
-                            color: DriftProTheme.primaryGreen,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _statusBar(bool isDark) {
-    return Container(
-      height: 28,
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      color: feedBarColor(isDark),
-      child: Row(
-        children: [
-          Text(
-            '9:41',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: isDark ? Colors.white : Colors.black87,
-            ),
-          ),
-          const Spacer(),
-          Icon(
-            Icons.signal_cellular_alt,
-            size: 12,
-            color: isDark ? Colors.white70 : Colors.black54,
-          ),
-          const SizedBox(width: 4),
-          Icon(
-            Icons.wifi,
-            size: 12,
-            color: isDark ? Colors.white70 : Colors.black54,
-          ),
-          const SizedBox(width: 4),
-          Icon(
-            Icons.battery_full,
-            size: 12,
-            color: isDark ? Colors.white70 : Colors.black54,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color feedBarColor(bool isDark) =>
-      isDark ? const Color(0xFF0E1114) : const Color(0xFFF7F8FA);
 }

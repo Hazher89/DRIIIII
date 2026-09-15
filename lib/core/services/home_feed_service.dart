@@ -354,6 +354,30 @@ class HomeFeedService {
     return HomeFeedItem.fromJson(Map<String, dynamic>.from(res));
   }
 
+  /// Publiserer blokk og sender valgfritt push til ansatte eller partnere.
+  static Future<int> publishItem(
+    HomeFeedItem item, {
+    required bool withNotification,
+  }) async {
+    final published = item.copyWith(isActive: true);
+    final saved = await updateItem(published);
+    if (!withNotification) return 0;
+    try {
+      final res = await _client.rpc(
+        'notify_home_feed_published',
+        params: {
+          'p_item_id': saved.id,
+          'p_with_notification': true,
+        },
+      );
+      if (res is int) return res;
+      if (res is num) return res.toInt();
+      return int.tryParse(res?.toString() ?? '') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   static Future<void> deleteItem(String id) async {
     await _client.from('company_home_feed_items').delete().eq('id', id);
   }

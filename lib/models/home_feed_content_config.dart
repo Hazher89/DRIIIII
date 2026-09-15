@@ -403,6 +403,45 @@ class HomeFeedBadgeConfig {
   }
 }
 
+/// Ekstra bilde/video/dokument knyttet til en forside-blokk.
+class HomeFeedAttachment {
+  const HomeFeedAttachment({
+    required this.storagePath,
+    this.fileName,
+    this.mimeType,
+    this.contentType = 'image',
+  });
+
+  final String storagePath;
+  final String? fileName;
+  final String? mimeType;
+  final String contentType;
+
+  bool get isImage => contentType == 'image';
+  bool get isVideo => contentType == 'video';
+  bool get isDocument => contentType == 'document';
+
+  Map<String, dynamic> toJson() => {
+        'storage_path': storagePath,
+        if (fileName != null) 'file_name': fileName,
+        if (mimeType != null) 'mime_type': mimeType,
+        'content_type': contentType,
+      };
+
+  factory HomeFeedAttachment.fromJson(Map<String, dynamic>? json) {
+    if (json == null) {
+      return const HomeFeedAttachment(storagePath: '');
+    }
+    return HomeFeedAttachment(
+      storagePath: (json['storage_path'] as String?)?.trim() ?? '',
+      fileName: (json['file_name'] as String?)?.trim(),
+      mimeType: (json['mime_type'] as String?)?.trim(),
+      contentType: (json['content_type'] as String?)?.trim().toLowerCase() ??
+          'image',
+    );
+  }
+}
+
 /// Samlet content_json for alle blokktyper.
 class HomeFeedContentConfig {
   const HomeFeedContentConfig({
@@ -412,6 +451,7 @@ class HomeFeedContentConfig {
     this.spacer = const HomeFeedSpacerConfig(),
     this.carousel = const HomeFeedCarouselConfig(),
     this.badge = const HomeFeedBadgeConfig(),
+    this.attachments = const [],
     this.altText,
     this.feedbackEnabled = false,
   });
@@ -422,6 +462,7 @@ class HomeFeedContentConfig {
   final HomeFeedSpacerConfig spacer;
   final HomeFeedCarouselConfig carousel;
   final HomeFeedBadgeConfig badge;
+  final List<HomeFeedAttachment> attachments;
   final String? altText;
   final bool feedbackEnabled;
 
@@ -434,12 +475,26 @@ class HomeFeedContentConfig {
         ...spacer.toJson(),
         ...carousel.toJson(),
         ...badge.toJson(),
+        if (attachments.isNotEmpty)
+          'attachments': attachments.map((a) => a.toJson()).toList(),
         if (altText != null) 'alt_text': altText,
         'feedback_enabled': feedbackEnabled,
       };
 
   factory HomeFeedContentConfig.fromJson(Map<String, dynamic>? json) {
     if (json == null || json.isEmpty) return empty;
+    final rawAtt = json['attachments'];
+    final attachments = <HomeFeedAttachment>[];
+    if (rawAtt is List) {
+      for (final row in rawAtt) {
+        if (row is Map) {
+          final a = HomeFeedAttachment.fromJson(
+            Map<String, dynamic>.from(row),
+          );
+          if (a.storagePath.isNotEmpty) attachments.add(a);
+        }
+      }
+    }
     return HomeFeedContentConfig(
       youtube: HomeFeedYoutubeConfig.fromJson(json),
       link: HomeFeedLinkConfig.fromJson(json),
@@ -447,6 +502,7 @@ class HomeFeedContentConfig {
       spacer: HomeFeedSpacerConfig.fromJson(json),
       carousel: HomeFeedCarouselConfig.fromJson(json),
       badge: HomeFeedBadgeConfig.fromJson(json),
+      attachments: attachments,
       altText: (json['alt_text'] as String?)?.trim(),
       feedbackEnabled: json['feedback_enabled'] == true,
     );
@@ -459,6 +515,7 @@ class HomeFeedContentConfig {
     HomeFeedSpacerConfig? spacer,
     HomeFeedCarouselConfig? carousel,
     HomeFeedBadgeConfig? badge,
+    List<HomeFeedAttachment>? attachments,
     String? altText,
     bool? feedbackEnabled,
   }) {
@@ -469,6 +526,7 @@ class HomeFeedContentConfig {
       spacer: spacer ?? this.spacer,
       carousel: carousel ?? this.carousel,
       badge: badge ?? this.badge,
+      attachments: attachments ?? this.attachments,
       altText: altText ?? this.altText,
       feedbackEnabled: feedbackEnabled ?? this.feedbackEnabled,
     );
