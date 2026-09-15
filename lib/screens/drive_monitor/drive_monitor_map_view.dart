@@ -61,14 +61,21 @@ class DriveMonitorMapView extends StatefulWidget {
     }
   }
 
+  static double? toCoord(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
   static List<Map<String, dynamic>> cleanSamples(
-    List<Map<String, dynamic>> raw,
-  ) {
+    List<Map<String, dynamic>> raw, {
+    int maxPoints = 500,
+  }) {
     final parsed =
         <({DateTime t, double lat, double lng, Map<String, dynamic> row})>[];
     for (final s in raw) {
-      final lat = (s['lat'] as num?)?.toDouble();
-      final lng = (s['lng'] as num?)?.toDouble();
+      final lat = toCoord(s['lat']);
+      final lng = toCoord(s['lng']);
       if (lat == null || lng == null) continue;
       if (lat.abs() < 0.01 && lng.abs() < 0.01) continue;
       final t = DateTime.tryParse('${s['recorded_at']}') ??
@@ -85,8 +92,8 @@ class DriveMonitorMapView extends StatefulWidget {
         continue;
       }
       final prev = out.last;
-      final plat = (prev['lat'] as num).toDouble();
-      final plng = (prev['lng'] as num).toDouble();
+      final plat = toCoord(prev['lat']) ?? p.lat;
+      final plng = toCoord(prev['lng']) ?? p.lng;
       final d = dist.as(
         LengthUnit.Meter,
         LatLng(plat, plng),
@@ -103,7 +110,14 @@ class DriveMonitorMapView extends StatefulWidget {
       }
       out.add(p.row);
     }
-    return out;
+    if (out.length <= maxPoints) return out;
+    final stepped = <Map<String, dynamic>>[out.first];
+    final step = (out.length - 1) / (maxPoints - 1);
+    for (var i = 1; i < maxPoints - 1; i++) {
+      stepped.add(out[(i * step).round().clamp(0, out.length - 1)]);
+    }
+    stepped.add(out.last);
+    return stepped;
   }
 
   @override
@@ -131,12 +145,14 @@ class _DriveMonitorMapViewState extends State<DriveMonitorMapView> {
 
   Future<void> unawaitedMatch() async {
     final cleaned = DriveMonitorMapView.cleanSamples(widget.samples);
-    final gps = [
+    final gps = <LatLng>[
       for (final s in cleaned)
-        LatLng(
-          (s['lat'] as num).toDouble(),
-          (s['lng'] as num).toDouble(),
-        ),
+        if (DriveMonitorMapView.toCoord(s['lat']) != null &&
+            DriveMonitorMapView.toCoord(s['lng']) != null)
+          LatLng(
+            DriveMonitorMapView.toCoord(s['lat'])!,
+            DriveMonitorMapView.toCoord(s['lng'])!,
+          ),
     ];
     if (gps.length < 2) {
       if (mounted) {
@@ -163,12 +179,14 @@ class _DriveMonitorMapViewState extends State<DriveMonitorMapView> {
   @override
   Widget build(BuildContext context) {
     final cleaned = DriveMonitorMapView.cleanSamples(widget.samples);
-    final gpsPoints = [
+    final gpsPoints = <LatLng>[
       for (final s in cleaned)
-        LatLng(
-          (s['lat'] as num).toDouble(),
-          (s['lng'] as num).toDouble(),
-        ),
+        if (DriveMonitorMapView.toCoord(s['lat']) != null &&
+            DriveMonitorMapView.toCoord(s['lng']) != null)
+          LatLng(
+            DriveMonitorMapView.toCoord(s['lat'])!,
+            DriveMonitorMapView.toCoord(s['lng'])!,
+          ),
     ];
     final road = _road.isNotEmpty ? _road : gpsPoints;
 
@@ -195,11 +213,20 @@ class _DriveMonitorMapViewState extends State<DriveMonitorMapView> {
 
     final markers = <Marker>[];
 
-    // Hastighetsprikker på faktiske GPS-punkter.
-    for (final s in cleaned) {
-      final lat = (s['lat'] as num).toDouble();
-      final lng = (s['lng'] as num).toDouble();
-      final speed = (s['speed_kmh'] as num?)?.toDouble() ?? 0;
+    // Hastighetsprikker (nedsamplet) — for mange markører fryser web.
+    final dotSamples = cleaned.length <= 220
+        ? cleaned
+        : [
+            cleaned.first,
+            for (var i = 1; i < 218; i++)
+              cleaned[((i / 219) * (cleaned.length - 1)).round()],
+            cleaned.last,
+          ];
+    for (final s in dotSamples) {
+      final lat = DriveMonitorMapView.toCoord(s['lat']);
+      final lng = DriveMonitorMapView.toCoord(s['lng']);
+      if (lat == null || lng == null) continue;
+      final speed = DriveMonitorMapView.toCoord(s['speed_kmh']) ?? 0;
       final color = DriveMonitorMapView.speedColor(speed);
       markers.add(
         Marker(
@@ -225,9 +252,9 @@ class _DriveMonitorMapViewState extends State<DriveMonitorMapView> {
 
     // Hendelser nøyaktig der de skjedde.
     final df = DateFormat('HH:mm:ss');
-    for (final e in widget.events) {
-      final lat = (e['lat'] as num?)?.toDouble();
-      final lng = (e['lng'] as num?)?.toDouble();
+    for (final e in widget.events.take(80)) {
+      final lat = DriveMonitorMapView.toCoord(e['lat']);
+      final lng = DriveMonitorMapView.toCoord(e['lng']);
       if (lat == null || lng == null) continue;
       final type = '${e['event_type'] ?? ''}';
       final sev = '${e['severity'] ?? 'info'}';
@@ -404,17 +431,18 @@ class _DriveMonitorMapViewState extends State<DriveMonitorMapView> {
   }
 
   double _nearestSpeed(LatLng p, List<Map<String, dynamic>> samples) {
-    if (samples.isEmpty) return 0;
+    if (samples.isEmpty) return 0.0;
     final dist = const Distance();
     var best = double.infinity;
     var speed = 0.0;
     for (final s in samples) {
-      final lat = (s['lat'] as num).toDouble();
-      final lng = (s['lng'] as num).toDouble();
+      final lat = DriveMonitorMapView.toCoord(s['lat']);
+      final lng = DriveMonitorMapView.toCoord(s['lng']);
+      if (lat == null || lng == null) continue;
       final d = dist.as(LengthUnit.Meter, p, LatLng(lat, lng));
       if (d < best) {
         best = d;
-        speed = (s['speed_kmh'] as num?)?.toDouble() ?? 0;
+        speed = DriveMonitorMapView.toCoord(s['speed_kmh']) ?? 0;
       }
     }
     return speed;

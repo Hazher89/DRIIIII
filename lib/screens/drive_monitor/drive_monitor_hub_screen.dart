@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/services/drive_monitor/drive_monitor_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -37,9 +38,16 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
   String? _selectedSessionId;
   bool _mapLoading = false;
   bool _archiveLoaded = false;
+  bool _liveRefreshing = false;
+  DateTime? _lastLiveAt;
+
+  RealtimeChannel? _liveChannel;
+  Timer? _livePoll;
+  Timer? _liveDebounce;
 
   final _df = DateFormat('dd.MM.yyyy HH:mm');
   final _day = DateFormat('dd.MM.yyyy');
+  final _clock = DateFormat('HH:mm:ss');
 
   @override
   void initState() {
@@ -47,6 +55,16 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
     _tabs = TabController(length: 4, vsync: this);
     _tabs.addListener(() {
       if (_tabs.indexIsChanging) return;
+      if (_tabs.index == 0) {
+        _startLiveWatch();
+        unawaited(_softRefreshLive());
+      } else if (_tabs.index == 1 && _isSameDay(_archiveDate, DateTime.now())) {
+        // Dagens arkiv skal også oppdateres live mens Android synker.
+        _startLiveWatch();
+        unawaited(_softRefreshLive());
+      } else {
+        _stopLivePoll();
+      }
       if (_tabs.index == 1 && !_archiveLoaded) {
         _archiveLoaded = true;
         unawaited(_loadArchiveMap());
@@ -57,8 +75,97 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
 
   @override
   void dispose() {
+    _stopLiveWatch();
     _tabs.dispose();
     super.dispose();
+  }
+
+  void _startLiveWatch() {
+    final cid = _profile?.companyId;
+    if (cid == null) return;
+    _stopLivePoll();
+    _livePoll = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted) return;
+      final liveTab = _tabs.index == 0;
+      final archiveToday =
+          _tabs.index == 1 && _isSameDay(_archiveDate, DateTime.now());
+      if (!liveTab && !archiveToday) return;
+      unawaited(_softRefreshLive());
+    });
+    _subscribeRealtime(cid);
+  }
+
+  void _stopLivePoll() {
+    _livePoll?.cancel();
+    _livePoll = null;
+  }
+
+  void _stopLiveWatch() {
+    _stopLivePoll();
+    _liveDebounce?.cancel();
+    final ch = _liveChannel;
+    _liveChannel = null;
+    if (ch != null) {
+      unawaited(SupabaseService.client.removeChannel(ch));
+    }
+  }
+
+  void _subscribeRealtime(String companyId) {
+    _liveDebounce?.cancel();
+    final old = _liveChannel;
+    _liveChannel = null;
+    if (old != null) {
+      unawaited(SupabaseService.client.removeChannel(old));
+    }
+
+    void bump() {
+      _liveDebounce?.cancel();
+      _liveDebounce = Timer(const Duration(milliseconds: 400), () {
+        if (!mounted) return;
+        final liveTab = _tabs.index == 0;
+        final archiveToday =
+            _tabs.index == 1 && _isSameDay(_archiveDate, DateTime.now());
+        if (!liveTab && !archiveToday) return;
+        unawaited(_softRefreshLive());
+      });
+    }
+
+    _liveChannel = SupabaseService.client
+        .channel('drive_monitor_live_$companyId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'drive_monitor_samples',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'company_id',
+            value: companyId,
+          ),
+          callback: (_) => bump(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'drive_monitor_events',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'company_id',
+            value: companyId,
+          ),
+          callback: (_) => bump(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'drive_monitor_sessions',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'company_id',
+            value: companyId,
+          ),
+          callback: (_) => bump(),
+        )
+        .subscribe();
   }
 
   Future<void> _bootstrap() async {
@@ -83,6 +190,7 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
         _loading = false;
       });
       await _loadLiveMap();
+      _startLiveWatch();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -91,6 +199,40 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
       });
     }
   }
+
+  /// Live-oppdatering uten fullskjerm-spinner.
+  Future<void> _softRefreshLive() async {
+    final cid = _profile?.companyId;
+    if (cid == null || _liveRefreshing) return;
+    setState(() => _liveRefreshing = true);
+    try {
+      final sessions = await DriveMonitorService.listSessions(companyId: cid);
+      final events = await DriveMonitorService.listEvents(companyId: cid);
+      final onArchiveToday = _tabs.index == 1 && _isSameDay(_archiveDate, DateTime.now());
+      final payload = onArchiveToday
+          ? await DriveMonitorService.fetchMapPayload(
+              companyId: cid,
+              archiveDate: _archiveDate,
+              sessionId: _selectedSessionId,
+            )
+          : await DriveMonitorService.fetchMapPayload(companyId: cid);
+      if (!mounted) return;
+      setState(() {
+        _sessions = sessions;
+        _events = events;
+        _mapSessions = _asMapList(payload['sessions']);
+        _mapSamples = _asMapList(payload['samples']);
+        _mapEvents = _asMapList(payload['events']);
+        _lastLiveAt = DateTime.now();
+        _liveRefreshing = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _liveRefreshing = false);
+    }
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   Future<void> _loadLiveMap() async {
     final cid = _profile?.companyId;
@@ -105,6 +247,7 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
         _mapEvents = _asMapList(payload['events']);
         _selectedSessionId = null;
         _mapLoading = false;
+        _lastLiveAt = DateTime.now();
       });
     } catch (e) {
       if (!mounted) return;
@@ -524,13 +667,13 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: _diagCard(
-                title: 'Ingen sporingsdata i databasen',
+                title: 'Ingen sporingsdata for din bedrift',
                 body:
-                    'Huben er tom fordi det ikke finnes noen sesjoner ennå.\n\n'
-                    '1) På Android: logg inn med sporingsenhet (kiosk) — ikke vanlig bruker.\n'
-                    '2) Oppdater appen (nyeste APK) — eldre versjon krevde MAVI-bil og startet ofte ikke.\n'
-                    '3) Gi «Alltid»-posisjonstilgang og hold skjermen/kiosk åpen under kjøring.\n'
-                    '4) Se «Sesjoner»-fanen etter tur — der dukker km/score opp først.',
+                    'Huben er tom fordi det ikke finnes sesjoner for bedriften du er innlogget på'
+                    '${_profile?.companyId != null ? ' (${_profile!.companyId})' : ''}.\n\n'
+                    '1) Logg inn som MAVI-admin (samme bedrift som sporingsenheten).\n'
+                    '2) På Android: kiosk-bruker (f.eks. 010101) med «Alltid»-posisjon.\n'
+                    '3) Live-fanen oppdateres hvert 3. sekund når enheten synker.',
                 color: Colors.orange.shade800,
               ),
             )
@@ -550,11 +693,18 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              'Live = aktive + i dag. ${_sessions.length} sesjoner totalt · '
+              'Live oppdateres kontinuerlig'
+              '${_lastLiveAt != null ? ' · sist ${_clock.format(_lastLiveAt!)}' : ''}'
+              ' · ${_mapSamples.length} punkter · ${_sessions.length} sesjoner totalt · '
               '${todaySessions.length} i dag · ${_devices.length} enheter.',
               style: DriftProTheme.bodySm.copyWith(color: Colors.grey[700]),
             ),
           ),
+          if (_liveRefreshing)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 6, 16, 0),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
           const SizedBox(height: 8),
           if (_mapLoading)
             const Padding(

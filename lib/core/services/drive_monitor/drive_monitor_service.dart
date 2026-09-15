@@ -212,6 +212,17 @@ class DriveMonitorService {
     String? sessionId,
     DateTime? archiveDate,
   }) async {
+    // Direkte lesing er mer pålitelig for store GPS-sett (RPC/jsonb kan feile stille).
+    final direct = await _fetchMapPayloadDirect(
+      companyId: companyId,
+      sessionId: sessionId,
+      archiveDate: archiveDate,
+    );
+    final directSamples = direct['samples'];
+    if (directSamples is List && directSamples.isNotEmpty) {
+      return direct;
+    }
+
     final params = <String, dynamic>{
       'p_company_id': companyId,
       if (sessionId != null) 'p_session_id': sessionId,
@@ -221,14 +232,13 @@ class DriveMonitorService {
     };
     try {
       final res = await _db.rpc('get_drive_monitor_map_payload', params: params);
-      if (res is Map) {
-        final map = Map<String, dynamic>.from(res);
+      final map = _coerceRpcMap(res);
+      if (map != null) {
         final samples = map['samples'];
-        // Fallback hvis live RPC er gammel og returnerer tomt for i dag.
         if (sessionId == null &&
             archiveDate == null &&
             (samples is! List || samples.isEmpty)) {
-          final today = await fetchMapPayload(
+          final today = await _fetchMapPayloadDirect(
             companyId: companyId,
             archiveDate: DateTime.now(),
           );
@@ -236,16 +246,23 @@ class DriveMonitorService {
             return today;
           }
         }
-        return map;
+        if (samples is List && samples.isNotEmpty) return map;
       }
     } catch (_) {
-      // RPC mangler / feilet — fall tilbake til direkte lesing.
+      // behold direct (tom eller delvis)
     }
-    return _fetchMapPayloadDirect(
-      companyId: companyId,
-      sessionId: sessionId,
-      archiveDate: archiveDate,
-    );
+    return direct;
+  }
+
+  static Map<String, dynamic>? _coerceRpcMap(dynamic res) {
+    if (res is Map) return Map<String, dynamic>.from(res);
+    if (res is String && res.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(res);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return null;
   }
 
   static Future<Map<String, dynamic>> _fetchMapPayloadDirect({
@@ -300,11 +317,23 @@ class DriveMonitorService {
       }).toList();
     }
 
+    // Live uten dato: inkluder alltid aktive, også hvis archive-filter glemte dem.
+    if (archiveDate == null && sessionId == null) {
+      final all = await listSessions(companyId: companyId, limit: 200);
+      final merged = <String, Map<String, dynamic>>{
+        for (final s in sessions) '${s['id']}': s,
+      };
+      for (final s in all) {
+        if (s['status'] == 'active') merged['${s['id']}'] = s;
+      }
+      sessions = merged.values.toList();
+    }
+
     final ids = sessions.map((s) => '${s['id']}').toList();
     var samples = <Map<String, dynamic>>[];
     var events = <Map<String, dynamic>>[];
     for (final id in ids.take(20)) {
-      samples.addAll(await listSamples(sessionId: id, limit: 5000));
+      samples.addAll(await listSamples(sessionId: id, limit: 8000));
       events.addAll(
         await listEvents(companyId: companyId, sessionId: id, limit: 1000),
       );
@@ -488,22 +517,38 @@ class DriveMonitorTracker {
       samplingPeriod: SensorInterval.uiInterval,
     ).listen(_onGyro, onError: (_) {});
 
-    _flushTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      unawaited(_flush());
+    _flushTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      // Alltid prøv sync — også etter midlertidig feil / nettbrudd.
+      unawaited(_flush(force: true));
     });
 
     _netSub = Connectivity().onConnectivityChanged.listen((results) {
       final up = results.any((r) => r != ConnectivityResult.none);
-      _online = up;
-      if (up) unawaited(_flush());
+      if (up) {
+        _online = true;
+        unawaited(_flush(force: true));
+      } else {
+        _online = false;
+        _emit();
+      }
     });
+
+    // Sjekk nettstatus ved start.
+    unawaited(() async {
+      try {
+        final r = await Connectivity().checkConnectivity();
+        _online = r.any((x) => x != ConnectivityResult.none);
+      } catch (_) {
+        _online = true;
+      }
+      await _flush(force: true);
+    }());
 
     _dayTimer = Timer.periodic(const Duration(minutes: 15), (_) {
       unawaited(DriveMonitorService.archivePreviousDays(companyId));
     });
 
     _emit();
-    unawaited(_flush());
   }
 
   LocationSettings _androidLocationSettings() {
@@ -702,7 +747,10 @@ class DriveMonitorTracker {
       'altitude_m': pos.altitude.isFinite ? pos.altitude : null,
       'turn_rate_deg_s': turnRate,
     });
-    if (_sampleBuf.length >= 6) unawaited(_flush());
+    // Synk fortløpende — ikke vent på batch.
+    if (_sampleBuf.length >= 2 || _online) {
+      unawaited(_flush(force: true));
+    }
     _emit();
   }
 
@@ -821,6 +869,9 @@ class DriveMonitorTracker {
         _emit();
         return;
       }
+
+      // Prøv alltid når force=true (timer / reconnect), selv om forrige sync feilet.
+      _online = true;
 
       if (samples.isEmpty && events.isEmpty) {
         if (_online) {
