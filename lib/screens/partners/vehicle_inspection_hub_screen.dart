@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/layout/web_layout.dart';
 import '../../core/routing/app_paths.dart';
+import '../../core/services/partner/partner_search.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -126,16 +127,18 @@ class _VehicleInspectionHubScreenState extends State<VehicleInspectionHubScreen>
           if (ins.hasDeviation) return false;
       }
       if (q.isEmpty) return true;
-      final hay = [
-        ins.partnerDisplayName,
-        ins.vehicleLabel,
-        ins.registrationNumber ?? '',
-        ins.unitCode ?? '',
-        ins.inspectedByName ?? '',
-        ins.deviationNotes ?? '',
-        ins.stampLine,
-      ].join(' ').toLowerCase();
-      return hay.contains(q);
+      return PartnerSearch.textMatches(
+        query: q,
+        fields: [
+          ins.partnerDisplayName,
+          ins.vehicleLabel,
+          ins.registrationNumber,
+          ins.inspectedByName,
+          ins.deviationNotes,
+          ins.stampLine,
+        ],
+        unitCodes: [ins.unitCode],
+      );
     }).toList();
   }
 

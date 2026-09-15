@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/services/partner/fleet_analytics_service.dart';
 import '../../core/services/partner/fleet_mavi_day_sync.dart';
+import '../../core/services/partner/partner_search.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -204,9 +205,15 @@ class _FleetRouteDashboardScreenState extends State<FleetRouteDashboardScreen>
       final st = _snapByVehicle[r.vehicle.id]?.status ?? 'ledig';
       if (want != null && st != want) return false;
       if (q.isEmpty) return true;
-      return r.vehicle.unitCode.toLowerCase().contains(q) ||
-          r.partner.name.toLowerCase().contains(q) ||
-          r.vehicle.registrationNumber.toLowerCase().contains(q);
+      return PartnerSearch.textMatches(
+        query: q,
+        fields: [
+          r.partner.name,
+          r.vehicle.registrationNumber,
+          r.vehicle.driverName,
+        ],
+        unitCodes: [r.vehicle.unitCode],
+      );
     }).toList();
 
     rows.sort((a, b) {

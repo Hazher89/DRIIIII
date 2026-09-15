@@ -479,6 +479,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
             embedded: true,
             nestedScroll: nestedScroll,
             partners: _partners,
+            vehiclesByPartner: _vehiclesByPartner,
             profile: _profile,
             canManageNotifications: _profile?.access.canNotifications == true,
           ),

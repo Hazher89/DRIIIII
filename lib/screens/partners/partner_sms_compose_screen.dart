@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/services/partner/mavi_unit_codes.dart';
+import '../../core/services/partner/partner_search.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/partner/route_pdf_text_service.dart';
 import '../../core/services/sms/sms_phone_utils.dart';
@@ -283,14 +284,14 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
   }
 
   List<PartnerSmsContact> get _filtered {
-    final q = _searchCtrl.text.trim().toLowerCase();
+    final q = _searchCtrl.text.trim();
     if (q.isEmpty) return _contacts;
     return _contacts.where((c) {
-      return (c.maviCode ?? '').toLowerCase().contains(q) ||
-          MaviUnitCodes.compactLabel(c.maviCode ?? '').toLowerCase().contains(q) ||
-          c.label.toLowerCase().contains(q) ||
-          c.phone.contains(q) ||
-          c.partnerName.toLowerCase().contains(q);
+      return PartnerSearch.textMatches(
+        query: q,
+        fields: [c.label, c.phone, c.partnerName],
+        unitCodes: [c.maviCode],
+      );
     }).toList();
   }
 

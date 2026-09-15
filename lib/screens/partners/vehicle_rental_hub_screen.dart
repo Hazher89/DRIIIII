@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/services/partner/mavi_unit_codes.dart';
 import '../../core/constants/vehicle_rental_agreement.dart';
+import '../../core/services/partner/partner_search.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/partner/vehicle_rental_service.dart';
 import '../../core/services/supabase_service.dart';
@@ -986,10 +987,15 @@ class _VehicleRentalHubScreenState extends State<VehicleRentalHubScreen> {
     final q = _search.text.trim().toLowerCase();
     if (q.isEmpty) return _rentals;
     return _rentals.where((r) {
-      return (r.registrationNumber ?? '').toLowerCase().contains(q) ||
-          (r.unitCode ?? '').toLowerCase().contains(q) ||
-          (r.borrowerPartnerName ?? '').toLowerCase().contains(q) ||
-          (r.lenderPartnerName ?? '').toLowerCase().contains(q);
+      return PartnerSearch.textMatches(
+        query: q,
+        fields: [
+          (r.registrationNumber ?? ''),
+          (r.borrowerPartnerName ?? ''),
+          (r.lenderPartnerName ?? ''),
+        ],
+        unitCodes: [r.unitCode],
+      );
     }).toList();
   }
 

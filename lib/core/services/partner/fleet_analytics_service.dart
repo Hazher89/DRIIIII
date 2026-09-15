@@ -2,6 +2,7 @@ import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/mavi_driver_day_assignment.dart';
 import '../../../models/partner/partner_links.dart';
 import 'mavi_unit_codes.dart';
+import 'partner_search.dart';
 import 'partner_service.dart';
 import 'route_pdf_text_service.dart';
 
@@ -286,9 +287,11 @@ class FleetDriverStatsBundle {
         return false;
       }
       if (q.isNotEmpty &&
-          !d.displayMavi.toLowerCase().contains(q) &&
-          !(d.displayDriver?.toLowerCase().contains(q) ?? false) &&
-          !d.partnerName.toLowerCase().contains(q)) {
+          !PartnerSearch.textMatches(
+            query: maviQuery,
+            fields: [d.displayDriver, d.partnerName],
+            unitCodes: [d.displayMavi],
+          )) {
         return false;
       }
       switch (filter) {

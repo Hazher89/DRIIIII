@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/layout/web_layout.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
+import '../../models/partner/partner_links.dart';
 import '../../models/user_profile.dart';
 import '../profile/widgets/notification_settings_split_tab.dart';
 import 'widgets/partner_deduction_archive_panel.dart';
@@ -14,6 +15,7 @@ class PartnerDeductionHubScreen extends StatefulWidget {
     super.key,
     required this.partners,
     required this.profile,
+    this.vehiclesByPartner = const {},
     this.embedded = true,
     this.nestedScroll = false,
     this.canManageNotifications = false,
@@ -21,6 +23,7 @@ class PartnerDeductionHubScreen extends StatefulWidget {
 
   final List<Partner> partners;
   final UserProfile? profile;
+  final Map<String, List<PartnerVehicle>> vehiclesByPartner;
   final bool embedded;
   final bool nestedScroll;
   final bool canManageNotifications;
@@ -54,6 +57,7 @@ class _PartnerDeductionHubScreenState extends State<PartnerDeductionHubScreen> {
           ),
           body: PartnerDeductionComposePanel(
             partners: widget.partners,
+            vehiclesByPartner: widget.vehiclesByPartner,
             onCreated: () {
               Navigator.pop(ctx);
               setState(() => _refreshKey++);

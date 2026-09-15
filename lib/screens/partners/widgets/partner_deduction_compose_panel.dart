@@ -6,11 +6,14 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/partner_deduction_logiqrma_descriptions.dart';
 import '../../../core/constants/partner_deduction_templates.dart';
 import '../../../core/layout/web_layout.dart';
+import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_deduction_service.dart';
+import '../../../core/services/partner/partner_search.dart';
 import '../../../core/services/storage/company_file_storage.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
+import '../../../models/partner/partner_links.dart';
 import '../../../core/theme/driftpro_theme_context.dart';
 import 'partner_deduction_hub_ui.dart';
 import 'partner_deduction_logiqrma_panel.dart';
@@ -21,11 +24,13 @@ class PartnerDeductionComposePanel extends StatefulWidget {
     super.key,
     required this.partners,
     required this.onCreated,
+    this.vehiclesByPartner = const {},
     this.initialPartner,
     this.nestedInParentScroll = false,
   });
 
   final List<Partner> partners;
+  final Map<String, List<PartnerVehicle>> vehiclesByPartner;
   final VoidCallback onCreated;
   final Partner? initialPartner;
   final bool nestedInParentScroll;
@@ -85,13 +90,40 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
     }
   }
 
-  List<Partner> get _activePartners {
-    final q = _partnerQuery.trim().toLowerCase();
-    return widget.partners
-        .where((p) => p.isActive)
-        .where((p) => q.isEmpty || p.name.toLowerCase().contains(q))
-        .toList()
-      ..sort((a, b) => a.name.compareTo(b.name));
+  List<PartnerSearchHit> get _partnerHits {
+    return PartnerSearch.filterAll(
+      partners: widget.partners,
+      vehiclesByPartnerId: widget.vehiclesByPartner,
+      query: _partnerQuery,
+      activeOnly: true,
+    )..sort((a, b) => a.partner.name.compareTo(b.partner.name));
+  }
+
+  PartnerSearchHit? _hitFor(Partner p) {
+    for (final h in _partnerHits) {
+      if (h.partner.id == p.id) return h;
+    }
+    return null;
+  }
+
+  void _onPartnerQueryChanged(String v) {
+    setState(() {
+      _partnerQuery = v;
+      final hits = PartnerSearch.filterAll(
+        partners: widget.partners,
+        vehiclesByPartnerId: widget.vehiclesByPartner,
+        query: v,
+        activeOnly: true,
+      );
+      // Én MAVI-treff → velg bedriften automatisk.
+      if (PartnerSearch.looksLikeMaviQuery(v) && hits.length == 1) {
+        _partner = hits.first.partner;
+      } else if (_partner != null &&
+          hits.isNotEmpty &&
+          !hits.any((h) => h.partner.id == _partner!.id)) {
+        // Valgt partner er ikke lenger i treff — behold valget, brukeren ser det under.
+      }
+    });
   }
 
   List<String> get _categories {
@@ -461,6 +493,7 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
   }
 
   Widget _buildPartnerCard(BuildContext context) {
+    final hits = _partnerHits;
     return _ComposeSection(
       icon: Icons.apartment_rounded,
       title: 'Bedrift',
@@ -471,12 +504,15 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
           if (widget.initialPartner == null) ...[
             TextField(
               decoration: InputDecoration(
-                hintText: 'Søk etter navn …',
+                hintText: 'Søk navn, MAVI (M0068), reg.nr …',
                 prefixIcon: const Icon(Icons.search_rounded),
                 isDense: true,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                helperText: hits.isEmpty && _partnerQuery.trim().isNotEmpty
+                    ? 'Ingen treff — prøv MAVI-kode eller bedriftsnavn'
+                    : null,
               ),
-              onChanged: (v) => setState(() => _partnerQuery = v),
+              onChanged: _onPartnerQueryChanged,
             ),
             const SizedBox(height: 10),
           ],
@@ -484,7 +520,10 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
             _selectedPartnerTile(context, _partner!)
           else
             DropdownButtonFormField<Partner>(
-              value: _partner,
+              value: _partner != null &&
+                      hits.any((h) => h.partner.id == _partner!.id)
+                  ? _partner
+                  : null,
               isExpanded: true,
               decoration: InputDecoration(
                 labelText: 'Velg samarbeidspartner',
@@ -492,8 +531,16 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
                 prefixIcon: const Icon(Icons.business_outlined),
               ),
               items: [
-                for (final p in _activePartners)
-                  DropdownMenuItem(value: p, child: Text(p.name, overflow: TextOverflow.ellipsis)),
+                for (final h in hits)
+                  DropdownMenuItem(
+                    value: h.partner,
+                    child: Text(
+                      h.primaryMatchHint.isNotEmpty
+                          ? '${h.partner.name} · ${h.primaryMatchHint}'
+                          : h.partner.name,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
               ],
               onChanged: (v) => setState(() => _partner = v),
             ),
@@ -507,6 +554,13 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
   }
 
   Widget _selectedPartnerTile(BuildContext context, Partner p) {
+    final hit = _hitFor(p);
+    final maviHint = hit?.matchedVehicles
+            .where((v) => !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
+            .map((v) => MaviUnitCodes.compactLabel(v.unitCode))
+            .take(4)
+            .join(' · ') ??
+        '';
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -518,6 +572,19 @@ class _PartnerDeductionComposePanelState extends State<PartnerDeductionComposePa
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(p.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+          if (hit?.primaryMatchHint.isNotEmpty == true || maviHint.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              hit?.primaryMatchHint.isNotEmpty == true
+                  ? hit!.primaryMatchHint
+                  : 'MAVI $maviHint',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: PartnerDeductionHubUi.accent,
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           Wrap(
             spacing: 6,

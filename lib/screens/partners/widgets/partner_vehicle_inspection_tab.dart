@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/services/hms/hms_pdf_export_service.dart';
 import '../../../core/services/native_permissions_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/partner_search.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/vehicle_inspection_pdf.dart';
 import '../../../core/services/supabase_service.dart';
@@ -305,17 +306,19 @@ class _PartnerVehicleInspectionTabState extends State<PartnerVehicleInspectionTa
   }
 
   List<PartnerVehicleInspection> _filteredArchive() {
-    final q = _archiveSearch.text.trim().toLowerCase();
+    final q = _archiveSearch.text.trim();
     if (q.isEmpty) return List<PartnerVehicleInspection>.from(_archive);
     return _archive.where((a) {
-      final hay = [
-        a.registrationNumber ?? '',
-        a.unitCode ?? '',
-        a.inspectedByName ?? '',
-        a.deviationNotes ?? '',
-        a.stampLine,
-      ].join(' ').toLowerCase();
-      return hay.contains(q);
+      return PartnerSearch.textMatches(
+        query: q,
+        fields: [
+          a.registrationNumber,
+          a.inspectedByName,
+          a.deviationNotes,
+          a.stampLine,
+        ],
+        unitCodes: [a.unitCode],
+      );
     }).toList();
   }
 

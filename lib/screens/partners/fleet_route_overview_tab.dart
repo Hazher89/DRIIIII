@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../../core/services/partner/fleet_route_overview_service.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
+import '../../core/services/partner/partner_search.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -217,10 +218,15 @@ class _FleetRouteOverviewTabState extends State<FleetRouteOverviewTab> {
     final q = _search.text.trim().toLowerCase();
     if (q.isNotEmpty) {
       list = list.where((r) {
-        final code = MaviUnitCodes.compactLabel(r.vehicle.unitCode).toLowerCase();
-        final name = r.partner.name.toLowerCase();
-        final driver = (r.vehicle.driverName ?? '').toLowerCase();
-        return code.contains(q) || name.contains(q) || driver.contains(q);
+        return PartnerSearch.textMatches(
+          query: q,
+          fields: [
+            r.partner.name,
+            r.vehicle.driverName,
+            r.vehicle.registrationNumber,
+          ],
+          unitCodes: [r.vehicle.unitCode],
+        );
       }).toList();
     }
 

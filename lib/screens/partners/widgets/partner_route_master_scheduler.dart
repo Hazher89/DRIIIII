@@ -13,6 +13,7 @@ import '../../../core/config/driftpro_client.dart';
 import '../../../core/layout/mobile_layout.dart';
 import '../../../core/constants/route_dispatch_status.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/partner_search.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/sap_route_inbox_live.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
@@ -212,9 +213,11 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     var list = q.isEmpty
         ? List<FleetPartnerVehicleRow>.from(_maviFleet)
         : _maviFleet
-            .where((r) =>
-                r.vehicle.unitCode.toLowerCase().contains(q) ||
-                r.partner.name.toLowerCase().contains(q))
+            .where((r) => PartnerSearch.textMatches(
+                  query: q,
+                  fields: [r.partner.name, r.vehicle.registrationNumber],
+                  unitCodes: [r.vehicle.unitCode],
+                ))
             .toList();
 
     int waitingCount(String vehicleId) => _shares
