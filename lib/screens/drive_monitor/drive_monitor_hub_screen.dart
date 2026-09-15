@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 import 'drive_monitor_map_view.dart';
+import 'drive_monitor_stats_panel.dart';
 
 /// Avansert hub for leiebil-sporing — live kart, arkiv per dato, enheter.
 class DriveMonitorHubScreen extends StatefulWidget {
@@ -524,6 +525,13 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
                 height: MediaQuery.sizeOf(context).height * 0.48,
               ),
             ),
+          if (_profile?.companyId != null)
+            DriveMonitorStatsPanel(
+              companyId: _profile!.companyId!,
+              devices: _devices,
+              sessions: _sessions,
+              events: _events,
+            ),
           const SizedBox(height: 12),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -603,6 +611,13 @@ class _DriveMonitorHubScreenState extends State<DriveMonitorHubScreen>
             samples: _mapSamples,
             events: _mapEvents,
             height: MediaQuery.sizeOf(context).height * 0.42,
+          ),
+        if (_profile?.companyId != null)
+          DriveMonitorStatsPanel(
+            companyId: _profile!.companyId!,
+            devices: _devices,
+            sessions: _sessions,
+            events: _events,
           ),
         const SizedBox(height: 12),
         Text(

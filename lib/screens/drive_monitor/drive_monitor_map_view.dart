@@ -3,10 +3,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/services/drive_monitor/drive_monitor_road_match.dart';
 import '../../core/theme/app_theme.dart';
 
-/// Kart for kjøresporing: faktisk GPS-rute (punkt for punkt), hastighet og hendelser.
-class DriveMonitorMapView extends StatelessWidget {
+/// Kart: vei-følgende rute, hastighetsprikker og hendelser der de skjedde.
+class DriveMonitorMapView extends StatefulWidget {
   const DriveMonitorMapView({
     super.key,
     required this.samples,
@@ -60,22 +61,24 @@ class DriveMonitorMapView extends StatelessWidget {
     }
   }
 
-  /// Rydd GPS: sorter, dropp glitches, behold lat/lng.
   static List<Map<String, dynamic>> cleanSamples(
     List<Map<String, dynamic>> raw,
   ) {
-    final parsed = <({DateTime t, double lat, double lng, Map<String, dynamic> row})>[];
+    final parsed =
+        <({DateTime t, double lat, double lng, Map<String, dynamic> row})>[];
     for (final s in raw) {
       final lat = (s['lat'] as num?)?.toDouble();
       final lng = (s['lng'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
       if (lat.abs() < 0.01 && lng.abs() < 0.01) continue;
-      final t = DateTime.tryParse('${s['recorded_at']}') ?? DateTime.fromMillisecondsSinceEpoch(0);
+      final t = DateTime.tryParse('${s['recorded_at']}') ??
+          DateTime.fromMillisecondsSinceEpoch(0);
       parsed.add((t: t, lat: lat, lng: lng, row: s));
     }
     parsed.sort((a, b) => a.t.compareTo(b.t));
 
     final out = <Map<String, dynamic>>[];
+    final dist = const Distance();
     for (final p in parsed) {
       if (out.isEmpty) {
         out.add(p.row);
@@ -84,7 +87,7 @@ class DriveMonitorMapView extends StatelessWidget {
       final prev = out.last;
       final plat = (prev['lat'] as num).toDouble();
       final plng = (prev['lng'] as num).toDouble();
-      final d = const Distance().as(
+      final d = dist.as(
         LengthUnit.Meter,
         LatLng(plat, plng),
         LatLng(p.lat, p.lng),
@@ -92,13 +95,9 @@ class DriveMonitorMapView extends StatelessWidget {
       final prevT = DateTime.tryParse('${prev['recorded_at']}');
       if (prevT != null) {
         final dt = p.t.difference(prevT).inMilliseconds / 1000.0;
-        if (dt > 0 && dt < 10 && d / dt > 60) {
-          // Urealistisk hopp — hopp over.
-          continue;
-        }
+        if (dt > 0 && dt < 10 && d / dt > 60) continue;
       }
       if (d < 0.4) {
-        // Nesten samme punkt — behold siste for hastighetsfarge.
         out[out.length - 1] = p.row;
         continue;
       }
@@ -108,65 +107,125 @@ class DriveMonitorMapView extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final cleaned = cleanSamples(samples);
-    final points = <LatLng>[];
-    for (final s in cleaned) {
-      points.add(
+  State<DriveMonitorMapView> createState() => _DriveMonitorMapViewState();
+}
+
+class _DriveMonitorMapViewState extends State<DriveMonitorMapView> {
+  List<LatLng> _road = [];
+  bool _matching = false;
+  String? _matchNote;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaitedMatch();
+  }
+
+  @override
+  void didUpdateWidget(covariant DriveMonitorMapView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.samples != widget.samples) {
+      unawaitedMatch();
+    }
+  }
+
+  Future<void> unawaitedMatch() async {
+    final cleaned = DriveMonitorMapView.cleanSamples(widget.samples);
+    final gps = [
+      for (final s in cleaned)
         LatLng(
           (s['lat'] as num).toDouble(),
           (s['lng'] as num).toDouble(),
         ),
-      );
+    ];
+    if (gps.length < 2) {
+      if (mounted) {
+        setState(() {
+          _road = gps;
+          _matching = false;
+          _matchNote = gps.isEmpty ? null : 'Trenger flere GPS-punkter for veirute';
+        });
+      }
+      return;
     }
+    setState(() => _matching = true);
+    final road = await DriveMonitorRoadMatch.matchToRoads(gps);
+    if (!mounted) return;
+    setState(() {
+      _road = road.isNotEmpty ? road : gps;
+      _matching = false;
+      _matchNote = road.length > gps.length
+          ? 'Rute lagt langs veinett (${road.length} punkter)'
+          : null;
+    });
+  }
 
-    final center = points.isNotEmpty
-        ? points[points.length ~/ 2]
+  @override
+  Widget build(BuildContext context) {
+    final cleaned = DriveMonitorMapView.cleanSamples(widget.samples);
+    final gpsPoints = [
+      for (final s in cleaned)
+        LatLng(
+          (s['lat'] as num).toDouble(),
+          (s['lng'] as num).toDouble(),
+        ),
+    ];
+    final road = _road.isNotEmpty ? _road : gpsPoints;
+
+    final center = road.isNotEmpty
+        ? road[road.length ~/ 2]
         : const LatLng(59.91, 10.75);
 
+    // Hastighetsfarget linje langs veinettet — interpoler fart fra nærmeste GPS.
     final polylines = <Polyline>[];
-    for (var i = 1; i < cleaned.length; i++) {
-      final a = cleaned[i - 1];
-      final b = cleaned[i];
-      final speed = (b['speed_kmh'] as num?)?.toDouble() ?? 0;
+    for (var i = 1; i < road.length; i++) {
+      final mid = LatLng(
+        (road[i - 1].latitude + road[i].latitude) / 2,
+        (road[i - 1].longitude + road[i].longitude) / 2,
+      );
+      final speed = _nearestSpeed(mid, cleaned);
       polylines.add(
         Polyline(
-          points: [
-            LatLng((a['lat'] as num).toDouble(), (a['lng'] as num).toDouble()),
-            LatLng((b['lat'] as num).toDouble(), (b['lng'] as num).toDouble()),
-          ],
-          color: speedColor(speed),
-          strokeWidth: points.length < 40 ? 5.5 : 4.0,
+          points: [road[i - 1], road[i]],
+          color: DriveMonitorMapView.speedColor(speed),
+          strokeWidth: 5,
         ),
       );
     }
 
     final markers = <Marker>[];
-    final df = DateFormat('HH:mm:ss');
 
-    // Breadcrumb for tette ruter — viser at det er ekte GPS-punkter, ikke strek.
-    if (points.length >= 2 && points.length <= 600) {
-      final step = points.length > 200 ? 3 : 1;
-      for (var i = 0; i < points.length; i += step) {
-        if (i == 0 || i == points.length - 1) continue;
-        markers.add(
-          Marker(
-            point: points[i],
-            width: 8,
-            height: 8,
+    // Hastighetsprikker på faktiske GPS-punkter.
+    for (final s in cleaned) {
+      final lat = (s['lat'] as num).toDouble();
+      final lng = (s['lng'] as num).toDouble();
+      final speed = (s['speed_kmh'] as num?)?.toDouble() ?? 0;
+      final color = DriveMonitorMapView.speedColor(speed);
+      markers.add(
+        Marker(
+          point: LatLng(lat, lng),
+          width: 16,
+          height: 16,
+          child: Tooltip(
+            message: '${speed.toStringAsFixed(0)} km/t',
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: color,
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF2563EB), width: 1.5),
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: const [
+                  BoxShadow(blurRadius: 3, color: Colors.black26),
+                ],
               ),
             ),
           ),
-        );
-      }
+        ),
+      );
     }
 
-    for (final e in events) {
+    // Hendelser nøyaktig der de skjedde.
+    final df = DateFormat('HH:mm:ss');
+    for (final e in widget.events) {
       final lat = (e['lat'] as num?)?.toDouble();
       final lng = (e['lng'] as num?)?.toDouble();
       if (lat == null || lng == null) continue;
@@ -177,17 +236,17 @@ class DriveMonitorMapView extends StatelessWidget {
       markers.add(
         Marker(
           point: LatLng(lat, lng),
-          width: 36,
-          height: 36,
+          width: 34,
+          height: 34,
           child: Tooltip(
             message: [
-              eventLabel(type),
+              DriveMonitorMapView.eventLabel(type),
               if (t != null) df.format(t),
               if (speed != null) '${speed.toStringAsFixed(0)} km/t',
             ].join(' · '),
             child: Container(
               decoration: BoxDecoration(
-                color: eventColor(type, sev),
+                color: DriveMonitorMapView.eventColor(type, sev),
                 shape: BoxShape.circle,
                 border: Border.all(color: Colors.white, width: 2),
                 boxShadow: const [
@@ -199,9 +258,13 @@ class DriveMonitorMapView extends StatelessWidget {
                     ? Icons.u_turn_left
                     : type == 'hard_brake'
                         ? Icons.warning_amber
-                        : type == 'speeding'
-                            ? Icons.speed
-                            : Icons.circle,
+                        : type == 'hard_accel'
+                            ? Icons.trending_up
+                            : type == 'speeding'
+                                ? Icons.speed
+                                : type == 'idle'
+                                    ? Icons.pause
+                                    : Icons.circle,
                 size: 16,
                 color: Colors.white,
               ),
@@ -211,10 +274,10 @@ class DriveMonitorMapView extends StatelessWidget {
       );
     }
 
-    if (points.isNotEmpty) {
+    if (road.isNotEmpty) {
       markers.add(
         Marker(
-          point: points.first,
+          point: road.first,
           width: 28,
           height: 28,
           child: const Icon(Icons.flag, color: Color(0xFF15803D), size: 26),
@@ -222,28 +285,31 @@ class DriveMonitorMapView extends StatelessWidget {
       );
       markers.add(
         Marker(
-          point: points.last,
-          width: 44,
-          height: 44,
-          child: const Icon(Icons.navigation, color: Color(0xFF15803D), size: 36),
+          point: road.last,
+          width: 40,
+          height: 40,
+          child:
+              const Icon(Icons.navigation, color: Color(0xFF15803D), size: 34),
         ),
       );
     }
 
     LatLngBounds? bounds;
-    if (points.length >= 2) {
-      bounds = LatLngBounds.fromPoints(points);
+    if (road.length >= 2) {
+      bounds = LatLngBounds.fromPoints(road);
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
-          height: height,
+          height: widget.height,
           child: ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: points.isEmpty
-                ? Container(
+            child: Stack(
+              children: [
+                if (road.isEmpty)
+                  Container(
                     color: Colors.grey.shade100,
                     alignment: Alignment.center,
                     child: const Text(
@@ -251,15 +317,16 @@ class DriveMonitorMapView extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                   )
-                : FlutterMap(
+                else
+                  FlutterMap(
                     options: MapOptions(
                       initialCenter: center,
-                      initialZoom: points.length > 2 ? 14 : 12,
+                      initialZoom: 13,
                       initialCameraFit: bounds == null
                           ? null
                           : CameraFit.bounds(
                               bounds: bounds,
-                              padding: const EdgeInsets.all(36),
+                              padding: const EdgeInsets.all(40),
                               maxZoom: 17,
                             ),
                     ),
@@ -274,15 +341,48 @@ class DriveMonitorMapView extends StatelessWidget {
                       if (markers.isNotEmpty) MarkerLayer(markers: markers),
                     ],
                   ),
+                if (_matching)
+                  const Positioned(
+                    top: 10,
+                    right: 10,
+                    child: Card(
+                      child: Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                            SizedBox(width: 8),
+                            Text('Legger rute på veinett…',
+                                style: TextStyle(fontSize: 11)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 8),
+        if (_matchNote != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              _matchNote!,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+            ),
+          ),
         if (cleaned.length <= 3 && cleaned.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: Text(
-              'Kun ${cleaned.length} GPS-punkter — ruten blir mer nøyaktig med flere punkter '
-              '(oppdater appen på enheten og kjør med sporing aktiv).',
+              'Få GPS-punkter (${cleaned.length}) — linjen følger veinettet mellom dem. '
+              'Flere punkter fra enheten gir mer detalj.',
               style: TextStyle(fontSize: 11, color: Colors.orange.shade900),
             ),
           ),
@@ -295,10 +395,29 @@ class DriveMonitorMapView extends StatelessWidget {
             _legend(const Color(0xFFD97706), 'Høy'),
             _legend(const Color(0xFFDC2626), 'Rå / fart'),
             _legend(const Color(0xFF7C3AED), 'Rå sving'),
+            _legend(const Color(0xFFEA580C), 'Rå brems'),
+            _legend(const Color(0xFFCA8A04), 'Rå aksel.'),
           ],
         ),
       ],
     );
+  }
+
+  double _nearestSpeed(LatLng p, List<Map<String, dynamic>> samples) {
+    if (samples.isEmpty) return 0;
+    final dist = const Distance();
+    var best = double.infinity;
+    var speed = 0.0;
+    for (final s in samples) {
+      final lat = (s['lat'] as num).toDouble();
+      final lng = (s['lng'] as num).toDouble();
+      final d = dist.as(LengthUnit.Meter, p, LatLng(lat, lng));
+      if (d < best) {
+        best = d;
+        speed = (s['speed_kmh'] as num?)?.toDouble() ?? 0;
+      }
+    }
+    return speed;
   }
 
   Widget _legend(Color c, String label) {
