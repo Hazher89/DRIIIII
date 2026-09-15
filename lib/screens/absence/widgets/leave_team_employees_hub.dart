@@ -11,8 +11,8 @@ import '../../../models/user_profile.dart';
 import '../../../widgets/common/team_equal_controls.dart';
 import '../../../widgets/common/team_kpi_strip.dart';
 import '../../departments/widgets/department_member_leave_card.dart';
+import 'leave_dual_calendar_tab.dart';
 import 'leave_employee_stats_panel.dart';
-import 'team_leave_calendar.dart';
 
 enum _EmployeeFilter { alle, borte, ventende, kommende }
 
@@ -199,7 +199,7 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
               ),
               TeamEqualSegmentItem(
                 value: _TeamLeaveView.kalender,
-                label: 'Kalender',
+                label: 'Ferie & fravær',
                 icon: Icons.calendar_month_outlined,
               ),
             ],
@@ -207,30 +207,19 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
         ),
         Expanded(
           child: _view == _TeamLeaveView.kalender
-              ? RefreshIndicator(
+              ? LeaveDualCalendarTab(
+                  isManager: true,
+                  month: widget.month,
+                  scopedAbsences: widget.scopedAbsences,
+                  teamProfiles: _employees,
+                  teamQuotas: widget.teamQuotas,
+                  companySettings: widget.companySettings,
+                  selectedYear: widget.selectedYear,
+                  departmentNames: widget.departmentNames,
+                  profile: widget.leaderProfile,
+                  colorForType: widget.colorForType,
+                  onMonthChanged: widget.onMonthChanged,
                   onRefresh: widget.onRefresh,
-                  child: ListView(
-                    padding: EdgeInsets.fromLTRB(
-                      16,
-                      8,
-                      16,
-                      DriftProClient.isMobile ? 88 : 24,
-                    ),
-                    children: [
-                      TeamLeaveCalendar(
-                        month: widget.month,
-                        absences: widget.scopedAbsences
-                            .where((a) =>
-                                a.status == AbsenceStatus.godkjent ||
-                                a.status == AbsenceStatus.ventende)
-                            .toList(),
-                        employees: _employees,
-                        colorForType: widget.colorForType,
-                        includePending: true,
-                        onMonthChanged: widget.onMonthChanged,
-                      ),
-                    ],
-                  ),
                 )
               : RefreshIndicator(
                   onRefresh: widget.onRefresh,
