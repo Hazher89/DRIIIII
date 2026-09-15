@@ -33,17 +33,73 @@ class VacationSpan {
   final List<int> weekNumbers;
   final List<String> absenceIds;
 
-  String get periodLabel =>
-      '${DateFormat('dd.MM').format(start)}–${DateFormat('dd.MM.yyyy').format(end)}';
+  static const _monthsNb = [
+    '',
+    'januar',
+    'februar',
+    'mars',
+    'april',
+    'mai',
+    'juni',
+    'juli',
+    'august',
+    'september',
+    'oktober',
+    'november',
+    'desember',
+  ];
+
+  /// Lesbar periode, f.eks. "15.–22. september 2026".
+  String get periodLabel {
+    if (start.year == end.year &&
+        start.month == end.month &&
+        start.day == end.day) {
+      return '${start.day}. ${_monthsNb[start.month]} ${start.year}';
+    }
+    if (start.year == end.year && start.month == end.month) {
+      return '${start.day}.–${end.day}. ${_monthsNb[start.month]} ${start.year}';
+    }
+    if (start.year == end.year) {
+      return '${start.day}. ${_monthsNb[start.month]} – '
+          '${end.day}. ${_monthsNb[end.month]} ${start.year}';
+    }
+    return '${DateFormat('dd.MM.yyyy').format(start)} – '
+        '${DateFormat('dd.MM.yyyy').format(end)}';
+  }
+
+  /// Kort periode for tette tabeller: "15.09 – 22.09.2026".
+  String get periodLabelShort {
+    if (start.year == end.year &&
+        start.month == end.month &&
+        start.day == end.day) {
+      return DateFormat('dd.MM.yyyy').format(start);
+    }
+    if (start.year == end.year) {
+      return '${DateFormat('dd.MM').format(start)} – '
+          '${DateFormat('dd.MM.yyyy').format(end)}';
+    }
+    return '${DateFormat('dd.MM.yyyy').format(start)} – '
+        '${DateFormat('dd.MM.yyyy').format(end)}';
+  }
+
+  String get daysLabel =>
+      workDays == 1 ? '1 virkedag' : '$workDays virkedager';
 
   String get statusLabel => status.label;
 
-  String get weekLabel =>
-      weekNumbers.isEmpty ? '' : 'U${weekNumbers.join(', U')}';
+  String get weekLabel {
+    if (weekNumbers.isEmpty) return '';
+    if (weekNumbers.length == 1) return 'Uke ${weekNumbers.first}';
+    final first = weekNumbers.first;
+    final last = weekNumbers.last;
+    final consecutive = last - first == weekNumbers.length - 1;
+    if (consecutive) return 'Uke $first–$last';
+    return 'Uke ${weekNumbers.join(', ')}';
+  }
 
   String tooltip(String employeeName) {
     final pending = status == AbsenceStatus.ventende ? ' (ventende)' : '';
-    return '$employeeName · $workDays virkedager$pending\n$periodLabel';
+    return '$employeeName · $daysLabel$pending\n$periodLabel\n$weekLabel';
   }
 }
 

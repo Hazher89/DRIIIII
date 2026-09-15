@@ -218,8 +218,10 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
                   departmentNames: widget.departmentNames,
                   profile: widget.leaderProfile,
                   colorForType: widget.colorForType,
+                  iconForType: widget.iconForType,
                   onMonthChanged: widget.onMonthChanged,
                   onRefresh: widget.onRefresh,
+                  onAbsenceTap: widget.onAbsenceTap,
                 )
               : RefreshIndicator(
                   onRefresh: widget.onRefresh,

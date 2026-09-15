@@ -67,10 +67,17 @@ class _AbsenceDetailSheetState extends State<_AbsenceDetailSheet> {
   bool get _isOwner => _absence.userId == widget.profile.id;
   bool get _isPending => _absence.status == AbsenceStatus.ventende;
   bool get _canManage =>
-      !_isOwner &&
-      (widget.profile.isAdmin ||
-          widget.profile.isLeader ||
-          widget.profile.access.canApproveLeave);
+      widget.profile.isAdmin ||
+      widget.profile.isLeader ||
+      widget.profile.access.canApproveLeave;
+  bool get _canDecide =>
+      _isPending && _canManage && (!_isOwner || widget.profile.isAdmin);
+  bool get _canEditOrDelete =>
+      (_isPending && _isOwner) ||
+      (_isPending && _canManage) ||
+      (_canManage &&
+          widget.profile.isAdmin &&
+          _absence.status == AbsenceStatus.godkjent);
 
   Future<void> _edit() async {
     final ok = await Navigator.push<bool>(
@@ -265,10 +272,12 @@ class _AbsenceDetailSheetState extends State<_AbsenceDetailSheet> {
               const SizedBox(height: 4),
               Text(a.decisionComment!, style: DriftProTheme.bodySm),
             ],
-            if (_isPending && _isOwner) ...[
+            if (_isPending && (_isOwner || _canManage)) ...[
               const SizedBox(height: 8),
               Text(
-                'Du kan endre eller slette søknaden så lenge den venter på behandling.',
+                _canDecide
+                    ? 'Godkjenn eller avvis — ansatt får e-post og push. Du kan også endre eller slette.'
+                    : 'Du kan endre eller slette søknaden så lenge den venter på behandling.',
                 style: DriftProTheme.caption,
               ),
             ],
@@ -278,47 +287,59 @@ class _AbsenceDetailSheetState extends State<_AbsenceDetailSheet> {
                 padding: EdgeInsets.all(12),
                 child: CircularProgressIndicator(),
               ))
-            else if (_isPending && _isOwner) ...[
-              FilledButton.icon(
-                onPressed: _edit,
-                icon: const Icon(Icons.edit_outlined),
-                label: const Text('Endre søknad'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: DriftProTheme.primaryGreen,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+            else ...[
+              if (_canDecide) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _decide(AbsenceStatus.avvist),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: DriftProTheme.error,
+                        ),
+                        child: const Text('Avvis'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => _decide(AbsenceStatus.godkjent),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: DriftProTheme.success,
+                        ),
+                        child: const Text('Godkjenn'),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: _delete,
-                icon: const Icon(Icons.delete_outline, color: DriftProTheme.error),
-                label: const Text('Slett søknad', style: TextStyle(color: DriftProTheme.error)),
-              ),
-            ] else if (_isPending && _canManage) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _decide(AbsenceStatus.avvist),
-                      style: OutlinedButton.styleFrom(foregroundColor: DriftProTheme.error),
-                      child: const Text('Avvis'),
-                    ),
+                const SizedBox(height: 10),
+              ],
+              if (_canEditOrDelete) ...[
+                FilledButton.icon(
+                  onPressed: _edit,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: Text(_isOwner ? 'Endre søknad' : 'Endre'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DriftProTheme.primaryGreen,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => _decide(AbsenceStatus.godkjent),
-                      style: FilledButton.styleFrom(backgroundColor: DriftProTheme.success),
-                      child: const Text('Godkjenn'),
-                    ),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: _delete,
+                  icon: const Icon(Icons.delete_outline, color: DriftProTheme.error),
+                  label: Text(
+                    _isOwner ? 'Slett søknad' : 'Slett',
+                    style: const TextStyle(color: DriftProTheme.error),
                   ),
-                ],
-              ),
-            ] else
-              FilledButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Lukk'),
-              ),
+                ),
+              ],
+              if (!_canDecide && !_canEditOrDelete)
+                FilledButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Lukk'),
+                ),
+            ],
           ],
         ),
       ),

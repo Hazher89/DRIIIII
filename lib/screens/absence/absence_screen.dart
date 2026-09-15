@@ -1333,11 +1333,38 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
                   const Text('Ingen registrert fravær denne dagen.')
                 else
                   ...dayAbsences.map(
-                    (a) => ListTile(
-                      leading: Icon(_iconForType(a.type), color: _colorForType(a.type)),
-                      title: Text(a.userName ?? 'Ansatt'),
-                      subtitle: Text('${a.type.label} · ${_days(a)} dager'),
-                    ),
+                    (a) {
+                      final pending = a.status == AbsenceStatus.ventende;
+                      return ListTile(
+                        leading: Icon(
+                          _iconForType(a.type),
+                          color: pending
+                              ? Colors.orange.shade700
+                              : _colorForType(a.type),
+                        ),
+                        title: Text(a.userName ?? 'Ansatt'),
+                        subtitle: Text(
+                          '${a.type.label} · ${_days(a)} dager · ${a.status.label}',
+                        ),
+                        trailing: pending
+                            ? const Text(
+                                'Behandle',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: DriftProTheme.primaryGreen,
+                                ),
+                              )
+                            : const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _openAbsenceDetail(
+                            a,
+                            _days(a),
+                            managerView: true,
+                          );
+                        },
+                      );
+                    },
                   ),
                 const SizedBox(height: 12),
                 FilledButton.icon(

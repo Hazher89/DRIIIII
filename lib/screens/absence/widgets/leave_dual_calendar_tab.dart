@@ -26,8 +26,10 @@ class LeaveDualCalendarTab extends StatefulWidget {
   final Map<String, String> departmentNames;
   final UserProfile? profile;
   final Color Function(AbsenceType) colorForType;
+  final IconData Function(AbsenceType)? iconForType;
   final ValueChanged<DateTime> onMonthChanged;
   final void Function(DateTime date, List<Absence> dayAbsences)? onDayTap;
+  final void Function(Absence absence)? onAbsenceTap;
   final Future<void> Function() onRefresh;
   final String? initialUserFilter;
 
@@ -45,7 +47,9 @@ class LeaveDualCalendarTab extends StatefulWidget {
     required this.colorForType,
     required this.onMonthChanged,
     required this.onRefresh,
+    this.iconForType,
     this.onDayTap,
+    this.onAbsenceTap,
     this.initialUserFilter,
   });
 
@@ -91,6 +95,63 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
     return _calendarPool.where((a) => types.contains(a.type)).toList();
   }
 
+  void _handleDayTap(DateTime date, List<Absence> dayAbsences) {
+    if (widget.onDayTap != null) {
+      widget.onDayTap!(date, dayAbsences);
+      return;
+    }
+    if (widget.onAbsenceTap == null) return;
+    if (dayAbsences.isEmpty) return;
+    if (dayAbsences.length == 1) {
+      widget.onAbsenceTap!(dayAbsences.first);
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                '${date.day}.${date.month.toString().padLeft(2, '0')}.${date.year}',
+                style: DriftProTheme.headingSm,
+              ),
+              const SizedBox(height: 8),
+              ...dayAbsences.map((a) {
+                final pending = a.status == AbsenceStatus.ventende;
+                return ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    widget.iconForType?.call(a.type) ?? Icons.event,
+                    color: widget.colorForType(a.type),
+                  ),
+                  title: Text(a.userName ?? 'Ansatt'),
+                  subtitle: Text(
+                    '${a.type.label} · ${a.status.label}'
+                    '${pending && widget.isManager ? ' · trykk for å behandle' : ''}',
+                  ),
+                  trailing: pending && widget.isManager
+                      ? const Icon(Icons.gavel_outlined, size: 18)
+                      : const Icon(Icons.chevron_right),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    widget.onAbsenceTap?.call(a);
+                  },
+                );
+              }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -129,6 +190,18 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
               ),
             ],
           ),
+          if (widget.isManager)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                vacationOnly
+                    ? 'Grønn = godkjent · Oransje = venter. Trykk en celle for å godkjenne, endre eller slette.'
+                    : 'Trykk en dag for å se fravær. Ventende kan godkjennes eller avvises direkte.',
+                style: DriftProTheme.caption.copyWith(
+                  color: isDark ? Colors.white54 : Colors.grey.shade700,
+                ),
+              ),
+            ),
           if (showEmployeePicker) ...[
             const SizedBox(height: 10),
             DropdownButtonFormField<String?>(
@@ -169,6 +242,8 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
               year: year,
               employees: filteredEmployees,
               vacations: filtered,
+              canManage: widget.isManager,
+              onAbsenceTap: widget.onAbsenceTap,
               onYearChanged: (y) {
                 widget.onMonthChanged(DateTime(y, widget.month.month, 1));
               },
@@ -189,7 +264,7 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
             typesFilter: types,
             includePending: true,
             onMonthChanged: widget.onMonthChanged,
-            onDayTap: widget.onDayTap,
+            onDayTap: _handleDayTap,
           ),
           const SizedBox(height: 12),
           LeaveCalendarMonthDigest(

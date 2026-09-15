@@ -18,6 +18,8 @@ class VacationYearMatrix extends StatefulWidget {
     required this.vacations,
     this.companyName,
     this.onYearChanged,
+    this.onAbsenceTap,
+    this.canManage = false,
   });
 
   final int year;
@@ -25,6 +27,8 @@ class VacationYearMatrix extends StatefulWidget {
   final List<Absence> vacations;
   final String? companyName;
   final ValueChanged<int>? onYearChanged;
+  final void Function(Absence absence)? onAbsenceTap;
+  final bool canManage;
 
   @override
   State<VacationYearMatrix> createState() => _VacationYearMatrixState();
@@ -97,6 +101,84 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
+  }
+
+  void _openSpan(VacationEmployeeRow row, VacationSpan span) {
+    final ids = span.absenceIds.toSet();
+    final list = widget.vacations.where((a) => ids.contains(a.id)).toList()
+      ..sort((a, b) => a.startDate.compareTo(b.startDate));
+    if (list.isEmpty) return;
+
+    if (list.length == 1 && widget.onAbsenceTap != null) {
+      widget.onAbsenceTap!(list.first);
+      return;
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(row.name, style: DriftProTheme.headingSm),
+                const SizedBox(height: 2),
+                Text(
+                  '${span.periodLabel} · ${span.daysLabel} · ${span.statusLabel}',
+                  style: DriftProTheme.caption,
+                ),
+                const SizedBox(height: 12),
+                ...list.map((a) {
+                  final pending = a.status == AbsenceStatus.ventende;
+                  final color = pending
+                      ? Colors.orange.shade700
+                      : DriftProTheme.primaryGreen;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: color.withValues(alpha: 0.15),
+                      child: Icon(
+                        pending ? Icons.hourglass_top_rounded : Icons.check,
+                        color: color,
+                        size: 18,
+                      ),
+                    ),
+                    title: Text(a.type.label),
+                    subtitle: Text(
+                      '${a.startDate.day}.${a.startDate.month.toString().padLeft(2, '0')} – '
+                      '${a.endDate.day}.${a.endDate.month.toString().padLeft(2, '0')}.${a.endDate.year}'
+                      ' · ${a.status.label}',
+                    ),
+                    trailing: widget.canManage && pending
+                        ? Text(
+                            'Behandle',
+                            style: TextStyle(
+                              color: DriftProTheme.primaryGreen,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12,
+                            ),
+                          )
+                        : const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      widget.onAbsenceTap?.call(a);
+                    },
+                  );
+                }),
+                if (isDark) const SizedBox(height: 4),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -557,12 +639,24 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
                 : null,
           );
 
-          if (tip.isEmpty) return cell;
-          return Tooltip(
-            message: tip,
-            waitDuration: const Duration(milliseconds: 220),
-            child: cell,
-          );
+          Widget wrapped = tip.isEmpty
+              ? cell
+              : Tooltip(
+                  message: tip,
+                  waitDuration: const Duration(milliseconds: 220),
+                  child: cell,
+                );
+
+          if (days > 0 && span != null && widget.onAbsenceTap != null) {
+            wrapped = MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => _openSpan(row, span),
+                child: wrapped,
+              ),
+            );
+          }
+          return wrapped;
         }).toList(),
       ),
     );
