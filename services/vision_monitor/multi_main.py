@@ -67,6 +67,14 @@ async def _main() -> None:
             local_captures_dir=base_settings.local_captures_dir,
             local_server_port=base_settings.local_server_port,
             snapshot_interval_ms=base_settings.snapshot_interval_ms,
+            clip_seconds_before=base_settings.clip_seconds_before,
+            clip_seconds_after=base_settings.clip_seconds_after,
+            clip_fps=base_settings.clip_fps,
+            sorting_model=base_settings.sorting_model,
+            zone1_name=base_settings.zone1_name,
+            zone1_rect=base_settings.zone1_rect,
+            zone2_name=base_settings.zone2_name,
+            zone2_rect=base_settings.zone2_rect,
         )
         pipelines.append(VisionMonitorPipeline(settings))
 

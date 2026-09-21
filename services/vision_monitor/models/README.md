@@ -4,7 +4,7 @@
 |-----|--------|
 | `yolov8n.pt` | Ultralytics COCO (person) — lastes alltid ned |
 | `yolov8n-pose.pt` | Ultralytics pose — ankler for fot-ROI (gratis) |
-| `yolov8s-worldv2.pt` | YOLO-World — skiller vernesko vs joggesko (gratis) |
+| `yolov8s-worldv2.pt` | YOLO-World — vernesko **og** sortering (eske/emballasje) |
 | `ppe.pt` | Roboflow — valgfritt ekstra PPE-prosjekt |
 
 ## Last ned alt

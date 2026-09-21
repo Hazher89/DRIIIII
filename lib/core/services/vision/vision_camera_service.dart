@@ -138,6 +138,17 @@ class VisionCameraService {
         .toList();
   }
 
+  Future<List<VisionEvent>> fetchSortingEvents({int limit = 80}) async {
+    if (kDebugMode) {
+      final local = await fetchLocalViolations();
+      final sortingLocal =
+          local.where((e) => e.eventType == 'sorting_clip').toList();
+      if (sortingLocal.isNotEmpty) return sortingLocal;
+    }
+    final events = await fetchRecentEvents(limit: limit);
+    return events.where((e) => e.eventType == 'sorting_clip').toList();
+  }
+
   Future<List<VisionCamera>> fetchUniformCameras() async {
     final cameras = await fetchCameras();
     return cameras

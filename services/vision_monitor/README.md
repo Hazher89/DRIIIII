@@ -93,15 +93,53 @@ final rows = await supabase
 
 | `EVENT_TYPE` | Use case |
 |--------------|----------|
+| `sorting_clip` | **Komprimatorer:** brun eske / stor emballasje → 1 min før+etter video |
 | `ppe_violation` | HMS / PPE zone monitoring |
+| `uniform_violation` | MAVI uniform + vernesko |
 | `parking_entry` | Vehicle/person entry tracking |
 | `parking_exit` | Exit events (future zone logic) |
+
+## Komprimator-sortering (klar for kun IP)
+
+Én D-Link/IP-kamera som ser **begge** komprimatorene. Offline YOLO-World finner:
+- brune pappesker
+- stor/full emballasje (vaskemaskin-/kjøleskap-*eske*, ikke selve maskinen)
+
+Ved treff lagres **~1 min før + 1 min etter** som video i `captures/`.
+
+```bash
+cd services/vision_monitor
+./run_sorting.sh
+# Åpne http://127.0.0.1:8090
+```
+
+I `.env` (fra `.env.example`) sett typisk bare:
+
+```bash
+CAMERA_HOST=192.168.x.x
+CAMERA_PASSWORD=...   # hvis kamera krever det
+```
+
+Soner (venstre/høyre) justeres med `ZONE1_RECT` / `ZONE2_RECT` (`x0,y0,x1,y1` 0–1).
+
+### Må jeg være på jobb for å koble kamera?
+
+**mydlink-appen** hjemmefra = sky/relay. Den viser live i appen, men DriftPro-workeren trenger **lokal IP** (`192.168…`) eller RTSP på samme nett.
+
+| Situasjon | Fungerer? |
+|-----------|-----------|
+| PC/Mac **på jobb** samme WiFi/LAN som kamera | Ja — sett `CAMERA_HOST` |
+| Du hjemme, bare mydlink-app | Nei — workeren får ikke lokal IP via appen |
+| VPN inn på jobb-nett hjemmefra | Ofte ja |
+| Worker kjører alltid på en PC på lageret | Beste løsning |
+
+Du trenger altså **ikke** stå foran kameraet for å utvikle koden, men for **live deteksjon** må workeren nå kameraets lokale adresse.
 
 PPE-specific class detection can extend `detector.py` with a custom YOLO weights file.
 
 ## Register as a DriftPro feature
 
-1. Deploy migration `20260630120000_vision_events.sql`
+1. Deploy migration `20260630120000_vision_events.sql` (+ `20260920120000_vision_sorting_clip.sql`)
 2. Run this service on edge hardware (NVR / mini PC) per camera
 3. Add Flutter screen under HMS or admin that lists `vision_events`
 4. Reuse existing Dropbox OAuth (`company_dropbox_connections`) or dedicated vision app token

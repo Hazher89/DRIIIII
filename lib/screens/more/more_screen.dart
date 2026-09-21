@@ -350,6 +350,14 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 'Kamerahendelser',
                 isDark,
               ),
+            if (_profile?.access.canUniformMonitor == true ||
+                _profile?.access.canUniformMonitorAdmin == true)
+              _buildMenuItem(
+                context,
+                Icons.delete_outline,
+                'Søppelhåndtering',
+                isDark,
+              ),
           ],
 
           const SizedBox(height: 20),
@@ -568,6 +576,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Om DriftPro' => AppPaths.moreOm,
             'Kameraer' => AppPaths.moreVisionCameras,
             'Kamerahendelser' => AppPaths.moreVisionEvents,
+            'Søppelhåndtering' => AppPaths.moreWasteSorting,
             'Leiebil-sporing' => AppPaths.moreDriveMonitor,
             'Skritt på jobb' => AppPaths.moreWorkSteps,
             'Mine skritt på jobb' => AppPaths.moreWorkSteps,

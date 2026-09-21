@@ -37,19 +37,40 @@ class DropboxSnapshotStore:
         captured_at: datetime | None = None,
     ) -> DropboxUploadResult:
         """Upload image and create (or reuse) a shareable link."""
+        return self.upload_bytes(
+            data=image_bytes,
+            company_id=company_id,
+            camera_id=camera_id,
+            event_type=event_type,
+            captured_at=captured_at,
+            extension="jpg",
+        )
+
+    def upload_bytes(
+        self,
+        *,
+        data: bytes,
+        company_id: str,
+        camera_id: str,
+        event_type: str,
+        captured_at: datetime | None = None,
+        extension: str = "jpg",
+    ) -> DropboxUploadResult:
+        """Upload arbitrary bytes (jpg/mp4) and return a shareable link."""
         ts = captured_at or datetime.now(timezone.utc)
         stamp = ts.strftime("%Y%m%dT%H%M%S_%f")
         safe_cam = _sanitize_path_segment(camera_id)
         safe_event = _sanitize_path_segment(event_type)
-        filename = f"{stamp}_{safe_cam}_{safe_event}.jpg"
+        ext = extension.lstrip(".") or "bin"
+        filename = f"{stamp}_{safe_cam}_{safe_event}.{ext}"
 
         dropbox_path = (
             f"{self._root}/company_{company_id}/{safe_cam}/{ts:%Y/%m/%d}/{filename}"
         )
 
-        logger.info("Uploading snapshot to Dropbox: %s", dropbox_path)
+        logger.info("Uploading to Dropbox: %s", dropbox_path)
         metadata = self._dbx.files_upload(
-            image_bytes,
+            data,
             dropbox_path,
             mode=WriteMode.add,
             mute=True,

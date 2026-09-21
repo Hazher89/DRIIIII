@@ -35,6 +35,7 @@ import '../../screens/drive_monitor/drive_monitor_hub_screen.dart';
 import '../../screens/work_steps/work_steps_employee_screen.dart';
 import '../../screens/work_steps/work_steps_hub_screen.dart';
 import '../../screens/uniform/uniform_monitor_screen.dart';
+import '../../screens/waste/waste_sorting_screen.dart';
 import '../../screens/more/help_support_screen.dart';
 import '../../screens/more/assistant_settings_screen.dart';
 import '../../screens/more/chat_user_settings_screen.dart';
@@ -710,6 +711,13 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                     builder: (context, state) => _guardPath(
                       state,
                       const VisionEventsScreen()),
+                  ),
+                  GoRoute(
+                    path: 'soppelhandtering',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const WasteSortingScreen()),
                   ),
                   GoRoute(
                     path: 'leiebil-sporing',

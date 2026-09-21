@@ -35,6 +35,7 @@ class VisionCamera {
   String get eventTypeLabel => switch (eventType) {
         'ppe_violation' => 'PPE-brudd',
         'uniform_violation' => 'Uniform-brudd',
+        'sorting_clip' => 'Søppelsortering',
         'parking_entry' => 'Parkering inn',
         'parking_exit' => 'Parkering ut',
         _ => eventType,
@@ -133,6 +134,19 @@ class VisionEvent {
     if (missingLogo && missingShoes) return 'Mangler logo og vernesko';
     if (missingLogo) return 'Mangler MAVI-logo';
     if (missingShoes) return 'Mangler vernesko';
+    if (eventType == 'sorting_clip') {
+      final reason = metadata['reason']?.toString();
+      final zone = metadata['zone']?.toString();
+      if (reason == 'bulky_packaging') {
+        return zone != null
+            ? 'Stor/full emballasje ($zone)'
+            : 'Stor/full emballasje';
+      }
+      if (reason == 'cardboard') {
+        return zone != null ? 'Brun eske ($zone)' : 'Brun eske';
+      }
+      return 'Søppelsortering';
+    }
     return eventType;
   }
 

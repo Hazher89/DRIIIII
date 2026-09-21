@@ -53,6 +53,19 @@ class LocalEventStore:
         self._events_file.write_text(json.dumps(self._events, indent=2))
         return row
 
+    def update_event_metadata(self, event_id: str, metadata: dict[str, Any]) -> None:
+        for row in self._events:
+            if row.get("id") == event_id:
+                meta = dict(row.get("metadata") or {})
+                meta.update(metadata)
+                row["metadata"] = meta
+                if metadata.get("clip_status") == "ready":
+                    row["status"] = "open"
+                if metadata.get("video_path"):
+                    row["video_path"] = metadata["video_path"]
+                break
+        self._events_file.write_text(json.dumps(self._events, indent=2))
+
     @property
     def events(self) -> list[dict[str, Any]]:
         return list(self._events)

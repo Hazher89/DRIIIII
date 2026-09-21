@@ -223,7 +223,7 @@ class _CameraEditorSheetState extends State<_CameraEditorSheet> {
   final _port = TextEditingController(text: '80');
   final _user = TextEditingController(text: 'admin');
   final _password = TextEditingController();
-  String _eventType = 'uniform_violation';
+  String _eventType = 'sorting_clip';
   bool _enabled = true;
   bool _saving = false;
   bool _obscure = true;
@@ -240,8 +240,10 @@ class _CameraEditorSheetState extends State<_CameraEditorSheet> {
       _eventType = c.eventType;
       _enabled = c.enabled;
     } else {
-      _name.text = 'Kamera 1';
+      _name.text = 'Komprimatorer';
       _host.text = '192.168.39.190';
+      _user.text = 'admin';
+      _eventType = 'sorting_clip';
     }
   }
 
@@ -375,6 +377,10 @@ class _CameraEditorSheetState extends State<_CameraEditorSheet> {
                 border: OutlineInputBorder(),
               ),
               items: const [
+                DropdownMenuItem(
+                  value: 'sorting_clip',
+                  child: Text('Søppelsortering (komprimator)'),
+                ),
                 DropdownMenuItem(
                   value: 'uniform_violation',
                   child: Text('Uniform (MAVI-logo + vernesko)'),

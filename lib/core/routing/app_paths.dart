@@ -150,6 +150,7 @@ abstract final class AppPaths {
   static const morePartnerChat = '/more/partner-chat';
   static const moreVisionCameras = '/more/vision-cameras';
   static const moreVisionEvents = '/more/vision-events';
+  static const moreWasteSorting = '/more/soppelhandtering';
   static const moreDriveMonitor = '/more/leiebil-sporing';
   static const moreWorkSteps = '/more/skritt-pa-jobb';
   static const moreWorkStepsHub = '/more/skritt-pa-jobb-hub';
