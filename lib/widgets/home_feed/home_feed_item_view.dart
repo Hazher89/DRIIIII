@@ -341,18 +341,18 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
         if (url == null) {
           return const Center(child: Icon(Icons.broken_image_outlined));
         }
-        final image = Image.network(
-          url,
-          fit: fit,
-          width: double.infinity,
-          height: double.infinity,
-          errorBuilder: (_, __, ___) =>
-              const Center(child: Icon(Icons.broken_image_outlined)),
-        );
-        if (!widget.interactive) return image;
+        Widget buildImage(BuildContext context) => Image.network(
+              url,
+              fit: fit,
+              width: double.infinity,
+              height: double.infinity,
+              errorBuilder: (_, __, ___) =>
+                  const Center(child: Icon(Icons.broken_image_outlined)),
+            );
+        if (!widget.interactive) return buildImage(context);
         return PinchZoomInPlace(
           onTap: _openMedia,
-          child: image,
+          builder: buildImage,
         );
       case HomeFeedContentType.video:
         if (url == null) {
@@ -458,7 +458,8 @@ class _AttachmentThumbState extends State<_AttachmentThumb> {
                 widget.interactive
                     ? PinchZoomInPlace(
                         onTap: _open,
-                        child: Image.network(_url!, fit: BoxFit.cover),
+                        builder: (_) =>
+                            Image.network(_url!, fit: BoxFit.cover),
                       )
                     : Image.network(_url!, fit: BoxFit.cover)
               else

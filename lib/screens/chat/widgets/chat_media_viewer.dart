@@ -24,14 +24,82 @@ class ChatMediaViewer {
   }
 }
 
-class _ImageViewerPage extends StatelessWidget {
+class _ImageViewerPage extends StatefulWidget {
   const _ImageViewerPage({required this.url, this.heroTag});
 
   final String url;
   final String? heroTag;
 
   @override
+  State<_ImageViewerPage> createState() => _ImageViewerPageState();
+}
+
+/// Pinch skalerer hele bildet (blir større), ikke zoom inne i en klipperamme.
+class _ImageViewerPageState extends State<_ImageViewerPage>
+    with SingleTickerProviderStateMixin {
+  static const _minScale = 1.0;
+  static const _maxScale = 5.0;
+
+  double _scale = 1;
+  Offset _offset = Offset.zero;
+  double _scaleStart = 1;
+  Offset _offsetStart = Offset.zero;
+  Offset _focalStart = Offset.zero;
+
+  late final AnimationController _resetCtrl;
+  Animation<double>? _scaleAnim;
+  Animation<Offset>? _offsetAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _resetCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    )..addListener(() {
+        final s = _scaleAnim;
+        final o = _offsetAnim;
+        if (s == null || o == null) return;
+        setState(() {
+          _scale = s.value;
+          _offset = o.value;
+        });
+      });
+  }
+
+  @override
+  void dispose() {
+    _resetCtrl.dispose();
+    super.dispose();
+  }
+
+  void _animateReset() {
+    _resetCtrl.stop();
+    _scaleAnim = Tween<double>(begin: _scale, end: 1).animate(
+      CurvedAnimation(parent: _resetCtrl, curve: Curves.easeOutCubic),
+    );
+    _offsetAnim = Tween<Offset>(begin: _offset, end: Offset.zero).animate(
+      CurvedAnimation(parent: _resetCtrl, curve: Curves.easeOutCubic),
+    );
+    _resetCtrl.forward(from: 0).whenComplete(() {
+      if (!mounted) return;
+      setState(() {
+        _scale = 1;
+        _offset = Offset.zero;
+      });
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final image = CachedNetworkImage(
+      imageUrl: widget.url,
+      fit: BoxFit.contain,
+    );
+    final tagged = widget.heroTag != null
+        ? Hero(tag: widget.heroTag!, child: image)
+        : image;
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -39,16 +107,33 @@ class _ImageViewerPage extends StatelessWidget {
         foregroundColor: Colors.white,
         elevation: 0,
       ),
-      body: Center(
-        child: InteractiveViewer(
-          minScale: 0.5,
-          maxScale: 4,
-          child: heroTag != null
-              ? Hero(
-                  tag: heroTag!,
-                  child: CachedNetworkImage(imageUrl: url, fit: BoxFit.contain),
-                )
-              : CachedNetworkImage(imageUrl: url, fit: BoxFit.contain),
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onDoubleTap: _animateReset,
+        onScaleStart: (d) {
+          _resetCtrl.stop();
+          _scaleStart = _scale;
+          _offsetStart = _offset;
+          _focalStart = d.focalPoint;
+        },
+        onScaleUpdate: (d) {
+          setState(() {
+            _scale = (_scaleStart * d.scale).clamp(_minScale, _maxScale);
+            if (_scale > 1.02) {
+              _offset = _offsetStart + (d.focalPoint - _focalStart);
+            } else {
+              _offset = Offset.zero;
+            }
+          });
+        },
+        child: Center(
+          child: Transform.translate(
+            offset: _offset,
+            child: Transform.scale(
+              scale: _scale,
+              child: tagged,
+            ),
+          ),
         ),
       ),
     );
