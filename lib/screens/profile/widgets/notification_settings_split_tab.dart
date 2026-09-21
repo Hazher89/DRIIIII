@@ -4,6 +4,7 @@ import '../../../core/routing/app_paths.dart';
 import '../../../core/routing/route_url_sync.dart';
 import '../../../core/theme/app_theme.dart';
 import 'employee_notification_recipients_panel.dart';
+import 'partner_driver_deviation_alert_settings_panel.dart';
 import 'unified_notification_settings_panel.dart';
 import '../../../core/layout/web_layout.dart';
 
@@ -20,14 +21,14 @@ class NotificationSettingsSplitTab extends StatefulWidget {
 
 class _NotificationSettingsSplitTabState extends State<NotificationSettingsSplitTab>
     with SingleTickerProviderStateMixin {
-  static const _settingsTabs = ['mottakere', 'firmakanaler', 'samarbeid'];
+  static const _settingsTabs = ['mottakere', 'firmakanaler', 'samarbeid', 'sjaforavvik'];
   late TabController _tabs;
 
   @override
   void initState() {
     super.initState();
     final idx = RouteUrlSync.indexForSlug(widget.initialTab, _settingsTabs);
-    _tabs = TabController(length: 3, vsync: this, initialIndex: idx);
+    _tabs = TabController(length: 4, vsync: this, initialIndex: idx);
     _tabs.addListener(_onTabChanged);
   }
 
@@ -63,6 +64,7 @@ class _NotificationSettingsSplitTabState extends State<NotificationSettingsSplit
               Tab(text: 'Mottakere'),
               Tab(text: 'Firmakanaler'),
               Tab(text: 'Samarbeid'),
+              Tab(text: 'Sjåføravvik'),
             ],
           ),
         ),
@@ -73,6 +75,7 @@ class _NotificationSettingsSplitTabState extends State<NotificationSettingsSplit
               EmployeeNotificationRecipientsPanel(),
               UnifiedNotificationSettingsPanel(scope: NotificationSettingsScope.mavi),
               UnifiedNotificationSettingsPanel(scope: NotificationSettingsScope.partner),
+              PartnerDriverDeviationAlertSettingsPanel(),
             ],
           ),
         ),

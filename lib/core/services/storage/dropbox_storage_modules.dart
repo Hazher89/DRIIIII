@@ -29,6 +29,7 @@ enum DropboxStorageModule {
       case 'dms':
         return dms;
       case 'partners':
+      case 'partner_driver_deviation':
         return partners;
       case 'partner_deductions':
         return partnerDeductions;

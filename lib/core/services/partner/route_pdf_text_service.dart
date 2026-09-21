@@ -11,7 +11,10 @@ class RoutePdfCustomer {
   final String name;
   final String phoneDisplay;
   final String phoneNormalizedKey;
+  /// Freight Unit fra forsiden (starter typisk med 4…).
   final String? freightUnit;
+  /// Sales order / bilag fra detaljsider (starter typisk med 2…).
+  final String? salesOrder;
   final String? addressHint;
   /// Postnummer fra leveringsadresse i PDF (4 siffer).
   final String? postalCode;
@@ -24,10 +27,35 @@ class RoutePdfCustomer {
     required this.phoneDisplay,
     required this.phoneNormalizedKey,
     this.freightUnit,
+    this.salesOrder,
     this.addressHint,
     this.postalCode,
     this.deliveryWindow,
   });
+
+  RoutePdfCustomer copyWith({
+    int? sequence,
+    String? name,
+    String? phoneDisplay,
+    String? phoneNormalizedKey,
+    String? freightUnit,
+    String? salesOrder,
+    String? addressHint,
+    String? postalCode,
+    String? deliveryWindow,
+  }) {
+    return RoutePdfCustomer(
+      sequence: sequence ?? this.sequence,
+      name: name ?? this.name,
+      phoneDisplay: phoneDisplay ?? this.phoneDisplay,
+      phoneNormalizedKey: phoneNormalizedKey ?? this.phoneNormalizedKey,
+      freightUnit: freightUnit ?? this.freightUnit,
+      salesOrder: salesOrder ?? this.salesOrder,
+      addressHint: addressHint ?? this.addressHint,
+      postalCode: postalCode ?? this.postalCode,
+      deliveryWindow: deliveryWindow ?? this.deliveryWindow,
+    );
+  }
 }
 
 /// Dato/tid hentet fra MAVI-rute-PDF (Trip Overview / stopp-liste).
@@ -328,13 +356,95 @@ class RoutePdfTextService {
   /// Henter kundenavn og telefon fra Elkjøp/MAVI Trip Overview-PDF.
   static List<RoutePdfCustomer> parseCustomers(String raw) {
     if (raw.trim().isEmpty) return const [];
+    List<RoutePdfCustomer> base;
     final fromOverview = _parseCustomersFromTripOverview(raw);
-    if (fromOverview.isNotEmpty) return fromOverview;
-    final fromServices = _parseCustomersFromServicesTable(raw);
-    if (fromServices.isNotEmpty) return fromServices;
-    final loose = _parseCustomersFromTripOverviewLoose(raw);
-    if (loose.isNotEmpty) return loose;
-    return _parseCustomersFromStopBlocks(raw);
+    if (fromOverview.isNotEmpty) {
+      base = fromOverview;
+    } else {
+      final fromServices = _parseCustomersFromServicesTable(raw);
+      if (fromServices.isNotEmpty) {
+        base = fromServices;
+      } else {
+        final loose = _parseCustomersFromTripOverviewLoose(raw);
+        base = loose.isNotEmpty ? loose : _parseCustomersFromStopBlocks(raw);
+      }
+    }
+    return _enrichCustomersWithSalesOrders(base, raw);
+  }
+
+  /// Detaljsider: «2123831828Sales order» + «4106155580Freight Unit Number».
+  /// Bilag (sales order) starter typisk med 2 — det er det CCC søker på.
+  static List<RoutePdfCustomer> _enrichCustomersWithSalesOrders(
+    List<RoutePdfCustomer> customers,
+    String raw,
+  ) {
+    if (customers.isEmpty) return customers;
+    final byFreight = <String, String>{};
+    final byStop = <int, String>{};
+
+    final pairRe = RegExp(
+      r'(\d{8,14})\s*Sales\s*order[\s\S]{0,120}?(\d{8,14})\s*Freight\s*Unit',
+      caseSensitive: false,
+    );
+    for (final m in pairRe.allMatches(raw)) {
+      final sales = m.group(1)!;
+      final freight = m.group(2)!;
+      if (sales.startsWith('2')) {
+        byFreight[freight] = sales;
+      }
+    }
+
+    final stopRe = RegExp(
+      r'Stop\s*#\s*Customer[\s\S]*?(?=Stop\s*#\s*Customer|Page\s+\d+\s+of|$)',
+      caseSensitive: false,
+    );
+    for (final block in stopRe.allMatches(raw)) {
+      final chunk = block.group(0)!;
+      final head = RegExp(
+        r'(?:^|\n)\s*(\d{1,3})\s+([A-Za-zÆØÅæøå])',
+      ).firstMatch(chunk);
+      final salesM = RegExp(
+        r'(\d{8,14})\s*Sales\s*order',
+        caseSensitive: false,
+      ).firstMatch(chunk);
+      if (head == null || salesM == null) continue;
+      final sales = salesM.group(1)!;
+      if (!sales.startsWith('2')) continue;
+      final seq = int.tryParse(head.group(1)!);
+      if (seq != null) byStop[seq] = sales;
+      final freightM = RegExp(
+        r'(\d{8,14})\s*Freight\s*Unit',
+        caseSensitive: false,
+      ).firstMatch(chunk);
+      if (freightM != null) {
+        byFreight[freightM.group(1)!] = sales;
+      }
+    }
+
+    if (byFreight.isEmpty && byStop.isEmpty) return customers;
+
+    return [
+      for (final c in customers)
+        c.copyWith(
+          salesOrder: _salesOrderForCustomer(c, byFreight, byStop),
+        ),
+    ];
+  }
+
+  static String? _salesOrderForCustomer(
+    RoutePdfCustomer c,
+    Map<String, String> byFreight,
+    Map<int, String> byStop,
+  ) {
+    final fus = (c.freightUnit ?? '')
+        .split(RegExp(r'\s*,\s*'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty);
+    for (final fu in fus) {
+      final hit = byFreight[fu];
+      if (hit != null) return hit;
+    }
+    return byStop[c.sequence] ?? c.salesOrder;
   }
 
   /// SAP-tabell: Seq · Freight · Kunde · CURB/SITES · Start · Slutt (ofte uten +47 per rad).

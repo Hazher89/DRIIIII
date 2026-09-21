@@ -19,6 +19,7 @@ import 'create_test_partner_screen.dart';
 import 'new_partner_screen.dart';
 import 'partner_route_planner_screen.dart';
 import 'widgets/partner_companies_board.dart';
+import 'widgets/partner_driver_deviations_panel.dart';
 import 'partner_deduction_hub_screen.dart';
 import 'partner_sms_hub_screen.dart';
 import 'vehicle_rental_hub_screen.dart';
@@ -49,12 +50,14 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   bool _loading = true;
   String? _error;
   UserProfile? _profile;
+  String? _companyId;
   bool _showCompaniesTab = true;
   bool _showRoutesTab = true;
   bool _showSmsTab = true;
   bool _showBotTrekkTab = true;
   bool _showRentalTab = true;
   bool _showInspectionTab = true;
+  bool _showDeviationsTab = true;
   int _savedTabIndex = 0;
   String? _pendingTabSlug;
 
@@ -66,6 +69,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     if (_showBotTrekkTab) slugs.add('bot-trekk');
     if (_showRentalTab) slugs.add('utleie');
     if (_showInspectionTab) slugs.add('bilkontroll');
+    if (_showDeviationsTab) slugs.add('sjaforavvik');
     return slugs;
   }
 
@@ -134,12 +138,15 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     final inspections = access?.canPartnersTabBilkontroll == true ||
         access?.canPartnersAdmin == true ||
         PartnerAccess.canOpenPartnersModule(access);
+    final deviations =
+        _companyId != null && PartnerAccess.canOpenPartnersModule(access);
     final length = (companies ? 1 : 0) +
         (routes ? 1 : 0) +
         (sms ? 1 : 0) +
         (botTrekk ? 1 : 0) +
         (rental ? 1 : 0) +
-        (inspections ? 1 : 0);
+        (inspections ? 1 : 0) +
+        (deviations ? 1 : 0);
 
     _showCompaniesTab = companies;
     _showRoutesTab = routes;
@@ -147,6 +154,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     _showBotTrekkTab = botTrekk;
     _showRentalTab = rental;
     _showInspectionTab = inspections;
+    _showDeviationsTab = deviations;
 
     if (length == 0) {
       _tabs?.removeListener(_onTabChanged);
@@ -207,6 +215,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
 
       setState(() {
         _profile = profile;
+        _companyId = cid;
         _syncDashboardTabs(profile);
       });
 
@@ -446,6 +455,11 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
             icon: Icon(Icons.fact_check_outlined, size: DriftProClient.isMobile ? 20 : 18),
             text: DriftProClient.isMobile ? 'Kontroll' : 'Bilkontroll',
           ),
+        if (_showDeviationsTab)
+          Tab(
+            icon: Icon(Icons.warning_amber_outlined, size: DriftProClient.isMobile ? 20 : 18),
+            text: DriftProClient.isMobile ? 'Avvik' : 'Sjåføravvik',
+          ),
       ],
     );
   }
@@ -497,6 +511,8 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
             nestedScroll: nestedScroll,
             partners: _partners,
           ),
+        if (_showDeviationsTab && _companyId != null)
+          PartnerDriverDeviationsPanel(companyId: _companyId!),
       ],
     );
   }

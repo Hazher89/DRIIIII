@@ -31,6 +31,7 @@ import '../../models/partner/vehicle_inspection.dart';
 import '../../models/user_profile.dart';
 import '../chat/partner_chat_hub_screen.dart';
 import '../../widgets/chat/chat_feature_gate.dart';
+import 'driver_portal/driver_portal_avvik_page.dart';
 import 'driver_portal/driver_portal_docs_page.dart';
 import 'driver_portal/driver_portal_fri_page.dart';
 import 'driver_portal/driver_portal_overview_page.dart';
@@ -313,7 +314,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       return n;
     }
     if (widget.portalAccountKind == 'owner') return _chatEnabled ? 6 : 5;
-    return _chatEnabled ? 6 : 5; // driver
+    return _chatEnabled ? 7 : 6; // driver
   }
 
   List<String> _portalTabSlugs() {
@@ -340,6 +341,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     return [
       'oversikt',
       'ruter',
+      'avvik',
       'dokumenter',
       if (_chatEnabled) 'meldinger',
       'fri',
@@ -697,6 +699,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
             : [
                 DriverPortalOverviewPage(partner: p, profile: _profile),
                 DriverPortalRoutesPage(partner: p, profile: _profile),
+                DriverPortalAvvikPage(partner: p, profile: _profile),
                 DriverPortalDocsPage(partner: p),
                 if (_chatEnabled) _partnerChatPage(),
                 DriverPortalFriPage(partner: p, profile: _profile),
@@ -732,6 +735,11 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     final driverNavItems = [
       _portalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
       _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
+      _portalNavItem(
+        icon: Icons.warning_amber_outlined,
+        selectedIcon: Icons.warning_amber_rounded,
+        label: 'Avvik',
+      ),
       _portalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
       if (_chatEnabled) _chatNavItem(),
       _portalNavItem(icon: Icons.beach_access_outlined, selectedIcon: Icons.beach_access, label: 'Fri'),

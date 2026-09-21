@@ -2540,15 +2540,22 @@ class PartnerService {
       final cached = route.pdfSearchText?.trim();
       if (cached != null && cached.isNotEmpty) {
         parsed = RoutePdfTextService.parseCustomers(cached);
-      } else {
+      }
+      // Cache kan være kun forsiden (Freight Unit 4…). Bilag (Sales order 2…)
+      // ligger på detaljsider — last PDF hvis bilag mangler.
+      final needsBilag = parsed.isEmpty ||
+          parsed.any((c) => (c.salesOrder == null || c.salesOrder!.isEmpty));
+      if (needsBilag) {
         try {
           final url = await getRoutePdfSignedUrl(route.pdfStoragePath);
           final res = await http.get(Uri.parse(url));
           if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
-            parsed = RoutePdfTextService.parseCustomersFromBytes(res.bodyBytes);
+            final fromPdf =
+                RoutePdfTextService.parseCustomersFromBytes(res.bodyBytes);
+            if (fromPdf.isNotEmpty) parsed = fromPdf;
           }
         } catch (_) {
-          parsed = const [];
+          // behold cache-parse
         }
       }
       for (final c in parsed) {

@@ -8,14 +8,18 @@ import '../../../core/services/chat/chat_pending_navigation.dart';
 import '../../../core/services/chat/partner_chat_service.dart';
 import '../../../core/services/chat/chat_unread_service.dart';
 import '../../../core/services/chat/chat_realtime_notification_service.dart';
+import '../../../core/services/partner/partner_driver_deviation_refs.dart';
+import '../../../core/services/partner/partner_driver_deviation_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/permissions/user_access.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/driftpro_theme_context.dart';
 import '../../../models/chat/chat_models.dart';
+import '../../../models/partner/partner_driver_deviation.dart';
 import '../../../models/user_profile.dart';
 import '../../../widgets/chat/chat_feature_gate.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import '../partners/widgets/partner_driver_deviation_detail_sheet.dart';
 import 'widgets/chat_create_group_sheet.dart';
 import 'widgets/chat_superadmin_panel.dart';
 import 'widgets/chat_room_members_sheet.dart';
@@ -50,6 +54,10 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
   String? _error;
   ChatRoom? _selectedRoom;
   String _searchQuery = '';
+  List<PartnerDriverDeviation> _deviationResults = const [];
+  bool _searchingDeviations = false;
+  bool _deviationSearchActive = false;
+  Timer? _deviationSearchDebounce;
   bool _webNotifOn = false;
   late TabController _tabs;
   RealtimeChannel? _hubChannel;
@@ -124,6 +132,7 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
 
   void _scheduleHubRefresh() {
     _hubRefreshDebounce?.cancel();
+    _deviationSearchDebounce?.cancel();
     _hubRefreshDebounce = Timer(const Duration(milliseconds: 400), () {
       unawaited(ChatUnreadService.refresh());
       unawaited(_load(silent: true));
@@ -468,6 +477,135 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
     await _load();
   }
 
+  void _onSearchChanged(String value) {
+    setState(() => _searchQuery = value);
+    _deviationSearchDebounce?.cancel();
+    final query = value.trim();
+    final companyId = widget.profile.companyId;
+    final shouldSearch = _isMavi &&
+        companyId != null &&
+        PartnerDriverDeviationRefs.looksLikeDeviationQuery(query);
+    if (!shouldSearch) {
+      setState(() {
+        _deviationResults = const [];
+        _searchingDeviations = false;
+        _deviationSearchActive = false;
+      });
+      return;
+    }
+    setState(() {
+      _searchingDeviations = true;
+      _deviationSearchActive = true;
+    });
+    _deviationSearchDebounce = Timer(const Duration(milliseconds: 350), () async {
+      try {
+        final results = await PartnerDriverDeviationService.search(
+          companyId: companyId,
+          query: query,
+        );
+        if (!mounted || _searchQuery.trim() != query) return;
+        setState(() {
+          _deviationResults = results;
+          _searchingDeviations = false;
+        });
+      } catch (_) {
+        if (!mounted || _searchQuery.trim() != query) return;
+        setState(() {
+          _deviationResults = const [];
+          _searchingDeviations = false;
+        });
+      }
+    });
+  }
+
+  Future<void> _showDeviation(PartnerDriverDeviation item) {
+    return showPartnerDriverDeviationDetail(context, item);
+  }
+
+  Widget _deviationSearchSection() {
+    if (!_isMavi || !_deviationSearchActive) {
+      return const SizedBox.shrink();
+    }
+    if (_searchingDeviations) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(16, 10, 16, 0),
+        child: LinearProgressIndicator(),
+      );
+    }
+    if (_deviationResults.isEmpty) {
+      return PartnerDriverDeviationEmptySearch(query: _searchQuery.trim());
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      child: Material(
+        color: Colors.orange.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, size: 18, color: Colors.orange),
+                  SizedBox(width: 6),
+                  Text(
+                    'Sjåføravvik',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Trykk for å se kommentar, bilder og video.',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 4),
+              for (final item in _deviationResults.take(8))
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.orange.withValues(alpha: 0.15),
+                    child: const Icon(
+                      Icons.receipt_long_outlined,
+                      color: Colors.orange,
+                      size: 18,
+                    ),
+                  ),
+                  title: Text(
+                    [
+                      if ((item.orderRef ?? '').isNotEmpty)
+                        'Bilag ${item.orderRef}'
+                      else if ((item.customerRef ?? '').isNotEmpty)
+                        'FU ${item.customerRef}'
+                      else if ((item.freightUnit ?? '').isNotEmpty)
+                        'FU ${item.freightUnit}',
+                      item.customerName ?? 'Ukjent kunde',
+                    ].join(' · '),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  subtitle: Text(
+                    [
+                      DateFormat('d.M.yyyy', 'nb').format(item.routeDate),
+                      if (item.imageUrls.isNotEmpty)
+                        '${item.imageUrls.length} bilde(r)',
+                      if (item.videoUrls.isNotEmpty) 'video',
+                      item.comment,
+                    ].join(' · '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showDeviation(item),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _roomList(List<ChatRoom> rooms, {required bool archived}) {
     if (rooms.isEmpty) {
       return ListView(
@@ -579,14 +717,17 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                       child: TextField(
                         decoration: InputDecoration(
-                          hintText: 'Søk i samtaler…',
+                          hintText: _isMavi
+                              ? 'Søk samtale, bilag (2…) eller FU (4…)'
+                              : 'Søk i samtaler…',
                           prefixIcon: const Icon(Icons.search),
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                           isDense: true,
                         ),
-                        onChanged: (v) => setState(() => _searchQuery = v),
+                        onChanged: _onSearchChanged,
                       ),
                     ),
+                    _deviationSearchSection(),
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
                       child: Wrap(
