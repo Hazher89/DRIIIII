@@ -458,7 +458,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
         if (_showDeviationsTab)
           Tab(
             icon: Icon(Icons.warning_amber_outlined, size: DriftProClient.isMobile ? 20 : 18),
-            text: DriftProClient.isMobile ? 'Avvik' : 'Sjåføravvik',
+            text: 'Sjåføravvik',
           ),
       ],
     );

@@ -439,6 +439,31 @@ class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
     }
   }
 
+  Future<void> _toggleReportDeviations(PartnerStaff s, bool enabled) async {
+    try {
+      await PartnerWorkforceService.setCanReportDeviations(
+        staffId: s.id,
+        enabled: enabled,
+      );
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            enabled
+                ? 'Avvikstilgang aktivert for ${s.fullName}'
+                : 'Avvikstilgang fjernet for ${s.fullName}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), backgroundColor: DriftProTheme.error),
+      );
+    }
+  }
+
   Future<void> _editRouteVehicles(PartnerStaff s) async {
     final picked = await _pickRouteVehicles(
       title: 'Biler for ${s.fullName}',
@@ -660,6 +685,7 @@ class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
     final active = _staff.where((s) => s.isActive).length;
     final withLogin = _staff.where((s) => s.profileId != null).length;
     final withRoutes = _staff.where((s) => s.canManageRoutes).length;
+    final withDeviations = _staff.where((s) => s.canReportDeviations).length;
     final list = _filtered;
 
     return PartnerPortalPageShell(
@@ -731,6 +757,12 @@ class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
                                 value: '$withRoutes',
                                 color: Colors.deepOrange,
                               ),
+                              const SizedBox(width: 8),
+                              _OverviewChip(
+                                label: 'Avvik',
+                                value: '$withDeviations',
+                                color: Colors.orange,
+                              ),
                             ],
                           ),
                           const SizedBox(height: 12),
@@ -776,6 +808,8 @@ class _OwnerPortalStaffPageState extends State<OwnerPortalStaffPage> {
                                   onResetPassword: () => _resetPassword(s),
                                   onEdit: () => _editDetails(s),
                                   onToggleRoutes: (v) => _toggleRoutes(s, v),
+                                  onToggleReportDeviations: (v) =>
+                                      _toggleReportDeviations(s, v),
                                   onEditRouteVehicles: () => _editRouteVehicles(s),
                                   onActivate: () => _setActive(s, true),
                                   onDeactivate: () => _setActive(s, false),
@@ -845,6 +879,7 @@ class _StaffCard extends StatelessWidget {
     required this.onResetPassword,
     required this.onEdit,
     required this.onToggleRoutes,
+    required this.onToggleReportDeviations,
     required this.onEditRouteVehicles,
     required this.onActivate,
     required this.onDeactivate,
@@ -858,6 +893,7 @@ class _StaffCard extends StatelessWidget {
   final VoidCallback onResetPassword;
   final VoidCallback onEdit;
   final ValueChanged<bool> onToggleRoutes;
+  final ValueChanged<bool> onToggleReportDeviations;
   final VoidCallback onEditRouteVehicles;
   final VoidCallback onActivate;
   final VoidCallback onDeactivate;
@@ -966,6 +1002,11 @@ class _StaffCard extends StatelessWidget {
                             const _Tag(
                               label: 'Rutetilgang',
                               color: Colors.deepOrange,
+                            ),
+                          if (s.canReportDeviations)
+                            const _Tag(
+                              label: 'Avvikstilgang',
+                              color: Colors.orange,
                             ),
                           if (s.canManageRoutes && s.routeVehicleIds.isEmpty)
                             _Tag(
@@ -1102,6 +1143,16 @@ class _StaffCard extends StatelessWidget {
                         ),
                       ),
                   ],
+                  SwitchListTile(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    title: const Text('Avvikstilgang'),
+                    subtitle: const Text(
+                      'Lar ansatt melde rute-/kundeavvik (samme som sjåfør). '
+                      'Bil-eier ser avviket under Mine.',
+                    ),
+                    value: s.canReportDeviations,
+                    onChanged: hasLogin ? onToggleReportDeviations : null,
+                  ),
                 ],
               ),
             ),

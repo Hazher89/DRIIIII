@@ -125,8 +125,11 @@ class _PartnerDriverDeviationDetailSheetState
                         ),
                       ),
                       Text(
-                        'Rute ${DateFormat('d. MMMM yyyy', 'nb').format(item.routeDate)}'
-                        ' · meldt ${DateFormat('d.M.yyyy HH:mm', 'nb').format(item.createdAt.toLocal())}',
+                        [
+                          'Rute ${DateFormat('d. MMMM yyyy', 'nb').format(item.routeDate)}',
+                          'meldt ${DateFormat('d.M.yyyy HH:mm', 'nb').format(item.createdAt.toLocal())}',
+                          'av ${item.reporterLabel}',
+                        ].join(' · '),
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade600,
@@ -151,6 +154,10 @@ class _PartnerDriverDeviationDetailSheetState
                   spacing: 8,
                   runSpacing: 8,
                   children: [
+                    _chip(
+                      'Sendt av ${item.reporterLabel}',
+                      Icons.person_outline,
+                    ),
                     if (customer.isNotEmpty)
                       _chip('FU $customer', Icons.badge_outlined),
                     if (order.isNotEmpty)

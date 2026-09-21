@@ -145,12 +145,13 @@ class _PartnerDriverDeviationAlertSettingsPanelState
       padding: const EdgeInsets.all(20),
       children: [
         const Text(
-          'Sjåføravvik',
+          'Sjåføravvik (partner/rute)',
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 4),
         Text(
-          'Velg om nye avvik skal sende e-post, og legg til ekstra mottakere.',
+          'E-post ved nye rute-/kundeavvik fra partner-sjåfører. '
+          'Gjelder ikke HMS-avvik for MAVI-ansatte (fanen Avvik i hovedmenyen).',
           style: TextStyle(color: Colors.grey.shade600),
         ),
         const SizedBox(height: 16),
@@ -163,7 +164,9 @@ class _PartnerDriverDeviationAlertSettingsPanelState
               'Varsle ved nye sjåføravvik',
               style: TextStyle(fontWeight: FontWeight.w700),
             ),
-            subtitle: const Text('Sender e-post til mottakerne under.'),
+            subtitle: const Text(
+              'Kun partner-sjåføravvik — ikke MAVI HMS-avvik.',
+            ),
           ),
         ),
         const SizedBox(height: 18),

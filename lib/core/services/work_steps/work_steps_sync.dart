@@ -1,4 +1,5 @@
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import 'work_steps_health_bridge.dart';
 import 'work_steps_privacy.dart';
@@ -10,12 +11,14 @@ class WorkStepsSyncResult {
     required this.message,
     this.steps,
     this.atWorkplace = false,
+    this.openSettingsHint = false,
   });
 
   final bool ok;
   final String message;
   final int? steps;
   final bool atWorkplace;
+  final bool openSettingsHint;
 }
 
 /// Synk skritt kun ved aktivt samtykke + telefon innenfor MAVI arbeidssted.
@@ -48,6 +51,9 @@ class WorkStepsSync {
       );
     }
 
+    final location = await _ensureLocationReady();
+    if (location != null) return location;
+
     final atWork = await _isAtWorkplace(settings);
     if (!atWork) {
       return const WorkStepsSyncResult(
@@ -71,8 +77,10 @@ class WorkStepsSync {
       return const WorkStepsSyncResult(
         ok: false,
         message:
-            'Kunne ikke lese skritt. Sjekk tillatelser i Apple Helse / Health Connect.',
+            'Kunne ikke lese skritt. Sjekk tillatelser i Apple Helse / Health Connect '
+            'og at DriftPro har tilgang til Skritt.',
         atWorkplace: true,
+        openSettingsHint: true,
       );
     }
 
@@ -83,36 +91,81 @@ class WorkStepsSync {
 
     return WorkStepsSyncResult(
       ok: true,
-      message: 'Synket $steps skritt på jobb i dag (${settings.workplaceName}).',
+      message:
+          'Synket $steps skritt på jobb i dag (${settings.workplaceName}).',
       steps: steps,
       atWorkplace: true,
     );
   }
 
-  /// Én lokasjonssjekk (when-in-use). Ingen bakgrunnssporing.
-  static Future<bool> _isAtWorkplace(WorkStepsSettings settings) async {
+  /// Null = OK. Ellers feilmelding for bruker.
+  static Future<WorkStepsSyncResult?> _ensureLocationReady() async {
+    final serviceOn = await Geolocator.isLocationServiceEnabled();
+    if (!serviceOn) {
+      return const WorkStepsSyncResult(
+        ok: false,
+        message:
+            'Posisjon er slått av på telefonen. Slå på posisjon og prøv igjen.',
+        openSettingsHint: true,
+      );
+    }
+
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
-    if (permission == LocationPermission.denied ||
-        permission == LocationPermission.deniedForever) {
-      return false;
+    if (permission == LocationPermission.denied) {
+      return const WorkStepsSyncResult(
+        ok: false,
+        message:
+            'Posisjonstilgang trengs for å bekrefte at du er på arbeidsstedet.',
+        openSettingsHint: true,
+      );
+    }
+    if (permission == LocationPermission.deniedForever) {
+      return const WorkStepsSyncResult(
+        ok: false,
+        message:
+            'Posisjon er blokkert for DriftPro. Åpne Innstillinger og tillat posisjon «Når appen er i bruk».',
+        openSettingsHint: true,
+      );
     }
 
-    final pos = await Geolocator.getCurrentPosition(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.medium,
-        timeLimit: Duration(seconds: 12),
-      ),
-    );
+    // Android: også permission_handler (noen OEM-er).
+    final ph = await Permission.locationWhenInUse.status;
+    if (ph.isDenied) {
+      final req = await Permission.locationWhenInUse.request();
+      if (!req.isGranted) {
+        return const WorkStepsSyncResult(
+          ok: false,
+          message: 'Posisjonstilgang mangler. Tillat posisjon for DriftPro.',
+          openSettingsHint: true,
+        );
+      }
+    }
 
-    final meters = Geolocator.distanceBetween(
-      pos.latitude,
-      pos.longitude,
-      settings.workplaceLat!,
-      settings.workplaceLng!,
-    );
-    return meters <= settings.radiusMeters;
+    return null;
+  }
+
+  /// Én lokasjonssjekk (when-in-use). Ingen bakgrunnssporing.
+  static Future<bool> _isAtWorkplace(WorkStepsSettings settings) async {
+    try {
+      final pos = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.medium,
+          timeLimit: Duration(seconds: 15),
+        ),
+      );
+
+      final meters = Geolocator.distanceBetween(
+        pos.latitude,
+        pos.longitude,
+        settings.workplaceLat!,
+        settings.workplaceLng!,
+      );
+      return meters <= settings.radiusMeters;
+    } catch (_) {
+      return false;
+    }
   }
 }

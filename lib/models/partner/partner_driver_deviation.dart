@@ -14,6 +14,7 @@ class PartnerDriverDeviation {
     this.freightUnit,
     this.customerRef,
     this.orderRef,
+    this.reporterName,
     this.imageUrls = const [],
     this.videoUrls = const [],
   });
@@ -29,11 +30,17 @@ class PartnerDriverDeviation {
   final String? freightUnit;
   final String? customerRef;
   final String? orderRef;
+  final String? reporterName;
   final String comment;
   final List<String> imageUrls;
   final List<String> videoUrls;
   final String status;
   final DateTime createdAt;
+
+  String get reporterLabel {
+    final name = reporterName?.trim() ?? '';
+    return name.isEmpty ? 'Ukjent' : name;
+  }
 
   factory PartnerDriverDeviation.fromJson(Map<String, dynamic> json) {
     return PartnerDriverDeviation(
@@ -48,6 +55,7 @@ class PartnerDriverDeviation {
       freightUnit: json['freight_unit'] as String?,
       customerRef: json['customer_ref'] as String?,
       orderRef: json['order_ref'] as String?,
+      reporterName: json['reporter_name'] as String?,
       comment: json['comment'] as String,
       imageUrls: _stringList(json['image_urls']),
       videoUrls: _stringList(json['video_urls']),

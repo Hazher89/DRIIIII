@@ -171,7 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _ActionRow(
               icon: Icons.delete_forever_outlined,
               title: 'Slett konto',
-              subtitle: 'Fjern innlogging og personopplysninger',
+              subtitle: 'Send søknad — slettes av superadmin innen 15 dager',
               titleColor: DriftProTheme.error,
               iconColor: DriftProTheme.error,
               onTap: () => showDeleteOwnAccountDialog(context),

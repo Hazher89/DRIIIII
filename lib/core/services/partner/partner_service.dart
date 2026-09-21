@@ -2510,8 +2510,8 @@ class PartnerService {
     return StorageFileAccess.resolveViewUrl(storagePath);
   }
 
-  /// Leser kunder (navn + telefon) fra rute-PDF for sjåfør på valgt dag.
-  static Future<List<RoutePdfCustomer>> fetchRouteCustomersForVehicleDay({
+  /// Ruter + kunder for én bil på én dag (sjåføravvik: flere ruter samme dag).
+  static Future<List<DriverRouteDayOption>> fetchDriverRouteOptionsForDay({
     required String companyId,
     required String partnerVehicleId,
     required DateTime day,
@@ -2529,42 +2529,69 @@ class PartnerService {
               r.partnerVehicleId == partnerVehicleId &&
               r.pdfStoragePath.trim().isNotEmpty,
         )
-        .toList();
+        .toList()
+      ..sort((a, b) {
+        final as = a.routeStartAt ?? a.shareDate;
+        final bs = b.routeStartAt ?? b.shareDate;
+        return as.compareTo(bs);
+      });
     if (forVehicle.isEmpty) return const [];
 
-    final merged = <RoutePdfCustomer>[];
-    final seenPhones = <String>{};
-
+    final out = <DriverRouteDayOption>[];
     for (final route in forVehicle) {
-      var parsed = <RoutePdfCustomer>[];
-      final cached = route.pdfSearchText?.trim();
-      if (cached != null && cached.isNotEmpty) {
-        parsed = RoutePdfTextService.parseCustomers(cached);
-      }
-      // Cache kan være kun forsiden (Freight Unit 4…). Bilag (Sales order 2…)
-      // ligger på detaljsider — last PDF hvis bilag mangler.
-      final needsBilag = parsed.isEmpty ||
-          parsed.any((c) => (c.salesOrder == null || c.salesOrder!.isEmpty));
-      if (needsBilag) {
+      var text = route.pdfSearchText?.trim() ?? '';
+      var customers = text.isNotEmpty
+          ? RoutePdfTextService.parseCustomers(text)
+          : const <RoutePdfCustomer>[];
+      final needsPdf = text.isEmpty ||
+          customers.isEmpty ||
+          customers.any((c) => (c.salesOrder == null || c.salesOrder!.isEmpty));
+      if (needsPdf) {
         try {
           final url = await getRoutePdfSignedUrl(route.pdfStoragePath);
           final res = await http.get(Uri.parse(url));
           if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
-            final fromPdf =
-                RoutePdfTextService.parseCustomersFromBytes(res.bodyBytes);
-            if (fromPdf.isNotEmpty) parsed = fromPdf;
+            text = RoutePdfTextService.extractFullText(res.bodyBytes);
+            final fromPdf = RoutePdfTextService.parseCustomers(text);
+            if (fromPdf.isNotEmpty) customers = fromPdf;
           }
-        } catch (_) {
-          // behold cache-parse
-        }
+        } catch (_) {}
       }
-      for (final c in parsed) {
-        if (seenPhones.add(c.phoneNormalizedKey)) {
-          merged.add(c);
-        }
+      final meta = RoutePdfTextService.extractTripOverviewMetaFromText(text);
+      out.add(
+        DriverRouteDayOption(
+          route: route,
+          customers: customers,
+          driverName: text.isEmpty
+              ? null
+              : RoutePdfTextService.parseDriverName(text),
+          maviCode: meta.maviCode,
+          stowingLane: meta.stowingLane ??
+              RoutePdfTextService.parseStowingLaneFromNotes(route.notes),
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// Leser kunder (navn + telefon) fra rute-PDF for sjåfør på valgt dag.
+  static Future<List<RoutePdfCustomer>> fetchRouteCustomersForVehicleDay({
+    required String companyId,
+    required String partnerVehicleId,
+    required DateTime day,
+  }) async {
+    final options = await fetchDriverRouteOptionsForDay(
+      companyId: companyId,
+      partnerVehicleId: partnerVehicleId,
+      day: day,
+    );
+    final merged = <RoutePdfCustomer>[];
+    final seenPhones = <String>{};
+    for (final opt in options) {
+      for (final c in opt.customers) {
+        if (seenPhones.add(c.phoneNormalizedKey)) merged.add(c);
       }
     }
-
     merged.sort((a, b) => a.sequence.compareTo(b.sequence));
     return merged;
   }
@@ -3867,4 +3894,52 @@ class FleetPartnerVehicleRow {
   final Partner partner;
   final PartnerVehicle vehicle;
   const FleetPartnerVehicleRow({required this.partner, required this.vehicle});
+}
+
+/// Én rute for sjåfør på valgt dag (PDF-meta + kunder) — til avvik-valg.
+class DriverRouteDayOption {
+  const DriverRouteDayOption({
+    required this.route,
+    required this.customers,
+    this.driverName,
+    this.maviCode,
+    this.stowingLane,
+  });
+
+  final PartnerRouteShare route;
+  final List<RoutePdfCustomer> customers;
+  final String? driverName;
+  final String? maviCode;
+  final String? stowingLane;
+
+  String get displayTitle {
+    final t = route.title?.trim();
+    if (t != null && t.isNotEmpty) return t;
+    final parts = <String>[];
+    if (maviCode != null && maviCode!.isNotEmpty) parts.add(maviCode!);
+    if (stowingLane != null && stowingLane!.isNotEmpty) {
+      parts.add('Last $stowingLane');
+    }
+    if (parts.isEmpty) return 'Rute';
+    return parts.join(' · ');
+  }
+
+  String get subtitle {
+    final parts = <String>[];
+    if (driverName != null && driverName!.trim().isNotEmpty) {
+      parts.add(driverName!.trim());
+    }
+    if (stowingLane != null && stowingLane!.isNotEmpty) {
+      parts.add('Last/lane $stowingLane');
+    }
+    parts.add('${customers.length} kunder');
+    final start = route.routeStartAt;
+    if (start != null) {
+      parts.add(
+        '${start.hour.toString().padLeft(2, '0')}:'
+        '${start.minute.toString().padLeft(2, '0')}',
+      );
+    }
+    return parts.join(' · ');
+  }
 }

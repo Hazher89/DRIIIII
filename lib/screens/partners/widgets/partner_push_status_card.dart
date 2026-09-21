@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 
@@ -7,8 +6,9 @@ import '../../../core/config/driftpro_client.dart';
 import '../../../core/services/native_permissions_service.dart';
 import '../../../core/services/notification/push_notification_service.dart';
 import '../../../core/theme/app_theme.dart';
+import 'partner_ui.dart';
 
-/// Viser varsel-status fra enheten og lenker til iOS/Android-innstillinger (Apple HIG).
+/// Push-status som vanlig profil-rad (samme stil som Konto / Hjelp).
 class PartnerPushStatusCard extends StatefulWidget {
   const PartnerPushStatusCard({super.key});
 
@@ -63,73 +63,76 @@ class _PartnerPushStatusCardState extends State<PartnerPushStatusCard>
     if (!DriftProClient.isMobile) return const SizedBox.shrink();
 
     final enabled = _state == NotificationAuthState.enabled;
-    final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final muted = PartnerUi.mutedText(context);
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          ListTile(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            'VARSLER',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.6,
+              color: muted,
+            ),
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: isDark ? DriftProTheme.cardDark : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white10
+                  : Colors.black.withValues(alpha: 0.06),
+            ),
+            boxShadow: isDark
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
             leading: Icon(
-              enabled ? Icons.notifications_outlined : Icons.notifications_off_outlined,
-              color: enabled ? DriftProTheme.primaryGreen : Colors.orange.shade800,
+              enabled
+                  ? Icons.notifications_outlined
+                  : Icons.notifications_off_outlined,
+              color: enabled
+                  ? DriftProTheme.primaryGreen
+                  : Colors.orange.shade800,
             ),
             title: const Text('Push-varsler'),
-            subtitle: _loading
-                ? const Text('Sjekker enhet…', style: TextStyle(fontSize: 12))
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 2),
-                      Text(
-                        _state.subtitle,
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    ],
-                  ),
+            subtitle: Text(
+              _loading ? 'Sjekker enhet…' : _state.label,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: _loading
+                    ? muted
+                    : (enabled
+                        ? DriftProTheme.primaryGreen
+                        : Colors.orange.shade900),
+              ),
+            ),
             trailing: _loading
                 ? const SizedBox(
                     width: 22,
                     height: 22,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: (enabled ? DriftProTheme.primaryGreen : Colors.orange.shade800)
-                          .withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _state.label,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: enabled ? DriftProTheme.primaryGreen : Colors.orange.shade900,
-                      ),
-                    ),
-                  ),
+                : const Icon(Icons.chevron_right, size: 20),
+            onTap: _loading ? null : _openSettings,
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Text(
-              Platform.isIOS
-                  ? 'Slå varsler av og på under Innstillinger → DriftPro → Varsler.'
-                  : 'Slå varsler av og på under Innstillinger → Apper → DriftPro → Varsler.',
-              style: TextStyle(fontSize: 12, color: muted, height: 1.35),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: OutlinedButton.icon(
-              onPressed: _loading ? null : _openSettings,
-              icon: const Icon(Icons.settings_outlined, size: 20),
-              label: const Text('Åpne enhetsinnstillinger'),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

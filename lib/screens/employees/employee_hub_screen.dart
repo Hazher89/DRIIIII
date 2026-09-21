@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/constants/company_principals.dart';
@@ -39,6 +41,7 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
   List<Department> _departments = [];
   UserProfile? _me;
   String _search = '';
+  List<Map<String, dynamic>> _deletionRequests = const [];
 
   @override
   void initState() {
@@ -82,11 +85,18 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
           ? await SupabaseService.fetchProfiles()
           : await SupabaseService.fetchProfiles(companyId: companyId);
       final depts = await SupabaseService.fetchDepartments(companyId: companyId);
+      var deletions = <Map<String, dynamic>>[];
+      if (me?.isSuperAdmin == true) {
+        try {
+          deletions = await SupabaseService.listPendingAccountDeletions();
+        } catch (_) {}
+      }
       if (!mounted) return;
       setState(() {
         _me = me;
         _all = users.where((u) => !u.isPartnerPortalUser).toList();
         _departments = depts;
+        _deletionRequests = deletions;
         _loading = false;
       });
     } catch (e) {
@@ -298,6 +308,8 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _infoBanner(isDark),
+                    if (_isSuperAdmin && _deletionRequests.isNotEmpty)
+                      _deletionRequestsBanner(),
                     AnimatedBuilder(
                       animation: _tabs,
                       builder: (context, _) {
@@ -335,6 +347,81 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                     ),
                   ],
                 ),
+    );
+  }
+
+  Widget _deletionRequestsBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange.shade300),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.person_off_outlined, color: Colors.orange.shade800),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Slettesøknader (${_deletionRequests.length})',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Colors.orange.shade900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Åpne ansatt og velg «Slett permanent» for å fullføre. '
+            'Frist 15 dager etter søknad.',
+            style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+          ),
+          const SizedBox(height: 8),
+          ..._deletionRequests.map((r) {
+            final name = (r['full_name'] as String?)?.trim();
+            final due = r['due_by']?.toString() ?? '';
+            final pid = r['profile_id'] as String?;
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(name?.isNotEmpty == true ? name! : 'Ukjent'),
+              subtitle: Text('Frist: $due'),
+              trailing: pid == null
+                  ? null
+                  : TextButton(
+                      onPressed: () {
+                        UserProfile? match;
+                        for (final u in _all) {
+                          if (u.id == pid) {
+                            match = u;
+                            break;
+                          }
+                        }
+                        if (match != null) {
+                          unawaited(_openEmployee(match));
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Fant ikke ansatt i listen — søk manuelt.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      child: const Text('Åpne'),
+                    ),
+            );
+          }),
+        ],
+      ),
     );
   }
 

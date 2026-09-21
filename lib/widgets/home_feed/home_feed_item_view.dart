@@ -8,6 +8,7 @@ import '../../models/home_feed_item.dart';
 import '../../models/home_feed_layout_config.dart';
 import '../../screens/chat/widgets/chat_media_viewer.dart';
 import '../platform_media_view.dart';
+import '../pinch_zoom_in_place.dart';
 
 /// Én forside-rad — brukes i app, web og admin-forhåndsvisning.
 class HomeFeedItemView extends StatefulWidget {
@@ -145,6 +146,7 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
       );
     }
 
+    final isImage = item.contentType == HomeFeedContentType.image;
     final card = Material(
       color: isDark ? DriftProTheme.cardDark : DriftProTheme.cardLight,
       elevation: layout.fullPageHero ? 0 : 2,
@@ -152,7 +154,8 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
       borderRadius: BorderRadius.circular(radius),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: !widget.interactive
+        // Bilder: pinch zoomer på plass; trykk håndteres i PinchZoomInPlace.
+        onTap: !widget.interactive || isImage
             ? null
             : item.contentType == HomeFeedContentType.document
                 ? _openDocument
@@ -338,13 +341,18 @@ class _HomeFeedItemViewState extends State<HomeFeedItemView> {
         if (url == null) {
           return const Center(child: Icon(Icons.broken_image_outlined));
         }
-        return Image.network(
+        final image = Image.network(
           url,
           fit: fit,
           width: double.infinity,
           height: double.infinity,
           errorBuilder: (_, __, ___) =>
               const Center(child: Icon(Icons.broken_image_outlined)),
+        );
+        if (!widget.interactive) return image;
+        return PinchZoomInPlace(
+          onTap: _openMedia,
+          child: image,
         );
       case HomeFeedContentType.video:
         if (url == null) {
@@ -436,7 +444,10 @@ class _AttachmentThumbState extends State<_AttachmentThumb> {
       borderRadius: BorderRadius.circular(10),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: widget.interactive ? _open : null,
+        onTap: widget.interactive &&
+                !(widget.attachment.isImage && _url != null)
+            ? _open
+            : null,
         child: SizedBox(
           width: 96,
           height: 72,
@@ -444,7 +455,12 @@ class _AttachmentThumbState extends State<_AttachmentThumb> {
             fit: StackFit.expand,
             children: [
               if (_url != null && widget.attachment.isImage)
-                Image.network(_url!, fit: BoxFit.cover)
+                widget.interactive
+                    ? PinchZoomInPlace(
+                        onTap: _open,
+                        child: Image.network(_url!, fit: BoxFit.cover),
+                      )
+                    : Image.network(_url!, fit: BoxFit.cover)
               else
                 Center(
                   child: Icon(

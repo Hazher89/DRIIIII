@@ -102,7 +102,7 @@ class PrivacyScreen extends StatelessWidget {
           bullets: [
             'Innsyn: se egne data via Min profil og personalmappe',
             'Retting: be leder eller superadmin om å korrigere feil',
-            'Sletting: bruk «Slett konto» under Min profil / denne siden',
+            'Sletting: send søknad under Min profil — superadmin fullfører innen 15 dager',
             'Begrensning og protest: kontakt behandlingsansvarlig',
             'Dataportabilitet: dokumenter kan leveres ut ved forespørsel',
             'Klage til Datatilsynet dersom du mener behandlingen er ulovlig',
@@ -113,12 +113,13 @@ class PrivacyScreen extends StatelessWidget {
           icon: Icons.person_off_outlined,
           paragraphs: [
             '${AppStrings.appName} er kun for ${DriftProPlatformCatalog.companyName}. '
-            'Konto opprettes av administrator. Du kan selv slette innloggingen og '
-            'personopplysninger direkte i appen (App Store-krav).',
+            'Du kan sende søknad om sletting i appen. Superadmin får beskjed og '
+            'fullfører slettingen innen 15 dager. Lovpålagte data kan beholdes.',
           ],
           bullets: const [
-            'Min profil → Slett konto permanent, eller knappen under',
-            'Skriv SLETT for å bekrefte',
+            'Min profil → Slett konto → Send søknad',
+            'Du får bekreftelse når søknaden er sendt',
+            'Superadmin sletter kontoen (ikke umiddelbart selv)',
             'Lovpålagt HMS-/HR-historikk kan oppbevares uten din identitet',
           ],
         ),
@@ -127,7 +128,7 @@ class PrivacyScreen extends StatelessWidget {
           child: FilledButton.icon(
             onPressed: () => showDeleteOwnAccountDialog(context),
             icon: const Icon(Icons.delete_forever_outlined),
-            label: const Text('Slett konto permanent'),
+            label: const Text('Send søknad om sletting'),
             style: FilledButton.styleFrom(
               backgroundColor: DriftProTheme.error,
               minimumSize: const Size(double.infinity, 48),

@@ -2083,6 +2083,7 @@ department:departments!department_id(name)
     if (me == targetUserId) {
       throw StateError('Du kan ikke slette din egen bruker.');
     }
+    await completeAccountDeletionRequest(targetUserId);
     await _purgeUserStorageBeforeHardDelete(targetUserId);
     await client.rpc('admin_delete_user_hard', params: {
       'target_user_id': targetUserId,
@@ -2139,7 +2140,35 @@ department:departments!department_id(name)
     }
   }
 
-  /// App Store: slett egen konto (edge `delete-own-account`).
+  /// Bruker sender søknad om sletting — superadmin fullfører.
+  static Future<Map<String, dynamic>> requestAccountDeletion() async {
+    final row = await client.rpc('request_account_deletion');
+    if (row is Map<String, dynamic>) return row;
+    if (row is Map) return Map<String, dynamic>.from(row);
+    throw StateError('Ugyldig svar fra server');
+  }
+
+  /// Superadmin: merk ventende slettesøknad som fullført (etter hard delete).
+  static Future<void> completeAccountDeletionRequest(String profileId) async {
+    await client.rpc(
+      'complete_account_deletion_request',
+      params: {'p_profile_id': profileId},
+    );
+  }
+
+  /// Ventende slettesøknader (RLS: egen + superadmin).
+  static Future<List<Map<String, dynamic>>> listPendingAccountDeletions() async {
+    final rows = await client
+        .from('account_deletion_requests')
+        .select()
+        .eq('status', 'pending')
+        .order('requested_at', ascending: false);
+    return (rows as List)
+        .map((r) => Map<String, dynamic>.from(r as Map))
+        .toList(growable: false);
+  }
+
+  /// App Store / legacy: umiddelbar egen-sletting (edge). Brukes ikke i UI lenger.
   static Future<void> deleteOwnAccount() async {
     final token = client.auth.currentSession?.accessToken;
     if (token == null || token.isEmpty) {

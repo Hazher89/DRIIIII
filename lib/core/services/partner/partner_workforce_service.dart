@@ -145,6 +145,21 @@ class PartnerWorkforceService {
     return setRouteAccess(staffId: staffId, enabled: enabled);
   }
 
+  /// Slå avvikstilgang av/på for ansatt (kan melde rute-/kundeavvik).
+  static Future<PartnerStaff> setCanReportDeviations({
+    required String staffId,
+    required bool enabled,
+  }) async {
+    final row = await _client.rpc(
+      'partner_staff_set_can_report_deviations',
+      params: {
+        'p_staff_id': staffId,
+        'p_enabled': enabled,
+      },
+    );
+    return _staffFromRpcRow(row);
+  }
+
   /// Slå rutetilgang av/på og sett hvilke biler ansatt kan håndtere ruter for.
   static Future<PartnerStaff> setRouteAccess({
     required String staffId,

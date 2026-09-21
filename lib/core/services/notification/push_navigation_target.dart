@@ -5,6 +5,7 @@ enum PushNavKind {
   partnerDeduction,
   partnerInspection,
   partnerTimesheet,
+  partnerDriverDeviation,
   hmsTicket,
   hmsRisk,
   hmsSja,
@@ -34,7 +35,8 @@ class PushNavigationTarget {
         PushNavKind.partnerRoute ||
         PushNavKind.partnerDeduction ||
         PushNavKind.partnerInspection ||
-        PushNavKind.partnerTimesheet =>
+        PushNavKind.partnerTimesheet ||
+        PushNavKind.partnerDriverDeviation =>
           true,
         _ => false,
       };
@@ -43,7 +45,8 @@ class PushNavigationTarget {
         PushNavKind.partnerRoute => 'ruter',
         PushNavKind.partnerDeduction ||
         PushNavKind.partnerInspection ||
-        PushNavKind.partnerTimesheet =>
+        PushNavKind.partnerTimesheet ||
+        PushNavKind.partnerDriverDeviation =>
           'mer',
         _ => null,
       };
@@ -59,6 +62,7 @@ class PushNavigationTarget {
           ),
         PushNavKind.partnerDeduction => '/partners?tab=bot-trekk',
         PushNavKind.partnerInspection => '/partners?tab=bilkontroll',
+        PushNavKind.partnerDriverDeviation => '/partners?tab=sjaforavvik',
         PushNavKind.chatMessage => id != null ? '/meldinger?room=$id' : '/meldinger',
         _ => null,
       };
@@ -92,6 +96,10 @@ class PushNavigationTarget {
       case 'partner_staff_punch':
         kind = PushNavKind.partnerTimesheet;
         id = entryId ?? refId;
+      case 'partner_driver_deviation':
+      case 'sjaforavvik':
+        kind = PushNavKind.partnerDriverDeviation;
+        id = refId;
       case 'chat_message':
       case 'chat_reply':
       case 'chat_thread_reply':
@@ -140,6 +148,8 @@ class PushNavigationTarget {
     switch (refType) {
       case 'tickets':
         return PushNavKind.hmsTicket;
+      case 'partner_driver_deviation':
+        return PushNavKind.partnerDriverDeviation;
       case 'risk_assessments':
         return PushNavKind.hmsRisk;
       case 'sja_forms':

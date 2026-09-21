@@ -337,7 +337,7 @@ class _PartnerPortalProfilePageState extends State<PartnerPortalProfilePage> {
                         style: TextStyle(color: DriftProTheme.error, fontWeight: FontWeight.w600),
                       ),
                       subtitle: Text(
-                        'Fjern innlogging og personopplysninger',
+                        'Send søknad — slettes av superadmin innen 15 dager',
                         style: TextStyle(fontSize: 12, color: muted),
                       ),
                       trailing: const Icon(Icons.chevron_right, size: 20, color: DriftProTheme.error),

@@ -14,6 +14,8 @@ class PartnerStaff {
   final String? notes;
   /// Når true: ansatt kan se/godkjenne ruter for valgte biler.
   final bool canManageRoutes;
+  /// Når true: ansatt kan melde rute-/kundeavvik.
+  final bool canReportDeviations;
   final List<String> routeVehicleIds;
   final DateTime createdAt;
 
@@ -32,6 +34,7 @@ class PartnerStaff {
     this.deactivatedAt,
     this.notes,
     this.canManageRoutes = false,
+    this.canReportDeviations = false,
     this.routeVehicleIds = const [],
     required this.createdAt,
   });
@@ -67,6 +70,7 @@ class PartnerStaff {
           : null,
       notes: json['notes'] as String?,
       canManageRoutes: json['can_manage_routes'] as bool? ?? false,
+      canReportDeviations: json['can_report_deviations'] as bool? ?? false,
       routeVehicleIds: _parseRouteVehicleIds(json),
       createdAt: DateTime.parse(json['created_at'] as String),
     );
@@ -106,6 +110,7 @@ class PartnerStaff {
     DateTime? deactivatedAt,
     bool clearDeactivatedAt = false,
     bool? canManageRoutes,
+    bool? canReportDeviations,
     List<String>? routeVehicleIds,
   }) {
     return PartnerStaff(
@@ -125,6 +130,7 @@ class PartnerStaff {
           : (deactivatedAt ?? this.deactivatedAt),
       notes: notes ?? this.notes,
       canManageRoutes: canManageRoutes ?? this.canManageRoutes,
+      canReportDeviations: canReportDeviations ?? this.canReportDeviations,
       routeVehicleIds: routeVehicleIds ?? this.routeVehicleIds,
       createdAt: createdAt,
     );

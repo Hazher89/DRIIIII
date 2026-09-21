@@ -73,11 +73,17 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(_onTabChanged);
     unawaited(ChatUnreadService.refresh());
     unawaited(ChatRealtimeNotificationService.start());
     _startHubRealtime();
     if (kIsWeb) _refreshWebNotifState();
     _load();
+  }
+
+  void _onTabChanged() {
+    if (!mounted || _tabs.indexIsChanging) return;
+    setState(() {});
   }
 
   Future<void> _refreshWebNotifState() async {
@@ -142,10 +148,12 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
   @override
   void dispose() {
     _hubRefreshDebounce?.cancel();
+    _deviationSearchDebounce?.cancel();
     if (_hubChannel != null) {
       SupabaseService.client.removeChannel(_hubChannel!);
       _hubChannel = null;
     }
+    _tabs.removeListener(_onTabChanged);
     _tabs.dispose();
     super.dispose();
   }
@@ -550,7 +558,7 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                   Icon(Icons.warning_amber_rounded, size: 18, color: Colors.orange),
                   SizedBox(width: 6),
                   Text(
-                    'Sjåføravvik',
+                    'Sjåføravvik (rute/kunde)',
                     style: TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ],
@@ -606,192 +614,226 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
     );
   }
 
-  Widget _roomList(List<ChatRoom> rooms, {required bool archived}) {
+  List<Widget> _roomSlivers(List<ChatRoom> rooms, {required bool archived}) {
     if (rooms.isEmpty) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          SizedBox(height: MediaQuery.sizeOf(context).height * 0.2),
-          Center(
-            child: Text(
-              archived ? 'Ingen arkiverte samtaler' : 'Ingen aktive samtaler',
-              style: TextStyle(color: Colors.grey.shade600),
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Text(
+                archived ? 'Ingen arkiverte samtaler' : 'Ingen aktive samtaler',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
             ),
           ),
-        ],
-      );
+        ),
+      ];
     }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: rooms.length,
-      itemBuilder: (_, i) {
-        final r = rooms[i];
-        return Dismissible(
-          key: ValueKey('${r.id}-$archived'),
-          direction: archived ? DismissDirection.endToStart : DismissDirection.startToEnd,
-          background: Container(
-            alignment: archived ? Alignment.centerRight : Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            margin: const EdgeInsets.only(bottom: 8),
-            decoration: BoxDecoration(
-              color: archived ? DriftProTheme.primaryGreen : Colors.blueGrey.shade200,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Icon(
-              archived ? Icons.unarchive_outlined : Icons.archive_outlined,
-              color: archived ? Colors.white : Colors.blueGrey.shade800,
-            ),
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, i) {
+              final r = rooms[i];
+              return Dismissible(
+                key: ValueKey('${r.id}-$archived'),
+                direction: archived
+                    ? DismissDirection.endToStart
+                    : DismissDirection.startToEnd,
+                background: Container(
+                  alignment: archived
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: archived
+                        ? DriftProTheme.primaryGreen
+                        : Colors.blueGrey.shade200,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    archived
+                        ? Icons.unarchive_outlined
+                        : Icons.archive_outlined,
+                    color: archived
+                        ? Colors.white
+                        : Colors.blueGrey.shade800,
+                  ),
+                ),
+                confirmDismiss: (_) async {
+                  await _archiveRoom(r, archive: !archived);
+                  return false;
+                },
+                child: _RoomTile(
+                  room: r,
+                  selected: _selectedRoom?.id == r.id,
+                  onTap: () => _openRoom(r),
+                  onLongPress: _isSuperAdmin
+                      ? () => showChatRoomMembersSheet(
+                            context: context,
+                            room: r,
+                            profile: widget.profile,
+                            onChanged: _load,
+                            onRoomDeleted: _load,
+                          )
+                      : null,
+                ),
+              );
+            },
+            childCount: rooms.length,
           ),
-          confirmDismiss: (_) async {
-            await _archiveRoom(r, archive: !archived);
-            return false;
-          },
-          child: _RoomTile(
-            room: r,
-            selected: _selectedRoom?.id == r.id,
-            onTap: () => _openRoom(r),
-            onLongPress: _isSuperAdmin
-                ? () => showChatRoomMembersSheet(
-                      context: context,
-                      room: r,
-                      profile: widget.profile,
-                      onChanged: _load,
-                      onRoomDeleted: _load,
-                    )
-                : null,
-          ),
-        );
-      },
-    );
+        ),
+      ),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
     final drift = context.driftColors;
+    final archivedTab = _tabs.index == 1;
+    final visibleRooms = _filterRooms(archivedTab ? _archived : _rooms);
     final listBody = _loading
         ? const Center(child: DriftProLoadingIndicator(size: 48))
         : _error != null
             ? _ErrorState(message: _error!, onRetry: _load)
-            : Column(
-                children: [
-                  if (kIsWeb && !_webNotifOn)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                      child: Material(
-                        color: Colors.blue.shade50,
-                        borderRadius: BorderRadius.circular(14),
-                        child: ListTile(
-                          leading: Icon(Icons.notifications_active_outlined, color: Colors.blue.shade700),
-                          title: const Text('Slå på nettleservarsler', style: TextStyle(fontWeight: FontWeight.w800)),
-                          subtitle: const Text(
-                            'Få varsel på web når nye meldinger kommer — også når fanen er i bakgrunnen.',
-                            style: TextStyle(fontSize: 11),
-                          ),
-                          trailing: FilledButton(
-                            onPressed: _enableWebNotifications,
-                            child: const Text('Aktiver'),
+            : RefreshIndicator(
+                onRefresh: _load,
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    if (kIsWeb && !_webNotifOn)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                          child: Material(
+                            color: Colors.blue.shade50,
+                            borderRadius: BorderRadius.circular(14),
+                            child: ListTile(
+                              leading: Icon(
+                                Icons.notifications_active_outlined,
+                                color: Colors.blue.shade700,
+                              ),
+                              title: const Text(
+                                'Slå på nettleservarsler',
+                                style: TextStyle(fontWeight: FontWeight.w800),
+                              ),
+                              subtitle: const Text(
+                                'Få varsel på web når nye meldinger kommer — også når fanen er i bakgrunnen.',
+                                style: TextStyle(fontSize: 11),
+                              ),
+                              trailing: FilledButton(
+                                onPressed: _enableWebNotifications,
+                                child: const Text('Aktiver'),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  if (_isSuperAdmin && _superadminDir != null)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                      child: ChatSuperadminPanel(
-                        directory: _superadminDir!,
-                        existingRooms: _rooms,
-                        onRoomCreated: (roomId, type, title) async {
-                          await _openRoom(ChatRoom(
-                            id: roomId,
-                            companyId: widget.profile.companyId ?? '',
-                            roomType: type,
-                            title: title,
-                          ));
-                          await _load();
-                        },
-                      ),
-                    ),
-                  if (!_loading && _error == null) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                      child: TextField(
-                        decoration: InputDecoration(
-                          hintText: _isMavi
-                              ? 'Søk samtale, bilag (2…) eller FU (4…)'
-                              : 'Søk i samtaler…',
-                          prefixIcon: const Icon(Icons.search),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                          isDense: true,
+                    if (_isSuperAdmin && _superadminDir != null)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                          child: ChatSuperadminPanel(
+                            directory: _superadminDir!,
+                            existingRooms: _rooms,
+                            onRoomCreated: (roomId, type, title) async {
+                              await _openRoom(ChatRoom(
+                                id: roomId,
+                                companyId: widget.profile.companyId ?? '',
+                                roomType: type,
+                                title: title,
+                              ));
+                              await _load();
+                            },
+                          ),
                         ),
-                        onChanged: _onSearchChanged,
+                      ),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                        child: TextField(
+                          decoration: InputDecoration(
+                            hintText: _isMavi
+                                ? 'Søk samtale, bilag (2…) eller FU (4…)'
+                                : 'Søk i samtaler…',
+                            prefixIcon: const Icon(Icons.search),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            isDense: true,
+                          ),
+                          onChanged: _onSearchChanged,
+                        ),
                       ),
                     ),
-                    _deviationSearchSection(),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          if (_isPartner) ...[
-                            ActionChip(
-                              avatar: const Icon(Icons.lock_outline, size: 18),
-                              label: const Text('Privat 1:1'),
-                              onPressed: _startPartnerPrivate,
-                            ),
-                            ActionChip(
-                              avatar: const Icon(Icons.group_add_outlined, size: 18),
-                              label: const Text('Ny gruppe'),
-                              onPressed: _createPartnerGroup,
-                            ),
-                            ActionChip(
-                              avatar: const Icon(Icons.block_outlined, size: 18),
-                              label: Text('Blokkerte (${_blocked.length})'),
-                              onPressed: _showBlockedUsers,
-                            ),
+                    SliverToBoxAdapter(child: _deviationSearchSection()),
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            if (_isPartner) ...[
+                              ActionChip(
+                                avatar: const Icon(Icons.lock_outline, size: 18),
+                                label: const Text('Privat 1:1'),
+                                onPressed: _startPartnerPrivate,
+                              ),
+                              ActionChip(
+                                avatar:
+                                    const Icon(Icons.group_add_outlined, size: 18),
+                                label: const Text('Ny gruppe'),
+                                onPressed: _createPartnerGroup,
+                              ),
+                              ActionChip(
+                                avatar: const Icon(Icons.block_outlined, size: 18),
+                                label: Text('Blokkerte (${_blocked.length})'),
+                                onPressed: _showBlockedUsers,
+                              ),
+                            ],
+                            if (_isMavi && !_isSuperAdmin) ...[
+                              ActionChip(
+                                avatar:
+                                    const Icon(Icons.groups_outlined, size: 18),
+                                label: const Text('MAVI-gruppe'),
+                                onPressed: _createMaviGroup,
+                              ),
+                            ],
+                            if (_isMavi && _canBroadcast) ...[
+                              ActionChip(
+                                avatar: const Icon(
+                                  Icons.campaign_outlined,
+                                  size: 18,
+                                ),
+                                label: const Text('Send til alle partnere'),
+                                onPressed: _openBroadcast,
+                              ),
+                            ],
                           ],
-                          if (_isMavi && !_isSuperAdmin) ...[
-                            ActionChip(
-                              avatar: const Icon(Icons.groups_outlined, size: 18),
-                              label: const Text('MAVI-gruppe'),
-                              onPressed: _createMaviGroup,
-                            ),
-                          ],
-                          if (_isMavi && _canBroadcast) ...[
-                            ActionChip(
-                              avatar: const Icon(Icons.campaign_outlined, size: 18),
-                              label: const Text('Send til alle partnere'),
-                              onPressed: _openBroadcast,
-                            ),
-                          ],
+                        ),
+                      ),
+                    ),
+                    SliverToBoxAdapter(
+                      child: TabBar(
+                        controller: _tabs,
+                        tabs: [
+                          Tab(
+                            text: 'Aktive (${_filterRooms(_rooms).length})',
+                          ),
+                          Tab(
+                            text: 'Arkiv (${_filterRooms(_archived).length})',
+                          ),
                         ],
                       ),
                     ),
-                    TabBar(
-                      controller: _tabs,
-                      tabs: [
-                        Tab(text: 'Aktive (${_filterRooms(_rooms).length})'),
-                        Tab(text: 'Arkiv (${_filterRooms(_archived).length})'),
-                      ],
-                    ),
+                    ..._roomSlivers(visibleRooms, archived: archivedTab),
                   ],
-                  Expanded(
-                    child: TabBarView(
-                      controller: _tabs,
-                      children: [
-                        RefreshIndicator(
-                          onRefresh: _load,
-                          child: _roomList(_filterRooms(_rooms), archived: false),
-                        ),
-                        RefreshIndicator(
-                          onRefresh: _load,
-                          child: _roomList(_filterRooms(_archived), archived: true),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               );
 
     if (widget.embedded) return listBody;

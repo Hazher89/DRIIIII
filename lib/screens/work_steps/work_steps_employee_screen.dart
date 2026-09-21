@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
+import '../../core/services/native_permissions_service.dart';
 import '../../core/services/work_steps/work_steps_health_bridge.dart';
 import '../../core/services/work_steps/work_steps_privacy.dart';
 import '../../core/services/work_steps/work_steps_service.dart';
@@ -16,18 +20,34 @@ class WorkStepsEmployeeScreen extends StatefulWidget {
       _WorkStepsEmployeeScreenState();
 }
 
-class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
+class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen>
+    with WidgetsBindingObserver {
   bool _loading = true;
   bool _busy = false;
   WorkStepsConsent? _consent;
   WorkStepsSettings? _settings;
   List<WorkStepsDaily> _history = const [];
   String? _status;
+  int? _liveSteps;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _consent?.enabled == true) {
+      unawaited(_refreshLiveSteps());
+    }
   }
 
   Future<void> _load() async {
@@ -43,6 +63,9 @@ class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
         _history = history;
         _loading = false;
       });
+      if (consent?.enabled == true) {
+        await _refreshLiveSteps();
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -52,8 +75,14 @@ class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
     }
   }
 
+  Future<void> _refreshLiveSteps() async {
+    if (kIsWeb || !await WorkStepsHealthBridge.isSupported()) return;
+    final steps = await WorkStepsHealthBridge.stepsToday();
+    if (!mounted) return;
+    setState(() => _liveSteps = steps);
+  }
+
   Future<void> _showConsentThenEnable() async {
-    // Apple/Google: short in-app purpose → then OS permission dialog.
     final accepted = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -95,27 +124,83 @@ class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
 
     setState(() => _busy = true);
     try {
-      // Native Apple Health / Google Health Connect prompt next.
-      if (!kIsWeb && await WorkStepsHealthBridge.isSupported()) {
-        final granted = await WorkStepsHealthBridge.requestAuthorization();
-        if (!granted && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Tillatelse ble ikke gitt. Du kan endre dette i '
-                'Apple Helse eller Health Connect.',
-              ),
+      // 1) Posisjon (when-in-use) — trengs for «kun på jobb».
+      final locOk = await NativePermissionsService.ensureLocation(
+        context: context,
+      );
+      if (!locOk) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Posisjonstilgang trengs for å bekrefte at du er på arbeidsstedet.',
             ),
-          );
+          ),
+        );
+        setState(() => _busy = false);
+        return;
+      }
+
+      // 2) Apple Helse / Health Connect.
+      if (!kIsWeb && await WorkStepsHealthBridge.isSupported()) {
+        final auth = await WorkStepsHealthBridge.requestAuthorization();
+        if (!auth.ok) {
+          if (!mounted) return;
+          if (auth.needsHealthConnectInstall) {
+            final install = await showDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Health Connect'),
+                content: Text(auth.message ?? 'Installér Health Connect.'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Avbryt'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Installér'),
+                  ),
+                ],
+              ),
+            );
+            if (install == true) {
+              await WorkStepsHealthBridge.installHealthConnect();
+            }
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(auth.message ?? 'Tillatelse ble ikke gitt.'),
+                action: SnackBarAction(
+                  label: 'Innstillinger',
+                  onPressed: openAppSettings,
+                ),
+              ),
+            );
+          }
           setState(() => _busy = false);
           return;
         }
+        if (auth.stepsProbe != null) {
+          _liveSteps = auth.stepsProbe;
+        }
       }
+
       await WorkStepsService.setConsentEnabled(true);
       await _load();
+
+      // 3) Prøv synk med én gang (fungerer bare på jobb).
+      final sync = await WorkStepsSync.syncNow();
       if (!mounted) return;
-      setState(() =>
-          _status = 'Deling er på. Synk virker bare på MAVI arbeidssted.');
+      setState(() {
+        _status = sync.ok
+            ? sync.message
+            : 'Deling er på. ${sync.message}';
+        if (sync.steps != null) _liveSteps = sync.steps;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_status!)),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -132,7 +217,10 @@ class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
       await WorkStepsService.setConsentEnabled(false);
       await _load();
       if (!mounted) return;
-      setState(() => _status = 'Skritt på jobb er slått av. Ingen skritt leses.');
+      setState(() {
+        _status = 'Skritt på jobb er slått av. Ingen skritt leses.';
+        _liveSteps = null;
+      });
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -144,10 +232,22 @@ class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
       final result = await WorkStepsSync.syncNow();
       await _load();
       if (!mounted) return;
-      setState(() => _status = result.message);
+      setState(() {
+        _status = result.message;
+        if (result.steps != null) _liveSteps = result.steps;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.message)),
+        SnackBar(
+          content: Text(result.message),
+          action: result.openSettingsHint
+              ? SnackBarAction(
+                  label: 'Innstillinger',
+                  onPressed: openAppSettings,
+                )
+              : null,
+        ),
       );
+      await _refreshLiveSteps();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -163,8 +263,14 @@ class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
           'Apple Helse / Health Connect på telefonen endres ikke.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Slett')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Avbryt'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Slett'),
+          ),
         ],
       ),
     );
@@ -190,11 +296,16 @@ class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
                   decoration: BoxDecoration(
                     color: Colors.amber.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.amber.shade700.withValues(alpha: 0.4)),
+                    border: Border.all(
+                      color: Colors.amber.shade700.withValues(alpha: 0.4),
+                    ),
                   ),
                   child: const Text(
                     kWorkStepsOnlyAtWorkBanner,
-                    style: TextStyle(fontWeight: FontWeight.w700, height: 1.35),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -227,6 +338,28 @@ class _WorkStepsEmployeeScreenState extends State<WorkStepsEmployeeScreen> {
                   ),
                 ),
                 if (enabled) ...[
+                  if (_liveSteps != null) ...[
+                    const SizedBox(height: 12),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(
+                          Icons.directions_walk,
+                          color: DriftProTheme.primaryGreen,
+                        ),
+                        title: const Text('Skritt i dag (telefon)'),
+                        trailing: Text(
+                          '$_liveSteps',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 20,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          'Fra Apple Helse / Health Connect',
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   FilledButton.icon(
                     onPressed: _busy ? null : _sync,

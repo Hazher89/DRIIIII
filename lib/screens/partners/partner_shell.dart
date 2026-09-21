@@ -107,6 +107,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   bool _loading = true;
   bool _workforceEnabled = false;
   bool _staffCanManageRoutes = false;
+  bool _staffCanReportDeviations = false;
   Set<String> _staffRouteVehicleIds = {};
   OwnerPortalRoutesFocus? _routesFocus;
   RealtimeChannel? _workforceChannel;
@@ -272,20 +273,24 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     try {
       final enabled = await PartnerWorkforceService.isEnabled(pid);
       var staffRoutes = _staffCanManageRoutes;
+      var staffDeviations = _staffCanReportDeviations;
       var staffVehicleIds = _staffRouteVehicleIds;
       if (widget.portalAccountKind == 'staff') {
         try {
           final me = await PartnerWorkforceService.myStaffRecord();
           staffRoutes = me?.canManageRoutes == true && enabled;
+          staffDeviations = me?.canReportDeviations == true && enabled;
           staffVehicleIds = me?.routeVehicleIds.toSet() ?? {};
         } catch (_) {
           staffRoutes = false;
+          staffDeviations = false;
           staffVehicleIds = {};
         }
       }
       if (!mounted) return;
       if (enabled == _workforceEnabled &&
           staffRoutes == _staffCanManageRoutes &&
+          staffDeviations == _staffCanReportDeviations &&
           staffVehicleIds.length == _staffRouteVehicleIds.length &&
           staffVehicleIds.containsAll(_staffRouteVehicleIds)) {
         return;
@@ -293,6 +298,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       setState(() {
         _workforceEnabled = enabled;
         _staffCanManageRoutes = staffRoutes;
+        _staffCanReportDeviations = staffDeviations;
         _staffRouteVehicleIds = staffVehicleIds;
         // Hold indeks innenfor synlige faner når Ansatte/Timer/Stempling forsvinner.
         final maxIdx = _visibleTabCount() - 1;
@@ -310,6 +316,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       var n = 1; // profil
       if (_workforceEnabled) n += 1; // stempling
       if (_workforceEnabled && _staffCanManageRoutes) n += 1; // ruter
+      if (_workforceEnabled && _staffCanReportDeviations) n += 1; // avvik
       if (_chatEnabled) n += 1; // meldinger
       return n;
     }
@@ -324,6 +331,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       return [
         if (_workforceEnabled) 'stempling',
         if (_workforceEnabled && _staffCanManageRoutes) 'ruter',
+        if (_workforceEnabled && _staffCanReportDeviations) 'avvik',
         if (_chatEnabled) 'meldinger',
         'profil',
       ];
@@ -332,6 +340,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       return [
         'oversikt',
         'ruter',
+        'avvik',
         'dokumenter',
         if (_chatEnabled) 'meldinger',
         'mer',
@@ -349,7 +358,15 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     ];
   }
 
-  int _ownerMoreTabIndex() => _chatEnabled ? 4 : 3;
+  int _ownerMoreTabIndex() => _chatEnabled ? 5 : 4;
+
+  String _staffRoleLabel() {
+    final parts = <String>['stempling'];
+    if (_staffCanManageRoutes) parts.add('ruter');
+    if (_staffCanReportDeviations) parts.add('avvik');
+    if (parts.length == 1) return 'Ansatt (kun stempling)';
+    return 'Ansatt (${parts.join(' + ')})';
+  }
 
   Widget _partnerChatPage() {
     return ChatHubGate(
@@ -523,6 +540,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       final p = await PartnerService.fetchPartner(pid);
       var workforce = false;
       var staffRoutes = false;
+      var staffDeviations = false;
       var staffVehicleIds = _staffRouteVehicleIds;
       try {
         workforce = await PartnerWorkforceService.isEnabled(pid);
@@ -531,9 +549,11 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
         try {
           final me = await PartnerWorkforceService.myStaffRecord();
           staffRoutes = me?.canManageRoutes == true;
+          staffDeviations = me?.canReportDeviations == true;
           staffVehicleIds = me?.routeVehicleIds.toSet() ?? {};
         } catch (_) {
           staffRoutes = false;
+          staffDeviations = false;
           staffVehicleIds = {};
         }
       }
@@ -542,6 +562,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
         _partner = p;
         _workforceEnabled = workforce;
         _staffCanManageRoutes = staffRoutes && workforce;
+        _staffCanReportDeviations = staffDeviations && workforce;
         _staffRouteVehicleIds = staffVehicleIds;
         _loading = false;
       });
@@ -643,14 +664,18 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
               StaffPortalPunchPage(partner: p, profile: _profile),
             if (_workforceEnabled && _staffCanManageRoutes)
               OwnerPortalRoutesPage(partner: p, staffPortal: true),
+            if (_workforceEnabled && _staffCanReportDeviations)
+              DriverPortalAvvikPage(
+                partner: p,
+                profile: _profile,
+                isStaffMode: true,
+              ),
             if (_chatEnabled) _partnerChatPage(),
             PartnerPortalProfilePage(
               profile: _profile,
               roleLabel: !_workforceEnabled
                   ? 'Ansatt (stempling av)'
-                  : _staffCanManageRoutes
-                      ? 'Ansatt (stempling + ruter)'
-                      : 'Ansatt (kun stempling)',
+                  : _staffRoleLabel(),
               partnerName: p.name,
               staffPortal: true,
               onProfileUpdated: _onProfileUpdated,
@@ -663,7 +688,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                   workforceEnabled: _workforceEnabled,
                   onGoToRoutes: goToRoutes,
                   onGoToTrekk: openTrekk,
-                  onGoToDocs: () => _selectTab(2),
+                  onGoToDocs: () => _selectTab(3),
                   onGoToMore: () => _selectTab(_ownerMoreTabIndex()),
                   onGoToTimesheet: () {
                     Navigator.of(context).push(
@@ -681,6 +706,11 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                       setState(() => _routesFocus = null);
                     }
                   },
+                ),
+                DriverPortalAvvikPage(
+                  partner: p,
+                  profile: _profile,
+                  isOwnerMode: true,
                 ),
                 OwnerPortalDocsPage(partner: p),
                 if (_chatEnabled) _partnerChatPage(),
@@ -713,6 +743,11 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     final ownerNavItems = [
       _portalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
       _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
+      _portalNavItem(
+        icon: Icons.warning_amber_outlined,
+        selectedIcon: Icons.warning_amber_rounded,
+        label: 'Avvik',
+      ),
       _portalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
       if (_chatEnabled) _chatNavItem(),
       _portalNavItem(icon: Icons.apps_outlined, selectedIcon: Icons.apps, label: 'Mer'),
@@ -728,6 +763,12 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
         ),
       if (_workforceEnabled && _staffCanManageRoutes)
         _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
+      if (_workforceEnabled && _staffCanReportDeviations)
+        _portalNavItem(
+          icon: Icons.warning_amber_outlined,
+          selectedIcon: Icons.warning_amber_rounded,
+          label: 'Avvik',
+        ),
       if (_chatEnabled) _chatNavItem(),
       _portalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
     ];
@@ -738,7 +779,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       _portalNavItem(
         icon: Icons.warning_amber_outlined,
         selectedIcon: Icons.warning_amber_rounded,
-        label: 'Avvik',
+        label: 'Meld avvik',
       ),
       _portalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
       if (_chatEnabled) _chatNavItem(),

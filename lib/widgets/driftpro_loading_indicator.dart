@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/constants/driftpro_brand.dart';
 
-/// Roterende D-ikon fra DriftPro-logoen — erstatter standardsirkel ved lasting.
+/// Roterende merke for små loaders (knapper, lister).
 class DriftProLoadingIndicator extends StatefulWidget {
   const DriftProLoadingIndicator({
     super.key,
@@ -14,7 +15,8 @@ class DriftProLoadingIndicator extends StatefulWidget {
   final Duration duration;
 
   @override
-  State<DriftProLoadingIndicator> createState() => _DriftProLoadingIndicatorState();
+  State<DriftProLoadingIndicator> createState() =>
+      _DriftProLoadingIndicatorState();
 }
 
 class _DriftProLoadingIndicatorState extends State<DriftProLoadingIndicator>
@@ -24,7 +26,8 @@ class _DriftProLoadingIndicatorState extends State<DriftProLoadingIndicator>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: widget.duration)..repeat();
+    _controller =
+        AnimationController(vsync: this, duration: widget.duration)..repeat();
   }
 
   @override
@@ -58,7 +61,7 @@ class _DriftProLoadingIndicatorState extends State<DriftProLoadingIndicator>
   }
 }
 
-/// Fullside lasting med sentrert DriftPro-spinner.
+/// Sentrert liten spinner.
 class DriftProLoadingCenter extends StatelessWidget {
   const DriftProLoadingCenter({super.key, this.size = 48});
 
@@ -70,17 +73,33 @@ class DriftProLoadingCenter extends StatelessWidget {
   }
 }
 
-/// Fullside lasting med tematisert bakgrunn (ingen hvit flash).
+/// Fullside oppstart/ lasting — sort flate + neon-merke (matcher iOS LaunchScreen).
 class DriftProLoadingPage extends StatelessWidget {
-  const DriftProLoadingPage({super.key, this.size = 48});
+  const DriftProLoadingPage({super.key, this.size = 120});
 
   final double size;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: DriftProLoadingCenter(size: size),
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light.copyWith(
+        statusBarColor: Colors.transparent,
+        systemNavigationBarColor: Colors.black,
+        systemNavigationBarIconBrightness: Brightness.light,
+      ),
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Image.asset(
+            DriftProBrand.splashMark,
+            width: size,
+            height: size,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+            gaplessPlayback: true,
+          ),
+        ),
+      ),
     );
   }
 }

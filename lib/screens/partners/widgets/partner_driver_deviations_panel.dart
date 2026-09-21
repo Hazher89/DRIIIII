@@ -8,9 +8,22 @@ import '../../../widgets/driftpro_loading_indicator.dart';
 import 'partner_driver_deviation_detail_sheet.dart';
 
 class PartnerDriverDeviationsPanel extends StatefulWidget {
-  const PartnerDriverDeviationsPanel({super.key, required this.companyId});
+  const PartnerDriverDeviationsPanel({
+    super.key,
+    required this.companyId,
+    this.partnerId,
+    this.title = 'Sjåføravvik fra partnere',
+    this.subtitle =
+        'Rute-/kundeavvik fra partnerfirmaene (bil-eier/sjåfør). '
+        'Ikke HMS-avvik for MAVI-ansatte.',
+  });
 
   final String companyId;
+
+  /// Når satt (partnerportal): kun dette firmaet. Tom for MAVI = alle partnere.
+  final String? partnerId;
+  final String title;
+  final String subtitle;
 
   @override
   State<PartnerDriverDeviationsPanel> createState() =>
@@ -44,6 +57,7 @@ class _PartnerDriverDeviationsPanelState
     try {
       final items = await PartnerDriverDeviationService.list(
         companyId: widget.companyId,
+        partnerId: widget.partnerId,
         query: _searchCtrl.text,
         limit: 100,
       );
@@ -68,14 +82,13 @@ class _PartnerDriverDeviationsPanelState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Innkommende sjåføravvik',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              Text(
+                widget.title,
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 4),
               Text(
-                'Søk på bilagsnummer (2…) eller Freight Unit (4…). '
-                'Trykk på et avvik for kommentar, bilder og video.',
+                widget.subtitle,
                 style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               ),
               const SizedBox(height: 12),
@@ -193,6 +206,14 @@ class _PartnerDriverDeviationsPanelState
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey.shade600,
+                          ),
+                        ),
+                        Text(
+                          'Sendt av ${item.reporterLabel}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade800,
                           ),
                         ),
                       ],
