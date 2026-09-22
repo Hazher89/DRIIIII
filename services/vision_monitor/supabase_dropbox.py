@@ -61,6 +61,37 @@ class SupabaseDropboxUpload:
 
         return DropboxUploadResult(path=path, share_url=link)
 
+    def upload_file(
+        self,
+        *,
+        data: bytes,
+        company_id: str,
+        file_name: str,
+        category: str = "vision_sorting_clip",
+    ) -> DropboxUploadResult:
+        """Upload arbitrary file (e.g. mp4) via vision-camera edge function."""
+        payload = {
+            "company_id": company_id,
+            "file_name": file_name,
+            "bytes_base64": base64.b64encode(data).decode("ascii"),
+            "category": category,
+        }
+        with httpx.Client(timeout=180.0) as client:
+            response = client.post(self._upload_url, headers=self._headers, json=payload)
+            if response.status_code >= 400:
+                logger.error(
+                    "Dropbox file upload failed: %s %s",
+                    response.status_code,
+                    response.text[:300],
+                )
+                response.raise_for_status()
+            data_json = response.json()
+        path = data_json.get("path") or ""
+        link = data_json.get("temporary_link") or data_json.get("temporaryLink") or ""
+        if not path:
+            raise RuntimeError("Dropbox upload mangler path")
+        return DropboxUploadResult(path=path, share_url=link)
+
     def push_live_jpeg(
         self,
         *,

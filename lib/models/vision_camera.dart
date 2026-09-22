@@ -137,15 +137,22 @@ class VisionEvent {
     if (eventType == 'sorting_clip') {
       final reason = metadata['reason']?.toString();
       final zone = metadata['zone']?.toString();
-      if (reason == 'bulky_packaging') {
-        return zone != null
-            ? 'Stor/full emballasje ($zone)'
-            : 'Stor/full emballasje';
+      String label;
+      switch (reason) {
+        case 'unflattened_cardboard':
+          label = 'Ubrettet/stor eske i papp-container';
+        case 'cardboard_in_wrong_bin':
+          label = 'Eske kastet i annet-container';
+        case 'wrong_material_in_papp':
+          label = 'Feil materiale i papp-container';
+        case 'bulky_packaging':
+          label = 'Stor/full emballasje';
+        case 'cardboard':
+          label = 'Brun eske';
+        default:
+          label = 'Søppelsortering-avvik';
       }
-      if (reason == 'cardboard') {
-        return zone != null ? 'Brun eske ($zone)' : 'Brun eske';
-      }
-      return 'Søppelsortering';
+      return zone != null && zone.isNotEmpty ? '$label ($zone)' : label;
     }
     return eventType;
   }

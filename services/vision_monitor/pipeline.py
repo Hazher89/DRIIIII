@@ -380,23 +380,39 @@ class VisionMonitorPipeline:
             logger.info("Local sorting clip ready: %s", video_path)
             return
 
-        # Production: upload video bytes via Dropbox if configured
+        # Production: always upload VIDEO clip (+ JPEG preview) — never image-only.
         video_bytes = await asyncio.to_thread(video_path.read_bytes)
         snap = await asyncio.to_thread(
             encode_jpeg, hit.annotated_frame, self._settings.jpeg_quality
         )
+        stamp_name = captured_at.strftime("%Y%m%d_%H%M%S")
 
+        video_upload = None
+        thumb_upload = None
         if self._company_dropbox:
-            upload = await asyncio.to_thread(
-                self._company_dropbox.upload_jpeg,
-                image_bytes=snap,
+            video_upload = await asyncio.to_thread(
+                self._company_dropbox.upload_file,
+                data=video_bytes,
                 company_id=self._settings.company_id,
-                camera_id=self._settings.camera_id,
-                event_type=self._settings.event_type.value,
-                captured_at=captured_at,
+                file_name=(
+                    f"sorting_{self._settings.camera_id}_{hit.zone}_"
+                    f"{hit.reason}_{stamp_name}.mp4"
+                ),
+                category="vision_sorting_clip",
             )
+            try:
+                thumb_upload = await asyncio.to_thread(
+                    self._company_dropbox.upload_jpeg,
+                    image_bytes=snap,
+                    company_id=self._settings.company_id,
+                    camera_id=self._settings.camera_id,
+                    event_type=self._settings.event_type.value,
+                    captured_at=captured_at,
+                )
+            except Exception as exc:
+                logger.warning("Thumbnail upload failed: %s", exc)
         elif self._dropbox:
-            upload = await asyncio.to_thread(
+            video_upload = await asyncio.to_thread(
                 self._dropbox.upload_bytes,
                 data=video_bytes,
                 company_id=self._settings.company_id,
@@ -409,19 +425,32 @@ class VisionMonitorPipeline:
             logger.warning("No Dropbox configured — clip kept at %s", video_path)
             return
 
+        meta["dropbox_video_url"] = video_upload.share_url
+        meta["dropbox_video_path"] = video_upload.path
+        if thumb_upload:
+            meta["dropbox_thumb_url"] = thumb_upload.share_url
+
         if self._repo:
             record = VisionEventRecord(
                 company_id=self._settings.company_id,
                 camera_id=self._settings.camera_id,
                 event_type=self._settings.event_type.value,
                 status="open",
-                dropbox_image_url=upload.share_url,
-                dropbox_path=upload.path,
+                # Preview image URL when available; else video link for open-in-browser.
+                dropbox_image_url=(
+                    thumb_upload.share_url if thumb_upload else video_upload.share_url
+                ),
+                dropbox_path=video_upload.path,
                 timestamp=captured_at,
                 metadata=meta,
             )
             await self._repo.insert(record)
-        logger.info("Sorting clip uploaded | zone=%s path=%s", hit.zone, upload.path)
+        logger.info(
+            "Sorting VIDEO uploaded | zone=%s reason=%s path=%s",
+            hit.zone,
+            hit.reason,
+            video_upload.path,
+        )
 
     async def _live_push_loop(self) -> None:
         """Push nearly-live JPEG to Dropbox so DriftPro can show camera worldwide."""

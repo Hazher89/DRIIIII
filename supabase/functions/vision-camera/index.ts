@@ -150,6 +150,7 @@ Deno.serve(async (req) => {
         company_id: string;
         file_name: string;
         bytes_base64: string;
+        category?: string;
       };
 
       if (!body.company_id || !body.file_name || !body.bytes_base64) {
@@ -159,7 +160,7 @@ Deno.serve(async (req) => {
       const bytes = Uint8Array.from(atob(body.bytes_base64), (c) => c.charCodeAt(0));
       const result = await tryUploadToDropbox(admin, body.company_id, {
         fileName: body.file_name,
-        category: "vision_uniform",
+        category: body.category?.trim() || "vision_uniform",
         bytes,
       });
 

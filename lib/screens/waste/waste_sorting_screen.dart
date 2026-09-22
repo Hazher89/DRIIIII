@@ -146,8 +146,9 @@ class _IntroCard extends StatelessWidget {
             Text('Komprimatorer', style: DriftProTheme.headingSm),
             const SizedBox(height: 8),
             Text(
-              'Kamera ser begge komprimatorene. Ved brun eske eller stor/full '
-              'emballasje lagres ~1 min før og etter.',
+              'Kamera tar alltid opp (buffer). '
+              'A = papp (kun brettet eske). B = annet (isopor OK). '
+              'Avvik lagres som video ~2 min før + 2 min etter — OK-hendelser lagres ikke.',
               style: TextStyle(color: Colors.grey.shade700, height: 1.35),
             ),
             const SizedBox(height: 12),
@@ -197,7 +198,10 @@ class _SortingEventCard extends StatelessWidget {
     final url = event.dropboxImageUrl;
     final zone = event.metadata['zone']?.toString();
     final reason = event.metadata['reason']?.toString();
-    final videoPath = event.metadata['video_path']?.toString();
+    final videoUrl = event.metadata['dropbox_video_url']?.toString() ??
+        (event.metadata['video_path']?.toString()?.startsWith('http') == true
+            ? event.metadata['video_path']?.toString()
+            : null);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -224,14 +228,15 @@ class _SortingEventCard extends StatelessWidget {
                 time,
                 if (zone != null && zone.isNotEmpty) zone,
                 if (reason != null && reason.isNotEmpty) reason,
+                'video 2+2 min',
               ].join(' · '),
             ),
-            trailing: videoPath != null && videoPath.startsWith('http')
+            trailing: videoUrl != null && videoUrl.isNotEmpty
                 ? IconButton(
-                    tooltip: 'Åpne video',
+                    tooltip: 'Spill av video',
                     icon: const Icon(Icons.play_circle_outline),
                     onPressed: () => launchUrl(
-                      Uri.parse(videoPath),
+                      Uri.parse(videoUrl),
                       mode: LaunchMode.externalApplication,
                     ),
                   )

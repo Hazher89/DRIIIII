@@ -130,8 +130,8 @@ class Settings:
                 os.environ.get("LIVE_PUSH_INTERVAL_SECONDS", "2")
             ),
             vision_camera_db_id=os.environ.get("VISION_CAMERA_ID", "").strip(),
-            clip_seconds_before=float(os.environ.get("CLIP_SECONDS_BEFORE", "60")),
-            clip_seconds_after=float(os.environ.get("CLIP_SECONDS_AFTER", "60")),
+            clip_seconds_before=float(os.environ.get("CLIP_SECONDS_BEFORE", "120")),
+            clip_seconds_after=float(os.environ.get("CLIP_SECONDS_AFTER", "120")),
             clip_fps=float(os.environ.get("CLIP_FPS", "2")),
             sorting_model=os.environ.get("SORTING_MODEL", "models/yolov8s-worldv2.pt"),
             zone1_name=os.environ.get("ZONE1_NAME", "container_A_papp").strip(),
