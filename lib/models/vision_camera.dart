@@ -117,6 +117,9 @@ class VisionEvent {
     required this.dropboxImageUrl,
     required this.occurredAt,
     this.metadata = const {},
+    this.dropboxPath,
+    this.viewedAt,
+    this.archivedAt,
   });
 
   final String id;
@@ -126,9 +129,47 @@ class VisionEvent {
   final String dropboxImageUrl;
   final DateTime occurredAt;
   final Map<String, dynamic> metadata;
+  final String? dropboxPath;
+  final DateTime? viewedAt;
+  final DateTime? archivedAt;
+
+  bool get isViewed => viewedAt != null;
+  bool get isArchived => archivedAt != null;
+  bool get isDismissed => status == 'dismissed';
 
   bool get missingLogo => metadata['missing_logo'] == true;
   bool get missingShoes => metadata['missing_shoes'] == true;
+
+  String? get videoUrl {
+    final v = metadata['dropbox_video_url']?.toString();
+    if (v != null && v.startsWith('http')) return v;
+    final p = metadata['video_path']?.toString();
+    if (p != null && p.startsWith('http')) return p;
+    return null;
+  }
+
+  String? get videoDropboxPath =>
+      metadata['dropbox_video_path']?.toString() ?? dropboxPath;
+
+  List<String> get insightChips {
+    final out = <String>[];
+    final zone = metadata['zone']?.toString();
+    final reason = metadata['reason']?.toString();
+    final label = metadata['label']?.toString();
+    final conf = metadata['confidence'];
+    final frames = metadata['frame_count'];
+    final before = metadata['clip_seconds_before'];
+    final after = metadata['clip_seconds_after'];
+    if (zone != null && zone.isNotEmpty) out.add(zone);
+    if (reason != null && reason.isNotEmpty) out.add(reason);
+    if (label != null && label.isNotEmpty) out.add(label);
+    if (conf is num) out.add('treff ${(conf * 100).round()}%');
+    if (before is num && after is num) {
+      out.add('${before.round()}+${after.round()}s');
+    }
+    if (frames is num) out.add('$frames bilder');
+    return out;
+  }
 
   String get violationSummary {
     if (missingLogo && missingShoes) return 'Mangler logo og vernesko';
@@ -157,7 +198,32 @@ class VisionEvent {
     return eventType;
   }
 
+  VisionEvent copyWith({
+    DateTime? viewedAt,
+    DateTime? archivedAt,
+    String? status,
+    bool clearArchived = false,
+  }) {
+    return VisionEvent(
+      id: id,
+      cameraId: cameraId,
+      eventType: eventType,
+      status: status ?? this.status,
+      dropboxImageUrl: dropboxImageUrl,
+      occurredAt: occurredAt,
+      metadata: metadata,
+      dropboxPath: dropboxPath,
+      viewedAt: viewedAt ?? this.viewedAt,
+      archivedAt: clearArchived ? null : (archivedAt ?? this.archivedAt),
+    );
+  }
+
   factory VisionEvent.fromRow(Map<String, dynamic> row) {
+    DateTime? parseTs(dynamic v) {
+      if (v == null) return null;
+      return DateTime.tryParse(v.toString());
+    }
+
     return VisionEvent(
       id: row['id'] as String,
       cameraId: row['camera_id'] as String,
@@ -166,6 +232,9 @@ class VisionEvent {
       dropboxImageUrl: row['dropbox_image_url'] as String? ?? '',
       occurredAt: DateTime.parse(row['occurred_at'] as String),
       metadata: Map<String, dynamic>.from(row['metadata'] as Map? ?? {}),
+      dropboxPath: row['dropbox_path'] as String?,
+      viewedAt: parseTs(row['viewed_at']),
+      archivedAt: parseTs(row['archived_at']),
     );
   }
 }

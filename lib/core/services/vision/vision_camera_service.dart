@@ -115,38 +115,86 @@ class VisionCameraService {
     await _client.from('vision_cameras').delete().eq('id', id);
   }
 
-  Future<List<VisionEvent>> fetchRecentEvents({int limit = 100}) async {
+  Future<List<VisionEvent>> fetchRecentEvents({
+    int limit = 100,
+    bool includeArchived = false,
+    bool includeDismissed = false,
+  }) async {
     final cid = await _companyId();
     if (cid == null) return [];
 
-    final rows = await _client
+    var query = _client
         .from('vision_events')
         .select()
         .eq('company_id', cid)
         .order('occurred_at', ascending: false)
-        .limit(limit) as List<dynamic>;
+        .limit(limit);
+
+    final rows = await query as List<dynamic>;
 
     return rows
         .map((r) => VisionEvent.fromRow(Map<String, dynamic>.from(r as Map)))
+        .where((e) {
+          if (!includeDismissed && e.isDismissed) return false;
+          if (!includeArchived && e.isArchived) return false;
+          return true;
+        })
         .toList();
   }
 
   Future<List<VisionEvent>> fetchUniformViolations({int limit = 80}) async {
     final events = await fetchRecentEvents(limit: limit);
     return events
-        .where((e) => e.eventType == 'uniform_violation' || e.eventType == 'ppe_violation')
+        .where((e) =>
+            e.eventType == 'uniform_violation' || e.eventType == 'ppe_violation')
         .toList();
   }
 
-  Future<List<VisionEvent>> fetchSortingEvents({int limit = 80}) async {
+  Future<List<VisionEvent>> fetchSortingEvents({
+    int limit = 80,
+    bool includeArchived = false,
+  }) async {
     if (kDebugMode) {
       final local = await fetchLocalViolations();
       final sortingLocal =
           local.where((e) => e.eventType == 'sorting_clip').toList();
       if (sortingLocal.isNotEmpty) return sortingLocal;
     }
-    final events = await fetchRecentEvents(limit: limit);
+    final events = await fetchRecentEvents(
+      limit: limit,
+      includeArchived: includeArchived,
+    );
     return events.where((e) => e.eventType == 'sorting_clip').toList();
+  }
+
+  Future<VisionEvent> markSortingEventViewed(String eventId) async {
+    final row = await _client.rpc(
+      'mark_vision_event_viewed',
+      params: {'p_event_id': eventId},
+    ) as Map<String, dynamic>;
+    return VisionEvent.fromRow(row);
+  }
+
+  Future<VisionEvent> setSortingEventArchived(
+    String eventId, {
+    required bool archived,
+  }) async {
+    final row = await _client.rpc(
+      'set_vision_event_archived',
+      params: {
+        'p_event_id': eventId,
+        'p_archived': archived,
+      },
+    ) as Map<String, dynamic>;
+    return VisionEvent.fromRow(row);
+  }
+
+  Future<VisionEvent> softDeleteSortingEvent(String eventId) async {
+    final row = await _client.rpc(
+      'soft_delete_vision_event',
+      params: {'p_event_id': eventId},
+    ) as Map<String, dynamic>;
+    return VisionEvent.fromRow(row);
   }
 
   Future<List<VisionCamera>> fetchUniformCameras() async {
