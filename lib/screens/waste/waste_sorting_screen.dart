@@ -14,6 +14,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/user_profile.dart';
 import '../../models/vision_camera.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import 'waste_learn_panel.dart';
 import 'waste_sorting_studio.dart';
 
 /// Søppelhåndtering — YouTube-stil: kun videoklipp, spillervindu + sidepanel.
@@ -302,7 +303,17 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                child: _IntroBar(cameras: _cameras, canAdmin: _canAdmin),
+                child: Column(
+                  children: [
+                    _IntroBar(cameras: _cameras, canAdmin: _canAdmin),
+                    const SizedBox(height: 8),
+                    WasteLearnPanel(
+                      cameras: _cameras,
+                      canAdmin: _canAdmin,
+                      onChanged: _load,
+                    ),
+                  ],
+                ),
               ),
               TabBar(
                 controller: _tabs,

@@ -83,7 +83,7 @@ class Settings:
             or f"http://{host}/"
         )
 
-        local_dev = os.environ.get("LOCAL_DEV", "true").lower() in {"1", "true", "yes"}
+        local_dev = os.environ.get("LOCAL_DEV", "false").lower() in {"1", "true", "yes"}
 
         def _rect(env_key: str, default: str) -> tuple[float, float, float, float]:
             raw = os.environ.get(env_key, default).strip()

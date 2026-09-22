@@ -51,8 +51,8 @@ ZONE2_NAME=container_B_annet
 ZONE2_RECT=0.52,0.15,1.0,0.95
 CONFIDENCE_THRESHOLD=0.25
 ENTRY_COOLDOWN_SECONDS=90
-CLIP_SECONDS_BEFORE=60
-CLIP_SECONDS_AFTER=60
+CLIP_SECONDS_BEFORE=120
+CLIP_SECONDS_AFTER=120
 CLIP_FPS=2
 SORTING_MODEL=models/yolov8s-worldv2.pt
 ```
@@ -66,12 +66,13 @@ https://supabase.com/dashboard/project/ksnnyccthotjbrmgjgdc/settings/api
 cd C:\DriftPro\DRIIIII\services\vision_monitor
 .\START_WINDOWS.bat
 ```
-La vinduet stå åpent.
+La vinduet stå åpent. `START_WINDOWS.bat` overstyrer **ikke** `LOCAL_DEV` — den leses fra `.env`.
 
 Sjekk:
 - Ingen `camera_error`
 - http://127.0.0.1:8090 viser bilde
 - Etter ~10 s: live frames lastes til Dropbox (VISION_CAMERA_ID)
+- Ved avvik: **MP4** 2+2 min lastes opp (sjekk logg: `Sorting VIDEO uploaded`)
 
 ## E) Ferdig-kriterier (rapporter tilbake)
 - [ ] `git pull` OK, siste commit på main
@@ -79,7 +80,7 @@ Sjekk:
 - [ ] `START_WINDOWS.bat` kjører uten camera_error
 - [ ] Lokal live på :8090 OK
 - [ ] `.env` har LOCAL_DEV=false + SERVICE_ROLE + VISION_CAMERA_ID + ZONE1/ZONE2
-
+- [ ] `CLIP_SECONDS_BEFORE=120` og `CLIP_SECONDS_AFTER=120`
 ## Viktig
 - Mac endrer kode → `git pull` på Windows + restart bat (eller agent worker henter og restarter).
 - Live i DriftPro verden rundt = nesten-live JPEG hvert ~2s via Dropbox (ikke RTSP gjennom skyen).

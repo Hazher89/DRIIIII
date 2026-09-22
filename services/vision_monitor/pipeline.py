@@ -76,13 +76,25 @@ class VisionMonitorPipeline:
             if not settings.supabase_service_role_key
             else SupabaseDropboxUpload(settings.supabase_url, settings.supabase_service_role_key)
         )
+        # Always create repo when service role is set (events + learn mode).
         self._repo = (
             None
-            if settings.local_dev or not settings.supabase_service_role_key
+            if not settings.supabase_service_role_key
             else VisionEventRepository(settings.supabase_url, settings.supabase_service_role_key)
         )
         self._running = False
         self._http_server = None
+
+        # Læremodus: kontinuerlig chunk-opptak styrt fra DriftPro.
+        self._learn_active = False
+        self._learn_session_id: str | None = None
+        self._learn_frames: list = []
+        self._learn_chunk_started = 0.0
+        self._learn_paths: list[str] = []
+        self._learn_chunk_seconds = 300.0  # 5 min chunks
+        self._learn_started_wall: datetime | None = None
+        self._learn_last_push = 0.0
+        self._learn_finalizing = False
 
     async def run(self) -> None:
         self._running = True
@@ -137,6 +149,7 @@ class VisionMonitorPipeline:
             self._detect_loop(),
             self._clip_finalize_loop(),
             self._live_push_loop(),
+            self._learn_poll_loop(),
         )
 
     async def _capture_loop(self) -> None:
@@ -153,6 +166,7 @@ class VisionMonitorPipeline:
             STATE.set_frame(packet.frame, frame_index=packet.frame_index)
             if self._is_sorting:
                 self._ring.push(packet.frame, quality=70)
+                self._maybe_buffer_learn_frame(packet.frame)
                 now = time.monotonic()
                 min_gap = 1.0 / max(0.5, self._settings.clip_fps)
                 for pending in self._pending_clips:
@@ -179,6 +193,10 @@ class VisionMonitorPipeline:
 
             try:
                 if self._is_sorting:
+                    # Under læremodus: demp auto-avvik for å unngå støy.
+                    if self._learn_active:
+                        await asyncio.sleep(0.3)
+                        continue
                     skip_counter += 1
                     if skip_counter % self._settings.frame_skip != 0:
                         await asyncio.sleep(0.15)
@@ -373,14 +391,35 @@ class VisionMonitorPipeline:
                     {
                         "id": f"done-{pending['id'][:8]}",
                         "status": "ok",
-                        "text": f"Klipp lagret: {video_path.name}",
+                        "text": f"Klipp lagret lokalt: {video_path.name}",
                     }
                 ]
             )
-            logger.info("Local sorting clip ready: %s", video_path)
+            logger.info(
+                "LOCAL_DEV=true — clip kept local only (no Dropbox): %s. "
+                "Sett LOCAL_DEV=false + ENABLE_DROPBOX.ps1 for DriftPro.",
+                video_path,
+            )
             return
 
         # Production: always upload VIDEO clip (+ JPEG preview) — never image-only.
+        if not self._company_dropbox and not self._dropbox:
+            logger.error(
+                "No Dropbox configured — MP4 kept at %s. "
+                "Sett SUPABASE_SERVICE_ROLE_KEY eller DROPBOX_ACCESS_TOKEN.",
+                video_path,
+            )
+            STATE.push_feed(
+                [
+                    {
+                        "id": f"uperr-{pending['id'][:8]}",
+                        "status": "violation",
+                        "text": "Video lagret lokalt — Dropbox ikke konfigurert",
+                    }
+                ]
+            )
+            return
+
         video_bytes = await asyncio.to_thread(video_path.read_bytes)
         snap = await asyncio.to_thread(
             encode_jpeg, hit.annotated_frame, self._settings.jpeg_quality
@@ -389,40 +428,58 @@ class VisionMonitorPipeline:
 
         video_upload = None
         thumb_upload = None
-        if self._company_dropbox:
-            video_upload = await asyncio.to_thread(
-                self._company_dropbox.upload_file,
-                data=video_bytes,
-                company_id=self._settings.company_id,
-                file_name=(
-                    f"sorting_{self._settings.camera_id}_{hit.zone}_"
-                    f"{hit.reason}_{stamp_name}.mp4"
-                ),
-                category="vision_sorting_clip",
-            )
-            try:
-                thumb_upload = await asyncio.to_thread(
-                    self._company_dropbox.upload_jpeg,
-                    image_bytes=snap,
+        try:
+            if self._company_dropbox:
+                video_upload = await asyncio.to_thread(
+                    self._company_dropbox.upload_file,
+                    data=video_bytes,
+                    company_id=self._settings.company_id,
+                    file_name=(
+                        f"sorting_{self._settings.camera_id}_{hit.zone}_"
+                        f"{hit.reason}_{stamp_name}.mp4"
+                    ),
+                    category="vision_sorting_clip",
+                )
+                try:
+                    thumb_upload = await asyncio.to_thread(
+                        self._company_dropbox.upload_jpeg,
+                        image_bytes=snap,
+                        company_id=self._settings.company_id,
+                        camera_id=self._settings.camera_id,
+                        event_type=self._settings.event_type.value,
+                        captured_at=captured_at,
+                    )
+                except Exception as exc:
+                    logger.warning("Thumbnail upload failed (video OK): %s", exc)
+            else:
+                video_upload = await asyncio.to_thread(
+                    self._dropbox.upload_bytes,  # type: ignore[union-attr]
+                    data=video_bytes,
                     company_id=self._settings.company_id,
                     camera_id=self._settings.camera_id,
                     event_type=self._settings.event_type.value,
                     captured_at=captured_at,
+                    extension="mp4",
                 )
-            except Exception as exc:
-                logger.warning("Thumbnail upload failed: %s", exc)
-        elif self._dropbox:
-            video_upload = await asyncio.to_thread(
-                self._dropbox.upload_bytes,
-                data=video_bytes,
-                company_id=self._settings.company_id,
-                camera_id=self._settings.camera_id,
-                event_type=self._settings.event_type.value,
-                captured_at=captured_at,
-                extension="mp4",
+        except Exception as exc:
+            logger.exception(
+                "MP4 upload FAILED — local file kept at %s: %s",
+                video_path,
+                exc,
             )
-        else:
-            logger.warning("No Dropbox configured — clip kept at %s", video_path)
+            STATE.push_feed(
+                [
+                    {
+                        "id": f"upfail-{pending['id'][:8]}",
+                        "status": "violation",
+                        "text": f"Video-opplasting feilet — fil: {video_path.name}",
+                    }
+                ]
+            )
+            return
+
+        if video_upload is None:
+            logger.error("MP4 upload returned empty — kept at %s", video_path)
             return
 
         meta["dropbox_video_url"] = video_upload.share_url
@@ -436,7 +493,6 @@ class VisionMonitorPipeline:
                 camera_id=self._settings.camera_id,
                 event_type=self._settings.event_type.value,
                 status="open",
-                # Preview image URL when available; else video link for open-in-browser.
                 dropbox_image_url=(
                     thumb_upload.share_url if thumb_upload else video_upload.share_url
                 ),
@@ -444,13 +500,269 @@ class VisionMonitorPipeline:
                 timestamp=captured_at,
                 metadata=meta,
             )
-            await self._repo.insert(record)
+            try:
+                await self._repo.insert(record)
+            except Exception as exc:
+                logger.exception(
+                    "vision_events insert FAILED after video upload %s: %s",
+                    video_upload.path,
+                    exc,
+                )
+                return
+        else:
+            logger.error(
+                "Video uploaded to Dropbox but no Supabase repo "
+                "(LOCAL_DEV or missing SERVICE_ROLE) — path=%s",
+                video_upload.path,
+            )
+
+        STATE.push_feed(
+            [
+                {
+                    "id": f"done-{pending['id'][:8]}",
+                    "status": "ok",
+                    "text": f"Video lastet opp ({self._settings.clip_seconds_before:.0f}+"
+                    f"{self._settings.clip_seconds_after:.0f}s)",
+                }
+            ]
+        )
         logger.info(
             "Sorting VIDEO uploaded | zone=%s reason=%s path=%s",
             hit.zone,
             hit.reason,
             video_upload.path,
         )
+
+    def _maybe_buffer_learn_frame(self, frame) -> None:
+        if not self._learn_active or self._learn_finalizing:
+            return
+        now = time.monotonic()
+        min_gap = 1.0 / max(0.5, self._settings.clip_fps)
+        if now - self._learn_last_push < min_gap:
+            return
+        self._learn_last_push = now
+        self._learn_frames.append(frame.copy())
+        if self._learn_chunk_started <= 0:
+            self._learn_chunk_started = now
+        # Chunk finalize is async — schedule via flag checked in poll loop.
+
+    async def _learn_poll_loop(self) -> None:
+        """Poll DriftPro learn_mode flag; record continuous video in 5-min chunks."""
+        cam_id = self._settings.vision_camera_db_id
+        if not cam_id or not self._repo:
+            logger.info("Learn mode disabled (VISION_CAMERA_ID / SERVICE_ROLE mangler)")
+            while self._running:
+                await asyncio.sleep(30)
+            return
+
+        logger.info("Learn mode poll every 5s → camera %s", cam_id)
+        while self._running:
+            try:
+                state = await self._repo.fetch_learn_state(cam_id)
+                if state is None:
+                    await asyncio.sleep(5)
+                    continue
+
+                if state.learn_mode and not self._learn_active:
+                    await self._start_learn_session(state.learn_session_id)
+                elif not state.learn_mode and self._learn_active:
+                    await self._stop_learn_session()
+                elif (
+                    state.learn_mode
+                    and self._learn_active
+                    and state.learn_session_id
+                    and state.learn_session_id != self._learn_session_id
+                ):
+                    # New session started while we thought we were recording.
+                    await self._stop_learn_session()
+                    await self._start_learn_session(state.learn_session_id)
+
+                if self._learn_active and not self._learn_finalizing:
+                    elapsed = time.monotonic() - self._learn_chunk_started
+                    if (
+                        self._learn_chunk_started > 0
+                        and elapsed >= self._learn_chunk_seconds
+                        and len(self._learn_frames) >= 4
+                    ):
+                        await self._flush_learn_chunk(final=False)
+            except Exception as exc:
+                logger.exception("Learn poll error: %s", exc)
+
+            await asyncio.sleep(5)
+
+    async def _start_learn_session(self, session_id: str | None) -> None:
+        if not session_id:
+            logger.warning("learn_mode on but learn_session_id mangler")
+            return
+        self._learn_active = True
+        self._learn_session_id = session_id
+        self._learn_frames = []
+        self._learn_paths = []
+        self._learn_chunk_started = time.monotonic()
+        self._learn_last_push = 0.0
+        self._learn_started_wall = datetime.now(timezone.utc)
+        self._learn_finalizing = False
+        STATE.push_feed(
+            [
+                {
+                    "id": f"learn-on-{session_id[:8]}",
+                    "status": "scan",
+                    "text": "Læremodus PÅ — tar opp kontinuerlig",
+                }
+            ]
+        )
+        logger.info("Learn session started: %s", session_id)
+        if self._repo:
+            await self._repo.patch_learn_session(session_id, status="recording")
+
+    async def _stop_learn_session(self) -> None:
+        if self._learn_finalizing:
+            return
+        self._learn_finalizing = True
+        session_id = self._learn_session_id
+        logger.info("Learn session stopping: %s", session_id)
+        STATE.push_feed(
+            [
+                {
+                    "id": f"learn-off-{(session_id or 'x')[:8]}",
+                    "status": "ok",
+                    "text": "Læremodus STOPP — laster opp video…",
+                }
+            ]
+        )
+        try:
+            await self._flush_learn_chunk(final=True)
+            if self._repo and session_id:
+                primary = self._learn_paths[0] if self._learn_paths else None
+                duration = None
+                if self._learn_started_wall:
+                    duration = (
+                        datetime.now(timezone.utc) - self._learn_started_wall
+                    ).total_seconds()
+                # Prefer last chunk as "main" if multiple; UI can use dropbox_paths.
+                main_path = self._learn_paths[-1] if self._learn_paths else primary
+                main_url = None
+                if main_path and self._company_dropbox:
+                    # temporary link already stored per upload; keep path list.
+                    pass
+                await self._repo.patch_learn_session(
+                    session_id,
+                    status="ready" if self._learn_paths else "failed",
+                    dropbox_video_path=main_path,
+                    dropbox_video_url=main_url,
+                    dropbox_paths=list(self._learn_paths),
+                    duration_seconds=duration,
+                    chunk_count=len(self._learn_paths),
+                    error_message=None if self._learn_paths else "Ingen video chunks",
+                    stopped_at=datetime.now(timezone.utc),
+                )
+                cam_id = self._settings.vision_camera_db_id
+                if cam_id:
+                    await self._repo.clear_camera_learn_session(cam_id)
+        except Exception as exc:
+            logger.exception("Learn stop failed: %s", exc)
+            if self._repo and session_id:
+                await self._repo.patch_learn_session(
+                    session_id,
+                    status="failed",
+                    error_message=str(exc)[:500],
+                    stopped_at=datetime.now(timezone.utc),
+                )
+        finally:
+            self._learn_active = False
+            self._learn_session_id = None
+            self._learn_frames = []
+            self._learn_chunk_started = 0.0
+            self._learn_finalizing = False
+            STATE.push_feed(
+                [
+                    {
+                        "id": f"learn-done-{int(time.time())}",
+                        "status": "ok",
+                        "text": "Læremodus ferdig — merk riktig/feil i DriftPro",
+                    }
+                ]
+            )
+
+    async def _flush_learn_chunk(self, *, final: bool) -> None:
+        frames_raw = list(self._learn_frames)
+        self._learn_frames = []
+        self._learn_chunk_started = time.monotonic()
+        if len(frames_raw) < 4:
+            logger.warning("Learn chunk too short (%d frames)", len(frames_raw))
+            return
+
+        from frame_ring_buffer import BufferedFrame
+        import cv2
+
+        bufs: list[BufferedFrame] = []
+        for frame in frames_raw:
+            ok, encoded = cv2.imencode(
+                ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70]
+            )
+            if not ok:
+                continue
+            h, w = frame.shape[:2]
+            bufs.append(
+                BufferedFrame(
+                    t=time.monotonic(), jpeg=encoded.tobytes(), width=w, height=h
+                )
+            )
+        if len(bufs) < 4:
+            return
+
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        sid = (self._learn_session_id or "nosession")[:8]
+        base = Path(self._settings.local_captures_dir) / (
+            f"learn_{sid}_{stamp}_{len(self._learn_paths)}"
+        )
+        video_path = await asyncio.to_thread(
+            write_clip_mp4,
+            bufs,
+            base,
+            fps=self._settings.clip_fps,
+        )
+
+        if self._settings.local_dev and not self._company_dropbox:
+            self._learn_paths.append(str(video_path))
+            logger.info("Learn chunk local only: %s", video_path)
+            return
+
+        if not self._company_dropbox:
+            logger.error("Learn chunk: no Dropbox — kept at %s", video_path)
+            self._learn_paths.append(str(video_path))
+            return
+
+        video_bytes = await asyncio.to_thread(video_path.read_bytes)
+        try:
+            upload = await asyncio.to_thread(
+                self._company_dropbox.upload_file,
+                data=video_bytes,
+                company_id=self._settings.company_id,
+                file_name=(
+                    f"learn_{self._settings.camera_id}_{sid}_"
+                    f"{stamp}_part{len(self._learn_paths)}.mp4"
+                ),
+                category="vision_learn_clip",
+            )
+            self._learn_paths.append(upload.path)
+            logger.info(
+                "Learn chunk uploaded%s: %s",
+                " (final)" if final else "",
+                upload.path,
+            )
+            if self._repo and self._learn_session_id:
+                await self._repo.patch_learn_session(
+                    self._learn_session_id,
+                    status="uploading" if final else "recording",
+                    dropbox_paths=list(self._learn_paths),
+                    chunk_count=len(self._learn_paths),
+                    dropbox_video_path=upload.path,
+                    dropbox_video_url=upload.share_url,
+                )
+        except Exception as exc:
+            logger.exception("Learn chunk upload failed: %s", exc)
+            self._learn_paths.append(str(video_path))
 
     async def _live_push_loop(self) -> None:
         """Push nearly-live JPEG to Dropbox so DriftPro can show camera worldwide."""

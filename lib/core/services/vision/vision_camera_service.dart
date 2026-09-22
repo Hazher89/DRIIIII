@@ -62,6 +62,101 @@ class VisionMediaLink {
   bool get isImage => kind == 'image';
 }
 
+class VisionLearnSession {
+  const VisionLearnSession({
+    required this.id,
+    required this.companyId,
+    required this.cameraId,
+    required this.status,
+    required this.startedAt,
+    this.stoppedAt,
+    this.dropboxVideoPath,
+    this.dropboxVideoUrl,
+    this.dropboxPaths = const [],
+    this.durationSeconds,
+    this.chunkCount = 0,
+    this.errorMessage,
+  });
+
+  final String id;
+  final String companyId;
+  final String cameraId;
+  final String status;
+  final DateTime startedAt;
+  final DateTime? stoppedAt;
+  final String? dropboxVideoPath;
+  final String? dropboxVideoUrl;
+  final List<String> dropboxPaths;
+  final double? durationSeconds;
+  final int chunkCount;
+  final String? errorMessage;
+
+  bool get isRecording => status == 'recording' || status == 'uploading';
+  bool get isReady => status == 'ready';
+
+  factory VisionLearnSession.fromRow(Map<String, dynamic> row) {
+    final pathsRaw = row['dropbox_paths'];
+    final paths = <String>[];
+    if (pathsRaw is List) {
+      for (final p in pathsRaw) {
+        if (p != null && p.toString().isNotEmpty) paths.add(p.toString());
+      }
+    }
+    return VisionLearnSession(
+      id: row['id'] as String,
+      companyId: row['company_id'] as String,
+      cameraId: row['camera_id'] as String,
+      status: row['status'] as String? ?? 'recording',
+      startedAt: DateTime.parse(row['started_at'] as String),
+      stoppedAt: row['stopped_at'] != null
+          ? DateTime.tryParse(row['stopped_at'].toString())
+          : null,
+      dropboxVideoPath: row['dropbox_video_path'] as String?,
+      dropboxVideoUrl: row['dropbox_video_url'] as String?,
+      dropboxPaths: paths,
+      durationSeconds: (row['duration_seconds'] as num?)?.toDouble(),
+      chunkCount: (row['chunk_count'] as num?)?.toInt() ?? 0,
+      errorMessage: row['error_message'] as String?,
+    );
+  }
+}
+
+class VisionLearnLabel {
+  const VisionLearnLabel({
+    required this.id,
+    required this.sessionId,
+    required this.label,
+    this.zone,
+    this.reason,
+    this.note,
+    this.timestampInVideoSec,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String sessionId;
+  final String label;
+  final String? zone;
+  final String? reason;
+  final String? note;
+  final double? timestampInVideoSec;
+  final DateTime createdAt;
+
+  factory VisionLearnLabel.fromRow(Map<String, dynamic> row) {
+    return VisionLearnLabel(
+      id: row['id'] as String,
+      sessionId: row['session_id'] as String,
+      label: row['label'] as String,
+      zone: row['zone'] as String?,
+      reason: row['reason'] as String?,
+      note: row['note'] as String?,
+      timestampInVideoSec:
+          (row['timestamp_in_video_sec'] as num?)?.toDouble(),
+      createdAt: DateTime.parse(row['created_at'] as String),
+    );
+  }
+}
+
 class VisionCameraService {
   VisionCameraService._();
 
@@ -206,6 +301,110 @@ class VisionCameraService {
       params: {'p_event_id': eventId},
     ) as Map<String, dynamic>;
     return VisionEvent.fromRow(row);
+  }
+
+  Future<VisionLearnSession> startLearnMode(String cameraId) async {
+    final row = await _client.rpc(
+      'start_vision_learn_mode',
+      params: {'p_camera_id': cameraId},
+    ) as Map<String, dynamic>;
+    return VisionLearnSession.fromRow(row);
+  }
+
+  Future<VisionLearnSession> stopLearnMode(String cameraId) async {
+    final row = await _client.rpc(
+      'stop_vision_learn_mode',
+      params: {'p_camera_id': cameraId},
+    ) as Map<String, dynamic>;
+    return VisionLearnSession.fromRow(row);
+  }
+
+  Future<List<VisionLearnSession>> fetchLearnSessions({
+    int limit = 40,
+  }) async {
+    final cid = await _companyId();
+    if (cid == null) return [];
+    final rows = await _client
+        .from('vision_learn_sessions')
+        .select()
+        .eq('company_id', cid)
+        .order('started_at', ascending: false)
+        .limit(limit) as List<dynamic>;
+    return rows
+        .map((r) =>
+            VisionLearnSession.fromRow(Map<String, dynamic>.from(r as Map)))
+        .toList();
+  }
+
+  Future<VisionLearnSession?> fetchLearnSession(String sessionId) async {
+    final row = await _client
+        .from('vision_learn_sessions')
+        .select()
+        .eq('id', sessionId)
+        .maybeSingle();
+    if (row == null) return null;
+    return VisionLearnSession.fromRow(Map<String, dynamic>.from(row));
+  }
+
+  Future<void> addLearnLabel({
+    required String sessionId,
+    required String label,
+    String? zone,
+    String? reason,
+    String? note,
+    double? timestampInVideoSec,
+  }) async {
+    await _client.rpc(
+      'add_vision_learn_label',
+      params: {
+        'p_session_id': sessionId,
+        'p_label': label,
+        'p_zone': zone,
+        'p_reason': reason,
+        'p_note': note,
+        'p_timestamp_in_video_sec': timestampInVideoSec,
+      },
+    );
+  }
+
+  Future<List<VisionLearnLabel>> fetchLearnLabels(String sessionId) async {
+    final rows = await _client
+        .from('vision_learn_labels')
+        .select()
+        .eq('session_id', sessionId)
+        .order('created_at', ascending: false) as List<dynamic>;
+    return rows
+        .map((r) =>
+            VisionLearnLabel.fromRow(Map<String, dynamic>.from(r as Map)))
+        .toList();
+  }
+
+  /// Fersk midlertidig Dropbox-lenke for lagret sti (lære-session m.m.).
+  Future<VisionMediaLink?> resolveDropboxPathLink(String path) async {
+    final session = _client.auth.currentSession;
+    if (session == null) return null;
+    final uri = Uri.parse(
+      '${SupabaseConfig.url}/functions/v1/vision-camera'
+      '?action=media_link&path=${Uri.encodeQueryComponent(path)}',
+    );
+    try {
+      final res = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer ${session.accessToken}',
+          'apikey': SupabaseConfig.anonKey,
+        },
+      );
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body);
+      if (data is! Map) return null;
+      final link = data['temporary_link']?.toString();
+      if (link == null || !link.startsWith('http')) return null;
+      final kind = data['kind']?.toString() == 'image' ? 'image' : 'video';
+      return VisionMediaLink(url: link, kind: kind);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Fersk midlertidig Dropbox-lenke for klipp (video eller bilde).

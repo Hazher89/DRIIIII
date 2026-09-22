@@ -50,16 +50,20 @@ if ($envText -notmatch "(?m)^CAMERA_PASSWORD=.+") {
   Write-Host "CAMERA_PASSWORD mangler/tom — sett passordet i .env (se JOBB_PC.md)" -ForegroundColor Yellow
 }
 $envText = Set-EnvLine $envText "EVENT_TYPE" "sorting_clip"
+$envText = Set-EnvLine $envText "CLIP_SECONDS_BEFORE" "120"
+$envText = Set-EnvLine $envText "CLIP_SECONDS_AFTER" "120"
+$envText = Set-EnvLine $envText "CLIP_FPS" "2"
 
 Set-Content -Path ".env" -Value $envText -Encoding UTF8
 Write-Host ""
 Write-Host "OK — .env oppdatert for Dropbox-opplasting." -ForegroundColor Green
 Write-Host "  LOCAL_DEV=false"
+Write-Host "  CLIP_SECONDS_BEFORE/AFTER=120 (2+2 min video)"
 Write-Host "  COMPANY_ID=$companyId"
 Write-Host ""
 Write-Host "Start på nytt: dobbeltklikk START_WINDOWS.bat" -ForegroundColor Cyan
-Write-Host "Dashboard: http://127.0.0.1:8090 (valgfritt — med LOCAL_DEV=false er lokal server av)"
-Write-Host "Ved deteksjon: JPEG → Dropbox + rad i vision_events"
+Write-Host "Dashboard: http://127.0.0.1:8090"
+Write-Host "Ved avvik: MP4 2+2 min → Dropbox + rad i vision_events"
 Write-Host ""
 Write-Host "Trykk Enter for å starte START_WINDOWS.bat..."
 Read-Host | Out-Null

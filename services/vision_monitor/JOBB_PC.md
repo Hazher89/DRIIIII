@@ -33,12 +33,21 @@ CAMERA_HOST=192.168.39.190
 CAMERA_USER=admin
 CAMERA_PASSWORD=964281
 EVENT_TYPE=sorting_clip
-LOCAL_DEV=true
+LOCAL_DEV=false
+CLIP_SECONDS_BEFORE=120
+CLIP_SECONDS_AFTER=120
 ```
 
 3. Lagre og lukk Notisblokk
 
-### 4. Start første gang
+### 4. Aktiver Dropbox / DriftPro (anbefalt)
+```
+cd C:\DriftPro\DRIIIII\services\vision_monitor
+powershell -ExecutionPolicy Bypass -File .\ENABLE_DROPBOX.ps1
+```
+Setter `LOCAL_DEV=false` + service_role. Uten dette lagres video kun lokalt.
+
+### 5. Start første gang
 1. Dobbeltklikk **`START_WINDOWS.bat`**
 2. Første gang kan det ta flere minutter (laster ned programmer)
 3. Når det står at den kjører: åpne Chrome på jobb-PC →  
@@ -61,10 +70,10 @@ Hvis feil om kamera: sjekk at PC og kamera er på **samme WiFi/nett**, og at IP 
 
 ## Del C — Se klipp hjemme i DriftPro
 
-1. På jobb: workeren må kjøre (Del B)
+1. På jobb: workeren må kjøre med **`LOCAL_DEV=false`** (Del A4)
 2. Hjemme: åpne **driftpro.no** → **Mer → Søppelhåndtering**
-3. Første versjon lagrer klipp lokalt på jobb-PC (`captures\`-mappen)  
-   For at de skal synes i DriftPro fra skyen, må `LOCAL_DEV=false` + Dropbox/Supabase settes senere (spør agenten når worker kjører stabilt)
+3. Ved avvik lastes **MP4** (2 min før + 2 min etter) til Dropbox + `vision_events`
+4. Logg på jobb-PC skal vise: `Sorting VIDEO uploaded`
 
 ---
 
@@ -101,7 +110,7 @@ powershell -ExecutionPolicy Bypass -File .\ENABLE_DROPBOX.ps1
 ```
 
 Scriptet setter `LOCAL_DEV=false`, `COMPANY_ID`, og ber om `service_role`-nøkkel.  
-Deretter start `START_WINDOWS.bat` på nytt. Ved treff lastes bilde til Dropbox.
+Deretter start `START_WINDOWS.bat` på nytt. Ved treff lastes **video (MP4)** til Dropbox.
 
 **Må DriftPro være åpen på jobb-PC?**  
 Nei.
@@ -114,3 +123,6 @@ Ja, for å se live. Worker er for AI + lagring av klipp.
 
 **Hva hvis XML i Chrome på kamera-IP?**  
 Normal. Bruk `http://127.0.0.1:8090` i stedet.
+
+**Læremodus?**  
+I DriftPro → Søppelhåndtering / kamera: slå på **Læremodus**. Worker tar opp kontinuerlig til du stopper, deretter merker du riktig/feil i appen.

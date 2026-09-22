@@ -11,6 +11,9 @@ class VisionCamera {
     this.snapshotPath = '/ISAPI/Streaming/channels/101/picture',
     this.eventType = 'ppe_violation',
     this.enabled = true,
+    this.learnMode = false,
+    this.learnSessionId,
+    this.learnStartedAt,
     this.createdAt,
     this.updatedAt,
   });
@@ -25,6 +28,9 @@ class VisionCamera {
   final String snapshotPath;
   final String eventType;
   final bool enabled;
+  final bool learnMode;
+  final String? learnSessionId;
+  final DateTime? learnStartedAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -42,6 +48,11 @@ class VisionCamera {
       };
 
   factory VisionCamera.fromJson(Map<String, dynamic> json) {
+    DateTime? parseTs(dynamic v) {
+      if (v == null) return null;
+      return DateTime.tryParse(v.toString());
+    }
+
     return VisionCamera(
       id: json['id'] as String,
       companyId: json['company_id'] as String,
@@ -54,12 +65,11 @@ class VisionCamera {
           '/ISAPI/Streaming/channels/101/picture',
       eventType: json['event_type'] as String? ?? 'ppe_violation',
       enabled: json['enabled'] != false,
-      createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
-          : null,
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
-          : null,
+      learnMode: json['learn_mode'] == true,
+      learnSessionId: json['learn_session_id'] as String?,
+      learnStartedAt: parseTs(json['learn_started_at']),
+      createdAt: parseTs(json['created_at']),
+      updatedAt: parseTs(json['updated_at']),
     );
   }
 
@@ -90,6 +100,9 @@ class VisionCamera {
     String? snapshotPath,
     String? eventType,
     bool? enabled,
+    bool? learnMode,
+    String? learnSessionId,
+    DateTime? learnStartedAt,
   }) {
     return VisionCamera(
       id: id,
@@ -102,6 +115,9 @@ class VisionCamera {
       snapshotPath: snapshotPath ?? this.snapshotPath,
       eventType: eventType ?? this.eventType,
       enabled: enabled ?? this.enabled,
+      learnMode: learnMode ?? this.learnMode,
+      learnSessionId: learnSessionId ?? this.learnSessionId,
+      learnStartedAt: learnStartedAt ?? this.learnStartedAt,
       createdAt: createdAt,
       updatedAt: updatedAt,
     );

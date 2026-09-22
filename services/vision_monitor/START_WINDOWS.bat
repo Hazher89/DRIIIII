@@ -5,8 +5,12 @@ cd /d "%~dp0"
 if not exist .env (
   copy .env.example .env
   echo.
-  echo Opprettet .env — apne den i Notepad og sett CAMERA_PASSWORD.
+  echo Opprettet .env — apne den i Notepad og sett:
+  echo   CAMERA_PASSWORD
+  echo   LOCAL_DEV=false   (for Dropbox/DriftPro video)
+  echo   SUPABASE_SERVICE_ROLE_KEY
   echo Deretter dobbeltklikk denne filen igjen.
+  echo Eller kjør ENABLE_DROPBOX.ps1 for produksjon.
   pause
   exit /b 1
 )
@@ -39,13 +43,14 @@ if not exist .venv (
 echo Laster modeller om nodvendig...
 python download_models.py
 
-set EVENT_TYPE=sorting_clip
-set LOCAL_DEV=true
+REM EVENT_TYPE / LOCAL_DEV / CLIP_* leses fra .env — ikke overstyr her.
+REM Produksjon: LOCAL_DEV=false + ENABLE_DROPBOX.ps1 (2+2 min MP4 til DriftPro).
 
 echo.
 echo ========================================
 echo  Sorteringsmonitor kjorer
 echo  Dashboard: http://127.0.0.1:8090
+echo  Les innstillinger fra .env
 echo  La dette vinduet staa apent.
 echo  Lukk vinduet = stopp overvaking.
 echo ========================================

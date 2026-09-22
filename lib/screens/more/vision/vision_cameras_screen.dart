@@ -188,7 +188,8 @@ class _CameraCard extends StatelessWidget {
         title: Text(camera.name, style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(
           '${camera.host} · ${camera.eventTypeLabel}'
-          '${camera.hasPassword ? '' : ' · mangler passord'}',
+          '${camera.hasPassword ? '' : ' · mangler passord'}'
+          '${camera.learnMode ? ' · LÆREMODUS' : ''}',
         ),
         trailing: canEdit
             ? PopupMenuButton<String>(
