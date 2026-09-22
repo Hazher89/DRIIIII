@@ -34,10 +34,14 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
   void initState() {
     super.initState();
     _reloadSessions();
-    _poll = Timer.periodic(const Duration(seconds: 6), (_) {
+    _poll = Timer.periodic(const Duration(seconds: 15), (_) {
       if (!mounted) return;
       _reloadSessions(silent: true);
-      widget.onChanged();
+      // Soft refresh kun når læremodus er aktiv (status/REC).
+      final cam = _sortingCam;
+      if (cam != null && cam.learnMode) {
+        widget.onChanged();
+      }
     });
   }
 

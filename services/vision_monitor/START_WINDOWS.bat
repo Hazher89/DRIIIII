@@ -55,6 +55,7 @@ if errorlevel 1 (
   echo CLIP mangler — sortering vil feile. Prover pip direkte...
   python -m pip install openai-clip ftfy regex
 )
+python -m pip install -q imageio-ffmpeg
 
 REM EVENT_TYPE / LOCAL_DEV / CLIP_* leses fra .env - ikke overstyr her.
 

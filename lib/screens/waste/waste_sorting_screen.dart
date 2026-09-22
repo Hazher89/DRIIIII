@@ -38,6 +38,7 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
   bool _playerReady = false;
   String? _playerError;
   bool _busy = false;
+  DateTime? _playerTickAt;
 
   @override
   void initState() {
@@ -58,12 +59,18 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
   @override
   void dispose() {
     _tabs.dispose();
-    _player?.dispose();
+    final p = _player;
+    if (p != null) {
+      p.removeListener(_onPlayerTick);
+      p.dispose();
+    }
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _loading = true);
+    }
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
       final events = await VisionCameraService.instance.fetchSortingEvents(
@@ -82,21 +89,25 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
             .where((c) => c.eventType == 'sorting_clip' && c.enabled)
             .toList();
         _loading = false;
-        // Oppdater valgt klipp fra fersk data.
+        // Oppdater valgt klipp fra fersk data — ikke restart spiller.
         if (_selected != null) {
           final fresh = videoOnly.where((e) => e.id == _selected!.id);
-          _selected = fresh.isEmpty ? null : fresh.first;
-          if (_selected == null) {
+          if (fresh.isEmpty) {
+            _selected = null;
             unawaited(_disposePlayer());
+          } else {
+            _selected = fresh.first;
           }
         }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Kunne ikke laste søppelhåndtering: $e')),
-      );
+      if (!silent) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke laste søppelhåndtering: $e')),
+        );
+      }
     }
   }
 
@@ -131,7 +142,10 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
     _player = null;
     _playerReady = false;
     _playerError = null;
-    await old?.dispose();
+    if (old != null) {
+      old.removeListener(_onPlayerTick);
+      await old.dispose();
+    }
   }
 
   void _clearSelection({bool keepTab = false}) {
@@ -222,17 +236,28 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         _playerReady = true;
         _playerError = null;
       });
-      c.addListener(() {
-        if (mounted) setState(() {});
-      });
+      // Throttle — uten dette blinker hele siden flere ganger i sekundet.
+      c.addListener(_onPlayerTick);
     } catch (e) {
       if (mounted) {
         setState(() {
-          _playerError = 'Kunne ikke spille video: $e';
+          _playerError =
+              'Kunne ikke spille video: $e\n\nTips: gamle klipp kan ha feil codec. '
+              'Oppdater Windows-worker og lag et nytt avvik.';
           _playerReady = false;
         });
       }
     }
+  }
+
+  void _onPlayerTick() {
+    final now = DateTime.now();
+    if (_playerTickAt != null &&
+        now.difference(_playerTickAt!) < const Duration(milliseconds: 300)) {
+      return;
+    }
+    _playerTickAt = now;
+    if (mounted) setState(() {});
   }
 
   bool _looksLikeVideo(String url) {
@@ -337,7 +362,7 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
                     WasteLearnPanel(
                       cameras: _cameras,
                       canAdmin: _canAdmin,
-                      onChanged: _load,
+                      onChanged: () => _load(silent: true),
                     ),
                   ],
                 ),
