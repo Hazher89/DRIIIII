@@ -1,18 +1,25 @@
 @echo off
-REM Start komprimator-sortering på Windows (dobbelklikk denne filen)
+REM Start komprimator-sortering paa Windows (dobbelklikk denne filen)
 cd /d "%~dp0"
 
 if not exist .env (
-  copy .env.example .env
-  echo.
-  echo Opprettet .env — apne den i Notepad og sett:
-  echo   CAMERA_PASSWORD
-  echo   LOCAL_DEV=false   (for Dropbox/DriftPro video)
-  echo   SUPABASE_SERVICE_ROLE_KEY
-  echo Deretter dobbeltklikk denne filen igjen.
-  echo Eller kjør ENABLE_DROPBOX.ps1 for produksjon.
-  pause
-  exit /b 1
+  if exist C:\DriftPro\vision_monitor.env.bak (
+    copy /Y C:\DriftPro\vision_monitor.env.bak .env
+    echo Gjenopprettet .env fra backup.
+  ) else if exist C:\DriftPro\DRIIIII_old\services\vision_monitor\.env (
+    copy /Y C:\DriftPro\DRIIIII_old\services\vision_monitor\.env .env
+    echo Gjenopprettet .env fra DRIIIII_old.
+  ) else (
+    copy .env.example .env
+    echo.
+    echo Opprettet .env - apne i Notepad og sett:
+    echo   CAMERA_PASSWORD
+    echo   LOCAL_DEV=false
+    echo   SUPABASE_SERVICE_ROLE_KEY
+    echo Deretter kjør: powershell -ExecutionPolicy Bypass -File .\ENABLE_DROPBOX.ps1
+    pause
+    exit /b 1
+  )
 )
 
 where py >nul 2>&1
@@ -43,8 +50,7 @@ if not exist .venv (
 echo Laster modeller om nodvendig...
 python download_models.py
 
-REM EVENT_TYPE / LOCAL_DEV / CLIP_* leses fra .env — ikke overstyr her.
-REM Produksjon: LOCAL_DEV=false + ENABLE_DROPBOX.ps1 (2+2 min MP4 til DriftPro).
+REM EVENT_TYPE / LOCAL_DEV / CLIP_* leses fra .env - ikke overstyr her.
 
 echo.
 echo ========================================

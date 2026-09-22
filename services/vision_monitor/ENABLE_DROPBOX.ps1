@@ -8,9 +8,19 @@ Set-Location $VisionDir
 
 Write-Host "Mappe: $VisionDir" -ForegroundColor Cyan
 
-if (-not (Test-Path ".env")) {
-  if (Test-Path ".env.example") {
-    Copy-Item ".env.example" ".env"
+$envPath = Join-Path $VisionDir ".env"
+$bakPath = "C:\DriftPro\vision_monitor.env.bak"
+$oldEnv = "C:\DriftPro\DRIIIII_old\services\vision_monitor\.env"
+
+if (-not (Test-Path $envPath)) {
+  if (Test-Path $bakPath) {
+    Copy-Item $bakPath $envPath
+    Write-Host "Gjenopprettet .env fra backup"
+  } elseif (Test-Path $oldEnv) {
+    Copy-Item $oldEnv $envPath
+    Write-Host "Gjenopprettet .env fra DRIIIII_old"
+  } elseif (Test-Path ".env.example") {
+    Copy-Item ".env.example" $envPath
     Write-Host "Opprettet .env fra .env.example"
   } else {
     throw "Mangler .env og .env.example"
@@ -39,35 +49,45 @@ function Set-EnvLine([string]$content, [string]$name, [string]$value) {
   return $content.TrimEnd() + "`r`n" + $line + "`r`n"
 }
 
-$envText = Get-Content -Raw ".env"
+$envText = Get-Content -Raw -Path $envPath
+if ([string]::IsNullOrWhiteSpace($envText)) {
+  throw ".env er tom - gjenopprett fra backup forst"
+}
+
 $envText = Set-EnvLine $envText "LOCAL_DEV" "false"
 $envText = Set-EnvLine $envText "SUPABASE_URL" $supabaseUrl
 $envText = Set-EnvLine $envText "SUPABASE_SERVICE_ROLE_KEY" $key.Trim()
 $envText = Set-EnvLine $envText "COMPANY_ID" $companyId
 $envText = Set-EnvLine $envText "CAMERA_HOST" "192.168.39.190"
 $envText = Set-EnvLine $envText "CAMERA_USER" "admin"
-if ($envText -notmatch "(?m)^CAMERA_PASSWORD=.+") {
-  Write-Host "CAMERA_PASSWORD mangler/tom - sett passordet i .env (se JOBB_PC.md)" -ForegroundColor Yellow
-}
 $envText = Set-EnvLine $envText "EVENT_TYPE" "sorting_clip"
 $envText = Set-EnvLine $envText "CLIP_SECONDS_BEFORE" "120"
 $envText = Set-EnvLine $envText "CLIP_SECONDS_AFTER" "120"
 $envText = Set-EnvLine $envText "CLIP_FPS" "2"
+$envText = Set-EnvLine $envText "LOCAL_SERVER" "true"
 
-# UTF8 no BOM - safer for Python dotenv on Windows
+if ($envText -notmatch "(?m)^CAMERA_PASSWORD=.+") {
+  Write-Host "ADVARSEL: CAMERA_PASSWORD mangler - sett i .env" -ForegroundColor Yellow
+}
+
+# Write without BOM (ASCII-safe for Python dotenv)
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-[System.IO.File]::WriteAllText((Join-Path $VisionDir ".env"), $envText, $utf8NoBom)
+[System.IO.File]::WriteAllText($envPath, $envText, $utf8NoBom)
+
+if (-not (Test-Path $envPath)) {
+  throw "Klarte ikke a skrive .env"
+}
 
 Write-Host ""
-Write-Host "OK - .env oppdatert for Dropbox-opplasting." -ForegroundColor Green
+Write-Host "OK - .env lagret: $envPath" -ForegroundColor Green
 Write-Host "  LOCAL_DEV=false"
-Write-Host "  CLIP_SECONDS_BEFORE/AFTER=120 (2 min + 2 min video)"
+Write-Host "  CLIP 120 + 120 sekunder"
 Write-Host "  COMPANY_ID=$companyId"
+Get-Item $envPath | Format-List FullName, Length, LastWriteTime
 Write-Host ""
-Write-Host "Start pa nytt: dobbeltklikk START_WINDOWS.bat" -ForegroundColor Cyan
-Write-Host "Dashboard: http://127.0.0.1:8090"
-Write-Host "Ved avvik: MP4 2+2 min til Dropbox + rad i vision_events"
+Write-Host "Start worker med:" -ForegroundColor Cyan
+Write-Host "  .\START_WINDOWS.bat"
 Write-Host ""
-Write-Host "Trykk Enter for aa starte START_WINDOWS.bat..."
+Write-Host "Trykk Enter for aa starte na..."
 Read-Host | Out-Null
-& ".\START_WINDOWS.bat"
+& "$VisionDir\START_WINDOWS.bat"
