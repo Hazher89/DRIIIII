@@ -348,22 +348,24 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
     final ev = _selected;
     if (ev == null) return;
     final noteCtrl = TextEditingController(text: ev.humanNote ?? '');
+    // label=correct → IKKE avvik (systemet tok feil / sjåfør gjorde riktig)
+    // label=wrong   → JA, avvik (feilsortering)
+    final isNotAvvik = label == 'correct';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) {
-        final isCorrect = label == 'correct';
         return AlertDialog(
-          title: Text(isCorrect ? 'Dette var riktig' : 'Dette var feil'),
+          title: Text(isNotAvvik ? 'Ikke avvik' : 'Ja, dette er avvik'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                isCorrect
-                    ? 'Skriv kort hvorfor det var riktig (f.eks. «brettet papp i A»). '
-                        'Kommentaren trener systemet.'
-                    : 'Skriv kort hva som var feil (f.eks. «ubrettet eske i A»). '
-                        'Kommentaren trener systemet.',
+                isNotAvvik
+                    ? 'Systemet tok feil — sjåføren sorterte riktig '
+                        '(f.eks. «brettet papp i A»). Kommentaren trener YOLO.'
+                    : 'Bekreft at dette er et ekte avvik '
+                        '(f.eks. «ubrettet eske i A»). Kommentaren trener YOLO.',
                 style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
               ),
               const SizedBox(height: 12),
@@ -386,11 +388,11 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
             FilledButton(
               onPressed: () => Navigator.pop(ctx, true),
               style: FilledButton.styleFrom(
-                backgroundColor: isCorrect
+                backgroundColor: isNotAvvik
                     ? DriftProTheme.primaryGreen
                     : const Color(0xFFE53935),
               ),
-              child: Text(isCorrect ? 'Lagre RIKTIG' : 'Lagre FEIL'),
+              child: Text(isNotAvvik ? 'Lagre: ikke avvik' : 'Lagre: avvik'),
             ),
           ],
         );
@@ -425,8 +427,8 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         SnackBar(
           content: Text(
             label == 'correct'
-                ? 'Lagret som riktig — systemet lærer av kommentaren din.'
-                : 'Lagret som feil/avvik — systemet lærer av kommentaren din.',
+                ? 'Lagret som IKKE avvik — systemet lærer å ikke flagge lignende.'
+                : 'Lagret som AVVIK — systemet lærer å fange lignende feil.',
           ),
         ),
       );
@@ -484,7 +486,7 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
                 tabs: [
                   Tab(text: 'Til vurdering (${_reviewEvents.length})'),
                   Tab(text: 'Avvik (${_wrongEvents.length})'),
-                  Tab(text: 'Riktig (${_correctEvents.length})'),
+                  Tab(text: 'Ikke avvik (${_correctEvents.length})'),
                 ],
               ),
               Expanded(
@@ -499,11 +501,11 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
                     ),
                     _buildTabBody(
                       _wrongEvents,
-                      'Ingen bekreftede avvik ennå.\nMerk «Dette var feil» når sorteringen var gal.',
+                      'Ingen bekreftede avvik ennå.\nMerk «Ja, avvik» når sorteringen faktisk var gal.',
                     ),
                     _buildTabBody(
                       _correctEvents,
-                      'Ingen merket som riktig ennå.',
+                      'Ingen merket som «ikke avvik» ennå.',
                     ),
                   ],
                 ),
@@ -1001,15 +1003,15 @@ class _MainPlayerPane extends StatelessWidget {
                 backgroundColor: DriftProTheme.primaryGreen,
               ),
               icon: const Icon(Icons.check, size: 18),
-              label: const Text('Dette var riktig'),
+              label: const Text('Ikke avvik'),
             ),
             FilledButton.icon(
               onPressed: busy ? null : onMarkWrong,
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFFE53935),
               ),
-              icon: const Icon(Icons.close, size: 18),
-              label: const Text('Dette var feil'),
+              icon: const Icon(Icons.report_gmailerrorred_outlined, size: 18),
+              label: const Text('Ja, avvik'),
             ),
             OutlinedButton.icon(
               onPressed: busy ? null : onBot,
