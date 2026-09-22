@@ -183,42 +183,33 @@ class _IntroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Komprimatorer', style: DriftProTheme.headingSm),
-            const SizedBox(height: 6),
-            Text(
-              'A = papp (brettet). B = annet (isopor OK). '
-              'Avvik = video 2+2 min. Trykk klipp for studio · BOT direkte fra video.',
-              style: TextStyle(
-                color: Colors.grey.shade700,
-                height: 1.35,
-                fontSize: 13,
-              ),
-            ),
-            if (cameras.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              ...cameras.map(
-                (c) => Text(
-                  '● ${c.name} · ${c.host}',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Avvik-klipp · A=papp · B=annet',
+                  style: DriftProTheme.headingSm.copyWith(fontSize: 15),
                 ),
-              ),
-            ],
-            if (canAdmin) ...[
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: () => context.push(AppPaths.moreVisionCameras),
-                icon: const Icon(Icons.settings_outlined, size: 18),
-                label: const Text('Kamera-innstillinger'),
-              ),
-            ],
-          ],
-        ),
+                if (cameras.isNotEmpty)
+                  Text(
+                    cameras.map((c) => c.name).join(' · '),
+                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  ),
+              ],
+            ),
+          ),
+          if (canAdmin)
+            TextButton(
+              onPressed: () => context.push(AppPaths.moreVisionCameras),
+              child: const Text('Kamera'),
+            ),
+        ],
       ),
     );
   }
@@ -246,7 +237,7 @@ class _EventFeed extends StatelessWidget {
           padding: const EdgeInsets.all(32),
           children: [
             Icon(Icons.videocam_off_outlined,
-                size: 48, color: Colors.grey.shade400),
+                size: 40, color: Colors.grey.shade400),
             const SizedBox(height: 12),
             Text(
               emptyLabel,
@@ -258,19 +249,36 @@ class _EventFeed extends StatelessWidget {
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: onRefresh,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
-        itemCount: events.length,
-        itemBuilder: (context, i) {
-          final e = events[i];
-          return _SortingClipCard(
-            event: e,
-            onTap: () => onOpen(e),
-          );
-        },
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final cols = w >= 1100
+            ? 4
+            : w >= 760
+                ? 3
+                : 2;
+        return RefreshIndicator(
+          onRefresh: onRefresh,
+          child: GridView.builder(
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 24),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 14,
+              // YouTube-ish: 16:9 thumb + compact meta under
+              childAspectRatio: cols >= 3 ? 0.92 : 0.78,
+            ),
+            itemCount: events.length,
+            itemBuilder: (context, i) {
+              final e = events[i];
+              return _SortingClipCard(
+                event: e,
+                onTap: () => onOpen(e),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -284,23 +292,34 @@ class _SortingClipCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final time =
-        DateFormat('dd.MM.yyyy HH:mm').format(event.occurredAt.toLocal());
+        DateFormat('dd.MM HH:mm').format(event.occurredAt.toLocal());
     final thumb = event.dropboxImageUrl;
+    final hasVideo = event.videoUrl != null ||
+        (event.videoDropboxPath?.toLowerCase().endsWith('.mp4') ?? false);
+    final before = event.metadata['clip_seconds_before'];
+    final after = event.metadata['clip_seconds_after'];
+    String? durationLabel;
+    if (before is num && after is num) {
+      final total = (before + after).round();
+      final m = total ~/ 60;
+      final s = total % 60;
+      durationLabel = '$m:${s.toString().padLeft(2, '0')}';
+    } else if (hasVideo) {
+      durationLabel = 'VIDEO';
+    }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Material(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        clipBehavior: Clip.antiAlias,
-        elevation: 1,
-        child: InkWell(
-          onTap: onTap,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              AspectRatio(
-                aspectRatio: 16 / 9,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              flex: 5,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -311,88 +330,70 @@ class _SortingClipCard extends StatelessWidget {
                         errorBuilder: (_, __, ___) => Container(
                           color: Colors.grey.shade900,
                           child: const Icon(Icons.broken_image_outlined,
-                              color: Colors.white54),
+                              color: Colors.white54, size: 28),
                         ),
                       )
                     else
                       Container(
                         color: Colors.grey.shade900,
                         child: const Icon(Icons.play_circle_outline,
-                            color: Colors.white54, size: 48),
+                            color: Colors.white54, size: 36),
                       ),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            Colors.black.withValues(alpha: 0.75),
-                            Colors.transparent,
-                          ],
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          shape: BoxShape.circle,
                         ),
-                      ),
-                    ),
-                    const Center(
-                      child: Icon(
-                        Icons.play_circle_filled,
-                        color: Colors.white,
-                        size: 56,
-                      ),
-                    ),
-                    Positioned(
-                      left: 10,
-                      bottom: 10,
-                      right: 10,
-                      child: Text(
-                        event.violationSummary,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        child: Icon(
+                          hasVideo
+                              ? Icons.play_arrow_rounded
+                              : Icons.image_outlined,
                           color: Colors.white,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
+                          size: 22,
                         ),
                       ),
                     ),
                     if (!event.isViewed)
                       Positioned(
-                        top: 10,
-                        left: 10,
+                        top: 6,
+                        left: 6,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                            horizontal: 6,
+                            vertical: 2,
                           ),
                           decoration: BoxDecoration(
                             color: DriftProTheme.primaryGreen,
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(4),
                           ),
                           child: const Text(
                             'NY',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w900,
-                              fontSize: 11,
+                              fontSize: 9,
                             ),
                           ),
                         ),
                       ),
-                    if (event.videoUrl != null)
+                    if (durationLabel != null)
                       Positioned(
-                        top: 10,
-                        right: 10,
+                        bottom: 6,
+                        right: 6,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+                            horizontal: 5,
+                            vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: Colors.black54,
-                            borderRadius: BorderRadius.circular(8),
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(3),
                           ),
-                          child: const Text(
-                            'VIDEO',
-                            style: TextStyle(
+                          child: Text(
+                            durationLabel,
+                            style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w700,
                               fontSize: 10,
@@ -403,50 +404,50 @@ class _SortingClipCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              flex: 3,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
+                      event.violationSummary,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
                       time,
                       style: TextStyle(
                         color: Colors.grey.shade600,
-                        fontSize: 12,
+                        fontSize: 11,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (final chip in event.insightChips.take(4))
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: DriftProTheme.primaryGreen
-                                  .withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              chip,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: DriftProTheme.primaryGreen,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+                    if (event.insightChips.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        event.insightChips.take(2).join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

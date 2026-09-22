@@ -218,6 +218,88 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Fersk midlertidig Dropbox-lenke for lagret sti (mp4/jpg).
+    if (action === "media_link") {
+      const authHeader = req.headers.get("Authorization");
+      const apiKey = req.headers.get("apikey");
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim();
+
+      let allowed = isServiceRole(authHeader);
+      let userCompany: string | null = null;
+      let isSuper = false;
+      if (!allowed && authHeader?.startsWith("Bearer ") && apiKey === anonKey) {
+        const userClient = createClient(requireEnv("SUPABASE_URL"), anonKey!, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const { data: userData } = await userClient.auth.getUser();
+        if (userData.user) {
+          const { data: prof } = await admin
+            .from("profiles")
+            .select("company_id, role")
+            .eq("id", userData.user.id)
+            .maybeSingle();
+          userCompany = (prof?.company_id as string | null) ?? null;
+          isSuper = prof?.role === "superadmin";
+          allowed = !!userCompany || isSuper;
+        }
+      }
+      if (!allowed) return json({ error: "Ingen tilgang" }, 403);
+
+      let path = url.searchParams.get("path")?.trim() ?? "";
+      const eventId = url.searchParams.get("event_id")?.trim();
+      let companyId = userCompany;
+
+      if (eventId) {
+        const { data: ev, error } = await admin
+          .from("vision_events")
+          .select("company_id, dropbox_path, metadata, dropbox_image_url")
+          .eq("id", eventId)
+          .maybeSingle();
+        if (error || !ev) return json({ error: "Hendelse ikke funnet" }, 404);
+        if (
+          userCompany &&
+          ev.company_id !== userCompany &&
+          !isSuper &&
+          !isServiceRole(authHeader)
+        ) {
+          return json({ error: "Ingen tilgang" }, 403);
+        }
+        companyId = ev.company_id as string;
+        const meta = (ev.metadata ?? {}) as Record<string, unknown>;
+        const videoPath = meta["dropbox_video_path"];
+        path = String(
+          (typeof videoPath === "string" && videoPath.length > 0
+            ? videoPath
+            : null) ??
+            ev.dropbox_path ??
+            path,
+        );
+        if (!path && typeof ev.dropbox_image_url === "string" && ev.dropbox_image_url) {
+          return json({
+            ok: true,
+            kind: "image",
+            temporary_link: ev.dropbox_image_url,
+            path: null,
+          });
+        }
+      }
+
+      if (!path || !companyId) {
+        return json({ error: "path eller event_id mangler" }, 400);
+      }
+      path = path.replace(/^dropbox:\/\//, "");
+      if (!path.startsWith("/")) path = `/${path}`;
+
+      const link = await tryTemporaryLink(admin, companyId, path);
+      if (!link) return json({ error: "Kunne ikke hente lenke" }, 502);
+      const lower = path.toLowerCase();
+      const kind =
+        lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm")
+          ? "video"
+          : "image";
+      return json({ ok: true, kind, temporary_link: link, path });
+    }
+
     // Nesten-live JPEG for app (Dropbox midlertidig lenke / proxy).
     if (action === "live") {
       const cameraId = url.searchParams.get("camera_id");

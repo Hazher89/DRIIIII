@@ -57,6 +57,8 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
   bool _ready = false;
   bool _busy = false;
   String? _error;
+  String? _imageUrl;
+  String? _playableUrl;
   bool _showChrome = true;
   Timer? _hideChrome;
 
@@ -86,17 +88,48 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
   }
 
   Future<void> _loadVideo(VisionEvent event) async {
-    final url = event.videoUrl;
     setState(() {
       _ready = false;
       _error = null;
+      _imageUrl = null;
+      _playableUrl = null;
     });
     await _controller?.dispose();
     _controller = null;
+
+    // Alltid fersk Dropbox-lenke (lagrede temporary links utløper).
+    final fresh =
+        await VisionCameraService.instance.resolveEventMediaLink(event.id);
+    String? url = fresh?.url;
+    var isImage = fresh?.isImage == true;
+
     if (url == null || url.isEmpty) {
-      setState(() => _error = 'Ingen videolenke på dette klippet ennå.');
+      url = event.videoUrl;
+      isImage = false;
+    }
+    if ((url == null || url.isEmpty) && event.dropboxImageUrl.isNotEmpty) {
+      url = event.dropboxImageUrl;
+      isImage = true;
+    }
+
+    if (url == null || url.isEmpty) {
+      if (mounted) {
+        setState(() => _error = 'Ingen media på dette klippet ennå.');
+      }
       return;
     }
+
+    if (isImage || !_looksLikeVideo(url)) {
+      if (mounted) {
+        setState(() {
+          _imageUrl = url;
+          _playableUrl = url;
+          _ready = true;
+        });
+      }
+      return;
+    }
+
     try {
       final c = VideoPlayerController.networkUrl(Uri.parse(url));
       await c.initialize();
@@ -108,16 +141,35 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
       }
       setState(() {
         _controller = c;
+        _playableUrl = url;
         _ready = true;
       });
       c.addListener(() {
         if (mounted) setState(() {});
       });
     } catch (e) {
+      // Utgått/ugyldig video — prøv bilde.
+      if (event.dropboxImageUrl.isNotEmpty && mounted) {
+        setState(() {
+          _imageUrl = event.dropboxImageUrl;
+          _playableUrl = event.dropboxImageUrl;
+          _ready = true;
+          _error = null;
+        });
+        return;
+      }
       if (mounted) {
         setState(() => _error = 'Kunne ikke spille video: $e');
       }
     }
+  }
+
+  bool _looksLikeVideo(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('.mp4') ||
+        lower.contains('.mov') ||
+        lower.contains('.webm') ||
+        lower.contains('content_type=video');
   }
 
   void _scheduleHideChrome() {
@@ -249,7 +301,7 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
   }
 
   Future<void> _saveExternally() async {
-    final url = _event.videoUrl ?? _event.dropboxImageUrl;
+    final url = _playableUrl ?? _event.videoUrl ?? _event.dropboxImageUrl;
     if (url.isEmpty) return;
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
@@ -306,14 +358,30 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
                           style: const TextStyle(color: Colors.white70),
                         ),
                       )
-                    : !_ready || c == null
+                    : !_ready
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : AspectRatio(
-                            aspectRatio: c.value.aspectRatio == 0
-                                ? 16 / 9
-                                : c.value.aspectRatio,
-                            child: VideoPlayer(c),
-                          ),
+                        : _imageUrl != null
+                            ? InteractiveViewer(
+                                minScale: 1,
+                                maxScale: 4,
+                                child: Image.network(
+                                  _imageUrl!,
+                                  fit: BoxFit.contain,
+                                  errorBuilder: (_, __, ___) => const Text(
+                                    'Kunne ikke laste bilde',
+                                    style: TextStyle(color: Colors.white70),
+                                  ),
+                                ),
+                              )
+                            : c == null
+                                ? const CircularProgressIndicator(
+                                    color: Colors.white)
+                                : AspectRatio(
+                                    aspectRatio: c.value.aspectRatio == 0
+                                        ? 16 / 9
+                                        : c.value.aspectRatio,
+                                    child: VideoPlayer(c),
+                                  ),
               ),
             ),
             if (_showChrome) ...[
@@ -443,78 +511,85 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
                       ),
                       const SizedBox(height: 10),
                       Text(
-                        'Systemet flagget dette som avvik. '
-                        'Dobbelttrykk venstre/høyre = ±10 sek.',
+                        _controller != null
+                            ? 'Systemet flagget dette som avvik. '
+                                'Dobbelttrykk venstre/høyre = ±10 sek.'
+                            : 'Kun stillbilde tilgjengelig for dette klippet '
+                                '(video lastes når Windows-worker er oppdatert).',
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.7),
                           fontSize: 12,
                           height: 1.3,
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          IconButton(
-                            onPressed: () =>
-                                _seekBy(const Duration(seconds: -10)),
-                            icon: const Icon(Icons.replay_10,
-                                color: Colors.white, size: 28),
-                          ),
-                          IconButton(
-                            onPressed: _togglePlay,
-                            icon: Icon(
-                              (c?.value.isPlaying ?? false)
-                                  ? Icons.pause_circle_filled
-                                  : Icons.play_circle_filled,
-                              color: Colors.white,
-                              size: 44,
+                      if (_controller != null) ...[
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            IconButton(
+                              onPressed: () =>
+                                  _seekBy(const Duration(seconds: -10)),
+                              icon: const Icon(Icons.replay_10,
+                                  color: Colors.white, size: 28),
                             ),
-                          ),
-                          IconButton(
-                            onPressed: () =>
-                                _seekBy(const Duration(seconds: 10)),
-                            icon: const Icon(Icons.forward_10,
-                                color: Colors.white, size: 28),
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Column(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: LinearProgressIndicator(
-                                    value: progress.clamp(0.0, 1.0),
-                                    minHeight: 4,
-                                    backgroundColor: Colors.white24,
-                                    color: DriftProTheme.primaryGreen,
+                            IconButton(
+                              onPressed: _togglePlay,
+                              icon: Icon(
+                                (c?.value.isPlaying ?? false)
+                                    ? Icons.pause_circle_filled
+                                    : Icons.play_circle_filled,
+                                color: Colors.white,
+                                size: 44,
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () =>
+                                  _seekBy(const Duration(seconds: 10)),
+                              icon: const Icon(Icons.forward_10,
+                                  color: Colors.white, size: 28),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: progress.clamp(0.0, 1.0),
+                                      minHeight: 4,
+                                      backgroundColor: Colors.white24,
+                                      color: DriftProTheme.primaryGreen,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 4),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _fmt(c?.value.position ?? Duration.zero),
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 11,
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _fmt(c?.value.position ??
+                                            Duration.zero),
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 11,
+                                        ),
                                       ),
-                                    ),
-                                    Text(
-                                      _fmt(c?.value.duration ?? Duration.zero),
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 11,
+                                      Text(
+                                        _fmt(c?.value.duration ??
+                                            Duration.zero),
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 11,
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: 10),
                       Row(
                         children: [
@@ -624,8 +699,7 @@ class _WasteBotSheetState extends State<_WasteBotSheet> {
   @override
   void initState() {
     super.initState();
-    _commentCtrl.text =
-        '${widget.event.violationSummary}\nVideo: ${widget.event.videoUrl ?? widget.event.dropboxImageUrl}';
+    _commentCtrl.text = widget.event.violationSummary;
     _load();
   }
 
@@ -639,6 +713,15 @@ class _WasteBotSheetState extends State<_WasteBotSheet> {
 
   Future<void> _load() async {
     try {
+      final media = await VisionCameraService.instance
+          .resolveEventMediaLink(widget.event.id);
+      final link = media?.url ??
+          widget.event.videoUrl ??
+          widget.event.dropboxImageUrl;
+      if (mounted && link.isNotEmpty) {
+        _commentCtrl.text =
+            '${widget.event.violationSummary}\nMedia: $link';
+      }
       final companyId = await SupabaseService.getCurrentCompanyId();
       if (companyId == null) {
         if (mounted) setState(() => _loading = false);

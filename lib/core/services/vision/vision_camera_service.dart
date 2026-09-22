@@ -51,6 +51,17 @@ class LiveFrameResult {
   bool get ok => bytes != null && bytes!.isNotEmpty;
 }
 
+class VisionMediaLink {
+  const VisionMediaLink({required this.url, required this.kind});
+
+  final String url;
+  /// `video` eller `image`.
+  final String kind;
+
+  bool get isVideo => kind == 'video';
+  bool get isImage => kind == 'image';
+}
+
 class VisionCameraService {
   VisionCameraService._();
 
@@ -195,6 +206,35 @@ class VisionCameraService {
       params: {'p_event_id': eventId},
     ) as Map<String, dynamic>;
     return VisionEvent.fromRow(row);
+  }
+
+  /// Fersk midlertidig Dropbox-lenke for klipp (video eller bilde).
+  Future<VisionMediaLink?> resolveEventMediaLink(String eventId) async {
+    final session = _client.auth.currentSession;
+    if (session == null) return null;
+
+    final uri = Uri.parse(
+      '${SupabaseConfig.url}/functions/v1/vision-camera'
+      '?action=media_link&event_id=${Uri.encodeQueryComponent(eventId)}',
+    );
+    try {
+      final res = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer ${session.accessToken}',
+          'apikey': SupabaseConfig.anonKey,
+        },
+      );
+      if (res.statusCode != 200) return null;
+      final data = jsonDecode(res.body);
+      if (data is! Map) return null;
+      final link = data['temporary_link']?.toString();
+      if (link == null || !link.startsWith('http')) return null;
+      final kind = data['kind']?.toString() == 'image' ? 'image' : 'video';
+      return VisionMediaLink(url: link, kind: kind);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<List<VisionCamera>> fetchUniformCameras() async {
