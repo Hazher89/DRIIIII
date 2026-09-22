@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import sys
 
 from config import Settings
 from pipeline import VisionMonitorPipeline
@@ -34,14 +35,18 @@ async def _main() -> None:
         logger.info("Using single camera from .env")
 
     stop_event = asyncio.Event()
-    loop = asyncio.get_running_loop()
 
-    def _shutdown() -> None:
+    def _shutdown(*_args) -> None:
         logger.info("Shutdown requested")
         stop_event.set()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _shutdown)
+    if sys.platform == "win32":
+        signal.signal(signal.SIGINT, _shutdown)
+        signal.signal(signal.SIGTERM, _shutdown)
+    else:
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, _shutdown)
 
     pipelines: list[VisionMonitorPipeline] = []
     for cam in cameras:

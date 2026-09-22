@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import sys
 
 from config import Settings
 from pipeline import VisionMonitorPipeline
@@ -21,15 +22,20 @@ async def _main() -> None:
     settings = Settings.from_env()
     pipeline = VisionMonitorPipeline(settings)
 
-    loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
 
-    def _request_shutdown() -> None:
+    def _request_shutdown(*_args) -> None:
         logger.info("Shutdown requested")
         stop_event.set()
 
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, _request_shutdown)
+    # asyncio.add_signal_handler is not supported on Windows.
+    if sys.platform == "win32":
+        signal.signal(signal.SIGINT, _request_shutdown)
+        signal.signal(signal.SIGTERM, _request_shutdown)
+    else:
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, _request_shutdown)
 
     run_task = asyncio.create_task(pipeline.run())
     await stop_event.wait()
