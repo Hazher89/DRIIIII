@@ -290,9 +290,10 @@ Deno.serve(async (req) => {
 
       let path = url.searchParams.get("path")?.trim() ?? "";
       const eventId = url.searchParams.get("event_id")?.trim();
+      const sessionId = url.searchParams.get("session_id")?.trim();
       let companyId = userCompany;
 
-        if (eventId) {
+      if (eventId) {
         const { data: ev, error } = await admin
           .from("vision_events")
           .select("company_id, dropbox_path, metadata, dropbox_image_url")
@@ -323,14 +324,71 @@ Deno.serve(async (req) => {
         }
       }
 
-      if (!path || !companyId) {
-        return json({ error: "path eller event_id mangler" }, 400);
+      if (sessionId) {
+        const { data: sess, error } = await admin
+          .from("vision_learn_sessions")
+          .select("company_id, dropbox_video_path, dropbox_paths")
+          .eq("id", sessionId)
+          .maybeSingle();
+        if (error || !sess) return json({ error: "Lære-session ikke funnet" }, 404);
+        if (
+          userCompany &&
+          sess.company_id !== userCompany &&
+          !isSuper &&
+          !isServiceRole(authHeader)
+        ) {
+          return json({ error: "Ingen tilgang" }, 403);
+        }
+        companyId = sess.company_id as string;
+        if (!path) {
+          path = (sess.dropbox_video_path as string) || "";
+        }
+        // Tillat bare stier som hører til denne sessionen.
+        const allowedPaths = new Set<string>();
+        if (typeof sess.dropbox_video_path === "string" && sess.dropbox_video_path) {
+          allowedPaths.add(sess.dropbox_video_path);
+        }
+        const rawPaths = sess.dropbox_paths;
+        if (Array.isArray(rawPaths)) {
+          for (const p of rawPaths) {
+            if (typeof p === "string" && p.length > 0) allowedPaths.add(p);
+          }
+        }
+        if (path && allowedPaths.size > 0) {
+          const norm = path.startsWith("/") ? path : `/${path}`;
+          const ok = [...allowedPaths].some((p) => {
+            const n = p.startsWith("/") ? p : `/${p}`;
+            return n === norm || p === path;
+          });
+          if (!ok) return json({ error: "Sti hører ikke til session" }, 403);
+        }
       }
-      path = path.replace(/^dropbox:\/\//, "");
+
+      path = path.replace(/^dropbox:\/\//, "").replace(/\\/g, "/").trim();
+      // Avvis lokale Windows-stier som aldri ble lastet opp.
+      if (/^[a-zA-Z]:\//.test(path) || path.startsWith("captures/")) {
+        return json({
+          error: "Video er kun lagret lokalt på jobb-PC — ikke i Dropbox",
+          code: "LOCAL_ONLY",
+        }, 404);
+      }
       if (!path.startsWith("/")) path = `/${path}`;
 
-      const link = await tryTemporaryLink(admin, companyId, path);
-      if (!link) return json({ error: "Kunne ikke hente lenke" }, 502);
+      // OAuth-token: bruk session/event-bedrift, ellers path /company_<uuid>/, ellers bruker.
+      if (!companyId) {
+        const m = path.match(/^\/company_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i);
+        if (m) companyId = m[1];
+      }
+      if (!path || !companyId) {
+        return json({ error: "path eller event_id/session_id mangler" }, 400);
+      }
+
+      let link = await tryTemporaryLink(admin, companyId, path);
+      // Fallback: brukerens bedrift (samme Dropbox-konto, annen company_id i sti).
+      if (!link && userCompany && userCompany !== companyId) {
+        link = await tryTemporaryLink(admin, userCompany, path);
+      }
+      if (!link) return json({ error: "Kunne ikke hente lenke", path }, 502);
       const lower = path.toLowerCase();
       const kind =
         lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm")

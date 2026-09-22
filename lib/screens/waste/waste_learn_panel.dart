@@ -76,13 +76,20 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
 
   List<String> _clipPaths(VisionLearnSession s) {
     final paths = <String>[];
+    void add(String? p) {
+      if (p == null || p.isEmpty) return;
+      final n = p.replaceAll('\\', '/');
+      // Kun Dropbox-stier — ikke lokale Windows-filer.
+      if (!n.startsWith('/')) return;
+      if (n.contains(':/')) return;
+      if (n.contains('/captures/')) return;
+      if (!paths.contains(n)) paths.add(n);
+    }
+
     for (final p in s.dropboxPaths) {
-      if (p.startsWith('/') && !paths.contains(p)) paths.add(p);
+      add(p);
     }
-    final main = s.dropboxVideoPath;
-    if (main != null && main.startsWith('/') && !paths.contains(main)) {
-      paths.add(main);
-    }
+    add(s.dropboxVideoPath);
     return paths;
   }
 
@@ -374,12 +381,27 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
     await _player?.dispose();
     _player = null;
 
-    final fresh =
-        await VisionCameraService.instance.resolveDropboxPathLink(_path);
-    final url = fresh?.url;
+    final path = _path;
+    if (!path.startsWith('/')) {
+      if (mounted) {
+        setState(() => _error =
+            'Video ble ikke lastet opp til Dropbox (kun lokal fil på jobb-PC). '
+            'Kjør opplæring på nytt med LOCAL_DEV=false.');
+      }
+      return;
+    }
+
+    final fresh = await VisionCameraService.instance.resolveDropboxPathLink(
+      path,
+      sessionId: widget.session.id,
+    );
+    final url = fresh?.url ?? widget.session.dropboxVideoUrl;
     if (url == null || !url.startsWith('http')) {
       if (mounted) {
-        setState(() => _error = 'Kunne ikke hente videolenke.');
+        setState(() => _error =
+            'Kunne ikke hente videolenke.\n\n'
+            'Sjekk at Dropbox er koblet for bedriften, og at Windows-worker '
+            'lastet opp klippet (ikke bare lokalt).');
       }
       return;
     }
@@ -400,7 +422,11 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
         if (mounted) setState(() {});
       });
     } catch (e) {
-      if (mounted) setState(() => _error = 'Kunne ikke spille: $e');
+      if (mounted) {
+        setState(() => _error =
+            'Kunne ikke spille: $e\n\n'
+            'Hvis dette er et gammelt klipp: oppdater worker + nytt opptak.');
+      }
     }
   }
 

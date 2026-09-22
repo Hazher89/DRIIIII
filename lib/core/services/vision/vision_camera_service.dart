@@ -380,13 +380,22 @@ class VisionCameraService {
   }
 
   /// Fersk midlertidig Dropbox-lenke for lagret sti (lære-session m.m.).
-  Future<VisionMediaLink?> resolveDropboxPathLink(String path) async {
+  Future<VisionMediaLink?> resolveDropboxPathLink(
+    String path, {
+    String? sessionId,
+  }) async {
     final session = _client.auth.currentSession;
     if (session == null) return null;
+    final params = <String, String>{
+      'action': 'media_link',
+      'path': path,
+    };
+    if (sessionId != null && sessionId.isNotEmpty) {
+      params['session_id'] = sessionId;
+    }
     final uri = Uri.parse(
-      '${SupabaseConfig.url}/functions/v1/vision-camera'
-      '?action=media_link&path=${Uri.encodeQueryComponent(path)}',
-    );
+      '${SupabaseConfig.url}/functions/v1/vision-camera',
+    ).replace(queryParameters: params);
     try {
       final res = await http.get(
         uri,
@@ -395,14 +404,18 @@ class VisionCameraService {
           'apikey': SupabaseConfig.anonKey,
         },
       );
-      if (res.statusCode != 200) return null;
+      if (res.statusCode != 200) {
+        debugPrint('resolveDropboxPathLink ${res.statusCode}: ${res.body}');
+        return null;
+      }
       final data = jsonDecode(res.body);
       if (data is! Map) return null;
       final link = data['temporary_link']?.toString();
       if (link == null || !link.startsWith('http')) return null;
       final kind = data['kind']?.toString() == 'image' ? 'image' : 'video';
       return VisionMediaLink(url: link, kind: kind);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('resolveDropboxPathLink error: $e');
       return null;
     }
   }

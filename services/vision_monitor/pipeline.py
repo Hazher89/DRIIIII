@@ -865,6 +865,8 @@ class VisionMonitorPipeline:
                 ),
                 category="vision_learn_clip",
             )
+            if not upload.path or not str(upload.path).startswith("/"):
+                raise RuntimeError(f"Ugyldig Dropbox-path: {upload.path!r}")
             self._learn_paths.append(upload.path)
             logger.info("Learn visit uploaded: %s", upload.path)
             if self._repo and self._learn_session_id:
