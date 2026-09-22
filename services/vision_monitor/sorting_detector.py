@@ -22,14 +22,15 @@ from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
 
+# Prompts: skill flat sheet vs standing 3D box (unngå «oversized with contents»).
 DEFAULT_CLASSES = [
-    "brown cardboard box",
-    "cardboard carton",
-    "corrugated shipping box",
-    "large unopened cardboard box",
-    "oversized cardboard box with contents",
+    "flat collapsed cardboard sheet",
+    "flattened cardboard lying flat",
+    "standing unopened cardboard box",
+    "tall cardboard box not flattened",
+    "brown cardboard carton",
+    "corrugated shipping box standing upright",
     "bulky cardboard packaging not flattened",
-    "flat collapsed cardboard",
     "white styrofoam packaging",
     "expanded polystyrene foam block",
     "foam packing material",
@@ -51,13 +52,14 @@ CARDBOARD_HINTS = (
     "packaging",
 )
 
+# Sterke 3D-signaler i label (brukes kun sammen med geometri).
 BULKY_HINTS = (
-    "large",
-    "oversized",
-    "contents",
+    "standing",
+    "upright",
     "unopened",
-    "bulky",
     "not flattened",
+    "tall",
+    "bulky",
     "appliance",
     "washing",
     "refrigerator",
@@ -68,7 +70,12 @@ FLAT_HINTS = (
     "collapsed",
     "flattened",
     "folded",
+    "sheet",
+    "lying flat",
 )
+
+# Minimum conf for unflattened_cardboard (etter global + per-reason delta).
+UNFLATTENED_MIN_CONF = 0.35
 
 
 @dataclass(frozen=True)
@@ -112,6 +119,14 @@ class SortingHit:
     annotated_frame: np.ndarray
 
 
+@dataclass
+class _ReasonFeedback:
+    """Per-årsak justering fra menneske-merking."""
+
+    conf_delta: float = 0.0
+    suppress_until: float = 0.0  # monotonic; midlertidig demp etter mange «correct»
+
+
 class SortingDetector:
     """
     Continuous scan; only fires on rule violations (not OK behaviour).
@@ -136,8 +151,9 @@ class SortingDetector:
         ]
         self._model: YOLO | None = None
         self._last_fire: dict[str, float] = {}
-        self._feedback_delta = 0.0  # from human learn labels
-        self._suppress_reasons: set[str] = set()
+        self._feedback_delta = 0.0  # global from human learn labels
+        self._reason_feedback: dict[str, _ReasonFeedback] = {}
+        self._classes_dirty = True
 
     def _ensure_model(self) -> YOLO:
         if self._model is None:
@@ -146,40 +162,96 @@ class SortingDetector:
                 path = Path(path).name or "yolov8s-worldv2.pt"
             logger.info("Loading YOLO-World for sorting: %s", path)
             self._model = YOLO(path)
-            if hasattr(self._model, "set_classes"):
-                self._model.set_classes(self._classes)
+            self._classes_dirty = True
+        if self._classes_dirty and hasattr(self._model, "set_classes"):
+            self._model.set_classes(self._classes)
+            self._classes_dirty = False
         return self._model
 
     def apply_learn_feedback(self, labels: list[dict]) -> None:
-        """Juster terskel ut fra menneske-merking (riktig/feil)."""
+        """Juster terskel per årsak/sone ut fra menneske-merking (riktig/feil)."""
         wrong = 0
         correct = 0
+        by_reason: dict[str, list[str]] = {}
         for row in labels:
             lab = str(row.get("label") or "")
             if lab == "wrong":
                 wrong += 1
             elif lab == "correct":
                 correct += 1
-        # Flere «feil»-merker → senk terskel (oppdag mer).
-        # Flere «riktig» → hev terskel (færre falske alarmer).
+            else:
+                continue
+            reason = str(row.get("reason") or "").strip() or "_any"
+            by_reason.setdefault(reason, []).append(lab)
+
+        # Global: flere «riktig» → hev terskel (færre falske alarmer).
         delta = 0.0
         if wrong + correct >= 3:
             delta = (correct - wrong) * 0.008
             delta = max(-0.08, min(0.08, delta))
         if abs(delta - self._feedback_delta) >= 0.005:
             logger.info(
-                "Learn feedback: correct=%d wrong=%d → conf_delta=%+.3f",
+                "Learn feedback global: correct=%d wrong=%d → conf_delta=%+.3f",
                 correct,
                 wrong,
                 delta,
             )
         self._feedback_delta = delta
 
-    def _effective_confidence(self) -> float:
-        return max(0.12, min(0.55, self._confidence_threshold + self._feedback_delta))
+        now = time.monotonic()
+        new_map: dict[str, _ReasonFeedback] = {}
+        for reason, labs in by_reason.items():
+            if reason == "_any":
+                continue
+            c = sum(1 for x in labs if x == "correct")
+            w = sum(1 for x in labs if x == "wrong")
+            if c + w < 2:
+                continue
+            # correct → hev terskel for denne årsaken; wrong → senk.
+            r_delta = (c - w) * 0.015
+            r_delta = max(-0.12, min(0.15, r_delta))
+            suppress_until = 0.0
+            # Mange «dette var riktig» på samme årsak → demp midlertidig (~10 min).
+            if c >= 3 and c > w * 2:
+                suppress_until = now + 600.0
+            new_map[reason] = _ReasonFeedback(
+                conf_delta=r_delta,
+                suppress_until=suppress_until,
+            )
+            logger.info(
+                "Learn feedback reason=%s correct=%d wrong=%d → delta=%+.3f suppress=%s",
+                reason,
+                c,
+                w,
+                r_delta,
+                "yes" if suppress_until else "no",
+            )
+        self._reason_feedback = new_map
+
+    def _effective_confidence(self, reason: str | None = None) -> float:
+        base = self._confidence_threshold + self._feedback_delta
+        if reason and reason in self._reason_feedback:
+            base += self._reason_feedback[reason].conf_delta
+        return max(0.12, min(0.60, base))
+
+    def _reason_suppressed(self, reason: str) -> bool:
+        fb = self._reason_feedback.get(reason)
+        if fb is None:
+            return False
+        return time.monotonic() < fb.suppress_until
+
+    def _min_conf_for_reason(self, reason: str) -> float:
+        floor = self._effective_confidence(reason)
+        if reason == "unflattened_cardboard":
+            floor = max(floor, UNFLATTENED_MIN_CONF + self._feedback_delta)
+            fb = self._reason_feedback.get(reason)
+            if fb:
+                floor = max(floor, UNFLATTENED_MIN_CONF + fb.conf_delta)
+        return max(0.12, min(0.60, floor))
 
     def analyze_frame(self, frame: np.ndarray) -> tuple[int, list[SortingHit], list[dict]]:
         model = self._ensure_model()
+        # Predict med basis-terskel; filtrér per årsak etterpå.
         results = model.predict(
             frame,
             conf=self._effective_confidence(),
@@ -254,6 +326,12 @@ class SortingDetector:
             if violation is None:
                 continue
 
+            if self._reason_suppressed(violation):
+                continue
+
+            if float(conf) < self._min_conf_for_reason(violation):
+                continue
+
             key = f"{zone.name}:{violation}"
             last = self._last_fire.get(key, 0.0)
             if now - last < self._cooldown_seconds:
@@ -306,6 +384,26 @@ class SortingDetector:
             return "cardboard"
         return "other"
 
+    def _geometry_flatness(
+        self,
+        bbox: tuple[int, int, int, int],
+        frame_w: int,
+        frame_h: int,
+    ) -> tuple[float, float, float, bool]:
+        """Return (height_frac, aspect, area_frac, looks_flat_sheet)."""
+        x1, y1, x2, y2 = bbox
+        bw = max(1, x2 - x1)
+        bh = max(1, y2 - y1)
+        area_frac = (bw * bh) / max(1, frame_w * frame_h)
+        height_frac = bh / max(1, frame_h)
+        aspect = bh / max(1.0, float(bw))  # tall box > flat sheet
+        # Flat sheet: wide and low — også stor areal (brettet stor papp).
+        looks_flat = height_frac < 0.12 and aspect < 0.55
+        # Ekstra: veldig bred relativ til høyde.
+        if aspect < 0.40 and height_frac < 0.18:
+            looks_flat = True
+        return height_frac, aspect, area_frac, looks_flat
+
     def _looks_unflattened(
         self,
         label: str,
@@ -313,26 +411,30 @@ class SortingDetector:
         frame_w: int,
         frame_h: int,
     ) -> bool:
+        """Geometri først: stor men flat papp er OK (ikke ubrettet)."""
         low = label.lower()
+        height_frac, aspect, area_frac, looks_flat = self._geometry_flatness(
+            bbox, frame_w, frame_h
+        )
+
         if any(h in low for h in FLAT_HINTS):
             return False
-        if any(h in low for h in BULKY_HINTS):
-            return True
 
-        x1, y1, x2, y2 = bbox
-        bw = max(1, x2 - x1)
-        bh = max(1, y2 - y1)
-        area_frac = (bw * bh) / max(1, frame_w * frame_h)
-        height_frac = bh / max(1, frame_h)
-        aspect = bh / max(1.0, float(bw))  # tall box > flat sheet
-
-        # Flat sheet: wide and low.
-        if height_frac < 0.07 and aspect < 0.45:
+        # Flat sheet i bildet → aldri ubrettet, selv om label sier oversized/contents.
+        if looks_flat:
             return False
-        # Standing / bulky box in frame.
-        if height_frac >= 0.10 or area_frac >= 0.04 or aspect >= 0.55:
+
+        bulky_label = any(h in low for h in BULKY_HINTS)
+        # Stående / 3D: høy i bildet eller mer kvadratisk/høy.
+        looks_3d = height_frac >= 0.14 or aspect >= 0.70
+        if bulky_label and looks_3d:
             return True
-        return area_frac >= 0.025
+        if looks_3d and area_frac >= 0.03:
+            return True
+        # Tydelig stående eske uten flat-geometri.
+        if height_frac >= 0.18 and aspect >= 0.55:
+            return True
+        return False
 
     def _violation_for(
         self,

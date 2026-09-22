@@ -344,6 +344,44 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
     }
   }
 
+  Future<void> _markCorrectSelected() async {
+    final ev = _selected;
+    if (ev == null) return;
+    setState(() => _busy = true);
+    try {
+      final updated =
+          await VisionCameraService.instance.markSortingFeedback(ev.id);
+      if (!mounted) return;
+      setState(() {
+        final i = _events.indexWhere((e) => e.id == updated.id);
+        if (i >= 0) {
+          _events[i] = updated;
+        } else {
+          _events.insert(0, updated);
+        }
+        _busy = false;
+      });
+      await _disposePlayer();
+      if (!mounted) return;
+      setState(() => _selected = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Merket som riktig — systemet lærer og viser færre like falske treff.',
+          ),
+        ),
+      );
+      await _load(silent: true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _busy = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$e'), backgroundColor: DriftProTheme.error),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final access = UserAccess.of(_profile);
@@ -470,6 +508,7 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         onTogglePlay: _togglePlay,
         onSeek: _seekBy,
         onBot: _openBot,
+        onMarkCorrect: _markCorrectSelected,
         onArchive: () =>
             _archiveSelected(archived: !_selected!.isArchived),
         onClose: _clearSelection,
@@ -585,6 +624,7 @@ class _WatchLayout extends StatelessWidget {
     required this.onTogglePlay,
     required this.onSeek,
     required this.onBot,
+    required this.onMarkCorrect,
     required this.onArchive,
     required this.onClose,
   });
@@ -600,6 +640,7 @@ class _WatchLayout extends StatelessWidget {
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
   final VoidCallback onBot;
+  final VoidCallback onMarkCorrect;
   final VoidCallback onArchive;
   final VoidCallback onClose;
 
@@ -617,6 +658,7 @@ class _WatchLayout extends StatelessWidget {
       onTogglePlay: onTogglePlay,
       onSeek: onSeek,
       onBot: onBot,
+      onMarkCorrect: onMarkCorrect,
       onArchive: onArchive,
       onClose: onClose,
     );
@@ -696,6 +738,7 @@ class _MainPlayerPane extends StatelessWidget {
     required this.onTogglePlay,
     required this.onSeek,
     required this.onBot,
+    required this.onMarkCorrect,
     required this.onArchive,
     required this.onClose,
   });
@@ -708,6 +751,7 @@ class _MainPlayerPane extends StatelessWidget {
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
   final VoidCallback onBot;
+  final VoidCallback onMarkCorrect;
   final VoidCallback onArchive;
   final VoidCallback onClose;
 
@@ -870,6 +914,14 @@ class _MainPlayerPane extends StatelessWidget {
           spacing: 10,
           runSpacing: 10,
           children: [
+            FilledButton.icon(
+              onPressed: busy ? null : onMarkCorrect,
+              style: FilledButton.styleFrom(
+                backgroundColor: DriftProTheme.primaryGreen,
+              ),
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('Dette var riktig'),
+            ),
             FilledButton.icon(
               onPressed: busy ? null : onBot,
               style: FilledButton.styleFrom(

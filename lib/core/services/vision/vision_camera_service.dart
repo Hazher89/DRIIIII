@@ -295,6 +295,21 @@ class VisionCameraService {
     return VisionEvent.fromRow(row);
   }
 
+  /// Merk avvik som riktig (falsk alarm) eller feil — lærer Windows-worker.
+  Future<VisionEvent> markSortingFeedback(
+    String eventId, {
+    String label = 'correct',
+  }) async {
+    final row = await _client.rpc(
+      'mark_vision_sorting_feedback',
+      params: {
+        'p_event_id': eventId,
+        'p_label': label,
+      },
+    ) as Map<String, dynamic>;
+    return VisionEvent.fromRow(row);
+  }
+
   Future<VisionEvent> softDeleteSortingEvent(String eventId) async {
     final row = await _client.rpc(
       'soft_delete_vision_event',
