@@ -98,6 +98,7 @@ class VisionEventRepository:
             cid = rows[0].get("company_id")
             return str(cid) if cid else None
 
+    async def fetch_learn_state(self, camera_db_id: str) -> LearnCameraState | None:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 f"{self._cameras}?id=eq.{camera_db_id}"
