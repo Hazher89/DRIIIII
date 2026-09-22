@@ -1,6 +1,7 @@
 # Enable Dropbox upload for vision_monitor on this Windows PC.
 # Run:
 #   powershell -ExecutionPolicy Bypass -File .\ENABLE_DROPBOX.ps1
+# ASCII-only strings so Windows PowerShell 5.1 parses the file reliably.
 
 $ErrorActionPreference = "Stop"
 $VisionDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -54,7 +55,7 @@ try {
     $companyId = [string]$cam[0].company_id
     Write-Host "Fant COMPANY_ID fra kamera: $companyId" -ForegroundColor Green
   } else {
-    Write-Host "ADVARSEL: Fant ikke company_id for kamera — bruker placeholder" -ForegroundColor Yellow
+    Write-Host "ADVARSEL: Fant ikke company_id for kamera - bruker placeholder" -ForegroundColor Yellow
   }
 } catch {
   Write-Host "ADVARSEL: Kunne ikke hente company_id: $_" -ForegroundColor Yellow
@@ -84,6 +85,7 @@ $envText = Set-EnvLine $envText "CLIP_SECONDS_BEFORE" "60"
 $envText = Set-EnvLine $envText "CLIP_SECONDS_AFTER" "120"
 $envText = Set-EnvLine $envText "CLIP_FPS" "2"
 $envText = Set-EnvLine $envText "LOCAL_SERVER" "true"
+$envText = Set-EnvLine $envText "VISION_CAMERA_ID" $cameraId
 
 if ($envText -notmatch "(?m)^CAMERA_PASSWORD=.+") {
   Write-Host "ADVARSEL: CAMERA_PASSWORD mangler - sett i .env" -ForegroundColor Yellow
