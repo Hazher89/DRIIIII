@@ -28,7 +28,7 @@ if ([string]::IsNullOrWhiteSpace($key)) {
   throw "Tom nøkkel — avbryter"
 }
 
-$companyId = "d190e74c-393c-45da-9c18-6252e527693c"
+$companyId = "00000000-0000-0000-0000-000000000000"
 $supabaseUrl = "https://ksnnyccthotjbrmgjgdc.supabase.co"
 
 function Set-EnvLine([string]$content, [string]$name, [string]$value) {
