@@ -78,6 +78,8 @@ class VisionMonitorPipeline:
             os.environ.get("CLIP_MAX_EPISODE_SECONDS", "600")
         )
         self._person_leave_grace = 2.5  # avoid flicker before starting post window
+        self._learn_visit: dict | None = None
+        self._learn_person_absent_since: float | None = None
         self._local_store = LocalEventStore(settings.local_captures_dir) if settings.local_dev else None
         if self._local_store is not None:
             STATE.hydrate_events(self._local_store.events)
@@ -199,6 +201,12 @@ class VisionMonitorPipeline:
                     if now - last >= min_gap:
                         ep["last_post"] = now
                         ep["post"].append(packet.frame.copy())
+                lv = getattr(self, "_learn_visit", None)
+                if lv is not None and not lv.get("closed"):
+                    last = lv.get("last_post", 0.0)
+                    if now - last >= min_gap:
+                        lv["last_post"] = now
+                        lv["post"].append(packet.frame.copy())
 
     async def _detect_loop(self) -> None:
         skip_counter = 0
@@ -215,9 +223,25 @@ class VisionMonitorPipeline:
 
             try:
                 if self._is_sorting:
-                    # Under læremodus: demp auto-avvik for å unngå støy.
+                    # Under læremodus: ta opp hvert personbesøk (riktig og feil).
                     if self._learn_active:
-                        await asyncio.sleep(0.3)
+                        skip_counter += 1
+                        if skip_counter % self._settings.frame_skip != 0:
+                            await asyncio.sleep(0.2)
+                            continue
+                        persons = 0
+                        if self._person_watcher is not None:
+                            persons = await asyncio.to_thread(
+                                self._person_watcher.count_visible, frame
+                            )
+                        objects, hits, feed = await asyncio.to_thread(
+                            self._detector.analyze_frame, frame  # type: ignore[union-attr]
+                        )
+                        STATE.set_scan(max(objects, persons), active=True)
+                        if feed:
+                            STATE.push_feed(feed)
+                        await self._update_learn_visit(persons=persons, hits=hits)
+                        await asyncio.sleep(0.2)
                         continue
                     skip_counter += 1
                     if skip_counter % self._settings.frame_skip != 0:
@@ -731,21 +755,144 @@ class VisionMonitorPipeline:
             video_upload.path,
         )
 
-    def _maybe_buffer_learn_frame(self, frame) -> None:
-        if not self._learn_active or self._learn_finalizing:
-            return
+    async def _update_learn_visit(
+        self,
+        *,
+        persons: int,
+        hits: list[SortingHit],
+    ) -> None:
+        """Under opplæring: hvert personbesøk → egen video (riktig og feil)."""
         now = time.monotonic()
-        min_gap = 1.0 / max(0.5, self._settings.clip_fps)
-        if now - self._learn_last_push < min_gap:
+        lv = self._learn_visit
+
+        if persons > 0:
+            self._learn_person_absent_since = None
+            if lv is None:
+                self._learn_visit = {
+                    "pre": self._ring.snapshot(),
+                    "post": [],
+                    "last_post": 0.0,
+                    "started": now,
+                    "person_present": True,
+                    "until": None,
+                    "closed": False,
+                    "hit": hits[0] if hits else None,
+                }
+                logger.info("Learn visit started (person arrived)")
+                STATE.push_feed(
+                    [
+                        {
+                            "id": f"learn-arr-{int(now)}",
+                            "status": "scan",
+                            "text": "Opplæring: person i bilde — tar opp besøket",
+                        }
+                    ]
+                )
+            else:
+                lv["person_present"] = True
+                if lv.get("until") is not None:
+                    lv["until"] = None
+                if hits and lv.get("hit") is None:
+                    lv["hit"] = hits[0]
+        else:
+            if lv is not None and lv.get("person_present"):
+                if self._learn_person_absent_since is None:
+                    self._learn_person_absent_since = now
+                elif now - self._learn_person_absent_since >= self._person_leave_grace:
+                    lv["person_present"] = False
+                    # Kort hale etter avgang i opplæring (30s).
+                    lv["until"] = now + 30.0
+                    self._learn_person_absent_since = None
+                    logger.info("Learn visit: person left — 30s then save clip")
+
+        # Hard cap
+        if lv is not None and now - lv["started"] >= self._max_episode_seconds:
+            lv["until"] = now
+            lv["person_present"] = False
+
+    async def _finalize_learn_visit(self, lv: dict) -> None:
+        """Always save learn visit (correct or wrong) as a training clip."""
+        from frame_ring_buffer import BufferedFrame
+        import cv2
+
+        post_bufs: list[BufferedFrame] = []
+        for frame in lv.get("post") or []:
+            ok, encoded = cv2.imencode(
+                ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70]
+            )
+            if not ok:
+                continue
+            h, w = frame.shape[:2]
+            post_bufs.append(
+                BufferedFrame(t=time.monotonic(), jpeg=encoded.tobytes(), width=w, height=h)
+            )
+        all_frames = list(lv.get("pre") or []) + post_bufs
+        if len(all_frames) < 4:
+            logger.warning("Learn visit too short (%d) — skip", len(all_frames))
             return
-        self._learn_last_push = now
-        self._learn_frames.append(frame.copy())
-        if self._learn_chunk_started <= 0:
-            self._learn_chunk_started = now
-        # Chunk finalize is async — schedule via flag checked in poll loop.
+
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        sid = (self._learn_session_id or "nosession")[:8]
+        base = Path(self._settings.local_captures_dir) / (
+            f"learn_visit_{sid}_{stamp}_{len(self._learn_paths)}"
+        )
+        video_path = await asyncio.to_thread(
+            write_clip_mp4,
+            all_frames,
+            base,
+            fps=self._settings.clip_fps,
+        )
+
+        if self._settings.local_dev and not self._company_dropbox:
+            self._learn_paths.append(str(video_path))
+            logger.info("Learn visit local: %s", video_path)
+            return
+
+        if not self._company_dropbox:
+            self._learn_paths.append(str(video_path))
+            logger.error("Learn visit: no Dropbox — kept %s", video_path)
+            return
+
+        video_bytes = await asyncio.to_thread(video_path.read_bytes)
+        try:
+            upload = await asyncio.to_thread(
+                self._company_dropbox.upload_file,
+                data=video_bytes,
+                company_id=self._settings.company_id,
+                file_name=(
+                    f"learn_{self._settings.camera_id}_{sid}_"
+                    f"{stamp}_visit{len(self._learn_paths)}.mp4"
+                ),
+                category="vision_learn_clip",
+            )
+            self._learn_paths.append(upload.path)
+            logger.info("Learn visit uploaded: %s", upload.path)
+            if self._repo and self._learn_session_id:
+                await self._repo.patch_learn_session(
+                    self._learn_session_id,
+                    dropbox_paths=list(self._learn_paths),
+                    chunk_count=len(self._learn_paths),
+                    dropbox_video_path=upload.path,
+                )
+            STATE.push_feed(
+                [
+                    {
+                        "id": f"learn-clip-{len(self._learn_paths)}",
+                        "status": "ok",
+                        "text": f"Opplæringsvideo {len(self._learn_paths)} lagret",
+                    }
+                ]
+            )
+        except Exception as exc:
+            logger.exception("Learn visit upload failed: %s", exc)
+            self._learn_paths.append(str(video_path))
+
+    def _maybe_buffer_learn_frame(self, frame) -> None:
+        # Besøksbasert opptak håndteres via _learn_visit + capture_loop.
+        return
 
     async def _learn_poll_loop(self) -> None:
-        """Poll DriftPro learn_mode flag; record continuous video in 5-min chunks."""
+        """Poll DriftPro learn_mode; finalize visit clips; apply feedback."""
         cam_id = self._settings.vision_camera_db_id
         if not cam_id or not self._repo:
             logger.info("Learn mode disabled (VISION_CAMERA_ID / SERVICE_ROLE mangler)")
@@ -771,18 +918,29 @@ class VisionMonitorPipeline:
                     and state.learn_session_id
                     and state.learn_session_id != self._learn_session_id
                 ):
-                    # New session started while we thought we were recording.
                     await self._stop_learn_session()
                     await self._start_learn_session(state.learn_session_id)
 
-                if self._learn_active and not self._learn_finalizing:
-                    elapsed = time.monotonic() - self._learn_chunk_started
-                    if (
-                        self._learn_chunk_started > 0
-                        and elapsed >= self._learn_chunk_seconds
-                        and len(self._learn_frames) >= 4
-                    ):
-                        await self._flush_learn_chunk(final=False)
+                # Finalize finished learn visits.
+                lv = self._learn_visit
+                now = time.monotonic()
+                if (
+                    lv is not None
+                    and not lv.get("closed")
+                    and lv.get("until") is not None
+                    and now >= lv["until"]
+                    and not lv.get("person_present")
+                ):
+                    lv["closed"] = True
+                    try:
+                        await self._finalize_learn_visit(lv)
+                    except Exception as exc:
+                        logger.exception("Learn visit finalize failed: %s", exc)
+                    finally:
+                        self._learn_visit = None
+
+                # Apply recent human labels → detector gets smarter.
+                await self._apply_learn_feedback()
             except Exception as exc:
                 logger.exception("Learn poll error: %s", exc)
 
@@ -796,16 +954,17 @@ class VisionMonitorPipeline:
         self._learn_session_id = session_id
         self._learn_frames = []
         self._learn_paths = []
-        self._learn_chunk_started = time.monotonic()
+        self._learn_chunk_started = 0.0
         self._learn_last_push = 0.0
         self._learn_started_wall = datetime.now(timezone.utc)
         self._learn_finalizing = False
+        self._learn_visit = None
         STATE.push_feed(
             [
                 {
                     "id": f"learn-on-{session_id[:8]}",
                     "status": "scan",
-                    "text": "Læremodus PÅ — tar opp kontinuerlig",
+                    "text": "Opplæring PÅ — gå foran kameraet og kast riktig + feil",
                 }
             ]
         )
@@ -824,34 +983,39 @@ class VisionMonitorPipeline:
                 {
                     "id": f"learn-off-{(session_id or 'x')[:8]}",
                     "status": "ok",
-                    "text": "Læremodus STOPP — laster opp video…",
+                    "text": "Opplæring STOPP — lagrer siste besøk…",
                 }
             ]
         )
         try:
-            await self._flush_learn_chunk(final=True)
+            # Flush active visit immediately.
+            lv = self._learn_visit
+            if lv is not None and not lv.get("closed"):
+                lv["closed"] = True
+                lv["person_present"] = False
+                try:
+                    await self._finalize_learn_visit(lv)
+                except Exception as exc:
+                    logger.exception("Final learn visit failed: %s", exc)
+                self._learn_visit = None
+
             if self._repo and session_id:
-                primary = self._learn_paths[0] if self._learn_paths else None
                 duration = None
                 if self._learn_started_wall:
                     duration = (
                         datetime.now(timezone.utc) - self._learn_started_wall
                     ).total_seconds()
-                # Prefer last chunk as "main" if multiple; UI can use dropbox_paths.
-                main_path = self._learn_paths[-1] if self._learn_paths else primary
-                main_url = None
-                if main_path and self._company_dropbox:
-                    # temporary link already stored per upload; keep path list.
-                    pass
+                main_path = self._learn_paths[-1] if self._learn_paths else None
                 await self._repo.patch_learn_session(
                     session_id,
                     status="ready" if self._learn_paths else "failed",
                     dropbox_video_path=main_path,
-                    dropbox_video_url=main_url,
                     dropbox_paths=list(self._learn_paths),
                     duration_seconds=duration,
                     chunk_count=len(self._learn_paths),
-                    error_message=None if self._learn_paths else "Ingen video chunks",
+                    error_message=None
+                    if self._learn_paths
+                    else "Ingen besøk tatt opp — stå foran kameraet under opplæring",
                     stopped_at=datetime.now(timezone.utc),
                 )
                 cam_id = self._settings.vision_camera_db_id
@@ -877,10 +1041,22 @@ class VisionMonitorPipeline:
                     {
                         "id": f"learn-done-{int(time.time())}",
                         "status": "ok",
-                        "text": "Læremodus ferdig — merk riktig/feil i DriftPro",
+                        "text": "Opplæring ferdig — merk riktig/feil i DriftPro",
                     }
                 ]
             )
+
+    async def _apply_learn_feedback(self) -> None:
+        """Les nyeste merker og juster detector-terskel / klasser."""
+        if not self._repo or not hasattr(self._detector, "apply_learn_feedback"):
+            return
+        try:
+            labels = await self._repo.fetch_recent_learn_labels(limit=80)
+            if not labels:
+                return
+            self._detector.apply_learn_feedback(labels)  # type: ignore[union-attr]
+        except Exception as exc:
+            logger.debug("apply_learn_feedback: %s", exc)
 
     async def _flush_learn_chunk(self, *, final: bool) -> None:
         frames_raw = list(self._learn_frames)

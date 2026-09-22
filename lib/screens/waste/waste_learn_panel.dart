@@ -8,7 +8,7 @@ import '../../core/services/vision/vision_camera_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/vision_camera.dart';
 
-/// Læremodus: start/stopp kontinuerlig opptak + merk riktig/feil.
+/// Læremodus: ta opp besøk → etter stopp merkes hver video riktig/feil én og én.
 class WasteLearnPanel extends StatefulWidget {
   const WasteLearnPanel({
     super.key,
@@ -34,7 +34,7 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
   void initState() {
     super.initState();
     _reloadSessions();
-    _poll = Timer.periodic(const Duration(seconds: 8), (_) {
+    _poll = Timer.periodic(const Duration(seconds: 6), (_) {
       if (!mounted) return;
       _reloadSessions(silent: true);
       widget.onChanged();
@@ -70,6 +70,31 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
     return sorting.first;
   }
 
+  List<String> _clipPaths(VisionLearnSession s) {
+    final paths = <String>[];
+    for (final p in s.dropboxPaths) {
+      if (p.startsWith('/') && !paths.contains(p)) paths.add(p);
+    }
+    final main = s.dropboxVideoPath;
+    if (main != null && main.startsWith('/') && !paths.contains(main)) {
+      paths.add(main);
+    }
+    return paths;
+  }
+
+  Future<Set<String>> _labeledClipPaths(String sessionId) async {
+    final labels =
+        await VisionCameraService.instance.fetchLearnLabels(sessionId);
+    final out = <String>{};
+    for (final l in labels) {
+      final n = l.note ?? '';
+      if (n.startsWith('clip:')) {
+        out.add(n.substring(5).split('\n').first.trim());
+      }
+    }
+    return out;
+  }
+
   Future<void> _toggle(VisionCamera cam) async {
     if (!widget.canAdmin || _busy) return;
     setState(() => _busy = true);
@@ -82,11 +107,16 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
             SnackBar(
               content: Text(
                 session.status == 'uploading' || session.status == 'ready'
-                    ? 'Læremodus stoppet — worker laster opp video'
-                    : 'Læremodus stoppet (${session.status})',
+                    ? 'Opplæring stoppet — venter på videoer…'
+                    : 'Opplæring stoppet (${session.status})',
               ),
             ),
           );
+        }
+        widget.onChanged();
+        await _reloadSessions();
+        if (mounted) {
+          await _waitAndReview(session.id);
         }
       } else {
         await VisionCameraService.instance.startLearnMode(cam.id);
@@ -94,14 +124,16 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Læremodus PÅ — Windows-PC tar opp kontinuerlig',
+                'Opplæring PÅ — gå til kameraet og kast både riktig og feil flere ganger. '
+                'Hvert besøk blir en video.',
               ),
+              duration: Duration(seconds: 6),
             ),
           );
         }
+        widget.onChanged();
+        await _reloadSessions();
       }
-      widget.onChanged();
-      await _reloadSessions();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -116,14 +148,66 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
     }
   }
 
-  Future<void> _openLabel(VisionLearnSession session) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _LearnLabelSheet(session: session),
+  Future<void> _waitAndReview(String sessionId) async {
+    // Poll til ready (max ~3 min).
+    VisionLearnSession? session;
+    for (var i = 0; i < 36; i++) {
+      session =
+          await VisionCameraService.instance.fetchLearnSession(sessionId);
+      if (session == null) return;
+      if (session.isReady || session.status == 'failed') break;
+      if (!mounted) return;
+      await Future<void>.delayed(const Duration(seconds: 5));
+    }
+    if (!mounted || session == null) return;
+    if (session.status == 'failed') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(session.errorMessage ?? 'Opplasting feilet'),
+          backgroundColor: DriftProTheme.error,
+        ),
+      );
+      return;
+    }
+    await _openReview(session);
+  }
+
+  Future<void> _openReview(VisionLearnSession session) async {
+    final paths = _clipPaths(session);
+    if (paths.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Ingen besøksvideoer ennå. Start opplæring, gå foran kameraet, kast, gå vekk — stopp igjen.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    final labeled = await _labeledClipPaths(session.id);
+    final pending = paths.where((p) => !labeled.contains(p)).toList();
+    if (pending.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Alle videoer er allerede merket.')),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => _LearnReviewWizard(
+          session: session,
+          clipPaths: pending,
+        ),
+      ),
     );
     await _reloadSessions();
+    widget.onChanged();
   }
 
   @override
@@ -131,7 +215,7 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
     final cam = _sortingCam;
     if (cam == null) return const SizedBox.shrink();
 
-    final ready = _sessions.where((s) => s.isReady).take(5).toList();
+    final ready = _sessions.where((s) => s.isReady).take(8).toList();
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -151,7 +235,7 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Læremodus',
+                    'Opplæring',
                     style: DriftProTheme.headingSm.copyWith(fontSize: 15),
                   ),
                 ),
@@ -165,8 +249,8 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
             const SizedBox(height: 4),
             Text(
               cam.learnMode
-                  ? 'Tar opp kontinuerlig på jobb-PC. Slå av for å stoppe og merke.'
-                  : 'Slå på for å ta opp hele tiden. Etter stopp merker du riktig/feil.',
+                  ? 'REC på jobb-PC. Kast riktig og feil flere ganger foran kameraet. Slå av når du er ferdig — da spør DriftPro om hver video.'
+                  : 'Slå på, gå til kameraet og demonstrer riktig + feil. Etter stopp merker du én og én video.',
               style: TextStyle(
                 color: Colors.grey.shade700,
                 fontSize: 12,
@@ -209,7 +293,7 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
             if (ready.isNotEmpty) ...[
               const SizedBox(height: 12),
               Text(
-                'Merk video',
+                'Merk opplæringsvideoer',
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 12,
@@ -227,11 +311,11 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   subtitle: Text(
-                    '${s.chunkCount} del(er)'
+                    '${_clipPaths(s).length} video(er)'
                     '${s.durationSeconds != null ? ' · ${s.durationSeconds!.round()}s' : ''}',
                   ),
                   trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openLabel(s),
+                  onTap: () => _openReview(s),
                 ),
               ),
             ],
@@ -242,56 +326,56 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
   }
 }
 
-class _LearnLabelSheet extends StatefulWidget {
-  const _LearnLabelSheet({required this.session});
+/// Én og én video: «Var dette riktig eller feil?»
+class _LearnReviewWizard extends StatefulWidget {
+  const _LearnReviewWizard({
+    required this.session,
+    required this.clipPaths,
+  });
 
   final VisionLearnSession session;
+  final List<String> clipPaths;
 
   @override
-  State<_LearnLabelSheet> createState() => _LearnLabelSheetState();
+  State<_LearnReviewWizard> createState() => _LearnReviewWizardState();
 }
 
-class _LearnLabelSheetState extends State<_LearnLabelSheet> {
+class _LearnReviewWizardState extends State<_LearnReviewWizard> {
+  int _index = 0;
   VideoPlayerController? _player;
   bool _ready = false;
   String? _error;
-  String _zone = 'container_A_papp';
-  final _note = TextEditingController();
-  List<VisionLearnLabel> _labels = [];
   bool _saving = false;
+  String _zone = 'container_A_papp';
 
   @override
   void initState() {
     super.initState();
-    _boot();
+    _loadCurrent();
   }
 
   @override
   void dispose() {
-    _note.dispose();
     _player?.dispose();
     super.dispose();
   }
 
-  Future<void> _boot() async {
-    try {
-      _labels = await VisionCameraService.instance
-          .fetchLearnLabels(widget.session.id);
-    } catch (_) {}
+  String get _path => widget.clipPaths[_index];
 
-    final path = widget.session.dropboxVideoPath ??
-        (widget.session.dropboxPaths.isNotEmpty
-            ? widget.session.dropboxPaths.last
-            : null);
-    String? url = widget.session.dropboxVideoUrl;
-    if (path != null && path.startsWith('/')) {
-      final fresh =
-          await VisionCameraService.instance.resolveDropboxPathLink(path);
-      if (fresh?.url != null) url = fresh!.url;
-    }
-    if (url == null || url.isEmpty) {
+  Future<void> _loadCurrent() async {
+    setState(() {
+      _ready = false;
+      _error = null;
+    });
+    await _player?.dispose();
+    _player = null;
+
+    final fresh =
+        await VisionCameraService.instance.resolveDropboxPathLink(_path);
+    final url = fresh?.url;
+    if (url == null || !url.startsWith('http')) {
       if (mounted) {
-        setState(() => _error = 'Ingen videolenke ennå — vent til opplasting er ferdig.');
+        setState(() => _error = 'Kunne ikke hente videolenke.');
       }
       return;
     }
@@ -316,228 +400,146 @@ class _LearnLabelSheetState extends State<_LearnLabelSheet> {
     }
   }
 
-  Future<void> _save(String label) async {
+  Future<void> _answer(String label) async {
+    if (_saving) return;
     setState(() => _saving = true);
     try {
-      final pos = _player?.value.position.inMilliseconds;
       await VisionCameraService.instance.addLearnLabel(
         sessionId: widget.session.id,
         label: label,
         zone: _zone,
-        note: _note.text.trim().isEmpty ? null : _note.text.trim(),
-        timestampInVideoSec:
-            pos == null ? null : pos / 1000.0,
+        note: 'clip:$_path',
+        reason: label == 'wrong' ? 'learn_demo_wrong' : 'learn_demo_correct',
       );
-      _labels = await VisionCameraService.instance
-          .fetchLearnLabels(widget.session.id);
-      _note.clear();
-      if (mounted) {
+      if (!mounted) return;
+      if (_index + 1 >= widget.clipPaths.length) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
+          const SnackBar(
             content: Text(
-              label == 'correct' ? 'Lagret: RIKTIG' : 'Lagret: FEIL',
+              'Ferdig! Systemet lærer av svarene dine ved neste skanning.',
             ),
           ),
         );
-        setState(() {});
+        Navigator.of(context).pop();
+        return;
       }
+      setState(() {
+        _index += 1;
+        _saving = false;
+      });
+      await _loadCurrent();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('$e'), backgroundColor: DriftProTheme.error),
         );
+        setState(() => _saving = false);
       }
-    } finally {
-      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.92,
-        ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
+    final total = widget.clipPaths.length;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text('Opplæring ${_index + 1} / $total'),
+      ),
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: Center(
+                child: _error != null
+                    ? Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      )
+                    : !_ready || _player == null
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : AspectRatio(
+                            aspectRatio: _player!.value.aspectRatio == 0
+                                ? 16 / 9
+                                : _player!.value.aspectRatio,
+                            child: VideoPlayer(_player!),
+                          ),
+              ),
+            ),
+            Container(
+              width: double.infinity,
+              color: Colors.white,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Var dette riktig eller feil sortering?',
+                    style: DriftProTheme.headingSm.copyWith(fontSize: 18),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Merk lære-video',
-                style: DriftProTheme.headingSm,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                DateFormat('dd.MM.yyyy HH:mm')
-                    .format(widget.session.startedAt.toLocal()),
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 12),
-              AspectRatio(
-                aspectRatio: 16 / 9,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: ColoredBox(
-                    color: Colors.black,
-                    child: _error != null
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(16),
-                              child: Text(
-                                _error!,
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(color: Colors.white70),
-                              ),
-                            ),
-                          )
-                        : !_ready || _player == null
-                            ? const Center(
-                                child: CircularProgressIndicator(
-                                    color: Colors.white),
-                              )
-                            : VideoPlayer(_player!),
-                  ),
-                ),
-              ),
-              if (_ready && _player != null) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    IconButton(
-                      onPressed: () {
-                        final c = _player!;
-                        if (c.value.isPlaying) {
-                          c.pause();
-                        } else {
-                          c.play();
-                        }
-                        setState(() {});
-                      },
-                      icon: Icon(
-                        _player!.value.isPlaying
-                            ? Icons.pause_circle_filled
-                            : Icons.play_circle_filled,
-                        color: DriftProTheme.primaryGreen,
-                        size: 36,
-                      ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Svaret lagres med en gang — systemet blir flinkere.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 13,
                     ),
-                    Expanded(
-                      child: Text(
-                        'Tid: ${_player!.value.position.inSeconds}s — '
-                        'merking knyttes til denne posisjonen',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade700,
+                  ),
+                  const SizedBox(height: 12),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'container_A_papp',
+                        label: Text('A papp'),
+                      ),
+                      ButtonSegment(
+                        value: 'container_B_annet',
+                        label: Text('B annet'),
+                      ),
+                    ],
+                    selected: {_zone},
+                    onSelectionChanged: (s) => setState(() => _zone = s.first),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _saving ? null : () => _answer('correct'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: DriftProTheme.primaryGreen,
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          icon: const Icon(Icons.check),
+                          label: const Text('RIKTIG'),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 12),
-              Text('Sone', style: TextStyle(color: Colors.grey.shade700)),
-              const SizedBox(height: 6),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(
-                    value: 'container_A_papp',
-                    label: Text('A papp'),
-                  ),
-                  ButtonSegment(
-                    value: 'container_B_annet',
-                    label: Text('B annet'),
-                  ),
-                ],
-                selected: {_zone},
-                onSelectionChanged: (s) => setState(() => _zone = s.first),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _note,
-                decoration: const InputDecoration(
-                  labelText: 'Kommentar (valgfritt)',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 2,
-              ),
-              const SizedBox(height: 14),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _saving ? null : () => _save('correct'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: DriftProTheme.primaryGreen,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: _saving ? null : () => _answer('wrong'),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFE53935),
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          icon: const Icon(Icons.close),
+                          label: const Text('FEIL'),
+                        ),
                       ),
-                      icon: const Icon(Icons.check),
-                      label: const Text('Riktig'),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _saving ? null : () => _save('wrong'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFE53935),
-                      ),
-                      icon: const Icon(Icons.close),
-                      label: const Text('Feil'),
-                    ),
+                    ],
                   ),
                 ],
               ),
-              if (_labels.isNotEmpty) ...[
-                const SizedBox(height: 18),
-                Text(
-                  'Lagrede merker (${_labels.length})',
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 6),
-                ..._labels.map(
-                  (l) => ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      l.label == 'correct' ? Icons.check_circle : Icons.cancel,
-                      color: l.label == 'correct'
-                          ? DriftProTheme.primaryGreen
-                          : const Color(0xFFE53935),
-                    ),
-                    title: Text(
-                      '${l.label == 'correct' ? 'Riktig' : 'Feil'}'
-                      '${l.zone != null ? ' · ${l.zone}' : ''}',
-                    ),
-                    subtitle: Text(
-                      [
-                        if (l.timestampInVideoSec != null)
-                          '@ ${l.timestampInVideoSec!.round()}s',
-                        if (l.note != null && l.note!.isNotEmpty) l.note!,
-                      ].join(' · '),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

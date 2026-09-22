@@ -136,6 +136,8 @@ class SortingDetector:
         ]
         self._model: YOLO | None = None
         self._last_fire: dict[str, float] = {}
+        self._feedback_delta = 0.0  # from human learn labels
+        self._suppress_reasons: set[str] = set()
 
     def _ensure_model(self) -> YOLO:
         if self._model is None:
@@ -148,11 +150,39 @@ class SortingDetector:
                 self._model.set_classes(self._classes)
         return self._model
 
+    def apply_learn_feedback(self, labels: list[dict]) -> None:
+        """Juster terskel ut fra menneske-merking (riktig/feil)."""
+        wrong = 0
+        correct = 0
+        for row in labels:
+            lab = str(row.get("label") or "")
+            if lab == "wrong":
+                wrong += 1
+            elif lab == "correct":
+                correct += 1
+        # Flere «feil»-merker → senk terskel (oppdag mer).
+        # Flere «riktig» → hev terskel (færre falske alarmer).
+        delta = 0.0
+        if wrong + correct >= 3:
+            delta = (correct - wrong) * 0.008
+            delta = max(-0.08, min(0.08, delta))
+        if abs(delta - self._feedback_delta) >= 0.005:
+            logger.info(
+                "Learn feedback: correct=%d wrong=%d → conf_delta=%+.3f",
+                correct,
+                wrong,
+                delta,
+            )
+        self._feedback_delta = delta
+
+    def _effective_confidence(self) -> float:
+        return max(0.12, min(0.55, self._confidence_threshold + self._feedback_delta))
+
     def analyze_frame(self, frame: np.ndarray) -> tuple[int, list[SortingHit], list[dict]]:
         model = self._ensure_model()
         results = model.predict(
             frame,
-            conf=self._confidence_threshold,
+            conf=self._effective_confidence(),
             verbose=False,
         )
         h, w = frame.shape[:2]

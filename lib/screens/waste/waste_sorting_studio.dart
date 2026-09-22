@@ -89,11 +89,7 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
   }
 
   Future<void> _boot() async {
-    try {
-      final updated =
-          await VisionCameraService.instance.markSortingEventViewed(_event.id);
-      if (mounted) setState(() => _event = updated);
-    } catch (_) {}
+    // Ikke merk som sett ved åpning — kun når bruker går videre.
     await _loadVideo(_event);
     _scheduleHideChrome();
   }
@@ -107,14 +103,23 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
     await _controller?.dispose();
     _controller = null;
 
-    // Alltid fersk Dropbox-lenke (lagrede temporary links utløper).
     final fresh =
         await VisionCameraService.instance.resolveEventMediaLink(event.id);
-    String? url = fresh?.url;
-    if (fresh?.isImage == true) url = null;
+    String? url;
+    if (fresh != null && !fresh.isImage && fresh.url.startsWith('http')) {
+      url = fresh.url;
+    } else if (event.videoDropboxPath != null) {
+      final byPath = await VisionCameraService.instance
+          .resolveDropboxPathLink(event.videoDropboxPath!);
+      if (byPath != null &&
+          !byPath.isImage &&
+          byPath.url.startsWith('http')) {
+        url = byPath.url;
+      }
+    }
     url ??= event.videoUrl;
 
-    if (url == null || url.isEmpty || !_looksLikeVideo(url)) {
+    if (url == null || url.isEmpty || !url.startsWith('http')) {
       if (mounted) {
         setState(() =>
             _error = 'Ingen videofil — kun MP4-klipp kan spilles her.');
@@ -144,14 +149,6 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
         setState(() => _error = 'Kunne ikke spille video: $e');
       }
     }
-  }
-
-  bool _looksLikeVideo(String url) {
-    final lower = url.toLowerCase();
-    return lower.contains('.mp4') ||
-        lower.contains('.mov') ||
-        lower.contains('.webm') ||
-        lower.contains('content_type=video');
   }
 
   void _scheduleHideChrome() {
@@ -199,18 +196,20 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
     if (i < 0) return;
     final next = i + delta;
     if (next < 0 || next >= _playlist.length) return;
-    setState(() => _event = _playlist[next]);
-    try {
-      final updated =
-          await VisionCameraService.instance.markSortingEventViewed(_event.id);
-      if (mounted) {
-        setState(() {
-          _event = updated;
+    final previous = _event;
+    final upcoming = _playlist[next];
+    setState(() => _event = upcoming);
+    // Merk forrige som sett når man bytter klipp.
+    if (!previous.isViewed) {
+      try {
+        final updated = await VisionCameraService.instance
+            .markSortingEventViewed(previous.id);
+        if (mounted) {
           final idx = _playlist.indexWhere((e) => e.id == updated.id);
           if (idx >= 0) _playlist[idx] = updated;
-        });
-      }
-    } catch (_) {}
+        }
+      } catch (_) {}
+    }
     await _loadVideo(_event);
   }
 

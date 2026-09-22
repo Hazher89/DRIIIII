@@ -135,49 +135,69 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
   }
 
   void _clearSelection({bool keepTab = false}) {
+    final current = _selected;
+    if (current != null && !current.isViewed) {
+      unawaited(_markViewedQuiet(current));
+    }
     unawaited(_disposePlayer());
     setState(() => _selected = null);
   }
 
   Future<void> _selectVideo(VisionEvent event) async {
+    final previous = _selected;
+    // Merk forrige som sett først når man bytter video — ikke ved åpning.
+    if (previous != null && previous.id != event.id) {
+      await _markViewedQuiet(previous);
+    }
+
     setState(() {
       _selected = event;
       _playerReady = false;
       _playerError = null;
     });
     await _disposePlayer();
+    await _loadPlayer(event);
+  }
 
-    // Markér sett → flyttes automatisk til Sett-fanen.
+  Future<void> _markViewedQuiet(VisionEvent event) async {
+    if (event.isViewed) return;
     try {
       final updated =
           await VisionCameraService.instance.markSortingEventViewed(event.id);
       if (!mounted) return;
       setState(() {
         final i = _events.indexWhere((e) => e.id == updated.id);
-        if (i >= 0) {
-          _events[i] = updated;
-        } else {
-          _events = [updated, ..._events];
-        }
-        _selected = updated;
-        // Hvis vi var på Nye og klippet ble sett: følg det til Sett.
-        if (_tabs.index == 0 && updated.isViewed) {
-          _tabs.animateTo(1);
-        }
+        if (i >= 0) _events[i] = updated;
       });
     } catch (_) {}
-
-    await _loadPlayer(event);
   }
 
   Future<void> _loadPlayer(VisionEvent event) async {
     final fresh =
         await VisionCameraService.instance.resolveEventMediaLink(event.id);
-    String? url = fresh?.url;
-    if (fresh?.isImage == true) url = null;
+    String? url;
+    // Dropbox temporary links har ofte ikke .mp4 i URL — stol på media_link.
+    if (fresh != null && !fresh.isImage && fresh.url.startsWith('http')) {
+      url = fresh.url;
+    } else if (event.videoDropboxPath != null) {
+      final byPath = await VisionCameraService.instance
+          .resolveDropboxPathLink(event.videoDropboxPath!);
+      if (byPath != null &&
+          !byPath.isImage &&
+          byPath.url.startsWith('http')) {
+        url = byPath.url;
+      }
+    }
     url ??= event.videoUrl;
+    if (url != null &&
+        url.startsWith('http') &&
+        !_looksLikeVideo(url) &&
+        !_looksLikeMediaCdn(url) &&
+        event.videoDropboxPath == null) {
+      url = null;
+    }
 
-    if (url == null || url.isEmpty || !_looksLikeVideo(url)) {
+    if (url == null || url.isEmpty || !url.startsWith('http')) {
       if (mounted) {
         setState(() {
           _playerError =
@@ -221,6 +241,13 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         lower.contains('.mov') ||
         lower.contains('.webm') ||
         lower.contains('content_type=video');
+  }
+
+  bool _looksLikeMediaCdn(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('dropboxusercontent.com') ||
+        lower.contains('dropbox.com') ||
+        lower.contains('dl.dropbox');
   }
 
   Future<void> _togglePlay() async {
@@ -327,6 +354,8 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
               Expanded(
                 child: TabBarView(
                   controller: _tabs,
+                  // Unngå horisontal swipe som «stjeler» vertikal scroll.
+                  physics: const NeverScrollableScrollPhysics(),
                   children: [
                     _buildTabBody(_newEvents, 'Ingen nye videoklipp.'),
                     _buildTabBody(_seenEvents, 'Ingen sette videoklipp ennå.'),
@@ -567,22 +596,39 @@ class _WatchLayout extends StatelessWidget {
     );
 
     if (wide) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(flex: 7, child: playerPane),
-            const SizedBox(width: 36),
-            SizedBox(width: 360, child: side),
-          ],
-        ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 7,
+                  child: SingleChildScrollView(
+                    primary: false,
+                    child: playerPane,
+                  ),
+                ),
+                const SizedBox(width: 36),
+                SizedBox(
+                  width: 360,
+                  height: constraints.maxHeight > 80
+                      ? constraints.maxHeight
+                      : null,
+                  child: side,
+                ),
+              ],
+            ),
+          );
+        },
       );
     }
 
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
+        primary: true,
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
           playerPane,

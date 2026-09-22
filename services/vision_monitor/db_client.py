@@ -52,6 +52,7 @@ class VisionEventRepository:
         self._base = f"{self._root}/rest/v1/vision_events"
         self._cameras = f"{self._root}/rest/v1/vision_cameras"
         self._sessions = f"{self._root}/rest/v1/vision_learn_sessions"
+        self._labels = f"{self._root}/rest/v1/vision_learn_labels"
         self._headers = {
             "apikey": service_role_key,
             "Authorization": f"Bearer {service_role_key}",
@@ -168,3 +169,15 @@ class VisionEventRepository:
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
+
+    async def fetch_recent_learn_labels(self, *, limit: int = 80) -> list[dict[str, Any]]:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            response = await client.get(
+                f"{self._labels}?select=label,zone,reason,note,created_at"
+                f"&order=created_at.desc&limit={limit}",
+                headers=self._headers,
+            )
+            if response.status_code >= 400:
+                return []
+            data = response.json()
+            return data if isinstance(data, list) else []
