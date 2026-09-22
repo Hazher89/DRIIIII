@@ -49,6 +49,12 @@ if not exist .venv (
 
 echo Laster modeller om nodvendig...
 python download_models.py
+python ensure_clip.py
+if errorlevel 1 (
+  echo.
+  echo CLIP mangler — sortering vil feile. Prover pip direkte...
+  python -m pip install openai-clip ftfy regex
+)
 
 REM EVENT_TYPE / LOCAL_DEV / CLIP_* leses fra .env - ikke overstyr her.
 
