@@ -25,10 +25,31 @@ function requireEnv(name: string): string {
 
 function isServiceRole(authHeader: string | null): boolean {
   if (!authHeader?.startsWith("Bearer ")) return false;
-  const token = authHeader.slice(7);
+  const token = authHeader.slice(7).trim();
+  if (!token) return false;
+
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
-  return !!serviceKey && token === serviceKey;
+  if (serviceKey && token === serviceKey) return true;
+
+  // Legacy JWT service_role (dashboard "service_role" key) — env kan være ny sb_secret-*.
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return false;
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded)) as {
+      role?: string;
+      ref?: string;
+    };
+    if (payload.role !== "service_role") return false;
+    const host = Deno.env.get("SUPABASE_URL")?.trim() ?? "";
+    const ref = host.match(/https?:\/\/([^.]+)\.supabase\.co/)?.[1];
+    return !ref || payload.ref === ref;
+  } catch {
+    return false;
+  }
 }
+
 
 async function profileHasUniformMonitor(
   admin: ReturnType<typeof createClient>,

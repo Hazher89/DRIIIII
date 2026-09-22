@@ -70,6 +70,39 @@ Hvis feil om kamera: sjekk at PC og kamera er på **samme WiFi/nett**, og at IP 
 
 ## Vanlige spørsmål
 
+**Cloud Agent / Cursor i skyen sier den ikke er Windows?**  
+Riktig. Kameraet ligger på jobb-nettet (`192.168.39.190`). Sky-agenten er Linux og når det ikke.  
+Kjør **lokalt på jobb-PC**: åpne `C:\DriftPro\...` i Cursor (Local), eller bare dobbeltklikk `START_WINDOWS.bat` — du trenger ikke Cursor for å kjøre workeren.
+
+**`camera_error: Could not read snapshot ... Set CAMERA_USER and CAMERA_PASSWORD`**  
+Betyr: workeren på jobb-PC fikk ikke bilde fra kameraet. Vanligst:
+
+1. `.env` mangler eller har tom `CAMERA_PASSWORD` (første `START_WINDOWS.bat` kopierer bare `.env.example`)
+2. Feil passord
+3. PC er ikke på samme nett som kameraet
+
+Sjekk i Notisblokk at `.env` har:
+
+```
+CAMERA_HOST=192.168.39.190
+CAMERA_USER=admin
+CAMERA_PASSWORD=964281
+```
+
+Lagre → start `START_WINDOWS.bat` på nytt → åpne http://127.0.0.1:8090
+
+**Kan jeg lagre til Dropbox?**  
+Ja. Fra Mac er `vision-camera` deployet. På jobb-PC:
+
+```
+cd C:\DriftPro\DRIIIII\services\vision_monitor
+git pull
+powershell -ExecutionPolicy Bypass -File .\ENABLE_DROPBOX.ps1
+```
+
+Scriptet setter `LOCAL_DEV=false`, `COMPANY_ID`, og ber om `service_role`-nøkkel.  
+Deretter start `START_WINDOWS.bat` på nytt. Ved treff lastes bilde til Dropbox.
+
 **Må DriftPro være åpen på jobb-PC?**  
 Nei.
 

@@ -58,11 +58,7 @@ class IpCamera:
         self._stale_snapshots = 0
 
     def open(self) -> None:
-        if self._settings.camera_user:
-            self._auth = httpx.DigestAuth(
-                self._settings.camera_user,
-                self._settings.camera_password,
-            )
+        self._auth = self._build_auth()
 
         if self._mode == CameraMode.AUTO:
             self._mode = self._discover_mode()
@@ -72,10 +68,11 @@ class IpCamera:
             logger.info("Camera mode=snapshot url=%s", self._active_url)
             frame = self._read_snapshot()
             if frame is None:
-                raise RuntimeError(
-                    f"Could not read snapshot from {self._active_url}. "
-                    "Set CAMERA_USER and CAMERA_PASSWORD in .env"
-                )
+                # Diagnose kan bytte Digest↔Basic; prøv én gang til.
+                hint = self._snapshot_failure_hint(self._active_url)
+                frame = self._read_snapshot()
+                if frame is None:
+                    raise RuntimeError(hint)
             return
 
         logger.info("Camera mode=stream url=%s", self._mask_url(self._active_url))
@@ -84,6 +81,78 @@ class IpCamera:
         if not cap.isOpened():
             raise RuntimeError(f"Could not open camera stream: {self._mask_url(self._active_url)}")
         self._cap = cap
+
+    def _build_auth(self) -> httpx.DigestAuth | httpx.BasicAuth | None:
+        user = self._settings.camera_user
+        if not user:
+            return None
+        # Hikvision/ISAPI bruker ofte Digest; noen firmware vil ha Basic.
+        return httpx.DigestAuth(user, self._settings.camera_password)
+
+    def _snapshot_failure_hint(self, url: str) -> str:
+        pw = self._settings.camera_password
+        user = self._settings.camera_user
+        if not pw:
+            return (
+                f"Could not read snapshot from {url}. "
+                "CAMERA_PASSWORD er tom i .env — sett passordet (se JOBB_PC.md) "
+                "og start START_WINDOWS.bat på nytt."
+            )
+        detail = self._diagnose_snapshot(url)
+        return (
+            f"Could not read snapshot from {url}. "
+            f"Bruker={user!r}, passord er satt ({len(pw)} tegn). {detail}"
+        )
+
+    def _diagnose_snapshot(self, url: str) -> str:
+        try:
+            with httpx.Client(timeout=5.0, follow_redirects=True) as client:
+                # Prøv Digest, deretter Basic.
+                for label, auth in (
+                    ("digest", httpx.DigestAuth(
+                        self._settings.camera_user,
+                        self._settings.camera_password,
+                    )),
+                    ("basic", httpx.BasicAuth(
+                        self._settings.camera_user,
+                        self._settings.camera_password,
+                    )),
+                    ("uten auth", None),
+                ):
+                    try:
+                        r = client.get(url, auth=auth)
+                    except httpx.ConnectError:
+                        return (
+                            "PC når ikke kameraet (ConnectError). "
+                            "Sjekk at jobb-PC er på samme nett som 192.168.39.190."
+                        )
+                    except httpx.TimeoutException:
+                        return "Timeout mot kamera — sjekk nett/IP."
+                    if r.status_code in {401, 403}:
+                        continue
+                    if r.status_code == 200 and len(r.content) >= 500:
+                        # Auth-type som fungerer — lagre for videre lesing.
+                        if label == "basic":
+                            self._auth = httpx.BasicAuth(
+                                self._settings.camera_user,
+                                self._settings.camera_password,
+                            )
+                        elif label == "digest":
+                            self._auth = httpx.DigestAuth(
+                                self._settings.camera_user,
+                                self._settings.camera_password,
+                            )
+                        else:
+                            self._auth = None
+                        return f"Diagnose: HTTP 200 med {label}, men bilde-dekoding feilet."
+                    if r.status_code not in {401, 403}:
+                        return f"HTTP {r.status_code} (prøvde {label})."
+                return (
+                    "HTTP 401/403 — feil CAMERA_USER eller CAMERA_PASSWORD i .env. "
+                    "Åpne .env i Notisblokk, rett passordet, lagre, start bat på nytt."
+                )
+        except Exception as exc:
+            return f"Diagnose feilet: {exc}"
 
     def read(self) -> FramePacket | None:
         if self._mode == CameraMode.SNAPSHOT:
@@ -224,16 +293,35 @@ class IpCamera:
         return f"{base}{path}"
 
     def _probe_snapshot(self, url: str) -> bool:
+        auths: list[httpx.DigestAuth | httpx.BasicAuth | None] = [self._auth]
+        if self._settings.camera_user:
+            auths.append(
+                httpx.BasicAuth(
+                    self._settings.camera_user,
+                    self._settings.camera_password,
+                )
+            )
+            auths.append(
+                httpx.DigestAuth(
+                    self._settings.camera_user,
+                    self._settings.camera_password,
+                )
+            )
         try:
             with httpx.Client(timeout=5.0, follow_redirects=True) as client:
-                response = client.get(url, auth=self._auth)
-                if response.status_code != 200:
-                    return False
-                if len(response.content) < 1000:
-                    return False
-                if response.content[:2] == b"\xff\xd8":
-                    return True
-                return response.headers.get("content-type", "").startswith("image/")
+                for auth in auths:
+                    response = client.get(url, auth=auth)
+                    if response.status_code != 200:
+                        continue
+                    if len(response.content) < 1000:
+                        continue
+                    ok = response.content[:2] == b"\xff\xd8" or response.headers.get(
+                        "content-type", ""
+                    ).startswith("image/")
+                    if ok:
+                        self._auth = auth
+                        return True
+                return False
         except Exception:
             return False
 

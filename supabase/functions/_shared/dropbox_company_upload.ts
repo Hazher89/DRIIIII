@@ -46,7 +46,8 @@ export function buildDropboxStoragePath(
   const safeCat = category.replace(/[^a-zA-Z0-9_-]/g, "_");
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
   const date = new Date().toISOString().slice(0, 10);
-  return `${root}/company_${companyId}/${safeCat}/${date}/${Date.now()}_${safeName}`;
+  const base = root === "/" ? "" : root.replace(/\/+$/, "");
+  return `${base}/company_${companyId}/${safeCat}/${date}/${Date.now()}_${safeName}`;
 }
 
 async function refreshAccessToken(
@@ -110,15 +111,21 @@ async function dropboxApi(
 }
 
 async function ensureFolder(token: string, folderPath: string) {
-  const res = await dropboxApi(token, "api", "/files/create_folder_v2", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: folderPath, autorename: false }),
-  });
-  if (res.ok) return;
-  const err = await res.text();
-  if (err.includes("path/conflict/folder")) return;
-  if (err.includes("folder/conflict")) return;
+  const parts = folderPath.split("/").filter(Boolean);
+  let cur = "";
+  for (const part of parts) {
+    cur += `/${part}`;
+    const res = await dropboxApi(token, "api", "/files/create_folder_v2", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: cur, autorename: false }),
+    });
+    if (res.ok) continue;
+    const err = await res.text();
+    if (err.includes("path/conflict/folder")) continue;
+    if (err.includes("folder/conflict")) continue;
+    if (err.includes("path/conflict")) continue;
+  }
 }
 
 /** Last opp til Dropbox for bedrift. Returnerer null hvis ikke koblet / modul av / under threshold. */
@@ -151,18 +158,29 @@ export async function tryUploadToDropbox(
   const folder = dropboxPath.substring(0, dropboxPath.lastIndexOf("/"));
   await ensureFolder(token, folder);
 
-  const upRes = await dropboxApi(token, "content", "/files/upload", {
-    method: "POST",
-    headers: { "Content-Type": "application/octet-stream" },
-    dropboxArg: { path: dropboxPath, mode: "add", autorename: true },
-    body: opts.bytes,
-  });
+  async function doUpload(path: string) {
+    return dropboxApi(token, "content", "/files/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/octet-stream" },
+      dropboxArg: { path, mode: "add", autorename: true },
+      body: opts.bytes,
+    });
+  }
 
-  const upText = await upRes.text();
+  let uploadPath = dropboxPath;
+  let upRes = await doUpload(uploadPath);
+  let upText = await upRes.text();
+  if (!upRes.ok && upText.includes("malformed_path") && root !== "/") {
+    uploadPath = buildDropboxStoragePath("/", companyId, opts.category, opts.fileName);
+    const folder2 = uploadPath.substring(0, uploadPath.lastIndexOf("/"));
+    await ensureFolder(token, folder2);
+    upRes = await doUpload(uploadPath);
+    upText = await upRes.text();
+  }
   if (!upRes.ok) throw new Error(upText.slice(0, 300));
 
   const meta = JSON.parse(upText) as { path_display?: string };
-  const path = meta.path_display ?? dropboxPath;
+  const path = meta.path_display ?? uploadPath;
 
   const linkRes = await dropboxApi(token, "api", "/files/get_temporary_link", {
     method: "POST",
