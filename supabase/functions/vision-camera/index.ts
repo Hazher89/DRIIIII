@@ -249,7 +249,7 @@ Deno.serve(async (req) => {
       const eventId = url.searchParams.get("event_id")?.trim();
       let companyId = userCompany;
 
-      if (eventId) {
+        if (eventId) {
         const { data: ev, error } = await admin
           .from("vision_events")
           .select("company_id, dropbox_path, metadata, dropbox_image_url")
@@ -267,20 +267,16 @@ Deno.serve(async (req) => {
         companyId = ev.company_id as string;
         const meta = (ev.metadata ?? {}) as Record<string, unknown>;
         const videoPath = meta["dropbox_video_path"];
-        path = String(
-          (typeof videoPath === "string" && videoPath.length > 0
-            ? videoPath
-            : null) ??
-            ev.dropbox_path ??
-            path,
-        );
-        if (!path && typeof ev.dropbox_image_url === "string" && ev.dropbox_image_url) {
-          return json({
-            ok: true,
-            kind: "image",
-            temporary_link: ev.dropbox_image_url,
-            path: null,
-          });
+        // Kun video — ikke fall tilbake til stillbilde.
+        if (typeof videoPath === "string" && videoPath.length > 0) {
+          path = videoPath;
+        } else if (
+          typeof ev.dropbox_path === "string" &&
+          /\.(mp4|mov|webm|m4v)$/i.test(ev.dropbox_path)
+        ) {
+          path = ev.dropbox_path;
+        } else {
+          return json({ error: "Ingen videofil på hendelsen" }, 404);
         }
       }
 

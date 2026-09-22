@@ -148,8 +148,40 @@ class VisionEvent {
     return null;
   }
 
-  String? get videoDropboxPath =>
-      metadata['dropbox_video_path']?.toString() ?? dropboxPath;
+  String? get videoDropboxPath {
+    final dedicated = metadata['dropbox_video_path']?.toString();
+    if (dedicated != null && dedicated.isNotEmpty) return dedicated;
+    final path = dropboxPath;
+    if (path != null && _isVideoPath(path)) return path;
+    return null;
+  }
+
+  /// Kun ekte videoklipp (mp4/mov) — ikke stillbilder.
+  bool get hasVideoClip {
+    if (videoUrl != null) return true;
+    final path = metadata['dropbox_video_path']?.toString();
+    if (path != null && _isVideoPath(path)) return true;
+    if (dropboxPath != null && _isVideoPath(dropboxPath!)) return true;
+    return false;
+  }
+
+  static bool _isVideoPath(String path) {
+    final lower = path.toLowerCase();
+    return lower.endsWith('.mp4') ||
+        lower.endsWith('.mov') ||
+        lower.endsWith('.webm') ||
+        lower.endsWith('.m4v');
+  }
+
+  String? get clipDurationLabel {
+    final before = metadata['clip_seconds_before'];
+    final after = metadata['clip_seconds_after'];
+    if (before is! num || after is! num) return null;
+    final total = (before + after).round();
+    final m = total ~/ 60;
+    final s = total % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
 
   List<String> get insightChips {
     final out = <String>[];

@@ -36,6 +36,18 @@ Future<VisionEvent?> openWasteSortingStudio(
   );
 }
 
+Future<bool?> showWasteBotSheet(
+  BuildContext context, {
+  required VisionEvent event,
+}) {
+  return showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _WasteBotSheet(event: event),
+  );
+}
+
 class WasteSortingStudio extends StatefulWidget {
   const WasteSortingStudio({
     super.key,
@@ -101,31 +113,13 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
     final fresh =
         await VisionCameraService.instance.resolveEventMediaLink(event.id);
     String? url = fresh?.url;
-    var isImage = fresh?.isImage == true;
+    if (fresh?.isImage == true) url = null;
+    url ??= event.videoUrl;
 
-    if (url == null || url.isEmpty) {
-      url = event.videoUrl;
-      isImage = false;
-    }
-    if ((url == null || url.isEmpty) && event.dropboxImageUrl.isNotEmpty) {
-      url = event.dropboxImageUrl;
-      isImage = true;
-    }
-
-    if (url == null || url.isEmpty) {
+    if (url == null || url.isEmpty || !_looksLikeVideo(url)) {
       if (mounted) {
-        setState(() => _error = 'Ingen media på dette klippet ennå.');
-      }
-      return;
-    }
-
-    if (isImage || !_looksLikeVideo(url)) {
-      if (mounted) {
-        setState(() {
-          _imageUrl = url;
-          _playableUrl = url;
-          _ready = true;
-        });
+        setState(() =>
+            _error = 'Ingen videofil — kun MP4-klipp kan spilles her.');
       }
       return;
     }
@@ -148,16 +142,6 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
         if (mounted) setState(() {});
       });
     } catch (e) {
-      // Utgått/ugyldig video — prøv bilde.
-      if (event.dropboxImageUrl.isNotEmpty && mounted) {
-        setState(() {
-          _imageUrl = event.dropboxImageUrl;
-          _playableUrl = event.dropboxImageUrl;
-          _ready = true;
-          _error = null;
-        });
-        return;
-      }
       if (mounted) {
         setState(() => _error = 'Kunne ikke spille video: $e');
       }
@@ -309,12 +293,7 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
   Future<void> _openBot() async {
     await _controller?.pause();
     if (!mounted) return;
-    final result = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _WasteBotSheet(event: _event),
-    );
+    final result = await showWasteBotSheet(context, event: _event);
     if (result == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('BOT sendt til partner')),
