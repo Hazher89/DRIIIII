@@ -236,3 +236,22 @@ export async function tryTemporaryLink(
   const linkJson = await linkRes.json() as { link?: string };
   return linkJson.link ?? null;
 }
+
+/** Kortvarig access token + root for direkte opplasting fra worker (store MP4). */
+export async function tryCompanyDropboxAuth(
+  admin: ReturnType<typeof createClient>,
+  companyId: string,
+): Promise<{ accessToken: string; rootFolder: string } | null> {
+  const { data: connRow } = await admin
+    .from("company_dropbox_connections")
+    .select("*")
+    .eq("company_id", companyId)
+    .maybeSingle();
+  if (!connRow) return null;
+  const conn = connRow as Conn;
+  const accessToken = await refreshAccessToken(conn, admin);
+  return {
+    accessToken,
+    rootFolder: resolveDropboxUploadRoot(conn.root_folder),
+  };
+}

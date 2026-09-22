@@ -20,6 +20,7 @@ def main() -> int:
         logger.warning("CLIP mangler (%s) — installerer openai-clip fra PyPI…", exc)
 
     cmds = [
+        [sys.executable, "-m", "pip", "install", "--upgrade", "setuptools"],
         [sys.executable, "-m", "pip", "install", "--upgrade", "openai-clip", "ftfy", "regex"],
         # Fallback zip uten permanent git-klon
         [

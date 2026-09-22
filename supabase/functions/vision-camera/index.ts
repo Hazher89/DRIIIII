@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import md5 from "npm:md5";
-import { tryTemporaryLink, tryUploadToDropbox } from "../_shared/dropbox_company_upload.ts";
+import { buildDropboxStoragePath, tryCompanyDropboxAuth, tryTemporaryLink, tryUploadToDropbox } from "../_shared/dropbox_company_upload.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -158,6 +158,15 @@ Deno.serve(async (req) => {
       }
 
       const bytes = Uint8Array.from(atob(body.bytes_base64), (c) => c.charCodeAt(0));
+      // Store filer via base64 sprenger edge memory — avvis tidlig.
+      if (bytes.length > 4_500_000) {
+        return json({
+          error: "Fil for stor for edge upload — bruk action=dropbox_auth + direkte Dropbox",
+          code: "USE_DIRECT_UPLOAD",
+          size: bytes.length,
+        }, 413);
+      }
+
       const result = await tryUploadToDropbox(admin, body.company_id, {
         fileName: body.file_name,
         category: body.category?.trim() || "vision_uniform",
@@ -171,6 +180,40 @@ Deno.serve(async (req) => {
         path: result.path,
         temporary_link: result.temporaryLink,
         size: result.size,
+      });
+    }
+
+    // Kortvarig Dropbox-token til Windows-worker (direkte MP4-opplasting).
+    if (action === "dropbox_auth" && req.method === "POST") {
+      if (!isServiceRole(req.headers.get("Authorization"))) {
+        return json({ error: "Krever service role" }, 401);
+      }
+      const body = await req.json() as {
+        company_id: string;
+        file_name?: string;
+        category?: string;
+      };
+      if (!body.company_id) return json({ error: "company_id mangler" }, 400);
+
+      const auth = await tryCompanyDropboxAuth(admin, body.company_id);
+      if (!auth) return json({ error: "Dropbox ikke koblet" }, 400);
+
+      let suggested_path: string | null = null;
+      if (body.file_name) {
+        suggested_path = buildDropboxStoragePath(
+          auth.rootFolder,
+          body.company_id,
+          body.category?.trim() || "vision_sorting_clip",
+          body.file_name,
+        );
+      }
+
+      return json({
+        ok: true,
+        access_token: auth.accessToken,
+        root_folder: auth.rootFolder,
+        suggested_path,
+        expires_in_hint_sec: 3500,
       });
     }
 
