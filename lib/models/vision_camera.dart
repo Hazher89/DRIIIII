@@ -153,6 +153,22 @@ class VisionEvent {
   bool get isArchived => archivedAt != null;
   bool get isDismissed => status == 'dismissed';
 
+  /// Menneske-merking: null | correct | wrong
+  String? get humanLabel {
+    final v = metadata['human_label']?.toString();
+    if (v == 'correct' || v == 'wrong') return v;
+    return null;
+  }
+
+  bool get needsHumanReview => humanLabel == null;
+
+  String? get humanNote {
+    final v = metadata['human_note'];
+    if (v == null) return null;
+    final s = v.toString().trim();
+    return s.isEmpty || s == 'null' ? null : s;
+  }
+
   bool get missingLogo => metadata['missing_logo'] == true;
   bool get missingShoes => metadata['missing_shoes'] == true;
 
@@ -228,6 +244,8 @@ class VisionEvent {
       final zone = metadata['zone']?.toString();
       String label;
       switch (reason) {
+        case 'person_visit':
+          label = 'Besøk — trenger din vurdering';
         case 'unflattened_cardboard':
           label = 'Ubrettet/stor eske i papp-container';
         case 'cardboard_in_wrong_bin':
@@ -239,7 +257,13 @@ class VisionEvent {
         case 'cardboard':
           label = 'Brun eske';
         default:
-          label = 'Søppelsortering-avvik';
+          label = 'Søppelsortering — trenger vurdering';
+      }
+      if (humanLabel == 'correct') {
+        return 'Merket riktig${zone != null && zone.isNotEmpty ? ' ($zone)' : ''}';
+      }
+      if (humanLabel == 'wrong') {
+        return 'Bekreftet avvik: $label';
       }
       return zone != null && zone.isNotEmpty ? '$label ($zone)' : label;
     }

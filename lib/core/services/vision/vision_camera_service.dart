@@ -295,16 +295,18 @@ class VisionCameraService {
     return VisionEvent.fromRow(row);
   }
 
-  /// Merk avvik som riktig (falsk alarm) eller feil — lærer Windows-worker.
+  /// Merk avvik som riktig (falsk alarm) eller feil — med valgfri kommentar.
   Future<VisionEvent> markSortingFeedback(
     String eventId, {
     String label = 'correct',
+    String? note,
   }) async {
     final row = await _client.rpc(
       'mark_vision_sorting_feedback',
       params: {
         'p_event_id': eventId,
         'p_label': label,
+        'p_note': note,
       },
     ) as Map<String, dynamic>;
     return VisionEvent.fromRow(row);

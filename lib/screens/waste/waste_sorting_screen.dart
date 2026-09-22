@@ -117,23 +117,23 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         _profile?.isSuperAdmin == true;
   }
 
-  List<VisionEvent> get _newEvents =>
-      _events.where((e) => !e.isArchived && !e.isViewed).toList();
+  List<VisionEvent> get _reviewEvents =>
+      _events.where((e) => e.needsHumanReview).toList();
 
-  List<VisionEvent> get _seenEvents =>
-      _events.where((e) => !e.isArchived && e.isViewed).toList();
+  List<VisionEvent> get _wrongEvents =>
+      _events.where((e) => e.humanLabel == 'wrong').toList();
 
-  List<VisionEvent> get _archivedEvents =>
-      _events.where((e) => e.isArchived).toList();
+  List<VisionEvent> get _correctEvents =>
+      _events.where((e) => e.humanLabel == 'correct').toList();
 
   List<VisionEvent> get _tabPlaylist {
     switch (_tabs.index) {
       case 1:
-        return _seenEvents;
+        return _wrongEvents;
       case 2:
-        return _archivedEvents;
+        return _correctEvents;
       default:
-        return _newEvents;
+        return _reviewEvents;
     }
   }
 
@@ -344,20 +344,77 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
     }
   }
 
-  Future<void> _markCorrectSelected() async {
+  Future<void> _markFeedbackSelected(String label) async {
     final ev = _selected;
     if (ev == null) return;
+    final noteCtrl = TextEditingController(text: ev.humanNote ?? '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final isCorrect = label == 'correct';
+        return AlertDialog(
+          title: Text(isCorrect ? 'Dette var riktig' : 'Dette var feil'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                isCorrect
+                    ? 'Skriv kort hvorfor det var riktig (f.eks. «brettet papp i A»). '
+                        'Kommentaren trener systemet.'
+                    : 'Skriv kort hva som var feil (f.eks. «ubrettet eske i A»). '
+                        'Kommentaren trener systemet.',
+                style: TextStyle(color: Colors.grey.shade700, fontSize: 13),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 3,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Kommentar (anbefalt)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Avbryt'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: FilledButton.styleFrom(
+                backgroundColor: isCorrect
+                    ? DriftProTheme.primaryGreen
+                    : const Color(0xFFE53935),
+              ),
+              child: Text(isCorrect ? 'Lagre RIKTIG' : 'Lagre FEIL'),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok != true || !mounted) {
+      noteCtrl.dispose();
+      return;
+    }
+    final note = noteCtrl.text.trim();
+    noteCtrl.dispose();
+
     setState(() => _busy = true);
     try {
-      final updated =
-          await VisionCameraService.instance.markSortingFeedback(ev.id);
+      final updated = await VisionCameraService.instance.markSortingFeedback(
+        ev.id,
+        label: label,
+        note: note.isEmpty ? null : note,
+      );
       if (!mounted) return;
       setState(() {
         final i = _events.indexWhere((e) => e.id == updated.id);
         if (i >= 0) {
           _events[i] = updated;
-        } else {
-          _events.insert(0, updated);
         }
         _busy = false;
       });
@@ -365,13 +422,22 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
       if (!mounted) return;
       setState(() => _selected = null);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'Merket som riktig — systemet lærer og viser færre like falske treff.',
+            label == 'correct'
+                ? 'Lagret som riktig — systemet lærer av kommentaren din.'
+                : 'Lagret som feil/avvik — systemet lærer av kommentaren din.',
           ),
         ),
       );
-      await _load(silent: true);
+      // Gå til neste umerkede hvis finnes.
+      final next = _reviewEvents.where((e) => e.id != updated.id).toList();
+      if (next.isNotEmpty) {
+        _tabs.animateTo(0);
+        await _selectVideo(next.first);
+      } else {
+        await _load(silent: true);
+      }
     } catch (e) {
       if (mounted) {
         setState(() => _busy = false);
@@ -416,9 +482,9 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
                 controller: _tabs,
                 labelColor: DriftProTheme.primaryGreen,
                 tabs: [
-                  Tab(text: 'Nye (${_newEvents.length})'),
-                  Tab(text: 'Sett (${_seenEvents.length})'),
-                  Tab(text: 'Arkiv (${_archivedEvents.length})'),
+                  Tab(text: 'Til vurdering (${_reviewEvents.length})'),
+                  Tab(text: 'Avvik (${_wrongEvents.length})'),
+                  Tab(text: 'Riktig (${_correctEvents.length})'),
                 ],
               ),
               Expanded(
@@ -427,9 +493,18 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
                   // Unngå horisontal swipe som «stjeler» vertikal scroll.
                   physics: const NeverScrollableScrollPhysics(),
                   children: [
-                    _buildTabBody(_newEvents, 'Ingen nye videoklipp.'),
-                    _buildTabBody(_seenEvents, 'Ingen sette videoklipp ennå.'),
-                    _buildTabBody(_archivedEvents, 'Arkivet er tomt.'),
+                    _buildTabBody(
+                      _reviewEvents,
+                      'Ingen klipp til vurdering.\nNår noen går foran kameraet, dukker videoen opp her.',
+                    ),
+                    _buildTabBody(
+                      _wrongEvents,
+                      'Ingen bekreftede avvik ennå.\nMerk «Dette var feil» når sorteringen var gal.',
+                    ),
+                    _buildTabBody(
+                      _correctEvents,
+                      'Ingen merket som riktig ennå.',
+                    ),
                   ],
                 ),
               ),
@@ -508,7 +583,8 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         onTogglePlay: _togglePlay,
         onSeek: _seekBy,
         onBot: _openBot,
-        onMarkCorrect: _markCorrectSelected,
+        onMarkCorrect: () => _markFeedbackSelected('correct'),
+        onMarkWrong: () => _markFeedbackSelected('wrong'),
         onArchive: () =>
             _archiveSelected(archived: !_selected!.isArchived),
         onClose: _clearSelection,
@@ -535,7 +611,7 @@ class _IntroBar extends StatelessWidget {
       children: [
         Expanded(
           child: Text(
-            'Kun videoklipp · A=papp · B=annet',
+            'Alle besøk lagres · merk Riktig/Feil med kommentar · A=papp · B=annet',
             style: DriftProTheme.headingSm.copyWith(fontSize: 15),
           ),
         ),
@@ -625,6 +701,7 @@ class _WatchLayout extends StatelessWidget {
     required this.onSeek,
     required this.onBot,
     required this.onMarkCorrect,
+    required this.onMarkWrong,
     required this.onArchive,
     required this.onClose,
   });
@@ -641,6 +718,7 @@ class _WatchLayout extends StatelessWidget {
   final ValueChanged<Duration> onSeek;
   final VoidCallback onBot;
   final VoidCallback onMarkCorrect;
+  final VoidCallback onMarkWrong;
   final VoidCallback onArchive;
   final VoidCallback onClose;
 
@@ -659,6 +737,7 @@ class _WatchLayout extends StatelessWidget {
       onSeek: onSeek,
       onBot: onBot,
       onMarkCorrect: onMarkCorrect,
+      onMarkWrong: onMarkWrong,
       onArchive: onArchive,
       onClose: onClose,
     );
@@ -739,6 +818,7 @@ class _MainPlayerPane extends StatelessWidget {
     required this.onSeek,
     required this.onBot,
     required this.onMarkCorrect,
+    required this.onMarkWrong,
     required this.onArchive,
     required this.onClose,
   });
@@ -752,6 +832,7 @@ class _MainPlayerPane extends StatelessWidget {
   final ValueChanged<Duration> onSeek;
   final VoidCallback onBot;
   final VoidCallback onMarkCorrect;
+  final VoidCallback onMarkWrong;
   final VoidCallback onArchive;
   final VoidCallback onClose;
 
@@ -923,10 +1004,15 @@ class _MainPlayerPane extends StatelessWidget {
               label: const Text('Dette var riktig'),
             ),
             FilledButton.icon(
-              onPressed: busy ? null : onBot,
+              onPressed: busy ? null : onMarkWrong,
               style: FilledButton.styleFrom(
                 backgroundColor: const Color(0xFFE53935),
               ),
+              icon: const Icon(Icons.close, size: 18),
+              label: const Text('Dette var feil'),
+            ),
+            OutlinedButton.icon(
+              onPressed: busy ? null : onBot,
               icon: const Icon(Icons.gavel, size: 18),
               label: const Text('BOT'),
             ),
@@ -942,6 +1028,17 @@ class _MainPlayerPane extends StatelessWidget {
             ),
           ],
         ),
+        if (event.humanNote != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            'Din kommentar: ${event.humanNote}',
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 13,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
       ],
     );
   }

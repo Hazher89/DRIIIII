@@ -153,6 +153,8 @@ class SortingDetector:
         self._last_fire: dict[str, float] = {}
         self._feedback_delta = 0.0  # global from human learn labels
         self._reason_feedback: dict[str, _ReasonFeedback] = {}
+        self._extra_flat_hints: set[str] = set()
+        self._extra_bulky_hints: set[str] = set()
         self._classes_dirty = True
 
     def _ensure_model(self) -> YOLO:
@@ -169,10 +171,12 @@ class SortingDetector:
         return self._model
 
     def apply_learn_feedback(self, labels: list[dict]) -> None:
-        """Juster terskel per årsak/sone ut fra menneske-merking (riktig/feil)."""
+        """Juster terskel per årsak + lær nøkkelord fra menneske-kommentarer."""
         wrong = 0
         correct = 0
         by_reason: dict[str, list[str]] = {}
+        note_flat_hints: set[str] = set()
+        note_bulky_hints: set[str] = set()
         for row in labels:
             lab = str(row.get("label") or "")
             if lab == "wrong":
@@ -183,18 +187,57 @@ class SortingDetector:
                 continue
             reason = str(row.get("reason") or "").strip() or "_any"
             by_reason.setdefault(reason, []).append(lab)
+            note = str(row.get("note") or "").lower()
+            if not note:
+                continue
+            # Kommentarer fra DriftPro → dynamiske hint (norsk + engelsk).
+            if lab == "correct":
+                for kw in (
+                    "brettet",
+                    "sammenbrettet",
+                    "flat",
+                    "riktig",
+                    "korrekt",
+                    "papp i a",
+                    "i papp",
+                    "flattened",
+                    "folded",
+                ):
+                    if kw in note:
+                        note_flat_hints.add(kw)
+            elif lab == "wrong":
+                for kw in (
+                    "ubrettet",
+                    "ikke brettet",
+                    "stående",
+                    "full eske",
+                    "feil container",
+                    "i b",
+                    "annet-container",
+                    "unflattened",
+                    "bulky",
+                ):
+                    if kw in note:
+                        note_bulky_hints.add(kw)
+
+        # Utvid hint-lister midlertidig (kopi — ikke muter modul-konstanter permanent).
+        self._extra_flat_hints = note_flat_hints
+        self._extra_bulky_hints = note_bulky_hints
 
         # Global: flere «riktig» → hev terskel (færre falske alarmer).
         delta = 0.0
         if wrong + correct >= 3:
-            delta = (correct - wrong) * 0.008
-            delta = max(-0.08, min(0.08, delta))
+            delta = (correct - wrong) * 0.01
+            delta = max(-0.10, min(0.12, delta))
         if abs(delta - self._feedback_delta) >= 0.005:
             logger.info(
-                "Learn feedback global: correct=%d wrong=%d → conf_delta=%+.3f",
+                "Learn feedback global: correct=%d wrong=%d → conf_delta=%+.3f "
+                "flat_hints=%s bulky_hints=%s",
                 correct,
                 wrong,
                 delta,
+                sorted(note_flat_hints)[:6],
+                sorted(note_bulky_hints)[:6],
             )
         self._feedback_delta = delta
 
@@ -205,15 +248,13 @@ class SortingDetector:
                 continue
             c = sum(1 for x in labs if x == "correct")
             w = sum(1 for x in labs if x == "wrong")
-            if c + w < 2:
+            if c + w < 1:
                 continue
-            # correct → hev terskel for denne årsaken; wrong → senk.
-            r_delta = (c - w) * 0.015
-            r_delta = max(-0.12, min(0.15, r_delta))
+            r_delta = (c - w) * 0.02
+            r_delta = max(-0.15, min(0.18, r_delta))
             suppress_until = 0.0
-            # Mange «dette var riktig» på samme årsak → demp midlertidig (~10 min).
             if c >= 3 and c > w * 2:
-                suppress_until = now + 600.0
+                suppress_until = now + 900.0
             new_map[reason] = _ReasonFeedback(
                 conf_delta=r_delta,
                 suppress_until=suppress_until,
@@ -417,14 +458,17 @@ class SortingDetector:
             bbox, frame_w, frame_h
         )
 
-        if any(h in low for h in FLAT_HINTS):
+        flat_hints = FLAT_HINTS + tuple(self._extra_flat_hints)
+        bulky_hints = BULKY_HINTS + tuple(self._extra_bulky_hints)
+
+        if any(h in low for h in flat_hints):
             return False
 
         # Flat sheet i bildet → aldri ubrettet, selv om label sier oversized/contents.
         if looks_flat:
             return False
 
-        bulky_label = any(h in low for h in BULKY_HINTS)
+        bulky_label = any(h in low for h in bulky_hints)
         # Stående / 3D: høy i bildet eller mer kvadratisk/høy.
         looks_3d = height_frac >= 0.14 or aspect >= 0.70
         if bulky_label and looks_3d:

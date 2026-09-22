@@ -71,8 +71,12 @@ class VisionMonitorPipeline:
             target_fps=settings.clip_fps,
         )
         self._pending_clips: list[dict] = []
-        # Person-episode for sorting: only save when wrong throw + person visit.
+        # Person-episode for sorting: lagre ALLE besøk for menneske-merking (Riktig/Feil).
         self._sorting_episode: dict | None = None
+        # Kort hale etter OK-besøk (full 2 min kun ved auto-detektert feil).
+        self._ok_visit_post_seconds = float(
+            os.environ.get("CLIP_SECONDS_AFTER_OK", "30")
+        )
         self._person_absent_since: float | None = None
         self._max_episode_seconds = float(
             os.environ.get("CLIP_MAX_EPISODE_SECONDS", "600")
@@ -378,7 +382,7 @@ class VisionMonitorPipeline:
         hits: list[SortingHit],
         frame,
     ) -> None:
-        """Track person visit; only keep video if they throw wrong."""
+        """Track person visit; always save clip for human Riktig/Feil review."""
         now = time.monotonic()
         ep = self._sorting_episode
 
@@ -397,11 +401,12 @@ class VisionMonitorPipeline:
                     "until": None,
                     "captured_at": datetime.now(timezone.utc),
                     "closed": False,
+                    "last_frame": frame.copy() if frame is not None else None,
                 }
                 ep = self._sorting_episode
                 logger.info(
                     "Person arrived — buffering visit (pre=%.0fs). "
-                    "Klipp lagres kun ved feilkasting.",
+                    "Alle besøk lagres for merking i DriftPro.",
                     self._settings.clip_seconds_before,
                 )
                 STATE.push_feed(
@@ -409,13 +414,14 @@ class VisionMonitorPipeline:
                         {
                             "id": f"arr-{ep['id'][:8]}",
                             "status": "ok",
-                            "text": "Person i bilde — følger besøket (lagrer kun ved feilkast)",
+                            "text": "Person i bilde — tar opp besøk (merke Riktig/Feil i DriftPro)",
                         }
                     ]
                 )
             else:
                 ep["person_present"] = True
-                # Person returned during post-window → keep recording.
+                if frame is not None:
+                    ep["last_frame"] = frame.copy()
                 if ep.get("until") is not None:
                     ep["until"] = None
                     logger.info("Person returned during post-window — extending episode")
@@ -427,10 +433,11 @@ class VisionMonitorPipeline:
                     ep["person_present"] = False
                     self._person_absent_since = None
                     if ep.get("hit"):
-                        ep["until"] = now + self._settings.clip_seconds_after
+                        post_s = self._settings.clip_seconds_after
+                        ep["until"] = now + post_s
                         logger.info(
-                            "Person left after wrong throw — recording %.0fs more then save",
-                            self._settings.clip_seconds_after,
+                            "Person left after suspected wrong — recording %.0fs more then save",
+                            post_s,
                         )
                         STATE.push_feed(
                             [
@@ -438,35 +445,41 @@ class VisionMonitorPipeline:
                                     "id": f"leave-{ep['id'][:8]}",
                                     "status": "violation",
                                     "text": (
-                                        f"Feilkasting — tar {self._settings.clip_seconds_after:.0f}s "
-                                        f"etter avgang, deretter lagring"
+                                        f"Mulig feilkasting — tar {post_s:.0f}s "
+                                        f"etter avgang, deretter lagring til vurdering"
                                     ),
                                 }
                             ]
                         )
                     else:
-                        # Riktig besøk — ingen lagring, ingen 2-min opptak.
-                        ep["until"] = now
+                        post_s = self._ok_visit_post_seconds
+                        ep["until"] = now + post_s
                         logger.info(
-                            "Person left without wrong throw — discarding visit (no save)"
+                            "Person left — saving visit for review (post=%.0fs)",
+                            post_s,
                         )
                         STATE.push_feed(
                             [
                                 {
                                     "id": f"okleave-{ep['id'][:8]}",
                                     "status": "ok",
-                                    "text": "Riktig sortering / ingen feil — lagrer ikke",
+                                    "text": (
+                                        f"Besøk ferdig — lagrer klipp ({post_s:.0f}s hale) "
+                                        f"til Riktig/Feil i DriftPro"
+                                    ),
                                 }
                             ]
                         )
 
         if hits and ep is not None:
+            if frame is not None:
+                ep["last_frame"] = frame.copy()
             if ep.get("hit") is None:
                 hit = hits[0]
                 ep["hit"] = hit
                 logger.info(
-                    "Wrong throw during visit | zone=%s reason=%s label=%s conf=%.2f — "
-                    "will save 1 min before arrival + 2 min after leave",
+                    "Suspected wrong during visit | zone=%s reason=%s label=%s conf=%.2f — "
+                    "will save for human review",
                     hit.zone,
                     hit.reason,
                     hit.label,
@@ -478,14 +491,13 @@ class VisionMonitorPipeline:
                             "id": f"bad-{ep['id'][:8]}",
                             "status": "violation",
                             "text": (
-                                f"FEILKASTING: {hit.zone} — venter til personen går, "
-                                f"deretter {self._settings.clip_seconds_after:.0f}s opptak"
+                                f"AUTO-forslag FEIL: {hit.zone} — venter til personen går, "
+                                f"deretter lagring (du bekrefter i DriftPro)"
                             ),
                         }
                     ]
                 )
         elif hits and ep is None:
-            # Feilobjekt uten person i bildet — ikke lagre (kan være gammel eske).
             hit = hits[0]
             logger.info(
                 "Sorting signal without person (zone=%s reason=%s) — not saving",
@@ -503,20 +515,36 @@ class VisionMonitorPipeline:
             )
 
     async def _finalize_sorting_episode(self, ep: dict) -> None:
+        auto_suspected = ep.get("hit") is not None
         hit = ep.get("hit")
         if hit is None:
-            logger.info(
-                "Episode discarded — no wrong throw (frames=%d)",
-                len(ep.get("pre") or []) + len(ep.get("post") or []),
+            frame = ep.get("last_frame")
+            if frame is None and ep.get("post"):
+                frame = ep["post"][-1]
+            if frame is None:
+                logger.info(
+                    "Episode discarded — no frames for visit (pre=%d)",
+                    len(ep.get("pre") or []),
+                )
+                return
+            h, w = frame.shape[:2]
+            hit = SortingHit(
+                track_id=0,
+                confidence=0.0,
+                bbox=(0, 0, w, h),
+                label="person_visit",
+                reason="person_visit",
+                zone="visit",
+                annotated_frame=frame.copy(),
             )
-            return
-        # Reuse finalize path with pending-shaped dict.
         pending = {
             "id": ep["id"],
             "hit": hit,
             "pre": ep["pre"],
             "post": ep["post"],
             "captured_at": ep["captured_at"],
+            "needs_review": True,
+            "auto_suspected_wrong": auto_suspected,
         }
         await self._finalize_sorting_clip(pending)
 
@@ -634,6 +662,9 @@ class VisionMonitorPipeline:
             "clip_seconds_after": self._settings.clip_seconds_after,
             "frame_count": len(all_frames),
             "video_path": str(video_path),
+            "needs_review": bool(pending.get("needs_review", True)),
+            "auto_suspected_wrong": bool(pending.get("auto_suspected_wrong", False)),
+            "human_label": None,
         }
 
         if self._settings.local_dev and self._local_store:
