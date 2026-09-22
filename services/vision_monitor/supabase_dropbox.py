@@ -60,3 +60,31 @@ class SupabaseDropboxUpload:
             raise RuntimeError("Dropbox upload mangler path i svar")
 
         return DropboxUploadResult(path=path, share_url=link)
+
+    def push_live_jpeg(
+        self,
+        *,
+        image_bytes: bytes,
+        camera_db_id: str,
+    ) -> DropboxUploadResult:
+        """Overwrite latest live frame for worldwide DriftPro preview."""
+        payload = {
+            "camera_id": camera_db_id,
+            "bytes_base64": base64.b64encode(image_bytes).decode("ascii"),
+        }
+        url = self._upload_url.replace("action=upload", "action=live_push")
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(url, headers=self._headers, json=payload)
+            if response.status_code >= 400:
+                logger.error(
+                    "Live push failed: %s %s",
+                    response.status_code,
+                    response.text[:300],
+                )
+                response.raise_for_status()
+            data = response.json()
+        path = data.get("path") or ""
+        link = data.get("temporary_link") or data.get("temporaryLink") or ""
+        if not path:
+            raise RuntimeError("Live push mangler path")
+        return DropboxUploadResult(path=path, share_url=link)

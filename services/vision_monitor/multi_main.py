@@ -67,6 +67,8 @@ async def _main() -> None:
             local_captures_dir=base_settings.local_captures_dir,
             local_server_port=base_settings.local_server_port,
             snapshot_interval_ms=base_settings.snapshot_interval_ms,
+            live_push_interval_seconds=base_settings.live_push_interval_seconds,
+            vision_camera_db_id=cam.camera_id if len(cam.camera_id) == 36 else base_settings.vision_camera_db_id,
             clip_seconds_before=base_settings.clip_seconds_before,
             clip_seconds_after=base_settings.clip_seconds_after,
             clip_fps=base_settings.clip_fps,

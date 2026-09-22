@@ -287,7 +287,7 @@ class VisionCameraService {
     }
 
     final uri = Uri.parse(
-      '${SupabaseConfig.url}/functions/v1/vision-camera?action=snapshot&camera_id=$cameraId',
+      '${SupabaseConfig.url}/functions/v1/vision-camera?action=live&camera_id=$cameraId',
     );
     try {
       final res = await http.get(
@@ -300,13 +300,31 @@ class VisionCameraService {
       if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
         return LiveFrameResult(bytes: res.bodyBytes, source: 'edge');
       }
-      if (res.statusCode == 404) {
+      // Fallback: direkte snapshot fra edge (kun hvis edge når kamera-LAN).
+      final snapUri = Uri.parse(
+        '${SupabaseConfig.url}/functions/v1/vision-camera?action=snapshot&camera_id=$cameraId',
+      );
+      final snap = await http.get(
+        snapUri,
+        headers: {
+          'Authorization': 'Bearer ${session.accessToken}',
+          'apikey': SupabaseConfig.anonKey,
+        },
+      );
+      if (snap.statusCode == 200 && snap.bodyBytes.isNotEmpty) {
+        return LiveFrameResult(bytes: snap.bodyBytes, source: 'edge');
+      }
+      if (res.statusCode == 404 || snap.statusCode == 404) {
         return _fetchLocalWorkerFallback(null);
       }
       if (kDebugMode) {
         return _fetchLocalWorkerFallback(null);
       }
-      return const LiveFrameResult(error: 'Kobler til kamera…');
+      return LiveFrameResult(
+        error: res.statusCode == 404
+            ? 'Ingen live-frame ennå — start worker på jobb-PC'
+            : 'Kobler til kamera…',
+      );
     } catch (e) {
       if (kDebugMode) {
         return _fetchLocalWorkerFallback(null);

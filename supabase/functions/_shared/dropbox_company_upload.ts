@@ -128,7 +128,7 @@ async function ensureFolder(token: string, folderPath: string) {
   }
 }
 
-/** Last opp til Dropbox for bedrift. Returnerer null hvis ikke koblet / modul av / under threshold. */
+/** Last opp til Dropbox for bedrift. Returnerer null hvis ikke koblet. */
 export async function tryUploadToDropbox(
   admin: ReturnType<typeof createClient>,
   companyId: string,
@@ -136,6 +136,8 @@ export async function tryUploadToDropbox(
     fileName: string;
     category: string;
     bytes: Uint8Array;
+    /** Fast sti (uten root) — overskrives. F.eks. vision_live/<camera_id>/latest.jpg */
+    fixedRelativePath?: string;
   },
 ): Promise<DropboxUploadResult | null> {
   const { data: connRow } = await admin
@@ -149,20 +151,30 @@ export async function tryUploadToDropbox(
   const conn = connRow as Conn;
   const token = await refreshAccessToken(conn, admin);
   const root = resolveDropboxUploadRoot(conn.root_folder);
-  const dropboxPath = buildDropboxStoragePath(
-    root,
-    companyId,
-    opts.category,
-    opts.fileName,
-  );
+  const dropboxPath = opts.fixedRelativePath
+    ? (() => {
+      const rel = opts.fixedRelativePath.startsWith("/")
+        ? opts.fixedRelativePath
+        : `/${opts.fixedRelativePath}`;
+      const base = root === "/" ? "" : root.replace(/\/+$/, "");
+      return `${base}${rel}`;
+    })()
+    : buildDropboxStoragePath(
+      root,
+      companyId,
+      opts.category,
+      opts.fileName,
+    );
   const folder = dropboxPath.substring(0, dropboxPath.lastIndexOf("/"));
   await ensureFolder(token, folder);
+
+  const mode = opts.fixedRelativePath ? "overwrite" : "add";
 
   async function doUpload(path: string) {
     return dropboxApi(token, "content", "/files/upload", {
       method: "POST",
       headers: { "Content-Type": "application/octet-stream" },
-      dropboxArg: { path, mode: "add", autorename: true },
+      dropboxArg: { path, mode, autorename: !opts.fixedRelativePath },
       body: opts.bytes,
     });
   }
@@ -171,7 +183,11 @@ export async function tryUploadToDropbox(
   let upRes = await doUpload(uploadPath);
   let upText = await upRes.text();
   if (!upRes.ok && upText.includes("malformed_path") && root !== "/") {
-    uploadPath = buildDropboxStoragePath("/", companyId, opts.category, opts.fileName);
+    uploadPath = opts.fixedRelativePath
+      ? (opts.fixedRelativePath.startsWith("/")
+        ? opts.fixedRelativePath
+        : `/${opts.fixedRelativePath}`)
+      : buildDropboxStoragePath("/", companyId, opts.category, opts.fileName);
     const folder2 = uploadPath.substring(0, uploadPath.lastIndexOf("/"));
     await ensureFolder(token, folder2);
     upRes = await doUpload(uploadPath);
@@ -196,4 +212,27 @@ export async function tryUploadToDropbox(
     temporaryLink: linkJson.link,
     size: opts.bytes.length,
   };
+}
+
+/** Hent midlertidig lenke for eksisterende Dropbox-sti. */
+export async function tryTemporaryLink(
+  admin: ReturnType<typeof createClient>,
+  companyId: string,
+  path: string,
+): Promise<string | null> {
+  const { data: connRow } = await admin
+    .from("company_dropbox_connections")
+    .select("*")
+    .eq("company_id", companyId)
+    .maybeSingle();
+  if (!connRow) return null;
+  const token = await refreshAccessToken(connRow as Conn, admin);
+  const linkRes = await dropboxApi(token, "api", "/files/get_temporary_link", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  if (!linkRes.ok) return null;
+  const linkJson = await linkRes.json() as { link?: string };
+  return linkJson.link ?? null;
 }

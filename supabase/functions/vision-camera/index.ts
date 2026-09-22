@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import md5 from "npm:md5";
-import { tryUploadToDropbox } from "../_shared/dropbox_company_upload.ts";
+import { tryTemporaryLink, tryUploadToDropbox } from "../_shared/dropbox_company_upload.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -173,8 +173,132 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (action === "snapshot") {
+    // Worker pusher nesten-live JPEG (overskriver fast sti).
+    if (action === "live_push" && req.method === "POST") {
+      if (!isServiceRole(req.headers.get("Authorization"))) {
+        return json({ error: "Krever service role" }, 401);
+      }
+      const body = await req.json() as {
+        camera_id: string;
+        bytes_base64: string;
+      };
+      if (!body.camera_id || !body.bytes_base64) {
+        return json({ error: "camera_id, bytes_base64 påkrevd" }, 400);
+      }
+      const { data: cam, error } = await admin
+        .from("vision_cameras")
+        .select("id, company_id")
+        .eq("id", body.camera_id)
+        .maybeSingle();
+      if (error || !cam) return json({ error: "Kamera ikke funnet" }, 404);
+
+      const bytes = Uint8Array.from(atob(body.bytes_base64), (c) => c.charCodeAt(0));
+      const fixed = `vision_live/${cam.id}/latest.jpg`;
+      const result = await tryUploadToDropbox(admin, cam.company_id, {
+        fileName: "latest.jpg",
+        category: "vision_live",
+        bytes,
+        fixedRelativePath: fixed,
+      });
+      if (!result) return json({ error: "Dropbox ikke koblet" }, 400);
+
+      await admin.from("vision_cameras").update({
+        live_dropbox_path: result.path,
+        live_image_url: result.temporaryLink,
+        live_updated_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", cam.id);
+
+      return json({
+        ok: true,
+        path: result.path,
+        temporary_link: result.temporaryLink,
+        size: result.size,
+      });
+    }
+
+    // Nesten-live JPEG for app (Dropbox midlertidig lenke / proxy).
+    if (action === "live") {
       const cameraId = url.searchParams.get("camera_id");
+      if (!cameraId) return json({ error: "camera_id mangler" }, 400);
+
+      const authHeader = req.headers.get("Authorization");
+      const apiKey = req.headers.get("apikey");
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim();
+
+      let allowed = isServiceRole(authHeader);
+      if (!allowed && authHeader?.startsWith("Bearer ") && apiKey === anonKey) {
+        const userClient = createClient(requireEnv("SUPABASE_URL"), anonKey!, {
+          global: { headers: { Authorization: authHeader } },
+        });
+        const { data: userData } = await userClient.auth.getUser();
+        if (userData.user) {
+          allowed = await profileHasUniformMonitor(admin, userData.user.id);
+          if (!allowed) {
+            const { data: prof } = await admin
+              .from("profiles")
+              .select("role, company_id")
+              .eq("id", userData.user.id)
+              .maybeSingle();
+            const { data: camRow } = await admin
+              .from("vision_cameras")
+              .select("company_id")
+              .eq("id", cameraId)
+              .maybeSingle();
+            if (
+              prof &&
+              camRow &&
+              (prof.role === "superadmin" ||
+                prof.company_id === camRow.company_id)
+            ) {
+              allowed = true;
+            }
+          }
+        }
+      }
+      if (!allowed) return json({ error: "Ingen tilgang" }, 403);
+
+      const { data: cam, error } = await admin
+        .from("vision_cameras")
+        .select("company_id, live_dropbox_path, live_image_url, enabled")
+        .eq("id", cameraId)
+        .maybeSingle();
+      if (error || !cam || !cam.enabled) {
+        return json({ error: "Kamera ikke funnet" }, 404);
+      }
+      if (!cam.live_dropbox_path) {
+        return json({ error: "Ingen live-frame ennå — start worker på jobb-PC" }, 404);
+      }
+
+      let link = cam.live_image_url as string | null;
+      const fresh = await tryTemporaryLink(
+        admin,
+        cam.company_id,
+        cam.live_dropbox_path,
+      );
+      if (fresh) {
+        link = fresh;
+        await admin.from("vision_cameras").update({
+          live_image_url: fresh,
+          live_updated_at: new Date().toISOString(),
+        }).eq("id", cameraId);
+      }
+      if (!link) return json({ error: "Kunne ikke hente live-lenke" }, 502);
+
+      const img = await fetch(link);
+      if (!img.ok) return json({ error: `Dropbox HTTP ${img.status}` }, 502);
+      const jpeg = new Uint8Array(await img.arrayBuffer());
+      return new Response(jpeg, {
+        status: 200,
+        headers: {
+          ...cors,
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "no-store",
+        },
+      });
+    }
+
+    if (action === "snapshot") {      const cameraId = url.searchParams.get("camera_id");
       if (!cameraId) return json({ error: "camera_id mangler" }, 400);
 
       const authHeader = req.headers.get("Authorization");

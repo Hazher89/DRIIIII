@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from datetime import datetime, timezone
@@ -67,12 +68,12 @@ class VisionMonitorPipeline:
             STATE.hydrate_events(self._local_store.events)
         self._dropbox = (
             None
-            if settings.local_dev or not settings.dropbox_access_token
+            if not settings.dropbox_access_token
             else DropboxSnapshotStore(settings.dropbox_access_token, settings.dropbox_root_folder)
         )
         self._company_dropbox = (
             None
-            if settings.local_dev or not settings.supabase_service_role_key
+            if not settings.supabase_service_role_key
             else SupabaseDropboxUpload(settings.supabase_url, settings.supabase_service_role_key)
         )
         self._repo = (
@@ -86,14 +87,17 @@ class VisionMonitorPipeline:
     async def run(self) -> None:
         self._running = True
 
-        if self._settings.local_dev:
+        if self._settings.local_dev or os.environ.get("LOCAL_SERVER", "true").lower() in {
+            "1",
+            "true",
+            "yes",
+        }:
             self._http_server = start_local_server(
                 self._settings.local_server_port,
                 captures_dir=self._settings.local_captures_dir,
             )
             logger.info(
-                "Dashboard: http://127.0.0.1:%s  (LAN: http://<din-mac-ip>:%s)",
-                self._settings.local_server_port,
+                "Dashboard: http://127.0.0.1:%s",
                 self._settings.local_server_port,
             )
 
@@ -132,6 +136,7 @@ class VisionMonitorPipeline:
             self._capture_loop(),
             self._detect_loop(),
             self._clip_finalize_loop(),
+            self._live_push_loop(),
         )
 
     async def _capture_loop(self) -> None:
@@ -417,6 +422,37 @@ class VisionMonitorPipeline:
             )
             await self._repo.insert(record)
         logger.info("Sorting clip uploaded | zone=%s path=%s", hit.zone, upload.path)
+
+    async def _live_push_loop(self) -> None:
+        """Push nearly-live JPEG to Dropbox so DriftPro can show camera worldwide."""
+        cam_id = self._settings.vision_camera_db_id
+        interval = max(1.0, self._settings.live_push_interval_seconds)
+        if not cam_id or not self._company_dropbox:
+            logger.info(
+                "Live push disabled (VISION_CAMERA_ID / SUPABASE_SERVICE_ROLE_KEY mangler)"
+            )
+            while self._running:
+                await asyncio.sleep(30)
+            return
+
+        logger.info(
+            "Live push every %.1fs → camera %s",
+            interval,
+            cam_id,
+        )
+        while self._running:
+            await asyncio.sleep(interval)
+            jpeg, _, _ = STATE.snapshot()
+            if not jpeg:
+                continue
+            try:
+                await asyncio.to_thread(
+                    self._company_dropbox.push_live_jpeg,
+                    image_bytes=jpeg,
+                    camera_db_id=cam_id,
+                )
+            except Exception as exc:
+                logger.warning("Live push failed: %s", exc)
 
     async def stop(self) -> None:
         self._running = False

@@ -48,6 +48,8 @@ class Settings:
     local_captures_dir: str
     local_server_port: int
     snapshot_interval_ms: int
+    live_push_interval_seconds: float
+    vision_camera_db_id: str
     clip_seconds_before: float
     clip_seconds_after: float
     clip_fps: float
@@ -124,12 +126,16 @@ class Settings:
             local_captures_dir=os.environ.get("LOCAL_CAPTURES_DIR", "captures").strip(),
             local_server_port=int(os.environ.get("LOCAL_SERVER_PORT", "8090")),
             snapshot_interval_ms=int(os.environ.get("SNAPSHOT_INTERVAL_MS", "250")),
+            live_push_interval_seconds=float(
+                os.environ.get("LIVE_PUSH_INTERVAL_SECONDS", "2")
+            ),
+            vision_camera_db_id=os.environ.get("VISION_CAMERA_ID", "").strip(),
             clip_seconds_before=float(os.environ.get("CLIP_SECONDS_BEFORE", "60")),
             clip_seconds_after=float(os.environ.get("CLIP_SECONDS_AFTER", "60")),
             clip_fps=float(os.environ.get("CLIP_FPS", "2")),
             sorting_model=os.environ.get("SORTING_MODEL", "models/yolov8s-worldv2.pt"),
-            zone1_name=os.environ.get("ZONE1_NAME", "komprimator_1").strip(),
+            zone1_name=os.environ.get("ZONE1_NAME", "container_A_papp").strip(),
             zone1_rect=_rect("ZONE1_RECT", "0.0,0.15,0.48,0.95"),
-            zone2_name=os.environ.get("ZONE2_NAME", "komprimator_2").strip(),
+            zone2_name=os.environ.get("ZONE2_NAME", "container_B_annet").strip(),
             zone2_rect=_rect("ZONE2_RECT", "0.52,0.15,1.0,0.95"),
         )
