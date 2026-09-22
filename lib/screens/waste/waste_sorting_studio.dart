@@ -69,7 +69,6 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
   bool _ready = false;
   bool _busy = false;
   String? _error;
-  String? _imageUrl;
   String? _playableUrl;
   bool _showChrome = true;
   Timer? _hideChrome;
@@ -103,7 +102,6 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
     setState(() {
       _ready = false;
       _error = null;
-      _imageUrl = null;
       _playableUrl = null;
     });
     await _controller?.dispose();
@@ -337,30 +335,14 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
                           style: const TextStyle(color: Colors.white70),
                         ),
                       )
-                    : !_ready
+                    : !_ready || c == null
                         ? const CircularProgressIndicator(color: Colors.white)
-                        : _imageUrl != null
-                            ? InteractiveViewer(
-                                minScale: 1,
-                                maxScale: 4,
-                                child: Image.network(
-                                  _imageUrl!,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (_, __, ___) => const Text(
-                                    'Kunne ikke laste bilde',
-                                    style: TextStyle(color: Colors.white70),
-                                  ),
-                                ),
-                              )
-                            : c == null
-                                ? const CircularProgressIndicator(
-                                    color: Colors.white)
-                                : AspectRatio(
-                                    aspectRatio: c.value.aspectRatio == 0
-                                        ? 16 / 9
-                                        : c.value.aspectRatio,
-                                    child: VideoPlayer(c),
-                                  ),
+                        : AspectRatio(
+                            aspectRatio: c.value.aspectRatio == 0
+                                ? 16 / 9
+                                : c.value.aspectRatio,
+                            child: VideoPlayer(c),
+                          ),
               ),
             ),
             if (_showChrome) ...[
