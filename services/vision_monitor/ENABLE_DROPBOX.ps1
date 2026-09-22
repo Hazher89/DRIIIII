@@ -38,8 +38,27 @@ if ([string]::IsNullOrWhiteSpace($key)) {
   throw "Tom nokkel - avbryter"
 }
 
-$companyId = "00000000-0000-0000-0000-000000000000"
 $supabaseUrl = "https://ksnnyccthotjbrmgjgdc.supabase.co"
+$cameraId = "5f823a5a-6466-42bc-b52f-b56aa5136302"
+
+# Hent ekte company_id fra kamera (ikke placeholder 00000000).
+$companyId = "00000000-0000-0000-0000-000000000000"
+try {
+  $headers = @{
+    "apikey" = $key.Trim()
+    "Authorization" = "Bearer $($key.Trim())"
+  }
+  $camUrl = "$supabaseUrl/rest/v1/vision_cameras?id=eq.$cameraId&select=company_id"
+  $cam = Invoke-RestMethod -Uri $camUrl -Headers $headers -Method Get
+  if ($cam -and $cam[0].company_id) {
+    $companyId = [string]$cam[0].company_id
+    Write-Host "Fant COMPANY_ID fra kamera: $companyId" -ForegroundColor Green
+  } else {
+    Write-Host "ADVARSEL: Fant ikke company_id for kamera — bruker placeholder" -ForegroundColor Yellow
+  }
+} catch {
+  Write-Host "ADVARSEL: Kunne ikke hente company_id: $_" -ForegroundColor Yellow
+}
 
 function Set-EnvLine([string]$content, [string]$name, [string]$value) {
   $line = "$name=$value"

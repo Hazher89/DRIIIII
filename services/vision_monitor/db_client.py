@@ -84,7 +84,20 @@ class VisionEventRepository:
             )
             return response.status_code < 500
 
-    async def fetch_learn_state(self, camera_db_id: str) -> LearnCameraState | None:
+    async def fetch_camera_company_id(self, camera_db_id: str) -> str | None:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{self._cameras}?id=eq.{camera_db_id}&select=company_id",
+                headers=self._headers,
+            )
+            if response.status_code >= 400:
+                return None
+            rows = response.json()
+            if not isinstance(rows, list) or not rows:
+                return None
+            cid = rows[0].get("company_id")
+            return str(cid) if cid else None
+
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
                 f"{self._cameras}?id=eq.{camera_db_id}"

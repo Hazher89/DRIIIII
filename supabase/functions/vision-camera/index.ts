@@ -388,7 +388,29 @@ Deno.serve(async (req) => {
       if (!link && userCompany && userCompany !== companyId) {
         link = await tryTemporaryLink(admin, userCompany, path);
       }
-      if (!link) return json({ error: "Kunne ikke hente lenke", path }, 502);
+      // Fallback: company_id innebygd i Dropbox-stien (/company_<uuid>/...).
+      // Windows-worker har historisk brukt placeholder COMPANY_ID=00000000-...
+      const pathCompanyMatch = path.match(
+        /^\/company_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i,
+      );
+      const pathCompany = pathCompanyMatch?.[1] ?? null;
+      if (!link && pathCompany && pathCompany !== companyId && pathCompany !== userCompany) {
+        link = await tryTemporaryLink(admin, pathCompany, path);
+      }
+      // Siste utvei: alle bedrifter med Dropbox-kobling (sjeldent, men fikser mismatch).
+      if (!link) {
+        const { data: conns } = await admin
+          .from("company_dropbox_connections")
+          .select("company_id")
+          .limit(10);
+        for (const row of conns ?? []) {
+          const cid = row.company_id as string;
+          if (cid === companyId || cid === userCompany || cid === pathCompany) continue;
+          link = await tryTemporaryLink(admin, cid, path);
+          if (link) break;
+        }
+      }
+      if (!link) return json({ error: "Kunne ikke hente lenke", path, companyId }, 502);
       const lower = path.toLowerCase();
       const kind =
         lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm")
