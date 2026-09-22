@@ -54,6 +54,7 @@ class Settings:
     clip_seconds_after: float
     clip_fps: float
     sorting_model: str
+    person_model: str
     zone1_name: str
     zone1_rect: tuple[float, float, float, float]
     zone2_name: str
@@ -130,10 +131,12 @@ class Settings:
                 os.environ.get("LIVE_PUSH_INTERVAL_SECONDS", "2")
             ),
             vision_camera_db_id=os.environ.get("VISION_CAMERA_ID", "").strip(),
-            clip_seconds_before=float(os.environ.get("CLIP_SECONDS_BEFORE", "120")),
+            # 1 min før personen kom, 2 min etter de forlater (kun ved feilkasting).
+            clip_seconds_before=float(os.environ.get("CLIP_SECONDS_BEFORE", "60")),
             clip_seconds_after=float(os.environ.get("CLIP_SECONDS_AFTER", "120")),
             clip_fps=float(os.environ.get("CLIP_FPS", "2")),
             sorting_model=os.environ.get("SORTING_MODEL", "models/yolov8s-worldv2.pt"),
+            person_model=os.environ.get("PERSON_MODEL", "models/yolov8n.pt"),
             zone1_name=os.environ.get("ZONE1_NAME", "container_A_papp").strip(),
             zone1_rect=_rect("ZONE1_RECT", "0.0,0.15,0.48,0.95"),
             zone2_name=os.environ.get("ZONE2_NAME", "container_B_annet").strip(),

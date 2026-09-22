@@ -45,24 +45,39 @@ class VisionMonitorPipeline:
                     CompactorZone(settings.zone2_name, z2[0], z2[2], z2[1], z2[3]),
                 ],
             )
+            # Person presence → clip window (1 min før ankomst, 2 min etter avgang).
+            self._person_watcher: PersonEntryDetector | None = PersonEntryDetector(
+                settings.person_model,
+                confidence_threshold=0.35,
+                entry_cooldown_seconds=1.0,
+            )
         elif self._is_uniform:
             self._detector = UniformViolationDetector(
                 settings.yolo_model,
                 confidence_threshold=settings.confidence_threshold,
                 violation_cooldown_seconds=settings.entry_cooldown_seconds,
             )
+            self._person_watcher = None
         else:
             self._detector = PersonEntryDetector(
                 settings.yolo_model,
                 confidence_threshold=settings.confidence_threshold,
                 entry_cooldown_seconds=settings.entry_cooldown_seconds,
             )
+            self._person_watcher = None
 
         self._ring = FrameRingBuffer(
             seconds=settings.clip_seconds_before + 5.0,
             target_fps=settings.clip_fps,
         )
         self._pending_clips: list[dict] = []
+        # Person-episode for sorting: only save when wrong throw + person visit.
+        self._sorting_episode: dict | None = None
+        self._person_absent_since: float | None = None
+        self._max_episode_seconds = float(
+            os.environ.get("CLIP_MAX_EPISODE_SECONDS", "600")
+        )
+        self._person_leave_grace = 2.5  # avoid flicker before starting post window
         self._local_store = LocalEventStore(settings.local_captures_dir) if settings.local_dev else None
         if self._local_store is not None:
             STATE.hydrate_events(self._local_store.events)
@@ -169,6 +184,7 @@ class VisionMonitorPipeline:
                 self._maybe_buffer_learn_frame(packet.frame)
                 now = time.monotonic()
                 min_gap = 1.0 / max(0.5, self._settings.clip_fps)
+                # Legacy pending clips (should be empty) + active person episode.
                 for pending in self._pending_clips:
                     if now > pending["until"]:
                         continue
@@ -177,6 +193,12 @@ class VisionMonitorPipeline:
                         continue
                     pending["last_post"] = now
                     pending["post"].append(packet.frame.copy())
+                ep = self._sorting_episode
+                if ep is not None and not ep.get("closed"):
+                    last = ep.get("last_post", 0.0)
+                    if now - last >= min_gap:
+                        ep["last_post"] = now
+                        ep["post"].append(packet.frame.copy())
 
     async def _detect_loop(self) -> None:
         skip_counter = 0
@@ -204,11 +226,17 @@ class VisionMonitorPipeline:
                     objects, hits, feed = await asyncio.to_thread(
                         self._detector.analyze_frame, frame  # type: ignore[union-attr]
                     )
-                    STATE.set_scan(objects, active=self._settings.local_dev)
+                    persons = 0
+                    if self._person_watcher is not None:
+                        persons = await asyncio.to_thread(
+                            self._person_watcher.count_visible, frame
+                        )
+                    STATE.set_scan(max(objects, persons), active=self._settings.local_dev)
                     if feed:
                         STATE.push_feed(feed)
-                    for hit in hits:
-                        await self._queue_sorting_clip(hit)
+                    await self._update_sorting_episode(
+                        persons=persons, hits=hits, frame=frame
+                    )
                     await asyncio.sleep(0.15)
                     continue
 
@@ -254,7 +282,7 @@ class VisionMonitorPipeline:
             await asyncio.sleep(0.2)
 
     async def _clip_finalize_loop(self) -> None:
-        """When post-window elapses, write MP4 from before+after frames."""
+        """Finalize person-episodes (and any legacy pending clips)."""
         while self._running:
             now = time.monotonic()
             ready = [p for p in self._pending_clips if now >= p["until"]]
@@ -264,9 +292,179 @@ class VisionMonitorPipeline:
                     await self._finalize_sorting_clip(pending)
                 except Exception as exc:
                     logger.exception("Clip finalize failed: %s", exc)
+
+            ep = self._sorting_episode
+            if ep is not None and not ep.get("closed"):
+                # Hard cap: person standing forever.
+                if now - ep["started"] >= self._max_episode_seconds:
+                    ep["until"] = now
+                    ep["person_present"] = False
+                    logger.info(
+                        "Sorting episode hit max duration (%.0fs) — finalizing",
+                        self._max_episode_seconds,
+                    )
+                if ep.get("until") is not None and now >= ep["until"] and not ep.get("person_present"):
+                    ep["closed"] = True
+                    try:
+                        await self._finalize_sorting_episode(ep)
+                    except Exception as exc:
+                        logger.exception("Episode finalize failed: %s", exc)
+                    finally:
+                        self._sorting_episode = None
+
             await asyncio.sleep(0.5)
 
+    async def _update_sorting_episode(
+        self,
+        *,
+        persons: int,
+        hits: list[SortingHit],
+        frame,
+    ) -> None:
+        """Track person visit; only keep video if they throw wrong."""
+        now = time.monotonic()
+        ep = self._sorting_episode
+
+        if persons > 0:
+            self._person_absent_since = None
+            if ep is None:
+                pre = self._ring.snapshot()
+                self._sorting_episode = {
+                    "id": str(uuid.uuid4()),
+                    "pre": pre,
+                    "post": [],
+                    "last_post": 0.0,
+                    "hit": None,
+                    "started": now,
+                    "person_present": True,
+                    "until": None,
+                    "captured_at": datetime.now(timezone.utc),
+                    "closed": False,
+                }
+                ep = self._sorting_episode
+                logger.info(
+                    "Person arrived — buffering visit (pre=%.0fs). "
+                    "Klipp lagres kun ved feilkasting.",
+                    self._settings.clip_seconds_before,
+                )
+                STATE.push_feed(
+                    [
+                        {
+                            "id": f"arr-{ep['id'][:8]}",
+                            "status": "ok",
+                            "text": "Person i bilde — følger besøket (lagrer kun ved feilkast)",
+                        }
+                    ]
+                )
+            else:
+                ep["person_present"] = True
+                # Person returned during post-window → keep recording.
+                if ep.get("until") is not None:
+                    ep["until"] = None
+                    logger.info("Person returned during post-window — extending episode")
+        else:
+            if ep is not None and ep.get("person_present"):
+                if self._person_absent_since is None:
+                    self._person_absent_since = now
+                elif now - self._person_absent_since >= self._person_leave_grace:
+                    ep["person_present"] = False
+                    self._person_absent_since = None
+                    if ep.get("hit"):
+                        ep["until"] = now + self._settings.clip_seconds_after
+                        logger.info(
+                            "Person left after wrong throw — recording %.0fs more then save",
+                            self._settings.clip_seconds_after,
+                        )
+                        STATE.push_feed(
+                            [
+                                {
+                                    "id": f"leave-{ep['id'][:8]}",
+                                    "status": "violation",
+                                    "text": (
+                                        f"Feilkasting — tar {self._settings.clip_seconds_after:.0f}s "
+                                        f"etter avgang, deretter lagring"
+                                    ),
+                                }
+                            ]
+                        )
+                    else:
+                        # Riktig besøk — ingen lagring, ingen 2-min opptak.
+                        ep["until"] = now
+                        logger.info(
+                            "Person left without wrong throw — discarding visit (no save)"
+                        )
+                        STATE.push_feed(
+                            [
+                                {
+                                    "id": f"okleave-{ep['id'][:8]}",
+                                    "status": "ok",
+                                    "text": "Riktig sortering / ingen feil — lagrer ikke",
+                                }
+                            ]
+                        )
+
+        if hits and ep is not None:
+            if ep.get("hit") is None:
+                hit = hits[0]
+                ep["hit"] = hit
+                logger.info(
+                    "Wrong throw during visit | zone=%s reason=%s label=%s conf=%.2f — "
+                    "will save 1 min before arrival + 2 min after leave",
+                    hit.zone,
+                    hit.reason,
+                    hit.label,
+                    hit.confidence,
+                )
+                STATE.push_feed(
+                    [
+                        {
+                            "id": f"bad-{ep['id'][:8]}",
+                            "status": "violation",
+                            "text": (
+                                f"FEILKASTING: {hit.zone} — venter til personen går, "
+                                f"deretter {self._settings.clip_seconds_after:.0f}s opptak"
+                            ),
+                        }
+                    ]
+                )
+        elif hits and ep is None:
+            # Feilobjekt uten person i bildet — ikke lagre (kan være gammel eske).
+            hit = hits[0]
+            logger.info(
+                "Sorting signal without person (zone=%s reason=%s) — not saving",
+                hit.zone,
+                hit.reason,
+            )
+            STATE.push_feed(
+                [
+                    {
+                        "id": f"noperson-{int(now)}",
+                        "status": "ok",
+                        "text": "Ser mulig feil uten person — venter på person før lagring",
+                    }
+                ]
+            )
+
+    async def _finalize_sorting_episode(self, ep: dict) -> None:
+        hit = ep.get("hit")
+        if hit is None:
+            logger.info(
+                "Episode discarded — no wrong throw (frames=%d)",
+                len(ep.get("pre") or []) + len(ep.get("post") or []),
+            )
+            return
+        # Reuse finalize path with pending-shaped dict.
+        pending = {
+            "id": ep["id"],
+            "hit": hit,
+            "pre": ep["pre"],
+            "post": ep["post"],
+            "captured_at": ep["captured_at"],
+        }
+        await self._finalize_sorting_clip(pending)
+
     async def _queue_sorting_clip(self, hit: SortingHit) -> None:
+        """Deprecated fixed-window queue — kept unused; episodes replace this."""
         pre = self._ring.snapshot()
         captured_at = datetime.now(timezone.utc)
         pending = {

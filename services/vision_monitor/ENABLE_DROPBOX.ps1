@@ -61,7 +61,7 @@ $envText = Set-EnvLine $envText "COMPANY_ID" $companyId
 $envText = Set-EnvLine $envText "CAMERA_HOST" "192.168.39.190"
 $envText = Set-EnvLine $envText "CAMERA_USER" "admin"
 $envText = Set-EnvLine $envText "EVENT_TYPE" "sorting_clip"
-$envText = Set-EnvLine $envText "CLIP_SECONDS_BEFORE" "120"
+$envText = Set-EnvLine $envText "CLIP_SECONDS_BEFORE" "60"
 $envText = Set-EnvLine $envText "CLIP_SECONDS_AFTER" "120"
 $envText = Set-EnvLine $envText "CLIP_FPS" "2"
 $envText = Set-EnvLine $envText "LOCAL_SERVER" "true"
@@ -81,7 +81,7 @@ if (-not (Test-Path $envPath)) {
 Write-Host ""
 Write-Host "OK - .env lagret: $envPath" -ForegroundColor Green
 Write-Host "  LOCAL_DEV=false"
-Write-Host "  CLIP 120 + 120 sekunder"
+Write-Host "  CLIP: 60s for person + 120s etter avgang (kun feilkasting)"
 Write-Host "  COMPANY_ID=$companyId"
 Get-Item $envPath | Format-List FullName, Length, LastWriteTime
 Write-Host ""

@@ -96,6 +96,21 @@ class PersonEntryDetector:
 
         return entries
 
+    def count_visible(self, frame: np.ndarray) -> int:
+        """How many persons are visible right now (no entry cooldown)."""
+        results = self._ensure_model().predict(
+            frame,
+            classes=[PERSON_CLASS_ID],
+            conf=self._confidence_threshold,
+            verbose=False,
+        )
+        if not results:
+            return 0
+        boxes = results[0].boxes
+        if boxes is None or len(boxes) == 0:
+            return 0
+        return int(len(boxes))
+
     def crop_person(self, frame: np.ndarray, detection: PersonDetection, *, padding: float = 0.08) -> np.ndarray:
         """High-quality crop of the detected person with optional padding."""
         h, w = frame.shape[:2]

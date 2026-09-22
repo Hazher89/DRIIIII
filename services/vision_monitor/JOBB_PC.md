@@ -34,7 +34,7 @@ CAMERA_USER=admin
 CAMERA_PASSWORD=964281
 EVENT_TYPE=sorting_clip
 LOCAL_DEV=false
-CLIP_SECONDS_BEFORE=120
+CLIP_SECONDS_BEFORE=60
 CLIP_SECONDS_AFTER=120
 ```
 
@@ -72,7 +72,7 @@ Hvis feil om kamera: sjekk at PC og kamera er på **samme WiFi/nett**, og at IP 
 
 1. På jobb: workeren må kjøre med **`LOCAL_DEV=false`** (Del A4)
 2. Hjemme: åpne **driftpro.no** → **Mer → Søppelhåndtering**
-3. Ved avvik lastes **MP4** (2 min før + 2 min etter) til Dropbox + `vision_events`
+3. Ved **feilkasting** lastes **MP4** (1 min før personen kom + 2 min etter de går) til Dropbox + `vision_events`. Riktig sortering lagres ikke.
 4. Logg på jobb-PC skal vise: `Sorting VIDEO uploaded`
 
 ---

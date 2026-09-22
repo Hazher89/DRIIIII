@@ -5,7 +5,8 @@ Rules (MAVI):
   Container B = annet (isopor etc.) — styrofoam OK. Whole cardboard box dumped here = violation.
 
 OK example: empty trash into B, fold box, throw flat cardboard in A — no clip.
-Only violations are recorded (video 2 min before + 2 min after).
+Clips are only saved when a person throws wrong (pipeline: 1 min before arrival,
+2 min after they leave). Correct sorting is never stored.
 """
 
 from __future__ import annotations

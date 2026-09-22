@@ -51,7 +51,7 @@ ZONE2_NAME=container_B_annet
 ZONE2_RECT=0.52,0.15,1.0,0.95
 CONFIDENCE_THRESHOLD=0.25
 ENTRY_COOLDOWN_SECONDS=90
-CLIP_SECONDS_BEFORE=120
+CLIP_SECONDS_BEFORE=60
 CLIP_SECONDS_AFTER=120
 CLIP_FPS=2
 SORTING_MODEL=models/yolov8s-worldv2.pt
@@ -80,7 +80,7 @@ Sjekk:
 - [ ] `START_WINDOWS.bat` kjører uten camera_error
 - [ ] Lokal live på :8090 OK
 - [ ] `.env` har LOCAL_DEV=false + SERVICE_ROLE + VISION_CAMERA_ID + ZONE1/ZONE2
-- [ ] `CLIP_SECONDS_BEFORE=120` og `CLIP_SECONDS_AFTER=120`
+- [ ] `CLIP_SECONDS_BEFORE=60` og `CLIP_SECONDS_AFTER=120` (1 min før person, 2 min etter avgang — kun feilkasting)
 ## Viktig
 - Mac endrer kode → `git pull` på Windows + restart bat (eller agent worker henter og restarter).
 - Live i DriftPro verden rundt = nesten-live JPEG hvert ~2s via Dropbox (ikke RTSP gjennom skyen).
