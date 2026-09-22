@@ -190,6 +190,7 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
     final fresh =
         await VisionCameraService.instance.resolveEventMediaLink(event.id);
     String? url;
+    String? resolveHint;
     // Dropbox temporary links har ofte ikke .mp4 i URL — stol på media_link.
     if (fresh != null && !fresh.isImage && fresh.url.startsWith('http')) {
       url = fresh.url;
@@ -200,22 +201,28 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
           !byPath.isImage &&
           byPath.url.startsWith('http')) {
         url = byPath.url;
+      } else {
+        resolveHint = 'media_link feilet for sti';
       }
+    } else if (fresh == null) {
+      resolveHint = 'Kunne ikke hente fersk Dropbox-lenke';
     }
-    url ??= event.videoUrl;
-    if (url != null &&
-        url.startsWith('http') &&
-        !_looksLikeVideo(url) &&
-        !_looksLikeMediaCdn(url) &&
-        event.videoDropboxPath == null) {
-      url = null;
+    // Bruk lagret URL kun hvis den ser ut som spillbar CDN (midlertidige lenker utløper).
+    if (url == null &&
+        event.videoUrl != null &&
+        event.videoUrl!.startsWith('http') &&
+        _looksLikeMediaCdn(event.videoUrl!)) {
+      url = event.videoUrl;
     }
 
     if (url == null || url.isEmpty || !url.startsWith('http')) {
       if (mounted) {
         setState(() {
           _playerError =
-              'Ingen videofil på dette klippet. Kun MP4 vises her.';
+              'Ingen videofil på dette klippet.\n'
+              '${resolveHint ?? "Kun MP4 som er lastet til Dropbox vises her."}\n\n'
+              'Tips: vent til jobb-PC er ferdig med 2 min opptak etter feilkasting, '
+              'eller kjør git pull + START_WINDOWS på nytt.';
           _playerReady = false;
         });
       }
@@ -243,7 +250,7 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         setState(() {
           _playerError =
               'Kunne ikke spille video: $e\n\nTips: gamle klipp kan ha feil codec. '
-              'Oppdater Windows-worker og lag et nytt avvik.';
+              'Oppdater Windows-worker (git pull) og lag et nytt avvik.';
           _playerReady = false;
         });
       }

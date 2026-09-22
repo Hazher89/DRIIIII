@@ -98,6 +98,33 @@ class VisionEventRepository:
             cid = rows[0].get("company_id")
             return str(cid) if cid else None
 
+    async def fetch_dropbox_company_id(self) -> str | None:
+        """Første bedrift med Dropbox-kobling (unngå placeholder 00000000)."""
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{self._root}/rest/v1/company_dropbox_connections"
+                f"?select=company_id&limit=5",
+                headers=self._headers,
+            )
+            if response.status_code >= 400:
+                logger.warning(
+                    "fetch_dropbox_company_id failed: %s %s",
+                    response.status_code,
+                    response.text[:200],
+                )
+                return None
+            rows = response.json()
+            if not isinstance(rows, list):
+                return None
+            nil = "00000000-0000-0000-0000-000000000000"
+            for row in rows:
+                cid = row.get("company_id")
+                if cid and str(cid) != nil:
+                    return str(cid)
+            if rows and rows[0].get("company_id"):
+                return str(rows[0]["company_id"])
+            return None
+
     async def fetch_learn_state(self, camera_db_id: str) -> LearnCameraState | None:
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(

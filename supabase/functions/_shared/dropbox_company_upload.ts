@@ -128,6 +128,36 @@ async function ensureFolder(token: string, folderPath: string) {
   }
 }
 
+const NIL_COMPANY = "00000000-0000-0000-0000-000000000000";
+
+function isUsableCompanyId(id: string | null | undefined): boolean {
+  if (!id || typeof id !== "string") return false;
+  const t = id.trim();
+  if (!t || t === NIL_COMPANY) return false;
+  return true;
+}
+
+/** Finn bedrift med Dropbox — unngå placeholder 00000000. */
+export async function resolveDropboxCompanyId(
+  admin: ReturnType<typeof createClient>,
+  preferred: string | null | undefined,
+): Promise<string | null> {
+  if (isUsableCompanyId(preferred)) {
+    const { data } = await admin
+      .from("company_dropbox_connections")
+      .select("company_id")
+      .eq("company_id", preferred!)
+      .maybeSingle();
+    if (data?.company_id) return data.company_id as string;
+  }
+  const { data: rows } = await admin
+    .from("company_dropbox_connections")
+    .select("company_id")
+    .limit(5);
+  const first = rows?.[0]?.company_id;
+  return typeof first === "string" && first ? first : null;
+}
+
 /** Last opp til Dropbox for bedrift. Returnerer null hvis ikke koblet. */
 export async function tryUploadToDropbox(
   admin: ReturnType<typeof createClient>,
@@ -140,15 +170,20 @@ export async function tryUploadToDropbox(
     fixedRelativePath?: string;
   },
 ): Promise<DropboxUploadResult | null> {
+  const resolvedId = await resolveDropboxCompanyId(admin, companyId);
+  if (!resolvedId) return null;
+
   const { data: connRow } = await admin
     .from("company_dropbox_connections")
     .select("*")
-    .eq("company_id", companyId)
+    .eq("company_id", resolvedId)
     .maybeSingle();
 
   if (!connRow) return null;
 
   const conn = connRow as Conn;
+  // Bruk ekte company_id i sti — ikke placeholder 00000000.
+  companyId = resolvedId;
   const token = await refreshAccessToken(conn, admin);
   const root = resolveDropboxUploadRoot(conn.root_folder);
   const dropboxPath = opts.fixedRelativePath
@@ -220,32 +255,42 @@ export async function tryTemporaryLink(
   companyId: string,
   path: string,
 ): Promise<string | null> {
+  const resolvedId = (await resolveDropboxCompanyId(admin, companyId)) ?? companyId;
   const { data: connRow } = await admin
     .from("company_dropbox_connections")
     .select("*")
-    .eq("company_id", companyId)
+    .eq("company_id", resolvedId)
     .maybeSingle();
   if (!connRow) return null;
   const token = await refreshAccessToken(connRow as Conn, admin);
-  const linkRes = await dropboxApi(token, "api", "/files/get_temporary_link", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
-  });
-  if (!linkRes.ok) return null;
-  const linkJson = await linkRes.json() as { link?: string };
-  return linkJson.link ?? null;
+  // Prøv path som lagret + lowercase-variant (Dropbox er case-insensitive men API kan være streng).
+  const candidates = [path];
+  if (path !== path.toLowerCase()) candidates.push(path.toLowerCase());
+  for (const p of candidates) {
+    const linkRes = await dropboxApi(token, "api", "/files/get_temporary_link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: p }),
+    });
+    if (linkRes.ok) {
+      const linkJson = await linkRes.json() as { link?: string };
+      if (linkJson.link) return linkJson.link;
+    }
+  }
+  return null;
 }
 
 /** Kortvarig access token + root for direkte opplasting fra worker (store MP4). */
 export async function tryCompanyDropboxAuth(
   admin: ReturnType<typeof createClient>,
   companyId: string,
-): Promise<{ accessToken: string; rootFolder: string } | null> {
+): Promise<{ accessToken: string; rootFolder: string; companyId: string } | null> {
+  const resolvedId = await resolveDropboxCompanyId(admin, companyId);
+  if (!resolvedId) return null;
   const { data: connRow } = await admin
     .from("company_dropbox_connections")
     .select("*")
-    .eq("company_id", companyId)
+    .eq("company_id", resolvedId)
     .maybeSingle();
   if (!connRow) return null;
   const conn = connRow as Conn;
@@ -253,5 +298,6 @@ export async function tryCompanyDropboxAuth(
   return {
     accessToken,
     rootFolder: resolveDropboxUploadRoot(conn.root_folder),
+    companyId: resolvedId,
   };
 }

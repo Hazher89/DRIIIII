@@ -338,6 +338,7 @@ class _WasteLearnPanelState extends State<WasteLearnPanel> {
 }
 
 /// Én og én video: «Var dette riktig eller feil?»
+/// Etter svar fjernes klippet fra køen og neste lastes.
 class _LearnReviewWizard extends StatefulWidget {
   const _LearnReviewWizard({
     required this.session,
@@ -352,7 +353,8 @@ class _LearnReviewWizard extends StatefulWidget {
 }
 
 class _LearnReviewWizardState extends State<_LearnReviewWizard> {
-  int _index = 0;
+  late final List<String> _queue;
+  late final int _totalStart;
   VideoPlayerController? _player;
   bool _ready = false;
   String? _error;
@@ -362,6 +364,8 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
   @override
   void initState() {
     super.initState();
+    _queue = List<String>.from(widget.clipPaths);
+    _totalStart = _queue.length;
     _loadCurrent();
   }
 
@@ -371,22 +375,35 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
     super.dispose();
   }
 
-  String get _path => widget.clipPaths[_index];
+  String? get _path => _queue.isEmpty ? null : _queue.first;
+
+  Future<void> _disposePlayer() async {
+    final c = _player;
+    _player = null;
+    if (c != null) {
+      try {
+        await c.dispose();
+      } catch (_) {}
+    }
+  }
 
   Future<void> _loadCurrent() async {
     setState(() {
       _ready = false;
       _error = null;
     });
-    await _player?.dispose();
-    _player = null;
+    await _disposePlayer();
 
     final path = _path;
+    if (path == null) {
+      if (mounted) Navigator.of(context).pop();
+      return;
+    }
     if (!path.startsWith('/')) {
       if (mounted) {
         setState(() => _error =
-            'Video ble ikke lastet opp til Dropbox (kun lokal fil på jobb-PC). '
-            'Kjør opplæring på nytt med LOCAL_DEV=false.');
+            'Video ble ikke lastet opp til Dropbox (kun lokal fil på jobb-PC).\n'
+            'Trykk Hopp over, eller kjør opplæring på nytt.');
       }
       return;
     }
@@ -395,13 +412,15 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
       path,
       sessionId: widget.session.id,
     );
-    final url = fresh?.url ?? widget.session.dropboxVideoUrl;
+    final url = fresh?.url ??
+        (path == widget.session.dropboxVideoPath
+            ? widget.session.dropboxVideoUrl
+            : null);
     if (url == null || !url.startsWith('http')) {
       if (mounted) {
         setState(() => _error =
-            'Kunne ikke hente videolenke.\n\n'
-            'Sjekk at Dropbox er koblet for bedriften, og at Windows-worker '
-            'lastet opp klippet (ikke bare lokalt).');
+            'Kunne ikke hente videolenke for denne filen.\n\n'
+            'Sjekk Dropbox-kobling, eller trykk Hopp over.');
       }
       return;
     }
@@ -425,39 +444,55 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
       if (mounted) {
         setState(() => _error =
             'Kunne ikke spille: $e\n\n'
-            'Hvis dette er et gammelt klipp: oppdater worker + nytt opptak.');
+            'Hopp over og merk neste, eller lag nytt opptak.');
       }
     }
   }
 
+  Future<void> _advanceAfterAnswer() async {
+    if (_queue.isEmpty) return;
+    await _disposePlayer();
+    setState(() {
+      _queue.removeAt(0);
+      _saving = false;
+      _ready = false;
+      _error = null;
+    });
+    if (_queue.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Ferdig! Systemet lærer av svarene dine ved neste skanning.',
+          ),
+        ),
+      );
+      Navigator.of(context).pop();
+      return;
+    }
+    await _loadCurrent();
+  }
+
+  Future<void> _skipUnplayable() async {
+    if (_saving || _queue.isEmpty) return;
+    await _advanceAfterAnswer();
+  }
+
   Future<void> _answer(String label) async {
     if (_saving) return;
+    final path = _path;
+    if (path == null) return;
     setState(() => _saving = true);
     try {
       await VisionCameraService.instance.addLearnLabel(
         sessionId: widget.session.id,
         label: label,
         zone: _zone,
-        note: 'clip:$_path',
+        note: 'clip:$path',
         reason: label == 'wrong' ? 'learn_demo_wrong' : 'learn_demo_correct',
       );
       if (!mounted) return;
-      if (_index + 1 >= widget.clipPaths.length) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Ferdig! Systemet lærer av svarene dine ved neste skanning.',
-            ),
-          ),
-        );
-        Navigator.of(context).pop();
-        return;
-      }
-      setState(() {
-        _index += 1;
-        _saving = false;
-      });
-      await _loadCurrent();
+      await _advanceAfterAnswer();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -470,13 +505,18 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
 
   @override
   Widget build(BuildContext context) {
-    final total = widget.clipPaths.length;
+    final left = _queue.length;
+    final done = _totalStart - left;
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
-        title: Text('Opplæring ${_index + 1} / $total'),
+        title: Text(
+          left == 0
+              ? 'Opplæring ferdig'
+              : 'Opplæring ${done + 1} / $_totalStart · $left igjen',
+        ),
       ),
       body: SafeArea(
         child: Column(
@@ -486,10 +526,23 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
                 child: _error != null
                     ? Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: Colors.white70),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _error!,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                            const SizedBox(height: 20),
+                            OutlinedButton(
+                              onPressed: _saving ? null : _skipUnplayable,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white,
+                              ),
+                              child: const Text('Hopp over denne'),
+                            ),
+                          ],
                         ),
                       )
                     : !_ready || _player == null
@@ -516,7 +569,7 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Svaret lagres med en gang — systemet blir flinkere.',
+                    'Svaret lagres med en gang — videoen forsvinner og neste kommer.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: Colors.grey.shade700,
@@ -543,7 +596,9 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
                     children: [
                       Expanded(
                         child: FilledButton.icon(
-                          onPressed: _saving ? null : () => _answer('correct'),
+                          onPressed: (_saving || _error != null)
+                              ? null
+                              : () => _answer('correct'),
                           style: FilledButton.styleFrom(
                             backgroundColor: DriftProTheme.primaryGreen,
                             padding: const EdgeInsets.symmetric(vertical: 16),
@@ -555,7 +610,9 @@ class _LearnReviewWizardState extends State<_LearnReviewWizard> {
                       const SizedBox(width: 12),
                       Expanded(
                         child: FilledButton.icon(
-                          onPressed: _saving ? null : () => _answer('wrong'),
+                          onPressed: (_saving || _error != null)
+                              ? null
+                              : () => _answer('wrong'),
                           style: FilledButton.styleFrom(
                             backgroundColor: const Color(0xFFE53935),
                             padding: const EdgeInsets.symmetric(vertical: 16),

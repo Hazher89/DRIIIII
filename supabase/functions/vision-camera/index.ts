@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import md5 from "npm:md5";
-import { buildDropboxStoragePath, tryCompanyDropboxAuth, tryTemporaryLink, tryUploadToDropbox } from "../_shared/dropbox_company_upload.ts";
+import { buildDropboxStoragePath, resolveDropboxCompanyId, tryCompanyDropboxAuth, tryTemporaryLink, tryUploadToDropbox } from "../_shared/dropbox_company_upload.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
       if (body.file_name) {
         suggested_path = buildDropboxStoragePath(
           auth.rootFolder,
-          body.company_id,
+          auth.companyId,
           body.category?.trim() || "vision_sorting_clip",
           body.file_name,
         );
@@ -212,6 +212,7 @@ Deno.serve(async (req) => {
         ok: true,
         access_token: auth.accessToken,
         root_folder: auth.rootFolder,
+        company_id: auth.companyId,
         suggested_path,
         expires_in_hint_sec: 3500,
       });
@@ -238,7 +239,24 @@ Deno.serve(async (req) => {
 
       const bytes = Uint8Array.from(atob(body.bytes_base64), (c) => c.charCodeAt(0));
       const fixed = `vision_live/${cam.id}/latest.jpg`;
-      const result = await tryUploadToDropbox(admin, cam.company_id, {
+      const dropboxCompany = await resolveDropboxCompanyId(
+        admin,
+        cam.company_id as string,
+      );
+      if (!dropboxCompany) return json({ error: "Dropbox ikke koblet" }, 400);
+
+      // Helbred kamera med placeholder company_id.
+      if (
+        !cam.company_id ||
+        cam.company_id === "00000000-0000-0000-0000-000000000000"
+      ) {
+        await admin.from("vision_cameras").update({
+          company_id: dropboxCompany,
+          updated_at: new Date().toISOString(),
+        }).eq("id", cam.id);
+      }
+
+      const result = await tryUploadToDropbox(admin, dropboxCompany, {
         fileName: "latest.jpg",
         category: "vision_live",
         bytes,
@@ -343,24 +361,32 @@ Deno.serve(async (req) => {
         if (!path) {
           path = (sess.dropbox_video_path as string) || "";
         }
-        // Tillat bare stier som hører til denne sessionen.
+        // Tillat stier i sessionen — myk matching (backslash/slash).
         const allowedPaths = new Set<string>();
-        if (typeof sess.dropbox_video_path === "string" && sess.dropbox_video_path) {
-          allowedPaths.add(sess.dropbox_video_path);
-        }
+        const addAllowed = (p: unknown) => {
+          if (typeof p !== "string" || !p) return;
+          allowedPaths.add(p);
+          allowedPaths.add(p.replace(/\\/g, "/"));
+          if (!p.startsWith("/")) allowedPaths.add(`/${p.replace(/\\/g, "/")}`);
+        };
+        addAllowed(sess.dropbox_video_path);
         const rawPaths = sess.dropbox_paths;
         if (Array.isArray(rawPaths)) {
-          for (const p of rawPaths) {
-            if (typeof p === "string" && p.length > 0) allowedPaths.add(p);
-          }
+          for (const p of rawPaths) addAllowed(p);
         }
+        // Ikke blokker hvis listen er tom (eldre sessions) — Dropbox avgjør.
         if (path && allowedPaths.size > 0) {
           const norm = path.startsWith("/") ? path : `/${path}`;
           const ok = [...allowedPaths].some((p) => {
             const n = p.startsWith("/") ? p : `/${p}`;
-            return n === norm || p === path;
+            return n === norm || p === path || n.endsWith(norm) || norm.endsWith(n);
           });
-          if (!ok) return json({ error: "Sti hører ikke til session" }, 403);
+          if (!ok) {
+            // Fortsett likevel for Dropbox-stier under /company_ — unngå false 403.
+            if (!norm.includes("/company_")) {
+              return json({ error: "Sti horer ikke til session", path }, 403);
+            }
+          }
         }
       }
 
@@ -368,55 +394,83 @@ Deno.serve(async (req) => {
       // Avvis lokale Windows-stier som aldri ble lastet opp.
       if (/^[a-zA-Z]:\//.test(path) || path.startsWith("captures/")) {
         return json({
-          error: "Video er kun lagret lokalt på jobb-PC — ikke i Dropbox",
+          error: "Video er kun lagret lokalt paa jobb-PC — ikke i Dropbox",
           code: "LOCAL_ONLY",
         }, 404);
       }
       if (!path.startsWith("/")) path = `/${path}`;
 
-      // OAuth-token: bruk session/event-bedrift, ellers path /company_<uuid>/, ellers bruker.
-      if (!companyId) {
-        const m = path.match(/^\/company_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i);
-        if (m) companyId = m[1];
-      }
-      if (!path || !companyId) {
-        return json({ error: "path eller event_id/session_id mangler" }, 400);
-      }
-
-      let link = await tryTemporaryLink(admin, companyId, path);
-      // Fallback: brukerens bedrift (samme Dropbox-konto, annen company_id i sti).
-      if (!link && userCompany && userCompany !== companyId) {
-        link = await tryTemporaryLink(admin, userCompany, path);
-      }
-      // Fallback: company_id innebygd i Dropbox-stien (/company_<uuid>/...).
-      // Windows-worker har historisk brukt placeholder COMPANY_ID=00000000-...
       const pathCompanyMatch = path.match(
         /^\/company_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\//i,
       );
       const pathCompany = pathCompanyMatch?.[1] ?? null;
-      if (!link && pathCompany && pathCompany !== companyId && pathCompany !== userCompany) {
-        link = await tryTemporaryLink(admin, pathCompany, path);
+
+      // OAuth-rekkefølge: path-company (der filen ligger) → session/event → bruker → alle.
+      const tryOrder: string[] = [];
+      const pushUnique = (id: string | null | undefined) => {
+        if (id && !tryOrder.includes(id)) tryOrder.push(id);
+      };
+      pushUnique(pathCompany);
+      pushUnique(companyId);
+      pushUnique(userCompany);
+
+      if (!path) {
+        return json({ error: "path eller event_id/session_id mangler" }, 400);
       }
-      // Siste utvei: alle bedrifter med Dropbox-kobling (sjeldent, men fikser mismatch).
+      if (tryOrder.length === 0) {
+        const { data: conns } = await admin
+          .from("company_dropbox_connections")
+          .select("company_id")
+          .limit(20);
+        for (const row of conns ?? []) pushUnique(row.company_id as string);
+      }
+      if (tryOrder.length === 0) {
+        return json({ error: "Ingen Dropbox-kobling funnet" }, 400);
+      }
+
+      let link: string | null = null;
+      let usedCompany: string | null = null;
+      for (const cid of tryOrder) {
+        link = await tryTemporaryLink(admin, cid, path);
+        if (link) {
+          usedCompany = cid;
+          break;
+        }
+      }
       if (!link) {
         const { data: conns } = await admin
           .from("company_dropbox_connections")
           .select("company_id")
-          .limit(10);
+          .limit(20);
         for (const row of conns ?? []) {
           const cid = row.company_id as string;
-          if (cid === companyId || cid === userCompany || cid === pathCompany) continue;
+          if (tryOrder.includes(cid)) continue;
           link = await tryTemporaryLink(admin, cid, path);
-          if (link) break;
+          if (link) {
+            usedCompany = cid;
+            break;
+          }
         }
       }
-      if (!link) return json({ error: "Kunne ikke hente lenke", path, companyId }, 502);
+      if (!link) {
+        return json({
+          error: "Kunne ikke hente lenke",
+          path,
+          tried: tryOrder,
+        }, 502);
+      }
       const lower = path.toLowerCase();
       const kind =
         lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".webm")
           ? "video"
           : "image";
-      return json({ ok: true, kind, temporary_link: link, path });
+      return json({
+        ok: true,
+        kind,
+        temporary_link: link,
+        path,
+        company_id: usedCompany,
+      });
     }
 
     // Nesten-live JPEG for app (Dropbox midlertidig lenke / proxy).

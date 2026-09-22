@@ -157,14 +157,33 @@ class VisionMonitorPipeline:
 
         # Bruk company_id fra kamera i DB — ikke placeholder 00000000 fra .env.
         cam_id = self._settings.vision_camera_db_id
+        nil = "00000000-0000-0000-0000-000000000000"
         if self._repo and cam_id:
             try:
                 resolved = await self._repo.fetch_camera_company_id(cam_id)
-                if resolved:
+                if resolved and resolved != nil:
                     self._upload_company_id = resolved
                     logger.info("Upload company_id from camera: %s", resolved)
+                elif not resolved or resolved == nil:
+                    dropbox_co = await self._repo.fetch_dropbox_company_id()
+                    if dropbox_co:
+                        self._upload_company_id = dropbox_co
+                        logger.warning(
+                            "Camera company_id was placeholder — using Dropbox company %s",
+                            dropbox_co,
+                        )
             except Exception as exc:
                 logger.warning("Could not resolve camera company_id: %s", exc)
+        if self._upload_company_id == nil and self._repo:
+            try:
+                dropbox_co = await self._repo.fetch_dropbox_company_id()
+                if dropbox_co:
+                    self._upload_company_id = dropbox_co
+                    logger.warning(
+                        "Using Dropbox company_id fallback: %s", dropbox_co
+                    )
+            except Exception as exc:
+                logger.warning("Dropbox company fallback failed: %s", exc)
 
         logger.info(
             "Vision monitor started | camera=%s mode=%s event=%s local_dev=%s company=%s",
@@ -858,13 +877,11 @@ class VisionMonitorPipeline:
         )
 
         if self._settings.local_dev and not self._company_dropbox:
-            self._learn_paths.append(str(video_path))
-            logger.info("Learn visit local: %s", video_path)
+            logger.warning("Learn visit local only (ikke lagt i session): %s", video_path)
             return
 
         if not self._company_dropbox:
-            self._learn_paths.append(str(video_path))
-            logger.error("Learn visit: no Dropbox — kept %s", video_path)
+            logger.error("Learn visit: no Dropbox — kept %s (ikke i session)", video_path)
             return
 
         video_bytes = await asyncio.to_thread(video_path.read_bytes)
@@ -889,6 +906,7 @@ class VisionMonitorPipeline:
                     dropbox_paths=list(self._learn_paths),
                     chunk_count=len(self._learn_paths),
                     dropbox_video_path=upload.path,
+                    dropbox_video_url=upload.share_url or None,
                 )
             STATE.push_feed(
                 [
@@ -901,7 +919,7 @@ class VisionMonitorPipeline:
             )
         except Exception as exc:
             logger.exception("Learn visit upload failed: %s", exc)
-            self._learn_paths.append(str(video_path))
+            # Ikke legg lokale stier i dropbox_paths — da feiler DriftPro-avspilling.
 
     def _maybe_buffer_learn_frame(self, frame) -> None:
         # Besøksbasert opptak håndteres via _learn_visit + capture_loop.
