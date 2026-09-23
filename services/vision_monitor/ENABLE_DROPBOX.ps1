@@ -42,7 +42,8 @@ if ([string]::IsNullOrWhiteSpace($key)) {
 $supabaseUrl = "https://ksnnyccthotjbrmgjgdc.supabase.co"
 $cameraId = "5f823a5a-6466-42bc-b52f-b56aa5136302"
 
-# Hent ekte company_id fra kamera (ikke placeholder 00000000).
+# Sett COMPANY_ID fra kamera (inkl. MAVI 00000000 — det er ekte selskap i DB).
+# Dropbox-OAuth kan ligge på et annet selskap; edge resolveDropboxCompanyId fikser det.
 $nil = "00000000-0000-0000-0000-000000000000"
 $companyId = $nil
 try {
@@ -56,30 +57,11 @@ try {
     $companyId = [string]$cam[0].company_id
     Write-Host "Fant COMPANY_ID fra kamera: $companyId" -ForegroundColor Green
   }
-  if ($companyId -eq $nil -or [string]::IsNullOrWhiteSpace($companyId)) {
-    $connUrl = "$supabaseUrl/rest/v1/company_dropbox_connections?select=company_id&limit=5"
-    $conns = Invoke-RestMethod -Uri $connUrl -Headers $headers -Method Get
-    foreach ($row in $conns) {
-      $cid = [string]$row.company_id
-      if ($cid -and $cid -ne $nil) {
-        $companyId = $cid
-        Write-Host "Fant COMPANY_ID fra Dropbox-kobling: $companyId" -ForegroundColor Green
-        # Helbred kamera i DB.
-        try {
-          Invoke-RestMethod -Uri "$supabaseUrl/rest/v1/vision_cameras?id=eq.$cameraId" `
-            -Headers ($headers + @{ "Content-Type" = "application/json"; "Prefer" = "return=minimal" }) `
-            -Method Patch -Body (@{ company_id = $companyId } | ConvertTo-Json)
-          Write-Host "Oppdaterte kamera company_id i DB" -ForegroundColor Green
-        } catch {
-          Write-Host "ADVARSEL: Kunne ikke oppdatere kamera: $_" -ForegroundColor Yellow
-        }
-        break
-      }
-    }
+  if ([string]::IsNullOrWhiteSpace($companyId)) {
+    Write-Host "ADVARSEL: Kamera mangler company_id" -ForegroundColor Yellow
+    $companyId = $nil
   }
-  if ($companyId -eq $nil) {
-    Write-Host "ADVARSEL: Fant ikke ekte company_id - Dropbox-video kan feile" -ForegroundColor Yellow
-  }
+  # Ikke overskriv kamera til Dropbox-selskap — det skjulte videoer i DriftPro.
 } catch {
   Write-Host "ADVARSEL: Kunne ikke hente company_id: $_" -ForegroundColor Yellow
 }

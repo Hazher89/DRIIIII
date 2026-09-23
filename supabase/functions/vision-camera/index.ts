@@ -245,16 +245,8 @@ Deno.serve(async (req) => {
       );
       if (!dropboxCompany) return json({ error: "Dropbox ikke koblet" }, 400);
 
-      // Helbred kamera med placeholder company_id.
-      if (
-        !cam.company_id ||
-        cam.company_id === "00000000-0000-0000-0000-000000000000"
-      ) {
-        await admin.from("vision_cameras").update({
-          company_id: dropboxCompany,
-          updated_at: new Date().toISOString(),
-        }).eq("id", cam.id);
-      }
+      // Ikke overskriv kamera.company_id — MAVI bruker 00000000 i DriftPro,
+      // mens Dropbox kan være koblet på et annet selskap.
 
       const result = await tryUploadToDropbox(admin, dropboxCompany, {
         fileName: "latest.jpg",

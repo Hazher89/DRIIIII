@@ -116,8 +116,10 @@ class VisionMonitorPipeline:
         self._learn_started_wall: datetime | None = None
         self._learn_last_push = 0.0
         self._learn_finalizing = False
-        # Overstyres i run() fra vision_cameras.company_id.
-        self._upload_company_id = settings.company_id
+        # Event-company = kamera (inkl. MAVI 00000000). Dropbox-company = OAuth-kobling.
+        self._event_company_id = settings.company_id
+        self._dropbox_company_id = settings.company_id
+        self._upload_company_id = settings.company_id  # alias → event (bakoverkompatibel)
 
     async def run(self) -> None:
         self._running = True
@@ -159,43 +161,40 @@ class VisionMonitorPipeline:
         if self._repo and not await self._repo.health_check():
             logger.warning("Supabase health check failed — continuing")
 
-        # Bruk company_id fra kamera i DB — ikke placeholder 00000000 fra .env.
+        # MAVI bruker company_id 00000000 i DB — det er IKKE en placeholder.
+        # Dropbox er koblet på DriftPro Demo (d190e74c). Skill de to:
+        # - vision_events → kamera-company (så DriftPro RLS/UI finner dem)
+        # - filer → Dropbox-company (så opplasting fungerer)
         cam_id = self._settings.vision_camera_db_id
-        nil = "00000000-0000-0000-0000-000000000000"
         if self._repo and cam_id:
             try:
                 resolved = await self._repo.fetch_camera_company_id(cam_id)
-                if resolved and resolved != nil:
-                    self._upload_company_id = resolved
-                    logger.info("Upload company_id from camera: %s", resolved)
-                elif not resolved or resolved == nil:
-                    dropbox_co = await self._repo.fetch_dropbox_company_id()
-                    if dropbox_co:
-                        self._upload_company_id = dropbox_co
-                        logger.warning(
-                            "Camera company_id was placeholder — using Dropbox company %s",
-                            dropbox_co,
-                        )
+                if resolved:
+                    self._event_company_id = resolved
+                    logger.info("Event company_id from camera: %s", resolved)
             except Exception as exc:
                 logger.warning("Could not resolve camera company_id: %s", exc)
-        if self._upload_company_id == nil and self._repo:
+        if self._repo:
             try:
                 dropbox_co = await self._repo.fetch_dropbox_company_id()
                 if dropbox_co:
-                    self._upload_company_id = dropbox_co
-                    logger.warning(
-                        "Using Dropbox company_id fallback: %s", dropbox_co
-                    )
+                    self._dropbox_company_id = dropbox_co
+                    logger.info("Dropbox company_id: %s", dropbox_co)
             except Exception as exc:
-                logger.warning("Dropbox company fallback failed: %s", exc)
+                logger.warning("Dropbox company lookup failed: %s", exc)
+        if not self._dropbox_company_id:
+            self._dropbox_company_id = self._event_company_id
+        self._upload_company_id = self._event_company_id
 
         logger.info(
-            "Vision monitor started | camera=%s mode=%s event=%s local_dev=%s company=%s",
+            "Vision monitor started | camera=%s mode=%s event=%s local_dev=%s "
+            "event_company=%s dropbox_company=%s",
             self._settings.camera_id,
             self._camera._mode.value,  # noqa: SLF001
             self._settings.event_type.value,
             self._settings.local_dev,
-            self._upload_company_id,
+            self._event_company_id,
+            self._dropbox_company_id,
         )
 
         await asyncio.gather(
@@ -719,7 +718,7 @@ class VisionMonitorPipeline:
                 video_upload = await asyncio.to_thread(
                     self._company_dropbox.upload_file,
                     data=video_bytes,
-                    company_id=self._upload_company_id,
+                    company_id=self._dropbox_company_id,
                     file_name=(
                         f"sorting_{self._settings.camera_id}_{hit.zone}_"
                         f"{hit.reason}_{stamp_name}.mp4"
@@ -730,7 +729,7 @@ class VisionMonitorPipeline:
                     thumb_upload = await asyncio.to_thread(
                         self._company_dropbox.upload_jpeg,
                         image_bytes=snap,
-                        company_id=self._upload_company_id,
+                        company_id=self._dropbox_company_id,
                         camera_id=self._settings.camera_id,
                         event_type=self._settings.event_type.value,
                         captured_at=captured_at,
@@ -741,7 +740,7 @@ class VisionMonitorPipeline:
                 video_upload = await asyncio.to_thread(
                     self._dropbox.upload_bytes,  # type: ignore[union-attr]
                     data=video_bytes,
-                    company_id=self._upload_company_id,
+                    company_id=self._dropbox_company_id,
                     camera_id=self._settings.camera_id,
                     event_type=self._settings.event_type.value,
                     captured_at=captured_at,
@@ -775,7 +774,7 @@ class VisionMonitorPipeline:
 
         if self._repo:
             record = VisionEventRecord(
-                company_id=self._upload_company_id,
+                company_id=self._event_company_id,
                 camera_id=self._settings.camera_id,
                 event_type=self._settings.event_type.value,
                 status="open",
@@ -920,7 +919,7 @@ class VisionMonitorPipeline:
             upload = await asyncio.to_thread(
                 self._company_dropbox.upload_file,
                 data=video_bytes,
-                company_id=self._upload_company_id,
+                company_id=self._dropbox_company_id,
                 file_name=(
                     f"learn_{self._settings.camera_id}_{sid}_"
                     f"{stamp}_visit{len(self._learn_paths)}.mp4"
@@ -1177,7 +1176,7 @@ class VisionMonitorPipeline:
             upload = await asyncio.to_thread(
                 self._company_dropbox.upload_file,
                 data=video_bytes,
-                company_id=self._upload_company_id,
+                company_id=self._dropbox_company_id,
                 file_name=(
                     f"learn_{self._settings.camera_id}_{sid}_"
                     f"{stamp}_part{len(self._learn_paths)}.mp4"
@@ -1297,7 +1296,7 @@ class VisionMonitorPipeline:
             upload = await asyncio.to_thread(
                 self._company_dropbox.upload_jpeg,
                 image_bytes=image_bytes,
-                company_id=self._upload_company_id,
+                company_id=self._dropbox_company_id,
                 camera_id=self._settings.camera_id,
                 event_type=self._settings.event_type.value,
                 captured_at=captured_at,
@@ -1306,14 +1305,14 @@ class VisionMonitorPipeline:
             upload = await asyncio.to_thread(
                 self._dropbox.upload_jpeg,  # type: ignore[union-attr]
                 image_bytes=image_bytes,
-                company_id=self._upload_company_id,
+                company_id=self._dropbox_company_id,
                 camera_id=self._settings.camera_id,
                 event_type=self._settings.event_type.value,
                 captured_at=captured_at,
             )
 
         record = VisionEventRecord(
-            company_id=self._upload_company_id,
+            company_id=self._event_company_id,
             camera_id=self._settings.camera_id,
             event_type=self._settings.event_type.value,
             status="open",
