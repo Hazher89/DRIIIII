@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
@@ -310,6 +311,25 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
     c.seekTo(clamped);
   }
 
+  Future<void> _openFullscreen() async {
+    final c = _player;
+    final ev = _selected;
+    if (c == null || !_playerReady || ev == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (ctx) => _FullscreenVideoPage(
+          controller: c,
+          title: ev.violationSummary,
+          onTogglePlay: _togglePlay,
+          onSeek: _seekBy,
+          onSeekTo: _seekTo,
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
   Future<void> _openBot() async {
     final ev = _selected;
     if (ev == null) return;
@@ -470,53 +490,63 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
 
     final body = _loading
         ? const DriftProLoadingCenter()
-        : Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                child: Column(
-                  children: [
-                    _IntroBar(cameras: _cameras, canAdmin: _canAdmin),
-                    const SizedBox(height: 8),
-                    WasteLearnPanel(
-                      cameras: _cameras,
-                      canAdmin: _canAdmin,
-                      onChanged: () => _load(silent: true),
+        : NestedScrollView(
+            headerSliverBuilder: (context, innerBoxIsScrolled) {
+              return [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+                    child: Column(
+                      children: [
+                        _IntroBar(cameras: _cameras, canAdmin: _canAdmin),
+                        const SizedBox(height: 8),
+                        WasteLearnPanel(
+                          cameras: _cameras,
+                          canAdmin: _canAdmin,
+                          onChanged: () => _load(silent: true),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              TabBar(
-                controller: _tabs,
-                labelColor: DriftProTheme.primaryGreen,
-                tabs: [
-                  Tab(text: 'Til vurdering (${_reviewEvents.length})'),
-                  Tab(text: 'Avvik (${_wrongEvents.length})'),
-                  Tab(text: 'Ikke avvik (${_correctEvents.length})'),
-                ],
-              ),
-              Expanded(
-                child: TabBarView(
-                  controller: _tabs,
-                  // Unngå horisontal swipe som «stjeler» vertikal scroll.
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    _buildTabBody(
-                      _reviewEvents,
-                      'Ingen klipp til vurdering.\nNår noen går foran kameraet, dukker videoen opp her.',
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _WasteTabBarDelegate(
+                    TabBar(
+                      controller: _tabs,
+                      labelColor: DriftProTheme.primaryGreen,
+                      tabs: [
+                        Tab(
+                            text:
+                                'Til vurdering (${_reviewEvents.length})'),
+                        Tab(text: 'Avvik (${_wrongEvents.length})'),
+                        Tab(
+                            text:
+                                'Ikke avvik (${_correctEvents.length})'),
+                      ],
                     ),
-                    _buildTabBody(
-                      _wrongEvents,
-                      'Ingen bekreftede avvik ennå.\nMerk «Ja, avvik» når sorteringen faktisk var gal.',
-                    ),
-                    _buildTabBody(
-                      _correctEvents,
-                      'Ingen merket som «ikke avvik» ennå.',
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ];
+            },
+            body: TabBarView(
+              controller: _tabs,
+              physics: const NeverScrollableScrollPhysics(),
+              children: [
+                _buildTabBody(
+                  _reviewEvents,
+                  'Ingen klipp til vurdering.\nNår noen går foran kameraet, dukker videoen opp her.',
+                ),
+                _buildTabBody(
+                  _wrongEvents,
+                  'Ingen bekreftede avvik ennå.\nMerk «Ja, avvik» når sorteringen faktisk var gal.',
+                ),
+                _buildTabBody(
+                  _correctEvents,
+                  'Ingen merket som «ikke avvik» ennå.',
+                ),
+              ],
+            ),
           );
 
     return MobileShellScaffold(
@@ -591,6 +621,7 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         onTogglePlay: _togglePlay,
         onSeek: _seekBy,
         onSeekTo: _seekTo,
+        onFullscreen: _openFullscreen,
         onBot: _openBot,
         onMarkCorrect: () => _markFeedbackSelected('correct'),
         onMarkWrong: () => _markFeedbackSelected('wrong'),
@@ -660,7 +691,6 @@ class _BrowseGrid extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final w = constraints.maxWidth;
-        // Færre kolonner + stor gap = YouTube-følelse, ikke tett mosaikk.
         final cols = w >= 1400
             ? 3
             : w >= 900
@@ -669,6 +699,8 @@ class _BrowseGrid extends StatelessWidget {
         return RefreshIndicator(
           onRefresh: onRefresh,
           child: GridView.builder(
+            // NestedScrollView: la denne være den indre scrolleren.
+            key: const PageStorageKey('waste-browse-grid'),
             padding: EdgeInsets.fromLTRB(
               w >= 900 ? 32 : 20,
               24,
@@ -709,6 +741,7 @@ class _WatchLayout extends StatelessWidget {
     required this.onTogglePlay,
     required this.onSeek,
     required this.onSeekTo,
+    required this.onFullscreen,
     required this.onBot,
     required this.onMarkCorrect,
     required this.onMarkWrong,
@@ -727,6 +760,7 @@ class _WatchLayout extends StatelessWidget {
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
   final ValueChanged<Duration> onSeekTo;
+  final VoidCallback onFullscreen;
   final VoidCallback onBot;
   final VoidCallback onMarkCorrect;
   final VoidCallback onMarkWrong;
@@ -747,6 +781,7 @@ class _WatchLayout extends StatelessWidget {
       onTogglePlay: onTogglePlay,
       onSeek: onSeek,
       onSeekTo: onSeekTo,
+      onFullscreen: onFullscreen,
       onBot: onBot,
       onMarkCorrect: onMarkCorrect,
       onMarkWrong: onMarkWrong,
@@ -761,43 +796,36 @@ class _WatchLayout extends StatelessWidget {
     );
 
     if (wide) {
-      // YouTube-stil: hovedkolonne scroller under video; «Neste klipp» scroller
-      // kun når musa er over sidepanelet.
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final sideH = constraints.maxHeight > 80
-              ? constraints.maxHeight - 44
-              : 480.0;
-          return Padding(
+      // Én side-scroll (NestedScrollView) for intro+video; sidebar scroller alene.
+      final sideH = (MediaQuery.sizeOf(context).height * 0.72).clamp(320.0, 900.0);
+      return CustomScrollView(
+        key: const PageStorageKey('waste-watch-wide'),
+        slivers: [
+          SliverPadding(
             padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 7,
-                  child: SingleChildScrollView(
-                    primary: false,
-                    physics: const ClampingScrollPhysics(),
-                    child: playerPane,
+            sliver: SliverToBoxAdapter(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 7, child: playerPane),
+                  const SizedBox(width: 36),
+                  SizedBox(
+                    width: 360,
+                    height: sideH,
+                    child: side,
                   ),
-                ),
-                const SizedBox(width: 36),
-                SizedBox(
-                  width: 360,
-                  height: sideH,
-                  child: side,
-                ),
-              ],
+                ],
+              ),
             ),
-          );
-        },
+          ),
+        ],
       );
     }
 
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
-        primary: true,
+        key: const PageStorageKey('waste-watch-mobile'),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
           playerPane,
@@ -833,6 +861,7 @@ class _MainPlayerPane extends StatelessWidget {
     required this.onTogglePlay,
     required this.onSeek,
     required this.onSeekTo,
+    required this.onFullscreen,
     required this.onBot,
     required this.onMarkCorrect,
     required this.onMarkWrong,
@@ -848,6 +877,7 @@ class _MainPlayerPane extends StatelessWidget {
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
   final ValueChanged<Duration> onSeekTo;
+  final VoidCallback onFullscreen;
   final VoidCallback onBot;
   final VoidCallback onMarkCorrect;
   final VoidCallback onMarkWrong;
@@ -942,6 +972,19 @@ class _MainPlayerPane extends StatelessWidget {
                       icon: const Icon(Icons.close, color: Colors.white),
                     ),
                   ),
+                  if (ready && error == null)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: IconButton(
+                        tooltip: 'Full skjerm',
+                        onPressed: onFullscreen,
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.black54,
+                        ),
+                        icon: const Icon(Icons.fullscreen, color: Colors.white),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -968,6 +1011,11 @@ class _MainPlayerPane extends StatelessWidget {
               IconButton(
                 onPressed: () => onSeek(const Duration(seconds: 10)),
                 icon: const Icon(Icons.forward_10),
+              ),
+              IconButton(
+                tooltip: 'Full skjerm',
+                onPressed: onFullscreen,
+                icon: const Icon(Icons.fullscreen),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -1446,6 +1494,217 @@ class _VideoCard extends StatelessWidget {
             Text(
               time,
               style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WasteTabBarDelegate extends SliverPersistentHeaderDelegate {
+  _WasteTabBarDelegate(this.tabBar);
+
+  final TabBar tabBar;
+
+  @override
+  double get minExtent => tabBar.preferredSize.height;
+
+  @override
+  double get maxExtent => tabBar.preferredSize.height;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.scaffoldBackgroundColor,
+      elevation: overlapsContent || shrinkOffset > 0 ? 1 : 0,
+      child: tabBar,
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _WasteTabBarDelegate oldDelegate) {
+    return tabBar != oldDelegate.tabBar;
+  }
+}
+
+/// Fullskjerm avspilling — gjenbruker samme [VideoPlayerController].
+class _FullscreenVideoPage extends StatefulWidget {
+  const _FullscreenVideoPage({
+    required this.controller,
+    required this.title,
+    required this.onTogglePlay,
+    required this.onSeek,
+    required this.onSeekTo,
+  });
+
+  final VideoPlayerController controller;
+  final String title;
+  final VoidCallback onTogglePlay;
+  final ValueChanged<Duration> onSeek;
+  final ValueChanged<Duration> onSeekTo;
+
+  @override
+  State<_FullscreenVideoPage> createState() => _FullscreenVideoPageState();
+}
+
+class _FullscreenVideoPageState extends State<_FullscreenVideoPage> {
+  DateTime? _tickAt;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onTick);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onTick);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  void _onTick() {
+    final now = DateTime.now();
+    if (_tickAt != null &&
+        now.difference(_tickAt!) < const Duration(milliseconds: 250)) {
+      return;
+    }
+    _tickAt = now;
+    if (mounted) setState(() {});
+  }
+
+  static String _fmt(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final h = d.inHours;
+    if (h > 0) return '$h:$m:$s';
+    return '$m:$s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    final progress = c.value.isInitialized && c.value.duration.inMilliseconds > 0
+        ? c.value.position.inMilliseconds / c.value.duration.inMilliseconds
+        : 0.0;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            Center(
+              child: c.value.isInitialized
+                  ? AspectRatio(
+                      aspectRatio: c.value.aspectRatio == 0
+                          ? 16 / 9
+                          : c.value.aspectRatio,
+                      child: VideoPlayer(c),
+                    )
+                  : const CircularProgressIndicator(color: Colors.white),
+            ),
+            Positioned(
+              left: 8,
+              top: 8,
+              right: 8,
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                    ),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 16,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 3,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 7,
+                      ),
+                      activeTrackColor: DriftProTheme.primaryGreen,
+                      inactiveTrackColor: Colors.white24,
+                      thumbColor: DriftProTheme.primaryGreen,
+                    ),
+                    child: Slider(
+                      value: progress.clamp(0.0, 1.0),
+                      onChanged: (v) {
+                        final dur = c.value.duration;
+                        if (dur.inMilliseconds <= 0) return;
+                        widget.onSeekTo(
+                          Duration(
+                            milliseconds: (dur.inMilliseconds * v).round(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      Text(
+                        _fmt(c.value.position),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: () =>
+                            widget.onSeek(const Duration(seconds: -10)),
+                        icon: const Icon(Icons.replay_10, color: Colors.white),
+                      ),
+                      IconButton(
+                        onPressed: widget.onTogglePlay,
+                        iconSize: 48,
+                        icon: Icon(
+                          c.value.isPlaying
+                              ? Icons.pause_circle_filled
+                              : Icons.play_circle_filled,
+                          color: Colors.white,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            widget.onSeek(const Duration(seconds: 10)),
+                        icon: const Icon(Icons.forward_10, color: Colors.white),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _fmt(c.value.duration),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),
