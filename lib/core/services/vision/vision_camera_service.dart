@@ -229,8 +229,9 @@ class VisionCameraService {
     int limit = 100,
     bool includeArchived = false,
     bool includeDismissed = false,
+    String? companyIdOverride,
   }) async {
-    final cid = await _companyId();
+    final cid = companyIdOverride ?? await _companyId();
     if (cid == null) return [];
 
     var query = _client
@@ -270,6 +271,34 @@ class VisionCameraService {
           local.where((e) => e.eventType == 'sorting_clip').toList();
       if (sortingLocal.isNotEmpty) return sortingLocal;
     }
+
+    // Superadmin kan ha Demo som profil-company (Dropbox), mens sorteringsklipp
+    // ligger på MAVI (00000000). Hent begge når nødvendig.
+    const maviCompanyId = '00000000-0000-0000-0000-000000000000';
+    final cid = await _companyId();
+    final profile = await SupabaseService.fetchCurrentUserProfile();
+    final isSuper = profile?.isSuperAdmin == true;
+
+    if (isSuper && cid != null && cid != maviCompanyId) {
+      final primary = await fetchRecentEvents(
+        limit: limit,
+        includeArchived: includeArchived,
+        companyIdOverride: cid,
+      );
+      final mavi = await fetchRecentEvents(
+        limit: limit,
+        includeArchived: includeArchived,
+        companyIdOverride: maviCompanyId,
+      );
+      final byId = <String, VisionEvent>{};
+      for (final e in [...mavi, ...primary]) {
+        if (e.eventType == 'sorting_clip') byId[e.id] = e;
+      }
+      final merged = byId.values.toList()
+        ..sort((a, b) => b.occurredAt.compareTo(a.occurredAt));
+      return merged.take(limit).toList();
+    }
+
     final events = await fetchRecentEvents(
       limit: limit,
       includeArchived: includeArchived,
