@@ -100,8 +100,8 @@ FLAT_HINTS = (
     "lying flat",
 )
 
-# Minimum conf for unflattened_cardboard (etter global + per-reason delta).
-UNFLATTENED_MIN_CONF = 0.35
+# Minimum conf for unflattened — høy fordi ovenfra ser brettet papp ofte «3D».
+UNFLATTENED_MIN_CONF = 0.48
 
 # Reasons that are durable end-of-visit A-side faults (OK to flag mid-visit too,
 # but pipeline prefers end-state confirmation).
@@ -523,17 +523,23 @@ class SortingDetector:
         frame_w: int,
         frame_h: int,
     ) -> tuple[float, float, float, bool]:
-        """Return (height_frac, aspect, area_frac, looks_flat_sheet)."""
+        """Return (height_frac, aspect, area_frac, looks_flat_sheet).
+
+        Kameraet står skrått ovenfra — brettet papp i A ser ofte «tykk» ut.
+        Derfor er flat-terskelen romslig (heller OK enn falsk ubrettet).
+        """
         x1, y1, x2, y2 = bbox
         bw = max(1, x2 - x1)
         bh = max(1, y2 - y1)
         area_frac = (bw * bh) / max(1, frame_w * frame_h)
         height_frac = bh / max(1, frame_h)
         aspect = bh / max(1.0, float(bw))  # tall box > flat sheet
-        # Flat sheet: wide and low — også stor areal (brettet stor papp).
-        looks_flat = height_frac < 0.12 and aspect < 0.55
-        # Ekstra: veldig bred relativ til høyde.
-        if aspect < 0.40 and height_frac < 0.18:
+        # Brettet papp i container: kan være bred/kvadratisk ovenfra.
+        looks_flat = height_frac < 0.22 and aspect < 0.85
+        if aspect < 0.55 and height_frac < 0.28:
+            looks_flat = True
+        # Stor flate i A (brettet stor eske) — treat as flat.
+        if area_frac >= 0.05 and aspect < 1.05 and height_frac < 0.32:
             looks_flat = True
         return height_frac, aspect, area_frac, looks_flat
 
@@ -544,7 +550,7 @@ class SortingDetector:
         frame_w: int,
         frame_h: int,
     ) -> bool:
-        """Geometri først: stor men flat papp er OK (ikke ubrettet)."""
+        """Kun tydelig stående/ubrettet eske — tvil = OK (brettet ser 3D ut ovenfra)."""
         low = label.lower()
         height_frac, aspect, area_frac, looks_flat = self._geometry_flatness(
             bbox, frame_w, frame_h
@@ -553,22 +559,21 @@ class SortingDetector:
         flat_hints = FLAT_HINTS + tuple(self._extra_flat_hints)
         bulky_hints = BULKY_HINTS + tuple(self._extra_bulky_hints)
 
+        # Generiske «brown cardboard carton» uten stående-hint → OK.
         if any(h in low for h in flat_hints):
             return False
-
-        # Flat sheet i bildet → aldri ubrettet, selv om label sier oversized/contents.
         if looks_flat:
             return False
 
+        # Svake labels uten stående/tall/ubrettet-signal → ikke flagg.
         bulky_label = any(h in low for h in bulky_hints)
-        # Stående / 3D: høy i bildet eller mer kvadratisk/høy.
-        looks_3d = height_frac >= 0.14 or aspect >= 0.70
-        if bulky_label and looks_3d:
-            return True
-        if looks_3d and area_frac >= 0.03:
-            return True
-        # Tydelig stående eske uten flat-geometri.
-        if height_frac >= 0.18 and aspect >= 0.55:
+        if not bulky_label:
+            return False
+
+        # Krever både sterk label OG tydelig høy geometri (ikke bare skrå flate).
+        clearly_standing = height_frac >= 0.26 and aspect >= 0.85
+        very_tall = height_frac >= 0.32 and aspect >= 0.70
+        if clearly_standing or very_tall:
             return True
         return False
 
