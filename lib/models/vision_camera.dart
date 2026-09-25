@@ -265,11 +265,13 @@ class VisionEvent {
         case 'person_visit':
           label = 'Besøk — trenger din vurdering';
         case 'unflattened_cardboard':
-          label = 'Ubrettet/stor eske i papp-container';
+          label = 'Ubrettet/stående eske i papp-container';
+        case 'box_with_contents':
+          label = 'Eske med innhold i papp-container';
         case 'cardboard_in_wrong_bin':
-          label = 'Eske kastet i annet-container';
+          label = 'Eske ble igjen i annet-container';
         case 'wrong_material_in_papp':
-          label = 'Feil materiale i papp-container';
+          label = 'Isopor/søppel i papp-container';
         case 'bulky_packaging':
           label = 'Stor/full emballasje';
         case 'cardboard':
