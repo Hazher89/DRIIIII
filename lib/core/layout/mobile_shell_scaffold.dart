@@ -147,7 +147,8 @@ class MobileShellScaffold extends StatelessWidget {
         DriftProClient.isMobile ? _mobileActionsWithoutRefresh(actions) : actions;
 
     if (!DriftProClient.isMobile) {
-      final hasAppBar = _showHeader(actions) || bottom != null;
+      final canPop = ModalRoute.of(context)?.canPop ?? false;
+      final hasAppBar = _showHeader(actions) || bottom != null || canPop;
       return Scaffold(
         backgroundColor: backgroundColor,
         appBar: hasAppBar
@@ -155,9 +156,9 @@ class MobileShellScaffold extends StatelessWidget {
                 title: title != null ? Text(title!) : null,
                 actions: actions,
                 bottom: bottom,
-                // Unngå tom toolbar-høyde når kun faner vises (store gap under logo).
                 toolbarHeight: _showHeader(actions) ? kToolbarHeight : 0,
-                automaticallyImplyLeading: false,
+                automaticallyImplyLeading: canPop,
+                leading: leading,
                 scrolledUnderElevation: 0,
               )
             : null,
@@ -176,10 +177,13 @@ class MobileShellScaffold extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (showHeader)
-            MobileShellPageHeader(
-              title: title ?? '',
-              actions: mobileActions,
-              leading: leading,
+            SafeArea(
+              bottom: false,
+              child: MobileShellPageHeader(
+                title: title ?? '',
+                actions: mobileActions,
+                leading: leading,
+              ),
             ),
           if (bottom != null) bottom!,
           Expanded(child: body),

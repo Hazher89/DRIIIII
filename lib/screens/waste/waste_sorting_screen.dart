@@ -335,10 +335,21 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
     if (ev == null) return;
     await _player?.pause();
     if (!mounted) return;
-    final result = await showWasteBotSheet(context, event: ev);
+    final companyId = _cameras.isNotEmpty
+        ? _cameras.first.companyId
+        : '00000000-0000-0000-0000-000000000000';
+    final result = await showWasteBotSheet(
+      context,
+      event: ev,
+      companyId: companyId,
+    );
     if (result == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('BOT sendt til partner')),
+        const SnackBar(
+          content: Text(
+            'BOT lagret under Bot/Trekk. Partner får varsel med video, beløp og kommentar.',
+          ),
+        ),
       );
     }
   }

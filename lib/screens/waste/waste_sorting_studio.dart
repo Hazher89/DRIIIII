@@ -39,12 +39,13 @@ Future<VisionEvent?> openWasteSortingStudio(
 Future<bool?> showWasteBotSheet(
   BuildContext context, {
   required VisionEvent event,
+  String? companyId,
 }) {
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => _WasteBotSheet(event: event),
+    builder: (_) => _WasteBotSheet(event: event, companyId: companyId),
   );
 }
 
@@ -290,10 +291,18 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
   Future<void> _openBot() async {
     await _controller?.pause();
     if (!mounted) return;
-    final result = await showWasteBotSheet(context, event: _event);
+    final result = await showWasteBotSheet(
+      context,
+      event: _event,
+      companyId: '00000000-0000-0000-0000-000000000000',
+    );
     if (result == true && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('BOT sendt til partner')),
+        const SnackBar(
+          content: Text(
+            'BOT lagret under Bot/Trekk. Partner får varsel med video, beløp og kommentar.',
+          ),
+        ),
       );
     }
   }
@@ -636,15 +645,18 @@ class _WasteSortingStudioState extends State<WasteSortingStudio> {
 }
 
 class _WasteBotSheet extends StatefulWidget {
-  const _WasteBotSheet({required this.event});
+  const _WasteBotSheet({required this.event, this.companyId});
 
   final VisionEvent event;
+  final String? companyId;
 
   @override
   State<_WasteBotSheet> createState() => _WasteBotSheetState();
 }
 
 class _WasteBotSheetState extends State<_WasteBotSheet> {
+  static const _maviCompanyId = '00000000-0000-0000-0000-000000000000';
+
   List<Partner> _partners = [];
   Partner? _partner;
   final _amountCtrl = TextEditingController(text: '500');
@@ -655,6 +667,8 @@ class _WasteBotSheetState extends State<_WasteBotSheet> {
   bool _loading = true;
   bool _sending = false;
   String _query = '';
+  String? _videoLink;
+  String? _resolvedCompanyId;
 
   @override
   void initState() {
@@ -671,26 +685,43 @@ class _WasteBotSheetState extends State<_WasteBotSheet> {
     super.dispose();
   }
 
+  Future<String> _resolveCompanyId() async {
+    if (widget.companyId != null && widget.companyId!.isNotEmpty) {
+      return widget.companyId!;
+    }
+    // Søppelsortering hører til MAVI — ikke Demo (der Dropbox-OAuth kan ligge).
+    return _maviCompanyId;
+  }
+
   Future<void> _load() async {
     try {
+      final companyId = await _resolveCompanyId();
+      _resolvedCompanyId = companyId;
+
       final media = await VisionCameraService.instance
           .resolveEventMediaLink(widget.event.id);
       final link = media?.url ??
           widget.event.videoUrl ??
           widget.event.dropboxImageUrl;
-      if (mounted && link.isNotEmpty) {
-        _commentCtrl.text =
-            '${widget.event.violationSummary}\nMedia: $link';
+      _videoLink = (link.isNotEmpty) ? link : null;
+
+      if (mounted) {
+        _commentCtrl.text = widget.event.violationSummary;
       }
-      final companyId = await SupabaseService.getCurrentCompanyId();
-      if (companyId == null) {
-        if (mounted) setState(() => _loading = false);
-        return;
-      }
-      final partners = await PartnerService.fetchPartners(
+
+      var partners = await PartnerService.fetchPartners(
         companyId: companyId,
         activeOnly: true,
       );
+      // Fallback: hvis Demo-profil og tom liste, prøv MAVI.
+      if (partners.isEmpty && companyId != _maviCompanyId) {
+        partners = await PartnerService.fetchPartners(
+          companyId: _maviCompanyId,
+          activeOnly: true,
+        );
+        if (partners.isNotEmpty) _resolvedCompanyId = _maviCompanyId;
+      }
+
       if (!mounted) return;
       setState(() {
         _partners = partners..sort((a, b) => a.name.compareTo(b.name));
@@ -731,69 +762,110 @@ class _WasteBotSheetState extends State<_WasteBotSheet> {
       );
       return;
     }
-    final template = kPartnerDeductionTemplates.firstWhere(
-      (t) => t.id == 'waste_sorting',
-      orElse: () => kPartnerDeductionTemplates.first,
-    );
-    final companyId = await SupabaseService.getCurrentCompanyId();
-    if (companyId == null) return;
-
-    setState(() => _sending = true);
-    final displayName = _nameCtrl.text.trim();
-    final comment = [
-      if (displayName.isNotEmpty) 'Kontakt/ref: $displayName',
-      _commentCtrl.text.trim(),
-    ].where((s) => s.isNotEmpty).join('\n');
-
-    final result = await PartnerDeductionService.createCase(
-      companyId: companyId,
-      partner: partner,
-      template: template,
-      amountNok: amount,
-      comment: comment,
-      notifySms: !notifyOnly && _sms,
-      notifyEmail: false,
-      notifyPush: !notifyOnly && _push,
-    );
-
-    if (!mounted) return;
-    setState(() => _sending = false);
-
-    if (!result.success || result.caseRow == null) {
+    if (!_sms && !_push && !notifyOnly) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.error ?? 'BOT feilet'),
-          backgroundColor: DriftProTheme.error,
-        ),
+        const SnackBar(content: Text('Velg SMS og/eller push-varsel')),
       );
       return;
     }
 
-    // Koble Dropbox-video som bevis når sti finnes.
+    final template = kPartnerDeductionTemplates.firstWhere(
+      (t) => t.id == 'waste_sorting',
+      orElse: () => kPartnerDeductionTemplates.first,
+    );
+    final companyId = _resolvedCompanyId ?? await _resolveCompanyId();
+
+    setState(() => _sending = true);
+    final displayName = _nameCtrl.text.trim();
+    final userComment = _commentCtrl.text.trim();
     final path = widget.event.videoDropboxPath;
-    if (path != null && path.isNotEmpty) {
-      try {
-        await SupabaseService.client.rpc(
-          'add_partner_deduction_evidence',
-          params: {
-            'p_case_id': result.caseRow!.id,
-            'p_storage_ref': path.startsWith('dropbox://')
-                ? path
-                : 'dropbox://$path',
-            'p_storage_provider': 'dropbox',
-            'p_file_name': 'sorting_clip.mp4',
-            'p_mime_type': 'video/mp4',
-            'p_media_type': 'video',
-            'p_file_size_bytes': 0,
-            'p_dropbox_path': path.replaceFirst('dropbox://', ''),
-          },
+    final comment = [
+      'Feilsortering (kamera): ${widget.event.violationSummary}',
+      'Beløp: ${amount.toStringAsFixed(0)} kr',
+      if (displayName.isNotEmpty) 'Kontakt/ref: $displayName',
+      if (userComment.isNotEmpty) 'Kommentar: $userComment',
+      if (_videoLink != null) 'Video: $_videoLink',
+      if (path != null && path.isNotEmpty) 'Dropbox: $path',
+    ].join('\n');
+
+    try {
+      // 1) Opprett sak uten varsel først (så den dukker opp under Trekk).
+      final result = await PartnerDeductionService.createCase(
+        companyId: companyId,
+        partner: partner,
+        template: template,
+        amountNok: amount,
+        comment: comment,
+        notifySms: false,
+        notifyEmail: false,
+        notifyPush: false,
+      );
+
+      if (!result.success || result.caseRow == null) {
+        if (mounted) {
+          setState(() => _sending = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result.error ?? 'BOT feilet'),
+              backgroundColor: DriftProTheme.error,
+            ),
+          );
+        }
+        return;
+      }
+
+      final caseRow = result.caseRow!;
+
+      // 2) Knytt sorteringsvideo som bevis (partner ser den i portalen).
+      if (path != null && path.isNotEmpty) {
+        final dropboxPath = path.replaceFirst('dropbox://', '');
+        try {
+          await SupabaseService.client.rpc(
+            'add_partner_deduction_evidence',
+            params: {
+              'p_case_id': caseRow.id,
+              'p_storage_ref': dropboxPath.startsWith('dropbox://')
+                  ? dropboxPath
+                  : 'dropbox://$dropboxPath',
+              'p_storage_provider': 'dropbox',
+              'p_file_name': 'sorting_clip.mp4',
+              'p_mime_type': 'video/mp4',
+              'p_media_type': 'video',
+              'p_file_size_bytes': 0,
+              'p_dropbox_path': dropboxPath,
+            },
+          );
+        } catch (e) {
+          // Fortsett — sak finnes; video-lenke er i kommentaren.
+          debugPrint('waste bot evidence: $e');
+        }
+      }
+
+      // 3) Send SMS/push etter at bevis er på plass.
+      if (!notifyOnly && (_sms || _push)) {
+        await PartnerDeductionService.resendNotification(
+          caseId: caseRow.id,
+          notifySms: _sms,
+          notifyEmail: false,
+          notifyPush: _push,
         );
-      } catch (_) {
-        // Bevis er valgfritt — BOT er allerede opprettet med videolenke i kommentar.
+        await PartnerDeductionService.flushOutbox();
+      }
+
+      if (!mounted) return;
+      setState(() => _sending = false);
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (mounted) {
+        setState(() => _sending = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('BOT feilet: $e'),
+            backgroundColor: DriftProTheme.error,
+          ),
+        );
       }
     }
-
-    if (mounted) Navigator.pop(context, true);
   }
 
   @override
@@ -838,12 +910,24 @@ class _WasteBotSheetState extends State<_WasteBotSheet> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Videoen knyttes til trekket. Velg SMS og/eller push-varsel.',
+                      'Partner får varsel med beløp, kommentar og video. '
+                      'Saken dukker opp under Bot/Trekk — de kan se video og arkivere.',
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.65),
                         fontSize: 13,
                       ),
                     ),
+                    if (_partners.isEmpty) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        'Ingen partnere funnet for denne bedriften. '
+                        'Sjekk at du er innlogget på MAVI.',
+                        style: TextStyle(
+                          color: Colors.orange.shade300,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 14),
                     TextField(
                       style: const TextStyle(color: Colors.white),
