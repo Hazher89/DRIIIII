@@ -18,7 +18,7 @@ from dropbox_client import DropboxSnapshotStore
 from frame_ring_buffer import FrameRingBuffer
 from local_server import STATE, start_local_server
 from local_store import LocalEvent, LocalEventStore
-from sorting_detector import CompactorZone, SortingDetector, SortingHit
+from sorting_detector import A_SIDE_REASONS, CompactorZone, SortingDetector, SortingHit
 from supabase_dropbox import SupabaseDropboxUpload
 from uniform_detector import UniformViolationDetector
 from video_clip import write_clip_mp4
@@ -388,7 +388,12 @@ class VisionMonitorPipeline:
         hits: list[SortingHit],
         frame,
     ) -> None:
-        """Track person visit; save clip only when a throw/violation is suspected."""
+        """Track person visit; judge only when throw is finished (person left).
+
+        Mid-visit cardboard in B is ignored by the detector. A-side faults may be
+        noted tentatively, but final judgment always re-scans the last frame after
+        the driver has left (empty-handed end state).
+        """
         now = time.monotonic()
         ep = self._sorting_episode
 
@@ -402,6 +407,7 @@ class VisionMonitorPipeline:
                     "post": [],
                     "last_post": 0.0,
                     "hit": None,
+                    "tentative_hit": None,
                     "started": now,
                     "person_present": True,
                     "until": None,
@@ -412,7 +418,8 @@ class VisionMonitorPipeline:
                 ep = self._sorting_episode
                 logger.info(
                     "Person arrived — buffering (pre=%.0fs). "
-                    "Lagrer kun ved mistenkt feilkasting (A=papp ved vegg er OK).",
+                    "Dømmer først når sjåfør er ferdig (tomme hender / gått). "
+                    "Midlertidig tømming i B/trapp er OK.",
                     self._settings.clip_seconds_before,
                 )
                 STATE.push_feed(
@@ -421,8 +428,8 @@ class VisionMonitorPipeline:
                             "id": f"arr-{ep['id'][:8]}",
                             "status": "ok",
                             "text": (
-                                "Person i bilde — overvåker kast "
-                                "(A/vegg=papp OK · B/trapp=annet)"
+                                "Person i bilde — venter til kast er ferdig "
+                                "(B/trapp midlertidig OK · A=kun brettet papp)"
                             ),
                         }
                     ]
@@ -441,11 +448,18 @@ class VisionMonitorPipeline:
                 elif now - self._person_absent_since >= self._person_leave_grace:
                     ep["person_present"] = False
                     self._person_absent_since = None
-                    if ep.get("hit"):
+                    # Final judgment: re-scan last frame with end_of_visit=True.
+                    final_hit = await self._judge_end_of_visit(ep)
+                    if final_hit is not None:
+                        ep["hit"] = final_hit
                         post_s = self._settings.clip_seconds_after
                         ep["until"] = now + post_s
                         logger.info(
-                            "Person left after suspected wrong — recording %.0fs more then save",
+                            "End-of-visit FAULT | zone=%s reason=%s conf=%.2f — "
+                            "recording %.0fs more then save",
+                            final_hit.zone,
+                            final_hit.reason,
+                            final_hit.confidence,
                             post_s,
                         )
                         STATE.push_feed(
@@ -454,69 +468,88 @@ class VisionMonitorPipeline:
                                     "id": f"leave-{ep['id'][:8]}",
                                     "status": "violation",
                                     "text": (
-                                        f"Mulig feilkasting — tar {post_s:.0f}s "
-                                        f"etter avgang, deretter lagring til vurdering"
+                                        f"Ferdigkast vurdert: {final_hit.reason} — "
+                                        f"tar {post_s:.0f}s, deretter lagring"
                                     ),
                                 }
                             ]
                         )
                     else:
                         logger.info(
-                            "Person left without throw — not saving (A/vegg papp er OK)"
+                            "Person left — end-of-visit OK "
+                            "(midlertidig B-tømming / riktig A). Not saving."
                         )
                         STATE.push_feed(
                             [
                                 {
                                     "id": f"okleave-{ep['id'][:8]}",
                                     "status": "ok",
-                                    "text": "Besøk uten feilkasting — lagrer ikke",
+                                    "text": (
+                                        "Besøk ferdig uten varig feil — lagrer ikke"
+                                    ),
                                 }
                             ]
                         )
                         self._sorting_episode = None
 
-        if hits and ep is not None:
+        # Mid-visit: only remember A-side tentative faults (never B cardboard).
+        if hits and ep is not None and ep.get("person_present"):
             if frame is not None:
                 ep["last_frame"] = frame.copy()
-            if ep.get("hit") is None:
-                hit = hits[0]
-                ep["hit"] = hit
+            a_hits = [h for h in hits if h.reason in A_SIDE_REASONS]
+            if a_hits and ep.get("tentative_hit") is None:
+                hit = a_hits[0]
+                ep["tentative_hit"] = hit
                 logger.info(
-                    "Suspected wrong during visit | zone=%s reason=%s label=%s conf=%.2f — "
-                    "will save for human review",
+                    "Tentative A-fault during visit | zone=%s reason=%s conf=%.2f — "
+                    "confirms after person leaves",
                     hit.zone,
                     hit.reason,
-                    hit.label,
                     hit.confidence,
                 )
                 STATE.push_feed(
                     [
                         {
-                            "id": f"bad-{ep['id'][:8]}",
-                            "status": "violation",
+                            "id": f"tent-{ep['id'][:8]}",
+                            "status": "ok",
                             "text": (
-                                f"AUTO-forslag FEIL: {hit.zone} — venter til personen går, "
-                                f"deretter lagring (du bekrefter i DriftPro)"
+                                f"Ser mulig {hit.reason} i A — bekrefter når "
+                                f"sjåfør er ferdig (tomme hender)"
                             ),
                         }
                     ]
                 )
-        elif hits and ep is None:
-            hit = hits[0]
-            logger.info(
-                "Sorting signal without person (zone=%s reason=%s) — not saving",
-                hit.zone,
-                hit.reason,
+
+    async def _judge_end_of_visit(self, ep: dict) -> SortingHit | None:
+        """Re-scan last frame after driver left — empty-handed end state."""
+        frame = ep.get("last_frame")
+        if frame is None or self._detector is None:
+            tent = ep.get("tentative_hit")
+            if tent is not None and tent.reason in A_SIDE_REASONS:
+                return tent
+            return None
+        try:
+            _objects, hits, feed = await asyncio.to_thread(
+                lambda: self._detector.analyze_frame(  # type: ignore[union-attr]
+                    frame, end_of_visit=True
+                )
             )
-            STATE.push_feed(
-                [
-                    {
-                        "id": f"noperson-{int(now)}",
-                        "status": "ok",
-                        "text": "Ser mulig feil uten person — venter på person før lagring",
-                    }
-                ]
-            )
+            if feed:
+                STATE.push_feed(feed[:3])
+            if hits:
+                return hits[0]
+            tent = ep.get("tentative_hit")
+            if tent is not None and tent.reason in A_SIDE_REASONS:
+                logger.info(
+                    "End scan clean but keeping tentative A-fault %s",
+                    tent.reason,
+                )
+                return tent
+            return None
+        except Exception:
+            logger.exception("End-of-visit judgment failed")
+            tent = ep.get("tentative_hit")
+            return tent if tent is not None and tent.reason in A_SIDE_REASONS else None
 
     async def _finalize_sorting_episode(self, ep: dict) -> None:
         hit = ep.get("hit")
