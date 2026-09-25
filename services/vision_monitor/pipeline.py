@@ -671,6 +671,7 @@ class VisionMonitorPipeline:
             "needs_review": bool(pending.get("needs_review", True)),
             "auto_suspected_wrong": bool(pending.get("auto_suspected_wrong", False)),
             "human_label": None,
+            "codec": "h264",
         }
 
         if self._settings.local_dev and self._local_store:

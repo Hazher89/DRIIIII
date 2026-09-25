@@ -1,7 +1,9 @@
 """Re-encode existing sorting MP4s to H.264 and re-upload so DriftPro web can play them.
 
-Run on Windows job PC (after git pull):
-  .\\.venv\\Scripts\\pip install imageio-ffmpeg
+Run on Windows job PC (after git pull), while START_WINDOWS is stopped:
+  .\\REPAIR_CLIPS.bat
+
+Or:
   .\\.venv\\Scripts\\python.exe repair_clips.py
 """
 
@@ -25,6 +27,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("repair_clips")
 
 load_dotenv()
+
+_NIL = "00000000-0000-0000-0000-000000000000"
+_PAGE = 50
 
 
 def _reencode_file(src: Path, dst: Path) -> None:
@@ -55,12 +60,56 @@ def _reencode_file(src: Path, dst: Path) -> None:
         raise RuntimeError(f"ffmpeg failed: {proc.stderr[:400]}")
 
 
+def _fetch_dropbox_company(client: httpx.Client, base: str, headers: dict) -> str:
+    res = client.get(
+        f"{base}/rest/v1/company_dropbox_connections?select=company_id&limit=5",
+        headers=headers,
+    )
+    res.raise_for_status()
+    rows = res.json()
+    for row in rows:
+        cid = row.get("company_id")
+        if cid and str(cid) != _NIL:
+            return str(cid)
+    if rows and rows[0].get("company_id"):
+        return str(rows[0]["company_id"])
+    raise RuntimeError("Ingen Dropbox-kobling i company_dropbox_connections")
+
+
+def _fetch_events(
+    client: httpx.Client, base: str, headers: dict, event_company: str
+) -> list[dict]:
+    """All sorting_clip rows for event company (paginated)."""
+    out: list[dict] = []
+    offset = 0
+    while True:
+        res = client.get(
+            f"{base}/rest/v1/vision_events"
+            f"?event_type=eq.sorting_clip"
+            f"&company_id=eq.{event_company}"
+            f"&order=created_at.desc"
+            f"&select=id,dropbox_path,dropbox_image_url,metadata,created_at"
+            f"&limit={_PAGE}&offset={offset}",
+            headers=headers,
+        )
+        if res.status_code >= 400:
+            raise RuntimeError(f"Hente events feilet: {res.status_code} {res.text[:200]}")
+        batch = res.json()
+        if not isinstance(batch, list) or not batch:
+            break
+        out.extend(batch)
+        if len(batch) < _PAGE:
+            break
+        offset += _PAGE
+    return out
+
+
 def main() -> int:
     supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "").strip()
-    company_id = os.environ.get("COMPANY_ID", "").strip()
-    if not supabase_url or not key or not company_id:
-        logger.error("Mangler SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / COMPANY_ID i .env")
+    event_company = os.environ.get("COMPANY_ID", "").strip() or _NIL
+    if not supabase_url or not key:
+        logger.error("Mangler SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY i .env")
         return 1
 
     headers = {
@@ -72,23 +121,23 @@ def main() -> int:
 
     uploader = SupabaseDropboxUpload(supabase_url, key)
 
-    with httpx.Client(timeout=120.0) as client:
-        res = client.get(
-            f"{supabase_url}/rest/v1/vision_events"
-            f"?event_type=eq.sorting_clip&order=created_at.desc&limit=30"
-            f"&select=id,dropbox_path,dropbox_image_url,metadata,created_at",
-            headers=headers,
+    with httpx.Client(timeout=180.0) as client:
+        dropbox_company = _fetch_dropbox_company(client, supabase_url, headers)
+        logger.info(
+            "event_company=%s dropbox_company=%s",
+            event_company,
+            dropbox_company,
         )
-        if res.status_code >= 400:
-            logger.error("Kunne ikke hente events: %s %s", res.status_code, res.text[:200])
-            return 1
-        events = res.json()
+        events = _fetch_events(client, supabase_url, headers, event_company)
 
     if not events:
-        logger.info("Ingen sorting_clip events.")
+        logger.info("Ingen sorting_clip events for company %s", event_company)
         return 0
 
+    logger.info("Fant %d sorting_clip — sjekker hvilke som trenger H.264", len(events))
+
     ok = 0
+    skip = 0
     fail = 0
     for ev in events:
         eid = ev["id"]
@@ -98,19 +147,20 @@ def main() -> int:
         path = meta.get("dropbox_video_path") or ev.get("dropbox_path") or ""
         if not path or not str(path).lower().endswith(".mp4"):
             logger.info("Hopper over %s (ingen mp4-sti)", eid[:8])
+            skip += 1
             continue
-        if meta.get("codec") == "h264":
-            logger.info("Allerede h264: %s", eid[:8])
+        if meta.get("codec") == "h264" and meta.get("repaired"):
+            skip += 1
             continue
 
         logger.info("Reparerer %s … %s", eid[:8], path)
         try:
-            with httpx.Client(timeout=180.0) as client:
+            with httpx.Client(timeout=300.0) as client:
                 auth_res = client.post(
                     f"{supabase_url}/functions/v1/vision-camera?action=dropbox_auth",
                     headers=headers,
                     json={
-                        "company_id": company_id,
+                        "company_id": dropbox_company,
                         "file_name": Path(str(path)).name,
                         "category": "vision_sorting_clip",
                     },
@@ -146,7 +196,7 @@ def main() -> int:
 
             upload = uploader.upload_file(
                 data=new_bytes,
-                company_id=company_id,
+                company_id=dropbox_company,
                 file_name=f"repaired_{Path(str(path)).name}",
                 category="vision_sorting_clip",
             )
@@ -190,7 +240,7 @@ def main() -> int:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Lokal feilet %s: %s", mp4.name, exc)
 
-    logger.info("Ferdig. reparert=%d feilet=%d", ok, fail)
+    logger.info("Ferdig. reparert=%d hoppet=%d feilet=%d", ok, skip, fail)
     return 0 if fail == 0 else 2
 
 

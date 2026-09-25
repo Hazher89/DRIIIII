@@ -36,11 +36,9 @@ def write_clip_mp4(
     width = _even(frames[0].width)
     height = _even(frames[0].height)
 
-    try:
-        return _write_h264_ffmpeg(frames, out_path, fps=fps, width=width, height=height)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("H.264 ffmpeg write failed (%s) — trying OpenCV fallback", exc)
-        return _write_opencv_fallback(frames, out_path, fps=fps, width=width, height=height)
+    # Never fall back to OpenCV mp4v — Chrome/Flutter web cannot play it
+    # (MEDIA_ERR_SRC_NOT_SUPPORTED). Fail loud so the worker log shows the issue.
+    return _write_h264_ffmpeg(frames, out_path, fps=fps, width=width, height=height)
 
 
 def _ffmpeg_exe() -> str:
@@ -48,8 +46,14 @@ def _ffmpeg_exe() -> str:
         import imageio_ffmpeg
 
         return imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("imageio-ffmpeg mangler — pip install imageio-ffmpeg") from exc
+    except Exception:
+        pass
+    import shutil
+
+    which = shutil.which("ffmpeg")
+    if which:
+        return which
+    raise RuntimeError("imageio-ffmpeg mangler — pip install imageio-ffmpeg")
 
 
 def _write_h264_ffmpeg(
