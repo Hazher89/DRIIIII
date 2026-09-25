@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -296,11 +297,16 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
   void _seekBy(Duration delta) {
     final c = _player;
     if (c == null || !c.value.isInitialized) return;
-    final next = c.value.position + delta;
+    _seekTo(c.value.position + delta);
+  }
+
+  void _seekTo(Duration position) {
+    final c = _player;
+    if (c == null || !c.value.isInitialized) return;
     final dur = c.value.duration;
-    final clamped = next < Duration.zero
+    final clamped = position < Duration.zero
         ? Duration.zero
-        : (next > dur ? dur : next);
+        : (position > dur ? dur : position);
     c.seekTo(clamped);
   }
 
@@ -584,6 +590,7 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         onRefresh: _load,
         onTogglePlay: _togglePlay,
         onSeek: _seekBy,
+        onSeekTo: _seekTo,
         onBot: _openBot,
         onMarkCorrect: () => _markFeedbackSelected('correct'),
         onMarkWrong: () => _markFeedbackSelected('wrong'),
@@ -701,6 +708,7 @@ class _WatchLayout extends StatelessWidget {
     required this.onRefresh,
     required this.onTogglePlay,
     required this.onSeek,
+    required this.onSeekTo,
     required this.onBot,
     required this.onMarkCorrect,
     required this.onMarkWrong,
@@ -718,6 +726,7 @@ class _WatchLayout extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<Duration> onSeekTo;
   final VoidCallback onBot;
   final VoidCallback onMarkCorrect;
   final VoidCallback onMarkWrong;
@@ -737,6 +746,7 @@ class _WatchLayout extends StatelessWidget {
       busy: busy,
       onTogglePlay: onTogglePlay,
       onSeek: onSeek,
+      onSeekTo: onSeekTo,
       onBot: onBot,
       onMarkCorrect: onMarkCorrect,
       onMarkWrong: onMarkWrong,
@@ -751,8 +761,13 @@ class _WatchLayout extends StatelessWidget {
     );
 
     if (wide) {
+      // YouTube-stil: hovedkolonne scroller under video; «Neste klipp» scroller
+      // kun når musa er over sidepanelet.
       return LayoutBuilder(
         builder: (context, constraints) {
+          final sideH = constraints.maxHeight > 80
+              ? constraints.maxHeight - 44
+              : 480.0;
           return Padding(
             padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
             child: Row(
@@ -762,15 +777,14 @@ class _WatchLayout extends StatelessWidget {
                   flex: 7,
                   child: SingleChildScrollView(
                     primary: false,
+                    physics: const ClampingScrollPhysics(),
                     child: playerPane,
                   ),
                 ),
                 const SizedBox(width: 36),
                 SizedBox(
                   width: 360,
-                  height: constraints.maxHeight > 80
-                      ? constraints.maxHeight
-                      : null,
+                  height: sideH,
                   child: side,
                 ),
               ],
@@ -818,6 +832,7 @@ class _MainPlayerPane extends StatelessWidget {
     required this.busy,
     required this.onTogglePlay,
     required this.onSeek,
+    required this.onSeekTo,
     required this.onBot,
     required this.onMarkCorrect,
     required this.onMarkWrong,
@@ -832,11 +847,25 @@ class _MainPlayerPane extends StatelessWidget {
   final bool busy;
   final VoidCallback onTogglePlay;
   final ValueChanged<Duration> onSeek;
+  final ValueChanged<Duration> onSeekTo;
   final VoidCallback onBot;
   final VoidCallback onMarkCorrect;
   final VoidCallback onMarkWrong;
   final VoidCallback onArchive;
   final VoidCallback onClose;
+
+  void _forwardWheelToPage(BuildContext context, PointerScrollEvent event) {
+    // HTML <video> stjeler hjul-scroll (volum) på web — send videre til side-scroll.
+    final scrollable = Scrollable.maybeOf(context);
+    if (scrollable == null) return;
+    final position = scrollable.position;
+    if (!position.hasPixels || !position.hasContentDimensions) return;
+    final next = (position.pixels + event.scrollDelta.dy)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if (next != position.pixels) {
+      position.jumpTo(next);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -885,6 +914,23 @@ class _MainPlayerPane extends StatelessWidget {
                         child: VideoPlayer(c),
                       ),
                     ),
+                  // Fanger musehjul over video → scroller hovedkolonnen (YouTube).
+                  if (ready && error == null)
+                    Positioned.fill(
+                      child: Builder(
+                        builder: (scrollCtx) {
+                          return Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerSignal: (signal) {
+                              if (signal is PointerScrollEvent) {
+                                _forwardWheelToPage(scrollCtx, signal);
+                              }
+                            },
+                            child: const ColoredBox(color: Color(0x01000000)),
+                          );
+                        },
+                      ),
+                    ),
                   Positioned(
                     left: 8,
                     top: 8,
@@ -927,16 +973,31 @@ class _MainPlayerPane extends StatelessWidget {
               Expanded(
                 child: Column(
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 4,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 7,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 14,
+                        ),
+                        activeTrackColor: DriftProTheme.primaryGreen,
+                        inactiveTrackColor: Colors.grey.shade300,
+                        thumbColor: DriftProTheme.primaryGreen,
+                        overlayColor:
+                            DriftProTheme.primaryGreen.withValues(alpha: 0.2),
+                      ),
+                      child: Slider(
                         value: progress.clamp(0.0, 1.0),
-                        minHeight: 5,
-                        backgroundColor: Colors.grey.shade300,
-                        color: DriftProTheme.primaryGreen,
+                        onChanged: (v) {
+                          final dur = c.value.duration;
+                          if (dur.inMilliseconds <= 0) return;
+                          final ms = (dur.inMilliseconds * v).round();
+                          onSeekTo(Duration(milliseconds: ms));
+                        },
                       ),
                     ),
-                    const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -1095,6 +1156,7 @@ class _SidebarList extends StatelessWidget {
                     ],
                   )
                 : ListView.separated(
+                    primary: false,
                     itemCount: events.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 18),
                     itemBuilder: (context, i) {
