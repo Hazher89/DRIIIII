@@ -229,10 +229,11 @@ class SortingDetector:
         self._extra_bulky_hints = note_bulky_hints
 
         # Global: flere «riktig» → hev terskel (færre falske alarmer).
+        # Aldri hard-suppress — det blokkerte alle nye videoer etter mange «ikke avvik».
         delta = 0.0
         if wrong + correct >= 3:
-            delta = (correct - wrong) * 0.01
-            delta = max(-0.10, min(0.12, delta))
+            delta = (correct - wrong) * 0.008
+            delta = max(-0.08, min(0.08, delta))
         if abs(delta - self._feedback_delta) >= 0.005:
             logger.info(
                 "Learn feedback global: correct=%d wrong=%d → conf_delta=%+.3f "
@@ -245,7 +246,6 @@ class SortingDetector:
             )
         self._feedback_delta = delta
 
-        now = time.monotonic()
         new_map: dict[str, _ReasonFeedback] = {}
         for reason, labs in by_reason.items():
             if reason == "_any":
@@ -254,22 +254,20 @@ class SortingDetector:
             w = sum(1 for x in labs if x == "wrong")
             if c + w < 1:
                 continue
-            r_delta = (c - w) * 0.02
-            r_delta = max(-0.15, min(0.18, r_delta))
-            suppress_until = 0.0
-            if c >= 3 and c > w * 2:
-                suppress_until = now + 900.0
+            # Soft raise only — max +0.10 så tydelige treff fortsatt lagres.
+            r_delta = (c - w) * 0.012
+            r_delta = max(-0.10, min(0.10, r_delta))
             new_map[reason] = _ReasonFeedback(
                 conf_delta=r_delta,
-                suppress_until=suppress_until,
+                suppress_until=0.0,  # hard suppress disabled
             )
             logger.info(
-                "Learn feedback reason=%s correct=%d wrong=%d → delta=%+.3f suppress=%s",
+                "Learn feedback reason=%s correct=%d wrong=%d → delta=%+.3f "
+                "(soft threshold only, no suppress)",
                 reason,
                 c,
                 w,
                 r_delta,
-                "yes" if suppress_until else "no",
             )
         self._reason_feedback = new_map
 
@@ -277,28 +275,26 @@ class SortingDetector:
         base = self._confidence_threshold + self._feedback_delta
         if reason and reason in self._reason_feedback:
             base += self._reason_feedback[reason].conf_delta
-        return max(0.12, min(0.60, base))
+        return max(0.12, min(0.55, base))
 
     def _reason_suppressed(self, reason: str) -> bool:
-        fb = self._reason_feedback.get(reason)
-        if fb is None:
-            return False
-        return time.monotonic() < fb.suppress_until
+        # Hard suppress fjernet — lærte «ikke avvik» hever kun terskel.
+        return False
 
     def _min_conf_for_reason(self, reason: str) -> float:
         floor = self._effective_confidence(reason)
         if reason == "unflattened_cardboard":
-            floor = max(floor, UNFLATTENED_MIN_CONF + self._feedback_delta)
+            floor = max(floor, UNFLATTENED_MIN_CONF + self._feedback_delta * 0.5)
             fb = self._reason_feedback.get(reason)
             if fb:
                 floor = max(floor, UNFLATTENED_MIN_CONF + fb.conf_delta)
-        # Eske i B (trapp) — mange falske alarmer; krev tydeligere treff.
+        # Eske i B — litt strengere, men ikke 0.60+ (det stoppet alle klipp).
         if reason == "cardboard_in_wrong_bin":
-            floor = max(floor, 0.42 + self._feedback_delta)
+            floor = max(floor, 0.38 + self._feedback_delta * 0.5)
             fb = self._reason_feedback.get(reason)
             if fb:
-                floor = max(floor, 0.42 + fb.conf_delta)
-        return max(0.12, min(0.65, floor))
+                floor = max(floor, 0.38 + fb.conf_delta)
+        return max(0.12, min(0.52, floor))
 
     def analyze_frame(self, frame: np.ndarray) -> tuple[int, list[SortingHit], list[dict]]:
         model = self._ensure_model()
@@ -377,10 +373,17 @@ class SortingDetector:
             if violation is None:
                 continue
 
-            if self._reason_suppressed(violation):
-                continue
-
-            if float(conf) < self._min_conf_for_reason(violation):
+            min_conf = self._min_conf_for_reason(violation)
+            if float(conf) < min_conf:
+                skip_key = f"skip:{zone.name}:{violation}"
+                if now - self._last_fire.get(skip_key, 0.0) > 30.0:
+                    self._last_fire[skip_key] = now
+                    logger.info(
+                        "Skip %s conf=%.2f < min=%.2f (learn soft threshold)",
+                        violation,
+                        float(conf),
+                        min_conf,
+                    )
                 continue
 
             key = f"{zone.name}:{violation}"

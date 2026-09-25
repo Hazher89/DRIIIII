@@ -27,6 +27,10 @@ class WasteSortingScreen extends StatefulWidget {
   State<WasteSortingScreen> createState() => _WasteSortingScreenState();
 }
 
+enum _WasteDateFilter { all, today, yesterday, pick }
+
+enum _WasteSort { newest, oldest }
+
 class _WasteSortingScreenState extends State<WasteSortingScreen>
     with SingleTickerProviderStateMixin {
   List<VisionEvent> _events = [];
@@ -42,10 +46,14 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
   bool _busy = false;
   DateTime? _playerTickAt;
 
+  _WasteDateFilter _dateFilter = _WasteDateFilter.all;
+  DateTime? _pickedDate;
+  _WasteSort _sort = _WasteSort.newest;
+
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 4, vsync: this);
     _tabs.addListener(() {
       if (_tabs.indexIsChanging) return;
       // Bytt fane → lukk spiller hvis valgt klipp ikke finnes i fanen.
@@ -75,9 +83,12 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
     }
     try {
       final profile = await SupabaseService.fetchCurrentUserProfile();
+      final range = _fetchDateRange;
       final events = await VisionCameraService.instance.fetchSortingEvents(
-        limit: 120,
+        limit: 400,
         includeArchived: true,
+        occurredFrom: range.$1,
+        occurredTo: range.$2,
       );
       final cameras = await VisionCameraService.instance.fetchCameras();
       if (!mounted) return;
@@ -113,6 +124,63 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
     }
   }
 
+  /// Server-side dato-vindu (litt ekstra buffer) — null = ingen begrensning.
+  (DateTime?, DateTime?) get _fetchDateRange {
+    final now = DateTime.now();
+    switch (_dateFilter) {
+      case _WasteDateFilter.all:
+        return (null, null);
+      case _WasteDateFilter.today:
+        final start = DateTime(now.year, now.month, now.day);
+        return (start, start.add(const Duration(days: 1)));
+      case _WasteDateFilter.yesterday:
+        final y = now.subtract(const Duration(days: 1));
+        final start = DateTime(y.year, y.month, y.day);
+        return (start, start.add(const Duration(days: 1)));
+      case _WasteDateFilter.pick:
+        final d = _pickedDate;
+        if (d == null) return (null, null);
+        final start = DateTime(d.year, d.month, d.day);
+        return (start, start.add(const Duration(days: 1)));
+    }
+  }
+
+  bool _matchesDate(VisionEvent e) {
+    final local = e.occurredAt.toLocal();
+    final day = DateTime(local.year, local.month, local.day);
+    final now = DateTime.now();
+    switch (_dateFilter) {
+      case _WasteDateFilter.all:
+        return true;
+      case _WasteDateFilter.today:
+        return day == DateTime(now.year, now.month, now.day);
+      case _WasteDateFilter.yesterday:
+        final y = now.subtract(const Duration(days: 1));
+        return day == DateTime(y.year, y.month, y.day);
+      case _WasteDateFilter.pick:
+        final d = _pickedDate;
+        if (d == null) return true;
+        return day == DateTime(d.year, d.month, d.day);
+    }
+  }
+
+  List<VisionEvent> _applySort(List<VisionEvent> list) {
+    final out = List<VisionEvent>.of(list);
+    out.sort((a, b) => _sort == _WasteSort.newest
+        ? b.occurredAt.compareTo(a.occurredAt)
+        : a.occurredAt.compareTo(b.occurredAt));
+    return out;
+  }
+
+  List<VisionEvent> get _datedEvents =>
+      _applySort(_events.where(_matchesDate).toList());
+
+  List<VisionEvent> get _activeEvents =>
+      _datedEvents.where((e) => !e.isArchived).toList();
+
+  List<VisionEvent> get _archivedEvents =>
+      _datedEvents.where((e) => e.isArchived).toList();
+
   bool get _canAdmin {
     final access = UserAccess.of(_profile);
     return access?.canUniformMonitorAdmin == true ||
@@ -120,13 +188,13 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
   }
 
   List<VisionEvent> get _reviewEvents =>
-      _events.where((e) => e.needsHumanReview).toList();
+      _activeEvents.where((e) => e.needsHumanReview).toList();
 
   List<VisionEvent> get _wrongEvents =>
-      _events.where((e) => e.humanLabel == 'wrong').toList();
+      _activeEvents.where((e) => e.humanLabel == 'wrong').toList();
 
   List<VisionEvent> get _correctEvents =>
-      _events.where((e) => e.humanLabel == 'correct').toList();
+      _activeEvents.where((e) => e.humanLabel == 'correct').toList();
 
   List<VisionEvent> get _tabPlaylist {
     switch (_tabs.index) {
@@ -134,9 +202,58 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         return _wrongEvents;
       case 2:
         return _correctEvents;
+      case 3:
+        return _archivedEvents;
       default:
         return _reviewEvents;
     }
+  }
+
+  String? get _staleWorkerHint {
+    if (_events.isEmpty) {
+      return 'Ingen videoklipp i databasen. Sjekk at jobb-PC kjører '
+          'START_WINDOWS.bat med LOCAL_DEV=false.';
+    }
+    final newest = _events
+        .map((e) => e.occurredAt)
+        .reduce((a, b) => a.isAfter(b) ? a : b);
+    final age = DateTime.now().difference(newest.toLocal());
+    if (age.inHours < 6) return null;
+    final when = DateFormat('dd.MM HH:mm').format(newest.toLocal());
+    return 'Siste klipp: $when (${age.inHours}t siden). '
+        'Jobb-PC workeren laster sannsynligvis ikke opp — '
+        'start START_WINDOWS.bat på nytt.';
+  }
+
+  Future<void> _pickCustomDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _pickedDate ?? now,
+      firstDate: now.subtract(const Duration(days: 365)),
+      lastDate: now,
+      helpText: 'Velg dato for videoer',
+      cancelText: 'Avbryt',
+      confirmText: 'Velg',
+    );
+    if (picked == null) return;
+    setState(() {
+      _dateFilter = _WasteDateFilter.pick;
+      _pickedDate = picked;
+    });
+    await _load();
+  }
+
+  Future<void> _setDateFilter(_WasteDateFilter filter) async {
+    if (filter == _WasteDateFilter.pick) {
+      await _pickCustomDate();
+      return;
+    }
+    setState(() {
+      _dateFilter = filter;
+      if (filter != _WasteDateFilter.pick) _pickedDate = null;
+    });
+    await _load();
   }
 
   Future<void> _disposePlayer() async {
@@ -369,7 +486,15 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         if (i >= 0) _events[i] = updated;
         _selected = updated;
         _busy = false;
-        if (archived) _tabs.animateTo(2);
+        if (archived) {
+          _tabs.animateTo(3);
+        } else if (updated.needsHumanReview) {
+          _tabs.animateTo(0);
+        } else if (updated.humanLabel == 'wrong') {
+          _tabs.animateTo(1);
+        } else {
+          _tabs.animateTo(2);
+        }
       });
     } catch (e) {
       if (mounted) {
@@ -499,6 +624,7 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
       );
     }
 
+    final staleHint = _staleWorkerHint;
     final body = _loading
         ? const DriftProLoadingCenter()
         : NestedScrollView(
@@ -510,11 +636,23 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
                     child: Column(
                       children: [
                         _IntroBar(cameras: _cameras, canAdmin: _canAdmin),
+                        if (staleHint != null) ...[
+                          const SizedBox(height: 8),
+                          _StaleWorkerBanner(message: staleHint),
+                        ],
                         const SizedBox(height: 8),
                         WasteLearnPanel(
                           cameras: _cameras,
                           canAdmin: _canAdmin,
                           onChanged: () => _load(silent: true),
+                        ),
+                        const SizedBox(height: 10),
+                        _WasteFilterBar(
+                          dateFilter: _dateFilter,
+                          pickedDate: _pickedDate,
+                          sort: _sort,
+                          onDateFilter: _setDateFilter,
+                          onSort: (s) => setState(() => _sort = s),
                         ),
                       ],
                     ),
@@ -525,6 +663,8 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
                   delegate: _WasteTabBarDelegate(
                     TabBar(
                       controller: _tabs,
+                      isScrollable: true,
+                      tabAlignment: TabAlignment.start,
                       labelColor: DriftProTheme.primaryGreen,
                       tabs: [
                         Tab(
@@ -534,6 +674,7 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
                         Tab(
                             text:
                                 'Ikke avvik (${_correctEvents.length})'),
+                        Tab(text: 'Arkiv (${_archivedEvents.length})'),
                       ],
                     ),
                   ),
@@ -556,6 +697,10 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
                   _correctEvents,
                   'Ingen merket som «ikke avvik» ennå.',
                 ),
+                _buildTabBody(
+                  _archivedEvents,
+                  'Ingen arkiverte videoer for valgt dato.',
+                ),
               ],
             ),
           );
@@ -569,6 +714,27 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
             onPressed: _clearSelection,
             icon: const Icon(Icons.grid_view_rounded),
           ),
+        PopupMenuButton<_WasteSort>(
+          tooltip: 'Sorter',
+          initialValue: _sort,
+          onSelected: (s) => setState(() => _sort = s),
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+              value: _WasteSort.newest,
+              child: Text('Nyeste først'),
+            ),
+            PopupMenuItem(
+              value: _WasteSort.oldest,
+              child: Text('Eldste først'),
+            ),
+          ],
+          icon: const Icon(Icons.sort),
+        ),
+        IconButton(
+          tooltip: 'Velg dato',
+          onPressed: _pickCustomDate,
+          icon: const Icon(Icons.calendar_today_outlined),
+        ),
         if (_canAdmin)
           IconButton(
             tooltip: 'Kameraer',
@@ -646,6 +812,163 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
       events: events,
       onOpen: _selectVideo,
       onRefresh: _load,
+    );
+  }
+}
+
+class _StaleWorkerBanner extends StatelessWidget {
+  const _StaleWorkerBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFFFF4E5),
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.warning_amber_rounded,
+                color: Colors.orange.shade800, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  color: Colors.orange.shade900,
+                  fontSize: 13,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WasteFilterBar extends StatelessWidget {
+  const _WasteFilterBar({
+    required this.dateFilter,
+    required this.pickedDate,
+    required this.sort,
+    required this.onDateFilter,
+    required this.onSort,
+  });
+
+  final _WasteDateFilter dateFilter;
+  final DateTime? pickedDate;
+  final _WasteSort sort;
+  final Future<void> Function(_WasteDateFilter) onDateFilter;
+  final ValueChanged<_WasteSort> onSort;
+
+  @override
+  Widget build(BuildContext context) {
+    final pickLabel = pickedDate == null
+        ? 'Velg dato'
+        : DateFormat('dd.MM.yyyy').format(pickedDate!);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _DateChip(
+                label: 'Alle',
+                selected: dateFilter == _WasteDateFilter.all,
+                onTap: () => onDateFilter(_WasteDateFilter.all),
+              ),
+              const SizedBox(width: 6),
+              _DateChip(
+                label: 'I dag',
+                selected: dateFilter == _WasteDateFilter.today,
+                onTap: () => onDateFilter(_WasteDateFilter.today),
+              ),
+              const SizedBox(width: 6),
+              _DateChip(
+                label: 'I går',
+                selected: dateFilter == _WasteDateFilter.yesterday,
+                onTap: () => onDateFilter(_WasteDateFilter.yesterday),
+              ),
+              const SizedBox(width: 6),
+              _DateChip(
+                label: pickLabel,
+                selected: dateFilter == _WasteDateFilter.pick,
+                icon: Icons.calendar_month_outlined,
+                onTap: () => onDateFilter(_WasteDateFilter.pick),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SegmentedButton<_WasteSort>(
+            segments: const [
+              ButtonSegment(
+                value: _WasteSort.newest,
+                label: Text('Nyeste'),
+                icon: Icon(Icons.arrow_downward, size: 16),
+              ),
+              ButtonSegment(
+                value: _WasteSort.oldest,
+                label: Text('Eldste'),
+                icon: Icon(Icons.arrow_upward, size: 16),
+              ),
+            ],
+            selected: {sort},
+            onSelectionChanged: (s) => onSort(s.first),
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DateChip extends StatelessWidget {
+  const _DateChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.icon,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilterChip(
+      selected: selected,
+      showCheckmark: false,
+      avatar: icon == null
+          ? null
+          : Icon(icon, size: 16, color: selected ? Colors.white : null),
+      label: Text(label),
+      onSelected: (_) => onTap(),
+      selectedColor: DriftProTheme.primaryGreen,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : Colors.grey.shade800,
+        fontWeight: FontWeight.w600,
+        fontSize: 13,
+      ),
+      side: BorderSide(
+        color: selected
+            ? DriftProTheme.primaryGreen
+            : Colors.grey.shade300,
+      ),
     );
   }
 }

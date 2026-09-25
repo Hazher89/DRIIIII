@@ -231,18 +231,26 @@ class VisionCameraService {
     bool includeArchived = false,
     bool includeDismissed = false,
     String? companyIdOverride,
+    DateTime? occurredFrom,
+    DateTime? occurredTo,
   }) async {
     final cid = companyIdOverride ?? await _companyId();
     if (cid == null) return [];
 
-    var query = _client
+    var filter = _client
         .from('vision_events')
         .select()
-        .eq('company_id', cid)
-        .order('occurred_at', ascending: false)
-        .limit(limit);
-
-    final rows = await query as List<dynamic>;
+        .eq('company_id', cid);
+    if (occurredFrom != null) {
+      filter = filter.gte('occurred_at', occurredFrom.toUtc().toIso8601String());
+    }
+    if (occurredTo != null) {
+      filter = filter.lt('occurred_at', occurredTo.toUtc().toIso8601String());
+    }
+    final rows = await filter
+            .order('occurred_at', ascending: false)
+            .limit(limit)
+        as List<dynamic>;
 
     return rows
         .map((r) => VisionEvent.fromRow(Map<String, dynamic>.from(r as Map)))
@@ -265,6 +273,8 @@ class VisionCameraService {
   Future<List<VisionEvent>> fetchSortingEvents({
     int limit = 80,
     bool includeArchived = false,
+    DateTime? occurredFrom,
+    DateTime? occurredTo,
   }) async {
     if (kDebugMode) {
       final local = await fetchLocalViolations();
@@ -285,11 +295,15 @@ class VisionCameraService {
         limit: limit,
         includeArchived: includeArchived,
         companyIdOverride: cid,
+        occurredFrom: occurredFrom,
+        occurredTo: occurredTo,
       );
       final mavi = await fetchRecentEvents(
         limit: limit,
         includeArchived: includeArchived,
         companyIdOverride: maviCompanyId,
+        occurredFrom: occurredFrom,
+        occurredTo: occurredTo,
       );
       final byId = <String, VisionEvent>{};
       for (final e in [...mavi, ...primary]) {
@@ -303,6 +317,8 @@ class VisionCameraService {
     final events = await fetchRecentEvents(
       limit: limit,
       includeArchived: includeArchived,
+      occurredFrom: occurredFrom,
+      occurredTo: occurredTo,
     );
     return events.where((e) => e.eventType == 'sorting_clip').toList();
   }
