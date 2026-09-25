@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../config/supabase_config.dart';
 import '../../../models/vision_camera.dart';
+import '../../permissions/user_access.dart';
 import '../supabase_service.dart';
 
 class VisionScanStatus {
