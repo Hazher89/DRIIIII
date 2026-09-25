@@ -163,17 +163,10 @@ class VisionMonitorPipeline:
 
         # MAVI bruker company_id 00000000 i DB — det er IKKE en placeholder.
         # Dropbox er koblet på DriftPro Demo (d190e74c). Skill de to:
-        # - vision_events → kamera-company (så DriftPro RLS/UI finner dem)
+        # - vision_events → COMPANY_ID fra .env (så DriftPro RLS/UI finner dem)
         # - filer → Dropbox-company (så opplasting fungerer)
-        cam_id = self._settings.vision_camera_db_id
-        if self._repo and cam_id:
-            try:
-                resolved = await self._repo.fetch_camera_company_id(cam_id)
-                if resolved:
-                    self._event_company_id = resolved
-                    logger.info("Event company_id from camera: %s", resolved)
-            except Exception as exc:
-                logger.warning("Could not resolve camera company_id: %s", exc)
+        # Ikke overstyr event-company fra kamera — UI-lagring under Demo har
+        # tidligere flyttet kamera.company_id og skjult alle klipp for MAVI.
         if self._repo:
             try:
                 dropbox_co = await self._repo.fetch_dropbox_company_id()
@@ -182,9 +175,23 @@ class VisionMonitorPipeline:
                     logger.info("Dropbox company_id: %s", dropbox_co)
             except Exception as exc:
                 logger.warning("Dropbox company lookup failed: %s", exc)
+        if not self._event_company_id:
+            cam_id = self._settings.vision_camera_db_id
+            if self._repo and cam_id:
+                try:
+                    resolved = await self._repo.fetch_camera_company_id(cam_id)
+                    if resolved:
+                        self._event_company_id = resolved
+                        logger.info("Event company_id from camera (fallback): %s", resolved)
+                except Exception as exc:
+                    logger.warning("Could not resolve camera company_id: %s", exc)
         if not self._dropbox_company_id:
             self._dropbox_company_id = self._event_company_id
         self._upload_company_id = self._event_company_id
+        logger.info(
+            "Event company_id from .env COMPANY_ID: %s",
+            self._event_company_id,
+        )
 
         logger.info(
             "Vision monitor started | camera=%s mode=%s event=%s local_dev=%s "

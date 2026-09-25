@@ -42,28 +42,24 @@ if ([string]::IsNullOrWhiteSpace($key)) {
 $supabaseUrl = "https://ksnnyccthotjbrmgjgdc.supabase.co"
 $cameraId = "5f823a5a-6466-42bc-b52f-b56aa5136302"
 
-# Sett COMPANY_ID fra kamera (inkl. MAVI 00000000 — det er ekte selskap i DB).
-# Dropbox-OAuth kan ligge på et annet selskap; edge resolveDropboxCompanyId fikser det.
+# MAVI company_id er 00000000 (ekte selskap). Dropbox-OAuth kan ligge pa Demo;
+# edge resolveDropboxCompanyId / pipeline dropbox_company fikser opplasting.
+# TVING kamera + COMPANY_ID til MAVI — ellers skjules klipp i DriftPro.
 $nil = "00000000-0000-0000-0000-000000000000"
 $companyId = $nil
 try {
   $headers = @{
     "apikey" = $key.Trim()
     "Authorization" = "Bearer $($key.Trim())"
+    "Content-Type" = "application/json"
+    "Prefer" = "return=minimal"
   }
-  $camUrl = "$supabaseUrl/rest/v1/vision_cameras?id=eq.$cameraId&select=company_id"
-  $cam = Invoke-RestMethod -Uri $camUrl -Headers $headers -Method Get
-  if ($cam -and $cam[0].company_id) {
-    $companyId = [string]$cam[0].company_id
-    Write-Host "Fant COMPANY_ID fra kamera: $companyId" -ForegroundColor Green
-  }
-  if ([string]::IsNullOrWhiteSpace($companyId)) {
-    Write-Host "ADVARSEL: Kamera mangler company_id" -ForegroundColor Yellow
-    $companyId = $nil
-  }
-  # Ikke overskriv kamera til Dropbox-selskap — det skjulte videoer i DriftPro.
+  $camUrl = "$supabaseUrl/rest/v1/vision_cameras?id=eq.$cameraId"
+  $body = "{`"company_id`":`"$nil`"}"
+  Invoke-RestMethod -Uri $camUrl -Headers $headers -Method Patch -Body $body | Out-Null
+  Write-Host "Kamera company_id satt til MAVI: $nil" -ForegroundColor Green
 } catch {
-  Write-Host "ADVARSEL: Kunne ikke hente company_id: $_" -ForegroundColor Yellow
+  Write-Host "ADVARSEL: Kunne ikke oppdatere kamera company_id: $_" -ForegroundColor Yellow
 }
 
 function Set-EnvLine([string]$content, [string]$name, [string]$value) {

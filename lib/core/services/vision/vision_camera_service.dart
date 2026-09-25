@@ -188,7 +188,6 @@ class VisionCameraService {
     if (cid == null) throw StateError('Ingen bedrift');
 
     final payload = {
-      'company_id': cid,
       'name': name.trim(),
       'host': host.trim(),
       'http_port': httpPort,
@@ -202,6 +201,8 @@ class VisionCameraService {
     };
 
     if (id != null) {
+      // Behold eksisterende company_id — lagring under Demo har tidligere
+      // flyttet MAVI-kamera og skjult sorting-klipp i DriftPro.
       await _client.from('vision_cameras').update(payload).eq('id', id);
       final list = await fetchCameras();
       return list.firstWhere((c) => c.id == id);
@@ -209,7 +210,10 @@ class VisionCameraService {
 
     final row = await _client
         .from('vision_cameras')
-        .insert(payload)
+        .insert({
+          ...payload,
+          'company_id': cid,
+        })
         .select('id')
         .single();
     final newId = row['id'] as String;
