@@ -985,8 +985,8 @@ class _IntroBar extends StatelessWidget {
       children: [
         Expanded(
           child: Text(
-            'Kun mistenkt feilkasting · B/trapp midlertidig OK · '
-                'A=brettet papp · dømmer når sjåfør er ferdig',
+            'Auto: kun isopor/søppel i A · brettet papp ser 3D ut (OK) · '
+                'B midlertidig OK',
             style: DriftProTheme.headingSm.copyWith(fontSize: 15),
           ),
         ),

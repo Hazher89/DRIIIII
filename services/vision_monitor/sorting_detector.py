@@ -2,16 +2,16 @@
 
 MAVI workflow (normal — NOT a violation):
   1) Driver dumps everything into B (stairs / annet) first.
-  2) Moves cardboard to A (wall / papp), preferably flattened.
-  Temporary cardboard seen in B while the person is still working = OK.
+  2) Moves flattened cardboard to A (wall / papp).
+  Temporary cardboard in B while working = OK.
+  Angled/stacked flat sheets in A look 3D from this camera — NOT a violation.
 
-Judge only when the throw is finished (person left / empty-handed end state).
+This camera angle cannot reliably see «brettet vs ubrettet».
+Auto-save only clear faults:
+  - Styrofoam / trash bags / mixed waste inside A (papp)
+  - (Optional, rare) sealed full box with contents in A at very high conf
 
-Real deviations:
-  - Unflattened / full-form cardboard left in A (wall)
-  - Non-papp (styrofoam, bags, other) thrown into A
-  - Box with contents (not emptied) left in A
-  - Cardboard still clearly sitting in B AFTER the person has left
+Cardboard shape / «left in B» is NOT auto-flagged (too many false positives).
 """
 
 from __future__ import annotations
@@ -27,23 +27,19 @@ from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
 
-# Prompts: skill flat sheet vs standing 3D box vs full box / foreign material.
+# Viktig: IKKE ha «tall/standing/unflattened box»-klasser.
+# Ovenfra matcher YOLO dem mot vanlig brettet papp → masse falske avvik.
 DEFAULT_CLASSES = [
-    "flat collapsed cardboard sheet",
-    "flattened cardboard lying flat",
-    "standing unopened cardboard box",
-    "tall cardboard box not flattened",
-    "brown cardboard carton",
-    "corrugated shipping box standing upright",
-    "bulky cardboard packaging not flattened",
-    "open cardboard box filled with items",
-    "cardboard box with contents inside",
-    "white styrofoam packaging",
-    "expanded polystyrene foam block",
-    "foam packing material",
+    "flat brown cardboard sheet",
+    "flattened cardboard in dumpster",
+    "pile of flat cardboard",
+    "white styrofoam block",
+    "expanded polystyrene foam packing",
+    "foam packaging material",
     "black garbage bag",
     "plastic trash bag",
-    "mixed waste garbage",
+    "mixed waste garbage pile",
+    "sealed cardboard box full of items",
 ]
 
 STYROFOAM_HINTS = (
@@ -59,6 +55,7 @@ BAG_TRASH_HINTS = (
     "trash bag",
     "plastic bag",
     "mixed waste",
+    "garbage pile",
     "garbage",
 )
 
@@ -66,52 +63,24 @@ CARDBOARD_HINTS = (
     "cardboard",
     "carton",
     "corrugated",
-    "shipping box",
-    "packaging",
 )
 
 CONTENTS_HINTS = (
+    "full of items",
+    "sealed cardboard box full",
     "contents",
-    "filled",
-    "items inside",
-    "with items",
-    "full of",
 )
 
-# Sterke 3D-signaler i label (brukes kun sammen med geometri).
-BULKY_HINTS = (
-    "standing",
-    "upright",
-    "unopened",
-    "not flattened",
-    "tall",
-    "bulky",
-    "appliance",
-    "washing",
-    "refrigerator",
-)
-
-FLAT_HINTS = (
-    "flat",
-    "collapsed",
-    "flattened",
-    "folded",
-    "sheet",
-    "lying flat",
-)
-
-# Minimum conf for unflattened — høy fordi ovenfra ser brettet papp ofte «3D».
-UNFLATTENED_MIN_CONF = 0.48
-
-# Reasons that are durable end-of-visit A-side faults (OK to flag mid-visit too,
-# but pipeline prefers end-state confirmation).
+# A-side faults we may auto-save (shape-based unflattened is OFF).
 A_SIDE_REASONS = frozenset(
     {
-        "unflattened_cardboard",
         "wrong_material_in_papp",
         "box_with_contents",
     }
 )
+
+WRONG_MATERIAL_MIN_CONF = 0.35
+BOX_CONTENTS_MIN_CONF = 0.72
 
 
 @dataclass(frozen=True)
@@ -150,23 +119,19 @@ class SortingHit:
     confidence: float
     bbox: tuple[int, int, int, int]
     label: str
-    reason: str  # unflattened_cardboard | cardboard_in_wrong_bin
+    reason: str
     zone: str
     annotated_frame: np.ndarray
 
 
 @dataclass
 class _ReasonFeedback:
-    """Per-årsak justering fra menneske-merking."""
-
     conf_delta: float = 0.0
-    suppress_until: float = 0.0  # monotonic; midlertidig demp etter mange «correct»
+    suppress_until: float = 0.0
 
 
 class SortingDetector:
-    """
-    Continuous scan; only fires on rule violations (not OK behaviour).
-    """
+    """Conservative detector — prefer miss over false alarm."""
 
     def __init__(
         self,
@@ -187,7 +152,7 @@ class SortingDetector:
         ]
         self._model: YOLO | None = None
         self._last_fire: dict[str, float] = {}
-        self._feedback_delta = 0.0  # global from human learn labels
+        self._feedback_delta = 0.0
         self._reason_feedback: dict[str, _ReasonFeedback] = {}
         self._extra_flat_hints: set[str] = set()
         self._extra_bulky_hints: set[str] = set()
@@ -204,15 +169,14 @@ class SortingDetector:
         if self._classes_dirty and hasattr(self._model, "set_classes"):
             self._model.set_classes(self._classes)
             self._classes_dirty = False
+            logger.info("YOLO classes (conservative): %s", self._classes)
         return self._model
 
     def apply_learn_feedback(self, labels: list[dict]) -> None:
-        """Juster terskel per årsak + lær nøkkelord fra menneske-kommentarer."""
+        """Soft threshold tweak from human labels — never hard-suppress."""
         wrong = 0
         correct = 0
         by_reason: dict[str, list[str]] = {}
-        note_flat_hints: set[str] = set()
-        note_bulky_hints: set[str] = set()
         for row in labels:
             lab = str(row.get("label") or "")
             if lab == "wrong":
@@ -223,63 +187,11 @@ class SortingDetector:
                 continue
             reason = str(row.get("reason") or "").strip() or "_any"
             by_reason.setdefault(reason, []).append(lab)
-            note = str(row.get("note") or "").lower()
-            if not note:
-                continue
-            # Kommentarer fra DriftPro → dynamiske hint (norsk + engelsk).
-            if lab == "correct":
-                for kw in (
-                    "brettet",
-                    "sammenbrettet",
-                    "flat",
-                    "riktig",
-                    "korrekt",
-                    "papp i a",
-                    "i papp",
-                    "ved veggen",
-                    "veggen",
-                    "container a",
-                    "i a",
-                    "flattened",
-                    "folded",
-                ):
-                    if kw in note:
-                        note_flat_hints.add(kw)
-            elif lab == "wrong":
-                for kw in (
-                    "ubrettet",
-                    "ikke brettet",
-                    "stående",
-                    "full eske",
-                    "feil container",
-                    "i b",
-                    "annet-container",
-                    "unflattened",
-                    "bulky",
-                ):
-                    if kw in note:
-                        note_bulky_hints.add(kw)
 
-        # Utvid hint-lister midlertidig (kopi — ikke muter modul-konstanter permanent).
-        self._extra_flat_hints = note_flat_hints
-        self._extra_bulky_hints = note_bulky_hints
-
-        # Global: flere «riktig» → hev terskel (færre falske alarmer).
-        # Aldri hard-suppress — det blokkerte alle nye videoer etter mange «ikke avvik».
         delta = 0.0
         if wrong + correct >= 3:
             delta = (correct - wrong) * 0.008
             delta = max(-0.08, min(0.08, delta))
-        if abs(delta - self._feedback_delta) >= 0.005:
-            logger.info(
-                "Learn feedback global: correct=%d wrong=%d → conf_delta=%+.3f "
-                "flat_hints=%s bulky_hints=%s",
-                correct,
-                wrong,
-                delta,
-                sorted(note_flat_hints)[:6],
-                sorted(note_bulky_hints)[:6],
-            )
         self._feedback_delta = delta
 
         new_map: dict[str, _ReasonFeedback] = {}
@@ -290,22 +202,16 @@ class SortingDetector:
             w = sum(1 for x in labs if x == "wrong")
             if c + w < 1:
                 continue
-            # Soft raise only — max +0.10 så tydelige treff fortsatt lagres.
             r_delta = (c - w) * 0.012
             r_delta = max(-0.10, min(0.10, r_delta))
-            new_map[reason] = _ReasonFeedback(
-                conf_delta=r_delta,
-                suppress_until=0.0,  # hard suppress disabled
-            )
-            logger.info(
-                "Learn feedback reason=%s correct=%d wrong=%d → delta=%+.3f "
-                "(soft threshold only, no suppress)",
-                reason,
-                c,
-                w,
-                r_delta,
-            )
+            new_map[reason] = _ReasonFeedback(conf_delta=r_delta, suppress_until=0.0)
         self._reason_feedback = new_map
+        if by_reason:
+            logger.info(
+                "Learn feedback applied (soft only) global=%+.3f reasons=%d",
+                delta,
+                len(new_map),
+            )
 
     def _effective_confidence(self, reason: str | None = None) -> float:
         base = self._confidence_threshold + self._feedback_delta
@@ -314,27 +220,18 @@ class SortingDetector:
         return max(0.12, min(0.55, base))
 
     def _reason_suppressed(self, reason: str) -> bool:
-        # Hard suppress fjernet — lærte «ikke avvik» hever kun terskel.
         return False
 
     def _min_conf_for_reason(self, reason: str) -> float:
         floor = self._effective_confidence(reason)
-        if reason == "unflattened_cardboard":
-            floor = max(floor, UNFLATTENED_MIN_CONF + self._feedback_delta * 0.5)
-            fb = self._reason_feedback.get(reason)
-            if fb:
-                floor = max(floor, UNFLATTENED_MIN_CONF + fb.conf_delta)
-        if reason == "box_with_contents":
-            floor = max(floor, 0.32)
         if reason == "wrong_material_in_papp":
-            floor = max(floor, 0.30)
-        # Cardboard left in B — only after visit; require clearer signal.
-        if reason == "cardboard_in_wrong_bin":
-            floor = max(floor, 0.40 + self._feedback_delta * 0.5)
-            fb = self._reason_feedback.get(reason)
-            if fb:
-                floor = max(floor, 0.40 + fb.conf_delta)
-        return max(0.12, min(0.52, floor))
+            floor = max(floor, WRONG_MATERIAL_MIN_CONF)
+        if reason == "box_with_contents":
+            floor = max(floor, BOX_CONTENTS_MIN_CONF)
+        fb = self._reason_feedback.get(reason)
+        if fb:
+            floor += fb.conf_delta
+        return max(0.12, min(0.80, floor))
 
     def analyze_frame(
         self,
@@ -342,16 +239,8 @@ class SortingDetector:
         *,
         end_of_visit: bool = False,
     ) -> tuple[int, list[SortingHit], list[dict]]:
-        """Scan frame for sorting violations.
-
-        During a live visit (end_of_visit=False): ignore cardboard temporarily
-        dumped in B (stairs) — that is normal workflow. Only A-side faults fire.
-
-        After the driver left (end_of_visit=True): also flag cardboard that
-        remains clearly in B, and re-check A for unflattened / wrong material.
-        """
+        """Scan for clear faults only. Cardboard shape is never auto-flagged."""
         model = self._ensure_model()
-        # Predict med basis-terskel; filtrér per årsak etterpå.
         results = model.predict(
             frame,
             conf=self._effective_confidence(),
@@ -377,16 +266,18 @@ class SortingDetector:
                     "id": f"scan-{int(now)}",
                     "status": "ok",
                     "text": (
-                        "Sluttvurdering…"
+                        "Sluttvurdering: ingen tydelig feil"
                         if end_of_visit
-                        else "Tar opp video · skanner A (papp) og B (annet)…"
+                        else "Skanner — papp i A / midlertidig i B = OK"
                     ),
                 }
             ]
 
         xyxy = boxes.xyxy.int().cpu().tolist()
         confs = boxes.conf.float().cpu().tolist()
-        clss = boxes.cls.int().cpu().tolist() if boxes.cls is not None else [0] * len(xyxy)
+        clss = (
+            boxes.cls.int().cpu().tolist() if boxes.cls is not None else [0] * len(xyxy)
+        )
 
         for i, (coords, conf, cls_id) in enumerate(zip(xyxy, confs, clss)):
             x1, y1, x2, y2 = coords
@@ -416,7 +307,7 @@ class SortingDetector:
 
             color = (80, 200, 120) if violation is None else (40, 80, 255)
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
-            tag = violation or ("ok-flat" if kind == "cardboard" else "ok")
+            tag = violation or ("ok" if kind == "cardboard" else kind)
             cv2.putText(
                 annotated,
                 f"{zone.name}:{tag} {conf:.2f}",
@@ -437,7 +328,7 @@ class SortingDetector:
                 if now - self._last_fire.get(skip_key, 0.0) > 30.0:
                     self._last_fire[skip_key] = now
                     logger.info(
-                        "Skip %s conf=%.2f < min=%.2f (learn soft threshold)",
+                        "Skip %s conf=%.2f < min=%.2f",
                         violation,
                         float(conf),
                         min_conf,
@@ -445,7 +336,6 @@ class SortingDetector:
                 continue
 
             key = f"{zone.name}:{violation}"
-            # End-of-visit: always allow (cooldown would hide final judgment).
             if not end_of_visit:
                 last = self._last_fire.get(key, 0.0)
                 if now - last < self._cooldown_seconds:
@@ -477,30 +367,14 @@ class SortingDetector:
                     "id": f"seen-{int(now)}",
                     "status": "ok",
                     "text": (
-                        "Sluttvurdering: ingen varig feil — OK"
+                        "Sluttvurdering OK — papp/brettet ser vi ikke som avvik"
                         if end_of_visit
-                        else f"Ser {objects} objekt(er) — OK / midlertidig tømming i B"
+                        else f"Ser {objects} objekt(er) — OK (kun feil materiale i A lagres)"
                     ),
                 }
             )
-        elif not objects:
-            feed.append(
-                {
-                    "id": f"scan-{int(now)}",
-                    "status": "ok",
-                    "text": "Tar opp video · skanner A (papp) og B (annet)…",
-                }
-            )
 
-        # Prefer A-side faults over leftover B cardboard when both fire.
-        if len(candidates) > 1:
-            candidates.sort(
-                key=lambda h: (
-                    0 if h.reason in A_SIDE_REASONS else 1,
-                    -h.confidence,
-                )
-            )
-
+        candidates.sort(key=lambda h: -h.confidence)
         return objects, candidates, feed
 
     def _material_kind(self, label: str) -> str:
@@ -517,66 +391,6 @@ class SortingDetector:
         low = label.lower()
         return any(h in low for h in CONTENTS_HINTS)
 
-    def _geometry_flatness(
-        self,
-        bbox: tuple[int, int, int, int],
-        frame_w: int,
-        frame_h: int,
-    ) -> tuple[float, float, float, bool]:
-        """Return (height_frac, aspect, area_frac, looks_flat_sheet).
-
-        Kameraet står skrått ovenfra — brettet papp i A ser ofte «tykk» ut.
-        Derfor er flat-terskelen romslig (heller OK enn falsk ubrettet).
-        """
-        x1, y1, x2, y2 = bbox
-        bw = max(1, x2 - x1)
-        bh = max(1, y2 - y1)
-        area_frac = (bw * bh) / max(1, frame_w * frame_h)
-        height_frac = bh / max(1, frame_h)
-        aspect = bh / max(1.0, float(bw))  # tall box > flat sheet
-        # Brettet papp i container: kan være bred/kvadratisk ovenfra.
-        looks_flat = height_frac < 0.22 and aspect < 0.85
-        if aspect < 0.55 and height_frac < 0.28:
-            looks_flat = True
-        # Stor flate i A (brettet stor eske) — treat as flat.
-        if area_frac >= 0.05 and aspect < 1.05 and height_frac < 0.32:
-            looks_flat = True
-        return height_frac, aspect, area_frac, looks_flat
-
-    def _looks_unflattened(
-        self,
-        label: str,
-        bbox: tuple[int, int, int, int],
-        frame_w: int,
-        frame_h: int,
-    ) -> bool:
-        """Kun tydelig stående/ubrettet eske — tvil = OK (brettet ser 3D ut ovenfra)."""
-        low = label.lower()
-        height_frac, aspect, area_frac, looks_flat = self._geometry_flatness(
-            bbox, frame_w, frame_h
-        )
-
-        flat_hints = FLAT_HINTS + tuple(self._extra_flat_hints)
-        bulky_hints = BULKY_HINTS + tuple(self._extra_bulky_hints)
-
-        # Generiske «brown cardboard carton» uten stående-hint → OK.
-        if any(h in low for h in flat_hints):
-            return False
-        if looks_flat:
-            return False
-
-        # Svake labels uten stående/tall/ubrettet-signal → ikke flagg.
-        bulky_label = any(h in low for h in bulky_hints)
-        if not bulky_label:
-            return False
-
-        # Krever både sterk label OG tydelig høy geometri (ikke bare skrå flate).
-        clearly_standing = height_frac >= 0.26 and aspect >= 0.85
-        very_tall = height_frac >= 0.32 and aspect >= 0.70
-        if clearly_standing or very_tall:
-            return True
-        return False
-
     def _violation_for(
         self,
         *,
@@ -588,58 +402,41 @@ class SortingDetector:
         frame_h: int,
         end_of_visit: bool = False,
     ) -> str | None:
-        # A = papp ved veggen.
+        """Return violation reason or None.
+
+        Cardboard in A or B is never a shape-based auto-fault from this camera.
+        """
+        _ = (bbox, frame_w, frame_h, end_of_visit)  # reserved / API stable
+
         if zone.is_papp_zone or (
             not zone.is_annet_zone and "1" in zone.name and "2" not in zone.name
         ):
-            if kind in ("styrofoam", "trash", "other"):
-                if kind == "other":
-                    return None  # unknown clutter — don't spam
+            if kind in ("styrofoam", "trash"):
                 return "wrong_material_in_papp"
             if kind == "cardboard":
+                # Kameraet kan ikke skille brettet vs ubrettet sikkert.
+                # Kun svært tydelig «full eske med innhold».
                 if self._looks_full_box(label):
                     return "box_with_contents"
-                if self._looks_unflattened(label, bbox, frame_w, frame_h):
-                    return "unflattened_cardboard"
-                return None  # brettet papp i A = OK
+                return None
             return None
 
-        # B = annet ved trappen.
-        # Midlertidig tømming av esker her mens sjåfør jobber = NORMALT.
-        # Kun når besøket er ferdig (end_of_visit) vurderer vi eske som ble IGJEN i B.
+        # B = annet: styrofoam OK, cardboard temporary OK, leftover not auto-flagged.
         if zone.is_annet_zone or "2" in zone.name:
-            if kind == "styrofoam":
-                return None
-            if kind == "cardboard":
-                if not end_of_visit:
-                    return None
-                x1, y1, x2, y2 = bbox
-                cx = ((x1 + x2) / 2.0) / max(1, frame_w)
-                if cx < 0.55:
-                    return None
-                # Must look like a real box left behind, not tiny debris.
-                height_frac, _aspect, area_frac, looks_flat = self._geometry_flatness(
-                    bbox, frame_w, frame_h
-                )
-                if looks_flat and area_frac < 0.04:
-                    return None
-                if area_frac < 0.02 and height_frac < 0.10:
-                    return None
-                return "cardboard_in_wrong_bin"
             return None
 
         return None
 
     @staticmethod
     def _human_reason(zone: str, reason: str) -> str:
-        if reason == "unflattened_cardboard":
-            return f"{zone}: ubrettet/stående eske i papp-container (skal brettes)"
         if reason == "box_with_contents":
-            return f"{zone}: eske med innhold i papp-container (skal tømmes først)"
-        if reason == "cardboard_in_wrong_bin":
-            return f"{zone}: eske ble igjen i annet-container etter besøk"
+            return f"{zone}: eske med innhold i papp-container"
         if reason == "wrong_material_in_papp":
             return f"{zone}: isopor/søppel i papp-container (kun papp)"
+        if reason == "unflattened_cardboard":
+            return f"{zone}: ubrettet eske (manuell vurdering)"
+        if reason == "cardboard_in_wrong_bin":
+            return f"{zone}: eske i annet (manuell vurdering)"
         return f"{zone}: {reason}"
 
     def _zone_obj_for(self, cx: float, cy: float, w: int, h: int) -> CompactorZone | None:
@@ -656,9 +453,7 @@ class SortingDetector:
             y2 = int(z.y1 * h)
             color = (60, 180, 255) if z.is_papp_zone else (200, 160, 60)
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            title = "A papp/vegg (eske OK)" if z.is_papp_zone else "B annet/trapp"
-            if not z.is_papp_zone and not z.is_annet_zone:
-                title = z.name
+            title = "A papp (brettet OK)" if z.is_papp_zone else "B annet (midlertidig OK)"
             cv2.putText(
                 frame,
                 title,
@@ -671,7 +466,9 @@ class SortingDetector:
             )
 
     @staticmethod
-    def crop_person(frame: np.ndarray, detection: SortingHit, *, padding: float = 0.08) -> np.ndarray:
+    def crop_person(
+        frame: np.ndarray, detection: SortingHit, *, padding: float = 0.08
+    ) -> np.ndarray:
         h, w = frame.shape[:2]
         x1, y1, x2, y2 = detection.bbox
         bw, bh = x2 - x1, y2 - y1
