@@ -188,6 +188,24 @@ class VisionEvent {
     return null;
   }
 
+  /// Dropbox-sti til JPEG-forhåndsvisning (fersk lenke via media_link).
+  String? get thumbDropboxPath {
+    final p = metadata['dropbox_thumb_path']?.toString();
+    if (p != null && p.trim().isNotEmpty) return p.trim();
+    return null;
+  }
+
+  /// Lagret thumb-URL (kan være utløpt) — bruk [thumbDropboxPath] når mulig.
+  String? get thumbUrlHint {
+    final t = metadata['dropbox_thumb_url']?.toString();
+    if (t != null && t.startsWith('http')) return t;
+    if (dropboxImageUrl.isNotEmpty &&
+        !dropboxImageUrl.toLowerCase().contains('.mp4')) {
+      return dropboxImageUrl;
+    }
+    return null;
+  }
+
   /// Kun ekte videoklipp (mp4/mov) — ikke stillbilder.
   bool get hasVideoClip {
     if (videoUrl != null) return true;

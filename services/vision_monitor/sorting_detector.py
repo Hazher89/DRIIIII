@@ -200,6 +200,10 @@ class SortingDetector:
                     "korrekt",
                     "papp i a",
                     "i papp",
+                    "ved veggen",
+                    "veggen",
+                    "container a",
+                    "i a",
                     "flattened",
                     "folded",
                 ):
@@ -288,7 +292,13 @@ class SortingDetector:
             fb = self._reason_feedback.get(reason)
             if fb:
                 floor = max(floor, UNFLATTENED_MIN_CONF + fb.conf_delta)
-        return max(0.12, min(0.60, floor))
+        # Eske i B (trapp) — mange falske alarmer; krev tydeligere treff.
+        if reason == "cardboard_in_wrong_bin":
+            floor = max(floor, 0.42 + self._feedback_delta)
+            fb = self._reason_feedback.get(reason)
+            if fb:
+                floor = max(floor, 0.42 + fb.conf_delta)
+        return max(0.12, min(0.65, floor))
 
     def analyze_frame(self, frame: np.ndarray) -> tuple[int, list[SortingHit], list[dict]]:
         model = self._ensure_model()
@@ -490,7 +500,7 @@ class SortingDetector:
         frame_w: int,
         frame_h: int,
     ) -> str | None:
-        # A = papp: only unflattened cardboard is bad. Styrofoam in A also wrong.
+        # A = papp ved veggen: brettet eske/papp er RIKTIG.
         if zone.is_papp_zone or (
             not zone.is_annet_zone and "1" in zone.name and "2" not in zone.name
         ):
@@ -499,14 +509,19 @@ class SortingDetector:
             if kind == "cardboard":
                 if self._looks_unflattened(label, bbox, frame_w, frame_h):
                     return "unflattened_cardboard"
-                return None
+                return None  # eske i A/vegg = OK
             return None
 
-        # B = annet: styrofoam OK. Cardboard box here = bad.
+        # B = annet ved trappen: styrofoam OK. Cardboard her = mulig feil.
         if zone.is_annet_zone or "2" in zone.name:
             if kind == "styrofoam":
                 return None
             if kind == "cardboard":
+                # Midtpunkt tydelig i høyre halvdel (unngå midtsone-støy).
+                x1, y1, x2, y2 = bbox
+                cx = ((x1 + x2) / 2.0) / max(1, frame_w)
+                if cx < 0.55:
+                    return None
                 return "cardboard_in_wrong_bin"
             return None
 
@@ -536,7 +551,7 @@ class SortingDetector:
             y2 = int(z.y1 * h)
             color = (60, 180, 255) if z.is_papp_zone else (200, 160, 60)
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-            title = "A papp (brettet)" if z.is_papp_zone else "B annet (isopor OK)"
+            title = "A papp/vegg (eske OK)" if z.is_papp_zone else "B annet/trapp"
             if not z.is_papp_zone and not z.is_annet_zone:
                 title = z.name
             cv2.putText(

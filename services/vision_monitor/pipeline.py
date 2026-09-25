@@ -71,9 +71,9 @@ class VisionMonitorPipeline:
             target_fps=settings.clip_fps,
         )
         self._pending_clips: list[dict] = []
-        # Person-episode for sorting: lagre ALLE besøk for menneske-merking (Riktig/Feil).
+        # Person-episode for sorting: kun lagre ved mistenkt feilkasting.
         self._sorting_episode: dict | None = None
-        # Kort hale etter OK-besøk (full 2 min kun ved auto-detektert feil).
+        # (CLIP_SECONDS_AFTER_OK brukes ikke lenger — rene besøk lagres ikke.)
         self._ok_visit_post_seconds = float(
             os.environ.get("CLIP_SECONDS_AFTER_OK", "30")
         )
@@ -388,7 +388,7 @@ class VisionMonitorPipeline:
         hits: list[SortingHit],
         frame,
     ) -> None:
-        """Track person visit; always save clip for human Riktig/Feil review."""
+        """Track person visit; save clip only when a throw/violation is suspected."""
         now = time.monotonic()
         ep = self._sorting_episode
 
@@ -411,8 +411,8 @@ class VisionMonitorPipeline:
                 }
                 ep = self._sorting_episode
                 logger.info(
-                    "Person arrived — buffering visit (pre=%.0fs). "
-                    "Alle besøk lagres for merking i DriftPro.",
+                    "Person arrived — buffering (pre=%.0fs). "
+                    "Lagrer kun ved mistenkt feilkasting (A=papp ved vegg er OK).",
                     self._settings.clip_seconds_before,
                 )
                 STATE.push_feed(
@@ -420,7 +420,10 @@ class VisionMonitorPipeline:
                         {
                             "id": f"arr-{ep['id'][:8]}",
                             "status": "ok",
-                            "text": "Person i bilde — tar opp besøk (merke Riktig/Feil i DriftPro)",
+                            "text": (
+                                "Person i bilde — overvåker kast "
+                                "(A/vegg=papp OK · B/trapp=annet)"
+                            ),
                         }
                     ]
                 )
@@ -458,24 +461,19 @@ class VisionMonitorPipeline:
                             ]
                         )
                     else:
-                        post_s = self._ok_visit_post_seconds
-                        ep["until"] = now + post_s
                         logger.info(
-                            "Person left — saving visit for review (post=%.0fs)",
-                            post_s,
+                            "Person left without throw — not saving (A/vegg papp er OK)"
                         )
                         STATE.push_feed(
                             [
                                 {
                                     "id": f"okleave-{ep['id'][:8]}",
                                     "status": "ok",
-                                    "text": (
-                                        f"Besøk ferdig — lagrer klipp ({post_s:.0f}s hale) "
-                                        f"til Riktig/Feil i DriftPro"
-                                    ),
+                                    "text": "Besøk uten feilkasting — lagrer ikke",
                                 }
                             ]
                         )
+                        self._sorting_episode = None
 
         if hits and ep is not None:
             if frame is not None:
@@ -521,28 +519,13 @@ class VisionMonitorPipeline:
             )
 
     async def _finalize_sorting_episode(self, ep: dict) -> None:
-        auto_suspected = ep.get("hit") is not None
         hit = ep.get("hit")
         if hit is None:
-            frame = ep.get("last_frame")
-            if frame is None and ep.get("post"):
-                frame = ep["post"][-1]
-            if frame is None:
-                logger.info(
-                    "Episode discarded — no frames for visit (pre=%d)",
-                    len(ep.get("pre") or []),
-                )
-                return
-            h, w = frame.shape[:2]
-            hit = SortingHit(
-                track_id=0,
-                confidence=0.0,
-                bbox=(0, 0, w, h),
-                label="person_visit",
-                reason="person_visit",
-                zone="visit",
-                annotated_frame=frame.copy(),
+            logger.info(
+                "Episode discarded — no throw detected (pre=%d)",
+                len(ep.get("pre") or []),
             )
+            return
         pending = {
             "id": ep["id"],
             "hit": hit,
@@ -550,7 +533,7 @@ class VisionMonitorPipeline:
             "post": ep["post"],
             "captured_at": ep["captured_at"],
             "needs_review": True,
-            "auto_suspected_wrong": auto_suspected,
+            "auto_suspected_wrong": True,
         }
         await self._finalize_sorting_clip(pending)
 
@@ -779,6 +762,7 @@ class VisionMonitorPipeline:
         meta["dropbox_video_path"] = video_upload.path
         if thumb_upload:
             meta["dropbox_thumb_url"] = thumb_upload.share_url
+            meta["dropbox_thumb_path"] = thumb_upload.path
 
         if self._repo:
             record = VisionEventRecord(

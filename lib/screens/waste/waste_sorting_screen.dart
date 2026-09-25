@@ -620,7 +620,7 @@ class _IntroBar extends StatelessWidget {
       children: [
         Expanded(
           child: Text(
-            'Alle besøk lagres · merk Riktig/Feil med kommentar · A=papp · B=annet',
+            'Kun mistenkt feilkasting · A/vegg=papp OK · B/trapp=annet · 30s+30s',
             style: DriftProTheme.headingSm.copyWith(fontSize: 15),
           ),
         ),
@@ -1202,17 +1202,7 @@ class _SidebarTile extends StatelessWidget {
                 children: [
                   ColoredBox(
                     color: Colors.grey.shade900,
-                    child: event.dropboxImageUrl.isNotEmpty
-                        ? Image.network(
-                            event.dropboxImageUrl,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
-                              Icons.play_circle_outline,
-                              color: Colors.white54,
-                            ),
-                          )
-                        : const Icon(Icons.play_circle_outline,
-                            color: Colors.white54),
+                    child: _EventThumb(event: event),
                   ),
                   const Center(
                     child: Icon(Icons.play_arrow_rounded,
@@ -1271,6 +1261,87 @@ class _SidebarTile extends StatelessWidget {
   }
 }
 
+/// Forhåndsvisning med fersk Dropbox-lenke (utløpte share-URL-er blir svarte ellers).
+class _EventThumb extends StatefulWidget {
+  const _EventThumb({required this.event, this.iconSize = 28});
+
+  final VisionEvent event;
+  final double iconSize;
+
+  @override
+  State<_EventThumb> createState() => _EventThumbState();
+}
+
+class _EventThumbState extends State<_EventThumb> {
+  String? _url;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(covariant _EventThumb oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.event.id != widget.event.id) {
+      _resolve();
+    }
+  }
+
+  Future<void> _resolve() async {
+    setState(() {
+      _loading = true;
+      _url = widget.event.thumbUrlHint;
+    });
+    final path = widget.event.thumbDropboxPath;
+    if (path != null) {
+      final link = await VisionCameraService.instance.resolveDropboxPathLink(path);
+      if (!mounted) return;
+      if (link != null && link.url.startsWith('http')) {
+        setState(() {
+          _url = link.url;
+          _loading = false;
+        });
+        return;
+      }
+    }
+    if (!mounted) return;
+    setState(() => _loading = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = _url;
+    if (url != null && url.isNotEmpty) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Icon(
+          Icons.play_circle_outline,
+          color: Colors.white54,
+          size: widget.iconSize,
+        ),
+      );
+    }
+    if (_loading) {
+      return const Center(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white54),
+        ),
+      );
+    }
+    return Icon(
+      Icons.play_circle_outline,
+      color: Colors.white54,
+      size: widget.iconSize,
+    );
+  }
+}
+
 class _VideoCard extends StatelessWidget {
   const _VideoCard({required this.event, required this.onTap});
 
@@ -1299,19 +1370,7 @@ class _VideoCard extends StatelessWidget {
                   children: [
                     ColoredBox(
                       color: Colors.grey.shade900,
-                      child: event.dropboxImageUrl.isNotEmpty
-                          ? Image.network(
-                              event.dropboxImageUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const Center(
-                                child: Icon(Icons.videocam_outlined,
-                                    color: Colors.white54, size: 40),
-                              ),
-                            )
-                          : const Center(
-                              child: Icon(Icons.videocam_outlined,
-                                  color: Colors.white54, size: 40),
-                            ),
+                      child: _EventThumb(event: event, iconSize: 40),
                     ),
                     Center(
                       child: Container(

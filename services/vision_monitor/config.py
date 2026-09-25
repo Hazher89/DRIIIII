@@ -132,8 +132,8 @@ class Settings:
             ),
             vision_camera_db_id=os.environ.get("VISION_CAMERA_ID", "").strip(),
             # 1 min før personen kom, 2 min etter de forlater (kun ved feilkasting).
-            clip_seconds_before=float(os.environ.get("CLIP_SECONDS_BEFORE", "60")),
-            clip_seconds_after=float(os.environ.get("CLIP_SECONDS_AFTER", "120")),
+            clip_seconds_before=float(os.environ.get("CLIP_SECONDS_BEFORE", "30")),
+            clip_seconds_after=float(os.environ.get("CLIP_SECONDS_AFTER", "30")),
             clip_fps=float(os.environ.get("CLIP_FPS", "2")),
             sorting_model=os.environ.get("SORTING_MODEL", "models/yolov8s-worldv2.pt"),
             person_model=os.environ.get("PERSON_MODEL", "models/yolov8n.pt"),
