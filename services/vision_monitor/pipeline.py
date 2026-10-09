@@ -536,6 +536,12 @@ class VisionMonitorPipeline:
             )
             if feed:
                 STATE.push_feed(feed[:3])
+            _blocked = {
+                "cardboard_in_wrong_bin",
+                "person_visit",
+                "unflattened_cardboard",
+            }
+            hits = [h for h in hits if h.reason not in _blocked]
             if hits:
                 return hits[0]
             tent = ep.get("tentative_hit")
@@ -638,6 +644,31 @@ class VisionMonitorPipeline:
 
     async def _finalize_sorting_clip(self, pending: dict) -> None:
         hit: SortingHit = pending["hit"]
+        # Hard kill-switch: temporary B dump / shape FP must never save.
+        _blocked = {
+            "cardboard_in_wrong_bin",
+            "person_visit",
+            "unflattened_cardboard",
+        }
+        if hit.reason in _blocked:
+            logger.info(
+                "Blocked save of false-positive reason=%s zone=%s — workflow OK",
+                hit.reason,
+                hit.zone,
+            )
+            STATE.push_feed(
+                [
+                    {
+                        "id": f"block-{pending['id'][:8]}",
+                        "status": "ok",
+                        "text": (
+                            "Hopper over: eske i B/midlertidig er OK "
+                            "(flyttes til A ved veggen)"
+                        ),
+                    }
+                ]
+            )
+            return
         captured_at: datetime = pending["captured_at"]
         pre = pending["pre"]
         # Encode post frames into buffer format

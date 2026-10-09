@@ -506,6 +506,88 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
     }
   }
 
+  /// Merk alle uløste klipp med samme årsak som «ikke avvik».
+  Future<int> _bulkMarkCorrectSameReason(
+    String reason, {
+    String? note,
+    String? exceptId,
+  }) async {
+    final targets = _events
+        .where(
+          (e) =>
+              e.id != exceptId &&
+              e.needsHumanReview &&
+              !e.isArchived &&
+              e.metadata['reason']?.toString() == reason,
+        )
+        .toList();
+    var n = 0;
+    for (final e in targets) {
+      try {
+        final updated =
+            await VisionCameraService.instance.markSortingFeedback(
+          e.id,
+          label: 'correct',
+          note: note,
+        );
+        final i = _events.indexWhere((x) => x.id == updated.id);
+        if (i >= 0) _events[i] = updated;
+        n++;
+      } catch (_) {}
+    }
+    return n;
+  }
+
+  Future<void> _clearFalseBAlarms() async {
+    final count = _events
+        .where(
+          (e) =>
+              e.needsHumanReview &&
+              e.metadata['reason']?.toString() == 'cardboard_in_wrong_bin',
+        )
+        .length;
+    if (count == 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ingen «eske i B»-klipp til vurdering.')),
+      );
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Rydd falske B-alarmer?'),
+        content: Text(
+          'Merk $count klipp som «ikke avvik».\n\n'
+          'Sjåfører tømmer midlertidig ved trappen (B) og flytter esken '
+          'til veggen (A) — det er OK.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Avbryt'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ja, rydd alle'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _busy = true);
+    final n = await _bulkMarkCorrectSameReason(
+      'cardboard_in_wrong_bin',
+      note: 'Bulk: midlertidig tømming i B er OK',
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Ryddet $n klipp som ikke avvik.')),
+    );
+  }
+
   Future<void> _markFeedbackSelected(String label) async {
     final ev = _selected;
     if (ev == null) return;
@@ -574,6 +656,22 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
         label: label,
         note: note.isEmpty ? null : note,
       );
+      var bulkN = 0;
+      // Lær en gang: midlertidig B / falsk ubrettet → rydd hele køen lokalt.
+      if (label == 'correct') {
+        final reason = updated.metadata['reason']?.toString();
+        if (reason == 'cardboard_in_wrong_bin' ||
+            reason == 'unflattened_cardboard' ||
+            reason == 'person_visit') {
+          bulkN = await _bulkMarkCorrectSameReason(
+            reason!,
+            note: note.isEmpty
+                ? 'Lært: ikke avvik — eske flyttes til A'
+                : note,
+            exceptId: updated.id,
+          );
+        }
+      }
       if (!mounted) return;
       setState(() {
         final i = _events.indexWhere((e) => e.id == updated.id);
@@ -585,11 +683,15 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
       await _disposePlayer();
       if (!mounted) return;
       setState(() => _selected = null);
+      await _load(silent: true);
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             label == 'correct'
-                ? 'Lagret som IKKE avvik — systemet lærer å ikke flagge lignende.'
+                ? (bulkN > 0
+                    ? 'Ikke avvik — ryddet $bulkN like klipp. Midlertidig B er OK.'
+                    : 'Lagret som IKKE avvik — systemet lærer å ikke flagge lignende.')
                 : 'Lagret som AVVIK — systemet lærer å fange lignende feil.',
           ),
         ),
@@ -735,6 +837,12 @@ class _WasteSortingScreenState extends State<WasteSortingScreen>
           onPressed: _pickCustomDate,
           icon: const Icon(Icons.calendar_today_outlined),
         ),
+        if (_canAdmin)
+          IconButton(
+            tooltip: 'Rydd falske B-alarmer',
+            onPressed: _busy ? null : _clearFalseBAlarms,
+            icon: const Icon(Icons.playlist_remove_outlined),
+          ),
         if (_canAdmin)
           IconButton(
             tooltip: 'Kameraer',

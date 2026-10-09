@@ -362,6 +362,23 @@ class VisionCameraService {
     return VisionEvent.fromRow(row);
   }
 
+  /// Merk alle uløste klipp med samme årsak som «ikke avvik» (lær en gang).
+  Future<Map<String, dynamic>> bulkResolveSortingReason(
+    String reason, {
+    String? note,
+  }) async {
+    final row = await _client.rpc(
+      'bulk_resolve_sorting_reason',
+      params: {
+        'p_reason': reason,
+        'p_note': note ??
+            'Bulk: midlertidig tømming i B → A er OK (ikke avvik)',
+      },
+    );
+    if (row is Map<String, dynamic>) return row;
+    return Map<String, dynamic>.from(row as Map);
+  }
+
   Future<VisionEvent> softDeleteSortingEvent(String eventId) async {
     final row = await _client.rpc(
       'soft_delete_vision_event',
