@@ -212,7 +212,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 AppPaths.uniform,
                 isDark,
               ),
-            if (_profile!.access.canSurveys || _profile!.access.canSurveysMenu)
+            if (_profile!.access.canSurveys)
               _buildModuleItem(
                 context,
                 AppIcons.survey,
@@ -231,7 +231,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
               _buildMenuItem(context, AppIcons.employees, 'Ansatte', isDark),
             if (_profile!.access.canEmployeesList)
               _buildMenuItem(context, Icons.account_tree_outlined, 'Organisasjonskart', isDark),
-            if (_profile!.access.canPartnersMenu || _profile!.access.canPartnersTab)
+            if (_profile!.access.canPartnersTab)
               if (!DriftProClient.isMobile)
                 _buildMenuItem(
                   context,
@@ -256,7 +256,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 isDark,
                 badge: 'NY',
               ),
-            if (_profile!.access.canSurveysMenu || _profile!.access.canSurveys)
+            if (_profile!.access.canSurveys)
               if (!DriftProClient.isMobile)
                 _buildMenuItem(
                   context,
@@ -446,10 +446,8 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
     return a.canDepartments ||
         a.canEmployeesList ||
         a.canEditEmployees ||
-        a.canPartnersMenu ||
         a.canPartnersTab ||
         a.canPersonalFolder ||
-        a.canSurveysMenu ||
         a.canSurveys ||
         a.canAccessControl ||
         a.canUserApproval ||
@@ -468,8 +466,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
     return PartnerAccess.canOpenPartnersModule(a) ||
         a.canStempling ||
         a.canUniformMonitor ||
-        a.canSurveys ||
-        a.canSurveysMenu;
+        a.canSurveys;
   }
 
   Widget _buildModuleItem(

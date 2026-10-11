@@ -83,10 +83,7 @@ class PartnerAccess {
 
   static bool canOpenPartnersModule(UserAccess? access) {
     if (access == null) return false;
-    return access.canPartnersTab ||
-        access.canPartnersMenu ||
-        access.canPartnersAdmin ||
-        access.canPartnerRoutePlanning ||
-        canOpenPartnerDetail(access);
+    // Selve partner-siden styrer. En snarvei i Mer kan ikke holde modulen oppe.
+    return access.canPartnersTab;
   }
 }

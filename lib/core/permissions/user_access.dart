@@ -62,6 +62,12 @@ class UserAccess {
     return {for (final e in legacy.entries) e.key: e.value == true};
   }
 
+  /// Mer-snarvei som bare er et alias for en annen side.
+  static const _pageGate = <String, String>{
+    'more.partnere': 'partners',
+    'more.undersokelser': 'surveys',
+  };
+
   /// Eksplisitt `false` i lagret v2 vinner over rolle, superadmin og eier.
   /// Mangler nøkkelen, gjelder fortsatt full tilgang for superadmin/eier.
   bool _explicitlyDenied(String areaId, AccessAction action) {
@@ -79,6 +85,14 @@ class UserAccess {
     if (_explicitlyDenied(areaId, action)) return false;
     for (final p in AccessAreaCatalog.ancestors(areaId)) {
       if (_explicitlyDenied(p, AccessAction.view)) return false;
+    }
+    final gatedBy = _pageGate[areaId];
+    if (gatedBy != null) {
+      if (_explicitlyDenied(gatedBy, AccessAction.view)) return false;
+      if (!_hasFullSystemAccess(profile) &&
+          !_doc.get(gatedBy, AccessAction.view)) {
+        return false;
+      }
     }
     if (_hasFullSystemAccess(profile)) return true;
     if (!profile.isApproved) return false;

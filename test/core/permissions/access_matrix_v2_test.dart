@@ -4,6 +4,7 @@ import 'package:driftpro/core/permissions/access_actions.dart';
 import 'package:driftpro/core/permissions/access_normalize.dart';
 import 'package:driftpro/core/permissions/access_presets.dart';
 import 'package:driftpro/core/permissions/access_keys.dart';
+import 'package:driftpro/core/permissions/partner_access.dart';
 import 'package:driftpro/core/permissions/user_access.dart';
 import 'package:driftpro/models/user_profile.dart';
 
@@ -76,5 +77,26 @@ void main() {
     final access = UserAccess(profile);
     expect(access.canAvvik, isFalse);
     expect(access.can(AccessKeys.dashboard), isTrue);
+  });
+
+  test('partner-snarvei i Mer er av når partner-siden er av', () {
+    final saved = AccessSettingsDoc.fromJson(
+      AccessPresets.forRoleV2(UserRole.ansatt),
+    );
+    saved.set('more.partnere', AccessAction.view, true);
+    saved.setAreaAll('partners', false);
+    final profile = UserProfile(
+      id: 'u2',
+      email: 'apple@example.com',
+      fullName: 'APPLE admin',
+      role: UserRole.ansatt,
+      isApproved: true,
+      isOnboarded: true,
+      accessSettings: saved.toJson(),
+    );
+    final access = UserAccess(profile);
+    expect(access.canPartnersTab, isFalse);
+    expect(access.can(AccessKeys.samarbeidspartnere), isFalse);
+    expect(PartnerAccess.canOpenPartnersModule(access), isFalse);
   });
 }
