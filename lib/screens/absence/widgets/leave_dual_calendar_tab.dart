@@ -95,6 +95,36 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
     return _calendarPool.where((a) => types.contains(a.type)).toList();
   }
 
+  Widget _awayTodayCard(List<Absence> pool, bool isDark) {
+    final now = DateTime.now();
+    final day = DateTime(now.year, now.month, now.day);
+    final hits = pool.where((a) {
+      final start = DateTime(a.startDate.year, a.startDate.month, a.startDate.day);
+      final end = DateTime(a.endDate.year, a.endDate.month, a.endDate.day);
+      return !day.isBefore(start) && !day.isAfter(end);
+    }).toList();
+    final names = hits
+        .map((a) => a.userName?.trim().isNotEmpty == true ? a.userName!.trim() : 'Ansatt')
+        .toSet()
+        .toList();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: names.isEmpty
+            ? (isDark ? const Color(0xFF1C2822) : const Color(0xFFF4F7F5))
+            : DriftProTheme.primaryGreen.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        names.isEmpty
+            ? 'Ingen er borte i dag.'
+            : 'Borte i dag: ${names.join(', ')}',
+        style: DriftProTheme.labelMd.copyWith(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+
   void _handleDayTap(DateTime date, List<Absence> dayAbsences) {
     if (widget.onDayTap != null) {
       widget.onDayTap!(date, dayAbsences);
@@ -175,7 +205,7 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
       onRefresh: widget.onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.fromLTRB(padH, 8, padH, 28),
+        padding: EdgeInsets.fromLTRB(padH, 8, padH, wide ? 28 : 120),
         children: [
           TeamEqualSegmentBar<_CalKind>(
             value: _kind,
@@ -198,7 +228,9 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
               padding: const EdgeInsets.only(top: 8),
               child: Text(
                 vacationOnly
-                    ? 'Grønn = godkjent · Oransje = venter. Trykk en celle for å godkjenne, endre eller slette.'
+                    ? (wide
+                        ? 'Grønn = godkjent · Oransje = venter. Trykk en celle for å godkjenne, endre eller slette.'
+                        : 'Måned først. Trykk en dag for å se hvem som har ferie. Grønn = godkjent, oransje = venter.')
                     : 'Trykk en dag for å se fravær. Ventende kan godkjennes eller avvises direkte.',
                 style: DriftProTheme.caption.copyWith(
                   color: isDark ? Colors.white54 : Colors.grey.shade700,
@@ -240,7 +272,58 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
             ),
           ],
           const SizedBox(height: 12),
-          if (vacationOnly) ...[
+          if (widget.isManager) ...[
+            _awayTodayCard(filtered, isDark),
+            const SizedBox(height: 12),
+          ],
+          if (vacationOnly && !wide) ...[
+            TeamLeaveCalendar(
+              month: widget.month,
+              absences: filtered,
+              employees: filteredEmployees,
+              filterUserId: _userFilter,
+              colorForType: widget.colorForType,
+              typesFilter: types,
+              includePending: true,
+              onMonthChanged: widget.onMonthChanged,
+              onDayTap: _handleDayTap,
+            ),
+            const SizedBox(height: 12),
+            LeaveCalendarMonthDigest(
+              month: widget.month,
+              absences: filtered,
+              colorForType: widget.colorForType,
+              vacationOnly: true,
+              showEntryList: true,
+            ),
+            const SizedBox(height: 8),
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                initiallyExpanded: false,
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  'Årsmatrise',
+                  style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
+                ),
+                subtitle: const Text('Uke for uke. Best på stor skjerm.'),
+                children: [
+                  VacationYearMatrix(
+                    year: year,
+                    employees: filteredEmployees,
+                    vacations: filtered,
+                    canManage: widget.isManager,
+                    onAbsenceTap: widget.onAbsenceTap,
+                    onYearChanged: (y) {
+                      widget.onMonthChanged(DateTime(y, widget.month.month, 1));
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
+          ] else if (vacationOnly) ...[
             VacationYearMatrix(
               year: year,
               employees: filteredEmployees,
@@ -262,7 +345,7 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
                   'Månedskalender',
                   style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
                 ),
-                subtitle: const Text('Valgfritt — uke/måned-visning'),
+                subtitle: const Text('Uke og måned'),
                 children: [
                   TeamLeaveCalendar(
                     month: widget.month,
@@ -296,7 +379,7 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
               absences: filtered,
               colorForType: widget.colorForType,
               vacationOnly: false,
-              showEntryList: hasEmployeeFilter,
+              showEntryList: widget.isManager || hasEmployeeFilter,
             ),
             if (hasEmployeeFilter) ...[
               const SizedBox(height: 12),
