@@ -239,7 +239,7 @@ class _EmployeeLivePagesPanelState extends State<EmployeeLivePagesPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final locked = widget.employee.role == UserRole.superadmin;
+    final locked = false;
     final pages = AccessAreaCatalog.areas.where((a) => a.id != 'more').toList();
     final onCount = pages.where(_on).length;
     final offCount = pages.length - onCount;
@@ -269,16 +269,6 @@ class _EmployeeLivePagesPanelState extends State<EmployeeLivePagesPanel> {
           '$onCount på · $offCount av. Lagres med en gang. Minste tilgang gjelder.',
           style: const TextStyle(color: Color(0xFF3D4F45), fontSize: 13),
         ),
-        if (locked) ...[
-          const SizedBox(height: 8),
-          const Text(
-            'Superadmin ser alltid alt. Bytt rolle for å skjule sider.',
-            style: TextStyle(
-              color: Color(0xFF9A5B00),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
         const SizedBox(height: 10),
         TextField(
           controller: _search,

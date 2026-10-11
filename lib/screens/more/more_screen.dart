@@ -227,9 +227,9 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             _buildSectionLabel(context, 'Administrasjon'),
             if (_profile!.access.canDepartments)
               _buildMenuItem(context, AppIcons.department, 'Avdelinger', isDark),
-            if (_profile!.isSuperAdmin || _profile!.access.canEmployeesList)
+            if (_profile!.access.canEmployeesList)
               _buildMenuItem(context, AppIcons.employees, 'Ansatte', isDark),
-            if (_profile!.isSuperAdmin || _profile!.access.canEmployeesList)
+            if (_profile!.access.canEmployeesList)
               _buildMenuItem(context, Icons.account_tree_outlined, 'Organisasjonskart', isDark),
             if (_profile!.access.canPartnersMenu || _profile!.access.canPartnersTab)
               if (!DriftProClient.isMobile)
@@ -271,7 +271,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 'Tilgangskontroll',
                 isDark,
               ),
-            if (_profile!.isSuperAdmin)
+            if (_profile!.access.canUserApproval)
               _buildMenuItem(
                 context,
                 Icons.how_to_reg_outlined,
@@ -325,7 +325,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 'Partner-chat',
                 isDark,
               ),
-            if (_profile!.isSuperAdmin || _profile!.access.canDriveMonitor)
+            if (_profile!.access.canDriveMonitor)
               _buildMenuItem(
                 context,
                 Icons.speed_outlined,
@@ -448,21 +448,17 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
         a.canEditEmployees ||
         a.canPartnersMenu ||
         a.canPartnersTab ||
-        p.isSuperAdmin ||
-        p.role == UserRole.admin ||
         a.canPersonalFolder ||
-        p.isSuperAdmin ||
         a.canSurveysMenu ||
         a.canSurveys ||
         a.canAccessControl ||
-        p.isSuperAdmin ||
+        a.canUserApproval ||
         a.canKiosk ||
         a.canHomeFeedAdmin ||
         a.canWhistleblowing ||
         a.canDriveMonitor ||
         a.canWorkSteps ||
-        a.canWorkStepsHub ||
-        p.isSuperAdmin;
+        a.canWorkStepsHub;
   }
 
   bool get _hasMobileModules {

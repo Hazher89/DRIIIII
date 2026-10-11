@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -50,6 +51,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   String? _realtimeUserId;
   bool _accessReloadInFlight = false;
   DateTime? _lastAccessReloadAt;
+  Timer? _accessPoll;
   StreamSubscription<ChatFlag>? _chatFlagSub;
   StreamSubscription<int>? _chatUnreadSub;
   StreamSubscription<NavBadgeCounts>? _navBadgeSub;
@@ -77,11 +79,16 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       }
     });
     _loadAccess();
+    _accessPoll = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (_sessionUserId == null) return;
+      unawaited(_loadAccess(silent: true, force: true));
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _accessPoll?.cancel();
     _unsubscribeProfileRealtime();
     _chatFlagSub?.cancel();
     _chatUnreadSub?.cancel();
@@ -283,6 +290,18 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             partnerVehicleId: session.isOwner ? null : session.partnerVehicleId,
           );
         }
+      }
+
+      final unchanged = silent &&
+          _profile != null &&
+          _profile!.id == profile.id &&
+          _profile!.role == profile.role &&
+          _profile!.isApproved == profile.isApproved &&
+          jsonEncode(_profile!.accessSettings) == jsonEncode(profile.accessSettings);
+      if (unchanged) {
+        _lastAccessReloadAt = DateTime.now();
+        _subscribeProfileRealtime(profile.id);
+        return;
       }
 
       setState(() {

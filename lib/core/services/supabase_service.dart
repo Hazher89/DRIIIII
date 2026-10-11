@@ -1471,7 +1471,30 @@ department:departments!department_id(name)
   }
 
   static Future<void> updateProfileAccess(String profileId, Map<String, dynamic> settings) async {
-    await client.from('profiles').update({'access_settings': settings}).eq('id', profileId);
+    try {
+      await client.rpc('set_profile_access_settings', params: {
+        'p_profile_id': profileId,
+        'p_access_settings': settings,
+      });
+      return;
+    } catch (e) {
+      final msg = e.toString();
+      final missingFn = msg.contains('PGRST202') ||
+          msg.contains('set_profile_access_settings') &&
+              (msg.contains('Could not find') || msg.contains('schema cache'));
+      if (!missingFn) rethrow;
+    }
+
+    final updated = await client
+        .from('profiles')
+        .update({'access_settings': settings})
+        .eq('id', profileId)
+        .select('id');
+    if (updated.isEmpty) {
+      throw StateError(
+        'Tilgangen ble ikke lagret. Siden er fortsatt på i appen.',
+      );
+    }
   }
 
   /// Godkjenner ny ansatt med rolle, avdeling og granulære tilganger (kun superadmin i DB).
@@ -1506,20 +1529,24 @@ department:departments!department_id(name)
         .eq('id', profileId)
         .maybeSingle();
 
-    await client.from('profiles').update({
+    final updated = await client.from('profiles').update({
       'role': role.name,
       'department_id': departmentId,
       'access_settings': accessSettings,
       'is_approved': isApproved,
       'is_active': isApproved,
-    }).eq('id', profileId);
+    }).eq('id', profileId).select('id');
+    if (updated.isEmpty) {
+      throw StateError(
+        'Tilgangen ble ikke lagret. Siden er fortsatt på i appen.',
+      );
+    }
 
     if (setDepartmentLeader && departmentId != null) {
       await client.rpc('add_department_leader', params: {
         'p_department_id': departmentId,
         'p_profile_id': profileId,
       });
-      await ensureDepartmentLeaderAccess(profileId);
     }
 
     final companyId = before?['company_id'] as String?;

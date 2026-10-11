@@ -62,8 +62,24 @@ class UserAccess {
     return {for (final e in legacy.entries) e.key: e.value == true};
   }
 
+  /// Eksplisitt `false` i lagret v2 vinner over rolle, superadmin og eier.
+  /// Mangler nøkkelen, gjelder fortsatt full tilgang for superadmin/eier.
+  bool _explicitlyDenied(String areaId, AccessAction action) {
+    final raw = profile.accessSettings;
+    if (raw == null || raw['version'] != 2) return false;
+    final areas = raw['areas'];
+    if (areas is! Map) return false;
+    final area = areas[areaId];
+    if (area is! Map || !area.containsKey(action.dbKey)) return false;
+    return area[action.dbKey] != true;
+  }
+
   /// Ny API: sjekk område + handling.
   bool canArea(String areaId, [AccessAction action = AccessAction.view]) {
+    if (_explicitlyDenied(areaId, action)) return false;
+    for (final p in AccessAreaCatalog.ancestors(areaId)) {
+      if (_explicitlyDenied(p, AccessAction.view)) return false;
+    }
     if (_hasFullSystemAccess(profile)) return true;
     if (!profile.isApproved) return false;
     if (profile.role == UserRole.ansatt &&
@@ -84,13 +100,19 @@ class UserAccess {
 
   /// Legacy bool-nøkkel (AccessKeys.*).
   bool can(String key) {
+    final mapped = AccessAreaCatalog.legacyKeyMap[key];
+    if (mapped != null) {
+      if (_explicitlyDenied(mapped.area, mapped.action)) return false;
+      for (final p in AccessAreaCatalog.ancestors(mapped.area)) {
+        if (_explicitlyDenied(p, AccessAction.view)) return false;
+      }
+    }
     if (_hasFullSystemAccess(profile)) return true;
     if (!profile.isApproved) return false;
     if (profile.role == UserRole.ansatt &&
         (key == AccessKeys.avdelinger || key == AccessKeys.avdelingerRediger)) {
       return false;
     }
-    final mapped = AccessAreaCatalog.legacyKeyMap[key];
     if (mapped != null) {
       return canArea(mapped.area, mapped.action);
     }
@@ -147,7 +169,6 @@ class UserAccess {
   bool get canWhistleblowing => can(AccessKeys.whistleblowing);
   bool get canKiosk => can(AccessKeys.kiosk);
   bool get canHomeFeedAdmin =>
-      profile.isSuperAdmin ||
       canArea('more.forside', AccessAction.edit) ||
       can(AccessKeys.forsideRedigering);
   bool get canAccessControl => can(AccessKeys.tilgangskontroll);

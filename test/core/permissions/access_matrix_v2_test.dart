@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:driftpro/core/permissions/access_actions.dart';
 import 'package:driftpro/core/permissions/access_normalize.dart';
 import 'package:driftpro/core/permissions/access_presets.dart';
+import 'package:driftpro/core/permissions/access_keys.dart';
+import 'package:driftpro/core/permissions/user_access.dart';
 import 'package:driftpro/models/user_profile.dart';
 
 void main() {
@@ -55,5 +57,24 @@ void main() {
     final doc = AccessSettingsDoc.fromJson(AccessPresets.allOffV2());
     expect(doc.get('more', AccessAction.view), isTrue);
     expect(doc.get('fravaer', AccessAction.view), isFalse);
+  });
+
+  test('avskrudd side gjelder også superadmin', () {
+    final saved = AccessSettingsDoc.fromJson(
+      AccessPresets.forRoleV2(UserRole.admin),
+    );
+    saved.setAreaAll('avvik', false);
+    final profile = UserProfile(
+      id: 'u1',
+      email: 'apple@example.com',
+      fullName: 'APPLE admin',
+      role: UserRole.superadmin,
+      isApproved: true,
+      isOnboarded: true,
+      accessSettings: saved.toJson(),
+    );
+    final access = UserAccess(profile);
+    expect(access.canAvvik, isFalse);
+    expect(access.can(AccessKeys.dashboard), isTrue);
   });
 }
