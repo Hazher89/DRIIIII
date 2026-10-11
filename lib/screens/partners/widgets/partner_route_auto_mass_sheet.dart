@@ -5052,6 +5052,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (lower.contains('lagring feilet')) return 'Lagring feilet — tildel manuelt';
     if (lower.contains('ingen bil matcher')) return 'MAVI ikke i flåten';
     if (lower.contains('fant ikke mavi')) return 'Fant ikke MAVI i PDF';
+    if (lower.contains('23503') ||
+        lower.contains('imported_route_share') ||
+        lower.contains('fjernet før den ble koblet')) {
+      return 'Ruten ble fjernet under import. Prøv hent på nytt.';
+    }
     return reason.length > 72 ? '${reason.substring(0, 69)}…' : reason;
   }
 

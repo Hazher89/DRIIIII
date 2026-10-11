@@ -3532,20 +3532,15 @@ class PartnerService {
       publishedByVehicleDay.putIfAbsent(key, () => s);
     }
 
-    // Rydd staged SAP-kladd som er duplikat av allerede sendt rute.
+    // Rydd bare ekte duplikat: samme PDF-fil som allerede er sendt.
+    // Samme bil og dag er lov — en sjåfør kan ha flere lass.
     for (final s in List<PartnerRouteShare>.from(staged)) {
       if ((s.stagedImportSource ?? stagedImportManual) != stagedImportSap) {
         continue;
       }
       final path = s.pdfStoragePath.trim();
-      final vid = s.partnerVehicleId;
-      final dayKey = vid == null || vid.isEmpty
-          ? null
-          : '$vid|${_dayOnly(routeDayForShare(s)).toIso8601String()}';
       final pathDup = path.isNotEmpty && publishedPaths.contains(path);
-      final dayDup =
-          dayKey != null && publishedByVehicleDay.containsKey(dayKey);
-      if (!pathDup && !dayDup) continue;
+      if (!pathDup) continue;
       try {
         await deleteRouteShare(s);
       } catch (_) {}
@@ -3756,14 +3751,34 @@ class PartnerService {
     String? detectedMaviCode,
   }) async {
     if (!_ok) return;
+    final share = await _client
+        .from('partner_route_shares')
+        .select('id')
+        .eq('id', routeShareId)
+        .maybeSingle();
+    if (share == null) {
+      throw StateError(
+        'Ruten ble fjernet før den ble koblet til PDF-en. Prøv hent på nytt.',
+      );
+    }
     final uid = _client.auth.currentUser?.id;
-    await _client.from('sap_route_inbox').update({
-      'status': 'imported',
-      'imported_route_share_id': routeShareId,
-      if (detectedMaviCode != null) 'detected_mavi_code': detectedMaviCode,
-      'processed_at': DateTime.now().toUtc().toIso8601String(),
-      if (uid != null) 'processed_by': uid,
-    }).eq('id', inboxId);
+    try {
+      await _client.from('sap_route_inbox').update({
+        'status': 'imported',
+        'imported_route_share_id': routeShareId,
+        if (detectedMaviCode != null) 'detected_mavi_code': detectedMaviCode,
+        'processed_at': DateTime.now().toUtc().toIso8601String(),
+        if (uid != null) 'processed_by': uid,
+      }).eq('id', inboxId);
+    } catch (e) {
+      final msg = e.toString();
+      if (msg.contains('23503') || msg.contains('imported_route_share_id')) {
+        throw StateError(
+          'Ruten ble fjernet før den ble koblet til PDF-en. Prøv hent på nytt.',
+        );
+      }
+      rethrow;
+    }
   }
 
   static String? _supabaseDocumentsPath(String raw) {
