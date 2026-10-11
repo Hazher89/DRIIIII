@@ -10,6 +10,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
 import '../../models/user_profile.dart';
 import 'employee_edit_screen.dart';
+import 'widgets/employee_live_pages_panel.dart';
 import 'widgets/employee_approval_sheet.dart';
 import 'widgets/employee_department_leadership_editor.dart';
 import 'widgets/employee_files_panel.dart';
@@ -93,7 +94,7 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
   void _initTabs() {
     _tabs?.dispose();
     if (widget.isSuperAdmin || widget.canEditProfile) {
-      _tabs = TabController(length: 2, vsync: this);
+      _tabs = TabController(length: 3, vsync: this);
     } else {
       _tabs = null;
     }
@@ -306,6 +307,7 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
             ? TabBar(
                 controller: _tabs,
                 tabs: const [
+                  Tab(text: 'Sider'),
                   Tab(text: 'Tilgang'),
                   Tab(text: 'Filer'),
                 ],
@@ -352,6 +354,11 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
                 ? DriftProTabView(
                     controller: _tabs,
                     children: [
+                      EmployeeLivePagesPanel(
+                        employee: e,
+                        settings: _settings,
+                        onSettings: (next) => setState(() => _settings = next),
+                      ),
                       _accessTab(e, isDark),
                       _filesTab(),
                     ],

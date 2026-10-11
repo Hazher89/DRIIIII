@@ -6,9 +6,13 @@ import 'access_presets.dart';
 
 /// Mutable v2 access_settings dokument.
 class AccessSettingsDoc {
-  AccessSettingsDoc(this.areas);
+  AccessSettingsDoc(this.areas, {List<Map<String, String>>? liveLinks})
+      : liveLinks = liveLinks ?? [];
 
   final Map<String, Map<String, bool>> areas;
+
+  /// Snarveier superadmin kan legge på Mer uten ny app-bygg.
+  final List<Map<String, String>> liveLinks;
 
   static const version = 2;
 
@@ -29,7 +33,23 @@ class AccessSettingsDoc {
           areas[e.key] = {AccessAction.view.dbKey: true};
         }
       }
-      return AccessSettingsDoc(areas);
+      final links = <Map<String, String>>[];
+      final rawLinks = raw['live_links'];
+      if (rawLinks is List) {
+        for (final item in rawLinks) {
+          if (item is! Map) continue;
+          final title = item['title']?.toString().trim() ?? '';
+          final path = item['path']?.toString().trim() ?? '';
+          final id = item['id']?.toString().trim() ?? '';
+          if (title.isEmpty || path.isEmpty) continue;
+          links.add({
+            'id': id.isEmpty ? title : id,
+            'title': title,
+            'path': path,
+          });
+        }
+      }
+      return AccessSettingsDoc(areas, liveLinks: links);
     }
     return AccessSettingsDoc.fromLegacyV1(raw);
   }
@@ -132,6 +152,7 @@ class AccessSettingsDoc {
           if (e.value.values.any((v) => v))
             e.key: {for (final a in e.value.entries) a.key: a.value},
       },
+      if (liveLinks.isNotEmpty) 'live_links': liveLinks,
     };
   }
 

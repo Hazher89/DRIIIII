@@ -26,6 +26,7 @@ import '../../core/services/supabase_service.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/access_session_cache.dart';
 import '../../core/permissions/partner_access.dart';
+import '../../core/permissions/route_access_map.dart';
 import '../../core/permissions/user_access.dart';
 import '../../widgets/driftpro_brand_bar.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
@@ -125,9 +126,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             column: 'id',
             value: userId,
           ),
-          callback: (_) {
+            callback: (_) {
             if (!mounted) return;
-            unawaited(_loadAccess(silent: true));
+            unawaited(_loadAccess(silent: true, force: true));
           },
         )
         .subscribe();
@@ -206,9 +207,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _loadAccess({bool silent = false}) async {
+  Future<void> _loadAccess({bool silent = false, bool force = false}) async {
     if (_accessReloadInFlight) return;
-    if (silent &&
+    if (!force &&
+        silent &&
         _lastAccessReloadAt != null &&
         DateTime.now().difference(_lastAccessReloadAt!) <
             const Duration(seconds: 2)) {
@@ -289,6 +291,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         _isLoadingAccess = false;
       });
       AccessSessionCache.setProfile(profile);
+      _leaveDeniedRoute(profile);
       _subscribeProfileRealtime(profile.id);
       _bindChatFlag(profile.companyId);
       _bindNavBadges(profile);
@@ -426,6 +429,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         });
       }
     });
+  }
+
+  void _leaveDeniedRoute(UserProfile profile) {
+    if (!mounted) return;
+    final uri = GoRouterState.of(context).uri;
+    if (RouteAccessMap.allowsUri(profile.access, uri)) return;
+    context.go(AppPaths.dashboard);
   }
 
   bool _hasAccess(String key) {

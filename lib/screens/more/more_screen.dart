@@ -13,9 +13,13 @@ import '../../core/routing/app_paths.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/driftpro_theme_context.dart';
 import '../../core/auth/session_sign_out.dart';
+import '../../core/services/chat/chat_flag_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/user_profile.dart';
+import '../../core/permissions/access_normalize.dart';
+import '../../core/permissions/access_session_cache.dart';
 import '../../core/permissions/user_access.dart';
+import '../profile/delete_own_account_dialog.dart';
 import 'driftpro_platform_catalog.dart';
 
 class MoreScreen extends StatefulWidget {
@@ -30,18 +34,46 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
   bool _isLoading = true;
   int _usersWaitingForApprovalCount = 0;
   bool _profileReloadInFlight = false;
+  StreamSubscription<ChatFlag>? _chatFlagSub;
+  bool _chatInDock = true;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AccessSessionCache.revision.addListener(_onAccessRevision);
     _loadProfile();
+  }
+
+  void _onAccessRevision() {
+    final p = AccessSessionCache.profile;
+    if (!mounted || p == null) return;
+    if (_profile != null && p.id != _profile!.id) return;
+    setState(() => _profile = p);
   }
 
   @override
   void dispose() {
+    AccessSessionCache.revision.removeListener(_onAccessRevision);
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(_chatFlagSub?.cancel() ?? Future.value());
     super.dispose();
+  }
+
+  bool get _showChatInMore {
+    final access = _profile?.access.canPartnersChat ?? false;
+    return access && _chatInDock;
+  }
+
+  void _bindChatFlag(String? companyId) {
+    unawaited(_chatFlagSub?.cancel() ?? Future.value());
+    _chatFlagSub = null;
+    if (companyId == null || companyId.isEmpty) return;
+    _chatFlagSub = ChatFlagService.watch(companyId).listen((flag) {
+      if (!mounted) return;
+      if (flag.maviEnabled == _chatInDock) return;
+      setState(() => _chatInDock = flag.maviEnabled);
+    });
   }
 
   @override
@@ -70,7 +102,9 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
       setState(() {
         _profile = profile;
         _usersWaitingForApprovalCount = count;
+        _chatInDock = profile?.access.canPartnersChat == true && _chatInDock;
       });
+      _bindChatFlag(profile?.companyId);
     } finally {
       _profileReloadInFlight = false;
       if (mounted) setState(() => _isLoading = false);
@@ -284,7 +318,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 'CCC Chat Lab',
                 isDark,
               ),
-            if (_profile!.isSuperAdmin)
+            if (_profile!.isSuperAdmin && _showChatInMore)
               _buildMenuItem(
                 context,
                 Icons.forum_outlined,
@@ -360,14 +394,16 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
               ),
           ],
 
+          ..._liveShortcutTiles(isDark),
           const SizedBox(height: 20),
           _buildSectionLabel(context, 'Innstillinger'),
-          _buildMenuItem(
-            context,
-            Icons.forum_outlined,
-            'Chat-innstillinger',
-            isDark,
-          ),
+          if (_showChatInMore)
+            _buildMenuItem(
+              context,
+              Icons.forum_outlined,
+              'Chat-innstillinger',
+              isDark,
+            ),
           if (_profile?.access.canProfile ?? true)
             _buildMenuItem(
               context,
@@ -408,6 +444,8 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
           ),
 
           const SizedBox(height: 20),
+          _buildDeleteRequestButton(context),
+          const SizedBox(height: 8),
           _buildLogoutButton(isDark, context),
           const SizedBox(height: 40),
         ],
@@ -507,6 +545,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
     String title,
     bool isDark, {
     String? badge,
+    VoidCallback? onTap,
   }) {
     final drift = context.driftColors;
     return Container(
@@ -550,6 +589,10 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
           ],
         ),
         onTap: () {
+          if (onTap != null) {
+            onTap();
+            return;
+          }
           final path = switch (title) {
             'Samarbeidspartnere' => AppPaths.morePartnere,
             'Avdelinger' => AppPaths.moreAvdelinger,
@@ -586,6 +629,51 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
           if (path != null) context.push(path);
         },
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(DriftProTheme.radiusMd)),
+      ),
+    );
+  }
+
+  List<Widget> _liveShortcutTiles(bool isDark) {
+    final profile = _profile;
+    if (profile == null) return const [];
+    final links =
+        AccessSettingsDoc.fromJson(profile.accessSettings).liveLinks;
+    if (links.isEmpty) return const [];
+    return [
+      const SizedBox(height: 20),
+      _buildSectionLabel(context, 'Mine snarveier'),
+      for (final link in links)
+        _buildMenuItem(
+          context,
+          Icons.bolt_outlined,
+          link['title'] ?? 'Snarvei',
+          isDark,
+          onTap: () {
+            final path = link['path'];
+            if (path != null && path.startsWith('/')) context.push(path);
+          },
+        ),
+    ];
+  }
+
+  Widget _buildDeleteRequestButton(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: ListTile(
+        leading: const Icon(Icons.delete_forever_outlined, color: DriftProTheme.error),
+        title: Text(
+          'Send søknad om sletting',
+          style: DriftProTheme.labelLg.copyWith(color: DriftProTheme.error),
+        ),
+        subtitle: const Text('Slettes av superadmin innen 15 dager'),
+        onTap: () => showDeleteOwnAccountDialog(context),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
+        ),
       ),
     );
   }

@@ -17,25 +17,33 @@ class MobileShellNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final compact = DriftProClient.isMobile ||
-        (itemCount > 6 && width < 420);
+    // Few tabs fill the dock evenly. Only scroll when they would overflow.
+    const slot = 76.0;
+    final fits = itemCount * slot <= width - 8;
+    final compact = !fits && (DriftProClient.isMobile || width < 720);
 
-    final row = Row(
-      mainAxisAlignment:
-          compact ? MainAxisAlignment.start : MainAxisAlignment.spaceAround,
-      children: List.generate(
-        itemCount,
-        (i) => builder(context, i, compact: compact),
-      ),
-    );
-
-    if (!compact) return row;
+    if (!compact) {
+      return Row(
+        children: List.generate(
+          itemCount,
+          (i) => Expanded(
+            child: builder(context, i, compact: false),
+          ),
+        ),
+      );
+    }
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: row,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        children: List.generate(
+          itemCount,
+          (i) => builder(context, i, compact: true),
+        ),
+      ),
     );
   }
 }

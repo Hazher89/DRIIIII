@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 
 /// Bil-eier har få hovedfaner — sekundære under «Mer».
-/// Horisontal scroll viser alle ikoner hele tiden.
+/// Få ikoner fyller docken jevnt. Mange scroller horisontalt.
 class PartnerPortalNavItem {
   const PartnerPortalNavItem({
     required this.icon,
@@ -55,7 +55,8 @@ class _PartnerPortalBottomNavState extends State<PartnerPortalBottomNav> {
   void _scrollToSelected() {
     if (!_scroll.hasClients) return;
     final i = widget.selectedIndex.clamp(0, widget.items.length - 1);
-    final target = (i * _itemWidth - 48).clamp(0.0, _scroll.position.maxScrollExtent);
+    final target =
+        (i * _itemWidth - 48).clamp(0.0, _scroll.position.maxScrollExtent);
     _scroll.animateTo(
       target,
       duration: const Duration(milliseconds: 240),
@@ -85,84 +86,107 @@ class _PartnerPortalBottomNavState extends State<PartnerPortalBottomNav> {
         top: false,
         child: SizedBox(
           height: 72,
-          child: ListView.builder(
-            controller: _scroll,
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-            itemCount: widget.items.length,
-            itemBuilder: (context, i) {
-              final item = widget.items[i];
-              final selected = i == widget.selectedIndex;
-              final fg = selected
-                  ? DriftProTheme.primaryGreen
-                  : (isDark ? Colors.white60 : Colors.grey.shade600);
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final fits = widget.items.length * _itemWidth <=
+                  constraints.maxWidth - 8;
+              if (fits) {
+                return Row(
+                  children: [
+                    for (var i = 0; i < widget.items.length; i++)
+                      Expanded(
+                        child: _item(i, isDark, expand: true),
+                      ),
+                  ],
+                );
+              }
+              return ListView.builder(
+                controller: _scroll,
+                scrollDirection: Axis.horizontal,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                itemCount: widget.items.length,
+                itemBuilder: (context, i) => _item(i, isDark),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
 
-              return Semantics(
-                button: true,
-                selected: selected,
-                label: item.label,
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => widget.onSelected(i),
-                    borderRadius: BorderRadius.circular(14),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      curve: Curves.easeOutCubic,
-                      width: _itemWidth,
-                      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? DriftProTheme.primaryGreen.withValues(alpha: isDark ? 0.24 : 0.1)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(14),
-                        border: selected
-                            ? Border.all(
-                                color: DriftProTheme.primaryGreen.withValues(alpha: isDark ? 0.35 : 0.2),
-                              )
-                            : null,
+  Widget _item(int i, bool isDark, {bool expand = false}) {
+    final item = widget.items[i];
+    final selected = i == widget.selectedIndex;
+    final fg = selected
+        ? DriftProTheme.primaryGreen
+        : (isDark ? Colors.white60 : Colors.grey.shade600);
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: item.label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => widget.onSelected(i),
+          borderRadius: BorderRadius.circular(14),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOutCubic,
+            width: expand ? null : _itemWidth,
+            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+            decoration: BoxDecoration(
+              color: selected
+                  ? DriftProTheme.primaryGreen
+                      .withValues(alpha: isDark ? 0.24 : 0.1)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(14),
+              border: selected
+                  ? Border.all(
+                      color: DriftProTheme.primaryGreen
+                          .withValues(alpha: isDark ? 0.35 : 0.2),
+                    )
+                  : null,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedScale(
+                  scale: selected ? 1.06 : 1.0,
+                  duration: const Duration(milliseconds: 180),
+                  child: Badge(
+                    isLabelVisible: item.badgeCount > 0,
+                    backgroundColor: DriftProTheme.error,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    label: Text(
+                      item.badgeCount > 99 ? '99+' : '${item.badgeCount}',
+                      style: const TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
                       ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          AnimatedScale(
-                            scale: selected ? 1.06 : 1.0,
-                            duration: const Duration(milliseconds: 180),
-                            child: Badge(
-                              isLabelVisible: item.badgeCount > 0,
-                              backgroundColor: DriftProTheme.error,
-                              padding: const EdgeInsets.symmetric(horizontal: 5),
-                              label: Text(
-                                item.badgeCount > 99 ? '99+' : '${item.badgeCount}',
-                                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800),
-                              ),
-                              child: Icon(
-                                selected ? item.selectedIcon : item.icon,
-                                size: 23,
-                                color: fg,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            item.label,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
-                              color: fg,
-                              letterSpacing: selected ? 0.1 : 0,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
+                    ),
+                    child: Icon(
+                      selected ? item.selectedIcon : item.icon,
+                      size: 23,
+                      color: fg,
                     ),
                   ),
                 ),
-              );
-            },
+                const SizedBox(height: 4),
+                Text(
+                  item.label,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    color: fg,
+                    letterSpacing: selected ? 0.1 : 0,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ),
       ),

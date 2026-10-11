@@ -1002,69 +1002,58 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     return MobilePullRefresh(onRefresh: _loadAllData, child: child);
   }
 
+  DateTime _calDay(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  bool _matchesMineFilter(Absence a) {
+    switch (_mineTypeFilter) {
+      case _MineTypeFilter.alle:
+        return true;
+      case _MineTypeFilter.ferie:
+        return a.type == AbsenceType.ferie;
+      case _MineTypeFilter.egenmelding:
+        return a.type == AbsenceType.egenmelding;
+      case _MineTypeFilter.syktBarn:
+        return a.type == AbsenceType.syktBarn;
+      case _MineTypeFilter.annet:
+        return a.type != AbsenceType.ferie &&
+            a.type != AbsenceType.egenmelding &&
+            a.type != AbsenceType.syktBarn;
+    }
+  }
+
   Widget _buildMineTab(bool isDark, bool isManager) {
-    var list = [..._myAbsences]..sort((a, b) => b.startDate.compareTo(a.startDate));
-    // Under saldo-kort: kun ventende og avviste egne saker.
-    list = list
-        .where((a) =>
-            a.status == AbsenceStatus.ventende ||
-            a.status == AbsenceStatus.avvist)
-        .where((a) {
-      switch (_mineTypeFilter) {
-        case _MineTypeFilter.alle:
-          return true;
-        case _MineTypeFilter.ferie:
-          return a.type == AbsenceType.ferie;
-        case _MineTypeFilter.egenmelding:
-          return a.type == AbsenceType.egenmelding;
-        case _MineTypeFilter.syktBarn:
-          return a.type == AbsenceType.syktBarn;
-        case _MineTypeFilter.annet:
-          return a.type != AbsenceType.ferie &&
-              a.type != AbsenceType.egenmelding &&
-              a.type != AbsenceType.syktBarn;
-      }
-    }).toList();
+    final today = _calDay(DateTime.now());
+    final filtered = _myAbsences.where(_matchesMineFilter).toList();
+
+    bool ongoing(Absence a) =>
+        a.status == AbsenceStatus.godkjent &&
+        !_calDay(a.startDate).isAfter(today) &&
+        !_calDay(a.endDate).isBefore(today);
+    bool upcoming(Absence a) =>
+        a.status == AbsenceStatus.godkjent && _calDay(a.startDate).isAfter(today);
+    bool pending(Absence a) => a.status == AbsenceStatus.ventende;
+    bool past(Absence a) =>
+        a.status == AbsenceStatus.avvist ||
+        (a.status == AbsenceStatus.godkjent && _calDay(a.endDate).isBefore(today));
+
+    final nowList = filtered.where(ongoing).toList()
+      ..sort((a, b) => a.endDate.compareTo(b.endDate));
+    final nextList = filtered.where(upcoming).toList()
+      ..sort((a, b) => a.startDate.compareTo(b.startDate));
+    final waitList = filtered.where(pending).toList()
+      ..sort((a, b) => a.startDate.compareTo(b.startDate));
+    final pastList = filtered.where(past).toList()
+      ..sort((a, b) => b.startDate.compareTo(a.startDate));
 
     final childrenCount = _profile?.childrenUnder12Count ?? 0;
     final syktLimit = _companySettings.syktBarnDaysLimit(
       childrenUnder12: childrenCount,
     );
-
-    if (_myAbsences.isEmpty) {
-      return ListView(
-        physics: const AlwaysScrollableScrollPhysics(
-          parent: BouncingScrollPhysics(),
-        ),
-        children: [
-          SizedBox(height: MediaQuery.sizeOf(context).height * 0.22),
-          Icon(Icons.event_available, size: 64, color: Colors.grey.shade400),
-          const SizedBox(height: 16),
-          Text('Ingen søknader ennå', style: DriftProTheme.headingSm, textAlign: TextAlign.center),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              DriftProClient.isMobile
-                  ? 'Bruk «Ny søknad» nede til høyre for å søke ferie eller fravær.'
-                  : 'Bruk hurtigvalg på Dashboard for å søke ferie, egenmelding eller sykt barn.',
-              textAlign: TextAlign.center,
-              style: DriftProTheme.bodySm,
-            ),
-          ),
-          if (!DriftProClient.isMobile) ...[
-            const SizedBox(height: 20),
-            Center(
-              child: FilledButton.icon(
-                onPressed: () => _openNewRequest(AbsenceType.ferie),
-                icon: const Icon(Icons.add),
-                label: const Text('Ny søknad'),
-              ),
-            ),
-          ],
-        ],
-      );
-    }
+    final ferieLeft = _quota?.vacationDaysRemaining;
+    final next = nextList.isEmpty ? null : nextList.first;
+    final daysUntilNext = next == null
+        ? null
+        : _calDay(next.startDate).difference(today).inDays;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(
@@ -1072,16 +1061,21 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       ),
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          DriftProClient.isMobile ? 'Min oversikt' : 'Mine søknader',
-          style: DriftProTheme.headingSm,
-        ),
+        Text('Ferie og fravær', style: DriftProTheme.headingSm),
         const SizedBox(height: 4),
         Text(
           isManager
-              ? 'Dine egne tall. Ansatte og godkjenning finner du under Mine ansatte / Inkommende.'
-              : 'Se status, egenmeldinger og ferie på ett sted.',
+              ? 'Din egen tidslinje. Ansatte ligger under Mine ansatte / Inkommende.'
+              : 'Kommende, pågående og tidligere — samlet på ett sted.',
           style: DriftProTheme.caption,
+        ),
+        const SizedBox(height: 12),
+        _LeaveInsightBanner(
+          nowCount: nowList.length,
+          next: next,
+          daysUntilNext: daysUntilNext,
+          ferieLeft: ferieLeft,
+          pendingCount: waitList.length,
         ),
         const SizedBox(height: 14),
         if (_periodUsage != null) ...[
@@ -1142,15 +1136,6 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
           ],
           const SizedBox(height: 16),
         ],
-        Text('Ventende og avviste', style: DriftProTheme.labelSm),
-        const SizedBox(height: 6),
-        Text(
-          'Trykk på saldo-kort over for alle detaljer med dato og kommentar.',
-          style: DriftProTheme.caption,
-        ),
-        const SizedBox(height: 10),
-        Text('Filtrer type', style: DriftProTheme.labelSm),
-        const SizedBox(height: 6),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -1177,21 +1162,105 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
             }).toList(),
           ),
         ),
-        const SizedBox(height: 14),
-        if (list.isEmpty)
+        const SizedBox(height: 16),
+        if (filtered.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 32),
-            child: Center(
-              child: Text(
-                'Ingen treff med valgt filter',
-                style: DriftProTheme.bodySm,
-              ),
+            padding: const EdgeInsets.symmetric(vertical: 28),
+            child: Column(
+              children: [
+                Icon(Icons.event_available, size: 48, color: Colors.grey.shade400),
+                const SizedBox(height: 10),
+                Text(
+                  _myAbsences.isEmpty
+                      ? 'Ingen søknader ennå'
+                      : 'Ingen treff med valgt filter',
+                  style: DriftProTheme.headingSm,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Bruk «Ny søknad» for ferie eller fravær.',
+                  style: DriftProTheme.bodySm,
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
           )
-        else
-          ...list.map((a) => _buildAbsenceCard(a, _days(a), isDark)),
+        else ...[
+          _leaveSection(
+            'Nå',
+            nowList,
+            isDark,
+            empty: 'Du er på jobb — ingen pågående fravær.',
+          ),
+          _leaveSection(
+            'Kommende',
+            nextList,
+            isDark,
+            empty: 'Ingen godkjent ferie eller fravær fremover.',
+          ),
+          _leaveSection(
+            'Venter på svar',
+            waitList,
+            isDark,
+            empty: 'Ingen åpne søknader.',
+          ),
+          _leaveSection(
+            'Tidligere',
+            pastList.take(24).toList(),
+            isDark,
+            empty: 'Ingen tidligere fravær i filteret.',
+          ),
+        ],
         SizedBox(height: DriftProClient.isMobile ? 88 : 24),
       ],
+    );
+  }
+
+  Widget _leaveSection(
+    String title,
+    List<Absence> items,
+    bool isDark, {
+    required String empty,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(title, style: DriftProTheme.labelSm),
+              const SizedBox(width: 8),
+              if (items.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                  child: Text(
+                    '${items.length}',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: DriftProTheme.primaryGreen,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(empty, style: DriftProTheme.caption),
+            )
+          else
+            ...items.map((a) => _buildAbsenceCard(a, _days(a), isDark)),
+        ],
+      ),
     );
   }
 
@@ -1931,6 +2000,96 @@ class _InfoBox extends StatelessWidget {
           Text(title, style: DriftProTheme.labelLg),
           const SizedBox(height: 6),
           Text(body, style: DriftProTheme.bodySm),
+        ],
+      ),
+    );
+  }
+}
+
+class _LeaveInsightBanner extends StatelessWidget {
+  const _LeaveInsightBanner({
+    required this.nowCount,
+    required this.next,
+    required this.daysUntilNext,
+    required this.ferieLeft,
+    required this.pendingCount,
+  });
+
+  final int nowCount;
+  final Absence? next;
+  final int? daysUntilNext;
+  final int? ferieLeft;
+  final int pendingCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final df = DateFormat('dd.MM');
+    String headline;
+    String detail;
+    IconData icon;
+    Color tint;
+    if (nowCount > 0) {
+      headline = 'Du er borte nå';
+      detail = nowCount == 1
+          ? 'Ett godkjent fravær pågår.'
+          : '$nowCount godkjente fravær pågår.';
+      icon = Icons.event_busy_outlined;
+      tint = const Color(0xFFE65100);
+    } else if (next != null && daysUntilNext != null) {
+      headline = daysUntilNext == 0
+          ? 'Starter i dag'
+          : daysUntilNext == 1
+              ? 'Neste fravær i morgen'
+              : 'Neste om $daysUntilNext dager';
+      detail =
+          '${next!.type.label} · ${df.format(next!.startDate)}–${df.format(next!.endDate)}';
+      icon = Icons.event_available_outlined;
+      tint = DriftProTheme.primaryGreen;
+    } else {
+      headline = 'Ingen planlagt fravær';
+      detail = ferieLeft == null
+          ? 'Søk ferie når du vet datoene.'
+          : '$ferieLeft feriedager igjen i år.';
+      icon = Icons.beach_access_outlined;
+      tint = DriftProTheme.primaryGreen;
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: tint.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: tint),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  headline,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 16,
+                    color: tint,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(detail, style: DriftProTheme.bodySm),
+                if (pendingCount > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '$pendingCount søknad${pendingCount == 1 ? '' : 'er'} venter på svar',
+                    style: DriftProTheme.caption,
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );
