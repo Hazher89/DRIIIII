@@ -61,6 +61,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
   List<DepartmentLeaveOverlap> _overlaps = [];
   String? _departmentName;
   bool _isLoadingContext = true;
+  List<String> _leaderNames = [];
 
   @override
   void initState() {
@@ -147,6 +148,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
           _periodUsage = periodUsage;
         });
       }
+      await _loadRecipients();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
@@ -158,6 +160,37 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
     super.dispose();
   }
 
+  Future<void> _loadRecipients() async {
+    final employee = _selectedEmployee;
+    final companyId = _profile?.companyId;
+    if (employee == null || companyId == null || _directRegister) {
+      if (mounted) setState(() => _leaderNames = []);
+      return;
+    }
+    try {
+      final options = await SupabaseService.fetchTicketAssigneeOptions(
+        companyId: companyId,
+        departmentId: employee.departmentId,
+      );
+      final names = options.nearestLeaders
+          .map((p) => p.fullName.trim())
+          .where((n) => n.isNotEmpty)
+          .toSet()
+          .toList();
+      if (mounted) setState(() => _leaderNames = names);
+    } catch (e) {
+      debugPrint('absence recipients: $e');
+    }
+  }
+
+  String get _recipientLine {
+    if (_directRegister) return '';
+    if (_leaderNames.isEmpty) {
+      return 'Søknaden sendes til administratorene. De får varsel i appen, på SMS og på e-post når det er slått på.';
+    }
+    final who = _leaderNames.join(', ');
+    return 'Leder: $who. Søknaden sendes til $who. Administratorene får også varsel i appen, på SMS og på e-post.';
+  }
   bool get _isSelfRequest => _selectedEmployee?.id == _profile?.id;
   bool get _leaderSelfBlocked =>
       _profile?.role == UserRole.leder && _isSelfRequest;
@@ -378,11 +411,14 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
       unawaited(NavBadgeService.refresh());
 
       if (!mounted) return;
+      final sentTo = _leaderNames.isEmpty
+          ? 'administratorene'
+          : _leaderNames.join(', ');
       final msg = status == AbsenceStatus.godkjent
           ? (_profile?.role == UserRole.superadmin && widget.allowPickEmployee
               ? '${widget.type.label} lagret.'
               : 'Fravær registrert og godkjent.')
-          : 'Søknad sendt. Leder og admin får beskjed.';
+          : 'Søknad sendt til $sentTo.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -473,7 +509,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
-                        'Ett trykk markerer inntil $maxConsec virkedager. Helg og røde dager telles ikke.',
+                        'Velg start og slutt selv. Maks $maxConsec virkedager. Helg og røde dager telles ikke.',
                         style: DriftProTheme.caption,
                       ),
                     ),
@@ -515,6 +551,10 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                   if (_error != null) ...[
                     const SizedBox(height: 16),
                     Text(_error!, style: const TextStyle(color: DriftProTheme.error)),
+                  ],
+                  if (!_directRegister) ...[
+                    const SizedBox(height: 16),
+                    _recipientCard(isDark),
                   ],
                   const SizedBox(height: 16),
                 ],
@@ -711,6 +751,33 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
             _checkConflicts();
           },
         ),
+      ),
+    );
+  }
+
+  Widget _recipientCard(bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark ? DriftProTheme.cardDark : const Color(0xFFF4F7F5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : const Color(0xFFE3EBE6),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.person_pin_outlined, color: DriftProTheme.primaryGreen),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _recipientLine,
+              style: DriftProTheme.bodySm.copyWith(height: 1.35),
+            ),
+          ),
+        ],
       ),
     );
   }
