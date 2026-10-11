@@ -1281,6 +1281,41 @@ class PartnerService {
   static const String stagedImportManual = 'manual';
   static const String stagedImportSap = 'sap';
 
+  /// Kalender og tellere trenger ikke PDF-teksten (kan være stor per rute).
+  static const String routeShareColumnsLight =
+      'id,partner_id,company_id,title,pdf_storage_path,share_date,is_daily_share,'
+      'notes,ack_status,ack_at,ack_by,ack_comment,shift_id,partner_vehicle_id,'
+      'route_start_at,dispatch_status,staged_import_source,customer_count,'
+      'notify_channels,sent_at,sent_by,pdf_opened_at,pdf_opened_by,pdf_open_count,'
+      'created_at';
+
+  static String friendlySapFailure(Object error) {
+    final raw = error.toString();
+    final lower = raw.toLowerCase();
+    if (lower.contains('23503') ||
+        lower.contains('imported_route_share') ||
+        lower.contains('fjernet før den ble koblet') ||
+        lower.contains('ble ikke koblet')) {
+      return 'Ruten ble ikke koblet til PDF-en. Prøv hent på nytt.';
+    }
+    if (lower.contains('failed to fetch') ||
+        lower.contains('clientexception') ||
+        lower.contains('timeout')) {
+      return 'Nettverk feilet under import. Prøv hent på nytt.';
+    }
+    if (raw.length > 140) return '${raw.substring(0, 137)}…';
+    return raw;
+  }
+
+  static bool sapRejectIsStaleLink(String? reason) {
+    final lower = (reason ?? '').toLowerCase();
+    return lower.contains('23503') ||
+        lower.contains('imported_route_share') ||
+        lower.contains('postgrestexception') ||
+        lower.contains('ble ikke koblet') ||
+        lower.contains('fjernet før den ble koblet');
+  }
+
   static List<PartnerRouteShare> _filterStagedByImportSource(
     List<PartnerRouteShare> list,
     String? importSource, {
@@ -1381,12 +1416,36 @@ class PartnerService {
     DateTime? routeDay,
     String? importSource,
   }) async {
-    final list = await fetchStagedRouteShares(
-      companyId,
-      routeDay: routeDay,
-      importSource: importSource,
-    );
-    return list.length;
+    if (!_ok) return 0;
+    if (routeDay != null) {
+      final list = await fetchStagedRouteShares(
+        companyId,
+        routeDay: routeDay,
+        importSource: importSource,
+      );
+      return list.length;
+    }
+    try {
+      final data = await _client
+          .from('partner_route_shares')
+          .select('id,staged_import_source')
+          .eq('company_id', companyId)
+          .eq('dispatch_status', 'staged') as List<dynamic>;
+      if (importSource == null) return data.length;
+      var n = 0;
+      for (final raw in data) {
+        final source = (raw as Map)['staged_import_source'] as String?;
+        final normalized = source ?? stagedImportManual;
+        if (normalized == importSource) n++;
+      }
+      return n;
+    } catch (_) {
+      final list = await fetchStagedRouteShares(
+        companyId,
+        importSource: importSource,
+      );
+      return list.length;
+    }
   }
 
   /// Send staged ruter — hver rute kan ha eget skift og starttid.
@@ -3004,21 +3063,29 @@ class PartnerService {
     final toTsExclusive =
         DateTime(dTo.year, dTo.month, dTo.day).add(const Duration(days: 1)).toUtc().toIso8601String();
 
-    final byShareDate = await _client
-            .from('partner_route_shares')
-            .select()
-            .eq('company_id', companyId)
-            .gte('share_date', sd)
-            .lte('share_date', ed)
-            .order('created_at', ascending: false)
-            .limit(limitPerQuery)
-        as List<dynamic>;
+    Future<List<dynamic>> byShareDateQuery(String columns) {
+      return _client
+          .from('partner_route_shares')
+          .select(columns)
+          .eq('company_id', companyId)
+          .gte('share_date', sd)
+          .lte('share_date', ed)
+          .order('created_at', ascending: false)
+          .limit(limitPerQuery);
+    }
+
+    List<dynamic> byShareDate;
+    try {
+      byShareDate = await byShareDateQuery(routeShareColumnsLight);
+    } catch (_) {
+      byShareDate = await byShareDateQuery('*');
+    }
 
     List<dynamic> byStartAt = const [];
     try {
       byStartAt = await _client
               .from('partner_route_shares')
-              .select()
+              .select(routeShareColumnsLight)
               .eq('company_id', companyId)
               .gte('route_start_at', fromTs)
               .lt('route_start_at', toTsExclusive)
@@ -3368,7 +3435,6 @@ class PartnerService {
   }) async {
     if (!_ok) return SapInboxOverview.empty;
     try {
-      await reconcileSapInboxWithStagedQueue(companyId);
       final pending = await fetchSapRouteInboxPending(companyId);
       final manual = await fetchSapRouteInboxManual(companyId);
       final staged = stagedShares ?? await fetchStagedRouteShares(companyId);
@@ -3451,7 +3517,19 @@ class PartnerService {
         final reject = (m['reject_reason'] as String?) ?? '';
         final isManualReject =
             status == 'rejected' && reject.startsWith(sapInboxManualReasonPrefix);
+        final staleLink = sapRejectIsStaleLink(reject);
 
+        if (isManualReject && staleLink) {
+          await _client.from('sap_route_inbox').update({
+            'status': 'pending',
+            'imported_route_share_id': null,
+            'reject_reason': null,
+            'processed_at': null,
+            'processed_by': null,
+          }).eq('id', id);
+          n++;
+          continue;
+        }
         if (isManualReject) continue;
         if (status == 'rejected') continue;
 
@@ -3696,11 +3774,15 @@ class PartnerService {
 
       if (match == null) continue;
 
-      await markSapRouteInboxImported(
-        inboxId: item.id,
-        routeShareId: match.id,
-        detectedMaviCode: item.detectedMaviCode,
-      );
+      try {
+        await markSapRouteInboxImported(
+          inboxId: item.id,
+          routeShareId: match.id,
+          detectedMaviCode: item.detectedMaviCode,
+        );
+      } catch (_) {
+        continue;
+      }
       if (match.isStaged &&
           (match.stagedImportSource ?? stagedImportManual) != stagedImportSap) {
         try {
@@ -3816,25 +3898,27 @@ class PartnerService {
         .select('id')
         .eq('id', routeShareId)
         .maybeSingle();
-    if (share == null) {
+    if (share == null || routeShareId.trim().isEmpty) {
       throw StateError(
-        'Ruten ble fjernet før den ble koblet til PDF-en. Prøv hent på nytt.',
+        'Ruten ble ikke koblet til PDF-en. Prøv hent på nytt.',
       );
     }
     final uid = _client.auth.currentUser?.id;
+    final patch = <String, dynamic>{
+      'status': 'imported',
+      'imported_route_share_id': routeShareId,
+      if (detectedMaviCode != null) 'detected_mavi_code': detectedMaviCode,
+      'reject_reason': null,
+      'processed_at': DateTime.now().toUtc().toIso8601String(),
+      if (uid != null) 'processed_by': uid,
+    };
     try {
-      await _client.from('sap_route_inbox').update({
-        'status': 'imported',
-        'imported_route_share_id': routeShareId,
-        if (detectedMaviCode != null) 'detected_mavi_code': detectedMaviCode,
-        'processed_at': DateTime.now().toUtc().toIso8601String(),
-        if (uid != null) 'processed_by': uid,
-      }).eq('id', inboxId);
+      await _client.from('sap_route_inbox').update(patch).eq('id', inboxId);
     } catch (e) {
       final msg = e.toString();
       if (msg.contains('23503') || msg.contains('imported_route_share_id')) {
         throw StateError(
-          'Ruten ble fjernet før den ble koblet til PDF-en. Prøv hent på nytt.',
+          'Ruten ble ikke koblet til PDF-en. Prøv hent på nytt.',
         );
       }
       rethrow;
@@ -3889,6 +3973,7 @@ class PartnerService {
     String? notes,
     RoutePdfParseBundle? parsed,
     String stagedImportSource = stagedImportManual,
+    List<FleetShiftDefinition>? fleetShifts,
   }) async {
     final safeName = StoragePathSanitizer.fileName(fileName);
     final safeUnit = StoragePathSanitizer.segment(vehicle.unitCode, fallback: 'mavi');
@@ -3898,8 +3983,13 @@ class PartnerService {
     final storedPath =
         await uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
     await PostalCodeRegistry.ensureLoaded();
-    await ensureCanonicalFleetShifts(companyId);
-    final shifts = await fetchFleetShifts(companyId);
+    final List<FleetShiftDefinition> shifts;
+    if (fleetShifts != null) {
+      shifts = fleetShifts;
+    } else {
+      await ensureCanonicalFleetShifts(companyId);
+      shifts = await fetchFleetShifts(companyId);
+    }
     final bundle = parsed ?? RoutePdfTextService.parseBundle(bytes, fallbackDate: routeDate, fileName: fileName);
     final routeShifts = FleetShiftFilters.forRouteAssignment(shifts);
     final auto = await RoutePdfAutoAssign.analyze(

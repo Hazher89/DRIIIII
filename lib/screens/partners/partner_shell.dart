@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/permissions/partner_portal_pages.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/routing/route_url_sync.dart';
 import '../../core/auth/session_sign_out.dart';
@@ -116,6 +117,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
   StreamSubscription<int>? _chatUnreadSub;
   StreamSubscription<PartnerNavBadgeCounts>? _partnerBadgeSub;
   bool _chatEnabled = true;
+  Map<String, dynamic> _portalAccess = const {};
   int _chatUnread = 0;
   PartnerNavBadgeCounts _partnerBadges = PartnerNavBadgeCounts.zero;
 
@@ -287,22 +289,32 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
           staffVehicleIds = {};
         }
       }
+      final partner = await PartnerService.fetchPartner(pid);
+      final access = partner?.portalAccess ?? const <String, dynamic>{};
       if (!mounted) return;
-      if (enabled == _workforceEnabled &&
+      final workforceSame = enabled == _workforceEnabled &&
           staffRoutes == _staffCanManageRoutes &&
           staffDeviations == _staffCanReportDeviations &&
           staffVehicleIds.length == _staffRouteVehicleIds.length &&
-          staffVehicleIds.containsAll(_staffRouteVehicleIds)) {
-        return;
-      }
+          staffVehicleIds.containsAll(_staffRouteVehicleIds);
+      final accessSame = _samePortalAccess(access, _portalAccess);
+      if (workforceSame && accessSame && partner?.id == _partner?.id) return;
       setState(() {
+        final previousSlugs = _portalTabSlugs();
+        final currentSlug = (_index >= 0 && _index < previousSlugs.length)
+            ? previousSlugs[_index]
+            : 'profil';
+        if (partner != null) _partner = partner;
+        _portalAccess = Map<String, dynamic>.from(access);
         _workforceEnabled = enabled;
         _staffCanManageRoutes = staffRoutes;
         _staffCanReportDeviations = staffDeviations;
         _staffRouteVehicleIds = staffVehicleIds;
-        // Hold indeks innenfor synlige faner når Ansatte/Timer/Stempling forsvinner.
-        final maxIdx = _visibleTabCount() - 1;
-        if (_index > maxIdx) _index = maxIdx.clamp(0, 99);
+        final nextSlugs = _portalTabSlugs();
+        final mapped = nextSlugs.indexOf(currentSlug);
+        _index = mapped >= 0
+            ? mapped
+            : (nextSlugs.isEmpty ? 0 : nextSlugs.length - 1);
       });
       if (!enabled) PartnerRoutePushListener.stop();
       _startPartnerPushListener();
@@ -311,54 +323,66 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
     } catch (_) {}
   }
 
-  int _visibleTabCount() {
-    if (widget.portalAccountKind == 'staff') {
-      var n = 1; // profil
-      if (_workforceEnabled) n += 1; // stempling
-      if (_workforceEnabled && _staffCanManageRoutes) n += 1; // ruter
-      if (_workforceEnabled && _staffCanReportDeviations) n += 1; // avvik
-      if (_chatEnabled) n += 1; // meldinger
-      return n;
+  bool _pageOn(String key) => PartnerPortalPages.isOn(_portalAccess, key);
+
+  bool get _showMessages => _chatEnabled && _pageOn(PartnerPortalPages.meldinger);
+
+  bool _samePortalAccess(Map<String, dynamic> a, Map<String, dynamic> b) {
+    if (a.length != b.length) return false;
+    for (final entry in a.entries) {
+      if (b[entry.key] != entry.value) return false;
     }
-    if (widget.portalAccountKind == 'owner') return _chatEnabled ? 6 : 5;
-    return _chatEnabled ? 7 : 6; // driver
+    return true;
   }
+
+  int _visibleTabCount() => _portalTabSlugs().length;
 
   List<String> _portalTabSlugs() {
     final isOwner = widget.portalAccountKind == 'owner';
     final isStaff = widget.portalAccountKind == 'staff';
     if (isStaff) {
       return [
-        if (_workforceEnabled) 'stempling',
-        if (_workforceEnabled && _staffCanManageRoutes) 'ruter',
-        if (_workforceEnabled && _staffCanReportDeviations) 'avvik',
-        if (_chatEnabled) 'meldinger',
+        if (_workforceEnabled && _pageOn(PartnerPortalPages.stempling)) 'stempling',
+        if (_workforceEnabled && _staffCanManageRoutes && _pageOn(PartnerPortalPages.ruter)) 'ruter',
+        if (_workforceEnabled &&
+            _staffCanReportDeviations &&
+            _pageOn(PartnerPortalPages.avvik))
+          'avvik',
+        if (_showMessages) 'meldinger',
         'profil',
       ];
     }
     if (isOwner) {
       return [
-        'oversikt',
-        'ruter',
-        'avvik',
-        'dokumenter',
-        if (_chatEnabled) 'meldinger',
-        'mer',
+        if (_pageOn(PartnerPortalPages.oversikt)) 'oversikt',
+        if (_pageOn(PartnerPortalPages.ruter)) 'ruter',
+        if (_pageOn(PartnerPortalPages.avvik)) 'avvik',
+        if (_pageOn(PartnerPortalPages.dokumenter)) 'dokumenter',
+        if (_showMessages) 'meldinger',
+        if (_pageOn(PartnerPortalPages.mer)) 'mer',
         'profil',
       ];
     }
     return [
-      'oversikt',
-      'ruter',
-      'avvik',
-      'dokumenter',
-      if (_chatEnabled) 'meldinger',
-      'fri',
+      if (_pageOn(PartnerPortalPages.oversikt)) 'oversikt',
+      if (_pageOn(PartnerPortalPages.ruter)) 'ruter',
+      if (_pageOn(PartnerPortalPages.avvik)) 'avvik',
+      if (_pageOn(PartnerPortalPages.dokumenter)) 'dokumenter',
+      if (_showMessages) 'meldinger',
+      if (_pageOn(PartnerPortalPages.fri)) 'fri',
       'profil',
     ];
   }
 
-  int _ownerMoreTabIndex() => _chatEnabled ? 5 : 4;
+  int _ownerMoreTabIndex() {
+    final i = _portalTabSlugs().indexOf('mer');
+    return i < 0 ? 0 : i;
+  }
+
+  int _tabIndexFor(String slug) {
+    final i = _portalTabSlugs().indexOf(slug);
+    return i < 0 ? 0 : i;
+  }
 
   String _staffRoleLabel() {
     final parts = <String>['stempling'];
@@ -560,6 +584,7 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
       if (!mounted) return;
       setState(() {
         _partner = p;
+        _portalAccess = Map<String, dynamic>.from(p?.portalAccess ?? const {});
         _workforceEnabled = workforce;
         _staffCanManageRoutes = staffRoutes && workforce;
         _staffCanReportDeviations = staffDeviations && workforce;
@@ -660,17 +685,21 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
 
     final pages = isStaff
         ? [
-            if (_workforceEnabled)
+            if (_workforceEnabled && _pageOn(PartnerPortalPages.stempling))
               StaffPortalPunchPage(partner: p, profile: _profile),
-            if (_workforceEnabled && _staffCanManageRoutes)
+            if (_workforceEnabled &&
+                _staffCanManageRoutes &&
+                _pageOn(PartnerPortalPages.ruter))
               OwnerPortalRoutesPage(partner: p, staffPortal: true),
-            if (_workforceEnabled && _staffCanReportDeviations)
+            if (_workforceEnabled &&
+                _staffCanReportDeviations &&
+                _pageOn(PartnerPortalPages.avvik))
               DriverPortalAvvikPage(
                 partner: p,
                 profile: _profile,
                 isStaffMode: true,
               ),
-            if (_chatEnabled) _partnerChatPage(),
+            if (_showMessages) _partnerChatPage(),
             PartnerPortalProfilePage(
               profile: _profile,
               roleLabel: !_workforceEnabled
@@ -683,21 +712,30 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
           ]
         : isOwner
             ? [
+                if (_pageOn(PartnerPortalPages.oversikt))
                 OwnerPortalOverviewPage(
                   partner: p,
                   workforceEnabled: _workforceEnabled,
-                  onGoToRoutes: goToRoutes,
-                  onGoToTrekk: openTrekk,
-                  onGoToDocs: () => _selectTab(3),
-                  onGoToMore: () => _selectTab(_ownerMoreTabIndex()),
-                  onGoToTimesheet: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => OwnerPortalTimesheetPage(partner: p),
-                      ),
-                    );
-                  },
+                  portalAccess: _portalAccess,
+                  onGoToRoutes: _pageOn(PartnerPortalPages.ruter) ? goToRoutes : null,
+                  onGoToTrekk: _pageOn(PartnerPortalPages.trekk) ? openTrekk : null,
+                  onGoToDocs: _pageOn(PartnerPortalPages.dokumenter)
+                      ? () => _selectTab(_tabIndexFor('dokumenter'))
+                      : null,
+                  onGoToMore: _pageOn(PartnerPortalPages.mer)
+                      ? () => _selectTab(_ownerMoreTabIndex())
+                      : null,
+                  onGoToTimesheet: _pageOn(PartnerPortalPages.timeliste)
+                      ? () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => OwnerPortalTimesheetPage(partner: p),
+                            ),
+                          );
+                        }
+                      : null,
                 ),
+                if (_pageOn(PartnerPortalPages.ruter))
                 OwnerPortalRoutesPage(
                   partner: p,
                   launchFocus: _routesFocus,
@@ -707,18 +745,22 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                     }
                   },
                 ),
-                DriverPortalAvvikPage(
-                  partner: p,
-                  profile: _profile,
-                  isOwnerMode: true,
-                ),
-                OwnerPortalDocsPage(partner: p),
-                if (_chatEnabled) _partnerChatPage(),
-                OwnerPortalMorePage(
-                  partner: p,
-                  profile: _profile,
-                  workforceEnabled: _workforceEnabled,
-                ),
+                if (_pageOn(PartnerPortalPages.avvik))
+                  DriverPortalAvvikPage(
+                    partner: p,
+                    profile: _profile,
+                    isOwnerMode: true,
+                  ),
+                if (_pageOn(PartnerPortalPages.dokumenter))
+                  OwnerPortalDocsPage(partner: p),
+                if (_showMessages) _partnerChatPage(),
+                if (_pageOn(PartnerPortalPages.mer))
+                  OwnerPortalMorePage(
+                    partner: p,
+                    profile: _profile,
+                    workforceEnabled: _workforceEnabled,
+                    portalAccess: _portalAccess,
+                  ),
                 PartnerPortalProfilePage(
                   profile: _profile,
                   roleLabel: 'Bil-eier (hele bedriften)',
@@ -727,12 +769,17 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                 ),
               ]
             : [
-                DriverPortalOverviewPage(partner: p, profile: _profile),
-                DriverPortalRoutesPage(partner: p, profile: _profile),
-                DriverPortalAvvikPage(partner: p, profile: _profile),
-                DriverPortalDocsPage(partner: p),
-                if (_chatEnabled) _partnerChatPage(),
-                DriverPortalFriPage(partner: p, profile: _profile),
+                if (_pageOn(PartnerPortalPages.oversikt))
+                  DriverPortalOverviewPage(partner: p, profile: _profile),
+                if (_pageOn(PartnerPortalPages.ruter))
+                  DriverPortalRoutesPage(partner: p, profile: _profile),
+                if (_pageOn(PartnerPortalPages.avvik))
+                  DriverPortalAvvikPage(partner: p, profile: _profile),
+                if (_pageOn(PartnerPortalPages.dokumenter))
+                  DriverPortalDocsPage(partner: p),
+                if (_showMessages) _partnerChatPage(),
+                if (_pageOn(PartnerPortalPages.fri))
+                  DriverPortalFriPage(partner: p, profile: _profile),
                 PartnerPortalProfilePage(
                   profile: _profile,
                   roleLabel: 'Sjåfør (MAVI-bil)',
@@ -741,49 +788,61 @@ class _PartnerShellState extends State<PartnerShell> with WidgetsBindingObserver
                 ),
               ];
     final ownerNavItems = [
-      _portalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
-      _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
-      _portalNavItem(
-        icon: Icons.warning_amber_outlined,
-        selectedIcon: Icons.warning_amber_rounded,
-        label: 'Avvik',
-      ),
-      _portalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
-      if (_chatEnabled) _chatNavItem(),
-      _portalNavItem(icon: Icons.apps_outlined, selectedIcon: Icons.apps, label: 'Mer'),
-      _portalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
-    ];
-
-    final staffNavItems = [
-      if (_workforceEnabled)
-        _portalNavItem(
-          icon: Icons.fingerprint_outlined,
-          selectedIcon: Icons.fingerprint,
-          label: 'Stempling',
-        ),
-      if (_workforceEnabled && _staffCanManageRoutes)
+      if (_pageOn(PartnerPortalPages.oversikt))
+        _portalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
+      if (_pageOn(PartnerPortalPages.ruter))
         _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
-      if (_workforceEnabled && _staffCanReportDeviations)
+      if (_pageOn(PartnerPortalPages.avvik))
         _portalNavItem(
           icon: Icons.warning_amber_outlined,
           selectedIcon: Icons.warning_amber_rounded,
           label: 'Avvik',
         ),
-      if (_chatEnabled) _chatNavItem(),
+      if (_pageOn(PartnerPortalPages.dokumenter))
+        _portalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
+      if (_showMessages) _chatNavItem(),
+      if (_pageOn(PartnerPortalPages.mer))
+        _portalNavItem(icon: Icons.apps_outlined, selectedIcon: Icons.apps, label: 'Mer'),
+      _portalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
+    ];
+
+    final staffNavItems = [
+      if (_workforceEnabled && _pageOn(PartnerPortalPages.stempling))
+        _portalNavItem(
+          icon: Icons.fingerprint_outlined,
+          selectedIcon: Icons.fingerprint,
+          label: 'Stempling',
+        ),
+      if (_workforceEnabled && _staffCanManageRoutes && _pageOn(PartnerPortalPages.ruter))
+        _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
+      if (_workforceEnabled &&
+          _staffCanReportDeviations &&
+          _pageOn(PartnerPortalPages.avvik))
+        _portalNavItem(
+          icon: Icons.warning_amber_outlined,
+          selectedIcon: Icons.warning_amber_rounded,
+          label: 'Avvik',
+        ),
+      if (_showMessages) _chatNavItem(),
       _portalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
     ];
 
     final driverNavItems = [
-      _portalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
-      _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
-      _portalNavItem(
-        icon: Icons.warning_amber_outlined,
-        selectedIcon: Icons.warning_amber_rounded,
-        label: 'Meld avvik',
-      ),
-      _portalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
-      if (_chatEnabled) _chatNavItem(),
-      _portalNavItem(icon: Icons.beach_access_outlined, selectedIcon: Icons.beach_access, label: 'Fri'),
+      if (_pageOn(PartnerPortalPages.oversikt))
+        _portalNavItem(icon: Icons.home_outlined, selectedIcon: Icons.home, label: 'Oversikt'),
+      if (_pageOn(PartnerPortalPages.ruter))
+        _portalNavItem(icon: Icons.map_outlined, selectedIcon: Icons.map, label: 'Ruter'),
+      if (_pageOn(PartnerPortalPages.avvik))
+        _portalNavItem(
+          icon: Icons.warning_amber_outlined,
+          selectedIcon: Icons.warning_amber_rounded,
+          label: 'Meld avvik',
+        ),
+      if (_pageOn(PartnerPortalPages.dokumenter))
+        _portalNavItem(icon: Icons.folder_open_outlined, selectedIcon: Icons.folder_open, label: 'Dokumenter'),
+      if (_showMessages) _chatNavItem(),
+      if (_pageOn(PartnerPortalPages.fri))
+        _portalNavItem(icon: Icons.beach_access_outlined, selectedIcon: Icons.beach_access, label: 'Fri'),
       _portalNavItem(icon: Icons.person_outlined, selectedIcon: Icons.person, label: 'Profil'),
     ];
 

@@ -395,7 +395,6 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null || !mounted) return;
-      await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final pending = await PartnerService.fetchSapRouteInboxPending(cid);
       final overview = await PartnerService.fetchSapInboxOverview(
         cid,
@@ -442,22 +441,31 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   Future<List<_SkippedPdf>> _collectSapManualSkipped(String companyId) async {
     final manual = await PartnerService.fetchSapRouteInboxManual(companyId);
     if (manual.isEmpty) return const [];
+    final pending = manual
+        .where((item) => !_skipped.any((x) => x.sapInboxId == item.id))
+        .toList();
     final added = <_SkippedPdf>[];
-    for (final item in manual) {
-      if (_skipped.any((x) => x.sapInboxId == item.id)) continue;
-      final bytes = await PartnerService.downloadRoutePdfBytes(item.pdfStoragePath);
-      if (bytes == null || bytes.isEmpty) continue;
-      final reason = (item.rejectReason ?? '')
-          .replaceFirst(PartnerService.sapInboxManualReasonPrefix, '')
-          .trim();
-      added.add(_SkippedPdf(
-        fileName: item.fileName,
-        bytes: bytes,
-        reason: reason.isEmpty ? 'Krever manuell tildeling' : reason,
-        detectedCode: item.detectedMaviCode ??
-            RoutePdfTextService.extractResourceIdFromFileName(item.fileName),
-        sapInboxId: item.id,
-      ));
+    const batch = 6;
+    for (var offset = 0; offset < pending.length; offset += batch) {
+      final slice = pending.skip(offset).take(batch).toList();
+      final part = await Future.wait(slice.map((item) async {
+        final bytes = await PartnerService.downloadRoutePdfBytes(item.pdfStoragePath);
+        if (bytes == null || bytes.isEmpty) return null;
+        final reason = (item.rejectReason ?? '')
+            .replaceFirst(PartnerService.sapInboxManualReasonPrefix, '')
+            .trim();
+        return _SkippedPdf(
+          fileName: item.fileName,
+          bytes: bytes,
+          reason: reason.isEmpty
+              ? 'Krever manuell tildeling'
+              : PartnerService.friendlySapFailure(reason),
+          detectedCode: item.detectedMaviCode ??
+              RoutePdfTextService.extractResourceIdFromFileName(item.fileName),
+          sapInboxId: item.id,
+        );
+      }));
+      added.addAll(part.whereType<_SkippedPdf>());
     }
     return added;
   }
@@ -3215,7 +3223,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
               ),
               subtitle: Text(
-                s.reason ?? 'Trenger manuell tildeling',
+                _shortSkipReason(s.reason ?? 'Trenger manuell tildeling'),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 11, color: Colors.orange.shade900),
               ),
             ),

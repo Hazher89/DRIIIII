@@ -56,6 +56,8 @@ class Partner {
   final String? caseCode;
   /// Partner workforce (ansatte + stempling) — per-bedrift (se også company-wide flag).
   final bool workforceEnabled;
+  /// Sider i partner-appen. Mangler nøkkel = på. `false` skjuler siden.
+  final Map<String, dynamic> portalAccess;
 
   Partner({
     required this.id,
@@ -92,6 +94,7 @@ class Partner {
     required this.createdAt,
     this.caseCode,
     this.workforceEnabled = false,
+    this.portalAccess = const {},
   });
 
   EcoDrivingStatus get ecoDrivingStatus {
@@ -155,6 +158,9 @@ class Partner {
       createdAt: DateTime.parse(json['created_at'] as String),
       caseCode: json['case_code'] as String?,
       workforceEnabled: json['workforce_enabled'] as bool? ?? false,
+      portalAccess: json['portal_access'] is Map
+          ? Map<String, dynamic>.from(json['portal_access'] as Map)
+          : const {},
     );
   }
 

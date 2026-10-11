@@ -211,8 +211,9 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
 
   Future<void> _load() async {
     _savedTabIndex = _tabs?.index ?? _savedTabIndex;
+    final showSpinner = _partners.isEmpty;
     setState(() {
-      _loading = true;
+      if (showSpinner) _loading = true;
       _error = null;
     });
     try {
@@ -241,22 +242,32 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
 
       unawaited(PartnerService.syncPartnerNotificationEmails(cid));
 
-      final results = await Future.wait([
-        PartnerService.fetchPartners(companyId: cid),
-        PartnerService.fetchCompanyFleet(cid),
-        PartnerService.fetchCompanyPortalAccounts(cid),
-      ]);
-
-      if (mounted) {
-        setState(() {
-          _applyPartnerData(
-            list: results[0] as List<Partner>,
-            fleet: results[1] as List<FleetPartnerVehicleRow>,
-            portalAccounts: results[2] as List<PartnerPortalAccount>,
-          );
-          _loading = false;
-        });
-      }
+      final partnersFuture = PartnerService.fetchPartners(companyId: cid);
+      final fleetFuture = PartnerService.fetchCompanyFleet(cid);
+      final accountsFuture = PartnerService.fetchCompanyPortalAccounts(cid);
+      final partners = await partnersFuture;
+      final fleet = await fleetFuture;
+      if (!mounted) return;
+      final knownAccounts = [
+        for (final list in _portalAccountsByPartner.values) ...list,
+      ];
+      setState(() {
+        _applyPartnerData(
+          list: partners,
+          fleet: fleet,
+          portalAccounts: knownAccounts,
+        );
+        _loading = false;
+      });
+      final accounts = await accountsFuture;
+      if (!mounted) return;
+      setState(() {
+        _applyPartnerData(
+          list: partners,
+          fleet: fleet,
+          portalAccounts: accounts,
+        );
+      });
     } catch (e) {
       if (mounted) {
         setState(() {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/permissions/partner_portal_pages.dart';
 import '../../../core/services/partner/partner_deduction_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
@@ -23,6 +24,7 @@ class OwnerPortalOverviewPage extends StatefulWidget {
   final VoidCallback? onGoToMore;
   final VoidCallback? onGoToTimesheet;
   final bool workforceEnabled;
+  final Map<String, dynamic> portalAccess;
 
   const OwnerPortalOverviewPage({
     super.key,
@@ -33,6 +35,7 @@ class OwnerPortalOverviewPage extends StatefulWidget {
     this.onGoToMore,
     this.onGoToTimesheet,
     this.workforceEnabled = false,
+    this.portalAccess = const {},
   });
 
   @override
@@ -188,7 +191,11 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                     _pendingRoutesBanner(context, onTap: _openPendingRoutes),
                     const SizedBox(height: 12),
                   ],
-                  if (widget.workforceEnabled)
+                  if (widget.workforceEnabled &&
+                      PartnerPortalPages.isOn(
+                        widget.portalAccess,
+                        PartnerPortalPages.timeliste,
+                      ))
                     OwnerWorkforceSummaryCard(
                       partner: widget.partner,
                       onTap: widget.onGoToTimesheet,
@@ -196,39 +203,42 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                   PartnerSmartActionsPanel(
                     title: 'Hurtigvalg',
                     actions: [
-                      if (_data!.pendingAckTotal > 0)
+                      if (_data!.pendingAckTotal > 0 && widget.onGoToRoutes != null)
                         PartnerSmartAction(
                           label: '${_data!.pendingAckTotal} rute(r) venter på aksept',
                           hint: 'Åpner ruter — vis PDF og aksepter',
                           icon: Icons.check_circle_outline,
                           onTap: _openPendingRoutes,
                         ),
-                      PartnerSmartAction(
-                        label: 'Se alle ruter',
-                        hint: 'Nye ruter og tidligere',
-                        icon: Icons.map_outlined,
-                        onTap: () => widget.onGoToRoutes?.call(tabIndex: 0),
-                      ),
-                      PartnerSmartAction(
-                        label: 'Dokumenter og avtaler',
-                        hint: 'Åpne dokumentarkivet',
-                        icon: Icons.folder_open_outlined,
-                        onTap: widget.onGoToDocs,
-                      ),
-                      PartnerSmartAction(
-                        label: 'Flere verktøy',
-                        hint: 'Oppsummering, trekk, møter, bilkontroll m.m.',
-                        icon: Icons.apps_outlined,
-                        onTap: widget.onGoToMore,
-                      ),
-                      if (_trekkCount > 0)
+                      if (widget.onGoToRoutes != null)
+                        PartnerSmartAction(
+                          label: 'Se alle ruter',
+                          hint: 'Nye ruter og tidligere',
+                          icon: Icons.map_outlined,
+                          onTap: () => widget.onGoToRoutes?.call(tabIndex: 0),
+                        ),
+                      if (widget.onGoToDocs != null)
+                        PartnerSmartAction(
+                          label: 'Dokumenter og avtaler',
+                          hint: 'Åpne dokumentarkivet',
+                          icon: Icons.folder_open_outlined,
+                          onTap: widget.onGoToDocs,
+                        ),
+                      if (widget.onGoToMore != null)
+                        PartnerSmartAction(
+                          label: 'Flere verktøy',
+                          hint: 'Oppsummering, trekk, møter, bilkontroll m.m.',
+                          icon: Icons.apps_outlined,
+                          onTap: widget.onGoToMore,
+                        ),
+                      if (_trekkCount > 0 && widget.onGoToTrekk != null)
                         PartnerSmartAction(
                           label: 'Se $_trekkCount trekk i arkivet',
                           hint: 'Under Mer → Trekk',
                           icon: Icons.gavel_rounded,
                           onTap: widget.onGoToTrekk,
                         ),
-                      if (widget.workforceEnabled)
+                      if (widget.workforceEnabled && widget.onGoToTimesheet != null)
                         PartnerSmartAction(
                           label: 'Timeliste & timerbank',
                           hint: 'Ansattes timer, på jobb nå og Excel',

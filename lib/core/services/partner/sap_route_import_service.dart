@@ -34,9 +34,13 @@ class SapRouteImportService {
 
     final vehicleMap = await _loadVehicleLookup(companyId, fleet);
     final partnerById = {for (final r in fleet) r.partner.id: r.partner};
-    for (final p in await PartnerService.fetchPartners(companyId: companyId)) {
-      partnerById.putIfAbsent(p.id, () => p);
+    if (partnerById.isEmpty) {
+      for (final p in await PartnerService.fetchPartners(companyId: companyId)) {
+        partnerById.putIfAbsent(p.id, () => p);
+      }
     }
+    await PartnerService.ensureCanonicalFleetShifts(companyId);
+    final fleetShifts = await PartnerService.fetchFleetShifts(companyId);
 
     final fallbackDay = DateTime(routeDate.year, routeDate.month, routeDate.day);
     var staged = await PartnerService.fetchStagedRouteShares(
@@ -81,7 +85,7 @@ class SapRouteImportService {
             code: code,
           );
         } catch (e) {
-          return _DownloadOutcome.fail(item, e.toString());
+          return _DownloadOutcome.fail(item, PartnerService.friendlySapFailure(e));
         }
       }));
 
@@ -188,17 +192,36 @@ class SapRouteImportService {
           ),
         ).firstOrNull;
         if (existing != null) {
-          await PartnerService.markSapRouteInboxImported(
-            inboxId: item.id,
-            routeShareId: existing.id,
-            detectedMaviCode: MaviUnitCodes.normalize(vehicle.unitCode),
-          );
-          lines.add(SapRouteImportLine(
-            fileName: item.fileName,
-            ok: true,
-            maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
-            message: 'Allerede i kø',
-          ));
+          try {
+            await PartnerService.markSapRouteInboxImported(
+              inboxId: item.id,
+              routeShareId: existing.id,
+              detectedMaviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+            );
+            lines.add(SapRouteImportLine(
+              fileName: item.fileName,
+              ok: true,
+              maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+              message: 'Allerede i kø',
+            ));
+          } catch (e) {
+            final reason = PartnerService.friendlySapFailure(e);
+            await _failItem(
+              item: item,
+              rejectOnFailure: rejectOnFailure,
+              reason: reason,
+              bytes: bytes,
+              detectedCode: code,
+              skippedItems: skippedItems,
+            );
+            skipped++;
+            lines.add(SapRouteImportLine(
+              fileName: item.fileName,
+              ok: false,
+              maviCode: code,
+              message: reason,
+            ));
+          }
           bumpProgress();
           continue;
         }
@@ -210,17 +233,36 @@ class SapRouteImportService {
           contentSha256: item.contentSha256,
         );
         if (contentDup != null) {
-          await PartnerService.markSapRouteInboxImported(
-            inboxId: item.id,
-            routeShareId: contentDup.id,
-            detectedMaviCode: MaviUnitCodes.normalize(vehicle.unitCode),
-          );
-          lines.add(SapRouteImportLine(
-            fileName: item.fileName,
-            ok: true,
-            maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
-            message: 'Duplikat — allerede i kø',
-          ));
+          try {
+            await PartnerService.markSapRouteInboxImported(
+              inboxId: item.id,
+              routeShareId: contentDup.id,
+              detectedMaviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+            );
+            lines.add(SapRouteImportLine(
+              fileName: item.fileName,
+              ok: true,
+              maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
+              message: 'Duplikat — allerede i kø',
+            ));
+          } catch (e) {
+            final reason = PartnerService.friendlySapFailure(e);
+            await _failItem(
+              item: item,
+              rejectOnFailure: rejectOnFailure,
+              reason: reason,
+              bytes: bytes,
+              detectedCode: code,
+              skippedItems: skippedItems,
+            );
+            skipped++;
+            lines.add(SapRouteImportLine(
+              fileName: item.fileName,
+              ok: false,
+              maviCode: code,
+              message: reason,
+            ));
+          }
           bumpProgress();
           continue;
         }
@@ -235,6 +277,7 @@ class SapRouteImportService {
             routeDate: bundle.schedule.routeDate,
             parsed: bundle,
             stagedImportSource: PartnerService.stagedImportSap,
+            fleetShifts: fleetShifts,
           );
 
           await PartnerService.markSapRouteInboxImported(
@@ -254,10 +297,11 @@ class SapRouteImportService {
             maviCode: MaviUnitCodes.normalize(vehicle.unitCode),
           ));
         } catch (e) {
+          final reason = PartnerService.friendlySapFailure(e);
           await _failItem(
             item: item,
             rejectOnFailure: rejectOnFailure,
-            reason: e.toString(),
+            reason: reason,
             bytes: bytes,
             detectedCode: code,
             skippedItems: skippedItems,
@@ -266,7 +310,7 @@ class SapRouteImportService {
           lines.add(SapRouteImportLine(
             fileName: item.fileName,
             ok: false,
-            message: e.toString(),
+            message: reason,
           ));
         }
         bumpProgress();
@@ -309,12 +353,10 @@ class SapRouteImportService {
     String companyId,
     List<FleetPartnerVehicleRow> fleet,
   ) async {
-    final vehicles = <PartnerVehicle>[];
-    for (final r in fleet) {
-      vehicles.add(r.vehicle);
-    }
-    for (final p in await PartnerService.fetchPartners(companyId: companyId)) {
-      vehicles.addAll(await PartnerService.fetchVehicles(p.id));
+    final vehicles = <PartnerVehicle>[for (final r in fleet) r.vehicle];
+    if (vehicles.isEmpty) {
+      final rows = await PartnerService.fetchCompanyFleet(companyId);
+      vehicles.addAll(rows.map((r) => r.vehicle));
     }
     return RoutePdfTextService.buildVehicleLookupMap<PartnerVehicle>(
       vehicles: vehicles.where(PartnerService.isMaviFleetVehicle),

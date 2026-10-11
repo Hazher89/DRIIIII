@@ -151,7 +151,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         fromDay: _weekStart,
         toDay: _weekEnd,
       );
-      await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final sapInbox = await PartnerService.countSapRouteInboxPending(cid);
       final manualStaged = await PartnerService.countStagedRouteShares(
         cid,
@@ -183,7 +182,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) return;
-      await PartnerService.reconcileSapInboxWithStagedQueue(cid);
       final inbox = await PartnerService.countSapRouteInboxPending(cid);
       final manualStaged = await PartnerService.countStagedRouteShares(
         cid,

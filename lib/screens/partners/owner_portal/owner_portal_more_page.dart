@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/permissions/partner_portal_pages.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/user_profile.dart';
@@ -22,11 +23,13 @@ class OwnerPortalMorePage extends StatelessWidget {
     required this.partner,
     required this.profile,
     this.workforceEnabled = false,
+    this.portalAccess = const {},
   });
 
   final Partner partner;
   final UserProfile profile;
   final bool workforceEnabled;
+  final Map<String, dynamic> portalAccess;
 
   void _open(BuildContext context, Widget page) {
     Navigator.of(context).push(
@@ -34,51 +37,58 @@ class OwnerPortalMorePage extends StatelessWidget {
     );
   }
 
+  bool _on(String key) => PartnerPortalPages.isOn(portalAccess, key);
+
   List<_MoreItem> _items() => [
-        _MoreItem(
-          icon: Icons.summarize_outlined,
-          title: 'Oppsummering',
-          subtitle: 'Økonomi, arkiv og total per måned',
-          page: OwnerPortalSummaryPage(partner: partner),
-        ),
-        _MoreItem(
-          icon: Icons.gavel_rounded,
-          title: 'Trekk',
-          subtitle: 'Saker, begrunnelse og bevis',
-          page: OwnerPortalDeductionsPage(partner: partner),
-        ),
-        _MoreItem(
-          icon: Icons.car_rental_outlined,
-          title: 'Utleie',
-          subtitle: 'Lån og utlån av kjøretøy',
-          page: OwnerPortalVehicleRentalPage(partner: partner),
-        ),
-        _MoreItem(
-          icon: Icons.event_note_outlined,
-          title: 'Møter & revisjon',
-          subtitle: 'Kommende og tidligere møter',
-          page: OwnerPortalMeetingsPage(partner: partner),
-        ),
-        _MoreItem(
-          icon: Icons.fact_check_outlined,
-          title: 'Bilkontroll',
-          subtitle: 'Kontroller og status',
-          page: OwnerPortalInspectionsPage(partner: partner),
-        ),
-        if (workforceEnabled) ...[
+        if (_on(PartnerPortalPages.oppsummering))
+          _MoreItem(
+            icon: Icons.summarize_outlined,
+            title: 'Oppsummering',
+            subtitle: 'Økonomi, arkiv og total per måned',
+            page: OwnerPortalSummaryPage(partner: partner),
+          ),
+        if (_on(PartnerPortalPages.trekk))
+          _MoreItem(
+            icon: Icons.gavel_rounded,
+            title: 'Trekk',
+            subtitle: 'Saker, begrunnelse og bevis',
+            page: OwnerPortalDeductionsPage(partner: partner),
+          ),
+        if (_on(PartnerPortalPages.utleie))
+          _MoreItem(
+            icon: Icons.car_rental_outlined,
+            title: 'Utleie',
+            subtitle: 'Lån og utlån av kjøretøy',
+            page: OwnerPortalVehicleRentalPage(partner: partner),
+          ),
+        if (_on(PartnerPortalPages.moter))
+          _MoreItem(
+            icon: Icons.event_note_outlined,
+            title: 'Møter & revisjon',
+            subtitle: 'Kommende og tidligere møter',
+            page: OwnerPortalMeetingsPage(partner: partner),
+          ),
+        if (_on(PartnerPortalPages.bilkontroll))
+          _MoreItem(
+            icon: Icons.fact_check_outlined,
+            title: 'Bilkontroll',
+            subtitle: 'Kontroller og status',
+            page: OwnerPortalInspectionsPage(partner: partner),
+          ),
+        if (workforceEnabled && _on(PartnerPortalPages.ansatte))
           _MoreItem(
             icon: Icons.groups_outlined,
             title: 'Ansatte',
             subtitle: 'Registrer ansatte og lag innlogging',
             page: OwnerPortalStaffPage(partner: partner),
           ),
+        if (workforceEnabled && _on(PartnerPortalPages.timeliste))
           _MoreItem(
             icon: Icons.schedule_outlined,
             title: 'Timeliste & timerbank',
             subtitle: 'Full oversikt, på jobb nå, Excel og logg',
             page: OwnerPortalTimesheetPage(partner: partner),
           ),
-        ],
       ];
 
   @override

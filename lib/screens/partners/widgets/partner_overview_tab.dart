@@ -11,6 +11,7 @@ import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/partner_workforce_service.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/permissions/partner_portal_pages.dart';
 import '../../../core/permissions/user_access.dart';
 import '../../../core/services/vegvesen/vehicle_registry_service.dart';
 import '../../../core/theme/app_theme.dart';
@@ -229,6 +230,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   bool _routesOwnerOnly = false;
   bool _routesOwnerOnlySaving = false;
   bool _workforceEnabled = false;
+  Map<String, dynamic> _portalAccess = const {};
+  String? _portalPageSaving;
   bool _workforceSaving = false;
   bool _workforceAllSaving = false;
   int _workforceStaffCount = 0;
@@ -259,6 +262,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _notes = TextEditingController(text: p.notes ?? '');
     _routesOwnerOnly = p.routesOwnerOnly;
     _workforceEnabled = p.workforceEnabled;
+    _portalAccess = Map<String, dynamic>.from(p.portalAccess);
     _ecoDrivingCompleted = p.ecoDrivingCompleted;
     _ecoDrivingDeadline = p.ecoDrivingDeadline;
     _ecoDrivingCompletedAt = p.ecoDrivingCompletedAt;
@@ -446,6 +450,41 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     }
   }
 
+  Future<void> _setPortalPage(String key, bool value) async {
+    final previous = Map<String, dynamic>.from(_portalAccess);
+    final next = Map<String, dynamic>.from(_portalAccess);
+    if (value) {
+      next.remove(key);
+    } else {
+      next[key] = false;
+    }
+    setState(() {
+      _portalAccess = next;
+      _portalPageSaving = key;
+    });
+    try {
+      await PartnerService.updatePartnerFields(widget.partner.id, {
+        'portal_access': next,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Lagret. Siden oppdateres i partner-appen uten nytt bygg.'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _portalAccess = previous);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Kunne ikke lagre: ${_friendlyPartnerSaveError(e)}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _portalPageSaving = null);
+    }
+  }
+
   Future<void> _setRoutesOwnerOnly(bool value) async {
     setState(() {
       _routesOwnerOnly = value;
@@ -489,6 +528,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _employees.text = p.employeeCount?.toString() ?? '';
     _routesOwnerOnly = p.routesOwnerOnly;
     _workforceEnabled = p.workforceEnabled;
+    _portalAccess = Map<String, dynamic>.from(p.portalAccess);
     _ecoDrivingCompleted = p.ecoDrivingCompleted;
     _ecoDrivingDeadline = p.ecoDrivingDeadline;
     _ecoDrivingCompletedAt = p.ecoDrivingCompletedAt;
@@ -1398,6 +1438,49 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ],
             ),
+            if (_isSuperAdmin)
+              PartnerModernSection(
+                icon: Icons.phonelink_setup_outlined,
+                title: 'Sider i partner-appen',
+                subtitle: 'Gjelder alle innlogginger i denne bedriften',
+                children: [
+                  Text(
+                    'Av skjuler siden i docken eller funksjonen under Mer. '
+                    'Profil og bytte av passord blir alltid værende. '
+                    'Endringen gjelder med en gang — uten nytt app-bygg.',
+                    style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)),
+                  ),
+                  const SizedBox(height: 4),
+                  for (final item in PartnerPortalPages.dock)
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(item.label),
+                      subtitle: Text(item.hint),
+                      value: PartnerPortalPages.isOn(_portalAccess, item.key),
+                      onChanged: _portalPageSaving == null
+                          ? (v) => _setPortalPage(item.key, v)
+                          : null,
+                    ),
+                  const Divider(height: 20),
+                  Text(
+                    'Under Mer',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: PartnerModernUi.muted(context),
+                    ),
+                  ),
+                  for (final item in PartnerPortalPages.moreItems)
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(item.label),
+                      subtitle: Text(item.hint),
+                      value: PartnerPortalPages.isOn(_portalAccess, item.key),
+                      onChanged: _portalPageSaving == null
+                          ? (v) => _setPortalPage(item.key, v)
+                          : null,
+                    ),
+                ],
+              ),
             PartnerModernSection(
               icon: Icons.groups_outlined,
               title: 'Ansatte & stempling',
