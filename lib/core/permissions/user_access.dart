@@ -69,9 +69,7 @@ class UserAccess {
     if (profile.role == UserRole.ansatt &&
         (areaId == 'more.avdelinger' ||
             areaId == 'admin.avdelinger_rediger' ||
-            areaId.startsWith('more.avdelinger') ||
-            areaId == 'avvik' ||
-            areaId.startsWith('avvik.'))) {
+            areaId.startsWith('more.avdelinger'))) {
       return false;
     }
     final def = AccessAreaCatalog.byId[areaId];
@@ -112,8 +110,7 @@ class UserAccess {
   bool get canDashboard => can(AccessKeys.dashboard);
   bool get canSurveys => can(AccessKeys.surveys);
   bool get canFravaer => can(AccessKeys.fravaer);
-  bool get canAvvik =>
-      profile.role != UserRole.ansatt && can(AccessKeys.avvik);
+  bool get canAvvik => can(AccessKeys.avvik);
   bool get canHms => can(AccessKeys.hms);
   bool get canPartnersTab => can(AccessKeys.partners);
   bool get canStempling => can(AccessKeys.stempling);

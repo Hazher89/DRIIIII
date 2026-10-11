@@ -27,7 +27,6 @@ class EmployeeLivePagesPanel extends StatefulWidget {
 class _EmployeeLivePagesPanelState extends State<EmployeeLivePagesPanel> {
   late AccessSettingsDoc _doc;
   bool _busy = false;
-  String? _status;
   final _search = TextEditingController();
   final _title = TextEditingController();
   String _query = '';
@@ -53,7 +52,7 @@ class _EmployeeLivePagesPanelState extends State<EmployeeLivePagesPanel> {
     'fravaer.godkjenn': 'Godkjenne eller avvise andres søknader.',
     'fravaer.registrer_andre': 'Sende ferie/fravær på vegne av andre.',
     'fravaer.ferie_admin': 'Ferieår, overføring og kvote for hele bedriften.',
-    'avvik': 'Avvik og RUH. Vanlige ansatte har dette av.',
+    'avvik': 'Avvik i docken. På = ikonet vises.',
     'avvik.nytt': 'Opprette nytt avvik.',
     'avvik.behandle': 'Behandle og lukke andres avvik.',
     'avvik.koordinere': 'Kontrollsenter på tvers av avdelinger.',
@@ -184,19 +183,21 @@ class _EmployeeLivePagesPanelState extends State<EmployeeLivePagesPanel> {
   }
 
   Future<void> _persist(String message) async {
-    setState(() {
-      _busy = true;
-      _status = null;
-    });
+    setState(() => _busy = true);
     try {
       final json = _doc.toJson();
       await SupabaseService.updateProfileAccess(widget.employee.id, json);
       widget.onSettings(json);
       if (!mounted) return;
-      setState(() => _status = message);
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+      );
     } catch (e) {
       if (!mounted) return;
-      setState(() => _status = 'Kunne ikke lagre: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kunne ikke lagre: $e')),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -252,6 +253,7 @@ class _EmployeeLivePagesPanelState extends State<EmployeeLivePagesPanel> {
     }).toList();
 
     return ListView(
+      key: const PageStorageKey<String>('employee-live-pages'),
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
       children: [
         Text(
@@ -273,16 +275,6 @@ class _EmployeeLivePagesPanelState extends State<EmployeeLivePagesPanel> {
             'Superadmin ser alltid alt. Bytt rolle for å skjule sider.',
             style: TextStyle(
               color: Color(0xFF9A5B00),
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-        if (_status != null) ...[
-          const SizedBox(height: 6),
-          Text(
-            _status!,
-            style: const TextStyle(
-              color: Color(0xFF1B5E20),
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -388,18 +380,19 @@ class _EmployeeLivePagesPanelState extends State<EmployeeLivePagesPanel> {
               children: [
                 _switch(root, locked),
                 if (kids.isNotEmpty)
-                  Icon(open ? Icons.expand_less : Icons.expand_more),
-              ],
-            ),
-            onTap: kids.isEmpty
-                ? null
-                : () => setState(() {
-                      if (open) {
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() {
+                      if (open && _query.isEmpty) {
                         _open.remove(root.id);
                       } else {
                         _open.add(root.id);
                       }
                     }),
+                    icon: Icon(open ? Icons.expand_less : Icons.expand_more),
+                  ),
+              ],
+            ),
           ),
           if (open && kids.isNotEmpty) ...[
             for (final child in shownKids) ...[

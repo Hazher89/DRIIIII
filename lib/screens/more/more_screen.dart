@@ -333,27 +333,12 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
                 isDark,
                 badge: 'NY',
               ),
-            if (_profile!.access.canWorkSteps)
-              _buildMenuItem(
-                context,
-                Icons.directions_walk_outlined,
-                'Skritt på jobb',
-                isDark,
-                badge: 'NY',
-              ),
-            if (_profile!.access.canWorkStepsHub)
-              _buildMenuItem(
-                context,
-                Icons.insights_outlined,
-                'Skritt på jobb — hub',
-                isDark,
-              ),
-            if (_profile!.access.canWorkStepsPersonal &&
+            if (_profile!.access.canWorkSteps ||
                 _profile!.access.canWorkStepsHub)
               _buildMenuItem(
                 context,
                 Icons.directions_walk_outlined,
-                'Mine skritt på jobb',
+                'Skritt på jobb',
                 isDark,
               ),
             if (_profile!.access.canWhistleblowing)
@@ -621,9 +606,9 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Kamerahendelser' => AppPaths.moreVisionEvents,
             'Søppelhåndtering' => AppPaths.moreWasteSorting,
             'Leiebil-sporing' => AppPaths.moreDriveMonitor,
-            'Skritt på jobb' => AppPaths.moreWorkSteps,
-            'Mine skritt på jobb' => AppPaths.moreWorkSteps,
-            'Skritt på jobb — hub' => AppPaths.moreWorkStepsHub,
+            'Skritt på jobb' => _profile?.access.canWorkStepsHub == true
+                ? AppPaths.moreWorkStepsHub
+                : AppPaths.moreWorkSteps,
             _ => null,
           };
           if (path != null) context.push(path);
