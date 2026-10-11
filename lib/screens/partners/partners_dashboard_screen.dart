@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/config/driftpro_client.dart';
 import '../../core/layout/mobile_shell_scaffold.dart';
+import '../../core/permissions/access_session_cache.dart';
 import '../../core/permissions/partner_access.dart';
 import '../../core/permissions/user_access.dart';
 import '../../core/routing/app_paths.dart';
@@ -89,6 +90,12 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   void initState() {
     super.initState();
     _pendingTabSlug = widget.initialTab;
+    final cached = AccessSessionCache.profile;
+    if (cached != null && (cached.companyId ?? '').isNotEmpty) {
+      _profile = cached;
+      _companyId = cached.companyId;
+      _syncDashboardTabs(cached);
+    }
     _load();
   }
 

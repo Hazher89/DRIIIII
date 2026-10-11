@@ -53,6 +53,7 @@ import '../../screens/chat/partner_chat_hub_screen.dart';
 import '../../screens/admin/chat_settings_screen.dart';
 import '../../widgets/chat/chat_feature_gate.dart';
 import '../../screens/partners/partners_dashboard_screen.dart';
+import '../../screens/profile/my_notification_prefs_screen.dart';
 import '../../screens/profile/notifications_hub_screen.dart';
 import '../../screens/profile/profile_screen.dart';
 import '../../screens/public/public_tracking_screen.dart';
@@ -575,6 +576,14 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
                         initialTab: state.uri.queryParameters['tab'],
                         initialSettingsTab: state.uri.queryParameters['settings'],
                       ),
+                    ),
+                  ),
+                  GoRoute(
+                    path: 'mine-varsler',
+                    parentNavigatorKey: driftProRootNavigatorKey,
+                    builder: (context, state) => _guardPath(
+                      state,
+                      const MyNotificationPrefsScreen(),
                     ),
                   ),
                   GoRoute(

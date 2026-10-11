@@ -622,10 +622,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           border: Border(top: BorderSide(color: drift.borderSubtle)),
           boxShadow: drift.cardShadow,
         ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(
+            4,
+            6,
+            4,
+            6 + MediaQuery.viewPaddingOf(context).bottom,
+          ),
             child: MobileShellNavBar(
               itemCount: visibleScreens.length,
               builder: (context, i, {required compact}) {
@@ -644,7 +647,6 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             ),
           ),
         ),
-      ),
     );
   }
 

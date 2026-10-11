@@ -96,17 +96,6 @@ class _HmsScreenState extends State<HmsScreen> {
     }
 
     // —— Operativt ——
-    if (a?.canAvvik == true) {
-      operations.add(_buildModuleCard(
-        context,
-        icon: Icons.report_problem_outlined,
-        title: 'Avvik / RUH',
-        subtitle: 'Uønskede hendelser — erstatter papir-RUH',
-        color: DriftProTheme.error,
-        isDark: isDark,
-        onTap: () => context.push(AppPaths.hmsAvvik),
-      ));
-    }
     if (a?.canHmsRisk == true) {
       operations.add(_buildModuleCard(
         context,

@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_strings.dart';
 import '../../core/constants/company_principals.dart';
+import '../../core/permissions/leadership_chain.dart';
 import '../../core/services/native_permissions_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
@@ -39,6 +40,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   String? _category;
   String? _selectedHandlerId;
   TicketAssigneeOptions _assignees = const TicketAssigneeOptions();
+  List<UserProfile> _principalDirectory = const [];
   /// Anonymt avvik: kun Tommy / Nico / Hazher (én, flere eller alle).
   final Set<WhistlePrincipal> _anonymousRecipients = {
     WhistlePrincipal.tommy,
@@ -131,13 +133,19 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         });
         return;
       }
-      final options = await SupabaseService.fetchTicketAssigneeOptions(
+      final raw = await SupabaseService.fetchTicketAssigneeOptions(
         companyId: companyId,
         departmentId: profile?.departmentId,
+        subjectProfileId: profile?.id,
       );
+      final options = profile == null
+          ? raw
+          : LeadershipChain.apply(subject: profile, options: raw);
+      final directory = await _loadPrincipalDirectory();
       if (!mounted) return;
       setState(() {
         _assignees = options;
+        _principalDirectory = directory;
         _selectedHandlerId = options.defaultAssigneeId;
         _loadingHandlers = false;
       });
@@ -171,15 +179,40 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
     }
   }
 
-  List<UserProfile> get _leadershipProfiles => _assignees.leadership;
+  Iterable<UserProfile> get _assigneePool sync* {
+    yield* _assignees.nearestLeaders;
+    yield* _assignees.otherLeaders;
+    yield* _assignees.superadmins;
+    yield* _principalDirectory;
+  }
 
   UserProfile? _profileForPrincipal(WhistlePrincipal p) {
-    for (final profile in _leadershipProfiles) {
-      if (CompanyPrincipal.ofProfile(profile) == p.companyPrincipal) {
-        return profile;
-      }
+    UserProfile? found;
+    for (final profile in _assigneePool) {
+      if (CompanyPrincipal.ofProfile(profile) != p.companyPrincipal) continue;
+      if (!profile.isActive || profile.isPartnerPortalUser) continue;
+      found = profile;
+      if (profile.isApproved) return profile;
     }
-    return null;
+    return found;
+  }
+
+  Future<List<UserProfile>> _loadPrincipalDirectory() async {
+    try {
+      final people = await SupabaseService.fetchOrganizationChartPeople();
+      final byPrincipal = <CompanyPrincipal, UserProfile>{};
+      for (final person in people) {
+        final principal = CompanyPrincipal.ofProfile(person);
+        if (principal == null || !person.isActive) continue;
+        final current = byPrincipal[principal];
+        if (current == null || (!current.isApproved && person.isApproved)) {
+          byPrincipal[principal] = person;
+        }
+      }
+      return byPrincipal.values.toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   List<String> _resolveAnonymousProfileIds() {
@@ -403,7 +436,7 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
   }
 
   Widget _buildAnonymousRecipientPicker() {
-    if (_leadershipProfiles.isEmpty) {
+    if (WhistlePrincipal.values.every((p) => _profileForPrincipal(p) == null)) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: Text(
@@ -838,29 +871,43 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
                 ],
               ),
             ),
-            Material(
-              elevation: 8,
+            ColoredBox(
               color: isDark ? DriftProTheme.cardDark : Colors.white,
               child: SafeArea(
                 top: false,
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                  child: FilledButton(
-                    onPressed: _isSubmitting ||
-                            _loadingHandlers ||
-                            (_isAnonymous
-                                ? _resolveAnonymousProfileIds().isEmpty
-                                : (_assignees.isEmpty ||
-                                    _selectedHandlerId == null))
-                        ? null
-                        : _submit,
-                    child: _isSubmitting
-                        ? SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: DriftProLoadingIndicator(size: 22),
-                          )
-                        : const Text('Send avvik'),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: _isSubmitting ||
+                              _loadingHandlers ||
+                              (_isAnonymous
+                                  ? _resolveAnonymousProfileIds().isEmpty
+                                  : (_assignees.isEmpty ||
+                                      _selectedHandlerId == null))
+                          ? null
+                          : _submit,
+                      child: _isSubmitting
+                          ? SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: DriftProLoadingIndicator(size: 22),
+                            )
+                          : const Text(
+                              'Send avvik',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                    ),
                   ),
                 ),
               ),

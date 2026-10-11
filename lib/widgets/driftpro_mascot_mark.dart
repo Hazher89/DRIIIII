@@ -5,7 +5,7 @@ import 'package:model_viewer_plus/model_viewer_plus.dart';
 import '../core/config/driftpro_client.dart';
 import '../core/constants/driftpro_brand.dart';
 
-/// Porter Cat — poster alltid synlig, 3D fades inn (login + app-header).
+/// Dansende maskot i logoen. Bevegelsene byttes i tilfeldig rekkefølge.
 class DriftProMascotMark extends StatefulWidget {
   const DriftProMascotMark({super.key, required this.size});
 
@@ -55,14 +55,13 @@ class _DriftProMascotMarkState extends State<DriftProMascotMark> {
         alignment: Alignment.center,
         fit: StackFit.expand,
         children: [
-          _PosterLayer(width: w, height: h, dimmed: _use3d && _viewerReady),
           if (_use3d)
             AnimatedOpacity(
               opacity: _viewerReady ? 1 : 0,
-              duration: const Duration(milliseconds: 400),
+              duration: const Duration(milliseconds: 450),
               curve: Curves.easeOut,
               child: IgnorePointer(
-                child: _CatViewer3D(
+                child: _DancerViewer3D(
                   onReady: () {
                     if (mounted && !_viewerReady) {
                       setState(() => _viewerReady = true);
@@ -77,56 +76,22 @@ class _DriftProMascotMarkState extends State<DriftProMascotMark> {
   }
 }
 
-class _PosterLayer extends StatelessWidget {
-  const _PosterLayer({
-    required this.width,
-    required this.height,
-    required this.dimmed,
-  });
-
-  final double width;
-  final double height;
-  final bool dimmed;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      opacity: dimmed ? 0 : 1,
-      duration: const Duration(milliseconds: 400),
-      child: Image.asset(
-        DriftProBrand.mascotPoster,
-        width: width,
-        height: height,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-        gaplessPlayback: true,
-        errorBuilder: (context, error, stackTrace) => Icon(
-          Icons.pets_rounded,
-          size: width * 0.7,
-          color: const Color(0xFF1B5E20),
-        ),
-      ),
-    );
-  }
-}
-
-class _CatViewer3D extends StatelessWidget {
-  const _CatViewer3D({required this.onReady});
+class _DancerViewer3D extends StatelessWidget {
+  const _DancerViewer3D({required this.onReady});
 
   final VoidCallback onReady;
 
   @override
   Widget build(BuildContext context) {
     return ModelViewer(
-      key: const ValueKey('porter-cat-3d-v7'),
+      key: const ValueKey('driftpro-dancer-v1'),
       src: DriftProBrand.mascotGlb,
-      alt: 'DriftPro Porter Cat',
+      alt: 'DriftPro',
       backgroundColor: const Color(0x00000000),
       loading: Loading.eager,
       // Reveal as soon as the model is ready (avoids stuck poster in headers).
       reveal: Reveal.auto,
       autoPlay: true,
-      animationName: 'Armature|ArmatureAction',
       autoRotate: false,
       cameraControls: false,
       disableZoom: true,
@@ -134,11 +99,11 @@ class _CatViewer3D extends StatelessWidget {
       disableTap: true,
       touchAction: TouchAction.none,
       interactionPrompt: InteractionPrompt.none,
-      cameraOrbit: '0deg 75deg 3.2m',
-      cameraTarget: '0m 0.02m -0.42m',
-      fieldOfView: '42deg',
+      cameraOrbit: '0deg 75deg 4.6m',
+      cameraTarget: '0m 0.95m 0m',
+      fieldOfView: '26deg',
       shadowIntensity: 0,
-      exposure: 1.35,
+      exposure: 1.55,
       environmentImage: 'neutral',
       debugLogging: kDebugMode,
       javascriptChannels: {
@@ -183,20 +148,64 @@ class _CatViewer3D extends StatelessWidget {
         (function () {
           const mv = document.querySelector('model-viewer');
           if (!mv) return;
+          let order = [];
+          let cursor = 0;
+          let last = '';
+          let started = false;
+
+          const shuffle = (list) => {
+            const a = list.slice();
+            for (let i = a.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              const t = a[i];
+              a[i] = a[j];
+              a[j] = t;
+            }
+            if (a.length > 1 && a[0] === last) {
+              a.push(a.shift());
+            }
+            return a;
+          };
+
+          const nextClip = () => {
+            const all = mv.availableAnimations || [];
+            if (!all.length) return '';
+            if (!order.length || cursor >= order.length) {
+              order = shuffle(all);
+              cursor = 0;
+            }
+            const name = order[cursor++];
+            last = name;
+            return name;
+          };
+
+          const playNext = () => {
+            const name = nextClip();
+            if (!name) return;
+            mv.animationCrossfadeDuration = 0.7;
+            mv.animationName = name;
+            try { mv.play({ repetitions: 1 }); } catch (e) {}
+          };
+
           const frame = () => {
-            mv.cameraTarget = '0m 0.02m -0.42m';
-            mv.cameraOrbit = '0deg 75deg 3.2m';
-            mv.fieldOfView = '42deg';
-            mv.exposure = 1.35;
-            try { mv.play({ repetitions: Infinity }); } catch (e) {}
+            mv.exposure = 1.55;
+            mv.fieldOfView = '26deg';
+            mv.cameraTarget = '0m 0.95m 0m';
+            mv.cameraOrbit = '0deg 75deg 4.6m';
+            if (!started) {
+              started = true;
+              playNext();
+            }
             try { DriftProMascot.postMessage('ready'); } catch (e) {}
           };
+
+          mv.addEventListener('finished', playNext);
           mv.addEventListener('load', frame);
           mv.addEventListener('model-visibility', (ev) => {
             if (ev.detail && ev.detail.visible) frame();
           });
           if (mv.loaded) frame();
-          setTimeout(frame, 2000);
+          setTimeout(frame, 1200);
         })();
       ''',
     );

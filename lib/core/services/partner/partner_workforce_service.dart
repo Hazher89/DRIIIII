@@ -258,7 +258,7 @@ class PartnerWorkforceService {
 
     final password = (passwordOverride?.trim().isNotEmpty == true)
         ? passwordOverride!.trim()
-        : PortalCredentials.generatePassword();
+        : PortalCredentials.defaultPassword;
     final loginEmail = PortalCredentials.loginEmail(
       partnerId: staff.partnerId,
       isOwner: false,

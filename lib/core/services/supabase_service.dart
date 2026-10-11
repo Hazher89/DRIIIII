@@ -8,6 +8,7 @@ import 'notification/notification_outbox_service.dart';
 import '../utils/norwegian_national_id.dart';
 import '../constants/company_principals.dart';
 import '../permissions/access_presets.dart';
+import '../permissions/access_session_cache.dart';
 import '../permissions/statutory_role_access.dart';
 import 'assistant/assistant_event_learning.dart';
 import '../../models/ticket.dart';
@@ -28,6 +29,30 @@ import '../../models/kiosk_settings.dart';
 class SupabaseService {
   /// Unngår at web-klienten henger evig på RPC (viser bare «Klargjør profil …»).
   static const Duration _rpcTimeout = Duration(seconds: 8);
+
+  /// Sesjonen er allerede koblet til et selskap — ikke kjør bootstrap-RPC på nytt.
+  static String? _linkedAuthUserId;
+  static UserProfile? _linkedProfile;
+
+  static void clearSessionLinkCache() {
+    _linkedAuthUserId = null;
+    _linkedProfile = null;
+  }
+
+  static void _rememberLinked(UserProfile profile) {
+    final id = currentUser?.id;
+    if (id == null || (profile.companyId ?? '').isEmpty) return;
+    _linkedAuthUserId = id;
+    _linkedProfile = profile;
+  }
+
+  static UserProfile? get _warmLinkedProfile {
+    final id = currentUser?.id;
+    final warm = _linkedProfile;
+    if (id == null || warm == null || _linkedAuthUserId != id) return null;
+    if ((warm.companyId ?? '').isEmpty) return null;
+    return warm;
+  }
   static const Duration _writeTimeout = Duration(seconds: 14);
   static const Duration _fetchOrCreateHardTimeout = Duration(seconds: 45);
 
@@ -189,6 +214,16 @@ class SupabaseService {
     if (!isConfigured) return null;
     final user = currentUser;
     if (user == null) return null;
+    final session = AccessSessionCache.profile;
+    final warm = session != null &&
+            session.id == user.id &&
+            (session.companyId ?? '').isNotEmpty
+        ? session
+        : _warmLinkedProfile;
+    if (warm != null && (warm.companyId ?? '').isNotEmpty) {
+      _rememberLinked(warm);
+      return warm;
+    }
 
     final email = user.email?.trim().toLowerCase() ?? '';
     final isStaff = isInternalStaffSession(email: email);
@@ -1333,25 +1368,43 @@ department:departments!department_id(name)
   static Future<TicketAssigneeOptions> fetchTicketAssigneeOptions({
     required String companyId,
     String? departmentId,
+    String? subjectProfileId,
   }) async {
     if (!isConfigured) {
       return const TicketAssigneeOptions();
     }
 
+    TicketAssigneeOptions? fromRpc;
     try {
       final rpc = await client.rpc(
         'get_ticket_assignee_options',
         params: {
           if (departmentId != null && departmentId.isNotEmpty)
             'p_department_id': departmentId,
+          if (subjectProfileId != null && subjectProfileId.isNotEmpty)
+            'p_profile_id': subjectProfileId,
         },
       );
-      final fromRpc = _parseTicketAssigneeOptionsRpc(rpc);
-      if (!fromRpc.isEmpty) return fromRpc;
+      final parsed = _parseTicketAssigneeOptionsRpc(rpc);
+      if (!parsed.isEmpty) fromRpc = parsed;
     } catch (e) {
       debugPrint('get_ticket_assignee_options: $e');
+      try {
+        final rpc = await client.rpc(
+          'get_ticket_assignee_options',
+          params: {
+            if (departmentId != null && departmentId.isNotEmpty)
+              'p_department_id': departmentId,
+          },
+        );
+        final parsed = _parseTicketAssigneeOptionsRpc(rpc);
+        if (!parsed.isEmpty) fromRpc = parsed;
+      } catch (e2) {
+        debugPrint('get_ticket_assignee_options fallback: $e2');
+      }
     }
 
+    if (fromRpc == null) {
     final deptLeaderIds = <String>[];
     void addDeptLeaderId(String? id) {
       if (id == null || id.isEmpty) return;
@@ -1412,6 +1465,19 @@ department:departments!department_id(name)
       otherLeaders: const [],
       superadmins: leadership,
     );
+    }
+
+    return fromRpc;
+  }
+
+  static Future<void> setProfileReportsTo({
+    required String profileId,
+    required String? reportsTo,
+  }) async {
+    await client.rpc('set_profile_reports_to', params: {
+      'p_profile_id': profileId,
+      'p_reports_to': reportsTo,
+    });
   }
 
   static Future<Ticket?> fetchTicketByNumber({
@@ -1591,7 +1657,9 @@ department:departments!department_id(name)
         fallbackAuthUserId: user.id,
         fallbackAuthEmail: user.email,
       );
-      return await _ensureSuperadminIfOwner(profile);
+      final resolved = await _ensureSuperadminIfOwner(profile);
+      _rememberLinked(resolved);
+      return resolved;
     } catch (e) {
       debugPrint('Error fetching current user profile: $e');
       return null;
@@ -2217,6 +2285,9 @@ department:departments!department_id(name)
       if (SupabaseConfig.defaultCompanyId != null) {
         return SupabaseConfig.defaultCompanyId;
       }
+
+      final known = AccessSessionCache.profile?.companyId ?? _warmLinkedProfile?.companyId;
+      if (known != null && known.isNotEmpty) return known;
 
       final profile = await ensureSessionLinkedToCompany();
 

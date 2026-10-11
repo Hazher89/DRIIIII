@@ -12,8 +12,7 @@ class DriftProBrand {
   static const String logoMark = 'assets/branding/driftpro_logo_mark.png';
   /// Neon-merke på sort — iOS launch / fullside lasting (sømløs, uten ikon-boks).
   static const String splashMark = 'assets/branding/driftpro_splash_mark.png';
-  static const String mascotGlb = 'assets/branding/porter_cat.glb';
-  static const String mascotPoster = 'assets/branding/porter_cat_poster.png';
+  static const String mascotGlb = 'assets/branding/dancer.glb';
 
   /// Liten undertekst under DriftPro-logoen.
   static const String subtitle =

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -14,7 +13,7 @@ import '../../core/theme/app_theme.dart';
 import '../../screens/drive_monitor/drive_monitor_kiosk_screen.dart';
 import '../../widgets/auth_screen_shell.dart';
 
-/// Første valg: MAVI-ansatte (ansattnummer) eller samarbeidspartner (brukernavn/passord).
+/// Første valg: ansatte (ansattnummer) eller partner (brukernavn/passord).
 class AuthGateScreen extends StatelessWidget {
   const AuthGateScreen({super.key});
 
@@ -24,21 +23,21 @@ class AuthGateScreen extends StatelessWidget {
       child: Column(
         children: [
           Text(
-            'Velg hvordan du logger inn',
+            'Logg inn',
             textAlign: TextAlign.center,
             style: authTitleStyle(context),
           ),
           const SizedBox(height: 8),
           Text(
-            'Én plattform for ansatte og samarbeidspartnere.',
+            'Velg konto-type for å fortsette.',
             textAlign: TextAlign.center,
             style: authMutedStyle(context),
           ),
           const SizedBox(height: 28),
           _GateCard(
-            icon: Icons.groups_rounded,
-            title: 'MAVI ansatte',
-            subtitle: 'Ansattnummer + passord.',
+            icon: Icons.badge_outlined,
+            title: 'Ansatte',
+            subtitle: 'Ansattnummer og passord',
             color: DriftProTheme.primaryGreen,
             onTap: () {
               Navigator.of(context).push(
@@ -48,13 +47,11 @@ class AuthGateScreen extends StatelessWidget {
               );
             },
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           _GateCard(
             icon: Icons.handshake_outlined,
-            title: 'Samarbeidspartner',
-            subtitle:
-                'Bil-eier, sjåfør og partner-ansatte: brukernavn + passord '
-                '(ikke ansattnummer).',
+            title: 'Partnere',
+            subtitle: 'Brukernavn og passord',
             color: const Color(0xFF1565C0),
             onTap: () {
               Navigator.of(context).push(
@@ -63,13 +60,6 @@ class AuthGateScreen extends StatelessWidget {
                 ),
               );
             },
-          ),
-          const SizedBox(height: 20),
-          Text(
-            'Samarbeidspartnere og deres ansatte er ikke MAVI-ansatte. '
-            'De logger alltid inn her under «Samarbeidspartner» og får kun partnerportalen.',
-            textAlign: TextAlign.center,
-            style: authMutedStyle(context, size: 12),
           ),
         ],
       ),
@@ -95,53 +85,76 @@ class _GateCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(DriftProTheme.radiusXl),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Material(
-          color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.white.withValues(alpha: 0.85),
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(14),
+    final surface = isDark
+        ? Colors.white.withValues(alpha: 0.08)
+        : Colors.white.withValues(alpha: 0.92);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: surface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: color.withValues(alpha: isDark ? 0.35 : 0.18),
+            ),
+            boxShadow: isDark
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 18,
+                      offset: const Offset(0, 8),
                     ),
-                    child: Icon(icon, color: color, size: 28),
+                  ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 17,
-                          ),
+                  child: Icon(icon, color: color, size: 26),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 17,
+                          letterSpacing: -0.2,
+                          color: isDark ? Colors.white : const Color(0xFF102A1C),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle,
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: isDark ? Colors.white60 : Colors.grey[700],
-                            height: 1.3,
-                          ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDark ? Colors.white60 : Colors.grey[600],
+                          height: 1.25,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  Icon(Icons.chevron_right_rounded, color: color),
-                ],
-              ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 16,
+                  color: color.withValues(alpha: 0.85),
+                ),
+              ],
             ),
           ),
         ),
@@ -253,13 +266,12 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
       showBack: true,
       child: Column(
         children: [
-          Text('MAVI ansatte', style: authTitleStyle(context)),
+          Text('Ansatte', style: authTitleStyle(context)),
           const SizedBox(height: 8),
           Text(
-            'Logg inn med ansattnummer og passord. '
-            'Nye kontoer får standard ansatt-tilgang.',
+            'Logg inn med ansattnummer og passord.',
             textAlign: TextAlign.center,
-            style: authMutedStyle(context, size: 12),
+            style: authMutedStyle(context),
           ),
           const SizedBox(height: 20),
           TextField(
@@ -499,11 +511,10 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Samarbeidspartner', style: authTitleStyle(context)),
+          Text('Partnere', style: authTitleStyle(context)),
           const SizedBox(height: 8),
           Text(
-            'For bil-eier, sjåfør og ansatte hos samarbeidspartner.\n'
-            'Ikke bruk «MAVI ansatte» / ansattnummer.',
+            'Bil-eier, sjåfør og partneransatte — brukernavn og passord.',
             textAlign: TextAlign.center,
             style: authMutedStyle(context),
           ),
@@ -559,8 +570,6 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Bruk brukernavn og passord fra bil-eier eller MAVI. '
-            'Dette er partnerportalen — ikke MAVI-ansatt-innlogging. '
             'Har du glemt passordet, trykk «Glemt passord?»',
             textAlign: TextAlign.center,
             style: authMutedStyle(context, size: 12),

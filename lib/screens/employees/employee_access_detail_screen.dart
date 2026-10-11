@@ -14,6 +14,7 @@ import '../../models/user_profile.dart';
 import 'employee_edit_screen.dart';
 import 'widgets/employee_live_pages_panel.dart';
 import 'widgets/employee_approval_sheet.dart';
+import 'widgets/employee_leader_picker.dart';
 import 'widgets/employee_department_leadership_editor.dart';
 import 'widgets/employee_files_panel.dart';
 import 'widgets/permission_matrix_editor.dart';
@@ -463,6 +464,10 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
                   },
                 ),
                 const SizedBox(height: 16),
+                if (widget.isSuperAdmin) ...[
+                  EmployeeLeaderPicker(employee: widget.employee),
+                  const SizedBox(height: 16),
+                ],
                 EmployeeDepartmentLeadershipEditor(
                   employee: widget.employee,
                   departments: widget.departments,

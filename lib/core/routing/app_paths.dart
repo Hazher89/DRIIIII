@@ -132,6 +132,7 @@ abstract final class AppPaths {
   static const morePartnere = '/more/partnere';
   static const morePersonalmappe = '/more/personalmappe';
   static const moreVarsler = '/more/varsler';
+  static const moreMineVarsler = '/more/mine-varsler';
   static const moreEpost = '/more/epost';
   static const moreUndersokelser = '/more/undersokelser';
   static const moreTilgangskontroll = '/more/tilgangskontroll';

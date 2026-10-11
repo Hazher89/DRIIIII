@@ -1599,11 +1599,17 @@ class PartnerService {
     required String unitCode,
     required String phone,
     String? driverName,
+    String? usernameOverride,
+    String? passwordOverride,
     bool regeneratePassword = false,
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
-    final username = PortalCredentials.driverUsername(unitCode);
-    final password = PortalCredentials.generatePassword();
+    final username = (usernameOverride?.trim().isNotEmpty == true)
+        ? usernameOverride!.trim().toLowerCase()
+        : PortalCredentials.driverUsername(unitCode);
+    final password = (passwordOverride?.trim().isNotEmpty == true)
+        ? passwordOverride!.trim()
+        : PortalCredentials.defaultPassword;
     final loginEmail = PortalCredentials.loginEmail(
       partnerId: partnerId,
       isOwner: false,
@@ -1756,6 +1762,25 @@ class PartnerService {
     return fetchMeetings(partnerId);
   }
 
+  static Future<String> _uniquePortalUsername(
+    String wanted, {
+    String? exceptAccountId,
+  }) async {
+    var username = wanted.toLowerCase().trim();
+    if (username.isEmpty) username = 'partner';
+    for (var i = 0; i < 8; i++) {
+      final candidate = i == 0 ? username : '$username${i + 1}';
+      final clash = await _client
+          .from('partner_portal_accounts')
+          .select('id')
+          .eq('is_active', true)
+          .ilike('username', candidate)
+          .maybeSingle();
+      if (clash == null || clash['id'] == exceptAccountId) return candidate;
+    }
+    return '$username${DateTime.now().millisecondsSinceEpoch % 1000}';
+  }
+
   /// Genererer nytt passord og sender på SMS til eksisterende bil-eier-portal.
   static Future<PortalProvisionResult> resendOwnerPortalPassword({
     required String partnerId,
@@ -1813,7 +1838,7 @@ class PartnerService {
   }) async {
     if (!_ok) throw StateError('Supabase ikke konfigurert');
     final normalizedPhone = normalizePhoneNo(phone.trim()) ?? phone.trim();
-    final username = (usernameOverride?.trim().isNotEmpty == true)
+    var username = (usernameOverride?.trim().isNotEmpty == true)
         ? usernameOverride!.trim().toLowerCase()
         : PortalCredentials.ownerUsername(
             partnerName: partnerName,
@@ -1821,9 +1846,15 @@ class PartnerService {
             partnerId: partnerId,
             phone: normalizedPhone,
           );
+    if (usernameOverride?.trim().isNotEmpty != true) {
+      username = await _uniquePortalUsername(
+        username,
+        exceptAccountId: portalAccountId,
+      );
+    }
     final password = (passwordOverride?.trim().isNotEmpty == true)
         ? passwordOverride!.trim()
-        : PortalCredentials.generatePassword();
+        : PortalCredentials.defaultPassword;
     final loginEmail = PortalCredentials.loginEmail(
       partnerId: partnerId,
       isOwner: true,
@@ -2734,16 +2765,45 @@ class PartnerService {
     bool forPlanning = true,
   }) async {
     if (!_ok) return const [];
-    final partners = await fetchPartners(companyId: companyId, activeOnly: forPlanning);
+    final partnerFuture =
+        fetchPartners(companyId: companyId, activeOnly: forPlanning);
+    var vehicleQuery =
+        _client.from('partner_vehicles').select().eq('company_id', companyId);
+    if (forPlanning) vehicleQuery = vehicleQuery.eq('is_active', true);
+    final vehicleFuture = vehicleQuery.order('unit_code', ascending: true);
+
+    final partners = await partnerFuture;
+    final rawVehicles = await vehicleFuture as List<dynamic>;
+    final byId = {for (final p in partners) p.id: p};
+
     final out = <FleetPartnerVehicleRow>[];
-    for (final p in partners) {
-      if (forPlanning && !p.isActive) continue;
-      for (final v in await fetchVehicles(p.id, activeOnly: forPlanning)) {
-        if (forPlanning && !v.isActive) continue;
-        out.add(FleetPartnerVehicleRow(partner: p, vehicle: v));
-      }
+    for (final row in rawVehicles) {
+      final vehicle = PartnerVehicle.fromJson(
+        Map<String, dynamic>.from(row as Map),
+      );
+      final partner = byId[vehicle.partnerId];
+      if (partner == null) continue;
+      if (forPlanning && (!partner.isActive || !vehicle.isActive)) continue;
+      out.add(FleetPartnerVehicleRow(partner: partner, vehicle: vehicle));
     }
-    return out;
+
+    final me = await SupabaseService.fetchCurrentUserProfile();
+    if (me?.partnerId == null && me?.isPartnerPortalUser != true) return out;
+
+    final allowedIds = <String>{};
+    final grouped = <String, List<PartnerVehicle>>{};
+    for (final row in out) {
+      grouped.putIfAbsent(row.partner.id, () => []).add(row.vehicle);
+    }
+    for (final entry in grouped.entries) {
+      final allowed = PartnerPortalScope.vehiclesForPartner(
+        entry.value,
+        entry.key,
+        partnerVehicleId: me?.partnerVehicleId,
+      );
+      allowedIds.addAll(allowed.map((v) => v.id));
+    }
+    return out.where((r) => allowedIds.contains(r.vehicle.id)).toList();
   }
 
   /// Ruteplanlegging bruker kun MAVI-er — ikke rene reg.nr-rader (REG-AB12345).

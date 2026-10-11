@@ -396,6 +396,13 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
               'Min profil',
               isDark,
             ),
+          if (_profile != null)
+            _buildMenuItem(
+              context,
+              Icons.notifications_outlined,
+              'Mine varsler',
+              isDark,
+            ),
           if (DriftProPlatformCatalog.canAccessDropboxSettings(
             email: _profile?.email,
             employeeNumber: _profile?.employeeNumber,
@@ -589,6 +596,7 @@ class _MoreScreenState extends State<MoreScreen> with WidgetsBindingObserver {
             'Partner-chat' => AppPaths.morePartnerChat,
             'Fillagring' => AppPaths.moreDropbox,
             'Min profil' => AppPaths.moreProfil,
+            'Mine varsler' => AppPaths.moreMineVarsler,
             'Personalmappe' => AppPaths.morePersonalmappe,
             'Varsler' => AppPaths.moreVarsler,
             'E-post' => AppPaths.moreEpost,

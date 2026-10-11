@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/leave_rules.dart';
 import '../../core/constants/vacation_year_window.dart';
+import '../../core/permissions/leadership_chain.dart';
 import '../../core/services/absence/absence_service.dart';
 import '../../core/services/absence/leave_eligibility.dart';
 import '../../core/services/absence/leave_period_usage_service.dart';
@@ -168,14 +169,15 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
       return;
     }
     try {
-      final options = await SupabaseService.fetchTicketAssigneeOptions(
-        companyId: companyId,
-        departmentId: employee.departmentId,
+      final options = LeadershipChain.apply(
+        subject: employee,
+        options: await SupabaseService.fetchTicketAssigneeOptions(
+          companyId: companyId,
+          departmentId: employee.departmentId,
+          subjectProfileId: employee.id,
+        ),
       );
-      final leaders = options.nearestLeaders.isNotEmpty
-          ? options.nearestLeaders
-          : options.superadmins;
-      final names = leaders
+      final names = options.nearestLeaders
           .map((p) => p.fullName.trim())
           .where((n) => n.isNotEmpty)
           .toSet()

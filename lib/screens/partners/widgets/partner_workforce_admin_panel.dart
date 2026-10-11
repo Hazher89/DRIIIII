@@ -224,7 +224,7 @@ class _PartnerWorkforceAdminPanelState extends State<PartnerWorkforceAdminPanel>
             children: [
               Text(
                 'Kun for ${s.fullName} · ${widget.partner.name}\n'
-                'Logg inn via «Samarbeidspartner» (ikke MAVI ansatte).',
+                'Logg inn via «Partnere» (ikke «Ansatte»).',
                 style: TextStyle(
                   fontSize: 13,
                   color: Colors.grey.shade700,

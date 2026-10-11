@@ -234,7 +234,11 @@ Deno.serve(async (req) => {
 
     const { data: existing } = await existingQuery.maybeSingle();
 
-    if (existing?.username && String(existing.username).trim().length > 0) {
+    // Superadmin kan sette nytt brukernavn. Eksisterende beholdes bare når ingen er sendt.
+    const requestedUser = typeof username === "string" ? username.trim().toLowerCase() : "";
+    if (requestedUser.length > 0) {
+      user = requestedUser;
+    } else if (existing?.username && String(existing.username).trim().length > 0) {
       user = String(existing.username).trim().toLowerCase();
     }
 

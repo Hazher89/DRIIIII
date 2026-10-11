@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/hms/hms_prose.dart';
 import '../../../core/hms/mavi_hms_handbook.dart';
 import '../../../core/routing/app_paths.dart';
 import '../../../core/theme/app_theme.dart';
@@ -44,7 +45,7 @@ class _HmsHandbookDocScreenState extends State<HmsHandbookDocScreen> {
       );
       final raw = utf8.decode(bytes, allowMalformed: true);
       setState(() {
-        _body = _clean(raw);
+        _body = HmsProse.format(_clean(raw));
         _error = null;
       });
     } catch (e) {

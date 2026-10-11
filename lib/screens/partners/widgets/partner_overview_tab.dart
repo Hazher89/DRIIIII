@@ -61,6 +61,8 @@ class _VehicleRowState {
   final TextEditingController payload;
   final TextEditingController year;
   final TextEditingController portalPhone;
+  final TextEditingController loginUsername;
+  final TextEditingController loginPassword;
   String? portalUsername;
   String? generatedPasswordPreview;
   DateTime? euNext;
@@ -95,7 +97,9 @@ class _VehicleRowState {
   })  : fleetRoles = fleetRoles ?? {},
         mavi = TextEditingController(text: isRegOnly ? '' : unitCode),
         driverName = TextEditingController(text: driverNameText ?? ''),
-        portalPhone = TextEditingController(text: phone ?? '');
+        portalPhone = TextEditingController(text: phone ?? ''),
+        loginUsername = TextEditingController(text: portalUsername ?? ''),
+        loginPassword = TextEditingController(text: PortalCredentials.defaultPassword);
 
   String get previewUsername {
     if (isRegOnly) return '';
@@ -108,22 +112,29 @@ class _VehicleRowState {
 class _OwnerPortalRowState {
   final TextEditingController phone;
   final TextEditingController displayName;
+  final TextEditingController usernameField;
+  final TextEditingController passwordField;
   String? accountId;
   String? username;
   String? savedNormalizedPhone;
   bool hasPortalAccount;
   bool pendingPhoneReplace;
+  bool usernameSeeded;
   Timer? phoneDebounce;
 
   _OwnerPortalRowState({
     String? phone,
     String? name,
+    String? usernameText,
     this.accountId,
     this.username,
     this.savedNormalizedPhone,
     this.hasPortalAccount = false,
+    this.usernameSeeded = false,
   })  : phone = TextEditingController(text: phone ?? ''),
         displayName = TextEditingController(text: name ?? ''),
+        usernameField = TextEditingController(text: usernameText ?? username ?? ''),
+        passwordField = TextEditingController(text: PortalCredentials.defaultPassword),
         pendingPhoneReplace = false;
 
   factory _OwnerPortalRowState.fromAccount(PartnerPortalAccount account) {
@@ -131,8 +142,10 @@ class _OwnerPortalRowState {
       phone: account.phone,
       accountId: account.id,
       username: account.username,
+      usernameText: account.username,
       savedNormalizedPhone: account.phone != null ? normalizePhoneNo(account.phone!) : null,
       hasPortalAccount: true,
+      usernameSeeded: (account.username).trim().isNotEmpty,
     );
   }
 
@@ -140,6 +153,8 @@ class _OwnerPortalRowState {
     phoneDebounce?.cancel();
     phone.dispose();
     displayName.dispose();
+    usernameField.dispose();
+    passwordField.dispose();
   }
 
   String previewUsername({
@@ -176,7 +191,7 @@ enum _OverviewSection {
   ),
   ownerPortal(
     'Bedriftsansvarlig',
-    'Portal og SMS-innlogging',
+    'Brukernavn og passord',
     Icons.manage_accounts_outlined,
   ),
   registrations(
@@ -186,7 +201,7 @@ enum _OverviewSection {
   ),
   maviDrivers(
     'MAVI',
-    'Biler og sjåførportaler',
+    'Sjåførens innlogging',
     Icons.local_shipping_outlined,
   );
 
@@ -305,6 +320,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       final acc = _portalByVehicle[row.id];
       if (acc == null) continue;
       row.portalUsername = acc.username;
+      if (row.loginUsername.text.trim().isEmpty) {
+        row.loginUsername.text = acc.username;
+      }
       row.portalPhone.text = acc.phone ?? row.portalPhone.text;
       row.hasPortalAccount = true;
     }
@@ -495,6 +513,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       r.payload.dispose();
       r.year.dispose();
       r.portalPhone.dispose();
+      r.loginUsername.dispose();
+      r.loginPassword.dispose();
     }
     _rows.clear();
     if (vehicles.isEmpty) return;
@@ -670,11 +690,24 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   }
 
   Future<void> _saveOwnerPortal(_OwnerPortalRowState row) async {
-    if (row.hasPortalAccount) return;
     final phone = row.phone.text.trim();
     if (phone.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Telefon til bedriftsansvarlig er påkrevd (SMS med innlogging).')),
+      );
+      return;
+    }
+    final username = row.usernameField.text.trim().toLowerCase();
+    final password = row.passwordField.text.trim();
+    if (username.length < 3) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Brukernavn må ha minst 3 tegn.')),
+      );
+      return;
+    }
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passord må ha minst 6 tegn. Standard er 000000.')),
       );
       return;
     }
@@ -686,7 +719,11 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         phone: phone,
         partnerName: widget.partner.name,
         orgNumber: widget.partner.orgNumber,
+        portalAccountId: row.accountId,
         ownerDisplayName: row.displayName.text.trim().isEmpty ? null : row.displayName.text.trim(),
+        usernameOverride: username,
+        passwordOverride: password,
+        regeneratePassword: true,
       );
       row.pendingPhoneReplace = false;
       await _showCredentialsDialog(res, title: 'Portal for bedriftsansvarlig opprettet');
@@ -765,7 +802,16 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       );
       return;
     }
-    if (row.hasPortalAccount) return;
+    final username = row.loginUsername.text.trim();
+    final password = row.loginPassword.text.trim().isEmpty
+        ? PortalCredentials.defaultPassword
+        : row.loginPassword.text.trim();
+    if (password.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Passord må ha minst 6 tegn. Standard er 000000.')),
+      );
+      return;
+    }
     setState(() => _portalSaving = true);
     try {
       final res = await PartnerService.provisionDriverPortal(
@@ -775,6 +821,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         unitCode: unit,
         phone: phone,
         driverName: driverName,
+        usernameOverride: username.isEmpty ? null : username,
+        passwordOverride: password,
+        regeneratePassword: row.hasPortalAccount,
       );
       row.hasPortalAccount = true;
       row.portalUsername = res.username;
@@ -963,6 +1012,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       r.payload.dispose();
       r.year.dispose();
       r.portalPhone.dispose();
+      r.loginUsername.dispose();
+      r.loginPassword.dispose();
     }
     super.dispose();
   }
@@ -1641,6 +1692,10 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       orgNumber: widget.partner.orgNumber,
       partnerId: widget.partner.id,
     );
+    if (!row.usernameSeeded && previewUsername.isNotEmpty) {
+      row.usernameField.text = previewUsername;
+      row.usernameSeeded = true;
+    }
     final needsNewCredentials = !row.hasPortalAccount;
     final phoneChanged = row.pendingPhoneReplace || row.phoneChangedFromSaved();
 
@@ -1702,55 +1757,41 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
             },
           ),
           const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: DriftProTheme.accentBlue.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
-              border: Border.all(color: DriftProTheme.accentBlue.withValues(alpha: 0.2)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Auto brukernavn', style: DriftProTheme.labelSm),
-                Text(
-                  previewUsername,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  row.hasPortalAccount && row.username != null
-                      ? 'Aktiv brukernavn: ${row.username}'
-                      : 'Passord genereres automatisk ved opprettelse og sendes på SMS.',
-                  style: DriftProTheme.caption,
-                ),
-              ],
+          Text(
+            'Brukernavnet følger bedriftsnavnet. Standardpassord er 000000. De bytter selv under Mer i portalen.',
+            style: DriftProTheme.caption,
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: row.usernameField,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: 'Brukernavn',
+              border: OutlineInputBorder(),
+              isDense: true,
+              helperText: 'Superadmin kan sette et eget brukernavn',
             ),
           ),
           const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (needsNewCredentials)
-                FilledButton.icon(
-                  onPressed: _portalSaving ? null : () => _saveOwnerPortal(row),
-                  icon: const Icon(Icons.sms_outlined, size: 18),
-                  label: Text(
-                    phoneChanged ? 'Send innlogging til nytt nummer (SMS)' : 'Opprett bedriftsansvarlig (SMS)',
-                  ),
-                  style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-                )
-              else ...[
-                FilledButton.icon(
-                  onPressed: _portalSaving ? null : () => _resendOwnerPortalPassword(row),
-                  icon: const Icon(Icons.lock_reset, size: 18),
-                  label: const Text('Send nytt passord (SMS)'),
-                  style: FilledButton.styleFrom(backgroundColor: DriftProTheme.accentBlue),
-                ),
-              ],
-            ],
+          TextField(
+            controller: row.passwordField,
+            decoration: const InputDecoration(
+              labelText: 'Passord',
+              border: OutlineInputBorder(),
+              isDense: true,
+              helperText: 'Standard 000000 — eller skriv et eget',
+            ),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _portalSaving ? null : () => _saveOwnerPortal(row),
+            icon: const Icon(Icons.sms_outlined, size: 18),
+            label: Text(
+              needsNewCredentials
+                  ? (phoneChanged ? 'Send innlogging til nytt nummer' : 'Opprett innlogging og send SMS')
+                  : 'Lagre brukernavn og passord (SMS)',
+            ),
+            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
           ),
         ],
       ),
@@ -1825,6 +1866,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                       row.payload.dispose();
                       row.year.dispose();
                       row.portalPhone.dispose();
+                      row.loginUsername.dispose();
+                      row.loginPassword.dispose();
                       row.mavi.dispose();
                       _rows.remove(row);
                     });
@@ -1929,6 +1972,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                       row.payload.dispose();
                       row.year.dispose();
                       row.portalPhone.dispose();
+                      row.loginUsername.dispose();
+                      row.loginPassword.dispose();
                       _rows.remove(row);
                     });
                   },
@@ -2033,34 +2078,29 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               ),
             ),
             const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(8),
+            Text(
+              'Sjåfør logger inn med MAVI-nummeret som brukernavn og passord 000000. Du kan endre begge.',
+              style: DriftProTheme.caption,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: row.loginUsername,
+              autocorrect: false,
+              decoration: InputDecoration(
+                labelText: 'Brukernavn',
+                hintText: row.previewUsername.isEmpty ? 'f.eks. m71' : row.previewUsername,
+                border: const OutlineInputBorder(),
+                isDense: true,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Auto innlogging (genereres per MAVI)',
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade700, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    row.previewUsername.isEmpty
-                        ? 'Fyll inn MAVI for å se brukernavn'
-                        : 'Brukernavn: ${row.previewUsername}',
-                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                  ),
-                  Text(
-                    row.hasPortalAccount && row.generatedPasswordPreview != null
-                        ? 'Passord (sist): ${row.generatedPasswordPreview}'
-                        : 'Passord: genereres ved «Opprett sjåfør» og sendes på SMS',
-                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                  ),
-                ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: row.loginPassword,
+              decoration: const InputDecoration(
+                labelText: 'Passord',
+                border: OutlineInputBorder(),
+                isDense: true,
+                helperText: 'Standard 000000',
               ),
             ),
             const SizedBox(height: 4),
@@ -2078,20 +2118,13 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               spacing: 8,
               runSpacing: 8,
               children: [
-                if (!row.hasPortalAccount)
-                  FilledButton.icon(
-                    onPressed: _portalSaving ? null : () => _saveVehiclePortal(row),
-                    icon: const Icon(Icons.sms_outlined, size: 18),
-                    label: const Text('Opprett sjåfør (SMS)'),
-                    style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
-                  )
-                else if (_isSuperAdmin) ...[
-                  FilledButton.icon(
-                    onPressed: _portalSaving ? null : () => _resendDriverPortalPassword(row),
-                    icon: const Icon(Icons.lock_reset, size: 18),
-                    label: const Text('Send nytt passord (SMS)'),
-                    style: FilledButton.styleFrom(backgroundColor: DriftProTheme.accentBlue),
-                  ),
+                FilledButton.icon(
+                  onPressed: _portalSaving ? null : () => _saveVehiclePortal(row),
+                  icon: const Icon(Icons.sms_outlined, size: 18),
+                  label: Text(row.hasPortalAccount ? 'Lagre innlogging (SMS)' : 'Opprett sjåfør (SMS)'),
+                  style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+                ),
+                if (row.hasPortalAccount && _isSuperAdmin) ...[
                   OutlinedButton(
                     onPressed: _portalSaving ? null : () => _deleteVehiclePortal(row),
                     child: const Text('Slett sjåfør'),

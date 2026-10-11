@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../permissions/access_session_cache.dart';
+import '../services/supabase_service.dart';
 import '../routing/app_paths.dart';
 import '../services/notification/push_notification_service.dart';
 
@@ -16,6 +17,7 @@ Future<void> signOutFromPortal(BuildContext context) async {
   await Future<void>.delayed(Duration.zero);
 
   AccessSessionCache.clear();
+  SupabaseService.clearSessionLinkCache();
 
   // Deaktiver push MENS sesjonen fortsatt er gyldig (ellers no-op i RPC).
   await PushNotificationService.deactivateOnLogout();

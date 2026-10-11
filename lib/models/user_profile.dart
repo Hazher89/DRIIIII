@@ -41,6 +41,8 @@ class UserProfile {
   final String? driveMonitorUnitName;
   /// Minimal profil uten DB-rad — kun for whitelisted eier-e-post (midlertidig nødbo).
   final bool isRecoverySession;
+  /// Valgt nærmeste leder. Tomt betyr pyramiden (avdeling → Hazher → Tommy).
+  final String? reportsTo;
 
   const UserProfile({
     required this.id,
@@ -74,6 +76,7 @@ class UserProfile {
     this.driveMonitorDevice = false,
     this.driveMonitorUnitName,
     this.isRecoverySession = false,
+    this.reportsTo,
   });
 
   factory UserProfile.fromJson(
@@ -150,6 +153,7 @@ class UserProfile {
       driveMonitorDevice: json['drive_monitor_device'] as bool? ?? false,
       driveMonitorUnitName: (json['drive_monitor_unit_name'] as String?)?.trim(),
       isRecoverySession: json['recovery_session'] as bool? ?? false,
+      reportsTo: json['reports_to'] as String?,
     );
   }
 
@@ -182,6 +186,7 @@ class UserProfile {
     'drive_monitor_device': driveMonitorDevice,
     'drive_monitor_unit_name': driveMonitorUnitName,
     'recovery_session': isRecoverySession,
+    'reports_to': reportsTo,
   };
 
   UserProfile copyWith({
@@ -239,6 +244,7 @@ class UserProfile {
       driveMonitorDevice: driveMonitorDevice ?? this.driveMonitorDevice,
       driveMonitorUnitName: driveMonitorUnitName ?? this.driveMonitorUnitName,
       isRecoverySession: isRecoverySession ?? this.isRecoverySession,
+      reportsTo: reportsTo,
     );
   }
 

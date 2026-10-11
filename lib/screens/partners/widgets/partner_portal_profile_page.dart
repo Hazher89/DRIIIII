@@ -13,6 +13,7 @@ import '../../more/driftpro_platform_catalog.dart';
 import '../../more/widgets/info_page_scaffold.dart';
 import '../../profile/delete_own_account_dialog.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
+import 'portal_change_password_sheet.dart';
 import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_push_status_card.dart';
 import '../widgets/partner_ui.dart';
@@ -237,6 +238,18 @@ class _PartnerPortalProfilePageState extends State<PartnerPortalProfilePage> {
                   canEdit: _canEdit,
                   onEditAvatar: _pickAvatar,
                   onEditName: _editName,
+                ),
+                const SizedBox(height: 16),
+                _sectionCard(
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.lock_outline, color: DriftProTheme.primaryGreen),
+                      title: const Text('Bytt passord', style: TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: const Text('Startpassordet er 000000'),
+                      trailing: const Icon(Icons.chevron_right, size: 20),
+                      onTap: () => showPortalChangePasswordSheet(context),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 _sectionLabel('Konto'),

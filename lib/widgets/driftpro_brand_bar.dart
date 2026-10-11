@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -15,11 +17,14 @@ class DriftProBrandBar extends StatelessWidget {
     final drift = context.driftColors;
     final isMobile = DriftProClient.isMobile;
 
+    final media = MediaQuery.of(context);
+    final topInset = math.max(media.padding.top, media.viewPadding.top);
+
     return Material(
       color: drift.surface,
       clipBehavior: Clip.none,
-      child: SafeArea(
-        bottom: false,
+      child: Padding(
+        padding: EdgeInsets.only(top: topInset),
         child: Container(
           width: double.infinity,
           padding: EdgeInsets.fromLTRB(

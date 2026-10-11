@@ -4,7 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/business_days.dart';
 import '../../../models/absence.dart';
 
-/// Norsk kalender. Egenmelding: ett trykk markerer inntil 3 virkedager.
+/// Norsk kalender. Trykk start, deretter slutt. Ingenting markeres automatisk.
 Future<DateTimeRange?> showSmartLeaveCalendar(
   BuildContext context, {
   required AbsenceType type,
@@ -62,7 +62,7 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
   DateTime? _end;
   bool _pickingEnd = false;
 
-  bool get _autoEgen => widget.type == AbsenceType.egenmelding;
+  bool get _isEgen => widget.type == AbsenceType.egenmelding;
 
   @override
   void initState() {
@@ -88,28 +88,36 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
         d.isAfter(BusinessDays.dayOnly(widget.lastDate))) {
       return;
     }
-    setState(() {
-      if (_autoEgen) {
-        if (!BusinessDays.isBusinessDay(d)) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Egenmelding gjelder virkedager. Helg og røde dager hoppes over.',
-              ),
-            ),
-          );
-        }
-        _start = d;
-        _end = BusinessDays.endAfterBusinessDays(d, widget.maxWorkDays);
-        _pickingEnd = false;
-        return;
-      }
-      if (_start == null || _pickingEnd == false || d.isBefore(_start!)) {
+    if (_start == null || !_pickingEnd || d.isBefore(_start!)) {
+      setState(() {
         _start = d;
         _end = d;
         _pickingEnd = true;
+      });
+      return;
+    }
+    if (_isEgen) {
+      final work = BusinessDays.countInRange(_start!, d);
+      if (work < 1) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Velg minst én virkedag. Helg og røde dager telles ikke.'),
+          ),
+        );
         return;
       }
+      if (work > widget.maxWorkDays) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Egenmelding kan være maks ${widget.maxWorkDays} virkedager. Velg en kortere periode.',
+            ),
+          ),
+        );
+        return;
+      }
+    }
+    setState(() {
       _end = d;
       _pickingEnd = false;
     });
@@ -145,9 +153,7 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
                 ),
                 Expanded(
                   child: Text(
-                    _autoEgen
-                        ? 'Egenmelding · maks ${widget.maxWorkDays} virkedager'
-                        : 'Velg periode',
+                    _pickingEnd ? 'Trykk sluttdag' : 'Trykk startdag',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
@@ -168,8 +174,8 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
               child: Text(
-                _autoEgen
-                    ? '$_workDays virkedager markert automatisk'
+                _isEgen
+                    ? '$_workDays virkedager valgt'
                     : '$_workDays virkedager i perioden',
                 style: TextStyle(
                   color: DriftProTheme.primaryGreen,

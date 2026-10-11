@@ -10,6 +10,29 @@ class PortalCredentials {
 
   static const _portalDomain = 'portal.driftpro.no';
 
+  /// Samme startpassord for alle partnerportaler. De bytter selv under Mer.
+  static const defaultPassword = '000000';
+
+  static const _legalSuffixes = {
+    'as', 'asa', 'da', 'ans', 'enk', 'nuf', 'sa', 'ba', 'ab', 'co', 'ltd',
+  };
+
+  /// Lett brukernavn av bedriftsnavnet, f.eks. «ALT SAMMEN 24 AS» → `altsammen24`.
+  static String companyUsername(String partnerName) {
+    final words = partnerName.trim().split(RegExp(r'\s+'));
+    final kept = <String>[];
+    for (final word in words) {
+      final slug = _slug(word);
+      if (slug.isEmpty || _legalSuffixes.contains(slug)) continue;
+      kept.add(slug);
+    }
+    var out = kept.join();
+    if (out.length < 3) out = _slug(partnerName);
+    if (out.length < 3) out = 'partner';
+    if (out.length > 18) out = out.substring(0, 18);
+    return out;
+  }
+
   /// Sjåfør: kort og knyttet til MAVI-nummer — f.eks. `m71` for NO_O_M0071.
   static String driverUsername(String unitCode) {
     final n = MaviUnitCodes.normalize(unitCode);
@@ -25,24 +48,14 @@ class PortalCredentials {
     return 'sj${10 + _rng.nextInt(89)}';
   }
 
-  /// Bil-eier: kort brukernavn — f.eks. `eierhaz8382` (firma-init + org.siste 4).
-  /// Med [phone] brukes siste 4 siffer for unikt brukernavn per bil-eier.
+  /// Bil-eier: bedriftsnavnet som brukernavn, f.eks. `altsammen24`.
   static String ownerUsername({
     required String partnerName,
     String? orgNumber,
     String? partnerId,
     String? phone,
   }) {
-    final initials = _partnerInitials(partnerName, maxLen: 3);
-    final phoneDigits = (phone ?? '').replaceAll(RegExp(r'\D'), '');
-    if (phoneDigits.length >= 4) {
-      return 'eier$initials${phoneDigits.substring(phoneDigits.length - 4)}';
-    }
-    final org = (orgNumber ?? '').replaceAll(RegExp(r'\D'), '');
-    final tail = org.length >= 4
-        ? org.substring(org.length - 4)
-        : _idTail(partnerId, 4);
-    return 'eier$initials$tail';
+    return companyUsername(partnerName);
   }
 
   @Deprecated('Use ownerUsername(partnerName:, orgNumber:, partnerId:)')
@@ -82,16 +95,12 @@ class PortalCredentials {
     required String phone,
     required String staffId,
   }) {
-    final firm = _partnerInitials(partnerName, maxLen: 3);
+    final firm = companyUsername(partnerName);
     final first = fullName.trim().split(RegExp(r'\s+')).first;
     final person = (_slug(first).isNotEmpty ? _slug(first) : 'ans');
-    final personShort = person.length > 6 ? person.substring(0, 6) : person;
-    final digits = phone.replaceAll(RegExp(r'\D'), '');
-    final phoneTail = digits.length >= 4
-        ? digits.substring(digits.length - 4)
-        : _idTail(staffId, 4);
-    final idTail = _idTail(staffId, 3);
-    return 'a$firm$personShort$phoneTail$idTail'.toLowerCase();
+    final personShort = person.length > 8 ? person.substring(0, 8) : person;
+    final combined = '$firm$personShort';
+    return combined.length > 22 ? combined.substring(0, 22) : combined;
   }
 
   static String displayLoginHint({
@@ -123,37 +132,9 @@ class PortalCredentials {
         'Innlogging til DriftPro for $partnerName:\n'
         'Brukernavn: $username\n'
         'Passord: $password\n\n'
-        'Åpne DriftPro → velg «Samarbeidspartner» (ikke «MAVI ansatte»).\n'
+        'Åpne DriftPro → velg «Partnere» (ikke «Ansatte»).\n'
         'Logg inn med brukernavn og passord over.\n'
         'Kontoen er kun for deg hos $partnerName — partnerportalen (stempling).';
-  }
-
-  static String _partnerInitials(String partnerName, {required int maxLen}) {
-    final words = partnerName.trim().split(RegExp(r'\s+'));
-    final buf = StringBuffer();
-    for (final w in words) {
-      if (w.isEmpty) continue;
-      final c = _firstAsciiLetter(w);
-      if (c != null) buf.write(c);
-      if (buf.length >= maxLen) break;
-    }
-    var out = buf.toString().toLowerCase();
-    if (out.length < 2) {
-      final slug = _slug(partnerName);
-      out = slug.length >= 2 ? slug.substring(0, 2) : 'bp';
-    }
-    return out.length > maxLen ? out.substring(0, maxLen) : out;
-  }
-
-  static String? _firstAsciiLetter(String word) {
-    for (final rune in word.runes) {
-      final ch = String.fromCharCode(rune).toLowerCase();
-      if (ch == 'æ') return 'a';
-      if (ch == 'ø') return 'o';
-      if (ch == 'å') return 'a';
-      if (RegExp(r'[a-z]').hasMatch(ch)) return ch;
-    }
-    return null;
   }
 
   static String _slug(String text) {
@@ -174,17 +155,6 @@ class PortalCredentials {
     return hex.length >= len ? hex.substring(0, len) : hex.padRight(len, '0');
   }
 
-  /// Lett å lese på SMS — ord + tall, f.eks. `Nord42`.
-  static String generatePassword({int length = 10}) {
-    const words = [
-      'Nord', 'Elg', 'Bjork', 'Fjord', 'Moze', 'Sno', 'Hav', 'Laks',
-      'Elv', 'Tind', 'Ro', 'Li',
-    ];
-    final word = words[_rng.nextInt(words.length)];
-    final n = 10 + _rng.nextInt(89);
-    final pwd = '$word$n';
-    if (pwd.length >= length) return pwd;
-    const chars = '23456789';
-    return pwd + chars[_rng.nextInt(chars.length)];
-  }
+  /// Standardpassord for nye partnerportaler. Superadmin kan overstyre.
+  static String generatePassword({int length = 6}) => defaultPassword;
 }

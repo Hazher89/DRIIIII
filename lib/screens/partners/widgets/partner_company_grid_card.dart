@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import 'eco_driving_badge.dart';
@@ -50,11 +51,17 @@ class PartnerCompanyGridCard extends StatefulWidget {
 
 class _PartnerCompanyGridCardState extends State<PartnerCompanyGridCard> {
   bool _hover = false;
-  bool _pinnedOpen = false;
 
   bool get _ecoDone => widget.ecoDrivingStatus == EcoDrivingStatus.completed;
   bool get _ecoOverdue => widget.ecoDrivingStatus == EcoDrivingStatus.overdue;
-  bool get _detailsOpen => _hover || _pinnedOpen;
+
+  String _shortUnit(String unit) {
+    final n = MaviUnitCodes.normalize(unit);
+    final m = RegExp(r'NO_O_M0*(\d+)').firstMatch(n);
+    if (m != null) return 'M${m.group(1)}';
+    if (n.length > 10) return n.substring(0, 10);
+    return n;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,8 +72,6 @@ class _PartnerCompanyGridCardState extends State<PartnerCompanyGridCard> {
       includeInactive: !widget.isActive,
     );
     const accent = Color(0xFF15803D);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     final surface = !widget.isActive
         ? PartnerModernUi.border(context).withValues(alpha: 0.18)
         : PartnerModernUi.surface(context);
@@ -95,350 +100,224 @@ class _PartnerCompanyGridCardState extends State<PartnerCompanyGridCard> {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(22),
             onTap: widget.onTap,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOutCubic,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(22),
                 color: surface,
-                border: Border.all(
-                  color: _detailsOpen
-                      ? accent.withValues(alpha: 0.55)
-                      : borderColor,
-                  width: _detailsOpen ? 1.4 : 1,
-                ),
+                border: Border.all(color: borderColor),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF0F172A).withValues(
-                      alpha: _detailsOpen ? 0.08 : 0.04,
-                    ),
-                    blurRadius: _detailsOpen ? 16 : 10,
-                    offset: const Offset(0, 4),
+                    color: const Color(0xFF0F172A).withValues(alpha: _hover ? 0.08 : 0.035),
+                    blurRadius: _hover ? 18 : 10,
+                    offset: const Offset(0, 6),
                   ),
                 ],
               ),
               child: ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Container(height: 3, color: accentBar),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                borderRadius: BorderRadius.circular(22),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Container(width: 5, color: accentBar),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: accent.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Text(
-                                  initial,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 15,
-                                    color: PartnerModernUi.textPrimary(context),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      widget.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    width: 42,
+                                    height: 42,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: accent.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Text(
+                                      initial,
                                       style: TextStyle(
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 14,
-                                        height: 1.2,
-                                        letterSpacing: -0.2,
-                                        color: PartnerModernUi.textPrimary(
-                                          context,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 18,
+                                        color: PartnerModernUi.textPrimary(context),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          widget.name,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 16,
+                                            height: 1.15,
+                                            letterSpacing: -0.3,
+                                            color: PartnerModernUi.textPrimary(context),
+                                          ),
+                                        ),
+                                        if ((widget.ownerName ?? '').trim().isNotEmpty) ...[
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            widget.ownerName!.trim(),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w600,
+                                              color: PartnerModernUi.textPrimary(context).withValues(alpha: 0.78),
+                                            ),
+                                          ),
+                                        ],
+                                        if ((widget.orgNumber ?? '').trim().isNotEmpty)
+                                          Text(
+                                            'Org.nr ${widget.orgNumber!.trim()}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              color: PartnerModernUi.muted(context),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  _statusPill(context),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+                              Row(
+                                children: [
+                                  _count(context, '${widget.maviCount}', 'biler'),
+                                  _count(context, '${widget.ownerAccounts + widget.driverAccounts}', 'portal'),
+                                  _count(context, '${widget.smsPhones.length}', 'SMS'),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 4,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  EcoDrivingBadge(
+                                    status: widget.ecoDrivingStatus,
+                                    compact: true,
+                                    deadline: widget.ecoDrivingDeadline,
+                                    completedAt: widget.ecoDrivingCompletedAt,
+                                  ),
+                                  Text(
+                                    widget.routesOwnerOnly ? 'Ruter bare til ansvarlig' : 'Ruter til ansvarlig og sjåfør',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: PartnerModernUi.muted(context),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              if (maviList.isEmpty)
+                                Text(
+                                  widget.regCount > 0
+                                      ? '${widget.regCount} skilt uten MAVI'
+                                      : 'Ingen biler ennå',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: PartnerModernUi.muted(context),
+                                  ),
+                                )
+                              else
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: [
+                                    for (final v in maviList.take(8))
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: accent.withValues(alpha: 0.08),
+                                          borderRadius: BorderRadius.circular(999),
+                                        ),
+                                        child: Text(
+                                          _shortUnit(v.unitCode),
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF166534),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      [
-                                        if ((widget.orgNumber ?? '')
-                                            .trim()
-                                            .isNotEmpty)
-                                          widget.orgNumber!.trim(),
-                                        if ((widget.ownerName ?? '')
-                                            .trim()
-                                            .isNotEmpty)
-                                          widget.ownerName!.trim(),
-                                      ].where((e) => e.isNotEmpty).join(' · '),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: PartnerModernUi.muted(context),
+                                    if (maviList.length > 8)
+                                      Text(
+                                        '+${maviList.length - 8}',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: PartnerModernUi.muted(context),
+                                        ),
                                       ),
-                                    ),
                                   ],
                                 ),
-                              ),
-                              _statusPill(context),
-                              IconButton(
-                                visualDensity: VisualDensity.compact,
-                                tooltip: _detailsOpen
-                                    ? 'Skjul detaljer'
-                                    : 'Vis detaljer',
-                                onPressed: () => setState(
-                                  () => _pinnedOpen = !_pinnedOpen,
+                              if (widget.onActivate != null) ...[
+                                const SizedBox(height: 12),
+                                FilledButton.icon(
+                                  onPressed: widget.onActivate,
+                                  icon: const Icon(Icons.play_circle_outline, size: 18),
+                                  label: const Text('Aktiver'),
+                                  style: FilledButton.styleFrom(
+                                    minimumSize: const Size(double.infinity, 40),
+                                    backgroundColor: accent,
+                                  ),
                                 ),
-                                icon: Icon(
-                                  _detailsOpen
-                                      ? Icons.expand_less_rounded
-                                      : Icons.expand_more_rounded,
-                                  size: 20,
-                                  color: PartnerModernUi.muted(context),
-                                ),
-                              ),
+                              ],
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            crossAxisAlignment: WrapCrossAlignment.center,
-                            children: [
-                              EcoDrivingBadge(
-                                status: widget.ecoDrivingStatus,
-                                compact: true,
-                                deadline: widget.ecoDrivingDeadline,
-                                completedAt: widget.ecoDrivingCompletedAt,
-                              ),
-                              _metaChip(
-                                context,
-                                Icons.directions_car_outlined,
-                                '${widget.maviCount} MAVI',
-                              ),
-                              _metaChip(
-                                context,
-                                Icons.people_outline,
-                                '${widget.ownerAccounts + widget.driverAccounts} portal',
-                              ),
-                              _metaChip(
-                                context,
-                                Icons.sms_outlined,
-                                '${widget.smsPhones.length} SMS',
-                              ),
-                            ],
-                          ),
-                          AnimatedCrossFade(
-                            firstChild: const SizedBox(width: double.infinity),
-                            secondChild: Padding(
-                              padding: const EdgeInsets.only(top: 10),
-                              child: _detailsPanel(
-                                context,
-                                maviList,
-                                isDark: isDark,
-                              ),
-                            ),
-                            crossFadeState: _detailsOpen
-                                ? CrossFadeState.showSecond
-                                : CrossFadeState.showFirst,
-                            duration: const Duration(milliseconds: 180),
-                            sizeCurve: Curves.easeOutCubic,
-                          ),
-                          if (widget.onActivate != null) ...[
-                            const SizedBox(height: 8),
-                            FilledButton.icon(
-                              onPressed: widget.onActivate,
-                              icon: const Icon(
-                                Icons.play_circle_outline,
-                                size: 18,
-                              ),
-                              label: const Text('Aktiver'),
-                              style: FilledButton.styleFrom(
-                                minimumSize: const Size(double.infinity, 36),
-                                backgroundColor: accent,
-                              ),
-                            ),
-                          ],
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _detailsPanel(
-    BuildContext context,
-    List<PartnerVehicle> maviList, {
-    required bool isDark,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.04)
-            : const Color(0xFFF8FAF9),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: PartnerModernUi.border(context).withValues(alpha: 0.7),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _detailStat(
-                  context,
-                  'BA',
-                  '${widget.ownerAccounts}',
-                  const Color(0xFF2563EB),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: _detailStat(
-                  context,
-                  'Sjåfør',
-                  '${widget.driverAccounts}',
-                  const Color(0xFF0F766E),
-                ),
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: _detailStat(
-                  context,
-                  'SMS',
-                  widget.routesOwnerOnly ? 'Kun BA' : 'BA+sjåfør',
-                  const Color(0xFF7C3AED),
-                ),
-              ),
-            ],
-          ),
-          if (maviList.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            PartnerMaviVehicleOverview(
-              vehicles: maviList.take(6).toList(),
-              dense: true,
-              muted: !widget.isActive,
-            ),
-            if (maviList.length > 6)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(
-                  '+${maviList.length - 6} flere — åpne bedrift',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: PartnerModernUi.muted(context),
+                    ],
                   ),
                 ),
               ),
-          ] else
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                widget.regCount > 0
-                    ? '${widget.regCount} registrering(er) uten MAVI-kode'
-                    : 'Ingen MAVI-biler registrert',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: PartnerModernUi.muted(context),
-                ),
-              ),
-            ),
-          const SizedBox(height: 6),
-          Text(
-            'Trykk kortet for å åpne bedriften',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: PartnerModernUi.muted(context),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _detailStat(
-    BuildContext context,
-    String label,
-    String value,
-    Color color,
-  ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: PartnerModernUi.surface(context),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: PartnerModernUi.border(context).withValues(alpha: 0.6),
-        ),
-      ),
+  Widget _count(BuildContext context, String value, String label) {
+    return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            label,
+            value,
             style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: PartnerModernUi.muted(context),
+              fontSize: 22,
+              height: 1,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.6,
+              color: PartnerModernUi.textPrimary(context),
             ),
           ),
+          const SizedBox(height: 2),
           Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+            label,
             style: TextStyle(
               fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _metaChip(BuildContext context, IconData icon, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: PartnerModernUi.border(context).withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: PartnerModernUi.muted(context)),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w700,
-              color: PartnerModernUi.textPrimary(context),
+              fontWeight: FontWeight.w600,
+              color: PartnerModernUi.muted(context),
             ),
           ),
         ],

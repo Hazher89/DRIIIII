@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:flutter/services.dart';
 
+import '../../hms/hms_prose.dart';
 import 'sop_training_models.dart';
 import 'sop_training_parser.dart';
 import 'sop_training_search.dart';
@@ -592,7 +593,7 @@ class TrainingLibraryService {
         return SopTrainingParser.parseDocumentXml(xml);
       case TrainingDocKind.plainText:
         final text = await rootBundle.loadString(meta.assetPath);
-        return _parsePlainText(meta, text);
+        return _parsePlainText(meta, HmsProse.format(text));
     }
   }
 

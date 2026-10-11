@@ -169,7 +169,7 @@ class _TicketsScreenState extends State<TicketsScreen> {
   }
 
   void _openNewTicket() {
-    Navigator.of(context)
+    Navigator.of(context, rootNavigator: true)
         .push<bool>(
       MaterialPageRoute(
         builder: (_) => const NewTicketScreen(),

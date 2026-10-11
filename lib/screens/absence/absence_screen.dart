@@ -10,6 +10,7 @@ import '../../core/routing/route_url_sync.dart';
 import '../../core/utils/nb_date_format.dart';
 
 import '../../core/config/driftpro_client.dart';
+import '../../core/constants/company_principals.dart';
 import '../../core/constants/leave_rules.dart';
 import '../../core/constants/vacation_year_window.dart';
 import '../../core/services/absence/absence_service.dart';
@@ -27,6 +28,7 @@ import '../../models/absence.dart';
 import '../../models/department.dart';
 import '../../models/user_profile.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/permissions/access_session_cache.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/user_access.dart';
@@ -88,10 +90,33 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   Timer? _absenceDebounce;
   bool _absenceRefreshing = false;
 
+  bool _manageTeamSync(UserProfile profile) {
+    if (profile.isAdmin || CompanyPrincipal.isPrincipal(profile)) return true;
+    if (profile.access.canApproveLeave ||
+        profile.access.canRegisterLeaveForOthers) {
+      return true;
+    }
+    return profile.role == UserRole.leder;
+  }
+
+  void _seedFromProfile(UserProfile profile) {
+    _profile = profile;
+    _canManageTeamLeave = _manageTeamSync(profile);
+    _rebuildTabs(
+      false,
+      _canManageTeamLeave,
+      profile.isAdmin && profile.access.canVacationAdmin,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     _pendingTabSlug = widget.initialTab;
+    final cached = AccessSessionCache.profile;
+    if (cached != null && (cached.companyId ?? '').isNotEmpty) {
+      _seedFromProfile(cached);
+    }
     _loadAllData();
   }
 
@@ -272,15 +297,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         godkjennIdx = 0;
         teamCalIdx = 2;
         tabs = [
-          Tab(
-            icon: const Icon(Icons.notifications_active_outlined, size: 20),
-            text: 'Inkommende (${_pendingApprovals.length})',
-          ),
-          const Tab(icon: Icon(Icons.person_outline, size: 20), text: 'Mine'),
-          const Tab(
-            icon: Icon(Icons.groups_outlined, size: 20),
-            text: 'Mine ansatte',
-          ),
+          Tab(text: 'Inn (${_pendingApprovals.length})'),
+          const Tab(text: 'Mine'),
+          const Tab(text: 'Ansatte'),
         ];
       } else {
         godkjennIdx = -1;
@@ -396,13 +415,11 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     final profile = _profile;
     if (profile == null || profile.companyId == null) return;
 
-    final results = await Future.wait([
-      SupabaseService.fetchAbsences(userId: profile.id),
-      SupabaseService.fetchScopedAbsences(profile: profile),
-    ]);
-
-    final mine = results[0] as List<Absence>;
-    final scoped = results[1] as List<Absence>;
+    final allAbsences = await SupabaseService.fetchAbsences(
+      companyId: profile.companyId,
+    );
+    final mine = allAbsences.where((a) => a.userId == profile.id).toList();
+    final scoped = _scopeAbsences(profile, allAbsences);
     final pending = _canManageTeamLeave
         ? scoped
             .where((a) =>
@@ -442,34 +459,58 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       _loadError = null;
     });
     try {
-      final profile = await SupabaseService.fetchEffectiveUserProfile();
+      var profile = _profile ?? AccessSessionCache.profile;
+      if (profile == null || (profile.companyId ?? '').isEmpty) {
+        profile = await SupabaseService.fetchCurrentUserProfile();
+      }
+      if (profile == null || (profile.companyId ?? '').isEmpty) {
+        profile = await SupabaseService.fetchEffectiveUserProfile();
+      }
       if (profile == null || profile.companyId == null) {
         setState(() => _loadError =
             'Profilen er ikke koblet til et selskap — data fra Supabase vises ikke. '
             'Logg ut, logg inn på nytt, eller kjør ensure_internal_profile_missing.sql i Supabase.');
         return;
       }
+      final loaded = profile;
 
-      _profile = profile;
-      _managedDepartmentIds =
-          await DepartmentLeaderScope.managedDepartmentIds(profile);
-      _canManageTeamLeave = await DepartmentLeaderScope.canManageTeam(profile);
-      final companyId = profile.companyId!;
+      if (_tabController == null) {
+        _seedFromProfile(loaded);
+        if (mounted) setState(() {});
+      }
+      _profile = loaded;
+      final companyId = loaded.companyId!;
 
       final results = await Future.wait([
-        SupabaseService.fetchAbsences(userId: profile.id),
-        SupabaseService.fetchScopedAbsences(profile: profile),
+        SupabaseService.fetchAbsences(companyId: companyId),
         SupabaseService.fetchCompanyLeaveSettings(companyId),
         SupabaseService.fetchDepartments(companyId: companyId),
+        DepartmentLeaderScope.ledDepartmentIds(loaded.id),
       ]);
 
-      final mine = results[0] as List<Absence>;
-      final scoped = results[1] as List<Absence>;
-      final depts = results[3] as List<Department>;
+      final allAbsences = results[0] as List<Absence>;
+      final mine =
+          allAbsences.where((a) => a.userId == loaded.id).toList();
+      final depts = results[2] as List<Department>;
+      final led = results[3] as Set<String>;
+      final managed = <String>{...led};
+      for (final d in depts) {
+        if (d.leaderId == loaded.id || d.leaderIds.contains(loaded.id)) {
+          managed.add(d.id);
+        }
+      }
+      if (loaded.role == UserRole.leder &&
+          loaded.departmentId != null &&
+          loaded.departmentId!.isNotEmpty) {
+        managed.add(loaded.departmentId!);
+      }
+      _managedDepartmentIds = managed;
+      _canManageTeamLeave = _manageTeamSync(loaded) || managed.isNotEmpty;
+      final scoped = _scopeAbsences(loaded, allAbsences);
       final pending = _canManageTeamLeave
           ? scoped
               .where((a) =>
-                  a.status == AbsenceStatus.ventende && a.userId != profile.id)
+                  a.status == AbsenceStatus.ventende && a.userId != loaded.id)
               .toList()
           : <Absence>[];
 
@@ -486,7 +527,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       setState(() {
         _myAbsences = mine;
         _scopedAbsences = scoped;
-        _companySettings = results[2] as CompanyLeaveSettings;
+        _companySettings = results[1] as CompanyLeaveSettings;
         _pendingApprovals = pending;
         _approvalOverlaps = overlaps;
         _teamOverlaps = teamOverlaps;
@@ -499,7 +540,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
           _rebuildTabs(
             isDark,
             _canManageTeamLeave,
-            profile.isAdmin && profile.access.canVacationAdmin,
+            loaded.isAdmin && loaded.access.canVacationAdmin,
           );
           // Viktig: ikke la saldo/team blokkere hele siden (fanene viste bare spinner).
           _isLoading = false;
@@ -507,8 +548,8 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       }
 
       await Future.wait([
-        _loadSaldo(profile),
-        _loadTeamOverview(profile),
+        _loadSaldo(loaded),
+        _loadTeamOverview(loaded),
       ]);
       _startAbsenceRealtime(companyId);
     } catch (e) {
@@ -517,6 +558,26 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  List<Absence> _scopeAbsences(UserProfile profile, List<Absence> all) {
+    if (profile.isAdmin || CompanyPrincipal.isPrincipal(profile)) return all;
+    if (_canManageTeamLeave) {
+      return all
+          .where((a) => DepartmentLeaderScope.absenceInScope(
+                a,
+                profile,
+                _managedDepartmentIds,
+              ))
+          .toList();
+    }
+    return all
+        .where((a) =>
+            a.userId == profile.id ||
+            (profile.departmentId != null &&
+                a.departmentId == profile.departmentId &&
+                a.status != AbsenceStatus.avvist))
+        .toList();
   }
 
   Future<void> _loadSaldo(UserProfile profile) async {
@@ -581,9 +642,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       });
       return;
     }
-    final allProfiles = profile.isSuperAdmin || profile.access.dataScopeCompany
-        ? await SupabaseService.fetchProfiles()
-        : await SupabaseService.fetchProfiles(companyId: profile.companyId);
+    final allProfiles = await SupabaseService.fetchProfiles(
+      companyId: profile.companyId,
+    );
     final deptIds = _managedDepartmentIds.isNotEmpty
         ? _managedDepartmentIds
         : (profile.departmentId != null ? {profile.departmentId!} : <String>{});
@@ -719,11 +780,18 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading && _profile == null) {
-      return const DriftProLoadingPage();
+    if (_profile == null || _tabController == null || _tabs.isEmpty) {
+      if (_isLoading) {
+        return MobileShellScaffold(
+          title: 'Fravær & Ferie',
+          hideMobileTitleBar: DriftProClient.isMobile,
+          backgroundColor: DriftProTheme.surfaceLight,
+          body: const DriftProLoadingCenter(),
+        );
+      }
     }
 
-    if (!_isLoading && (_tabController == null || _tabs.isEmpty)) {
+    if (_tabController == null || _tabs.isEmpty) {
       final msg = _loadError ??
           (_profile != null ? 'Kunne ikke laste innhold på fraværssiden.' : 'Fant ikke pålogget bruker eller bedrift.');
       return MobileShellScaffold(
@@ -785,11 +853,33 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
               tooltip: 'Oppdater',
             ),
         ],
-      bottom: TabBar(
-        controller: _tabController,
-        isScrollable: true,
-        indicatorColor: DriftProTheme.primaryGreen,
-        tabs: _tabs,
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(52),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: isDark ? DriftProTheme.cardDark : const Color(0xFFE6EFE9),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              padding: const EdgeInsets.all(4),
+              indicatorPadding: const EdgeInsets.symmetric(vertical: 2),
+              indicatorSize: TabBarIndicatorSize.tab,
+              dividerColor: Colors.transparent,
+              indicator: BoxDecoration(
+                color: isDark ? DriftProTheme.surfaceDark : Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              labelColor: DriftProTheme.primaryGreen,
+              unselectedLabelColor: isDark ? Colors.white70 : const Color(0xFF3D5248),
+              labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              tabs: _tabs,
+            ),
+          ),
+        ),
       ),
       backgroundColor:
           isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
@@ -1038,6 +1128,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   }
 
   Widget _buildMineTab(bool isDark, bool isManager) {
+    if (_isLoading && _myAbsences.isEmpty) {
+      return const DriftProLoadingCenter();
+    }
     final today = _calDay(DateTime.now());
     final filtered = _myAbsences.where(_matchesMineFilter).toList();
 
@@ -1203,30 +1296,14 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
             ),
           )
         else ...[
-          _leaveSection(
-            'Nå',
-            nowList,
-            isDark,
-            empty: 'Du er på jobb — ingen pågående fravær.',
-          ),
-          _leaveSection(
-            'Kommende',
-            nextList,
-            isDark,
-            empty: 'Ingen godkjent ferie eller fravær fremover.',
-          ),
-          _leaveSection(
-            'Venter på svar',
-            waitList,
-            isDark,
-            empty: 'Ingen åpne søknader.',
-          ),
-          _leaveSection(
-            'Tidligere',
-            pastList.take(24).toList(),
-            isDark,
-            empty: 'Ingen tidligere fravær i filteret.',
-          ),
+          if (nowList.isNotEmpty)
+            _leaveSection('Nå', nowList, isDark),
+          if (nextList.isNotEmpty)
+            _leaveSection('Kommende', nextList, isDark),
+          if (waitList.isNotEmpty)
+            _leaveSection('Venter på svar', waitList, isDark),
+          if (pastList.isNotEmpty)
+            _leaveSection('Tidligere', pastList.take(12).toList(), isDark),
         ],
         SizedBox(height: DriftProClient.isMobile ? 88 : 24),
       ],
@@ -1236,9 +1313,8 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   Widget _leaveSection(
     String title,
     List<Absence> items,
-    bool isDark, {
-    required String empty,
-  }) {
+    bool isDark,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -1268,13 +1344,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
             ],
           ),
           const SizedBox(height: 8),
-          if (items.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(empty, style: DriftProTheme.caption),
-            )
-          else
-            ...items.map((a) => _buildAbsenceCard(a, _days(a), isDark)),
+          ...items.map((a) => _buildAbsenceCard(a, _days(a), isDark)),
         ],
       ),
     );
@@ -1377,6 +1447,9 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   }
 
   Widget _buildHandlingTab(bool isDark) {
+    if (_isLoading && _pendingApprovals.isEmpty && _scopedAbsences.isEmpty) {
+      return const DriftProLoadingCenter();
+    }
     if (_pendingApprovals.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(
