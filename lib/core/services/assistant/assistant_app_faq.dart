@@ -106,7 +106,7 @@ class AssistantAppFaq {
           source: KnowledgeSourceKind.help,
           title: 'Egenmelding — regler og kvote',
           body:
-              'Egenmelding: inntil 3 kalenderdager per tilfelle, maks 4 tilfeller '
+              'Egenmelding: inntil 3 virkedager per tilfelle (helg og røde dager telles ikke), maks 4 tilfeller '
               'og 12 dager totalt i en 12-måneders periode fra ansettelsesdato '
               '(nullstilles ikke 1. januar).\n\n'
               'Søk under Fravær → ny søknad → Egenmelding. Leder godkjenner. '

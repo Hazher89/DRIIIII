@@ -31,8 +31,13 @@ class AbsenceService {
     switch (type) {
       case AbsenceType.egenmelding:
         final maxConsec = company.effectiveEgenmeldingConsecutiveMax;
-        if (days > maxConsec) {
-          return 'Egenmelding kan maks være $maxConsec kalenderdager om gangen.';
+        final workDays = vacationDayCount(start, end);
+        if (workDays > maxConsec) {
+          return 'Egenmelding kan maks være $maxConsec virkedager om gangen '
+              '(helg og røde dager telles ikke).';
+        }
+        if (workDays < 1) {
+          return 'Egenmelding må inneholde minst én virkedag.';
         }
         if (periodUsage != null &&
             periodUsage.egenmeldingPeriodsUsed >=
@@ -41,7 +46,7 @@ class AbsenceService {
               'egenmeldingsperioder i perioden ${periodUsage.window.formatRange()}.';
         }
         if (periodUsage != null &&
-            periodUsage.egenmeldingDaysUsed + days >
+            periodUsage.egenmeldingDaysUsed + workDays >
                 company.effectiveEgenmeldingDaysPerYear) {
           return 'Egenmeldingskvoten er brukt opp i perioden '
               '${periodUsage.window.formatRange()} '

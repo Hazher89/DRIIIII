@@ -132,7 +132,11 @@ class AccessSettingsDoc {
   void _wipeIfNoView(String areaId) {
     if (!get(areaId, AccessAction.view)) {
       for (final childId in AccessAreaCatalog.descendants(areaId)) {
-        areas.remove(childId);
+        final child = AccessAreaCatalog.byId[childId];
+        if (child == null) continue;
+        for (final a in child.actions) {
+          set(childId, a, false);
+        }
       }
       return;
     }
@@ -149,7 +153,7 @@ class AccessSettingsDoc {
       'version': version,
       'areas': {
         for (final e in areas.entries)
-          if (e.value.values.any((v) => v))
+          if (e.value.isNotEmpty)
             e.key: {for (final a in e.value.entries) a.key: a.value},
       },
       if (liveLinks.isNotEmpty) 'live_links': liveLinks,
@@ -215,16 +219,20 @@ class AccessNormalize {
     UserRole role,
   ) {
     final preset = AccessSettingsDoc.fromJson(AccessPresets.forRoleV2(role));
+    final isV2 = raw != null && raw['version'] == 2;
     final doc = raw == null || raw.isEmpty
         ? preset
         : AccessSettingsDoc.fromJson(raw);
 
-    // Fill missing areas from preset (only where area absent).
-    for (final area in AccessAreaCatalog.areas) {
-      if (!doc.areas.containsKey(area.id)) {
-        final presetArea = preset.areas[area.id];
-        if (presetArea != null) {
-          doc.areas[area.id] = Map<String, bool>.from(presetArea);
+    // Kun v1 / tomt dokument fylles fra rolle-malen.
+    // v2 som mangler et område betyr at det er skrudd av (GDPR: ikke gi tilbake).
+    if (!isV2) {
+      for (final area in AccessAreaCatalog.areas) {
+        if (!doc.areas.containsKey(area.id)) {
+          final presetArea = preset.areas[area.id];
+          if (presetArea != null) {
+            doc.areas[area.id] = Map<String, bool>.from(presetArea);
+          }
         }
       }
     }

@@ -7,12 +7,16 @@ class LeavePeriodUsage {
   final int egenmeldingDaysUsed;
   final int egenmeldingPeriodsUsed;
   final int syktBarnDaysUsed;
+  final DateTime? lastEgenmeldingOn;
+  final DateTime? lastSyktBarnOn;
 
   const LeavePeriodUsage({
     required this.window,
     this.egenmeldingDaysUsed = 0,
     this.egenmeldingPeriodsUsed = 0,
     this.syktBarnDaysUsed = 0,
+    this.lastEgenmeldingOn,
+    this.lastSyktBarnOn,
   });
 
   int egenmeldingDaysRemaining(int maxDays) =>

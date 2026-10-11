@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/permissions/access_catalog.dart';
@@ -55,11 +57,31 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
   bool _saving = false;
   bool _statutoryBusy = false;
   List<AccessChangeAuditEntry> _audit = const [];
+  Timer? _liveSave;
+  String? _liveNote;
 
   @override
   void dispose() {
+    _liveSave?.cancel();
     _tabs?.dispose();
     super.dispose();
+  }
+
+  void _onMatrixChanged(Map<String, dynamic> next) {
+    setState(() => _settings = next);
+    if (!widget.isSuperAdmin || _role == UserRole.superadmin) return;
+    _liveSave?.cancel();
+    _liveSave = Timer(const Duration(milliseconds: 400), () async {
+      try {
+        await SupabaseService.updateProfileAccess(widget.employee.id, next);
+        if (!mounted) return;
+        setState(() => _liveNote =
+            'Lagret. Appen skjuler eller viser siden med en gang.');
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _liveNote = 'Kunne ikke lagre: $e');
+      }
+    });
   }
 
   @override
@@ -541,10 +563,33 @@ class _EmployeeAccessDetailScreenState extends State<EmployeeAccessDetailScreen>
                   ],
                 ),
                 const SizedBox(height: 8),
+                if (_role == UserRole.superadmin)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'Superadmin ser alltid alle sider. Bytt rolle hvis sidene skal kunne skjules.',
+                      style: TextStyle(
+                        color: Color(0xFF9A5B00),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                if (_liveNote != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      _liveNote!,
+                      style: const TextStyle(
+                        color: Color(0xFF1B5E20),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
                 PermissionMatrixEditor(
                   settings: _settings,
                   roleForPresets: _role,
-                  onChanged: (s) => setState(() => _settings = s),
+                  readOnly: _role == UserRole.superadmin,
+                  onChanged: _onMatrixChanged,
                 ),
                 ],
                 const SizedBox(height: 80),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/constants/leave_rules.dart';
 import '../../../core/theme/app_theme.dart';
@@ -93,6 +94,12 @@ Future<void> showLeaveEgenmeldingBlockedSheet(
                       'Tilfeller brukt',
                       '$periodsUsed / ${LeaveRules.egenmeldingMaxPeriodsPerYear}',
                     ),
+                    if (periodUsage.lastEgenmeldingOn != null)
+                      _statRow(
+                        'Sist brukt',
+                        DateFormat('dd.MM.yyyy')
+                            .format(periodUsage.lastEgenmeldingOn!),
+                      ),
                   ],
                 ),
               ),

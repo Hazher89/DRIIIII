@@ -6,7 +6,7 @@ class LeaveRules {
   LeaveRules._();
 
   // ── Egenmelding (aml. § 4-3, praksis + folketrygd) ─────────────────────
-  /// Maks kalenderdager per egenmeldingsperiode (typisk 3 ifølge praksis).
+  /// Maks virkedager per egenmelding (helg og røde dager telles ikke).
   static const int egenmeldingMaxConsecutiveDays = 3;
   static const int egenmeldingMaxPeriodsPerYear = 4;
   /// Maks totalt i 12-måneders periode: 4 tilfeller × 3 dager.
@@ -31,8 +31,8 @@ class LeaveRules {
 
   static const String lovdataEgenmeldingTitle = 'Egenmelding';
   static const String lovdataEgenmeldingBody =
-      'Arbeidstaker kan melde egen sykdom uten sykmelding i inntil 3 kalenderdager '
-      'om gangen (bedriftens HR-avtale kan være strengere). Maks 4 egenmeldingsperioder '
+      'Arbeidstaker kan melde egen sykdom uten sykmelding i inntil 3 virkedager '
+      'om gangen (helg og røde dager telles ikke). Maks 4 egenmeldingsperioder '
       '(tilfeller) og 12 dager totalt i en 12-måneders periode fra ansettelsesdato '
       '(nullstilles ikke 1. januar). '
       'Ved lengre fravær kreves sykmelding fra lege. '

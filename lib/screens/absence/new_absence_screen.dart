@@ -16,8 +16,10 @@ import '../../core/theme/app_theme.dart';
 import '../../models/absence.dart';
 import '../../models/user_profile.dart';
 import 'widgets/department_leave_tip_card.dart';
+import 'widgets/leave_egenmelding_blocked_sheet.dart';
 import 'widgets/leave_rules_panel.dart';
 import 'widgets/leave_usage_meter.dart';
+import 'widgets/smart_leave_calendar.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
 class NewAbsenceScreen extends StatefulWidget {
@@ -227,52 +229,66 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
   }
 
   Future<void> _pickDateRange() async {
-    final now = DateTime.now();
-    final maxConsec = _companySettings.effectiveEgenmeldingConsecutiveMax;
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: VacationYearWindow.earliestSelectableDate,
-      lastDate: VacationYearWindow.latestSelectableDate,
-      initialDateRange: _startDate != null && _endDate != null
-          ? DateTimeRange(start: _startDate!, end: _endDate!)
-          : DateTimeRange(start: now, end: now),
-      helpText: widget.type == AbsenceType.egenmelding
-          ? 'Egenmelding: maks $maxConsec dager'
-          : 'Velg periode',
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: DriftProTheme.primaryGreen,
-              primary: DriftProTheme.primaryGreen,
+    var maxWork = widget.type == AbsenceType.egenmelding
+        ? _companySettings.effectiveEgenmeldingConsecutiveMax
+        : 366;
+    if (widget.type == AbsenceType.egenmelding && _periodUsage != null) {
+      final left = _companySettings.effectiveEgenmeldingDaysPerYear -
+          _periodUsage!.egenmeldingDaysUsed;
+      if (left < maxWork) maxWork = left;
+      if (maxWork < 1 ||
+          LeaveEligibility.isEgenmeldingExhausted(
+            usage: _periodUsage,
+            maxDays: _companySettings.effectiveEgenmeldingDaysPerYear,
+          )) {
+        if (!mounted) return;
+        await showLeaveEgenmeldingBlockedSheet(
+          context,
+          periodUsage: _periodUsage!,
+          maxDays: _companySettings.effectiveEgenmeldingDaysPerYear,
+        );
+        return;
+      }
+    }
+    if (widget.type == AbsenceType.syktBarn) {
+      final limit = _companySettings.syktBarnDaysLimit(
+        childrenUnder12: _childrenUnder12,
+      );
+      final left = limit - (_periodUsage?.syktBarnDaysUsed ?? 0);
+      if (left < 1) {
+        final last = _periodUsage?.lastSyktBarnOn;
+        final lastTxt = last == null
+            ? ''
+            : ' Sist brukt ${last.day.toString().padLeft(2, '0')}.'
+                '${last.month.toString().padLeft(2, '0')}.${last.year}.';
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Ingen sykt-barn-dager igjen i perioden '
+              '(${_childrenUnder12 == 0 ? 1 : _childrenUnder12} barn under 12 → $limit dager).$lastTxt',
             ),
           ),
-          child: child!,
         );
-      },
+        return;
+      }
+      maxWork = left;
+    }
+
+    final picked = await showSmartLeaveCalendar(
+      context,
+      type: widget.type,
+      maxWorkDays: maxWork < 1 ? 1 : maxWork,
+      initialStart: _startDate,
+      initialEnd: _endDate,
+      firstDate: VacationYearWindow.earliestSelectableDate,
+      lastDate: VacationYearWindow.latestSelectableDate,
     );
 
     if (picked != null) {
-      var start = picked.start;
-      var end = picked.end;
-      if (widget.type == AbsenceType.egenmelding) {
-        final days = AbsenceService.dayCount(start, end);
-        if (days > maxConsec) {
-          end = start.add(Duration(days: maxConsec - 1));
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  'Egenmelding begrenset til maks $maxConsec dager. Perioden er justert.',
-                ),
-              ),
-            );
-          }
-        }
-      }
       setState(() {
-        _startDate = start;
-        _endDate = end;
+        _startDate = picked.start;
+        _endDate = picked.end;
         _error = null;
       });
       await _loadQuotaForSelected();
@@ -385,7 +401,8 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final totalDays = _startDate != null && _endDate != null
-        ? (widget.type == AbsenceType.ferie
+        ? (widget.type == AbsenceType.ferie ||
+                widget.type == AbsenceType.egenmelding
             ? AbsenceService.vacationDayCount(_startDate!, _endDate!)
             : AbsenceService.dayCount(_startDate!, _endDate!))
         : 0;
@@ -430,7 +447,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                       used: _periodUsage!.egenmeldingDaysUsed,
                       max: _companySettings.effectiveEgenmeldingDaysPerYear,
                       subtitle:
-                          '${_periodUsage!.window.formatRange()} · maks $maxConsec dager per søknad',
+                          '${_periodUsage!.window.formatRange()} · maks $maxConsec virkedager per søknad',
                       icon: Icons.sick_outlined,
                     ),
                     const SizedBox(height: 16),
@@ -456,7 +473,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Text(
-                        'Velg inntil $maxConsec sammenhengende dager.',
+                        'Ett trykk markerer inntil $maxConsec virkedager. Helg og røde dager telles ikke.',
                         style: DriftProTheme.caption,
                       ),
                     ),
@@ -577,6 +594,17 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                   '${usage.egenmeldingPeriodsUsed}/${LeaveRules.egenmeldingMaxPeriodsPerYear} tilfeller',
                   style: DriftProTheme.labelMd,
                 ),
+                if (usage.lastEgenmeldingOn != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Sist egenmelding: ${usage.lastEgenmeldingOn!.day.toString().padLeft(2, '0')}.'
+                    '${usage.lastEgenmeldingOn!.month.toString().padLeft(2, '0')}.'
+                    '${usage.lastEgenmeldingOn!.year}',
+                    style: DriftProTheme.bodySm.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -781,7 +809,8 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  widget.type == AbsenceType.ferie
+                  widget.type == AbsenceType.ferie ||
+                          widget.type == AbsenceType.egenmelding
                       ? '$totalDays virkedager'
                       : '$totalDays dager',
                   style: const TextStyle(

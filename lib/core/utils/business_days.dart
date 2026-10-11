@@ -63,6 +63,22 @@ class BusinessDays {
     return !isWeekend(d) && !isNorwegianPublicHoliday(d);
   }
 
+  /// Sluttdato når [count] virkedager skal telles fra [start] (start = dag 1).
+  /// Hopper over helg og røde dager. Hvis [start] ikke er virkedag, flyttes den først.
+  static DateTime endAfterBusinessDays(DateTime start, int count) {
+    var cursor = dayOnly(start);
+    while (!isBusinessDay(cursor)) {
+      cursor = cursor.add(const Duration(days: 1));
+    }
+    if (count <= 1) return cursor;
+    var left = count - 1;
+    while (left > 0) {
+      cursor = cursor.add(const Duration(days: 1));
+      if (isBusinessDay(cursor)) left--;
+    }
+    return cursor;
+  }
+
   /// Antall virkedager i perioden (inkl. start og slutt) — brukes for ferie.
   static int countInRange(DateTime start, DateTime end) {
     var from = dayOnly(start);

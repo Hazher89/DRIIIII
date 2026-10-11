@@ -22,15 +22,20 @@ class LeaveEligibility {
   }) {
     final daysLeft = usage.egenmeldingDaysRemaining(maxDays);
     final periodsLeft = maxPeriods - usage.egenmeldingPeriodsUsed;
+    final last = usage.lastEgenmeldingOn;
+    final lastTxt = last == null
+        ? ''
+        : ' Sist brukt ${last.day.toString().padLeft(2, '0')}.'
+            '${last.month.toString().padLeft(2, '0')}.${last.year}.';
     if (daysLeft <= 0 && periodsLeft <= 0) {
       return 'Du har brukt alle $maxDays dager og alle $maxPeriods egenmeldingsperioder '
-          'i perioden ${usage.window.formatRange()}.';
+          'i perioden ${usage.window.formatRange()}.$lastTxt';
     }
     if (daysLeft <= 0) {
       return 'Du har brukt alle $maxDays egenmeldingsdager '
-          'i perioden ${usage.window.formatRange()}.';
+          'i perioden ${usage.window.formatRange()}.$lastTxt';
     }
     return 'Du har brukt alle $maxPeriods egenmeldingsperioder '
-        'i perioden ${usage.window.formatRange()}.';
+        'i perioden ${usage.window.formatRange()}.$lastTxt';
   }
 }

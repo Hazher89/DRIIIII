@@ -7,12 +7,18 @@ class LeaveQuickActions extends StatelessWidget {
   final void Function(AbsenceType type) onTypeSelected;
   final bool egenmeldingBlocked;
   final VoidCallback? onEgenmeldingBlocked;
+  final String? ferieHint;
+  final String? egenmeldingHint;
+  final String? syktBarnHint;
 
   const LeaveQuickActions({
     super.key,
     required this.onTypeSelected,
     this.egenmeldingBlocked = false,
     this.onEgenmeldingBlocked,
+    this.ferieHint,
+    this.egenmeldingHint,
+    this.syktBarnHint,
   });
 
   @override
@@ -30,6 +36,7 @@ class LeaveQuickActions extends StatelessWidget {
           children: [
             _ActionChip(
               label: 'Ferie',
+              hint: ferieHint,
               icon: Icons.beach_access_rounded,
               color: DriftProTheme.absenceVacation,
               isDark: isDark,
@@ -37,6 +44,7 @@ class LeaveQuickActions extends StatelessWidget {
             ),
             _ActionChip(
               label: 'Egenmelding',
+              hint: egenmeldingBlocked ? 'Ingen igjen' : egenmeldingHint,
               icon: Icons.sick_outlined,
               color: DriftProTheme.absenceSickSelf,
               isDark: isDark,
@@ -47,6 +55,7 @@ class LeaveQuickActions extends StatelessWidget {
             ),
             _ActionChip(
               label: 'Sykt barn',
+              hint: syktBarnHint,
               icon: Icons.child_care_rounded,
               color: DriftProTheme.absenceSickChild,
               isDark: isDark,
@@ -75,6 +84,7 @@ class LeaveQuickActions extends StatelessWidget {
 
 class _ActionChip extends StatelessWidget {
   final String label;
+  final String? hint;
   final IconData icon;
   final Color color;
   final bool isDark;
@@ -87,6 +97,7 @@ class _ActionChip extends StatelessWidget {
     required this.color,
     required this.isDark,
     required this.onTap,
+    this.hint,
     this.disabled = false,
   });
 
@@ -116,11 +127,18 @@ class _ActionChip extends StatelessWidget {
                 size: 20,
               ),
               const SizedBox(width: 8),
-              Text(
-                disabled ? '$label (oppbrukt)' : label,
-                style: DriftProTheme.labelMd.copyWith(
-                  color: disabled ? Colors.grey : null,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    disabled ? '$label (oppbrukt)' : label,
+                    style: DriftProTheme.labelMd.copyWith(
+                      color: disabled ? Colors.grey : null,
+                    ),
+                  ),
+                  if (hint != null)
+                    Text(hint!, style: DriftProTheme.caption),
+                ],
               ),
             ],
           ),

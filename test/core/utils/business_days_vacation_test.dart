@@ -8,6 +8,10 @@ void main() {
 
     test('teller 4 virkedager totalt (1. jan er rød dag)', () {
       expect(BusinessDays.countInRange(start, end), 4);
+      expect(
+        BusinessDays.endAfterBusinessDays(DateTime(2026, 10, 9), 3),
+        DateTime(2026, 10, 13),
+      );
     });
 
     test('fordeler 3 dager på 2025 og 1 dag på 2026', () {

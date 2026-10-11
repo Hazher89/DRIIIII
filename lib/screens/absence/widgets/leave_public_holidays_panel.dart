@@ -72,8 +72,8 @@ class LeavePublicHolidaysPanel extends StatelessWidget {
                   Expanded(
                     child: Text(
                       'Røde dager er offentlige helligdager i Norge. '
-                      'Ferie og egenmelding telles som kalenderdager — '
-                      'planlegg ferie med tanke på helligdager i perioden.',
+                      'Ferie og egenmelding teller bare virkedager — '
+                      'helg og røde dager hoppes over.',
                       style: DriftProTheme.bodySm.copyWith(height: 1.4),
                     ),
                   ),

@@ -435,7 +435,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     if (!mounted) return;
     final uri = GoRouterState.of(context).uri;
     if (RouteAccessMap.allowsUri(profile.access, uri)) return;
-    context.go(AppPaths.dashboard);
+    for (final tab in AppPaths.shellTabs) {
+      if (profile.access.can(tab.access)) {
+        context.go(AppPaths.pathForAccess(tab.access) ?? AppPaths.more);
+        return;
+      }
+    }
+    context.go(AppPaths.more);
   }
 
   bool _hasAccess(String key) {

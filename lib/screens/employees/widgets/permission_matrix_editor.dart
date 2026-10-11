@@ -30,6 +30,36 @@ class _PermissionMatrixEditorState extends State<PermissionMatrixEditor> {
   final _search = TextEditingController();
   final Set<String> _expanded = {};
   String _query = '';
+  String _group = 'Alle';
+
+  static const _groups = <String, List<String>>{
+    'Hjem': ['dashboard', 'surveys', 'fravaer', 'avvik', 'stempling'],
+    'HMS': ['hms', 'uniform'],
+    'Partnere': ['partners'],
+    'Mer og admin': ['more', 'admin.ansatte_rediger', 'admin.avdelinger_rediger'],
+  };
+
+  static const _tips = <String, String>{
+    'dashboard':
+        'Forsiden. Les av = Hjem forsvinner, og appen åpner neste side brukeren har.',
+    'surveys': 'Undersøkelser. Opprett/Endre gjelder den som lager skjema.',
+    'fravaer':
+        'Ferie og fravær. Godkjenn = leder kan svare på andres søknader.',
+    'avvik': 'Avvik og RUH. Ansatte har ikke dette som standard.',
+    'hms': 'HMS, risiko, SJA, opplæring og dokumenter.',
+    'uniform': 'Uniform- og kontrollkamera.',
+    'partners': 'Samarbeidspartnere, ruter, bot/trekk og chat.',
+    'stempling': 'Stempling inn og ut.',
+    'more': 'Mer-menyen. Selve fanen kan ikke fjernes, men innholdet kan.',
+  };
+
+  static const _actionHelp = <String, String>{
+    'Les': 'Ser siden og egne data. Av = siden er borte.',
+    'Opprett': 'Kan lage nye saker, søknader eller poster.',
+    'Endre': 'Kan endre det som allerede finnes.',
+    'Slett': 'Kan slette. Brukes sjelden — GDPR.',
+    'Godkjenn': 'Kan godkjenne eller avvise andres saker.',
+  };
 
   AccessSettingsDoc get _doc => AccessSettingsDoc.fromJson(widget.settings);
 
@@ -95,7 +125,18 @@ class _PermissionMatrixEditorState extends State<PermissionMatrixEditor> {
     _emit(AccessSettingsDoc.fromJson(AccessPresets.forRoleV2(role)));
   }
 
+  bool _inGroup(AccessAreaDef area) {
+    if (_group == 'Alle') return true;
+    final ids = _groups[_group] ?? const <String>[];
+    final root = area.id.split('.').first;
+    if (area.id.startsWith('admin.')) {
+      return ids.contains(area.id);
+    }
+    return ids.contains(root) || ids.contains(area.id);
+  }
+
   bool _matchesQuery(AccessAreaDef area) {
+    if (!_inGroup(area)) return false;
     if (_query.isEmpty) return true;
     final q = _query.toLowerCase();
     if (area.title.toLowerCase().contains(q)) return true;
@@ -133,10 +174,36 @@ class _PermissionMatrixEditorState extends State<PermissionMatrixEditor> {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(
-                'Les / Opprett / Endre / Slett / Godkjenn per område. '
-                'Slå av et område for å skjule det helt.',
-                style: DriftProTheme.caption,
+              const Text(
+                'Les av betyr at siden forsvinner med en gang. '
+                'Endringen lagres av seg selv. Minste tilgang gjelder (GDPR).',
+                style: TextStyle(
+                  color: Color(0xFF1A2E24),
+                  height: 1.35,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  for (final e in _actionHelp.entries)
+                    Tooltip(
+                      message: e.value,
+                      child: Chip(
+                        visualDensity: VisualDensity.compact,
+                        label: Text(
+                          '${e.key}: ${e.value}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF1A2E24),
+                          ),
+                        ),
+                        backgroundColor: Colors.white,
+                      ),
+                    ),
+                ],
               ),
               if (!widget.readOnly) ...[
                 const SizedBox(height: 10),
@@ -192,6 +259,24 @@ class _PermissionMatrixEditorState extends State<PermissionMatrixEditor> {
               ],
             ],
           ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final name in ['Alle', ..._groups.keys])
+              ChoiceChip(
+                label: Text(name),
+                selected: _group == name,
+                onSelected: (_) => setState(() => _group = name),
+                selectedColor: DriftProTheme.primaryGreen.withValues(alpha: 0.25),
+                labelStyle: TextStyle(
+                  color: const Color(0xFF1A2E24),
+                  fontWeight: _group == name ? FontWeight.w800 : FontWeight.w500,
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 12),
         TextField(
@@ -251,10 +336,19 @@ class _PermissionMatrixEditorState extends State<PermissionMatrixEditor> {
                     }),
                   )
                 : const SizedBox(width: 40),
-            title: Text(area.title, style: DriftProTheme.labelLg),
-            subtitle: area.subtitle != null
-                ? Text(area.subtitle!, style: DriftProTheme.caption)
-                : Text(area.id, style: DriftProTheme.caption),
+            title: Text(
+              area.title,
+              style: const TextStyle(
+                color: Color(0xFF1A2E24),
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            subtitle: Text(
+              _tips[area.id] ??
+                  area.subtitle ??
+                  'Underområde. Krever Les på siden over.',
+              style: const TextStyle(color: Color(0xFF3D4F45), height: 1.3),
+            ),
             trailing: widget.readOnly
                 ? null
                 : PopupMenuButton<_QuickMode>(
@@ -289,16 +383,31 @@ class _PermissionMatrixEditorState extends State<PermissionMatrixEditor> {
               children: [
                 for (final action in AccessAction.all)
                   if (area.supports(action))
-                    FilterChip(
-                      label: Text(action.label),
-                      selected: doc.get(area.id, action),
-                      onSelected: widget.readOnly
-                          ? null
-                          : (v) => _toggle(area.id, action, v),
-                      selectedColor:
-                          DriftProTheme.primaryGreen.withValues(alpha: 0.25),
-                      checkmarkColor: DriftProTheme.primaryGreen,
-                      visualDensity: VisualDensity.compact,
+                    Tooltip(
+                      message: _actionHelp[action.label] ?? action.label,
+                      child: FilterChip(
+                        label: Text(action.label),
+                        selected: doc.get(area.id, action),
+                        onSelected: widget.readOnly
+                            ? null
+                            : (v) => _toggle(area.id, action, v),
+                        selectedColor: DriftProTheme.primaryGreen
+                            .withValues(alpha: 0.28),
+                        checkmarkColor: DriftProTheme.primaryGreen,
+                        backgroundColor: Colors.white,
+                        labelStyle: TextStyle(
+                          color: doc.get(area.id, action)
+                              ? const Color(0xFF145C32)
+                              : const Color(0xFF1A2E24),
+                          fontWeight: FontWeight.w700,
+                        ),
+                        side: BorderSide(
+                          color: doc.get(area.id, action)
+                              ? DriftProTheme.primaryGreen
+                              : const Color(0xFFB7C4BC),
+                        ),
+                        visualDensity: VisualDensity.compact,
+                      ),
                     ),
               ],
             ),

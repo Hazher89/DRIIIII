@@ -1,5 +1,6 @@
 import '../../../models/absence.dart';
 import '../../../models/leave_period_usage.dart';
+import '../../utils/business_days.dart';
 import '../../utils/leave_period_window.dart';
 import 'absence_service.dart';
 
@@ -37,19 +38,30 @@ class LeavePeriodUsageService {
             window.contains(a.startDate))
         .toList();
 
-    int daysFor(List<Absence> list) => list.fold(
+    int daysFor(List<Absence> list, {bool business = false}) => list.fold(
           0,
           (sum, a) =>
               sum +
-              (a.totalDays ??
-                  AbsenceService.dayCount(a.startDate, a.endDate)),
+              (business
+                  ? BusinessDays.countInRange(a.startDate, a.endDate)
+                  : (a.totalDays ??
+                      AbsenceService.dayCount(a.startDate, a.endDate))),
         );
+
+    DateTime? latestEnd(List<Absence> list) {
+      if (list.isEmpty) return null;
+      return list
+          .map((a) => a.endDate)
+          .reduce((a, b) => a.isAfter(b) ? a : b);
+    }
 
     return LeavePeriodUsage(
       window: window,
-      egenmeldingDaysUsed: daysFor(egen),
+      egenmeldingDaysUsed: daysFor(egen, business: true),
       egenmeldingPeriodsUsed: egen.length,
       syktBarnDaysUsed: daysFor(sykt),
+      lastEgenmeldingOn: latestEnd(egen),
+      lastSyktBarnOn: latestEnd(sykt),
     );
   }
 }

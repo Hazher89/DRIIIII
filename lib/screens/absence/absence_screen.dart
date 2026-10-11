@@ -872,6 +872,22 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
           LeaveQuickActions(
             onTypeSelected: (t) => _openNewRequest(t),
             egenmeldingBlocked: _egenmeldingBlockedForSelf,
+            ferieHint: _quota == null
+                ? null
+                : '${_quota!.vacationDaysRemaining} virkedager igjen',
+            egenmeldingHint: _periodUsage == null
+                ? null
+                : '${(_companySettings.effectiveEgenmeldingDaysPerYear - _periodUsage!.egenmeldingDaysUsed).clamp(0, 99)} dager · '
+                    '${(LeaveRules.egenmeldingMaxPeriodsPerYear - _periodUsage!.egenmeldingPeriodsUsed).clamp(0, 9)} tilfeller',
+            syktBarnHint: () {
+              final kids = _profile?.childrenUnder12Count ?? 0;
+              final limit = _companySettings.syktBarnDaysLimit(
+                childrenUnder12: kids,
+              );
+              final used = _periodUsage?.syktBarnDaysUsed ?? 0;
+              final left = (limit - used).clamp(0, limit);
+              return '$left/$limit dager · ${kids == 0 ? 'ingen barn under 12' : '$kids barn under 12'}';
+            }(),
             onEgenmeldingBlocked: () {
               if (_periodUsage == null) return;
               showLeaveEgenmeldingBlockedSheet(
