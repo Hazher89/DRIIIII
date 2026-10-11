@@ -12,6 +12,7 @@ import '../../../widgets/common/team_equal_controls.dart';
 import '../../../widgets/common/team_kpi_strip.dart';
 import '../../departments/widgets/department_member_leave_card.dart';
 import 'leave_dual_calendar_tab.dart';
+import 'leave_team_roster.dart';
 import 'leave_employee_stats_panel.dart';
 import 'vacation_rest_guide.dart';
 
@@ -72,7 +73,9 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
   final _searchCtrl = TextEditingController();
   String _search = '';
   _EmployeeFilter _filter = _EmployeeFilter.alle;
-  _TeamLeaveView _view = _TeamLeaveView.oversikt;
+  _TeamLeaveView _view = DriftProClient.isMobile
+      ? _TeamLeaveView.kalender
+      : _TeamLeaveView.oversikt;
 
   @override
   void initState() {
@@ -180,22 +183,34 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
           child: TeamEqualSegmentBar<_TeamLeaveView>(
             value: _view,
             onChanged: (v) => setState(() => _view = v),
-            items: const [
-              TeamEqualSegmentItem(
+            items: [
+              const TeamEqualSegmentItem(
                 value: _TeamLeaveView.oversikt,
                 label: 'Ansatte',
                 icon: Icons.groups_outlined,
               ),
               TeamEqualSegmentItem(
                 value: _TeamLeaveView.kalender,
-                label: 'Kalender',
-                icon: Icons.calendar_month_outlined,
+                label: DriftProClient.isMobile ? 'Oversikt' : 'Kalender',
+                icon: DriftProClient.isMobile
+                    ? Icons.view_list_rounded
+                    : Icons.calendar_month_outlined,
               ),
             ],
           ),
         ),
         Expanded(
-          child: _view == _TeamLeaveView.kalender
+          child: _view == _TeamLeaveView.kalender && DriftProClient.isMobile
+              ? LeaveTeamRoster(
+                  employees: _employees,
+                  absencesFor: _absencesFor,
+                  quotaFor: _quotaFor,
+                  company: widget.companySettings,
+                  colorForType: widget.colorForType,
+                  onOpen: _openEmployee,
+                  onAbsenceTap: widget.onAbsenceTap,
+                )
+              : _view == _TeamLeaveView.kalender
               ? LeaveDualCalendarTab(
                   isManager: true,
                   month: widget.month,
