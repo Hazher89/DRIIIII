@@ -172,7 +172,10 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
         companyId: companyId,
         departmentId: employee.departmentId,
       );
-      final names = options.nearestLeaders
+      final leaders = options.nearestLeaders.isNotEmpty
+          ? options.nearestLeaders
+          : options.superadmins;
+      final names = leaders
           .map((p) => p.fullName.trim())
           .where((n) => n.isNotEmpty)
           .toSet()
@@ -185,11 +188,8 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
 
   String get _recipientLine {
     if (_directRegister) return '';
-    if (_leaderNames.isEmpty) {
-      return 'Søknaden sendes til administratorene. De får varsel i appen, på SMS og på e-post når det er slått på.';
-    }
-    final who = _leaderNames.join(', ');
-    return 'Leder: $who. Søknaden sendes til $who. Administratorene får også varsel i appen, på SMS og på e-post.';
+    if (_leaderNames.isEmpty) return 'Ingen leder er satt';
+    return _leaderNames.join('\n');
   }
   bool get _isSelfRequest => _selectedEmployee?.id == _profile?.id;
   bool get _leaderSelfBlocked =>
@@ -772,9 +772,22 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
           const Icon(Icons.person_pin_outlined, color: DriftProTheme.primaryGreen),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              _recipientLine,
-              style: DriftProTheme.bodySm.copyWith(height: 1.35),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Leder',
+                  style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _recipientLine,
+                  style: DriftProTheme.labelLg.copyWith(
+                    fontWeight: FontWeight.w800,
+                    height: 1.3,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
