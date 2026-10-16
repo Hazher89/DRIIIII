@@ -9,6 +9,7 @@ import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/route_notify_prefs.dart';
 import 'partner_route_pdf_actions.dart';
+import 'partner_route_delivery_report_dialog.dart';
 import 'route_calendar_chip.dart';
 import 'route_publish_notify_buttons.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
@@ -242,11 +243,37 @@ class _PartnerRouteStagedPublishSheetState extends State<PartnerRouteStagedPubli
         shareIdToStartAt: starts,
         notifyDriver: notify,
         notifyPrefs: notifyPrefs,
+        flushOutbox: true,
       );
-      if (mounted) {
+      if (!mounted) return;
+      final result = await runPostDispatchDeliveryReport(
+        context: context,
+        companyId: widget.companyId,
+        shareIds: map.keys,
+      );
+      if (!mounted) return;
+      if (result == null) return;
+      if (result.report.allOk || result.closeWizard) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(notifyPrefs.successMessage(map.length))),
+          SnackBar(
+            content: Text(
+              result.report.allOk
+                  ? notifyPrefs.successMessage(map.length)
+                  : 'Publisert med ${result.report.failedCount} uløst(e) feil.',
+            ),
+            backgroundColor:
+                result.report.allOk ? null : Colors.orange.shade900,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${result.report.failedCount} rute(r) ikke ferdig levert.',
+            ),
+            backgroundColor: Colors.red.shade800,
+          ),
         );
       }
     } catch (e) {

@@ -89,6 +89,12 @@ class RouteNotifyDelivery {
     required this.driverHasAppToken,
     required this.driverHasPhone,
     required this.needsAttention,
+    this.pdfStoragePath,
+    this.storageOk,
+    this.errorSummary,
+    this.partnerVehicleId,
+    this.shareDate,
+    this.title,
   });
 
   final String shareId;
@@ -106,12 +112,23 @@ class RouteNotifyDelivery {
   final bool driverHasAppToken;
   final bool driverHasPhone;
   final bool needsAttention;
+  final String? pdfStoragePath;
+  final bool? storageOk;
+  final String? errorSummary;
+  final String? partnerVehicleId;
+  final DateTime? shareDate;
+  final String? title;
 
   factory RouteNotifyDelivery.fromJson(Map<String, dynamic> json) {
     final channels = (json['notify_channels'] as List?)
             ?.map((e) => '$e')
             .toList() ??
         const ['app', 'sms', 'email'];
+    DateTime? shareDate;
+    final rawDate = json['share_date'];
+    if (rawDate != null) {
+      shareDate = DateTime.tryParse(rawDate.toString());
+    }
     return RouteNotifyDelivery(
       shareId: json['share_id'] as String,
       dispatchStatus: (json['dispatch_status'] as String?) ?? 'staged',
@@ -128,6 +145,12 @@ class RouteNotifyDelivery {
       driverHasAppToken: json['driver_has_app_token'] as bool? ?? false,
       driverHasPhone: json['driver_has_phone'] as bool? ?? false,
       needsAttention: json['needs_attention'] as bool? ?? false,
+      pdfStoragePath: (json['pdf_storage_path'] as String?)?.trim(),
+      storageOk: json['storage_ok'] as bool?,
+      errorSummary: (json['error_summary'] as String?)?.trim(),
+      partnerVehicleId: json['partner_vehicle_id'] as String?,
+      shareDate: shareDate,
+      title: (json['title'] as String?)?.trim(),
     );
   }
 
@@ -145,5 +168,35 @@ class RouteNotifyDelivery {
     ];
     if (parts.isEmpty) return 'Uten varsel';
     return parts.join(' · ');
+  }
+
+  RouteNotifyDelivery copyWith({
+    bool? needsAttention,
+    String? errorSummary,
+    bool? storageOk,
+  }) {
+    return RouteNotifyDelivery(
+      shareId: shareId,
+      dispatchStatus: dispatchStatus,
+      prefs: prefs,
+      smsQueued: smsQueued,
+      smsSent: smsSent,
+      smsFailed: smsFailed,
+      emailQueued: emailQueued,
+      emailSent: emailSent,
+      emailFailed: emailFailed,
+      pushQueued: pushQueued,
+      pushSent: pushSent,
+      pushFailed: pushFailed,
+      driverHasAppToken: driverHasAppToken,
+      driverHasPhone: driverHasPhone,
+      needsAttention: needsAttention ?? this.needsAttention,
+      pdfStoragePath: pdfStoragePath,
+      storageOk: storageOk ?? this.storageOk,
+      errorSummary: errorSummary ?? this.errorSummary,
+      partnerVehicleId: partnerVehicleId,
+      shareDate: shareDate,
+      title: title,
+    );
   }
 }

@@ -15,8 +15,8 @@ class RoutePdfThumbPanController extends ChangeNotifier {
   static final RoutePdfThumbPanController instance =
       RoutePdfThumbPanController._();
 
-  /// Standard: litt mot venstre så strekkode + sjåførnavn synes.
-  static const Offset defaultPan = Offset(-0.22, -0.02);
+  /// Standard: litt mot venstre/topp så dato, lane, resource og sjåfør synes.
+  static const Offset defaultPan = Offset(-0.16, -0.06);
 
   Offset _pan = defaultPan;
 
@@ -129,7 +129,7 @@ class _PartnerRoutePdfThumbnailState extends State<PartnerRoutePdfThumbnail> {
       }
 
       Uint8List? png;
-      await for (final page in Printing.raster(pdfBytes, pages: [0], dpi: 110)) {
+      await for (final page in Printing.raster(pdfBytes, pages: [0], dpi: 140)) {
         png = await page.toPng();
         break;
       }
@@ -364,11 +364,11 @@ class _TripHeaderCrop extends StatelessWidget {
   final Offset pan;
   final bool highlight;
 
-  /// Synlig topp-andel av A4 (lavere = mer zoom).
-  static const double topFraction = 0.34;
+  /// Synlig topp-andel av A4. Tett på strekkode + startdato/lane/resource/sjåfør.
+  static const double topFraction = 0.33;
 
-  /// Synlig venstre-andel — holder sjåfør/strekkode i bildet.
-  static const double leftFraction = 0.72;
+  /// Synlig venstre-andel — startdato, stowing lane, resource ID, sjåfør.
+  static const double leftFraction = 0.70;
 
   static const double a4HeightOverWidth = 1.414213562;
 
@@ -393,6 +393,11 @@ class _TripHeaderCrop extends StatelessWidget {
     // pan.dx negativ → Alignment mer til venstre
     final alignX = (-0.85 + pan.dx * 1.6).clamp(-1.0, 1.0);
     final alignY = (-1.0 + pan.dy * 1.4).clamp(-1.0, 1.0);
+    // Brede, lave felt (enkeltopplasting) klipper stowing lane med cover.
+    // Da vises hele header-utsnittet i stedet.
+    final cropAspect = cropH <= 0 ? 1.5 : cropW / cropH;
+    final viewAspect = h <= 0 ? cropAspect : w / h;
+    final fit = viewAspect > cropAspect ? BoxFit.contain : BoxFit.cover;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -405,7 +410,7 @@ class _TripHeaderCrop extends StatelessWidget {
           width: w,
           height: h,
           child: FittedBox(
-            fit: BoxFit.cover,
+            fit: fit,
             alignment: Alignment(alignX, alignY),
             child: SizedBox(
               width: cropW,

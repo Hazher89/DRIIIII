@@ -20,17 +20,18 @@ import '../../../core/services/partner/route_shift_resolver.dart';
 import '../../../core/services/partner/sap_route_import_service.dart';
 import '../../../core/services/partner/sap_route_inbox_live.dart';
 import '../../../core/services/partner/staged_route_duplicate_helper.dart';
-import '../../../core/services/notification/publish_action_labels.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../models/notification_channel.dart';
 import '../../../models/partner/route_notify_prefs.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/storage/company_file_storage.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import 'partner_mass_route_queue_card.dart';
+import 'partner_route_delivery_report_dialog.dart';
 import 'partner_route_pdf_actions.dart';
 import 'partner_route_pdf_thumbnail.dart';
 import 'partner_route_publish_review_dialog.dart';
@@ -210,9 +211,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   bool _initialFilterSet = false;
   List<FleetPartnerVehicleRow> _expandedMaviFleet = const [];
   bool _selectionInitialized = false;
-  RouteNotifyPrefs _notifyPrefs = RouteNotifyPrefs.all;
+  bool _autoSelectedReady = false;
+  RouteNotifyPrefs _notifyPrefs = RouteNotifyPrefs.smsAndPush;
   Map<String, RouteNotifyDelivery> _deliveryByShare = {};
   Set<String> _appReadyVehicleIds = {};
+  /// Ruter uten verifisert lagring / Dropbox-fallback — kan ikke publiseres.
+  final Set<String> _storageBlockedShareIds = {};
   _SapWizardStep _sapWizardStep = _SapWizardStep.fetch;
   int _lastGraphMatched = 0;
   int _lastGraphInserted = 0;
@@ -309,23 +313,16 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       // Auto-hent alle SAP-mail + importer til kø ved åpning.
       await _syncSapInbox();
     });
-    _loadPublishLabels();
   }
 
-  Future<void> _loadPublishLabels() async {
-    final cid = await SupabaseService.getCurrentCompanyId();
-    if (cid == null || !mounted) return;
-    try {
-      final ch = await PublishActionLabels.massRouteChannel(cid);
-      if (mounted) {
-        setState(() {
-          _notifyPrefs = PublishActionLabels.prefsFromChannel(ch);
-          if (_notifyPrefs.noneEnabled) {
-            _notifyPrefs = RouteNotifyPrefs.all;
-          }
-        });
-      }
-    } catch (_) {}
+  Future<void> _auditStorageForStaged() async {
+    for (final s in List<PartnerRouteShare>.from(_staged)) {
+      await _markStorageStatusForShare(s);
+    }
+    if (!mounted) return;
+    setState(() {
+      _selected.removeWhere(_storageBlockedShareIds.contains);
+    });
   }
 
   Future<void> _refreshDeliveryStatus() async {
@@ -1114,6 +1111,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     List<_SkippedPdf> manualSkipped = const [],
     bool preferRoutesTab = false,
     bool preserveSelection = false,
+    bool shiftsResolved = false,
   }) {
     _shifts = shifts;
     _staged = staged;
@@ -1123,14 +1121,27 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       }
     }
     _portalByVehicle = portals;
+    final firstLoad = !_selectionInitialized;
     if (preserveSelection) {
       _selected.removeWhere((id) => !_staged.any((s) => s.id == id));
-    } else if (!_selectionInitialized) {
-      // Ikke auto-velg — bruker må gjennomgå og velge ruter manuelt før publisering.
+    } else if (firstLoad) {
       _selected.clear();
       _selectionInitialized = true;
-    } else if (!preserveSelection) {
+    } else {
       _selected.removeWhere((id) => !_staged.any((s) => s.id == id));
+    }
+    // Ruter med skift og sjåfør hukes av automatisk (også etter opplasting).
+    if (preferRoutesTab || !_autoSelectedReady) {
+      var marked = false;
+      for (final s in staged) {
+        final sid = (shiftById[s.id] ?? s.shiftId ?? '').trim();
+        if (sid.isEmpty || s.partnerVehicleId == null) continue;
+        _selected.add(s.id);
+        marked = true;
+      }
+      if (shiftsResolved && (marked || staged.isEmpty)) {
+        _autoSelectedReady = true;
+      }
     }
     _stowingByShare.clear();
     _shiftByShare
@@ -1216,6 +1227,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         );
         _loading = false;
       });
+      unawaited(_auditStorageForStaged());
       unawaited(_enrichStagedQueue(
         companyId: cid,
         staged: staged,
@@ -1281,6 +1293,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           manualSkipped: manualSkipped,
           preferRoutesTab: preferRoutesTab,
           preserveSelection: preserveSelection,
+          shiftsResolved: true,
         );
       });
       if (relinked > 0 && mounted) {
@@ -1505,6 +1518,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         for (final id in routeIds)
           if (_effectiveShiftId(id) != null) id: _effectiveShiftId(id)!,
       };
+      if (map.isEmpty) {
+        throw StateError('Ingen ruter med skift å publisere');
+      }
       final starts = <String, DateTime?>{};
       for (final id in routeIds) {
         final t = _startByShare[id];
@@ -1520,12 +1536,49 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         shareIdToStartAt: starts,
         notifyDriver: sendNotify,
         notifyPrefs: notifyPrefs,
+        flushOutbox: true,
       );
-      if (mounted) {
+
+      final labels = _driverLabelsFor(map.keys);
+      final phones = _phonesFor(map.keys);
+      await _refreshDeliveryStatus();
+      if (!mounted) return;
+
+      final result = await runPostDispatchDeliveryReport(
+        context: context,
+        companyId: cid,
+        shareIds: map.keys,
+        driverLabels: labels,
+        phones: phones,
+      );
+      if (!mounted) return;
+
+      if (result == null) return;
+
+      if (result.report.allOk || result.closeWizard) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(notifyPrefs.successMessage(map.length))),
+          SnackBar(
+            content: Text(
+              result.report.allOk
+                  ? notifyPrefs.successMessage(map.length)
+                  : 'Publisert med ${result.report.failedCount} uløst(e) feil — sjekk leveringsrapport.',
+            ),
+            backgroundColor:
+                result.report.allOk ? null : Colors.orange.shade900,
+          ),
         );
         Navigator.pop(context, true);
+      } else {
+        _setViewFilter(_QueueViewFilter.notNotified);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '${result.report.failedCount} rute(r) ikke ferdig levert — se «Uten varsel».',
+            ),
+            backgroundColor: Colors.red.shade800,
+            duration: const Duration(seconds: 6),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -2624,6 +2677,25 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       );
       return false;
     }
+    final blocked = _selected.where(_storageBlockedShareIds.contains).toList();
+    if (blocked.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${blocked.length} rute(r) mangler verifisert Dropbox/PDF-lagring. '
+            'Fjern dem fra valg eller last opp på nytt.',
+          ),
+          backgroundColor: Colors.red.shade800,
+          duration: const Duration(seconds: 7),
+        ),
+      );
+      setState(() {
+        for (final id in blocked) {
+          _selected.remove(id);
+        }
+      });
+      return false;
+    }
     return true;
   }
 
@@ -2699,6 +2771,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (_duplicateExtraCount > 0) '$_duplicateExtraCount duplikat',
       if (_multiLoadDriverCount > 0) '$_multiLoadDriverCount med 2+ last',
       if (_missingShiftCount > 0) '$_missingShiftCount mangler skift',
+      if (_storageBlockedShareIds.isNotEmpty)
+        '${_storageBlockedShareIds.length} lagring feilet',
       if (_notNotifiedCount > 0) '$_notNotifiedCount uten fullt varsel',
     ];
     return Container(
@@ -3927,6 +4001,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             _summaryTile('2+ last', '$_multiLoadDriverCount', _routeColorMultiLoad),
           if (_duplicateExtraCount > 0)
             _summaryTile('Dobbel', '$_duplicateExtraCount', _routeColorDuplicate),
+          if (_storageBlockedShareIds.isNotEmpty)
+            _summaryTile(
+              'Lagring ✗',
+              '${_storageBlockedShareIds.length}',
+              Colors.red.shade800,
+            ),
+          if (_notNotifiedCount > 0)
+            _summaryTile(
+              'Ikke levert',
+              '$_notNotifiedCount',
+              Colors.red.shade800,
+            ),
         ],
       ),
     );
@@ -4096,7 +4182,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   String? _loadLetterForShare(PartnerRouteShare share) {
     final vid = share.partnerVehicleId;
     if (vid == null) return null;
-    final group = _staged.where((s) => s.partnerVehicleId == vid).toList()
+    final day = _routeDayFor(share.id);
+    final group = _staged.where((s) {
+      if (s.partnerVehicleId != vid) return false;
+      final d = _routeDayFor(s.id);
+      return d.year == day.year && d.month == day.month && d.day == day.day;
+    }).toList()
       ..sort((a, b) {
         final c = (_stowingForShare(a) ?? '').compareTo(_stowingForShare(b) ?? '');
         if (c != 0) return c;
@@ -4105,9 +4196,58 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (group.length < 2) return null;
     final i = group.indexWhere((s) => s.id == share.id);
     if (i < 0) return null;
-    final letter = String.fromCharCode(65 + i.clamp(0, 25));
-    if (_groupHasContentDuplicates(group)) return 'Dobbel $letter';
-    return 'Last $letter';
+    final label = 'Last ${i + 1}/${group.length}';
+    if (_groupHasContentDuplicates(group)) return 'Dobbel · $label';
+    return label;
+  }
+
+  Future<void> _markStorageStatusForShare(PartnerRouteShare share) async {
+    final path = share.pdfStoragePath.trim();
+    if (path.isEmpty) {
+      _storageBlockedShareIds.add(share.id);
+      return;
+    }
+    final ok = await PartnerService.verifyRoutePdfReachable(path);
+    if (!ok) {
+      _storageBlockedShareIds.add(share.id);
+      return;
+    }
+    final dropboxOn = await CompanyFileStorage.isDropboxConnected();
+    final onDropbox = CompanyFileStorage.isDropboxReference(path) ||
+        CompanyFileStorage.isDropboxPath(path);
+    if (dropboxOn && !onDropbox) {
+      _storageBlockedShareIds.add(share.id);
+      return;
+    }
+    _storageBlockedShareIds.remove(share.id);
+  }
+
+  Map<String, String> _driverLabelsFor(Iterable<String> ids) {
+    final map = <String, String>{};
+    for (final id in ids) {
+      final share = _staged.where((s) => s.id == id).firstOrNull;
+      if (share == null) continue;
+      final row = _rowForShare(share);
+      if (row == null) continue;
+      map[id] = MaviUnitCodes.fleetDriverLabel(
+        row.vehicle.unitCode,
+        row.partner.name,
+      );
+    }
+    return map;
+  }
+
+  Map<String, String?> _phonesFor(Iterable<String> ids) {
+    final map = <String, String?>{};
+    for (final id in ids) {
+      final share = _staged.where((s) => s.id == id).firstOrNull;
+      if (share == null) continue;
+      final vid = share.partnerVehicleId;
+      final acc = vid == null ? null : _portalByVehicle[vid];
+      final row = _rowForShare(share);
+      map[id] = acc?.phone ?? row?.vehicle.phone;
+    }
+    return map;
   }
 
   Future<void> _removeSelectedShares() async {
@@ -4365,20 +4505,35 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       maviFleet: _maviFleet,
       noteController: noteCtrl,
       groupAccent: accent,
-      loadBadge: loadBadge,
+      loadBadge: _storageBlockedShareIds.contains(share.id)
+          ? 'Lagring feilet'
+          : loadBadge,
       notifyBadge: RouteNotifyDeliveryBadge(
         delivery: _deliveryByShare[share.id],
         driverAppReady: share.partnerVehicleId != null &&
             _appReadyVehicleIds.contains(share.partnerVehicleId),
       ),
       onOpenDetails: () => _showRouteEditSheet(share, row, ui),
-      onChecked: (v) => setState(() {
-        if (v == true) {
-          _selected.add(share.id);
-        } else {
-          _selected.remove(share.id);
+      onChecked: (v) {
+        if (v == true && _storageBlockedShareIds.contains(share.id)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Kan ikke publisere — PDF mangler verifisert Dropbox-lagring. Last opp på nytt.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
         }
-      }),
+        setState(() {
+          if (v == true) {
+            _selected.add(share.id);
+          } else {
+            _selected.remove(share.id);
+          }
+        });
+      },
       onRemove: () => _removeShare(share),
       onReassignVehicle: (vid) => _reassignShare(share, vid),
       onDateChanged: (d) => _setShareRouteDay(share, d),
@@ -4544,7 +4699,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 : selectedMissing > 0
                     ? '$selectedMissing valgte rute(r) mangler skift'
                     : canPublish
-                        ? 'Klar: ${_selected.length} rute(r) valgt'
+                        ? 'Klar: ${_selected.length} rute(r) · SMS og push'
                         : 'Huk av ruter du vil dele';
 
     final statusColor = _skipped.isNotEmpty || _duplicateExtraCount > 0
@@ -5349,13 +5504,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PartnerRoutePdfThumbnail(
-            share: share,
-            driverLabel: driverLabel,
-            height: 170,
-            showFullPage: true,
-            zoomTripHeader: true,
-            onTapOpen: () => PartnerRoutePdfActions.openPdf(context, share),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final height = (constraints.maxWidth * 0.72).clamp(220.0, 380.0);
+              return PartnerRoutePdfThumbnail(
+                share: share,
+                driverLabel: driverLabel,
+                height: height,
+                showFullPage: true,
+                zoomTripHeader: true,
+                onTapOpen: () => PartnerRoutePdfActions.openPdf(context, share),
+              );
+            },
           ),
           Padding(
             padding: const EdgeInsets.all(10),

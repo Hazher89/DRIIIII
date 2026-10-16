@@ -15,6 +15,7 @@ import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/mavi_driver_day_assignment.dart';
 import '../../../models/partner/route_ack_nudge_result.dart';
 import '../../../models/partner/partner_route_dispatch_history.dart';
+import '../../../models/partner/route_dispatch_report.dart';
 import '../../../models/partner/route_notify_prefs.dart';
 import '../../../models/partner/route_reminder_flag.dart';
 import '../../../models/partner/sap_route_inbox.dart';
@@ -886,6 +887,179 @@ class PartnerService {
     }
   }
 
+  /// Sjekk at rute-PDF faktisk kan hentes (Dropbox/Supabase).
+  static Future<bool> verifyRoutePdfReachable(String storagePath) async {
+    final path = storagePath.trim();
+    if (path.isEmpty) return false;
+    try {
+      final cached = RoutePdfBytesCache.forShare(null, path);
+      if (cached != null && cached.isNotEmpty) return true;
+      final bytes = await downloadRoutePdfBytes(path);
+      return bytes != null && bytes.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Flush outbox, poll levering, verifiser PDF — strukturert rapport.
+  static Future<RouteDispatchReport> finalizeRouteDispatchReport({
+    required String companyId,
+    required Iterable<String> shareIds,
+    Map<String, String>? driverLabels,
+    Map<String, String?>? phones,
+    Duration pollDelay = const Duration(milliseconds: 900),
+    int pollAttempts = 4,
+  }) async {
+    final ids = shareIds.where((id) => id.isNotEmpty).toSet().toList();
+    if (ids.isEmpty) return const RouteDispatchReport(rows: []);
+
+    await flushSmsOutbox();
+    await flushPushOutbox();
+
+    Map<String, RouteNotifyDelivery> delivery = {};
+    for (var i = 0; i < pollAttempts; i++) {
+      delivery = await fetchRouteNotifyDelivery(
+        companyId: companyId,
+        shareIds: ids,
+      );
+      final pending = ids.where((id) {
+        final d = delivery[id];
+        if (d == null) return true;
+        if (d.dispatchStatus != 'sent') return false;
+        final smsPending = d.prefs.sms &&
+            !d.smsOk &&
+            !d.smsFailed &&
+            d.driverHasPhone;
+        final pushPending = d.prefs.app &&
+            !d.appOk &&
+            !d.pushFailed &&
+            d.driverHasAppToken;
+        final emailPending = d.prefs.email && !d.emailOk && !d.emailFailed;
+        return smsPending || pushPending || emailPending;
+      }).toList();
+      if (pending.isEmpty) break;
+      if (i < pollAttempts - 1) {
+        await Future<void>.delayed(pollDelay);
+        await flushSmsOutbox();
+        await flushPushOutbox();
+      }
+    }
+
+    final loadMeta = <String, ({int index, int total})>{};
+    final byVehicleDay = <String, List<String>>{};
+    for (final id in ids) {
+      final d = delivery[id];
+      final vid = d?.partnerVehicleId ?? '';
+      final day = d?.shareDate;
+      final key = day == null
+          ? '$vid|'
+          : '$vid|${day.year}-${day.month}-${day.day}';
+      byVehicleDay.putIfAbsent(key, () => []).add(id);
+    }
+    for (final group in byVehicleDay.values) {
+      if (group.length <= 1) continue;
+      group.sort();
+      for (var i = 0; i < group.length; i++) {
+        loadMeta[group[i]] = (index: i + 1, total: group.length);
+      }
+    }
+
+    final rows = <RouteDispatchReportRow>[];
+    for (final id in ids) {
+      final d = delivery[id] ??
+          RouteNotifyDelivery(
+            shareId: id,
+            dispatchStatus: 'unknown',
+            prefs: RouteNotifyPrefs.none,
+            smsQueued: false,
+            smsSent: false,
+            smsFailed: false,
+            emailQueued: false,
+            emailSent: false,
+            emailFailed: false,
+            pushQueued: false,
+            pushSent: false,
+            pushFailed: false,
+            driverHasAppToken: false,
+            driverHasPhone: false,
+            needsAttention: true,
+            errorSummary: 'Mangler leveringsstatus',
+          );
+      final path = (d.pdfStoragePath ?? '').trim();
+      final pdfOk = path.isNotEmpty && await verifyRoutePdfReachable(path);
+      final isDropbox = path.isNotEmpty &&
+          (CompanyFileStorage.isDropboxReference(path) ||
+              CompanyFileStorage.isDropboxPath(path));
+      final issues = <String>[];
+      if (path.isEmpty) {
+        issues.add('PDF mangler sti');
+      } else if (!pdfOk) {
+        issues.add('PDF utilgjengelig');
+      } else if (!isDropbox) {
+        final dropboxOn = await CompanyFileStorage.isDropboxConnected();
+        if (dropboxOn) {
+          issues.add('Ikke i Dropbox (Supabase-fallback)');
+        }
+      }
+      if (d.dispatchStatus == 'sent') {
+        if (d.prefs.sms) {
+          if (d.smsFailed) {
+            issues.add('SMS feilet');
+          } else if (!d.smsOk && !d.driverHasPhone) {
+            issues.add('Mangler telefon');
+          } else if (!d.smsOk) {
+            issues.add('SMS ikke levert');
+          }
+        }
+        if (d.prefs.app) {
+          if (d.pushFailed) {
+            issues.add('Push feilet');
+          } else if (!d.appOk && !d.driverHasAppToken) {
+            issues.add('Mangler app');
+          } else if (!d.appOk) {
+            issues.add('Push ikke levert');
+          }
+        }
+        if (d.prefs.email) {
+          if (d.emailFailed) {
+            issues.add('E-post feilet');
+          } else if (!d.emailOk) {
+            issues.add('E-post ikke levert');
+          }
+        }
+        final summary = d.errorSummary;
+        if (issues.isEmpty &&
+            d.needsAttention &&
+            summary != null &&
+            summary.isNotEmpty &&
+            !summary.contains('uten varsel')) {
+          issues.add(summary);
+        }
+      }
+      final load = loadMeta[id];
+      rows.add(
+        RouteDispatchReportRow(
+          shareId: id,
+          delivery: d.copyWith(
+            storageOk: pdfOk,
+            needsAttention: issues.isNotEmpty || d.needsAttention,
+            errorSummary: issues.isEmpty ? d.errorSummary : issues.join(' · '),
+          ),
+          pdfOk: pdfOk,
+          storageIsDropbox: isDropbox,
+          issues: issues,
+          title: d.title,
+          driverLabel: driverLabels?[id],
+          phone: phones?[id],
+          loadIndex: load?.index,
+          loadTotal: load?.total,
+          shareDate: d.shareDate,
+        ),
+      );
+    }
+    return RouteDispatchReport(rows: rows);
+  }
+
   /// Historikk: hvem sendte / når PDF ble lest for rutedato(er).
   static Future<List<PartnerRouteDispatchHistoryRow>> fetchRouteDispatchHistory({
     required String companyId,
@@ -1456,7 +1630,7 @@ class PartnerService {
     required DateTime date,
     Map<String, DateTime?> shareIdToStartAt = const {},
     bool notifyDriver = true,
-    RouteNotifyPrefs notifyPrefs = RouteNotifyPrefs.all,
+    RouteNotifyPrefs notifyPrefs = RouteNotifyPrefs.smsAndPush,
     bool flushOutbox = false,
   }) async {
     if (!_ok) throw StateError('Supabase er ikke konfigurert');
@@ -1483,7 +1657,7 @@ class PartnerService {
         'shift_id': shiftId,
         'share_date': d,
         'notify_channels': channels.isEmpty
-            ? const ['app', 'sms', 'email']
+            ? (effectiveNotify ? const ['app', 'sms'] : const <String>[])
             : channels,
       };
       if (sentBy != null) {
@@ -1539,14 +1713,10 @@ class PartnerService {
       // Varsling (SMS/e-post/push) kjøres av DB-trigger trg_partner_route_sms_on_sent
       // når dispatch_status settes til sent — ikke kall RPC her (gir doble push).
     }
-    if (effectiveNotify) {
-      if (flushOutbox) {
-        await flushSmsOutbox();
-        await flushPushOutbox();
-      } else {
-        unawaited(flushSmsOutbox());
-        unawaited(flushPushOutbox());
-      }
+    // Synkron flush når det varsles — [flushOutbox] beholdes for API-kompatibilitet.
+    if (effectiveNotify || flushOutbox) {
+      await flushSmsOutbox();
+      await flushPushOutbox();
     }
 
     // Assistenten lærer fra utsendingen (kontinuerlig).
@@ -3982,6 +4152,12 @@ class PartnerService {
     );
     final storedPath =
         await uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
+    final reachable = await verifyRoutePdfReachable(storedPath);
+    if (!reachable) {
+      throw StateError(
+        'PDF ble ikke lagret lesbart i Dropbox/Supabase. Prøv på nytt.',
+      );
+    }
     await PostalCodeRegistry.ensureLoaded();
     final List<FleetShiftDefinition> shifts;
     if (fleetShifts != null) {
