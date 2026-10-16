@@ -18,12 +18,14 @@ class PartnerCompanyLifecyclePanel extends StatelessWidget {
     required this.profile,
     required this.onChanged,
     this.onDeleted,
+    this.initiallyExpanded = false,
   });
 
   final Partner partner;
   final UserProfile? profile;
   final Future<void> Function() onChanged;
   final VoidCallback? onDeleted;
+  final bool initiallyExpanded;
 
   bool get _canManage =>
       profile?.access.canPartnersAdmin == true ||
@@ -193,6 +195,7 @@ class PartnerCompanyLifecyclePanel extends StatelessWidget {
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
+          initiallyExpanded: initiallyExpanded,
           tilePadding: const EdgeInsets.symmetric(horizontal: 12),
           childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
           shape: RoundedRectangleBorder(

@@ -15,6 +15,7 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
 import 'partner_assigned_routes_tab.dart';
+import 'partner_company_lifecycle_panel.dart';
 import 'partner_compliance_tab.dart';
 import 'partner_deduction_tab.dart';
 import 'partner_documents_tab.dart';
@@ -209,6 +210,13 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(context),
+        PartnerCompanyLifecyclePanel(
+          partner: _p,
+          profile: _profile,
+          initiallyExpanded: true,
+          onChanged: _reload,
+          onDeleted: () => widget.onClose(true),
+        ),
         if (_tabCtrl != null) ...[
           PartnerDetailTabBar(
             controller: _tabCtrl!,
