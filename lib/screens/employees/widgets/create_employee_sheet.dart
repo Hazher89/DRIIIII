@@ -6,6 +6,7 @@ import '../../../core/services/supabase_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/department.dart';
 import '../../../models/user_profile.dart';
+import '../../../widgets/app_download_sms_buttons.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
 /// Registrer ny intern ansatt (navn + ansattnr. for innlogging).
@@ -116,11 +117,36 @@ class _CreateEmployeeSheetState extends State<CreateEmployeeSheet> {
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('Ansatt opprettet'),
-          content: Text(
-            '${created.fullName} er registrert.\n\n'
-            'Innlogging: ansattnummer $empNo\n'
-            'Standardpassord: $_defaultPassword\n\n'
-            'Den ansatte kan bytte passord selv under Profil → Bytt passord.',
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '${created.fullName} er registrert.\n\n'
+                  'Innlogging: ansattnummer $empNo\n'
+                  'Standardpassord: $_defaultPassword\n\n'
+                  'Den ansatte kan bytte passord selv under Profil → Bytt passord.',
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Send app-lenke',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                AppDownloadSmsButtons(
+                  phone: created.phone ?? _phoneCtrl.text.trim(),
+                  displayName: created.fullName,
+                  username: empNo,
+                  password: _defaultPassword,
+                  refType: 'profiles',
+                  refId: created.id,
+                  userId: created.id,
+                  companyId: widget.companyId,
+                  dense: true,
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(

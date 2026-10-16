@@ -19,6 +19,7 @@ import 'widgets/employee_approval_sheet.dart';
 import 'widgets/employee_display.dart';
 import 'widgets/employee_birthdays_tab.dart';
 import 'widgets/employee_move_department_sheet.dart';
+import '../../widgets/app_download_sms_buttons.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 import '../../core/layout/web_layout.dart';
 
@@ -177,6 +178,32 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
         );
       }
     }
+  }
+
+  Future<void> _showAppDownloadSms(UserProfile user) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('App-lenke · ${user.fullName}'),
+        content: AppDownloadSmsButtons(
+          phone: user.phone,
+          displayName: user.fullName,
+          username: user.employeeNumber,
+          password: '000000',
+          refType: 'profiles',
+          refId: user.id,
+          userId: user.id,
+          companyId: user.companyId,
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Lukk'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openEmployee(UserProfile user) async {
@@ -561,6 +588,13 @@ class _EmployeeHubScreenState extends State<EmployeeHubScreen>
                       );
                       if (ok == true) await _load();
                     },
+                  ),
+                if (_canEditEmployees)
+                  IconButton(
+                    tooltip: 'Send Apple / Google app-lenke',
+                    icon: const Icon(Icons.phonelink_setup_outlined,
+                        color: DriftProTheme.primaryGreen),
+                    onPressed: () => _showAppDownloadSms(user),
                   ),
                 if (_isSuperAdmin &&
                     user.role != UserRole.superadmin &&

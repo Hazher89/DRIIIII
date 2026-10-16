@@ -12,6 +12,7 @@ import '../../../core/utils/portal_credentials.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/partner_workforce.dart';
+import '../../../widgets/app_download_sms_buttons.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 import 'partner_modern_ui.dart';
 
@@ -235,6 +236,23 @@ class _PartnerWorkforceAdminPanelState extends State<PartnerWorkforceAdminPanel>
               SelectableText(
                 'Brukernavn: $username\nPassord: $password',
                 style: const TextStyle(fontWeight: FontWeight.w700, height: 1.5),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Send app-lenke',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              AppDownloadSmsButtons(
+                phone: s.phone,
+                displayName: s.fullName,
+                username: username,
+                password: password,
+                refType: 'partner_portal_accounts',
+                refId: s.portalAccountId,
+                userId: s.profileId,
+                companyId: s.companyId,
+                dense: true,
               ),
             ],
           ),
@@ -848,6 +866,18 @@ class _StaffRow extends StatelessWidget {
                   label: const Text('Nytt passord'),
                 ),
             ],
+          ),
+          const SizedBox(height: 8),
+          AppDownloadSmsButtons(
+            phone: staff.phone,
+            displayName: staff.fullName,
+            username: username,
+            password: '000000',
+            refType: 'partner_portal_accounts',
+            refId: staff.portalAccountId,
+            userId: staff.profileId,
+            companyId: staff.companyId,
+            dense: true,
           ),
         ],
       ),

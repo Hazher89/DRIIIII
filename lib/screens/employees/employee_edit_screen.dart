@@ -8,6 +8,7 @@ import '../../core/theme/app_theme.dart';
 import '../../models/department.dart';
 import '../../models/notification_channel.dart';
 import '../../models/user_profile.dart';
+import '../../widgets/app_download_sms_buttons.dart';
 import '../profile/widgets/notification_channel_picker.dart';
 
 /// Rediger all personinfo for ansatt (superadmin / leder med tilgang).
@@ -277,6 +278,30 @@ class _EmployeeEditScreenState extends State<EmployeeEditScreen> {
           _field(_phone, 'Mobiltelefon (Sveve-varsler)',
               keyboard: TextInputType.phone,
               hint: '8 siffer – kobles til Mavi SMS'),
+          const SizedBox(height: 8),
+          const Text(
+            'Send app-lenke',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+          const SizedBox(height: 6),
+          AppDownloadSmsButtons(
+            phone: _phone.text.trim().isNotEmpty
+                ? _phone.text.trim()
+                : widget.employee.phone,
+            displayName: _name.text.trim().isNotEmpty
+                ? _name.text.trim()
+                : widget.employee.fullName,
+            username: _employeeNumber.text.trim().isNotEmpty
+                ? _employeeNumber.text.trim()
+                : widget.employee.employeeNumber,
+            password: '000000',
+            refType: 'profiles',
+            refId: widget.employee.id,
+            userId: widget.employee.id,
+            companyId: widget.employee.companyId,
+            dense: true,
+          ),
+          const SizedBox(height: 12),
           _field(_address, 'Adresse', maxLines: 2),
           _field(
             _nationalId,

@@ -22,6 +22,7 @@ import 'eco_driving_badge.dart';
 import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 import 'partner_workforce_admin_panel.dart';
+import '../../../widgets/app_download_sms_buttons.dart';
 
 String _friendlyPartnerSaveError(Object error) {
   final msg = error.toString();
@@ -353,11 +354,33 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(title),
-        content: SelectableText(
-          'Brukernavn: ${res.username}\n'
-          'Passord: ${res.password}\n\n'
-          'Logg inn på driftpro.no med brukernavn og passord.\n\n'
-          '${_portalSmsStatusLine(res)}',
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SelectableText(
+                'Brukernavn: ${res.username}\n'
+                'Passord: ${res.password}\n\n'
+                'Logg inn på driftpro.no med brukernavn og passord.\n\n'
+                '${_portalSmsStatusLine(res)}',
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Send app-lenke',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 8),
+              AppDownloadSmsButtons(
+                phone: res.phone,
+                displayName: widget.partner.name,
+                username: res.username,
+                password: res.password,
+                refType: 'partner_portal_accounts',
+                dense: true,
+              ),
+            ],
+          ),
         ),
         actions: [
           if (!res.smsSent)
@@ -1876,6 +1899,22 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
             ),
             style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
           ),
+          const SizedBox(height: 8),
+          AppDownloadSmsButtons(
+            phone: row.phone.text.trim(),
+            displayName: row.displayName.text.trim().isNotEmpty
+                ? row.displayName.text.trim()
+                : widget.partner.name,
+            username: row.usernameField.text.trim().isNotEmpty
+                ? row.usernameField.text.trim()
+                : (row.username ?? previewUsername),
+            password: row.passwordField.text.trim().isNotEmpty
+                ? row.passwordField.text.trim()
+                : '000000',
+            refType: 'partner_portal_accounts',
+            refId: row.accountId,
+            dense: true,
+          ),
         ],
       ),
     );
@@ -2214,6 +2253,21 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                   ),
                 ],
               ],
+            ),
+            const SizedBox(height: 8),
+            AppDownloadSmsButtons(
+              phone: row.portalPhone.text.trim(),
+              displayName: row.driverName.text.trim().isNotEmpty
+                  ? row.driverName.text.trim()
+                  : widget.partner.name,
+              username: row.loginUsername.text.trim().isNotEmpty
+                  ? row.loginUsername.text.trim()
+                  : (row.portalUsername ?? row.previewUsername),
+              password: row.loginPassword.text.trim().isNotEmpty
+                  ? row.loginPassword.text.trim()
+                  : '000000',
+              refType: 'partner_portal_accounts',
+              dense: true,
             ),
             Wrap(
               spacing: 8,
