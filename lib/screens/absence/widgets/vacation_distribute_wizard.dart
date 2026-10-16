@@ -7,12 +7,14 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/absence/vacation_admin_service.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
-/// Enkel veiviser: velg hvem → hvor mange dager → bekreft.
+/// Enkel veiviser: velg hvem → hvor mange dager (+ restferie) → bekreft.
 class VacationDistributeWizard extends StatefulWidget {
   final String companyId;
   final int year;
   final List<EmployeeVacationOverview> allEmployees;
   final List<String>? preselectedUserIds;
+  final int maxCarryover;
+  final bool includePriorRestDefault;
 
   const VacationDistributeWizard({
     super.key,
@@ -20,6 +22,8 @@ class VacationDistributeWizard extends StatefulWidget {
     required this.year,
     required this.allEmployees,
     this.preselectedUserIds,
+    this.maxCarryover = LeaveRules.defaultMaxCarryoverDays,
+    this.includePriorRestDefault = true,
   });
 
   static Future<bool?> show(
@@ -29,6 +33,8 @@ class VacationDistributeWizard extends StatefulWidget {
     required List<EmployeeVacationOverview> allEmployees,
     List<String>? preselectedUserIds,
     bool selectEveryone = false,
+    int maxCarryover = LeaveRules.defaultMaxCarryoverDays,
+    bool includePriorRestDefault = true,
   }) {
     return showModalBottomSheet<bool>(
       context: context,
@@ -41,6 +47,8 @@ class VacationDistributeWizard extends StatefulWidget {
         companyId: companyId,
         year: year,
         allEmployees: allEmployees,
+        maxCarryover: maxCarryover,
+        includePriorRestDefault: includePriorRestDefault,
         preselectedUserIds: selectEveryone
             ? allEmployees.map((e) => e.employee.id).toList()
             : preselectedUserIds,
@@ -49,24 +57,23 @@ class VacationDistributeWizard extends StatefulWidget {
   }
 
   @override
-  State<VacationDistributeWizard> createState() => _VacationDistributeWizardState();
+  State<VacationDistributeWizard> createState() =>
+      _VacationDistributeWizardState();
 }
 
 class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
   int _step = 0;
   final Set<String> _selectedIds = {};
   int _days = LeaveRules.ferieLegalMinimumDays;
-  int _carryover = 0;
-  bool _editCarryover = false;
+  bool _includePriorRest = true;
   bool _saving = false;
   late final TextEditingController _daysCtrl;
-  late final TextEditingController _carryCtrl;
 
   @override
   void initState() {
     super.initState();
     _daysCtrl = TextEditingController(text: '$_days');
-    _carryCtrl = TextEditingController(text: '0');
+    _includePriorRest = widget.includePriorRestDefault;
     if (widget.preselectedUserIds != null) {
       _selectedIds.addAll(widget.preselectedUserIds!);
       if (_selectedIds.isNotEmpty) {
@@ -78,13 +85,24 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
   @override
   void dispose() {
     _daysCtrl.dispose();
-    _carryCtrl.dispose();
     super.dispose();
   }
 
   List<EmployeeVacationOverview> get _selectedEmployees => widget.allEmployees
       .where((e) => _selectedIds.contains(e.employee.id))
       .toList();
+
+  int get _priorYear => widget.year - 1;
+
+  int _restFromPrior(EmployeeVacationOverview e) {
+    if (!_includePriorRest) return 0;
+    return e.carryoverEligibleFor(_priorYear, widget.maxCarryover);
+  }
+
+  int _totalFor(EmployeeVacationOverview e) => _days + _restFromPrior(e);
+
+  int get _totalRestIncluded =>
+      _selectedEmployees.fold(0, (sum, e) => sum + _restFromPrior(e));
 
   @override
   Widget build(BuildContext context) {
@@ -94,7 +112,8 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
       maxChildSize: 0.95,
       builder: (_, scroll) {
         return Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+          padding:
+              EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
           child: Column(
             children: [
               const SizedBox(height: 8),
@@ -112,7 +131,7 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
                   children: [
                     Expanded(
                       child: Text(
-                        'Del ut feriedager · ${widget.year}',
+                        'Del ut ferie · ${widget.year}',
                         style: DriftProTheme.headingSm,
                       ),
                     ),
@@ -184,10 +203,7 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          'Hvem skal få feriedager?',
-          style: DriftProTheme.labelLg,
-        ),
+        Text('Hvem skal få feriedager?', style: DriftProTheme.labelLg),
         const SizedBox(height: 8),
         Text(
           'Kryss av én eller flere. Du kan også velge alle på én gang.',
@@ -200,7 +216,8 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
               if (_selectedIds.length == widget.allEmployees.length) {
                 _selectedIds.clear();
               } else {
-                _selectedIds.addAll(widget.allEmployees.map((e) => e.employee.id));
+                _selectedIds
+                    .addAll(widget.allEmployees.map((e) => e.employee.id));
               }
             });
           },
@@ -218,6 +235,7 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
         const SizedBox(height: 12),
         ...widget.allEmployees.map((o) {
           final q = o.quotaFor(widget.year);
+          final rest = o.carryoverEligibleFor(_priorYear, widget.maxCarryover);
           final selected = _selectedIds.contains(o.employee.id);
           return Card(
             margin: const EdgeInsets.only(bottom: 8),
@@ -237,12 +255,18 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
               },
               title: Text(o.employee.fullName, style: DriftProTheme.labelMd),
               subtitle: Text(
-                q == null
-                    ? 'Har ikke feriedager for ${widget.year} ennå'
-                    : 'Har ${q.vacationDaysRemaining} dager igjen av ${q.totalVacationDays}',
+                [
+                  q == null
+                      ? 'Ingen tildeling for ${widget.year} ennå'
+                      : '${q.vacationDaysRemaining} dager igjen av ${q.totalVacationDays}',
+                  if (rest > 0) 'Restferie $_priorYear: $rest d',
+                ].join(' · '),
               ),
               secondary: CircleAvatar(
-                child: Text(o.employee.initials, style: const TextStyle(fontSize: 12)),
+                child: Text(
+                  o.employee.initials,
+                  style: const TextStyle(fontSize: 12),
+                ),
               ),
             ),
           );
@@ -256,7 +280,7 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Hvor mange feriedager?', style: DriftProTheme.labelLg),
+        Text('Hvor mange nye feriedager?', style: DriftProTheme.labelLg),
         const SizedBox(height: 8),
         Text(
           'Gjelder ${_selectedIds.length} ansatt${_selectedIds.length == 1 ? '' : 'e'} for ${widget.year}.',
@@ -297,23 +321,35 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
           },
         ),
         const SizedBox(height: 16),
-        SwitchListTile(
-          title: const Text('Juster overført fra i fjor'),
-          subtitle: const Text('Kun når du tildeler én og én ansatt med egne tall'),
-          value: _editCarryover,
-          onChanged: (v) => setState(() => _editCarryover = v),
-        ),
-        if (_editCarryover && _selectedIds.length == 1) ...[
-          TextField(
-            controller: _carryCtrl,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-            decoration: const InputDecoration(
-              labelText: 'Overført fra forrige år',
-              border: OutlineInputBorder(),
-              suffixText: 'dager',
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: DriftProTheme.primaryGreen.withValues(alpha: 0.3),
             ),
-            onChanged: (v) => _carryover = int.tryParse(v) ?? 0,
+          ),
+          child: SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              'Ta med restferie fra $_priorYear',
+              style: DriftProTheme.labelMd.copyWith(fontWeight: FontWeight.w800),
+            ),
+            subtitle: Text(
+              'Systemet husker ubrukte dager fra i fjor (maks ${widget.maxCarryover} d/pers) '
+              'og legger dem til for ${widget.year}.',
+              style: DriftProTheme.caption,
+            ),
+            value: _includePriorRest,
+            onChanged: (v) => setState(() => _includePriorRest = v),
+          ),
+        ),
+        if (_includePriorRest) ...[
+          const SizedBox(height: 12),
+          Text(
+            '$_totalRestIncluded dager restferie fordeles automatisk blant de valgte.',
+            style: DriftProTheme.bodySm.copyWith(fontWeight: FontWeight.w700),
           ),
         ],
         const SizedBox(height: 24),
@@ -332,35 +368,64 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
           decoration: BoxDecoration(
             color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.3)),
+            border: Border.all(
+              color: DriftProTheme.primaryGreen.withValues(alpha: 0.3),
+            ),
           ),
           child: Column(
             children: [
-              Text('$_days', style: DriftProTheme.headingXl.copyWith(fontSize: 48, color: DriftProTheme.primaryGreen)),
-              Text('feriedager per ansatt', style: DriftProTheme.bodyMd),
+              Text(
+                '$_days',
+                style: DriftProTheme.headingXl.copyWith(
+                  fontSize: 48,
+                  color: DriftProTheme.primaryGreen,
+                ),
+              ),
+              Text('nye feriedager per ansatt', style: DriftProTheme.bodyMd),
+              if (_includePriorRest) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '+ restferie fra $_priorYear (individuelt)',
+                  style: DriftProTheme.bodySm.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 8),
               _confirmRow('År', '${widget.year}'),
               _confirmRow('Antall ansatte', '${_selectedIds.length}'),
-              _confirmRow('Totalt tildelt', '${_days * _selectedIds.length} dager'),
+              _confirmRow(
+                'Nye dager totalt',
+                '${_days * _selectedIds.length} dager',
+              ),
+              if (_includePriorRest)
+                _confirmRow('Restferie totalt', '$_totalRestIncluded dager'),
             ],
           ),
         ),
         const SizedBox(height: 16),
-        if (_selectedIds.length <= 5)
-          ..._selectedEmployees.map(
-            (e) => ListTile(
-              leading: CircleAvatar(child: Text(e.employee.initials)),
-              title: Text(e.employee.fullName),
-              trailing: Text('$_days d', style: DriftProTheme.labelMd),
+        ..._selectedEmployees.take(12).map((e) {
+          final rest = _restFromPrior(e);
+          return ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: CircleAvatar(child: Text(e.employee.initials)),
+            title: Text(e.employee.fullName),
+            subtitle: rest > 0
+                ? Text('$_days nye + $rest rest = ${_totalFor(e)} d totalt')
+                : Text('$_days dager'),
+            trailing: Text(
+              '${_totalFor(e)} d',
+              style: DriftProTheme.labelMd.copyWith(fontWeight: FontWeight.w800),
             ),
-          )
-        else
+          );
+        }),
+        if (_selectedEmployees.length > 12)
           Text(
-            '${_selectedEmployees.take(3).map((e) => e.employee.fullName.split(' ').first).join(', ')} '
-            'og ${_selectedIds.length - 3} til…',
-            style: DriftProTheme.bodySm,
+            '… og ${_selectedEmployees.length - 12} til',
+            style: DriftProTheme.caption,
             textAlign: TextAlign.center,
           ),
         const SizedBox(height: 24),
@@ -405,7 +470,11 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
           FilledButton(
             onPressed: _saving ? null : _onPrimary,
             child: _saving
-                ? SizedBox(width: 22, height: 22, child: DriftProLoadingIndicator(size: 22))
+                ? SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: DriftProLoadingIndicator(size: 22),
+                  )
                 : Text(_step < 2 ? 'Neste' : 'Bekreft og lagre'),
           ),
         ],
@@ -434,30 +503,24 @@ class _VacationDistributeWizardState extends State<VacationDistributeWizard> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      if (_selectedIds.length == widget.allEmployees.length &&
-          !_editCarryover) {
-        await SupabaseService.distributeVacationDays(
+      for (final e in _selectedEmployees) {
+        final rest = _restFromPrior(e);
+        await SupabaseService.upsertAbsenceQuota(
+          userId: e.employee.id,
           companyId: widget.companyId,
           year: widget.year,
-          days: _days,
+          vacationDaysTotal: _days,
+          vacationDaysCarriedOver: rest,
         );
-      } else {
-        for (final id in _selectedIds) {
-          await SupabaseService.upsertAbsenceQuota(
-            userId: id,
-            companyId: widget.companyId,
-            year: widget.year,
-            vacationDaysTotal: _days,
-            vacationDaysCarriedOver:
-                _editCarryover && _selectedIds.length == 1 ? _carryover : null,
-          );
-        }
       }
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke lagre: $e'), backgroundColor: DriftProTheme.error),
+          SnackBar(
+            content: Text('Kunne ikke lagre: $e'),
+            backgroundColor: DriftProTheme.error,
+          ),
         );
       }
     } finally {

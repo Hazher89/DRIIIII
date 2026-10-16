@@ -81,13 +81,18 @@ class _VacationAdminScreenState extends State<VacationAdminScreen> {
 
   int get _missingAllocation => _all.where((o) => !o.hasAllocationFor(_selectedYear)).length;
 
-  Future<void> _openDistributeWizard({List<String>? ids}) async {
+  Future<void> _openDistributeWizard({
+    List<String>? ids,
+    bool includePriorRest = true,
+  }) async {
     final ok = await VacationDistributeWizard.show(
       context,
       companyId: widget.companyId,
       year: _selectedYear,
       allEmployees: _all,
       preselectedUserIds: ids,
+      maxCarryover: widget.companySettings.maxVacationCarryover,
+      includePriorRestDefault: includePriorRest,
     );
     if (ok == true) {
       setState(() {
@@ -268,6 +273,16 @@ class _VacationAdminScreenState extends State<VacationAdminScreen> {
 
   /// Steg 3: tydelige handlinger
   Widget _actionCards(bool isDark) {
+    final prior = _selectedYear - 1;
+    final carryEligible = _all.fold<int>(
+      0,
+      (sum, o) =>
+          sum +
+          o.carryoverEligibleFor(
+            prior,
+            widget.companySettings.maxVacationCarryover,
+          ),
+    );
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -277,14 +292,27 @@ class _VacationAdminScreenState extends State<VacationAdminScreen> {
           const SizedBox(height: 10),
           _actionCard(
             isDark: isDark,
-            icon: Icons.groups_rounded,
+            icon: Icons.auto_awesome_rounded,
             color: DriftProTheme.primaryGreen,
-            title: 'Del ut til alle',
+            title: 'Del ut nytt år (+ restferie)',
             subtitle:
-                'Gi samme antall dager til alle ${_all.length} ansatte for $_selectedYear',
+                'Én knapp: gi feriedager til alle ${_all.length} ansatte for $_selectedYear. '
+                'Systemet tar med restferie fra $prior (${carryEligible}d totalt).',
             onTap: () => _openDistributeWizard(
               ids: _all.map((e) => e.employee.id).toList(),
+              includePriorRest: true,
             ),
+          ),
+          const SizedBox(height: 8),
+          _actionCard(
+            isDark: isDark,
+            icon: Icons.swap_horiz_rounded,
+            color: Colors.orange,
+            title: 'Overfør restferie $prior → $_selectedYear',
+            subtitle:
+                'Kun overføring (uten ny tildeling). Maks '
+                '${widget.companySettings.maxVacationCarryover} dager per person.',
+            onTap: () => _carryoverAll(fromYear: prior, toYear: _selectedYear),
           ),
           const SizedBox(height: 8),
           _actionCard(
@@ -297,16 +325,6 @@ class _VacationAdminScreenState extends State<VacationAdminScreen> {
               _selectionMode = true;
               _selectedIds.clear();
             }),
-          ),
-          const SizedBox(height: 8),
-          _actionCard(
-            isDark: isDark,
-            icon: Icons.swap_horiz_rounded,
-            color: Colors.orange,
-            title: 'Overfør restferie',
-            subtitle:
-                'Flytt ubrukte dager fra $_selectedYear til ${_selectedYear + 1} (maks ${widget.companySettings.maxVacationCarryover} d/ pers)',
-            onTap: _carryoverAll,
           ),
         ],
       ),
@@ -636,10 +654,10 @@ class _VacationAdminScreenState extends State<VacationAdminScreen> {
     );
   }
 
-  Future<void> _carryoverAll() async {
-    final from = _selectedYear;
-    final to = from + 1;
-    if (to > VacationYearWindow.toYear) {
+  Future<void> _carryoverAll({int? fromYear, int? toYear}) async {
+    final from = fromYear ?? _selectedYear;
+    final to = toYear ?? from + 1;
+    if (from < VacationYearWindow.fromYear || to > VacationYearWindow.toYear) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Kan ikke overføre utenfor planleggingsvinduet.')),
       );
@@ -649,7 +667,7 @@ class _VacationAdminScreenState extends State<VacationAdminScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Overfør restferie for alle'),
+        title: Text('Overfør restferie $from → $to'),
         content: Text(
           'Alle ansatte med ubrukte feriedager i $from får resten overført til $to '
           '(maks ${widget.companySettings.maxVacationCarryover} dager hver).',

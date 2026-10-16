@@ -135,7 +135,7 @@ class _LeaveUnifiedTeamViewState extends State<LeaveUnifiedTeamView> {
 
   AbsenceQuota? _quotaFor(String userId) {
     for (final q in widget.teamQuotas) {
-      if (q.userId == userId) return q;
+      if (q.userId == userId && q.year == widget.selectedYear) return q;
     }
     return null;
   }

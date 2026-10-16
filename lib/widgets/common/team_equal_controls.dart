@@ -85,44 +85,53 @@ class _EqualSegButton extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Material(
       color: selected
-          ? (isDark ? DriftProTheme.cardDark : Colors.white)
+          ? DriftProTheme.primaryGreen.withValues(alpha: isDark ? 0.28 : 0.14)
           : Colors.transparent,
       borderRadius: BorderRadius.circular(TeamControlMetrics.radius - 2),
-      elevation: selected ? 0.5 : 0,
-      shadowColor: Colors.black26,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(TeamControlMetrics.radius - 2),
-        child: SizedBox(
-          height: double.infinity,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (icon != null) ...[
-                Icon(
-                  icon,
-                  size: 18,
-                  color: selected
-                      ? DriftProTheme.primaryGreen
-                      : (isDark ? Colors.white60 : Colors.black54),
-                ),
-                const SizedBox(width: 6),
-              ],
-              Flexible(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(TeamControlMetrics.radius - 2),
+            border: selected
+                ? Border.all(
+                    color: DriftProTheme.primaryGreen.withValues(alpha: 0.55),
+                    width: 1.5,
+                  )
+                : null,
+          ),
+          child: SizedBox(
+            height: double.infinity,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (icon != null) ...[
+                  Icon(
+                    icon,
+                    size: 18,
                     color: selected
                         ? DriftProTheme.primaryGreen
-                        : (isDark ? Colors.white70 : Colors.black87),
+                        : (isDark ? Colors.white60 : Colors.black54),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w900 : FontWeight.w600,
+                      color: selected
+                          ? DriftProTheme.primaryGreen
+                          : (isDark ? Colors.white70 : const Color(0xFF3D5248)),
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

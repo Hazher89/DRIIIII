@@ -657,9 +657,10 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
                 deptIds.contains(p.departmentId) &&
                 !p.isPartnerPortalUser)
             .toList();
-    final quotas = await SupabaseService.fetchAbsenceQuotasForCompany(
+    final quotas = await SupabaseService.fetchAbsenceQuotasForCompanyRange(
       companyId: profile.companyId!,
-      year: _selectedYear,
+      fromYear: _selectedYear - 1,
+      toYear: _selectedYear,
     );
     final teamIds = scopedProfiles.map((p) => p.id).toSet();
     final scopedQuotas = quotas.where((q) => teamIds.contains(q.userId)).toList();
@@ -855,28 +856,48 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
             ),
         ],
       bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(52),
+        preferredSize: const Size.fromHeight(58),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: isDark ? DriftProTheme.cardDark : const Color(0xFFE6EFE9),
-              borderRadius: BorderRadius.circular(14),
+              color: isDark ? const Color(0xFF1A2420) : const Color(0xFFE2EDE6),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark
+                    ? DriftProTheme.dividerDark
+                    : DriftProTheme.primaryGreen.withValues(alpha: 0.18),
+              ),
             ),
             child: TabBar(
               controller: _tabController,
-              padding: const EdgeInsets.all(4),
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              padding: const EdgeInsets.all(5),
               indicatorPadding: const EdgeInsets.symmetric(vertical: 2),
               indicatorSize: TabBarIndicatorSize.tab,
               dividerColor: Colors.transparent,
               indicator: BoxDecoration(
-                color: isDark ? DriftProTheme.surfaceDark : Colors.white,
+                color: DriftProTheme.primaryGreen.withValues(
+                  alpha: isDark ? 0.32 : 0.16,
+                ),
                 borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.55),
+                  width: 1.5,
+                ),
               ),
               labelColor: DriftProTheme.primaryGreen,
-              unselectedLabelColor: isDark ? Colors.white70 : const Color(0xFF3D5248),
-              labelStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-              unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              unselectedLabelColor:
+                  isDark ? Colors.white70 : const Color(0xFF3D5248),
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
               tabs: _tabs,
             ),
           ),
@@ -1383,9 +1404,10 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     return _canEditLeaveFor(target);
   }
 
-  AbsenceQuota? _quotaForUser(String userId) {
+  AbsenceQuota? _quotaForUser(String userId, {int? year}) {
+    final y = year ?? _selectedYear;
     for (final q in _teamQuotas) {
-      if (q.userId == userId) return q;
+      if (q.userId == userId && q.year == y) return q;
     }
     return null;
   }
@@ -1445,6 +1467,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         canEditQuotaFor: _canEditLeaveFor,
         onEditQuota: _editTeamQuota,
         onOpenEmployee: _openEmployeeLeavePage,
+        onDayTap: _onCalendarDayTap,
       );
     }
     return LeaveUnifiedTeamView(
@@ -1692,69 +1715,77 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
   }
 
   Widget _buildTeamTab(bool isDark, bool canAdmin) {
+    final canDistribute = canAdmin ||
+        _profile?.access.canVacationAdmin == true ||
+        _profile?.role == UserRole.superadmin;
     return Column(
       children: [
-        if (canAdmin)
+        if (canDistribute)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Material(
-              color: DriftProTheme.primaryGreen.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(16),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => VacationAdminScreen(
-                        companyId: _profile!.companyId!,
-                        companySettings: _companySettings,
-                      ),
-                    ),
-                  );
-                  await _loadAllData();
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: DriftProTheme.primaryGreen.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.admin_panel_settings_outlined,
-                          color: DriftProTheme.primaryGreen,
-                          size: 28,
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Avansert ferieadministrasjon',
-                              style: DriftProTheme.labelLg.copyWith(
-                                color: DriftProTheme.primaryGreen,
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => VacationAdminScreen(
+                                companyId: _profile!.companyId!,
+                                companySettings: _companySettings,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Enkel oversikt: velg år, del ut feriedager til alle eller valgte ansatte, '
-                              'se hvem som har dager igjen.',
-                              style: DriftProTheme.bodySm,
-                            ),
-                          ],
+                          );
+                          await _loadAllData();
+                        },
+                        icon: const Icon(Icons.auto_awesome_rounded, size: 18),
+                        label: const Text('Del ut ferie + restferie'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: DriftProTheme.primaryGreen,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                       ),
-                      const Icon(Icons.arrow_forward_ios, size: 16),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => VacationAdminScreen(
+                                companyId: _profile!.companyId!,
+                                companySettings: _companySettings,
+                              ),
+                            ),
+                          );
+                          await _loadAllData();
+                        },
+                        icon: const Icon(Icons.swap_horiz_rounded, size: 18),
+                        label: Text('Restferie ${_selectedYear - 1}'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: DriftProTheme.primaryGreen,
+                          side: BorderSide(
+                            color: DriftProTheme.primaryGreen.withValues(
+                              alpha: 0.5,
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+                const SizedBox(height: 8),
+                Text(
+                  'Åpne ferieadministrasjon for å dele ut nytt år med restferie '
+                  'fra året før — systemet husker ubrukte dager per ansatt.',
+                  style: DriftProTheme.caption,
+                ),
+              ],
             ),
           ),
         Expanded(
@@ -1766,6 +1797,13 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
               absences: _scopedAbsences,
               company: _companySettings,
               year: _selectedYear,
+              onYearChanged: (y) {
+                setState(() => _selectedYear = y);
+                if (_profile != null) {
+                  _loadTeamOverview(_profile!);
+                  _loadSaldo(_profile!);
+                }
+              },
               canEdit: canAdmin ||
                   _profile?.role == UserRole.leder ||
                   _profile?.access.canRegisterLeaveForOthers == true,

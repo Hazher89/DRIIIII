@@ -699,67 +699,80 @@ class _Legend extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final types = typesFilter ?? AbsenceType.values.toSet();
+    final types = (typesFilter ?? AbsenceType.values.toSet()).toList();
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
       decoration: BoxDecoration(
-        border: Border(
-          top: BorderSide(
-            color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
-          ),
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.04)
+            : const Color(0xFFF4F7F5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
         ),
       ),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 10,
-        runSpacing: 4,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ...types.map((t) {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: colorForType(t),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(t.label, style: const TextStyle(fontSize: 10)),
-              ],
-            );
-          }),
-          Row(
-            mainAxisSize: MainAxisSize.min,
+          Text(
+            'Fargeforklaring',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: isDark ? Colors.white70 : Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  color: Colors.red.shade600,
-                  borderRadius: BorderRadius.circular(2),
-                ),
+              ...types.map((t) => _legendChip(t.label, colorForType(t))),
+              _legendChip('Rød dag', Colors.red.shade600),
+              _legendChip(
+                'Venter',
+                Colors.orange.shade700,
+                outlined: true,
               ),
-              const SizedBox(width: 4),
-              const Text('Rød dag', style: TextStyle(fontSize: 10)),
             ],
           ),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.orange.shade700),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 4),
-              const Text('Venter', style: TextStyle(fontSize: 10)),
-            ],
+        ],
+      ),
+    );
+  }
+
+  Widget _legendChip(String label, Color color, {bool outlined = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: outlined ? Colors.transparent : color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: color.withValues(alpha: outlined ? 0.9 : 0.45),
+          width: outlined ? 1.5 : 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: outlined ? Colors.transparent : color,
+              borderRadius: BorderRadius.circular(3),
+              border: outlined ? Border.all(color: color, width: 1.5) : null,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
           ),
         ],
       ),

@@ -223,20 +223,18 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
               ),
             ],
           ),
-          if (widget.isManager)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Text(
-                vacationOnly
-                    ? (wide
-                        ? 'Grønn = godkjent · Oransje = venter. Trykk en celle for å godkjenne, endre eller slette.'
-                        : 'Måned først. Trykk en dag for å se hvem som har ferie. Grønn = godkjent, oransje = venter.')
-                    : 'Trykk en dag for å se fravær. Ventende kan godkjennes eller avvises direkte.',
-                style: DriftProTheme.caption.copyWith(
-                  color: isDark ? Colors.white54 : Colors.grey.shade700,
-                ),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              vacationOnly
+                  ? 'Feriekalender — trykk en dag for detaljer. Godkjent og ventende vises med farge.'
+                  : 'Fraværskalender — egenmelding, sykmelding, sykt barn og permisjon med egne farger.',
+              style: DriftProTheme.bodySm.copyWith(
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white70 : Colors.grey.shade800,
               ),
             ),
+          ),
           if (showEmployeePicker) ...[
             const SizedBox(height: 10),
             DropdownButtonFormField<String?>(
@@ -324,17 +322,26 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
             const SizedBox(height: 8),
             LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
           ] else if (vacationOnly) ...[
-            VacationYearMatrix(
-              year: year,
+            TeamLeaveCalendar(
+              month: widget.month,
+              absences: filtered,
               employees: filteredEmployees,
-              vacations: filtered,
-              canManage: widget.isManager,
-              onAbsenceTap: widget.onAbsenceTap,
-              onYearChanged: (y) {
-                widget.onMonthChanged(DateTime(y, widget.month.month, 1));
-              },
+              filterUserId: _userFilter,
+              colorForType: widget.colorForType,
+              typesFilter: types,
+              includePending: true,
+              onMonthChanged: widget.onMonthChanged,
+              onDayTap: _handleDayTap,
             ),
             const SizedBox(height: 12),
+            LeaveCalendarMonthDigest(
+              month: widget.month,
+              absences: filtered,
+              colorForType: widget.colorForType,
+              vacationOnly: true,
+              showEntryList: true,
+            ),
+            const SizedBox(height: 8),
             Theme(
               data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
               child: ExpansionTile(
@@ -342,26 +349,26 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
                 tilePadding: EdgeInsets.zero,
                 childrenPadding: const EdgeInsets.only(bottom: 8),
                 title: Text(
-                  'Månedskalender',
+                  'Årsmatrise',
                   style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
                 ),
-                subtitle: const Text('Uke og måned'),
+                subtitle: const Text('Uke for uke for hele året'),
                 children: [
-                  TeamLeaveCalendar(
-                    month: widget.month,
-                    absences: filtered,
+                  VacationYearMatrix(
+                    year: year,
                     employees: filteredEmployees,
-                    filterUserId: _userFilter,
-                    colorForType: widget.colorForType,
-                    typesFilter: types,
-                    includePending: true,
-                    onMonthChanged: widget.onMonthChanged,
-                    onDayTap: _handleDayTap,
+                    vacations: filtered,
+                    canManage: widget.isManager,
+                    onAbsenceTap: widget.onAbsenceTap,
+                    onYearChanged: (y) {
+                      widget.onMonthChanged(DateTime(y, widget.month.month, 1));
+                    },
                   ),
                 ],
               ),
             ),
           ] else ...[
+            // Samme kalenderkvalitet som ferie — måned først + tydelig fargeforklaring.
             TeamLeaveCalendar(
               month: widget.month,
               absences: filtered,
@@ -379,9 +386,9 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
               absences: filtered,
               colorForType: widget.colorForType,
               vacationOnly: false,
-              showEntryList: widget.isManager || hasEmployeeFilter,
+              showEntryList: true,
             ),
-            if (hasEmployeeFilter) ...[
+            if (hasEmployeeFilter || wide) ...[
               const SizedBox(height: 12),
               EmployeeLeaveTimeline(
                 month: widget.month,

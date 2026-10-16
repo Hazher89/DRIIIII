@@ -43,6 +43,7 @@ class LeaveTeamEmployeesHub extends StatefulWidget {
     this.onEditQuota,
     this.onOpenEmployee,
     this.canEditQuotaFor,
+    this.onDayTap,
     this.excludeSelf = true,
     this.canEditQuota = false,
   });
@@ -66,6 +67,7 @@ class LeaveTeamEmployeesHub extends StatefulWidget {
   final void Function(UserProfile user, AbsenceQuota? quota)? onEditQuota;
   final void Function(UserProfile user)? onOpenEmployee;
   final bool Function(UserProfile user)? canEditQuotaFor;
+  final void Function(DateTime date, List<Absence> dayAbsences)? onDayTap;
   final bool excludeSelf;
   final bool canEditQuota;
 
@@ -77,9 +79,8 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
   final _searchCtrl = TextEditingController();
   String _search = '';
   _EmployeeFilter _filter = _EmployeeFilter.alle;
-  _TeamLeaveView _view = DriftProClient.isMobile
-      ? _TeamLeaveView.kalender
-      : _TeamLeaveView.oversikt;
+  /// Kalender først — Ansatte er listen under.
+  _TeamLeaveView _view = _TeamLeaveView.kalender;
 
   @override
   void initState() {
@@ -114,7 +115,7 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
 
   AbsenceQuota? _quotaFor(String userId) {
     for (final q in widget.teamQuotas) {
-      if (q.userId == userId) return q;
+      if (q.userId == userId && q.year == widget.selectedYear) return q;
     }
     return null;
   }
@@ -183,38 +184,26 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
           child: TeamEqualSegmentBar<_TeamLeaveView>(
             value: _view,
             onChanged: (v) => setState(() => _view = v),
-            items: [
-              const TeamEqualSegmentItem(
+            items: const [
+              TeamEqualSegmentItem(
+                value: _TeamLeaveView.kalender,
+                label: 'Kalender',
+                icon: Icons.calendar_month_outlined,
+              ),
+              TeamEqualSegmentItem(
                 value: _TeamLeaveView.oversikt,
                 label: 'Ansatte',
                 icon: Icons.groups_outlined,
-              ),
-              TeamEqualSegmentItem(
-                value: _TeamLeaveView.kalender,
-                label: DriftProClient.isMobile ? 'Oversikt' : 'Kalender',
-                icon: DriftProClient.isMobile
-                    ? Icons.view_list_rounded
-                    : Icons.calendar_month_outlined,
               ),
             ],
           ),
         ),
         Expanded(
-          child: _view == _TeamLeaveView.kalender && DriftProClient.isMobile
-              ? LeaveTeamRoster(
-                  employees: _employees,
-                  absencesFor: _absencesFor,
-                  quotaFor: _quotaFor,
-                  company: widget.companySettings,
-                  colorForType: widget.colorForType,
-                  onOpen: _openEmployee,
-                  onAbsenceTap: widget.onAbsenceTap,
-                )
-              : _view == _TeamLeaveView.kalender
+          child: _view == _TeamLeaveView.kalender
               ? LeaveDualCalendarTab(
                   isManager: true,
                   month: widget.month,
@@ -229,6 +218,17 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
                   iconForType: widget.iconForType,
                   onMonthChanged: widget.onMonthChanged,
                   onRefresh: widget.onRefresh,
+                  onAbsenceTap: widget.onAbsenceTap,
+                  onDayTap: widget.onDayTap,
+                )
+              : DriftProClient.isMobile
+              ? LeaveTeamRoster(
+                  employees: _employees,
+                  absencesFor: _absencesFor,
+                  quotaFor: _quotaFor,
+                  company: widget.companySettings,
+                  colorForType: widget.colorForType,
+                  onOpen: _openEmployee,
                   onAbsenceTap: widget.onAbsenceTap,
                 )
               : RefreshIndicator(
