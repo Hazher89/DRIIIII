@@ -62,13 +62,14 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
 
   late final List<DateTime> _monthList;
   late final List<int> _years;
-  late final ScrollController _scroll;
-  final Map<int, GlobalKey> _yearKeys = {};
+  late final List<GlobalKey> _monthKeys;
+  late final ScrollController _yearChipScroll;
 
   DateTime? _start;
   DateTime? _end;
   bool _pickingEnd = false;
   int _selectedYearChip = DateTime.now().year;
+  late final DateTime _initialFocus;
 
   bool get _isEgen => widget.type == AbsenceType.egenmelding;
 
@@ -91,29 +92,29 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
       _monthList.add(cursor);
       cursor = DateTime(cursor.year, cursor.month + 1);
     }
+    _monthKeys = List.generate(_monthList.length, (_) => GlobalKey());
 
     _years = <int>[
       for (var y = widget.firstDate.year; y <= widget.lastDate.year; y++) y,
     ];
-    for (final y in _years) {
-      _yearKeys[y] = GlobalKey();
-    }
 
     final focus = _start ?? now;
+    _initialFocus = DateTime(focus.year, focus.month);
     _selectedYearChip = focus.year.clamp(
       widget.firstDate.year,
       widget.lastDate.year,
     );
 
-    _scroll = ScrollController();
+    _yearChipScroll = ScrollController();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollToMonth(DateTime(focus.year, focus.month), jump: true);
+      _scrollToMonth(_initialFocus, jump: true);
+      _scrollYearChipIntoView(_selectedYearChip, jump: true);
     });
   }
 
   @override
   void dispose() {
-    _scroll.dispose();
+    _yearChipScroll.dispose();
     super.dispose();
   }
 
@@ -122,49 +123,56 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
     return BusinessDays.countInRange(_start!, _end!);
   }
 
-  void _scrollToMonth(DateTime month, {bool jump = false}) {
+  int _indexOfMonth(DateTime month) {
     final target = DateTime(month.year, month.month);
-    final idx = _monthList.indexWhere(
+    return _monthList.indexWhere(
       (m) => m.year == target.year && m.month == target.month,
     );
-    if (idx < 0) return;
-    setState(() => _selectedYearChip = target.year);
+  }
 
-    void go() {
-      if (!_scroll.hasClients) return;
-      // ~1 month block ≈ 300–340 px; clamp to extent.
-      final offset = (idx * 320.0).clamp(0.0, _scroll.position.maxScrollExtent);
-      if (jump) {
-        _scroll.jumpTo(offset);
-      } else {
-        _scroll.animateTo(
-          offset,
-          duration: const Duration(milliseconds: 280),
-          curve: Curves.easeOutCubic,
-        );
+  void _scrollToMonth(DateTime month, {bool jump = false}) {
+    final idx = _indexOfMonth(month);
+    if (idx < 0) return;
+    setState(() => _selectedYearChip = month.year);
+
+    void go({int attempt = 0}) {
+      final ctx = _monthKeys[idx].currentContext;
+      if (ctx == null) {
+        if (attempt < 8) {
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => go(attempt: attempt + 1),
+          );
+        }
+        return;
       }
-      // Fine-tune to January header when jumping by year.
-      final key = _yearKeys[target.year];
-      final ctx = key?.currentContext;
-      if (ctx != null && target.month == 1) {
-        Scrollable.ensureVisible(
-          ctx,
-          duration: jump
-              ? Duration.zero
-              : const Duration(milliseconds: 200),
-          alignment: 0.05,
-        );
-      }
+      Scrollable.ensureVisible(
+        ctx,
+        duration: jump ? Duration.zero : const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+        alignment: 0.02,
+      );
     }
 
-    if (_scroll.hasClients) {
-      go();
+    WidgetsBinding.instance.addPostFrameCallback((_) => go());
+  }
+
+  void _scrollYearChipIntoView(int year, {bool jump = false}) {
+    final yi = _years.indexOf(year);
+    if (yi < 0 || !_yearChipScroll.hasClients) return;
+    final offset = (yi * 72.0).clamp(0.0, _yearChipScroll.position.maxScrollExtent);
+    if (jump) {
+      _yearChipScroll.jumpTo(offset);
     } else {
-      WidgetsBinding.instance.addPostFrameCallback((_) => go());
+      _yearChipScroll.animateTo(
+        offset,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
     }
   }
 
   void _jumpToYear(int year) {
+    _scrollYearChipIntoView(year);
     _scrollToMonth(DateTime(year, 1));
   }
 
@@ -287,6 +295,7 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
             child: SizedBox(
               height: 36,
               child: ListView.separated(
+                controller: _yearChipScroll,
                 scrollDirection: Axis.horizontal,
                 itemCount: _years.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 6),
@@ -334,18 +343,16 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              controller: _scroll,
+            // Eager children så GlobalKey finnes for hopp til år/måned.
+            child: ListView(
               padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
-              itemCount: _monthList.length,
-              itemBuilder: (_, i) {
-                final month = _monthList[i];
-                final isJan = month.month == 1;
-                return KeyedSubtree(
-                  key: isJan ? _yearKeys[month.year] : null,
-                  child: _month(month),
-                );
-              },
+              children: [
+                for (var i = 0; i < _monthList.length; i++)
+                  KeyedSubtree(
+                    key: _monthKeys[i],
+                    child: _month(_monthList[i]),
+                  ),
+              ],
             ),
           ),
         ],
