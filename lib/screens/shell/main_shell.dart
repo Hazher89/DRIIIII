@@ -267,6 +267,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             email: portalEmail,
           )) {
         if (!mounted) return;
+        AccessSessionCache.setPartnerPortalSession(true);
+        AccessSessionCache.setProfile(profile);
+        setState(() {
+          _profile = profile;
+          _isLoadingAccess = false;
+        });
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           context.go(AppPaths.portal);

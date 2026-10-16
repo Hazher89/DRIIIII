@@ -148,10 +148,13 @@ GoRouter createAppRouter({required AuthRefreshListenable authRefresh}) {
         email: email,
         profile: cached,
       );
-      final isPartnerSession = looksLikePortal &&
-          !internalStaff &&
-          cached?.driveMonitorDevice != true &&
-          (cached == null || cached.isPartnerPortalUser);
+      // Eksplisitt partner-innlogging vinner — samme person kan være MAVI-superadmin
+      // og partner-eier (f.eks. brukernavn hazher → hazher@mavilogistikk.no).
+      final partnerIntent = AccessSessionCache.isPartnerPortalSession;
+      final isPartnerSession = partnerIntent ||
+          (!internalStaff &&
+              cached?.driveMonitorDevice != true &&
+              (looksLikePortal || cached?.isPartnerPortalUser == true));
 
       // Ansatt/admin skal aldri bli værende på /portal (f.eks. etter
       // partner-utlogging med returnTo=/portal).

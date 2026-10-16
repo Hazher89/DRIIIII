@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'dart:async';
+
+import '../../core/permissions/access_session_cache.dart';
 import '../../core/routing/app_paths.dart';
 import '../../core/routing/route_url_sync.dart';
+import '../../core/services/native_permissions_service.dart';
+import '../../core/services/notification/push_notification_service.dart';
 import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../models/partner/partner_links.dart';
@@ -69,16 +74,25 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
       final email =
           SupabaseService.currentUser?.email?.trim().toLowerCase() ?? '';
 
-      // MAVI-ansatt / leder / admin / leiebil — aldri partnerportal.
-      final isStaff = SupabaseService.isInternalStaffSession(
-            profile: profile,
-            email: email,
-          ) ||
-          profile?.driveMonitorDevice == true ||
-          (profile != null &&
-              !profile.isPartnerPortalUser &&
-              profile.role != UserRole.samarbeidspartner &&
-              !SupabaseService.emailLooksLikePortal(email));
+      final partnerIntent = AccessSessionCache.isPartnerPortalSession;
+      final hasPortalAccount =
+          await SupabaseService.currentSessionHasActivePortalAccount();
+      final looksLikePortal = SupabaseService.emailLooksLikePortal(email);
+
+      // MAVI-ansatt / leder / admin / leiebil — aldri partnerportal,
+      // med mindre de nettopp logget inn via Partnere-skjemaet (partnerIntent).
+      // Sjekk portal-konto FØRST: partner kan logge inn med Gmail (brukernavn M20).
+      final isStaff = !partnerIntent &&
+          !hasPortalAccount &&
+          (SupabaseService.isInternalStaffSession(
+                profile: profile,
+                email: email,
+              ) ||
+              profile?.driveMonitorDevice == true ||
+              (profile != null &&
+                  !profile.isPartnerPortalUser &&
+                  profile.role != UserRole.samarbeidspartner &&
+                  !looksLikePortal));
 
       if (isStaff) {
         if (!mounted) return;
@@ -106,13 +120,10 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
         return;
       }
 
-      final hasPortalAccount =
-          await SupabaseService.currentSessionHasActivePortalAccount();
-      final looksLikePortal = SupabaseService.emailLooksLikePortal(email);
-
       if (hasPortalAccount ||
           profile?.isPartnerPortalUser == true ||
-          looksLikePortal) {
+          looksLikePortal ||
+          AccessSessionCache.isPartnerPortalSession) {
         var session = await PartnerService.resolvePortalSession();
         if (session == null) {
           await SupabaseService.applyPartnerBootstrap();
@@ -130,6 +141,10 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
         }
         portalKind = session.accountKind;
         profile = _profileForPortalSession(profile, session);
+        AccessSessionCache.setPartnerPortalSession(true);
+        AccessSessionCache.setProfile(profile);
+        // Registrer FCM tidlig — ikke vent på PartnerShell (ellers mister de rute-push).
+        unawaited(_registerPushAfterPortalLogin());
       }
       if (!mounted) return;
       setState(() {
@@ -140,6 +155,14 @@ class _PartnerPortalRouteState extends State<PartnerPortalRoute> {
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _registerPushAfterPortalLogin() async {
+    try {
+      await NativePermissionsService.bootstrapAfterLogin();
+      await NativePermissionsService.ensureNotifications();
+      await PushNotificationService.syncRegistration(requestPermission: true);
+    } catch (_) {}
   }
 
   int _initialIndex(UserProfile profile) {

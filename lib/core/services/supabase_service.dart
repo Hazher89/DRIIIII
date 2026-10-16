@@ -125,8 +125,13 @@ class SupabaseService {
     if (!isConfigured) return false;
     final user = currentUser;
     if (user == null) return false;
+    // Eksplisitt partner-login (Partnere-skjema) — tillat portal selv om e-post
+    // også er MAVI-superadmin (samme person, to innganger).
+    final partnerIntent = AccessSessionCache.isPartnerPortalSession;
     // Ansattnummer-innlogging (f.eks. #25) vinner alltid over portal-kobling.
-    if (isInternalStaffSession(email: user.email)) return false;
+    if (!partnerIntent && isInternalStaffSession(email: user.email)) {
+      return false;
+    }
     if (emailLooksLikePortal(user.email)) return true;
     try {
       final byProfile = await client
@@ -137,10 +142,12 @@ class SupabaseService {
           .maybeSingle()
           .timeout(_rpcTimeout);
       if (byProfile != null) {
-        // Dobbeltsjekk: profil kan være MAVI-ansatt selv om e-post ikke matcher mønsteret.
-        final profile = await fetchCurrentUserProfile();
-        if (isInternalStaffSession(profile: profile, email: user.email)) {
-          return false;
+        if (!partnerIntent) {
+          // Dobbeltsjekk: profil kan være MAVI-ansatt selv om e-post ikke matcher.
+          final profile = await fetchCurrentUserProfile();
+          if (isInternalStaffSession(profile: profile, email: user.email)) {
+            return false;
+          }
         }
         return true;
       }
