@@ -256,40 +256,97 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
                 ),
                 Expanded(
                   child: Text(
-                    _pickingEnd ? 'Trykk sluttdag' : 'Trykk startdag',
+                    _pickingEnd ? 'Velg sluttdato' : 'Velg startdato',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
                   ),
                 ),
                 TextButton(
                   onPressed: _start == null ? null : _resetSelection,
                   child: const Text('Nullstill'),
                 ),
-                TextButton(
+                FilledButton(
                   onPressed: _start == null || _end == null
                       ? null
                       : () => Navigator.pop(
                             context,
                             DateTimeRange(start: _start!, end: _end!),
                           ),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: DriftProTheme.primaryGreen,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                  ),
                   child: const Text('Bruk'),
                 ),
+                const SizedBox(width: 8),
               ],
             ),
           ),
-          if (_start != null && _end != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-              child: Text(
-                _isEgen
-                    ? '$_workDays virkedager valgt'
-                    : '$_workDays virkedager i perioden',
-                style: TextStyle(
-                  color: DriftProTheme.primaryGreen,
-                  fontWeight: FontWeight.w700,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.28),
                 ),
               ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _calDateSummary(
+                      label: 'Fra',
+                      value: _start == null
+                          ? '—'
+                          : '${_start!.day}. ${_months[_start!.month - 1]}\n${_start!.year}',
+                    ),
+                  ),
+                  const Icon(
+                    Icons.arrow_forward_rounded,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+                  Expanded(
+                    child: _calDateSummary(
+                      label: 'Til',
+                      value: _end == null
+                          ? '—'
+                          : '${_end!.day}. ${_months[_end!.month - 1]}\n${_end!.year}',
+                      alignEnd: true,
+                    ),
+                  ),
+                  if (_start != null && _end != null) ...[
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: DriftProTheme.primaryGreen,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '$_workDays\ndager',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12,
+                          height: 1.15,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 6),
             child: SizedBox(
@@ -357,6 +414,38 @@ class _SmartLeaveCalendarState extends State<_SmartLeaveCalendar> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _calDateSummary({
+    required String label,
+    required String value,
+    bool alignEnd = false,
+  }) {
+    return Column(
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.0,
+            color: DriftProTheme.primaryGreen.withValues(alpha: 0.9),
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          textAlign: alignEnd ? TextAlign.right : TextAlign.left,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            height: 1.2,
+          ),
+        ),
+      ],
     );
   }
 

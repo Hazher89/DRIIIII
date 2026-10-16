@@ -41,6 +41,8 @@ class LeaveTeamEmployeesHub extends StatefulWidget {
     this.onApprove,
     this.onReject,
     this.onEditQuota,
+    this.onOpenEmployee,
+    this.canEditQuotaFor,
     this.excludeSelf = true,
     this.canEditQuota = false,
   });
@@ -62,6 +64,8 @@ class LeaveTeamEmployeesHub extends StatefulWidget {
   final void Function(Absence)? onApprove;
   final void Function(Absence)? onReject;
   final void Function(UserProfile user, AbsenceQuota? quota)? onEditQuota;
+  final void Function(UserProfile user)? onOpenEmployee;
+  final bool Function(UserProfile user)? canEditQuotaFor;
   final bool excludeSelf;
   final bool canEditQuota;
 
@@ -340,7 +344,7 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
                                 employees: employees,
                                 selectedYear: widget.selectedYear,
                                 company: widget.companySettings,
-                                canEditQuota: widget.canEditQuota,
+                                canEditQuotaFor: _mayEditQuota,
                                 absencesFor: _absencesFor,
                                 quotaFor: _quotaFor,
                                 onOpen: _openEmployee,
@@ -365,7 +369,7 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
                                     stats: stats,
                                     selectedYear: widget.selectedYear,
                                     recentAbsences: abs,
-                                    onEditQuota: widget.canEditQuota &&
+                                    onEditQuota: _mayEditQuota(p) &&
                                             widget.onEditQuota != null
                                         ? () => widget.onEditQuota!(
                                               p,
@@ -386,7 +390,16 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
     );
   }
 
+  bool _mayEditQuota(UserProfile p) {
+    if (widget.canEditQuotaFor != null) return widget.canEditQuotaFor!(p);
+    return widget.canEditQuota;
+  }
+
   void _openEmployee(UserProfile p) {
+    if (widget.onOpenEmployee != null) {
+      widget.onOpenEmployee!(p);
+      return;
+    }
     LeaveEmployeeStatsPanel.showSheet(
       context,
       employee: p,
@@ -395,7 +408,7 @@ class _LeaveTeamEmployeesHubState extends State<LeaveTeamEmployeesHub> {
       selectedYear: widget.selectedYear,
       employeeAbsences: _absencesFor(p.id),
       departmentNames: widget.departmentNames,
-      onEditQuota: widget.canEditQuota && widget.onEditQuota != null
+      onEditQuota: _mayEditQuota(p) && widget.onEditQuota != null
           ? () {
               Navigator.of(context).maybePop();
               widget.onEditQuota!(p, _quotaFor(p.id));
@@ -481,7 +494,7 @@ class _EmployeesDataTable extends StatelessWidget {
     required this.employees,
     required this.selectedYear,
     required this.company,
-    required this.canEditQuota,
+    required this.canEditQuotaFor,
     required this.absencesFor,
     required this.quotaFor,
     required this.onOpen,
@@ -491,7 +504,7 @@ class _EmployeesDataTable extends StatelessWidget {
   final List<UserProfile> employees;
   final int selectedYear;
   final CompanyLeaveSettings company;
-  final bool canEditQuota;
+  final bool Function(UserProfile user) canEditQuotaFor;
   final List<Absence> Function(String userId) absencesFor;
   final AbsenceQuota? Function(String userId) quotaFor;
   final void Function(UserProfile) onOpen;
@@ -587,7 +600,7 @@ class _EmployeesDataTable extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (canEditQuota && onEditQuota != null)
+                      if (canEditQuotaFor(p) && onEditQuota != null)
                         IconButton(
                           tooltip: 'Rediger feriekvote $selectedYear',
                           icon: const Icon(Icons.edit_calendar_outlined, size: 20),

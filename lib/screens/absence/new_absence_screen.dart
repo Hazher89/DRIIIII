@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/constants/leave_rules.dart';
 import '../../core/constants/vacation_year_window.dart';
 import '../../core/permissions/leadership_chain.dart';
+import '../../core/permissions/user_access.dart';
 import '../../core/services/absence/absence_service.dart';
 import '../../core/services/absence/leave_eligibility.dart';
 import '../../core/services/absence/leave_period_usage_service.dart';
@@ -28,6 +29,8 @@ class NewAbsenceScreen extends StatefulWidget {
   final DateTime? initialStart;
   final DateTime? initialEnd;
   final bool allowPickEmployee;
+  /// Når satt: registrering gjelder kun denne ansatte (ingen velger).
+  final UserProfile? lockedEmployee;
   /// Rediger ventende egen søknad.
   final Absence? existingAbsence;
 
@@ -37,6 +40,7 @@ class NewAbsenceScreen extends StatefulWidget {
     this.initialStart,
     this.initialEnd,
     this.allowPickEmployee = false,
+    this.lockedEmployee,
     this.existingAbsence,
   });
 
@@ -83,9 +87,16 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
       if (profile == null || profile.companyId == null) return;
 
       _profile = profile;
-      _selectedEmployee = profile;
+      final locked = widget.lockedEmployee;
+      _selectedEmployee = locked ?? profile;
 
-      if (widget.allowPickEmployee && (profile.isLeader || profile.isAdmin)) {
+      if (locked != null) {
+        _selectableEmployees = [locked];
+        if (profile.role == UserRole.leder && locked.id == profile.id) {
+          _error =
+              'Avdelingsleder kan ikke registrere egen ferie/fravær. Be superadmin eller annen leder.';
+        }
+      } else if (widget.allowPickEmployee && (profile.isLeader || profile.isAdmin)) {
         final all = await SupabaseService.fetchProfiles(companyId: profile.companyId);
         _selectableEmployees = profile.isAdmin
             ? all.where((p) => !p.isPartnerPortalUser && p.isActive).toList()
@@ -200,10 +211,16 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
   bool get _managerRegistersForOther =>
       !_isSelfRequest && (_profile?.isLeader == true || _profile?.isAdmin == true);
 
+  bool get _canActForOthers =>
+      widget.allowPickEmployee ||
+      widget.lockedEmployee != null ||
+      _profile?.access.canRegisterLeaveForOthers == true ||
+      _profile?.isAdmin == true;
+
   /// Superadmin registrerer direkte (ikke søknad). Leder/admin for andre godkjenner samtidig.
   bool get _directRegister =>
       _managerRegistersForOther ||
-      (_profile?.role == UserRole.superadmin && widget.allowPickEmployee);
+      (_profile?.role == UserRole.superadmin && _canActForOthers);
 
   bool get _egenmeldingBlocked =>
       widget.type == AbsenceType.egenmelding &&
@@ -216,7 +233,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
   int get _childrenUnder12 => _selectedEmployee?.childrenUnder12Count ?? 0;
 
   String get _submitButtonLabel {
-    if (_profile?.role == UserRole.superadmin && widget.allowPickEmployee) {
+    if (_profile?.role == UserRole.superadmin && _canActForOthers) {
       return 'Lagre';
     }
     if (_managerRegistersForOther) return 'Registrer og godkjenn';
@@ -417,7 +434,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
           ? 'administratorene'
           : _leaderNames.join(', ');
       final msg = status == AbsenceStatus.godkjent
-          ? (_profile?.role == UserRole.superadmin && widget.allowPickEmployee
+          ? (_profile?.role == UserRole.superadmin && _canActForOthers
               ? '${widget.type.label} lagret.'
               : 'Fravær registrert og godkjent.')
           : 'Søknad sendt til $sentTo.';
@@ -454,7 +471,9 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
         title: Text(
           widget.existingAbsence != null
               ? 'Endre ${widget.type.label.toLowerCase()}'
-              : 'Søk ${widget.type.label.toLowerCase()}',
+              : widget.lockedEmployee != null || _managerRegistersForOther
+                  ? 'Registrer ${widget.type.label.toLowerCase()}'
+                  : 'Søk ${widget.type.label.toLowerCase()}',
         ),
       ),
       body: _isLoadingContext
@@ -472,7 +491,13 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (widget.allowPickEmployee && _selectableEmployees.length > 1) ...[
+                  if (widget.lockedEmployee != null) ...[
+                    _sectionHeader('Gjelder ansatt', isDark),
+                    const SizedBox(height: 12),
+                    _buildLockedEmployeeBanner(isDark),
+                    const SizedBox(height: 20),
+                  ] else if (widget.allowPickEmployee &&
+                      _selectableEmployees.length > 1) ...[
                     _sectionHeader('Gjelder ansatt', isDark),
                     const SizedBox(height: 12),
                     _buildEmployeeSelector(isDark),
@@ -661,6 +686,7 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
                   builder: (_) => NewAbsenceScreen(
                     type: AbsenceType.sykmelding,
                     allowPickEmployee: widget.allowPickEmployee,
+                    lockedEmployee: widget.lockedEmployee,
                   ),
                 ),
               );
@@ -718,6 +744,53 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
               'Brukt: $used/$limit.',
               style: DriftProTheme.bodySm,
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLockedEmployeeBanner(bool isDark) {
+    final e = widget.lockedEmployee!;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: DriftProTheme.primaryGreen.withValues(alpha: isDark ? 0.15 : 0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: DriftProTheme.primaryGreen.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.2),
+            child: Text(
+              e.fullName.isNotEmpty ? e.fullName[0].toUpperCase() : '?',
+              style: const TextStyle(
+                color: DriftProTheme.primaryGreen,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  e.fullName,
+                  style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Kan ikke byttes — du er inne på denne ansatte',
+                  style: DriftProTheme.caption,
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.lock_outline, color: DriftProTheme.primaryGreen),
         ],
       ),
     );
@@ -853,62 +926,151 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
   }
 
   Widget _buildDatePickerCard(bool isDark, int totalDays) {
-    return GestureDetector(
-      onTap: _pickDateRange,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: isDark ? DriftProTheme.cardDark : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
+    final hasRange = _startDate != null && _endDate != null;
+    return Material(
+      color: isDark ? DriftProTheme.cardDark : Colors.white,
+      borderRadius: BorderRadius.circular(18),
+      child: InkWell(
+        onTap: _pickDateRange,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: DriftProTheme.primaryGreen.withValues(alpha: 0.35),
+              width: 1.5,
+            ),
+            boxShadow: DriftProTheme.cardShadow,
           ),
-          boxShadow: DriftProTheme.cardShadow,
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
                 children: [
-                  Text('Fra – til', style: DriftProTheme.caption),
-                  const SizedBox(height: 4),
-                  Text(
-                    _startDate != null && _endDate != null
-                        ? '${_startDate!.day}. ${_month(_startDate!.month)} – '
-                            '${_endDate!.day}. ${_month(_endDate!.month)}'
-                        : 'Velg dager',
-                    style: DriftProTheme.headingSm.copyWith(fontSize: 18),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.calendar_month_rounded,
+                      color: DriftProTheme.primaryGreen,
+                      size: 26,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          hasRange ? 'Valgt periode' : 'Velg periode',
+                          style: DriftProTheme.labelLg.copyWith(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 17,
+                          ),
+                        ),
+                        Text(
+                          'Trykk for å åpne kalenderen',
+                          style: DriftProTheme.caption,
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (totalDays > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: DriftProTheme.primaryGreen,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Text(
+                        widget.type == AbsenceType.ferie ||
+                                widget.type == AbsenceType.egenmelding
+                            ? '$totalDays virkedager'
+                            : '$totalDays dager',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _dateBox(
+                      isDark,
+                      label: 'Fra',
+                      value: _startDate == null
+                          ? '—'
+                          : '${_startDate!.day}. ${_month(_startDate!.month)}\n${_startDate!.year}',
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    child: Icon(
+                      Icons.arrow_forward_rounded,
+                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.7),
+                    ),
+                  ),
+                  Expanded(
+                    child: _dateBox(
+                      isDark,
+                      label: 'Til',
+                      value: _endDate == null
+                          ? '—'
+                          : '${_endDate!.day}. ${_month(_endDate!.month)}\n${_endDate!.year}',
+                    ),
                   ),
                 ],
               ),
-            ),
-            if (totalDays > 0)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: DriftProTheme.primaryGreen,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  widget.type == AbsenceType.ferie ||
-                          widget.type == AbsenceType.egenmelding
-                      ? '$totalDays virkedager'
-                      : '$totalDays dager',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            const SizedBox(width: 8),
-            Icon(
-              Icons.calendar_today_rounded,
-              color: DriftProTheme.primaryGreen.withValues(alpha: 0.5),
-            ),
-          ],
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _dateBox(bool isDark, {required String label, required String value}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        color: isDark
+            ? DriftProTheme.surfaceDark
+            : DriftProTheme.primaryGreen.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: DriftProTheme.caption.copyWith(
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.1,
+              color: DriftProTheme.primaryGreen,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: DriftProTheme.headingSm.copyWith(
+              fontSize: 18,
+              height: 1.25,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ),
     );
   }

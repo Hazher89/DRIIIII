@@ -32,6 +32,7 @@ import '../../core/permissions/access_session_cache.dart';
 import '../../core/permissions/permission_gate.dart';
 import '../../core/permissions/access_keys.dart';
 import '../../core/permissions/user_access.dart';
+import 'leave_employee_detail_screen.dart';
 import 'new_absence_screen.dart';
 import 'vacation_admin_screen.dart';
 import 'widgets/absence_detail_sheet.dart';
@@ -1350,6 +1351,70 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     );
   }
 
+  /// Superadmin/admin/ferie-admin, eller avd.leder for egne ansatte (ikke seg selv).
+  bool _canEditLeaveFor(UserProfile target) {
+    final me = _profile;
+    if (me == null) return false;
+    if (me.role == UserRole.leder && target.id == me.id) return false;
+    if (me.role == UserRole.superadmin ||
+        me.isAdmin ||
+        me.access.canVacationAdmin ||
+        me.access.canRegisterLeaveForOthers) {
+      return true;
+    }
+    if (me.role == UserRole.leder) {
+      if (target.id == me.id) return false;
+      if (me.departmentId != null && target.departmentId == me.departmentId) {
+        return true;
+      }
+      return _managedDepartmentIds.contains(target.departmentId);
+    }
+    return false;
+  }
+
+  bool _canRegisterLeaveFor(UserProfile target) {
+    final me = _profile;
+    if (me == null) return false;
+    if (me.access.canFravaer == false) return false;
+    if (target.id == me.id) {
+      // Avd.leder skal ikke registrere egen ferie/fravær herfra.
+      return me.role != UserRole.leder;
+    }
+    return _canEditLeaveFor(target);
+  }
+
+  AbsenceQuota? _quotaForUser(String userId) {
+    for (final q in _teamQuotas) {
+      if (q.userId == userId) return q;
+    }
+    return null;
+  }
+
+  Future<void> _openEmployeeLeavePage(UserProfile employee) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LeaveEmployeeDetailScreen(
+          employee: employee,
+          quotaOf: () => _quotaForUser(employee.id),
+          company: _companySettings,
+          selectedYear: _selectedYear,
+          absencesOf: () =>
+              _scopedAbsences.where((a) => a.userId == employee.id).toList(),
+          departmentNames: _departmentNames,
+          canRegister: _canRegisterLeaveFor(employee),
+          canEditQuota: _canEditLeaveFor(employee),
+          onEditQuota: _canEditLeaveFor(employee)
+              ? () => _editTeamQuota(employee, _quotaForUser(employee.id))
+              : null,
+          onAbsenceTap: (a) =>
+              _openAbsenceDetail(a, _days(a), managerView: true),
+          onChanged: _loadAllData,
+        ),
+      ),
+    );
+    if (mounted) await _loadAllData();
+  }
+
   Widget _buildTeamCalendarTab(bool isDark, bool isManager) {
     if (isManager) {
       return LeaveTeamEmployeesHub(
@@ -1376,9 +1441,10 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         onAbsenceTap: (a) => _openAbsenceDetail(a, _days(a), managerView: true),
         onApprove: (a) => _updateStatus(a.id, AbsenceStatus.godkjent),
         onReject: (a) => _updateStatus(a.id, AbsenceStatus.avvist),
-        canEditQuota: _profile?.access.canVacationAdmin == true ||
-            _profile?.isAdmin == true,
+        canEditQuota: true,
+        canEditQuotaFor: _canEditLeaveFor,
         onEditQuota: _editTeamQuota,
+        onOpenEmployee: _openEmployeeLeavePage,
       );
     }
     return LeaveUnifiedTeamView(
@@ -1420,9 +1486,11 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     );
   }
 
-  void _openNewRequest(AbsenceType type) {
+  void _openNewRequest(AbsenceType type, {UserProfile? lockedEmployee}) {
     final profile = _profile;
-    if (type == AbsenceType.egenmelding && _egenmeldingBlockedForSelf) {
+    if (lockedEmployee == null &&
+        type == AbsenceType.egenmelding &&
+        _egenmeldingBlockedForSelf) {
       showLeaveEgenmeldingBlockedSheet(
         context,
         periodUsage: _periodUsage!,
@@ -1431,7 +1499,8 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       );
       return;
     }
-    final allowPick = profile != null &&
+    final allowPick = lockedEmployee == null &&
+        profile != null &&
         (profile.access.canRegisterLeaveForOthers || profile.isAdmin);
     Navigator.push(
       context,
@@ -1439,6 +1508,7 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
         builder: (_) => NewAbsenceScreen(
           type: type,
           allowPickEmployee: allowPick,
+          lockedEmployee: lockedEmployee,
         ),
       ),
     ).then((v) {
@@ -1559,42 +1629,35 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     );
   }
 
-  void _openRegisterForDate(DateTime date) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: AbsenceType.values
-            .map(
-              (t) => ListTile(
-                leading: Icon(_iconForType(t), color: _colorForType(t)),
-                title: Text(t.label),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => NewAbsenceScreen(
-                        type: t,
-                        initialStart: date,
-                        initialEnd: date,
-                        allowPickEmployee: _profile != null &&
-                            (_profile!.role == UserRole.leder ||
-                                _profile!.isAdmin),
-                      ),
-                    ),
-                  ).then((v) {
-                    if (v == true) _loadAllData();
-                  });
-                },
-              ),
-            )
-            .toList(),
+  Future<void> _openRegisterForDate(DateTime date) async {
+    final type = await showLeaveTypePickerSheet(
+      context,
+      egenmeldingBlocked: _egenmeldingBlockedForSelf,
+      onEgenmeldingBlocked: () {
+        if (_periodUsage == null) return;
+        showLeaveEgenmeldingBlockedSheet(
+          context,
+          periodUsage: _periodUsage!,
+          maxDays: _companySettings.effectiveEgenmeldingDaysPerYear,
+          onChooseAlternative: _openNewRequest,
+        );
+      },
+    );
+    if (type == null || !mounted) return;
+    final allowPick = _profile != null &&
+        (_profile!.access.canRegisterLeaveForOthers || _profile!.isAdmin);
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NewAbsenceScreen(
+          type: type,
+          initialStart: date,
+          initialEnd: date,
+          allowPickEmployee: allowPick,
+        ),
       ),
     );
+    if (saved == true) _loadAllData();
   }
 
   Widget _buildRulesTab(bool isDark) {
@@ -1703,12 +1766,23 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
               absences: _scopedAbsences,
               company: _companySettings,
               year: _selectedYear,
-              canEdit: canAdmin,
-              onEditQuota: _editTeamQuota,
-              onTapEmployee: (u) {
-                setState(() => _calendarUserFilter = u.id);
-                _tabController?.animateTo(_teamCalendarTabIndex);
+              canEdit: canAdmin ||
+                  _profile?.role == UserRole.leder ||
+                  _profile?.access.canRegisterLeaveForOthers == true,
+              onEditQuota: (u, q) {
+                if (!_canEditLeaveFor(u)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Du kan ikke endre kvote for denne ansatte.',
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                _editTeamQuota(u, q);
               },
+              onTapEmployee: _openEmployeeLeavePage,
             ),
           ),
         ),
@@ -2035,35 +2109,22 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     );
   }
 
-  void _showRegisterOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: LeaveQuickActions(
-            onTypeSelected: (t) {
-              Navigator.pop(ctx);
-              _openNewRequest(t);
-            },
-            egenmeldingBlocked: _egenmeldingBlockedForSelf,
-            onEgenmeldingBlocked: () {
-              Navigator.pop(ctx);
-              if (_periodUsage == null) return;
-              showLeaveEgenmeldingBlockedSheet(
-                context,
-                periodUsage: _periodUsage!,
-                maxDays: _companySettings.effectiveEgenmeldingDaysPerYear,
-                onChooseAlternative: _openNewRequest,
-              );
-            },
-          ),
-        ),
-      ),
+  Future<void> _showRegisterOptions(BuildContext context) async {
+    final type = await showLeaveTypePickerSheet(
+      context,
+      egenmeldingBlocked: _egenmeldingBlockedForSelf,
+      onEgenmeldingBlocked: () {
+        if (_periodUsage == null) return;
+        showLeaveEgenmeldingBlockedSheet(
+          context,
+          periodUsage: _periodUsage!,
+          maxDays: _companySettings.effectiveEgenmeldingDaysPerYear,
+          onChooseAlternative: _openNewRequest,
+        );
+      },
     );
+    if (type == null || !mounted) return;
+    _openNewRequest(type);
   }
 
   Widget _empty(String msg) => Center(child: Text(msg, style: DriftProTheme.bodyMd.copyWith(color: Colors.grey)));
