@@ -95,7 +95,10 @@ class EmployeeAuthService {
     }
   }
 
-  /// Bytt passord for innlogget ansatt (direkte i Supabase Auth).
+  /// Bytt passord for innlogget bruker (ansatt eller partner).
+  ///
+  /// Lagrer via Admin API (edge) og verifiserer at innlogging med nytt
+  /// passord faktisk fungerer — samme flyt for ansatte og partnere.
   static Future<Map<String, dynamic>> changePassword({
     required String newPassword,
   }) async {
@@ -114,30 +117,48 @@ class EmployeeAuthService {
       await _client.auth.refreshSession();
     } catch (_) {}
 
-    try {
-      await _client.auth.updateUser(UserAttributes(password: password));
-    } on AuthException catch (e) {
-      final msg = e.message.toLowerCase();
-      if (msg.contains('session_not_found') ||
-          msg.contains('session') ||
-          msg.contains('jwt')) {
-        throw Exception(
-          'Økten er utløpt. Logg ut og inn igjen, og prøv på nytt.',
-        );
-      }
-      throw Exception(e.message);
+    final token = _client.auth.currentSession?.accessToken;
+    if (token == null || token.isEmpty) {
+      throw Exception('Økten er utløpt. Logg ut og inn igjen, og prøv på nytt.');
     }
 
-    // Best-effort: merk at passord er byttet + valgfri SMS via edge.
+    // Primær: Admin API + innloggingstest (ansatt og partner).
     try {
-      final token = _client.auth.currentSession?.accessToken;
-      if (token != null && token.isNotEmpty) {
-        await _client.functions.invoke(
-          'employee-change-password',
-          body: {'new_password': password, 'skip_if_no_phone': true},
-          headers: {'Authorization': 'Bearer $token'},
-        );
+      final res = await _client.functions.invoke(
+        'employee-change-password',
+        body: {
+          'new_password': password,
+          'skip_sms': true,
+          'skip_if_no_phone': true,
+        },
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      final data = res.data;
+      if (data is Map && data['error'] != null) {
+        throw Exception(data['error'].toString());
       }
+      if (res.status >= 400) {
+        final err = data is Map ? data['error']?.toString() : null;
+        throw Exception(err ?? 'Kunne ikke oppdatere passord (${res.status})');
+      }
+    } on FunctionException catch (e) {
+      final details = e.details;
+      String? msg;
+      if (details is Map) {
+        msg = details['error']?.toString() ?? details['message']?.toString();
+      }
+      throw Exception(
+        msg ?? e.reasonPhrase ?? 'Kunne ikke oppdatere passord. Prøv igjen.',
+      );
+    }
+
+    // Synk lokal Auth-klient (best effort) så sesjonen matcher nytt passord.
+    try {
+      await _client.auth.updateUser(UserAttributes(password: password));
+    } catch (_) {}
+
+    try {
+      await _client.auth.refreshSession();
     } catch (_) {}
 
     return {

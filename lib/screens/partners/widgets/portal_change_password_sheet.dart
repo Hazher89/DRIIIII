@@ -36,7 +36,8 @@ Future<void> showPortalChangePasswordSheet(BuildContext context) async {
                 const SizedBox(height: 8),
                 Text(
                   'Startpassordet er 000000. Velg et nytt passord med minst 6 tegn. '
-                  'Du bruker det neste gang du logger inn med brukernavnet ditt.',
+                  'Det nye passordet lagres sikkert og fungerer neste gang du logger inn '
+                  'med brukernavnet ditt.',
                   style: TextStyle(fontSize: 13, color: Colors.grey.shade700, height: 1.35),
                 ),
                 const SizedBox(height: 16),

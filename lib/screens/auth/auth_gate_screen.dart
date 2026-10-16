@@ -206,7 +206,7 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
   Future<void> _signInWithEmployeeNumber() async {
     if (_loading) return;
     final no = _employeeNumber.text.trim();
-    final pw = _password.text;
+    final pw = EmployeeAuthService.normalizePasswordForAuth(_password.text);
     if (no.isEmpty || pw.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Fyll inn ansattnummer og passord')),
@@ -221,6 +221,8 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
       );
       await SupabaseService.ensureSessionLinkedToCompany();
       final profile = await SupabaseService.fetchEffectiveUserProfile();
+      // Alltid MAVI-modus etter ansatt-innlogging (ikke partnerportal).
+      AccessSessionCache.setPartnerPortalSession(false);
       if (profile != null) {
         AccessSessionCache.setProfile(profile);
       }
@@ -365,6 +367,8 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
 
   void _completePartnerLogin() {
     if (!mounted) return;
+    // Marker partner-sesjon før redirect — også når Auth-e-post ikke er @portal.driftpro.no.
+    AccessSessionCache.setPartnerPortalSession(true);
     context.go(AppPaths.portal);
   }
 
@@ -393,7 +397,7 @@ class _PartnerLoginScreenState extends State<PartnerLoginScreen> {
       return;
     }
     final identifier = _identifier.text.trim();
-    final pw = _password.text;
+    final pw = EmployeeAuthService.normalizePasswordForAuth(_password.text);
     if (identifier.isEmpty || pw.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Fyll inn brukernavn og passord')),

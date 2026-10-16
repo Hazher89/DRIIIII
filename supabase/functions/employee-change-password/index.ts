@@ -2,6 +2,10 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import { readSveveConfig, sendViaSveve } from "../_shared/sveve.ts";
 
+/**
+ * Bytt passord for innlogget bruker (MAVI-ansatt ELLER partnerportal).
+ * Bruker Admin API så nytt passord alltid lagres korrekt i Auth.
+ */
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -65,20 +69,12 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (profile.partner_id) {
-      return new Response(JSON.stringify({ error: "Kun for MAVI-ansatte" }), {
-        status: 403,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    const isPartner = profile.partner_id != null;
 
-    const phoneRaw = profile.phone as string | null;
-    const normalizedPhone = phoneRaw ? normalizePhoneNo(phoneRaw) : null;
-    const skipIfNoPhone = body?.skip_if_no_phone === true;
-
-    // Passord kan allerede være oppdatert av klienten — admin-oppdatering er idempotent.
+    // Autorativ lagring via Admin API (fungerer for ansatt og partner).
     const { error: updateErr } = await admin.auth.admin.updateUserById(uid, {
       password: newPassword,
+      email_confirm: true,
     });
     if (updateErr) {
       return new Response(JSON.stringify({ error: updateErr.message }), {
@@ -87,17 +83,56 @@ Deno.serve(async (req) => {
       });
     }
 
-    await admin
-      .from("employee_login_accounts")
-      .update({ must_change_password: false, updated_at: new Date().toISOString() })
-      .eq("profile_id", uid);
+    if (!isPartner) {
+      await admin
+        .from("employee_login_accounts")
+        .update({ must_change_password: false, updated_at: new Date().toISOString() })
+        .eq("profile_id", uid);
+    }
 
+    // Bekreft at Auth aksepterer det nye passordet (samme e-post som JWT).
+    const loginEmail = String(userData.user.email ?? "").trim().toLowerCase();
+    if (loginEmail) {
+      const verifyClient = createClient(supabaseUrl, anonKey);
+      const { error: verifyErr } = await verifyClient.auth.signInWithPassword({
+        email: loginEmail,
+        password: newPassword,
+      });
+      if (verifyErr) {
+        return new Response(
+          JSON.stringify({
+            error:
+              "Passordet ble lagret, men innloggingstest feilet. Prøv igjen eller kontakt MAVI.",
+            verify_error: verifyErr.message,
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      // Ikke la verify-sesjonen ligge — klienten beholder sin egen sesjon.
+      await verifyClient.auth.signOut();
+    }
+
+    const skipSms = body?.skip_sms === true || body?.skip_if_no_phone === true || isPartner;
+    if (skipSms) {
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          sms_sent: false,
+          verified: true,
+          message: "Passord oppdatert. Bruk det neste gang du logger inn.",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const phoneRaw = profile.phone as string | null;
+    const normalizedPhone = phoneRaw ? normalizePhoneNo(phoneRaw) : null;
     if (!normalizedPhone) {
       return new Response(
         JSON.stringify({
           ok: true,
           sms_sent: false,
-          sms_error: skipIfNoPhone ? null : "Ingen mobilnummer på profilen",
+          verified: true,
           message: "Passord oppdatert.",
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -142,9 +177,10 @@ Deno.serve(async (req) => {
         ok: true,
         sms_sent: smsSent,
         sms_error: smsError,
+        verified: true,
         message: smsSent
           ? "Passord oppdatert. Nytt passord er sendt på SMS."
-          : "Passord oppdatert.",
+          : "Passord oppdatert. Bruk det neste gang du logger inn.",
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
