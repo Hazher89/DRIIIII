@@ -227,11 +227,14 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
             padding: const EdgeInsets.only(top: 10),
             child: Text(
               vacationOnly
-                  ? 'Feriekalender — trykk en dag for detaljer. Godkjent og ventende vises med farge.'
-                  : 'Fraværskalender — egenmelding, sykmelding, sykt barn og permisjon med egne farger.',
-              style: DriftProTheme.bodySm.copyWith(
-                fontWeight: FontWeight.w600,
-                color: isDark ? Colors.white70 : Colors.grey.shade800,
+                  ? (wide
+                      ? 'Grønn = godkjent · Oransje = venter. Trykk en celle for å godkjenne, endre eller slette.'
+                      : 'Måned først. Trykk en dag for å se hvem som har ferie. Grønn = godkjent, oransje = venter.')
+                  : (wide
+                      ? 'Samme årsmatrise som ferie — farger viser type fravær. Oransje = venter.'
+                      : 'Samme kalender som ferie. Farger viser type fravær. Oransje = venter.'),
+              style: DriftProTheme.caption.copyWith(
+                color: isDark ? Colors.white54 : Colors.grey.shade700,
               ),
             ),
           ),
@@ -274,139 +277,18 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
             _awayTodayCard(filtered, isDark),
             const SizedBox(height: 12),
           ],
-          if (vacationOnly && !wide) ...[
-            TeamLeaveCalendar(
-              month: widget.month,
-              absences: filtered,
-              employees: filteredEmployees,
-              filterUserId: _userFilter,
-              colorForType: widget.colorForType,
-              typesFilter: types,
-              includePending: true,
-              onMonthChanged: widget.onMonthChanged,
-              onDayTap: _handleDayTap,
-            ),
-            const SizedBox(height: 12),
-            LeaveCalendarMonthDigest(
-              month: widget.month,
-              absences: filtered,
-              colorForType: widget.colorForType,
-              vacationOnly: true,
-              showEntryList: true,
-            ),
-            const SizedBox(height: 8),
-            Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                initiallyExpanded: false,
-                tilePadding: EdgeInsets.zero,
-                title: Text(
-                  'Årsmatrise',
-                  style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
-                ),
-                subtitle: const Text('Uke for uke. Best på stor skjerm.'),
-                children: [
-                  VacationYearMatrix(
-                    year: year,
-                    employees: filteredEmployees,
-                    vacations: filtered,
-                    canManage: widget.isManager,
-                    onAbsenceTap: widget.onAbsenceTap,
-                    onYearChanged: (y) {
-                      widget.onMonthChanged(DateTime(y, widget.month.month, 1));
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-            LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
-          ] else if (vacationOnly) ...[
-            TeamLeaveCalendar(
-              month: widget.month,
-              absences: filtered,
-              employees: filteredEmployees,
-              filterUserId: _userFilter,
-              colorForType: widget.colorForType,
-              typesFilter: types,
-              includePending: true,
-              onMonthChanged: widget.onMonthChanged,
-              onDayTap: _handleDayTap,
-            ),
-            const SizedBox(height: 12),
-            LeaveCalendarMonthDigest(
-              month: widget.month,
-              absences: filtered,
-              colorForType: widget.colorForType,
-              vacationOnly: true,
-              showEntryList: true,
-            ),
-            const SizedBox(height: 8),
-            Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                initiallyExpanded: false,
-                tilePadding: EdgeInsets.zero,
-                childrenPadding: const EdgeInsets.only(bottom: 8),
-                title: Text(
-                  'Årsmatrise',
-                  style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
-                ),
-                subtitle: const Text('Uke for uke for hele året'),
-                children: [
-                  VacationYearMatrix(
-                    year: year,
-                    employees: filteredEmployees,
-                    vacations: filtered,
-                    canManage: widget.isManager,
-                    onAbsenceTap: widget.onAbsenceTap,
-                    onYearChanged: (y) {
-                      widget.onMonthChanged(DateTime(y, widget.month.month, 1));
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ] else ...[
-            // Samme kalenderkvalitet som ferie — måned først + tydelig fargeforklaring.
-            TeamLeaveCalendar(
-              month: widget.month,
-              absences: filtered,
-              employees: filteredEmployees,
-              filterUserId: _userFilter,
-              colorForType: widget.colorForType,
-              typesFilter: types,
-              includePending: true,
-              onMonthChanged: widget.onMonthChanged,
-              onDayTap: _handleDayTap,
-            ),
-            const SizedBox(height: 12),
-            LeaveCalendarMonthDigest(
-              month: widget.month,
-              absences: filtered,
-              colorForType: widget.colorForType,
-              vacationOnly: false,
-              showEntryList: true,
-            ),
-            if (hasEmployeeFilter || wide) ...[
-              const SizedBox(height: 12),
-              EmployeeLeaveTimeline(
-                month: widget.month,
-                employees: filteredEmployees,
-                absences: filtered,
-                colorForType: widget.colorForType,
-                vacationOnly: false,
-                departmentNames: widget.departmentNames,
-              ),
-            ],
-            const SizedBox(height: 12),
-            LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
-            const SizedBox(height: 10),
-            LeaveCalendarRulesSection(
-              vacationTab: false,
-              companySettings: widget.companySettings,
-            ),
-          ],
+          // Begge faner bruker samme feriekalender-layout (årsmatrise på stor skjerm).
+          ..._buildSharedCalendarLayout(
+            context: context,
+            isDark: isDark,
+            wide: wide,
+            year: year,
+            vacationOnly: vacationOnly,
+            types: types,
+            filtered: filtered,
+            filteredEmployees: filteredEmployees,
+            hasEmployeeFilter: hasEmployeeFilter,
+          ),
           if (!widget.isManager && !hasEmployeeFilter)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -417,6 +299,226 @@ class _LeaveDualCalendarTabState extends State<LeaveDualCalendarTab> {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildSharedCalendarLayout({
+    required BuildContext context,
+    required bool isDark,
+    required bool wide,
+    required int year,
+    required bool vacationOnly,
+    required Set<AbsenceType> types,
+    required List<Absence> filtered,
+    required List<UserProfile> filteredEmployees,
+    required bool hasEmployeeFilter,
+  }) {
+    final matrix = VacationYearMatrix(
+      year: year,
+      employees: filteredEmployees,
+      vacations: filtered,
+      canManage: widget.isManager,
+      onAbsenceTap: widget.onAbsenceTap,
+      typesFilter: types,
+      colorForType: vacationOnly ? null : widget.colorForType,
+      modeLabel: vacationOnly ? 'Ferie' : 'Fravær',
+      onYearChanged: (y) {
+        widget.onMonthChanged(DateTime(y, widget.month.month, 1));
+      },
+    );
+
+    final monthCal = TeamLeaveCalendar(
+      month: widget.month,
+      absences: filtered,
+      employees: filteredEmployees,
+      filterUserId: _userFilter,
+      colorForType: widget.colorForType,
+      typesFilter: types,
+      includePending: true,
+      onMonthChanged: widget.onMonthChanged,
+      onDayTap: _handleDayTap,
+    );
+
+    final digest = LeaveCalendarMonthDigest(
+      month: widget.month,
+      absences: filtered,
+      colorForType: widget.colorForType,
+      vacationOnly: vacationOnly,
+      showEntryList: true,
+    );
+
+    if (wide) {
+      return [
+        matrix,
+        if (!vacationOnly) ...[
+          const SizedBox(height: 10),
+          _typeLegend(types, isDark),
+        ],
+        const SizedBox(height: 12),
+        Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            initiallyExpanded: false,
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 8),
+            title: Text(
+              'Månedskalender',
+              style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
+            ),
+            subtitle: Text(vacationOnly ? 'Uke og måned' : 'Detaljer per dag'),
+            children: [monthCal, const SizedBox(height: 8), digest],
+          ),
+        ),
+        if (hasEmployeeFilter && !vacationOnly) ...[
+          const SizedBox(height: 12),
+          EmployeeLeaveTimeline(
+            month: widget.month,
+            employees: filteredEmployees,
+            absences: filtered,
+            colorForType: widget.colorForType,
+            vacationOnly: false,
+            departmentNames: widget.departmentNames,
+          ),
+        ],
+        const SizedBox(height: 12),
+        LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
+        if (!vacationOnly) ...[
+          const SizedBox(height: 10),
+          LeaveCalendarRulesSection(
+            vacationTab: false,
+            companySettings: widget.companySettings,
+          ),
+        ],
+      ];
+    }
+
+    // Mobil / smal: måned først, årsmatrise under (som gammel ferie).
+    return [
+      monthCal,
+      const SizedBox(height: 12),
+      digest,
+      if (!vacationOnly) ...[
+        const SizedBox(height: 10),
+        _typeLegend(types, isDark),
+      ],
+      const SizedBox(height: 8),
+      Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: EdgeInsets.zero,
+          title: Text(
+            'Årsmatrise',
+            style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
+          ),
+          subtitle: const Text('Uke for uke. Best på stor skjerm.'),
+          children: [matrix],
+        ),
+      ),
+      if (hasEmployeeFilter && !vacationOnly) ...[
+        const SizedBox(height: 12),
+        EmployeeLeaveTimeline(
+          month: widget.month,
+          employees: filteredEmployees,
+          absences: filtered,
+          colorForType: widget.colorForType,
+          vacationOnly: false,
+          departmentNames: widget.departmentNames,
+        ),
+      ],
+      const SizedBox(height: 8),
+      LeavePublicHolidaysPanel(year: year, initiallyExpanded: false),
+      if (!vacationOnly) ...[
+        const SizedBox(height: 10),
+        LeaveCalendarRulesSection(
+          vacationTab: false,
+          companySettings: widget.companySettings,
+        ),
+      ],
+    ];
+  }
+
+  Widget _typeLegend(Set<AbsenceType> types, bool isDark) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.04) : const Color(0xFFF4F7F5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Fargeforklaring',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: isDark ? Colors.white70 : Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ...types.map((t) {
+                final c = widget.colorForType(t);
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: c.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: c.withValues(alpha: 0.45)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: c,
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        t.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: c,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFE67E22)),
+                ),
+                child: const Text(
+                  'Venter',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFE67E22),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );

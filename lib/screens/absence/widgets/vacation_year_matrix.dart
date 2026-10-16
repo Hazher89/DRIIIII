@@ -20,6 +20,9 @@ class VacationYearMatrix extends StatefulWidget {
     this.onYearChanged,
     this.onAbsenceTap,
     this.canManage = false,
+    this.typesFilter,
+    this.colorForType,
+    this.modeLabel,
   });
 
   final int year;
@@ -29,6 +32,11 @@ class VacationYearMatrix extends StatefulWidget {
   final ValueChanged<int>? onYearChanged;
   final void Function(Absence absence)? onAbsenceTap;
   final bool canManage;
+  /// Default: kun ferie. Sett til fraværstyper for fraværskalender.
+  final Set<AbsenceType>? typesFilter;
+  final Color Function(AbsenceType type)? colorForType;
+  /// Overskrift, f.eks. "Ferie" / "Fravær".
+  final String? modeLabel;
 
   @override
   State<VacationYearMatrix> createState() => _VacationYearMatrixState();
@@ -102,7 +110,8 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.year != widget.year ||
         oldWidget.employees != widget.employees ||
-        oldWidget.vacations != widget.vacations) {
+        oldWidget.vacations != widget.vacations ||
+        oldWidget.typesFilter != widget.typesFilter) {
       setState(_rebuild);
     }
   }
@@ -112,8 +121,11 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
       year: widget.year,
       employees: widget.employees,
       vacations: widget.vacations,
+      typesFilter: widget.typesFilter,
     );
   }
+
+  String get _modeLabel => widget.modeLabel ?? 'Ferie';
 
   Future<void> _export(bool pdf) async {
     if (_exporting) return;
@@ -330,14 +342,14 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
           child: Column(
             children: [
               Text(
-                'Ferie ${widget.year}',
+                '$_modeLabel ${widget.year}',
                 style: DriftProTheme.headingSm.copyWith(
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.2,
                 ),
               ),
               Text(
-                '${_model.employeeRows.length} ansatte · $withVacation med ferie',
+                '${_model.employeeRows.length} ansatte · $withVacation med ${_modeLabel.toLowerCase()}',
                 style: DriftProTheme.caption.copyWith(fontSize: 11),
               ),
             ],
@@ -788,11 +800,16 @@ class _VacationYearMatrixState extends State<VacationYearMatrix> {
           final red = holidayWeeks.contains(w.week);
           final monthEdge = monthStarts.contains(e.key) && e.key > 0;
           final pending = span?.status == AbsenceStatus.ventende;
-          final color = days == 0
-              ? Colors.transparent
-              : (pending
-                  ? const Color(0xFFE67E22)
-                  : DriftProTheme.primaryGreen);
+          final Color color;
+          if (days == 0) {
+            color = Colors.transparent;
+          } else if (pending) {
+            color = const Color(0xFFE67E22);
+          } else if (widget.colorForType != null && span != null) {
+            color = widget.colorForType!(span.type);
+          } else {
+            color = DriftProTheme.primaryGreen;
+          }
           final tip = span == null
               ? (days > 0 ? '${row.name}: $days dager i uke ${w.week}' : '')
               : span.tooltip(row.name);

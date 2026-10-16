@@ -24,6 +24,7 @@ class VacationSpan {
     required this.status,
     required this.weekNumbers,
     required this.absenceIds,
+    this.type = AbsenceType.ferie,
   });
 
   final DateTime start;
@@ -32,6 +33,7 @@ class VacationSpan {
   final AbsenceStatus status;
   final List<int> weekNumbers;
   final List<String> absenceIds;
+  final AbsenceType type;
 
   static const _monthsNb = [
     '',
@@ -99,7 +101,7 @@ class VacationSpan {
 
   String tooltip(String employeeName) {
     final pending = status == AbsenceStatus.ventende ? ' (ventende)' : '';
-    return '$employeeName · $daysLabel$pending\n$periodLabel\n$weekLabel';
+    return '$employeeName · ${type.label} · $daysLabel$pending\n$periodLabel\n$weekLabel';
   }
 }
 
@@ -138,7 +140,9 @@ class VacationYearMatrixModel {
     required int year,
     required List<UserProfile> employees,
     required List<Absence> vacations,
+    Set<AbsenceType>? typesFilter,
   }) {
+    final allowed = typesFilter ?? const {AbsenceType.ferie};
     final weeks = _weeksOfYear(year);
     final monthSpans = <({int month, int weekCount, String label})>[];
     if (weeks.isNotEmpty) {
@@ -161,7 +165,7 @@ class VacationYearMatrixModel {
 
     final byUser = <String, List<Absence>>{};
     for (final a in vacations) {
-      if (a.type != AbsenceType.ferie) continue;
+      if (!allowed.contains(a.type)) continue;
       if (a.status == AbsenceStatus.avvist) continue;
       if (a.endDate.year < year || a.startDate.year > year) continue;
       byUser.putIfAbsent(a.userId, () => []).add(a);
@@ -215,29 +219,31 @@ class VacationYearMatrixModel {
     var curStart = clampStart(sorted.first.startDate);
     var curEnd = clampEnd(sorted.first.endDate);
     var status = sorted.first.status;
+    var type = sorted.first.type;
     final ids = <String>[sorted.first.id];
 
     for (var i = 1; i < sorted.length; i++) {
       final a = sorted[i];
       final s = clampStart(a.startDate);
       final e = clampEnd(a.endDate);
-      // Sammenhengende / overlappende (inkl. helg mellom) → slå sammen.
+      // Samme type + sammenhengende / overlappende → slå sammen.
       final gap = s.difference(curEnd).inDays;
-      if (gap <= 3) {
+      if (a.type == type && gap <= 3) {
         if (e.isAfter(curEnd)) curEnd = e;
         if (a.status == AbsenceStatus.ventende) status = AbsenceStatus.ventende;
         ids.add(a.id);
       } else {
-        out.add(_span(curStart, curEnd, status, ids));
+        out.add(_span(curStart, curEnd, status, ids, type));
         curStart = s;
         curEnd = e;
         status = a.status;
+        type = a.type;
         ids
           ..clear()
           ..add(a.id);
       }
     }
-    out.add(_span(curStart, curEnd, status, ids));
+    out.add(_span(curStart, curEnd, status, ids, type));
     return out;
   }
 
@@ -246,6 +252,7 @@ class VacationYearMatrixModel {
     DateTime end,
     AbsenceStatus status,
     List<String> ids,
+    AbsenceType type,
   ) {
     final weeks = <int>{};
     for (var d = start; !d.isAfter(end); d = d.add(const Duration(days: 1))) {
@@ -259,6 +266,7 @@ class VacationYearMatrixModel {
       status: status,
       weekNumbers: sortedWeeks,
       absenceIds: List.unmodifiable(ids),
+      type: type,
     );
   }
 
