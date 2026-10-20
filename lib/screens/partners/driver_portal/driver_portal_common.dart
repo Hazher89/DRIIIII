@@ -33,10 +33,9 @@ class DriverPortalData {
   List<PartnerRouteShare> get routesUpcoming =>
       routes.where((r) => ownerRouteIsActive(r) && !ownerRouteIsToday(r)).toList();
 
+  /// Alt som ikke venter på aksept — inkl. aksepterte ruter for i morgen / fremover.
   List<PartnerRouteShare> get routesArchive {
-    final past = routes
-        .where((r) => ownerRouteIsPast(r) || (!ownerRouteIsActive(r) && !ownerRouteIsFuture(r)))
-        .toList();
+    final past = routes.where((r) => !r.requiresAck).toList();
     past.sort((a, b) => ownerRouteCalendarDay(b).compareTo(ownerRouteCalendarDay(a)));
     return past;
   }
