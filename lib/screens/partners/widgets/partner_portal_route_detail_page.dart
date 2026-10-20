@@ -65,7 +65,10 @@ class PartnerPortalRouteDetailPage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(route.title ?? 'Rute', overflow: TextOverflow.ellipsis),
+        title: Text(
+          portalRouteMaviLabel(route),
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       bottomNavigationBar: pending
           ? SafeArea(

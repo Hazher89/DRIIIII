@@ -130,8 +130,8 @@ Deno.serve(async (req) => {
     const brandedBody = wrapDriftProEmailHtml(row.body, {
       subject: row.subject,
       fromLabel: useGraph
-        ? `DriftPro · ${graphCfg.mailbox}`
-        : "DriftPro",
+        ? `MAVI/DriftPro · ${graphCfg.mailbox}`
+        : "MAVI/DriftPro",
     });
     const result = await deliver(row.to_email, row.subject, brandedBody);
 

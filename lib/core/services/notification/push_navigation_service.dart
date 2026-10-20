@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../config/firebase_config.dart';
 import '../../routing/app_paths.dart';
 import '../../permissions/access_session_cache.dart';
 import '../chat/chat_pending_navigation.dart';
@@ -35,6 +36,7 @@ abstract final class PushNavigationService {
   static Future<void> handleInitialMessage() async {
     if (kIsWeb) return;
     try {
+      await FirebaseConfig.initializeApp();
       final msg = await FirebaseMessaging.instance.getInitialMessage();
       if (msg != null) await handleRemoteMessage(msg);
     } catch (e) {

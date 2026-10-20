@@ -34,9 +34,15 @@ class SupabaseService {
   static String? _linkedAuthUserId;
   static UserProfile? _linkedProfile;
 
+  static UserProfile? _profileTtlCache;
+  static DateTime? _profileTtlAt;
+  static const Duration _profileTtl = Duration(seconds: 30);
+
   static void clearSessionLinkCache() {
     _linkedAuthUserId = null;
     _linkedProfile = null;
+    _profileTtlCache = null;
+    _profileTtlAt = null;
   }
 
   static void _rememberLinked(UserProfile profile) {
@@ -1643,10 +1649,18 @@ department:departments!department_id(name)
     }
   }
 
-  static Future<UserProfile?> fetchCurrentUserProfile() async {
+  static Future<UserProfile?> fetchCurrentUserProfile({bool forceRefresh = false}) async {
     try {
       final user = client.auth.currentUser;
       if (user == null) return null;
+
+      if (!forceRefresh &&
+          _profileTtlCache != null &&
+          _profileTtlCache!.id == user.id &&
+          _profileTtlAt != null &&
+          DateTime.now().difference(_profileTtlAt!) < _profileTtl) {
+        return _profileTtlCache;
+      }
 
       final data = await client
           .from('profiles')
@@ -1666,6 +1680,8 @@ department:departments!department_id(name)
       );
       final resolved = await _ensureSuperadminIfOwner(profile);
       _rememberLinked(resolved);
+      _profileTtlCache = resolved;
+      _profileTtlAt = DateTime.now();
       return resolved;
     } catch (e) {
       debugPrint('Error fetching current user profile: $e');

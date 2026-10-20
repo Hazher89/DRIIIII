@@ -4,7 +4,6 @@ import '../../../core/permissions/partner_portal_pages.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/user_profile.dart';
-import '../widgets/portal_change_password_sheet.dart';
 import '../widgets/partner_portal_page_shell.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_deductions_page.dart';
@@ -104,27 +103,6 @@ class OwnerPortalMorePage extends StatelessWidget {
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
           children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Material(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(14),
-                child: ListTile(
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  leading: CircleAvatar(
-                    backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
-                    child: const Icon(Icons.lock_outline, color: DriftProTheme.primaryGreen),
-                  ),
-                  title: const Text('Bytt passord', style: TextStyle(fontWeight: FontWeight.w800)),
-                  subtitle: Text(
-                    'Startpassordet er 000000. Bytt til ditt eget.',
-                    style: TextStyle(fontSize: 12, color: muted),
-                  ),
-                  trailing: Icon(Icons.chevron_right, color: muted),
-                  onTap: () => showPortalChangePasswordSheet(context),
-                ),
-              ),
-            ),
             ...items.map((item) {
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),

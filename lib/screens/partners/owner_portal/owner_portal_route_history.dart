@@ -6,7 +6,7 @@ import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
-import '../widgets/partner_route_pdf_actions.dart';
+import '../widgets/partner_portal_route_list_tile.dart';
 import '../widgets/partner_ui.dart';
 import 'owner_portal_common.dart';
 
@@ -228,7 +228,15 @@ List<OwnerRouteDayBucket> buildOwnerDayBuckets(
           return ownerRouteCustomerCount(b2).compareTo(ownerRouteCustomerCount(a));
         case OwnerRouteHistorySort.customersAsc:
           return ownerRouteCustomerCount(a).compareTo(ownerRouteCustomerCount(b2));
+        case OwnerRouteHistorySort.dateAsc:
+          if (a.requiresAck && !b2.requiresAck) return -1;
+          if (b2.requiresAck && !a.requiresAck) return 1;
+          final ta = a.routeStartAt ?? a.shareDate;
+          final tb = b2.routeStartAt ?? b2.shareDate;
+          return ta.compareTo(tb);
         default:
+          if (a.requiresAck && !b2.requiresAck) return -1;
+          if (b2.requiresAck && !a.requiresAck) return 1;
           final ta = a.routeStartAt ?? a.shareDate;
           final tb = b2.routeStartAt ?? b2.shareDate;
           return tb.compareTo(ta);
@@ -285,7 +293,7 @@ List<OwnerRouteVehicleBucket> buildOwnerVehicleBuckets(
   return buckets;
 }
 
-/// Tidligere ruter — full oversikt med PDF, kunder, periode og sortering.
+/// Tidligere ruter — rolig oversikt gruppert per dag.
 class OwnerPortalRouteHistoryView extends StatefulWidget {
   const OwnerPortalRouteHistoryView({
     super.key,
@@ -295,6 +303,8 @@ class OwnerPortalRouteHistoryView extends StatefulWidget {
     required this.shifts,
     this.vehicleFilterId,
     this.onVehicleFilter,
+    this.onReload,
+    this.onBehalfOfDriver = false,
   });
 
   final String partnerId;
@@ -303,6 +313,8 @@ class OwnerPortalRouteHistoryView extends StatefulWidget {
   final Map<String, FleetShiftDefinition> shifts;
   final String? vehicleFilterId;
   final ValueChanged<String?>? onVehicleFilter;
+  final Future<void> Function()? onReload;
+  final bool onBehalfOfDriver;
 
   @override
   State<OwnerPortalRouteHistoryView> createState() => _OwnerPortalRouteHistoryViewState();
@@ -312,8 +324,6 @@ class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryVie
   FleetCalendarPeriod _period = FleetCalendarPeriod.month;
   bool _allTime = false;
   DateTime _anchor = DateTime.now();
-  OwnerRouteHistoryGroup _group = OwnerRouteHistoryGroup.byDay;
-  OwnerRouteHistorySort _sort = OwnerRouteHistorySort.dateDesc;
 
   List<PartnerRouteShare> get _filtered => filterOwnerHistoryRoutes(
         partnerId: widget.partnerId,
@@ -343,164 +353,141 @@ class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryVie
     });
   }
 
+  Future<void> _reload() async {
+    await widget.onReload?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final routes = sortOwnerHistoryRoutes(_filtered, _sort, widget.vehicles);
+    final routes = sortOwnerHistoryRoutes(
+      _filtered,
+      OwnerRouteHistorySort.dateDesc,
+      widget.vehicles,
+    );
     final stats = ownerHistoryStats(routes);
-    final multiVehicle = widget.vehicles.length > 1;
+    final buckets = buildOwnerDayBuckets(routes, OwnerRouteHistorySort.dateDesc);
+    final muted = PartnerUi.mutedText(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        SliverToBoxAdapter(child: _buildHeader(context, stats)),
-        if (multiVehicle) SliverToBoxAdapter(child: _vehicleOverview(routes)),
+        SliverToBoxAdapter(child: _buildHeader(context, stats, muted, isDark)),
         if (routes.isEmpty)
           SliverFillRemaining(
             hasScrollBody: false,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  _allTime
-                      ? 'Ingen tidligere ruter registrert ennå.'
-                      : 'Ingen ruter i valgt periode.\nPrøv «Alle» eller bla til en annen uke/måned.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: PartnerUi.mutedText(context), height: 1.4),
-                ),
-              ),
-            ),
+            child: _emptyState(muted),
           )
         else
-          switch (_group) {
-            OwnerRouteHistoryGroup.byDay => _daySlivers(routes),
-            OwnerRouteHistoryGroup.byVehicle => _vehicleSlivers(routes),
-            OwnerRouteHistoryGroup.flat => _flatSlivers(routes),
-          },
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 28),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, i) => _daySection(buckets[i], muted),
+                childCount: buckets.length,
+              ),
+            ),
+          ),
       ],
     );
   }
 
-  Widget _buildHeader(BuildContext context, OwnerRouteHistoryStats stats) {
+  Widget _buildHeader(
+    BuildContext context,
+    OwnerRouteHistoryStats stats,
+    Color muted,
+    bool isDark,
+  ) {
+    final periodLabel = _allTime
+        ? 'Alle tidligere ruter'
+        : ownerHistoryPeriodTitle(_period, _anchor);
+
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Tidligere ruter · ${widget.vehicles.length <= 1 ? 'din bedrift' : 'dine biler'}',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
-              color: PartnerUi.mutedText(context),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _kpi(Icons.route_outlined, '${stats.routeCount}', 'Ruter'),
-              _kpi(Icons.people_outline, '${stats.customerCount}', 'Kunder'),
-              _kpi(Icons.calendar_today_outlined, '${stats.dayCount}', 'Dager'),
-              if (widget.vehicles.length > 1)
-                _kpi(Icons.local_shipping_outlined, '${stats.vehicleCount}', 'Biler'),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'week', label: Text('Uke')),
+              ButtonSegment(value: 'month', label: Text('Måned')),
+              ButtonSegment(value: 'all', label: Text('Alle')),
             ],
-          ),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                FilterChip(
-                  label: const Text('Alle'),
-                  selected: _allTime,
-                  onSelected: (_) => setState(() => _allTime = true),
-                ),
-                const SizedBox(width: 6),
-                ...FleetCalendarPeriod.values.map(
-                  (p) => Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: FilterChip(
-                      label: Text(p.label),
-                      selected: !_allTime && _period == p,
-                      onSelected: (_) => setState(() {
-                        _allTime = false;
-                        _period = p;
-                        _anchor = DateTime.now();
-                      }),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            selected: {
+              if (_allTime) 'all' else if (_period == FleetCalendarPeriod.week) 'week' else 'month',
+            },
+            onSelectionChanged: (s) {
+              final v = s.first;
+              setState(() {
+                if (v == 'all') {
+                  _allTime = true;
+                } else {
+                  _allTime = false;
+                  _period = v == 'week' ? FleetCalendarPeriod.week : FleetCalendarPeriod.month;
+                  _anchor = DateTime.now();
+                }
+              });
+            },
           ),
           if (!_allTime) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Row(
               children: [
                 IconButton(
                   tooltip: 'Forrige',
                   onPressed: () => _shiftAnchor(-1),
-                  icon: const Icon(Icons.chevron_left),
+                  icon: const Icon(Icons.chevron_left_rounded),
                 ),
                 Expanded(
                   child: Text(
-                    ownerHistoryPeriodTitle(_period, _anchor),
+                    periodLabel,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
                   ),
                 ),
                 IconButton(
                   tooltip: 'Neste',
                   onPressed: () => _shiftAnchor(1),
-                  icon: const Icon(Icons.chevron_right),
-                ),
-                TextButton(
-                  onPressed: () => setState(() => _anchor = DateTime.now()),
-                  child: const Text('I dag'),
+                  icon: const Icon(Icons.chevron_right_rounded),
                 ),
               ],
             ),
+          ] else ...[
+            const SizedBox(height: 10),
+            Text(
+              periodLabel,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: muted),
+            ),
           ],
           const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : DriftProTheme.primaryGreen.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: DriftProTheme.primaryGreen.withValues(alpha: 0.18),
+              ),
+            ),
             child: Row(
               children: [
-                ...OwnerRouteHistoryGroup.values.map(
-                  (g) => Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: FilterChip(
-                      label: Text(g.label),
-                      selected: _group == g,
-                      onSelected: (_) => setState(() => _group = g),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                PopupMenuButton<OwnerRouteHistorySort>(
-                  tooltip: 'Sortering',
-                  initialValue: _sort,
-                  onSelected: (s) => setState(() => _sort = s),
-                  child: Chip(
-                    avatar: const Icon(Icons.sort, size: 18),
-                    label: Text(_sort.label, style: const TextStyle(fontWeight: FontWeight.w700)),
-                  ),
-                  itemBuilder: (_) => OwnerRouteHistorySort.values
-                      .map(
-                        (s) => PopupMenuItem(
-                          value: s,
-                          child: Text(s.label),
-                        ),
-                      )
-                      .toList(),
-                ),
+                _statCell('${stats.routeCount}', 'ruter'),
+                _statDivider(),
+                _statCell('${stats.customerCount}', 'kunder'),
+                _statDivider(),
+                _statCell('${stats.dayCount}', 'dager'),
+                if (widget.vehicles.length > 1) ...[
+                  _statDivider(),
+                  _statCell('${stats.vehicleCount}', 'biler'),
+                ],
               ],
             ),
           ),
           if (widget.onVehicleFilter != null && widget.vehicles.length > 1) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -517,7 +504,7 @@ class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryVie
                     return Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: FilterChip(
-                        label: Text('${MaviUnitCodes.normalize(v.unitCode)} ($n)'),
+                        label: Text('${MaviUnitCodes.shortLabel(v.unitCode)} ($n)'),
                         selected: widget.vehicleFilterId == id,
                         onSelected: (_) => widget.onVehicleFilter!(
                           widget.vehicleFilterId == id ? null : id,
@@ -534,277 +521,132 @@ class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryVie
     );
   }
 
-  Widget _kpi(IconData icon, String value, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.black12),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: DriftProTheme.primaryGreen),
-          const SizedBox(width: 5),
-          Text(
-            '$value $label',
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _vehicleOverview(List<PartnerRouteShare> routes) {
-    final buckets = buildOwnerVehicleBuckets(routes, widget.vehicles, OwnerRouteHistorySort.customersDesc);
-    if (buckets.length < 2) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+  Widget _statCell(String value, String label) {
+    return Expanded(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Oversikt per bil (valgt periode)',
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 18,
+              height: 1.1,
+              color: DriftProTheme.primaryGreen,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
             style: TextStyle(
-              fontWeight: FontWeight.w800,
-              fontSize: 13,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
               color: PartnerUi.mutedText(context),
             ),
           ),
-          const SizedBox(height: 6),
-          SizedBox(
-            height: 56,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: buckets.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                final b = buckets[i];
-                return _vehicleSummaryCard(b);
-              },
-            ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _vehicleSummaryCard(OwnerRouteVehicleBucket b) {
+  Widget _statDivider() {
     return Container(
-      width: 108,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.22)),
+      width: 1,
+      height: 28,
+      margin: const EdgeInsets.symmetric(horizontal: 4),
+      color: DriftProTheme.primaryGreen.withValues(alpha: 0.18),
+    );
+  }
+
+  Widget _emptyState(Color muted) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.history_rounded, size: 44, color: muted.withValues(alpha: 0.7)),
+            const SizedBox(height: 12),
+            Text(
+              _allTime
+                  ? 'Ingen tidligere ruter ennå'
+                  : 'Ingen ruter i denne perioden',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              _allTime
+                  ? 'Når ruter er kjørt, dukker de opp her.'
+                  : 'Bytt til «Alle» eller bla til en annen uke/måned.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: muted, height: 1.4),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _daySection(OwnerRouteDayBucket b, Color muted) {
+    final today = DateTime.now();
+    final yesterday = DateTime(today.year, today.month, today.day)
+        .subtract(const Duration(days: 1));
+    final isYesterday = b.day.year == yesterday.year &&
+        b.day.month == yesterday.month &&
+        b.day.day == yesterday.day;
+    final dayLabel = isYesterday
+        ? 'I går · ${DateFormat('d. MMM', 'nb').format(b.day)}'
+        : DateFormat('EEEE d. MMMM', 'nb').format(b.day);
+    final cust = b.customerCount;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(b.unitLabel, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
-          Text(
-            '${b.routeCount} r · ${b.customerCount} knd',
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    dayLabel,
+                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                  ),
+                ),
+                Text(
+                  '${b.routeCount} rute${b.routeCount == 1 ? '' : 'r'}'
+                  '${cust > 0 ? ' · $cust kunder' : ''}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: muted,
+                  ),
+                ),
+              ],
+            ),
           ),
+          for (final route in b.routes)
+            PartnerPortalRouteListTile(
+              route: route,
+              shifts: widget.shifts,
+              onReload: _reload,
+              onBehalfOfDriver: widget.onBehalfOfDriver,
+              vehicleLabel: _vehicleLabel(route),
+              unitCode: widget.vehicles[route.partnerVehicleId]?.unitCode,
+            ),
         ],
       ),
     );
   }
 
-  SliverList _daySlivers(List<PartnerRouteShare> routes) {
-    final buckets = buildOwnerDayBuckets(routes, _sort);
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, i) {
-          final b = buckets[i];
-          return _dayExpansion(b);
-        },
-        childCount: buckets.length,
-      ),
-    );
-  }
-
-  Widget _dayExpansion(OwnerRouteDayBucket b) {
-    final dayLabel = DateFormat('EEE d. MMM yyyy', 'nb').format(b.day);
-    final recent = b.day.isAfter(DateTime.now().subtract(const Duration(days: 7)));
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
-      child: Material(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(10),
-        clipBehavior: Clip.antiAlias,
-        child: ExpansionTile(
-          dense: true,
-          visualDensity: VisualDensity.compact,
-          initiallyExpanded: recent,
-          tilePadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-          childrenPadding: EdgeInsets.zero,
-          title: Text(
-            dayLabel,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-          ),
-          subtitle: Text(
-            '${b.routeCount} r · ${b.customerCount} knd',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
-          ),
-          children: [
-            for (var i = 0; i < b.routes.length; i++) ...[
-              if (i > 0) Divider(height: 1, color: Colors.grey.shade200),
-              _routeTile(b.routes[i]),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  SliverList _vehicleSlivers(List<PartnerRouteShare> routes) {
-    final buckets = buildOwnerVehicleBuckets(routes, widget.vehicles, _sort);
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, i) {
-          final b = buckets[i];
-          final dayBuckets = buildOwnerDayBuckets(b.routes, OwnerRouteHistorySort.dateDesc);
-          return Padding(
-            padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
-            child: Material(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(10),
-              clipBehavior: Clip.antiAlias,
-              child: ExpansionTile(
-                dense: true,
-                visualDensity: VisualDensity.compact,
-                tilePadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                childrenPadding: EdgeInsets.zero,
-                title: Text(
-                  b.unitLabel,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-                ),
-                subtitle: Text(
-                  '${b.routeCount} r · ${b.customerCount} knd · ${b.days.length} d',
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
-                ),
-                children: [
-                  for (final db in dayBuckets) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(10, 6, 10, 2),
-                      child: Text(
-                        DateFormat('d. MMM yyyy', 'nb').format(db.day),
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 11),
-                      ),
-                    ),
-                    for (var i = 0; i < db.routes.length; i++) ...[
-                      if (i > 0) Divider(height: 1, color: Colors.grey.shade200),
-                      _routeTile(db.routes[i]),
-                    ],
-                  ],
-                ],
-              ),
-            ),
-          );
-        },
-        childCount: buckets.length,
-      ),
-    );
-  }
-
-  Widget _flatSlivers(List<PartnerRouteShare> routes) {
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, i) => Column(
-            children: [
-              if (i > 0) Divider(height: 1, color: Colors.grey.shade200),
-              _routeTile(routes[i]),
-            ],
-          ),
-          childCount: routes.length,
-        ),
-      ),
-    );
-  }
-
-  Widget _routeTile(PartnerRouteShare route) {
+  String? _vehicleLabel(PartnerRouteShare route) {
     final vehicle = widget.vehicles[route.partnerVehicleId];
-    final unit = vehicle != null ? MaviUnitCodes.normalize(vehicle.unitCode) : null;
-    final customers = ownerRouteCustomerCount(route);
-    final hasPdf = route.pdfStoragePath.trim().isNotEmpty;
-    final day = ownerRouteCalendarDay(route);
-    final time = route.routeStartAt != null
-        ? DateFormat('HH:mm', 'nb').format(route.routeStartAt!.toLocal())
-        : null;
-    final area = ownerRouteArea(route, widget.shifts);
-    final title = route.title ?? area;
-    final custLabel = customers > 0
-        ? '$customers knd'
-        : (route.customerCount == null ? '— knd' : '0 knd');
-
-    return InkWell(
-      onTap: hasPdf ? () => PartnerRoutePdfActions.openPdf(context, route) : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        child: Row(
-          children: [
-            PartnerRoutePdfActions.ackDot(route, size: 8),
-            const SizedBox(width: 8),
-            if (unit != null) ...[
-              Text(
-                unit,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 10,
-                  fontFamily: 'monospace',
-                  color: DriftProTheme.primaryGreen,
-                ),
-              ),
-              const SizedBox(width: 6),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    [
-                      if (_group == OwnerRouteHistoryGroup.byDay) ...[
-                        if (time != null) time,
-                      ] else ...[
-                        DateFormat('d. MMM', 'nb').format(day),
-                        if (time != null) time,
-                      ],
-                      custLabel,
-                    ].join(' · '),
-                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              tooltip: 'PDF',
-              onPressed: hasPdf ? () => PartnerRoutePdfActions.openPdf(context, route) : null,
-              icon: Icon(
-                Icons.picture_as_pdf_outlined,
-                size: 18,
-                color: hasPdf ? DriftProTheme.primaryGreen : Colors.grey,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
+    if (vehicle == null) return null;
+    final plate = vehicle.registrationNumber.trim();
+    if (plate.isEmpty || plate == '—') {
+      return MaviUnitCodes.shortLabel(vehicle.unitCode);
+    }
+    return '${MaviUnitCodes.shortLabel(vehicle.unitCode)} · $plate';
   }
 }

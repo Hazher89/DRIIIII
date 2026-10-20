@@ -12,6 +12,7 @@ import '../../../core/utils/open_external_url.dart';
 import '../../../core/constants/route_dispatch_status.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../widgets/platform_pdf_bytes_view.dart';
+import '../owner_portal/owner_portal_common.dart';
 import '../owner_portal/owner_portal_route_actions.dart';
 
 typedef PartnerRouteReloadCallback = Future<void> Function();
@@ -72,7 +73,7 @@ class PartnerRoutePdfActions {
       ),
     );
 
-    final title = share.title ?? 'Rute-PDF';
+    final title = portalRouteMaviLabel(share);
     try {
       // Nedlasting først — fungerer for bedriftsansvarlig/sjåfør (Dropbox + Supabase).
       final bytes = await PartnerService.downloadRoutePdfBytes(path);

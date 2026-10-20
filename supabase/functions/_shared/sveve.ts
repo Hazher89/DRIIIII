@@ -25,6 +25,7 @@ export function readSveveConfig(): SveveConfig | { error: string } {
   return {
     user,
     passwd,
+    // Sveve alfanumerisk avsender: maks 11 tegn.
     from: (Deno.env.get("SVEVE_FROM") ?? "MAVI").slice(0, 11),
     test: Deno.env.get("SVEVE_TEST") === "true",
   };

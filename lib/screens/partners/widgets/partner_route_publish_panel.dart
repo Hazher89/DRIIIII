@@ -181,6 +181,7 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
         vehicles: widget.fleet.map((r) => r.vehicle),
         unitCodeOf: (v) => v.unitCode,
         registrationOf: (v) => v.registrationNumber,
+        driverNameOf: (v) => v.driverName,
       );
       final partnerById = {for (final r in widget.fleet) r.partner.id: r.partner};
       int ok = 0, skip = 0;
@@ -194,11 +195,12 @@ class _PartnerRoutePublishPanelState extends State<PartnerRoutePublishPanel> {
           continue;
         }
         final code = RoutePdfTextService.extractResourceIdFromBytes(bytes);
-        if (code == null) {
-          skip++;
-          continue;
-        }
-        final vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, code);
+        final driverName = RoutePdfTextService.parseDriverNameFromBytes(bytes);
+        final vehicle = RoutePdfTextService.findVehicleInLookup(
+          vehicleMap,
+          code,
+          driverName: driverName,
+        );
         if (vehicle == null) {
           skip++;
           continue;

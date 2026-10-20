@@ -35,14 +35,17 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool forceRefresh = false}) async {
     setState(() => _loading = true);
     final d = await DriverPortalData.load(
       partner: widget.partner,
       partnerVehicleId: widget.profile.partnerVehicleId,
+      forceRefresh: forceRefresh,
     );
     if (mounted) setState(() { _data = d; _loading = false; });
   }
+
+  Future<void> _reload() => _load(forceRefresh: true);
 
   List<PartnerRouteShare> get _highlightRoutes {
     if (_data == null) return const [];
@@ -73,7 +76,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
       body: _loading || _data == null
           ? const DriftProLoadingCenter()
           : RefreshIndicator(
-              onRefresh: _load,
+              onRefresh: _reload,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.only(bottom: 100),
@@ -136,8 +139,8 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                     items: [
                       ('Ruter i dag', '${_data!.routesToday.length}'),
                       ('Til svar', '${_data!.pendingAck}'),
-                      ('Kommende', '${_data!.routesUpcoming.length}'),
-                      ('Arkiv', '${_data!.routesArchive.length}'),
+                      ('Kommende', '${_data!.routesKommende.length}'),
+                      ('Tidligere', '${_data!.routesArchive.length}'),
                     ],
                   ),
                   if (_data!.pendingAck > 0)
@@ -153,7 +156,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                               context,
                               route: first,
                               shifts: _data!.shiftsById,
-                              onReload: _load,
+                              onReload: _reload,
                             );
                           }
                         },
@@ -179,7 +182,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                         child: PartnerPortalRouteListTile(
                           route: r,
                           shifts: _data!.shiftsById,
-                          onReload: _load,
+                          onReload: _reload,
                         ),
                       ),
                     ),

@@ -29,6 +29,7 @@ import 'mavi_unit_codes.dart';
 import '../storage/company_file_storage.dart';
 import '../storage/storage_file_access.dart';
 import '../assistant/assistant_event_learning.dart';
+import 'partner_portal_data_cache.dart';
 import 'partner_portal_scope.dart';
 import 'postal_code_registry.dart';
 import 'route_pdf_text_service.dart';
@@ -744,16 +745,30 @@ class PartnerService {
       partnerId: partnerId,
       partnerVehicleId: partnerVehicleId,
     );
-    var query = _client.from('partner_route_shares').select().eq('partner_id', partnerId);
-    if (partnerVehicleId != null) {
-      query = query.eq('partner_vehicle_id', partnerVehicleId);
+
+    Future<List<dynamic>> run(String columns) async {
+      var query = _client
+          .from('partner_route_shares')
+          .select(columns)
+          .eq('partner_id', partnerId);
+      if (partnerVehicleId != null) {
+        query = query.eq('partner_vehicle_id', partnerVehicleId);
+      }
+      if (sentOnly) {
+        try {
+          query = query.eq('dispatch_status', 'sent');
+        } catch (_) {}
+      }
+      return await query.order('share_date', ascending: false) as List<dynamic>;
     }
-    if (sentOnly) {
-      try {
-        query = query.eq('dispatch_status', 'sent');
-      } catch (_) {}
+
+    // Uten pdf_search_text — samme ruter, langt mindre payload.
+    List<dynamic> data;
+    try {
+      data = await run(routeShareColumnsLight);
+    } catch (_) {
+      data = await run('*');
     }
-    final data = await query.order('share_date', ascending: false) as List<dynamic>;
     final list = data.map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>)).toList();
     return PartnerPortalScope.routesForPartner(
       list,
@@ -2202,9 +2217,47 @@ class PartnerService {
     );
   }
 
+  static PartnerPortalSession? _sessionCache;
+  static String? _sessionCacheUid;
+  static DateTime? _sessionCacheAt;
+  static Future<PartnerPortalSession?>? _sessionInFlight;
+  static const Duration _sessionTtl = Duration(seconds: 45);
+
+  static void clearPortalSessionCache() {
+    _sessionCache = null;
+    _sessionCacheUid = null;
+    _sessionCacheAt = null;
+    _sessionInFlight = null;
+  }
+
   /// Hvilken portal (bil-eier vs sjåfør) innlogget bruker skal ha.
-  static Future<PartnerPortalSession?> resolvePortalSession() async {
+  static Future<PartnerPortalSession?> resolvePortalSession({
+    bool forceRefresh = false,
+  }) async {
     if (!_ok) return null;
+    final uid = _client.auth.currentUser?.id;
+    if (!forceRefresh &&
+        uid != null &&
+        _sessionCacheUid == uid &&
+        _sessionCacheAt != null &&
+        DateTime.now().difference(_sessionCacheAt!) < _sessionTtl) {
+      return _sessionCache;
+    }
+    if (!forceRefresh && _sessionInFlight != null) return _sessionInFlight;
+
+    final future = _resolvePortalSessionUncached().then((session) {
+      _sessionCache = session;
+      _sessionCacheUid = uid;
+      _sessionCacheAt = DateTime.now();
+      return session;
+    }).whenComplete(() {
+      _sessionInFlight = null;
+    });
+    _sessionInFlight = future;
+    return future;
+  }
+
+  static Future<PartnerPortalSession?> _resolvePortalSessionUncached() async {
     try {
       final raw = await _client
           .rpc('resolve_partner_portal_bootstrap')
@@ -2514,6 +2567,7 @@ class PartnerService {
       'ack_by': _client.auth.currentUser?.id,
       'ack_comment': comment,
     }).eq('id', routeShareId);
+    PartnerPortalDataCache.invalidatePartner(row['partner_id'] as String);
   }
 
   /// Admin: knytt eksisterende profil til partner (krever RLS som tillater oppdatering).
@@ -3067,16 +3121,21 @@ class PartnerService {
     required String companyId,
     required DateTime from,
     required DateTime to,
+    List<String>? partnerVehicleIds,
   }) async {
     if (!_ok) return const [];
     final a = from.toIso8601String().split('T').first;
     final b = to.toIso8601String().split('T').first;
-    final data = await _client
+    var query = _client
         .from('partner_vehicle_fleet_snapshots')
         .select()
         .eq('company_id', companyId)
         .gte('snapshot_date', a)
-        .lte('snapshot_date', b) as List<dynamic>;
+        .lte('snapshot_date', b);
+    if (partnerVehicleIds != null && partnerVehicleIds.isNotEmpty) {
+      query = query.inFilter('partner_vehicle_id', partnerVehicleIds);
+    }
+    final data = await query as List<dynamic>;
     return data.map((e) => PartnerVehicleFleetSnapshot.fromJson(e as Map<String, dynamic>)).toList();
   }
 

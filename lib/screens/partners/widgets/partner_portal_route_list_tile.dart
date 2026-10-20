@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/nb_date_format.dart';
 import '../../../models/partner/fleet_shift.dart';
@@ -15,6 +16,8 @@ class PartnerPortalRouteListTile extends StatelessWidget {
   final Future<void> Function() onReload;
   final bool onBehalfOfDriver;
   final String? vehicleLabel;
+  /// Rå enhetskode (NO_O_M0096) — brukes til ren M0096-tittel.
+  final String? unitCode;
 
   const PartnerPortalRouteListTile({
     super.key,
@@ -23,6 +26,7 @@ class PartnerPortalRouteListTile extends StatelessWidget {
     required this.onReload,
     this.onBehalfOfDriver = false,
     this.vehicleLabel,
+    this.unitCode,
   });
 
   @override
@@ -33,6 +37,9 @@ class PartnerPortalRouteListTile extends StatelessWidget {
         ? NbDateFormat.format(route.routeStartAt!.toLocal(), 'HH:mm')
         : '—';
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final mavi = portalRouteMaviLabel(route, unitCode: unitCode);
+    final dateLine = NbDateFormat.format(day, 'EEEE d. MMMM');
+    final plate = _plateOnly(vehicleLabel);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -85,20 +92,24 @@ class PartnerPortalRouteListTile extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        route.title ?? 'Rute',
-                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-                        maxLines: 2,
+                        mavi,
+                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        NbDateFormat.format(day, 'EEE d. MMM'),
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                        dateLine,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade800,
+                        ),
                       ),
-                      if (vehicleLabel != null) ...[
+                      if (plate != null) ...[
                         const SizedBox(height: 2),
                         Text(
-                          vehicleLabel!,
+                          plate,
                           style: const TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
@@ -111,23 +122,26 @@ class PartnerPortalRouteListTile extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (pending)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade200,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'NY',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.orange.shade900,
-                      ),
+                Container(
+                  margin: const EdgeInsets.only(left: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: pending
+                        ? Colors.orange.shade200
+                        : DriftProTheme.primaryGreen.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    pending ? 'NY' : 'Akseptert',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      color: pending
+                          ? Colors.orange.shade900
+                          : DriftProTheme.primaryGreen,
                     ),
                   ),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -197,5 +211,24 @@ class PartnerPortalRouteListTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String? _plateOnly(String? label) {
+    if (label == null || label.trim().isEmpty) return null;
+    // "NO_O_M0096 · AB12345" eller "M0096 · AB12345" → bare skilt
+    final parts = label.split('·').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (parts.length >= 2) {
+      final last = parts.last;
+      if (!last.toUpperCase().startsWith('NO_O_') && !RegExp(r'^M\d+$').hasMatch(last)) {
+        return last;
+      }
+    }
+    // Hvis label er ren MAVI-kode, ikke vis den på nytt.
+    if (MaviUnitCodes.extractShortLabel(label) != null &&
+        parts.length == 1 &&
+        RegExp(r'^(NO_O_)?M\d+$', caseSensitive: false).hasMatch(parts.first.replaceAll(' ', ''))) {
+      return null;
+    }
+    return label;
   }
 }

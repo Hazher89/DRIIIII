@@ -55,5 +55,42 @@ Christine Kværnæs Lillestrøm 14.04.2026 17:00:00
 ''';
       expect(RoutePdfTextService.parseResourceId(text), 'M21');
     });
+
+    test('NO_O_M0JIM — navnebasert Resource ID', () {
+      const text = '''
+Trip Overview
+Freight Order 6102948737
+Resource ID
+NO_O_M0JIM
+Driver Name
+Jim jim
+Seq Freight Unit
+''';
+      expect(RoutePdfTextService.parseResourceId(text), 'MJIM');
+      expect(
+        RoutePdfTextService.normalizeUnitCodeForMatch('NO_O_M0JIM'),
+        'MJIM',
+      );
+    });
+
+    test('matcher bil via MJIM / sjåførnavn Jim', () {
+      final vehicles = [
+        (
+          id: 'v1',
+          unit: 'NO_O_M0JIM',
+          driver: 'Jim jim',
+        ),
+      ];
+      final map = RoutePdfTextService.buildVehicleLookupMap(
+        vehicles: vehicles,
+        unitCodeOf: (v) => v.unit,
+        driverNameOf: (v) => v.driver,
+      );
+      expect(RoutePdfTextService.findVehicleInLookup(map, 'MJIM')?.id, 'v1');
+      expect(
+        RoutePdfTextService.findVehicleInLookup(map, null, driverName: 'Jim jim')?.id,
+        'v1',
+      );
+    });
   });
 }

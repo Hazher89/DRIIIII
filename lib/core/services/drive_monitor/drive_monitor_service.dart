@@ -497,7 +497,12 @@ class DriveMonitorTracker {
 
   Future<void> start() async {
     // Always/background required for rental-vehicle kiosk tracking (not for staff).
-    await NativePermissionsService.ensureBackgroundLocation();
+    final allowed = await NativePermissionsService.ensureBackgroundLocation();
+    if (!allowed) {
+      _liveStatus = 'no_permission';
+      _emit();
+      return;
+    }
     await WakelockPlus.enable();
 
     // Reload any pending offline data from previous crash/kill.
@@ -558,17 +563,11 @@ class DriveMonitorTracker {
 
   LocationSettings _androidLocationSettings() {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      // Play-build: when-in-use only (no background / FGS location).
       return AndroidSettings(
         accuracy: LocationAccuracy.bestForNavigation,
         distanceFilter: 1,
         intervalDuration: const Duration(seconds: 1),
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: 'Kjøresporing aktiv',
-          notificationText:
-              'DriftPro logger rute kun mens bilen kjører (også i bakgrunn).',
-          enableWakeLock: true,
-          setOngoing: true,
-        ),
       );
     }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {

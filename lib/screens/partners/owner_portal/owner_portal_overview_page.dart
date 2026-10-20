@@ -54,18 +54,20 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool forceRefresh = false}) async {
     setState(() {
       _loading = true;
       _loadError = null;
     });
     try {
-      final d = await OwnerPortalData.load(widget.partner);
-      final trekk = await PartnerDeductionService.listCasesPortal(partnerId: widget.partner.id);
+      final results = await Future.wait([
+        OwnerPortalData.load(widget.partner, forceRefresh: forceRefresh),
+        PartnerDeductionService.listCasesPortal(partnerId: widget.partner.id),
+      ]);
       if (!mounted) return;
       setState(() {
-        _data = d;
-        _trekkCount = trekk.length;
+        _data = results[0] as OwnerPortalData;
+        _trekkCount = (results[1] as List).length;
         _loading = false;
       });
     } catch (e) {
@@ -85,7 +87,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
           ? const DriftProLoadingCenter()
           : _loadError != null
               ? RefreshIndicator(
-                  onRefresh: _load,
+                  onRefresh: () => _load(forceRefresh: true),
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(24),
@@ -105,7 +107,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                 )
               : _data == null
                   ? RefreshIndicator(
-                      onRefresh: _load,
+                      onRefresh: () => _load(forceRefresh: true),
                       child: ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: const [
@@ -115,7 +117,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                       ),
                     )
                   : RefreshIndicator(
-              onRefresh: _load,
+              onRefresh: () => _load(forceRefresh: true),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
@@ -213,7 +215,7 @@ class _OwnerPortalOverviewPageState extends State<OwnerPortalOverviewPage> {
                       if (widget.onGoToRoutes != null)
                         PartnerSmartAction(
                           label: 'Se alle ruter',
-                          hint: 'Nye ruter og tidligere',
+                          hint: 'Kommende og tidligere',
                           icon: Icons.map_outlined,
                           onTap: () => widget.onGoToRoutes?.call(tabIndex: 0),
                         ),

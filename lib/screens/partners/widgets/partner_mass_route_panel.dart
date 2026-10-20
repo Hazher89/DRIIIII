@@ -26,9 +26,10 @@ class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
 
   Map<String, PartnerVehicle> _vehicleLookupMap(List<PartnerVehicle> rows) {
     return RoutePdfTextService.buildVehicleLookupMap(
-      vehicles: rows,
+      vehicles: rows.where(PartnerService.isMaviFleetVehicle),
       unitCodeOf: (v) => v.unitCode,
       registrationOf: (v) => v.registrationNumber,
+      driverNameOf: (v) => v.driverName,
     );
   }
 
@@ -74,11 +75,12 @@ class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
           continue;
         }
         final foundCode = RoutePdfTextService.extractResourceIdFromBytes(bytes);
-        if (foundCode == null) {
-          skipped++;
-          continue;
-        }
-        final vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, foundCode);
+        final driverName = RoutePdfTextService.parseDriverNameFromBytes(bytes);
+        final vehicle = RoutePdfTextService.findVehicleInLookup(
+          vehicleMap,
+          foundCode,
+          driverName: driverName,
+        );
         if (vehicle == null) {
           skipped++;
           continue;

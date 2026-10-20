@@ -1919,6 +1919,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       vehicles: vehicles.where(PartnerService.isMaviFleetVehicle),
       unitCodeOf: (v) => v.unitCode,
       registrationOf: (v) => v.registrationNumber,
+      driverNameOf: (v) => v.driverName,
     );
   }
 
@@ -1947,8 +1948,27 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       fallbackDate: _routeDate,
       fileName: fileName,
     );
-    final code = bundle.meta.maviCode;
-    if (code == null) {
+    final driverName = RoutePdfTextService.parseDriverName(
+      bundle.headerText.isNotEmpty ? bundle.headerText : bundle.fullText,
+    );
+    var code = bundle.meta.maviCode;
+    var vehicle = RoutePdfTextService.findVehicleInLookup(
+      vehicleMap,
+      code,
+      driverName: driverName,
+    );
+    // Navnebaserte Resource ID (NO_O_M0JIM) eller kun sjåførnavn i PDF.
+    if (vehicle == null && driverName != null) {
+      vehicle = RoutePdfTextService.findVehicleInLookup(
+        vehicleMap,
+        null,
+        driverName: driverName,
+      );
+      code ??= RoutePdfTextService.normalizeUnitCodeForMatch(
+        'M${driverName.split(RegExp(r'\s+')).first}',
+      );
+    }
+    if (code == null && vehicle == null) {
       return (
         row: _PdfAssignmentRow(
           fileName: fileName,
@@ -1961,14 +1981,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       );
     }
 
-    final vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, code);
     if (vehicle == null) {
       return (
         row: _PdfAssignmentRow(
           fileName: fileName,
           status: 'skipped',
           maviCode: code,
-          reason: 'Ingen bil matcher $code i flåten',
+          reason: 'Ingen bil matcher ${code ?? driverName ?? 'ukjent'} i flåten',
         ),
         shareId: null,
         stowing: null,

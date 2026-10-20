@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/vehicle_inspection_checklist.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/vehicle_inspection.dart';
@@ -29,10 +30,10 @@ class _OwnerPortalInspectionsPageState extends State<OwnerPortalInspectionsPage>
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final d = await OwnerPortalData.load(widget.partner);
+    final items = await PartnerService.fetchVehicleInspections(widget.partner.id);
     if (mounted) {
       setState(() {
-        _items = d.inspections;
+        _items = items;
         _loading = false;
       });
     }

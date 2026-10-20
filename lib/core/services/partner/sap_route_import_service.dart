@@ -121,8 +121,16 @@ class SapRouteImportService {
         final bytes = row.bytes!;
         final bundle = row.bundle!;
         final code = row.code;
+        final driverName = RoutePdfTextService.parseDriverName(
+          bundle.headerText.isNotEmpty ? bundle.headerText : bundle.fullText,
+        );
+        final vehicle = RoutePdfTextService.findVehicleInLookup(
+          vehicleMap,
+          code,
+          driverName: driverName,
+        );
 
-        if (code == null) {
+        if (code == null && vehicle == null) {
           await _failItem(
             item: item,
             rejectOnFailure: rejectOnFailure,
@@ -141,12 +149,11 @@ class SapRouteImportService {
           continue;
         }
 
-        final vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, code);
         if (vehicle == null) {
           await _failItem(
             item: item,
             rejectOnFailure: rejectOnFailure,
-            reason: 'Ingen bil matcher $code',
+            reason: 'Ingen bil matcher ${code ?? driverName ?? 'ukjent'}',
             bytes: bytes,
             detectedCode: code,
             skippedItems: skippedItems,
@@ -156,7 +163,7 @@ class SapRouteImportService {
             fileName: item.fileName,
             ok: false,
             maviCode: code,
-            message: 'Ingen bil matcher $code',
+            message: 'Ingen bil matcher ${code ?? driverName ?? 'ukjent'}',
           ));
           bumpProgress();
           continue;
@@ -362,6 +369,7 @@ class SapRouteImportService {
       vehicles: vehicles.where(PartnerService.isMaviFleetVehicle),
       unitCodeOf: (v) => v.unitCode,
       registrationOf: (v) => v.registrationNumber,
+      driverNameOf: (v) => v.driverName,
     );
   }
 }

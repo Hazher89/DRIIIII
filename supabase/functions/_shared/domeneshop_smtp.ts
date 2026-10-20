@@ -18,7 +18,7 @@ export function readSmtpConfig(): SmtpConfig | { error: string } {
   }
 
   const from = Deno.env.get("SMTP_FROM")?.trim() || user;
-  const fromName = Deno.env.get("SMTP_FROM_NAME")?.trim() || "DriftPro";
+  const fromName = Deno.env.get("SMTP_FROM_NAME")?.trim() || "MAVI/DriftPro";
   const test = (Deno.env.get("EMAIL_TEST") ?? "").toLowerCase() === "true";
 
   return {

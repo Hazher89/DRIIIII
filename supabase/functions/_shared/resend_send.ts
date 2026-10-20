@@ -21,7 +21,7 @@ export function readResendSendConfig():
   const fromName =
     Deno.env.get("RESEND_FROM_NAME")?.trim() ||
     Deno.env.get("SMTP_FROM_NAME")?.trim() ||
-    "DriftPro";
+    "MAVI/DriftPro";
   const test = (Deno.env.get("EMAIL_TEST") ?? "").toLowerCase() === "true";
   const replyTo = Deno.env.get("RESEND_REPLY_TO")?.trim() ||
     Deno.env.get("SMTP_REPLY_TO")?.trim();

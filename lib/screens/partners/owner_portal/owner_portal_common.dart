@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/partner/fleet_analytics_service.dart';
+import '../../../core/services/partner/partner_portal_data_cache.dart';
 import '../../../core/services/partner/partner_portal_scope.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
@@ -87,7 +88,20 @@ class OwnerPortalData {
   List<PartnerRouteShare> get routesToday =>
       routes.where(ownerRouteIsToday).toList();
 
-  /// Kun ruter som trenger aksept (ikke alle kommende).
+  /// I dag + fremover (inkl. ventende aksept og allerede aksepterte).
+  List<PartnerRouteShare> get routesKommende {
+    final upcoming = routes.where((r) => !ownerRouteIsPast(r)).toList();
+    upcoming.sort((a, b) {
+      final aPending = ownerRouteNeedsPortalAck(a);
+      final bPending = ownerRouteNeedsPortalAck(b);
+      if (aPending && !bPending) return -1;
+      if (bPending && !aPending) return 1;
+      return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
+    });
+    return upcoming;
+  }
+
+  /// Kun ruter som trenger aksept (for banner / hurtigvalg).
   List<PartnerRouteShare> get routesNew {
     final pending = routes.where(ownerRouteNeedsPortalAck).toList();
     pending.sort((a, b) => ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b)));
@@ -97,9 +111,9 @@ class OwnerPortalData {
   List<PartnerRouteShare> get routesUpcoming =>
       routes.where((r) => ownerRouteIsActive(r) && !ownerRouteIsToday(r)).toList();
 
-  /// Alt som ikke venter på aksept — inkl. aksepterte ruter for i morgen / fremover.
+  /// Kalenderdager før i dag.
   List<PartnerRouteShare> get routesPast {
-    final past = routes.where((r) => !ownerRouteNeedsPortalAck(r)).toList();
+    final past = routes.where(ownerRouteIsPast).toList();
     past.sort((a, b) => ownerRouteCalendarDay(b).compareTo(ownerRouteCalendarDay(a)));
     return past;
   }
@@ -128,28 +142,66 @@ class OwnerPortalData {
     required this.shiftsById,
   });
 
-  static Future<OwnerPortalData> load(Partner partner) async {
+  static Future<OwnerPortalData> load(
+    Partner partner, {
+    bool forceRefresh = false,
+  }) async {
+    final key = PartnerPortalDataCache.ownerKey(partner);
+    if (!forceRefresh) {
+      final cached = PartnerPortalDataCache.get<OwnerPortalData>(key);
+      if (cached != null) return cached;
+      final inflight = PartnerPortalDataCache.inFlight<OwnerPortalData>(key);
+      if (inflight != null) return inflight;
+    }
+
+    final future = _loadFresh(partner);
+    PartnerPortalDataCache.setInFlight(key, future);
+    try {
+      final data = await future;
+      PartnerPortalDataCache.put(key, data);
+      return data;
+    } finally {
+      PartnerPortalDataCache.clearInFlight(key);
+    }
+  }
+
+  static Future<OwnerPortalData> _loadFresh(Partner partner) async {
     await PartnerPortalScope.assertAccess(partnerId: partner.id);
     final vehicles = await PartnerService.fetchVehicles(partner.id);
-    final vidSet = vehicles.map((v) => v.id).toSet();
-    var routes = await PartnerService.fetchRouteShares(partner.id, sentOnly: true);
-    routes = PartnerPortalScope.routesForPartner(routes, partner.id);
+    final vidList = vehicles.map((v) => v.id).toList();
+    final vidSet = vidList.toSet();
     final now = DateTime.now();
-    final snapshots = await PartnerService.fetchFleetSnapshotsRange(
-      companyId: partner.companyId,
-      from: now.subtract(const Duration(days: 90)),
-      to: now,
-    );
-    final partnerSnaps = snapshots.where((s) => vidSet.contains(s.partnerVehicleId)).toList();
-    List<PartnerDocument> docs = const [];
-    try {
-      docs = await PartnerService.fetchOwnerPortalDocuments(partner.id);
-    } catch (_) {
-      docs = const [];
-    }
-    final meetings = await PartnerService.fetchPortalMeetings(partner.id);
-    final inspections = await PartnerService.fetchVehicleInspections(partner.id);
-    final shiftList = await PartnerService.fetchFleetShifts(partner.companyId);
+
+    final results = await Future.wait<Object>([
+      PartnerService.fetchRouteShares(partner.id, sentOnly: true),
+      PartnerService.fetchFleetSnapshotsRange(
+        companyId: partner.companyId,
+        from: now.subtract(const Duration(days: 90)),
+        to: now,
+        partnerVehicleIds: vidList.isEmpty ? null : vidList,
+      ),
+      () async {
+        try {
+          return await PartnerService.fetchOwnerPortalDocuments(partner.id);
+        } catch (_) {
+          return const <PartnerDocument>[];
+        }
+      }(),
+      PartnerService.fetchPortalMeetings(partner.id),
+      PartnerService.fetchVehicleInspections(partner.id),
+      PartnerService.fetchFleetShifts(partner.companyId),
+    ]);
+
+    var routes = results[0] as List<PartnerRouteShare>;
+    routes = PartnerPortalScope.routesForPartner(routes, partner.id);
+    final snapshots = results[1] as List<PartnerVehicleFleetSnapshot>;
+    final partnerSnaps = snapshots
+        .where((s) => vidSet.contains(s.partnerVehicleId))
+        .toList();
+    final docs = results[2] as List<PartnerDocument>;
+    final meetings = results[3] as List<PartnerMeeting>;
+    final inspections = results[4] as List<PartnerVehicleInspection>;
+    final shiftList = results[5] as List<FleetShiftDefinition>;
     final shiftsById = {for (final s in shiftList) s.id: s};
 
     final labels = {for (final v in vehicles) v.id: MaviUnitCodes.normalize(v.unitCode)};
@@ -164,12 +216,24 @@ class OwnerPortalData {
       vehiclesPerPartner: {partner.id: vehicles.length},
     );
 
+    final routesByVehicle = <String, List<PartnerRouteShare>>{};
+    for (final r in routes) {
+      final vid = r.partnerVehicleId;
+      if (vid == null) continue;
+      (routesByVehicle[vid] ??= []).add(r);
+    }
+    final snapsByVehicle = <String, List<PartnerVehicleFleetSnapshot>>{};
+    for (final s in partnerSnaps) {
+      (snapsByVehicle[s.partnerVehicleId] ??= []).add(s);
+    }
+
     final stats = <OwnerVehicleStats>[];
     for (final v in vehicles) {
       final vid = v.id;
-      final vRoutes = routes.where((r) => r.partnerVehicleId == vid).toList();
-      final vSnaps = partnerSnaps.where((s) => s.partnerVehicleId == vid);
-      final routeDayKeys = vRoutes.map((r) => ownerRouteCalendarDay(r).millisecondsSinceEpoch).toSet();
+      final vRoutes = routesByVehicle[vid] ?? const <PartnerRouteShare>[];
+      final vSnaps = snapsByVehicle[vid] ?? const <PartnerVehicleFleetSnapshot>[];
+      final routeDayKeys =
+          vRoutes.map((r) => ownerRouteCalendarDay(r).millisecondsSinceEpoch).toSet();
       var har = 0, ledig = 0, fri = 0;
       for (final s in vSnaps) {
         switch (s.status) {
@@ -232,6 +296,24 @@ String ownerRouteArea(PartnerRouteShare route, Map<String, FleetShiftDefinition>
   final title = route.title?.trim();
   if (title != null && title.isNotEmpty) return title;
   return '—';
+}
+
+/// Ren MAVI-kode for portal-lister (M0096), ikke UUID / NO_O_….
+String portalRouteMaviLabel(PartnerRouteShare route, {String? unitCode}) {
+  if (unitCode != null && unitCode.trim().isNotEmpty) {
+    final fromUnit = MaviUnitCodes.shortLabel(unitCode);
+    if (fromUnit.startsWith('M') || fromUnit.isNotEmpty) return fromUnit;
+  }
+  final fromTitle = MaviUnitCodes.extractShortLabel(route.title);
+  if (fromTitle != null) return fromTitle;
+  final title = route.title?.trim();
+  if (title == null || title.isEmpty) return 'Rute';
+  // Strip vanlige støyprefikser / UUID-haler.
+  final cleaned = title
+      .replaceFirst(RegExp(r'^Rute\s+', caseSensitive: false), '')
+      .replaceAll(RegExp(r'\s*[—\-]\s*[0-9a-f]{8}-[0-9a-f\-]{27,}.*$', caseSensitive: false), '')
+      .trim();
+  return cleaned.isEmpty ? 'Rute' : cleaned;
 }
 
 class OwnerSectionTitle extends StatelessWidget {

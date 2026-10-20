@@ -1,3 +1,4 @@
+import '../../../core/services/partner/partner_portal_data_cache.dart';
 import '../../../core/services/partner/partner_portal_scope.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../models/partner/fleet_shift.dart';
@@ -21,9 +22,22 @@ class DriverPortalData {
     required this.shiftsById,
   });
 
-  /// Kun ruter som trenger aksept.
+  /// I dag + fremover (inkl. ventende aksept og allerede aksepterte).
+  List<PartnerRouteShare> get routesKommende {
+    final upcoming = routes.where((r) => !ownerRouteIsPast(r)).toList();
+    upcoming.sort((a, b) {
+      final aPending = ownerRouteNeedsPortalAck(a);
+      final bPending = ownerRouteNeedsPortalAck(b);
+      if (aPending && !bPending) return -1;
+      if (bPending && !aPending) return 1;
+      return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
+    });
+    return upcoming;
+  }
+
+  /// Kun ruter som trenger aksept (for banner / hurtigvalg).
   List<PartnerRouteShare> get routesNew {
-    final pending = routes.where((r) => r.requiresAck).toList();
+    final pending = routes.where(ownerRouteNeedsPortalAck).toList();
     pending.sort((a, b) => ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b)));
     return pending;
   }
@@ -33,16 +47,43 @@ class DriverPortalData {
   List<PartnerRouteShare> get routesUpcoming =>
       routes.where((r) => ownerRouteIsActive(r) && !ownerRouteIsToday(r)).toList();
 
-  /// Alt som ikke venter på aksept — inkl. aksepterte ruter for i morgen / fremover.
+  /// Kalenderdager før i dag.
   List<PartnerRouteShare> get routesArchive {
-    final past = routes.where((r) => !r.requiresAck).toList();
+    final past = routes.where(ownerRouteIsPast).toList();
     past.sort((a, b) => ownerRouteCalendarDay(b).compareTo(ownerRouteCalendarDay(a)));
     return past;
   }
 
-  int get pendingAck => routes.where((r) => r.requiresAck).length;
+  int get pendingAck => routes.where(ownerRouteNeedsPortalAck).length;
 
   static Future<DriverPortalData> load({
+    required Partner partner,
+    required String? partnerVehicleId,
+    bool forceRefresh = false,
+  }) async {
+    final key = PartnerPortalDataCache.driverKey(partner, partnerVehicleId);
+    if (!forceRefresh) {
+      final cached = PartnerPortalDataCache.get<DriverPortalData>(key);
+      if (cached != null) return cached;
+      final inflight = PartnerPortalDataCache.inFlight<DriverPortalData>(key);
+      if (inflight != null) return inflight;
+    }
+
+    final future = _loadFresh(
+      partner: partner,
+      partnerVehicleId: partnerVehicleId,
+    );
+    PartnerPortalDataCache.setInFlight(key, future);
+    try {
+      final data = await future;
+      PartnerPortalDataCache.put(key, data);
+      return data;
+    } finally {
+      PartnerPortalDataCache.clearInFlight(key);
+    }
+  }
+
+  static Future<DriverPortalData> _loadFresh({
     required Partner partner,
     required String? partnerVehicleId,
   }) async {
@@ -60,21 +101,27 @@ class DriverPortalData {
         }
       }
     }
-    final routes = partner.routesOwnerOnly
-        ? const <PartnerRouteShare>[]
-        : await PartnerService.fetchRouteShares(
-            partner.id,
-            partnerVehicleId: partnerVehicleId,
-            sentOnly: true,
-          );
-    final docs = await PartnerService.fetchDriverPortalDocuments(partner.id);
-    final shiftList = await PartnerService.fetchFleetShifts(partner.companyId);
+
+    final results = await Future.wait<Object>([
+      partner.routesOwnerOnly
+          ? Future<List<PartnerRouteShare>>.value(const [])
+          : PartnerService.fetchRouteShares(
+              partner.id,
+              partnerVehicleId: partnerVehicleId,
+              sentOnly: true,
+            ),
+      PartnerService.fetchDriverPortalDocuments(partner.id),
+      PartnerService.fetchFleetShifts(partner.companyId),
+    ]);
+
     return DriverPortalData(
       partner: partner,
       vehicle: vehicle,
-      routes: routes,
-      documents: docs,
-      shiftsById: {for (final s in shiftList) s.id: s},
+      routes: results[0] as List<PartnerRouteShare>,
+      documents: results[1] as List<PartnerDocument>,
+      shiftsById: {
+        for (final s in results[2] as List<FleetShiftDefinition>) s.id: s,
+      },
     );
   }
 }

@@ -744,16 +744,24 @@ class RoutePdfTextService {
   static String normalizeUnitCodeForMatch(String raw) {
     final s = raw.trim().toUpperCase();
     if (s.isEmpty) return '';
-    final noOm = RegExp(r'NO\s*[_-]?\s*O\s*[_-]?\s*M(\d{1,5})\b', caseSensitive: false).firstMatch(s);
+    final noOm = RegExp(r'NO\s*[_-]?\s*O\s*[_-]?\s*M0*(\d{1,5})\b', caseSensitive: false).firstMatch(s);
     if (noOm != null) {
       final n = int.tryParse(noOm.group(1)!);
       if (n != null) return 'M$n';
     }
-    final mDigits = RegExp(r'\bM(\d{1,5})\b', caseSensitive: false).firstMatch(s);
+    // Navnebasert Resource ID: NO_O_M0JIM → MJIM
+    final noOmAlpha = RegExp(
+      r'NO\s*[_-]?\s*O\s*[_-]?\s*M0*([A-Z][A-Z0-9]{1,8})\b',
+      caseSensitive: false,
+    ).firstMatch(s);
+    if (noOmAlpha != null) return 'M${noOmAlpha.group(1)!.toUpperCase()}';
+    final mDigits = RegExp(r'\bM0*(\d{1,5})\b', caseSensitive: false).firstMatch(s);
     if (mDigits != null) {
       final n = int.tryParse(mDigits.group(1)!);
       if (n != null) return 'M$n';
     }
+    final mAlpha = RegExp(r'\bM0*([A-Z][A-Z0-9]{1,8})\b', caseSensitive: false).firstMatch(s);
+    if (mAlpha != null) return 'M${mAlpha.group(1)!.toUpperCase()}';
     return s.replaceAll(RegExp(r'[^A-Z0-9]'), '');
   }
 
@@ -774,6 +782,15 @@ class RoutePdfTextService {
     ).firstMatch(header);
     if (glued != null) {
       return _codeFromDigits(glued.group(1)!);
+    }
+
+    // Navnebasert: «NO_O_M0JIM» / «NO_O_M0JIMResource ID»
+    final gluedAlpha = RegExp(
+      r'NO\s*[_\s.-]*O\s*[_\s.-]*M\s*0*([A-Z][A-Z0-9]{1,8})(?=\s*(?:Resource|Ressource)\s*(?:\s*ID)?|Driver|\r|\n|[^0-9A-Za-z]|$)',
+      caseSensitive: false,
+    ).firstMatch(header);
+    if (gluedAlpha != null) {
+      return _codeFromAlphaToken(gluedAlpha.group(1)!);
     }
 
     // «Obaidah 045 045 obaidahDriver Name» / «Mohamed 021 021 …»
@@ -948,6 +965,10 @@ class RoutePdfTextService {
     if (noOm != null) {
       return _codeFromDigits(noOm.group(1)!);
     }
+    final noOmAlpha = RegExp(r'NO_O_M0*([A-Z][A-Z0-9]{1,8})', caseSensitive: false).firstMatch(upper);
+    if (noOmAlpha != null) {
+      return _codeFromAlphaToken(noOmAlpha.group(1)!);
+    }
 
     String? last;
     for (final m in RegExp(
@@ -955,6 +976,14 @@ class RoutePdfTextService {
       caseSensitive: false,
     ).allMatches(upper)) {
       last = _codeFromDigits(m.group(1)!);
+    }
+    if (last != null) return last;
+
+    for (final m in RegExp(
+      r'[_\-\.]M0*([A-Z][A-Z0-9]{1,8})(?=[_\-\.]|\.PDF|$)',
+      caseSensitive: false,
+    ).allMatches(upper)) {
+      last = _codeFromAlphaToken(m.group(1)!);
     }
     if (last != null) return last;
 
@@ -990,9 +1019,16 @@ class RoutePdfTextService {
     }
 
     void consider(RegExpMatch m, {required bool fullNoOm}) {
-      final digits = m.group(1);
-      if (digits == null || digits.isEmpty) return;
-      final code = _codeFromDigits(digits);
+      // Digit-mønstre: group(1)=siffer. Alpha: group(1)=JIM / M0JIM.
+      // bareM tall: group(1)=nuller, group(2)=siffer.
+      final rawToken = (m.groupCount >= 2 &&
+              m.group(2) != null &&
+              RegExp(r'^\d+$').hasMatch(m.group(2)!) &&
+              RegExp(r'^0*$').hasMatch(m.group(1) ?? ''))
+          ? m.group(2)!
+          : m.group(1);
+      if (rawToken == null || rawToken.isEmpty) return;
+      final code = _codeFromDigits(rawToken) ?? _codeFromAlphaToken(rawToken);
       if (code == null || !_isPlausibleMaviNumber(code)) return;
 
       final start = m.start.clamp(0, text.length);
@@ -1061,6 +1097,14 @@ class RoutePdfTextService {
         r'NO_O_(M\d{1,5})(?=\s*(?:Resource|Ressource)|Driver|[^0-9A-Za-z]|$)',
         caseSensitive: false,
       ),
+      RegExp(
+        r'NO\s*[_\s.-]*O\s*[_\s.-]*M\s*0*([A-Z][A-Z0-9]{1,8})(?=\s*(?:Resource|Ressource)\s*(?:\s*ID)?|Driver|\r|\n|[^0-9A-Za-z]|$)',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'NO_O_(M0*[A-Z][A-Z0-9]{1,8})(?=\s*(?:Resource|Ressource)|Driver|[^0-9A-Za-z]|$)',
+        caseSensitive: false,
+      ),
     ];
     for (final re in fullPatterns) {
       for (final m in re.allMatches(text)) {
@@ -1076,9 +1120,22 @@ class RoutePdfTextService {
       consider(m, fullNoOm: false);
     }
 
+    final labeledAlpha = RegExp(
+      r'(?:resource\s*(?:id|no|number|#)?|vehicle\s*(?:id|no|#)?|unit\s*code)\s*[:=\s#-]*\s*(?:NO\s*[_\s.-]*O\s*[_\s.-]*M\s*0*)?M?\s*0*([A-Z][A-Z0-9]{1,8})\b',
+      caseSensitive: false,
+    );
+    for (final m in labeledAlpha.allMatches(text)) {
+      consider(m, fullNoOm: false);
+    }
+
     // Kun stor M — unngår «strøm 27» fra datoer og stedsnavn.
     final bareM = RegExp(r'(?<![A-Z])M(0*)(\d{1,5})(?![0-9])');
     for (final m in bareM.allMatches(text)) {
+      consider(m, fullNoOm: false);
+    }
+
+    final bareMAlpha = RegExp(r'(?<![A-Z])M0*([A-Z][A-Z0-9]{1,8})\b');
+    for (final m in bareMAlpha.allMatches(text)) {
       consider(m, fullNoOm: false);
     }
 
@@ -1092,17 +1149,32 @@ class RoutePdfTextService {
     return 'M$n';
   }
 
-  static bool _isPlausibleMaviNumber(String code) {
-    final n = int.tryParse(code.replaceFirst(RegExp(r'^M', caseSensitive: false), ''));
-    if (n == null) return false;
-    return n >= 1 && n <= 9999;
+  static String? _codeFromAlphaToken(String token) {
+    var t = token.trim().toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (t.startsWith('M') && RegExp(r'^M0*[A-Z]').hasMatch(t)) {
+      t = t.replaceFirst(RegExp(r'^M0*'), '');
+    }
+    if (t.isEmpty || t.length > 10) return null;
+    if (!RegExp(r'^[A-Z]').hasMatch(t)) return null;
+    // Unngå rene tall her (håndteres av _codeFromDigits).
+    if (RegExp(r'^\d+$').hasMatch(t)) return null;
+    return 'M$t';
   }
 
-  /// Flere nøkler per bil (M42, NO_O_M0042, …) for robust matching.
+  static bool _isPlausibleMaviNumber(String code) {
+    final rest = code.replaceFirst(RegExp(r'^M', caseSensitive: false), '');
+    final n = int.tryParse(rest);
+    if (n != null) return n >= 1 && n <= 9999;
+    // Navnebaserte koder (MJIM).
+    return RegExp(r'^[A-Z][A-Z0-9]{1,8}$').hasMatch(rest.toUpperCase());
+  }
+
+  /// Flere nøkler per bil (M42, NO_O_M0042, MJIM, sjåførnavn …) for robust matching.
   static Map<String, T> buildVehicleLookupMap<T>({
     required Iterable<T> vehicles,
     required String Function(T) unitCodeOf,
     String? Function(T)? registrationOf,
+    String? Function(T)? driverNameOf,
   }) {
     final map = <String, T>{};
     void put(String? key, T v) {
@@ -1116,18 +1188,41 @@ class RoutePdfTextService {
       put(unitCodeOf(v), v);
       final reg = registrationOf?.call(v);
       if (reg != null && reg.trim().isNotEmpty) put(reg, v);
+      final driver = driverNameOf?.call(v)?.trim();
+      if (driver != null && driver.isNotEmpty) {
+        put(driver, v);
+        final first = driver.split(RegExp(r'\s+')).first;
+        if (first.length >= 2) {
+          put(first, v);
+          put('M$first', v);
+        }
+      }
     }
     return map;
   }
 
   static T? findVehicleInLookup<T>(
     Map<String, T> map,
-    String? code,
-  ) {
-    if (code == null || code.isEmpty) return null;
-    final norm = normalizeUnitCodeForMatch(code);
-    final compact = code.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
-    return map[norm] ?? map[compact];
+    String? code, {
+    String? driverName,
+  }) {
+    if (code != null && code.isNotEmpty) {
+      final norm = normalizeUnitCodeForMatch(code);
+      final compact = code.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+      final hit = map[norm] ?? map[compact];
+      if (hit != null) return hit;
+    }
+    if (driverName != null && driverName.trim().isNotEmpty) {
+      final d = driverName.trim().toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
+      final compact = d.replaceAll(' ', '');
+      final first = d.split(' ').first;
+      return map[d] ??
+          map[compact] ??
+          map[first] ??
+          map['M$first'] ??
+          map[normalizeUnitCodeForMatch('M$first')];
+    }
+    return null;
   }
 }
 

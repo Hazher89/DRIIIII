@@ -7,6 +7,7 @@ import '../../../core/services/sms/sms_phone_utils.dart';
 import '../../../core/utils/portal_credentials.dart';
 import '../../../core/constants/mavi_fleet_roles.dart';
 import '../../../core/layout/web_layout.dart';
+import '../../../core/services/brreg_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/partner_workforce_service.dart';
@@ -214,6 +215,8 @@ enum _OverviewSection {
 }
 
 class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
+  late final TextEditingController _orgNumber;
+  late final TextEditingController _companyName;
   late final TextEditingController _owner;
   late final TextEditingController _phone;
   late final TextEditingController _email;
@@ -225,6 +228,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   late final TextEditingController _transportCount;
   late final TextEditingController _auditPlate;
   late final TextEditingController _notes;
+  String? _tradeName;
+  Map<String, dynamic>? _brregSnapshot;
+  bool _brregLoading = false;
   final List<_VehicleRowState> _rows = [];
   bool _saving = false;
   bool _portalSaving = false;
@@ -250,6 +256,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   void initState() {
     super.initState();
     final p = widget.partner;
+    _orgNumber = TextEditingController(text: p.orgNumber ?? '');
+    _companyName = TextEditingController(text: p.name);
     _owner = TextEditingController(text: p.ownerName ?? '');
     _phone = TextEditingController(text: p.phone ?? '');
     _email = TextEditingController(text: p.email ?? '');
@@ -261,6 +269,10 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _transportCount = TextEditingController(text: '${p.transportLicenseCount}');
     _auditPlate = TextEditingController(text: p.auditPlate ?? '');
     _notes = TextEditingController(text: p.notes ?? '');
+    _tradeName = p.tradeName;
+    _brregSnapshot = p.brregSnapshot == null
+        ? null
+        : Map<String, dynamic>.from(p.brregSnapshot!);
     _routesOwnerOnly = p.routesOwnerOnly;
     _workforceEnabled = p.workforceEnabled;
     _portalAccess = Map<String, dynamic>.from(p.portalAccess);
@@ -546,6 +558,21 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.partner.id != widget.partner.id) return;
     final p = widget.partner;
+    // Synk bedriftsinfo når parent har lastet inn oppdatert partner (f.eks. etter Lagre).
+    if (oldWidget.partner.orgNumber != p.orgNumber ||
+        oldWidget.partner.name != p.name ||
+        oldWidget.partner.tradeName != p.tradeName) {
+      _orgNumber.text = p.orgNumber ?? '';
+      _companyName.text = p.name;
+      _tradeName = p.tradeName;
+      _brregSnapshot = p.brregSnapshot == null
+          ? null
+          : Map<String, dynamic>.from(p.brregSnapshot!);
+      if ((p.address ?? '').trim().isNotEmpty) _address.text = p.address!;
+      if ((p.postalCode ?? '').trim().isNotEmpty) _postal.text = p.postalCode!;
+      if ((p.city ?? '').trim().isNotEmpty) _city.text = p.city!;
+      if ((p.email ?? '').trim().isNotEmpty) _email.text = p.email!;
+    }
     _owner.text = p.ownerName ?? '';
     _phone.text = p.phone ?? '';
     _employees.text = p.employeeCount?.toString() ?? '';
@@ -672,26 +699,26 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     });
   }
 
-  void _scheduleOwnerPhoneReplaceCheck(_OwnerPortalRowState row) {
-    row.phoneDebounce?.cancel();
-    if (!row.hasPortalAccount || !row.phoneChangedFromSaved()) {
-      if (mounted && row.pendingPhoneReplace) {
-        setState(() => row.pendingPhoneReplace = false);
-      }
-      return;
+  /// Merk at nummer er endret — slett/reprovisjoner skjer først ved lagring (ikke midt under skriving).
+  void _markOwnerPhoneEdited(_OwnerPortalRowState row) {
+    if (!mounted) return;
+    final changed = row.phoneChangedFromSaved();
+    if (row.pendingPhoneReplace != changed) {
+      setState(() => row.pendingPhoneReplace = changed);
     }
-    row.phoneDebounce = Timer(const Duration(milliseconds: 700), () async {
-      if (!mounted || !row.phoneChangedFromSaved()) return;
-      await _deleteOwnerPortalAccount(row, silent: true);
-      if (mounted) {
-        setState(() => row.pendingPhoneReplace = true);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Gammel bil-eier-konto er slettet. Send innlogging til det nye nummeret.'),
-          ),
-        );
+  }
+
+  Future<void> _syncPartnerContactPhone(String phone) async {
+    final normalized = normalizePhoneNo(phone.trim()) ?? phone.trim();
+    if (normalized.length < 8) return;
+    try {
+      await PartnerService.updatePartnerFields(widget.partner.id, {
+        'phone': phone.trim(),
+      });
+      if (_phone.text.trim() != phone.trim()) {
+        _phone.text = phone.trim();
       }
-    });
+    } catch (_) {}
   }
 
   Future<void> _deleteOwnerPortalAccount(_OwnerPortalRowState row, {bool silent = false}) async {
@@ -760,6 +787,12 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       );
       return;
     }
+    if (!isValidNorwegianMobile(phone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ugyldig norsk mobilnummer (8 siffer, starter på 4 eller 9).')),
+      );
+      return;
+    }
     final username = row.usernameField.text.trim().toLowerCase();
     final password = row.passwordField.text.trim();
     if (username.length < 3) {
@@ -774,8 +807,10 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       );
       return;
     }
+    final phoneChanged = row.phoneChangedFromSaved();
     setState(() => _portalSaving = true);
     try {
+      // Behold samme portal-konto — provision oppdaterer telefon på eksisterende id.
       final res = await PartnerService.provisionOwnerPortal(
         partnerId: widget.partner.id,
         companyId: widget.partner.companyId,
@@ -789,12 +824,18 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         regeneratePassword: true,
       );
       row.pendingPhoneReplace = false;
-      await _showCredentialsDialog(res, title: 'Portal for bedriftsansvarlig opprettet');
+      await _syncPartnerContactPhone(phone);
+      await _showCredentialsDialog(
+        res,
+        title: phoneChanged
+            ? 'Telefon oppdatert — innlogging sendt'
+            : 'Portal for bedriftsansvarlig opprettet',
+      );
       await _loadPortals();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kunne ikke opprette bedriftsansvarlig: ${_friendlyPartnerSaveError(e)}'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Kunne ikke lagre bedriftsansvarlig: ${_friendlyPartnerSaveError(e)}'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -1051,9 +1092,63 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     });
   }
 
+  Future<void> _fetchBrregAndApply() async {
+    final org = _orgNumber.text.replaceAll(RegExp(r'\s'), '');
+    if (org.length != 9) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Org.nr må være 9 siffer.')),
+      );
+      return;
+    }
+    setState(() => _brregLoading = true);
+    try {
+      final d = await BrregService.fetchByOrgNumber(org);
+      if (!mounted) return;
+      if (d == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fant ingen bedrift i Brreg for dette org.nr.')),
+        );
+        return;
+      }
+      setState(() {
+        _orgNumber.text = d.orgNumber;
+        _companyName.text = d.name;
+        _tradeName = d.tradeName ?? _tradeName;
+        _address.text = d.street ?? _address.text;
+        _postal.text = d.postalCode ?? _postal.text;
+        _city.text = d.city ?? _city.text;
+        if ((_email.text.trim().isEmpty) && (d.email?.trim().isNotEmpty ?? false)) {
+          _email.text = d.email!.trim();
+        }
+        if ((_owner.text.trim().isEmpty) &&
+            (d.dailyLeaderName?.trim().isNotEmpty ?? false)) {
+          _owner.text = d.dailyLeaderName!.trim();
+        }
+        _brregSnapshot = Map<String, dynamic>.from(d.raw);
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Hentet ${d.name} fra Brreg. MAVI/biler beholdes — trykk Lagre for å oppdatere.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Brreg-feil: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _brregLoading = false);
+    }
+  }
+
   @override
   void dispose() {
     _vegvesenDebounce?.cancel();
+    _orgNumber.dispose();
+    _companyName.dispose();
     _owner.dispose();
     _phone.dispose();
     _email.dispose();
@@ -1177,15 +1272,30 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   }
 
   Future<void> _save() async {
+    final name = _companyName.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bedriftsnavn er påkrevd.')),
+      );
+      return;
+    }
+    final orgRaw = _orgNumber.text.replaceAll(RegExp(r'\s'), '');
+    if (orgRaw.isNotEmpty && orgRaw.length != 9) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Org.nr må være 9 siffer (eller tomt).')),
+      );
+      return;
+    }
     setState(() => _saving = true);
     try {
       final p = widget.partner;
+      // Kun bedriftsinfo oppdateres her — MAVI/biler lagres videre under (samme partner-id).
       final updated = Partner(
         id: p.id,
         companyId: p.companyId,
-        orgNumber: p.orgNumber,
-        name: p.name,
-        tradeName: p.tradeName,
+        orgNumber: orgRaw.isEmpty ? null : orgRaw,
+        name: name,
+        tradeName: (_tradeName?.trim().isNotEmpty ?? false) ? _tradeName!.trim() : null,
         ownerName: _owner.text.trim().isEmpty ? null : _owner.text.trim(),
         phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
         email: _email.text.trim().isEmpty ? null : _email.text.trim(),
@@ -1202,7 +1312,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         employeeCount: int.tryParse(_employees.text),
         auditStatus: widget.partner.auditStatus,
         auditPlate: widget.partner.auditPlate,
-        brregSnapshot: p.brregSnapshot,
+        brregSnapshot: _brregSnapshot ?? p.brregSnapshot,
         lastMeetingAt: p.lastMeetingAt,
         nextMeetingAt: p.nextMeetingAt,
         lastAuditAt: p.lastAuditAt,
@@ -1215,6 +1325,41 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         createdAt: p.createdAt,
       );
       await PartnerService.updatePartner(p.id, updated);
+
+      // Kontakt-telefon = bedriftsansvarlig: oppdater portal-konto hvis nummer endres.
+      final contactPhone = _phone.text.trim();
+      if (contactPhone.length >= 8 && isValidNorwegianMobile(contactPhone)) {
+        for (final row in _ownerRows) {
+          if (!row.hasPortalAccount || row.accountId == null) continue;
+          final saved = row.savedNormalizedPhone;
+          final next = normalizePhoneNo(contactPhone);
+          if (next == null || next == saved) continue;
+          row.phone.text = contactPhone;
+          try {
+            await PartnerService.provisionOwnerPortal(
+              partnerId: p.id,
+              companyId: p.companyId,
+              phone: contactPhone,
+              partnerName: name,
+              orgNumber: orgRaw.isEmpty ? null : orgRaw,
+              portalAccountId: row.accountId,
+              ownerDisplayName: row.displayName.text.trim().isEmpty
+                  ? null
+                  : row.displayName.text.trim(),
+              usernameOverride: row.usernameField.text.trim().isNotEmpty
+                  ? row.usernameField.text.trim()
+                  : row.username,
+              passwordOverride: row.passwordField.text.trim().isNotEmpty
+                  ? row.passwordField.text.trim()
+                  : PortalCredentials.defaultPassword,
+              regeneratePassword: false,
+              sendCredentialsSms: false,
+            );
+            row.savedNormalizedPhone = next;
+            row.pendingPhoneReplace = false;
+          } catch (_) {}
+        }
+      }
 
       final vehicles = <PartnerVehicle>[];
       final seenUnits = <String>{};
@@ -1386,15 +1531,69 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
             PartnerModernSection(
               icon: Icons.apartment_outlined,
               title: 'Kontakt & bedrift',
-              subtitle: 'Org.nr ${p.orgNumber ?? "—"}',
+              subtitle:
+                  'Bytt org.nr og hent ny bedriftsinfo — MAVI og biler beholdes',
               children: [
+                PartnerWorkspaceField(
+                  label: 'Bedriftsnavn',
+                  controller: _companyName,
+                  hint: 'Oppdateres fra Brreg ved «Hent»',
+                ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: PartnerWorkspaceField(
+                        label: 'Org.nr (9 siffer)',
+                        controller: _orgNumber,
+                        keyboardType: TextInputType.number,
+                        hint: 'Skriv nytt org.nr og trykk Hent',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: FilledButton.icon(
+                        onPressed: _brregLoading || _saving ? null : _fetchBrregAndApply,
+                        icon: _brregLoading
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Icon(Icons.cloud_download_outlined, size: 18),
+                        label: Text(_brregLoading ? 'Henter…' : 'Hent'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: DriftProTheme.primaryGreen,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  'Kun bedriftsinfo oppdateres. MAVI-nummer, skilt, portal og ruter blir stående.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.35,
+                    color: PartnerModernUi.muted(context),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 if (wide) ...[
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(child: _field('Bedriftsansvarlig', _owner)),
                       const SizedBox(width: 12),
-                      Expanded(child: _field('Telefon (SMS-varsler)', _phone)),
+                      Expanded(
+                        child: PartnerWorkspaceField(
+                          label: 'Bedriftsansvarlig telefon',
+                          controller: _phone,
+                          hint: 'Norsk mobil — lagres også på portal-konto',
+                          keyboardType: TextInputType.phone,
+                        ),
+                      ),
                     ],
                   ),
                   Row(
@@ -1418,7 +1617,12 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                   ),
                 ] else ...[
                   _field('Bedriftsansvarlig', _owner),
-                  _field('Telefon (SMS-varsler)', _phone),
+                  PartnerWorkspaceField(
+                    label: 'Bedriftsansvarlig telefon',
+                    controller: _phone,
+                    hint: 'Norsk mobil — lagres også på portal-konto',
+                    keyboardType: TextInputType.phone,
+                  ),
                   _field('E-post', _email),
                   _field('Adresse', _address),
                   Row(
@@ -1618,7 +1822,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           title: 'Portal for bedriftsansvarlig',
           subtitle:
               'Brukernavn/passord genereres og sendes på SMS. '
-              'Ved bytte av telefon slettes gammel konto automatisk.',
+              'Du kan endre telefon og lagre — samme konto oppdateres.',
           trailing: Text(
             '$activeOwnerCount/${_ownerRows.length}',
             style: TextStyle(
@@ -1854,17 +2058,17 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               border: const OutlineInputBorder(),
               isDense: true,
               helperText: phoneChanged
-                  ? 'Nummer endret — gammel konto er slettet. Send innlogging til det nye nummeret.'
-                  : null,
+                  ? 'Nummer endret — trykk lagre for å oppdatere konto og sende SMS.'
+                  : 'Endre fritt, deretter lagre.',
             ),
             onChanged: (_) {
               setState(() {});
-              _scheduleOwnerPhoneReplaceCheck(row);
+              _markOwnerPhoneEdited(row);
             },
           ),
           const SizedBox(height: 8),
           Text(
-            'Brukernavnet følger bedriftsnavnet. Standardpassord er 000000. De bytter selv under Mer i portalen.',
+            'Brukernavnet følger bedriftsnavnet. Standardpassord er 000000. De bytter selv under Profil i portalen.',
             style: DriftProTheme.caption,
           ),
           const SizedBox(height: 8),
@@ -1894,8 +2098,10 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
             icon: const Icon(Icons.sms_outlined, size: 18),
             label: Text(
               needsNewCredentials
-                  ? (phoneChanged ? 'Send innlogging til nytt nummer' : 'Opprett innlogging og send SMS')
-                  : 'Lagre brukernavn og passord (SMS)',
+                  ? 'Opprett innlogging og send SMS'
+                  : (phoneChanged
+                      ? 'Lagre nytt telefonnummer (SMS)'
+                      : 'Lagre brukernavn og passord (SMS)'),
             ),
             style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
           ),

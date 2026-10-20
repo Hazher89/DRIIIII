@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/services/partner/partner_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -29,11 +30,12 @@ class _OwnerPortalMeetingsPageState extends State<OwnerPortalMeetingsPage> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final d = await OwnerPortalData.load(widget.partner);
+    final meetings = await PartnerService.fetchPortalMeetings(widget.partner.id);
+    final active = meetings.where((m) => !m.isArchived).toList();
     final now = DateTime.now();
-    final up = d.meetings.where((m) => !m.scheduledAt.isBefore(now)).toList()
+    final up = active.where((m) => !m.scheduledAt.isBefore(now)).toList()
       ..sort((a, b) => a.scheduledAt.compareTo(b.scheduledAt));
-    final past = d.meetings.where((m) => m.scheduledAt.isBefore(now)).toList()
+    final past = active.where((m) => m.scheduledAt.isBefore(now)).toList()
       ..sort((a, b) => b.scheduledAt.compareTo(a.scheduledAt));
     if (mounted) {
       setState(() {

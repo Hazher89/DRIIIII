@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/services/partner/mavi_unit_codes.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../widgets/partner_portal_page_shell.dart';
@@ -31,7 +31,7 @@ class OwnerPortalRoutesPage extends StatefulWidget {
 }
 
 class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
-  /// 0 = Nye ruter (trenger aksept), 1 = Tidligere
+  /// 0 = Kommende, 1 = Tidligere
   int _tab = 0;
   OwnerPortalData? _data;
   Map<String, PartnerVehicle> _vehicles = {};
@@ -56,7 +56,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
   void _applyLaunchFocus() {
     final focus = widget.launchFocus;
     if (focus == null || _data == null) return;
-    // Legacy: 0/1 = nye, 2 = tidligere. Nytt: 0 = nye, 1 = tidligere.
+    // Legacy: 0/1 = kommende, 2 = tidligere. Nytt: 0 = kommende, 1 = tidligere.
     final tab = focus.tabIndex >= 2 ? 1 : focus.tabIndex.clamp(0, 1);
     setState(() {
       _tab = tab;
@@ -65,9 +65,12 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
     widget.onLaunchFocusConsumed?.call();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool forceRefresh = false}) async {
     setState(() => _loading = true);
-    final d = await OwnerPortalData.load(widget.partner);
+    final d = await OwnerPortalData.load(
+      widget.partner,
+      forceRefresh: forceRefresh,
+    );
     if (mounted) {
       setState(() {
         _data = d;
@@ -79,6 +82,8 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
       }
     }
   }
+
+  Future<void> _reload() => _load(forceRefresh: true);
 
   void _selectVehicle(String vehicleId) {
     setState(() {
@@ -126,7 +131,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
                     segments: [
                       ButtonSegment(
                         value: 0,
-                        label: Text('Nye ruter (${_data!.routesNew.length})'),
+                        label: Text('Kommende (${_data!.routesKommende.length})'),
                         icon: Icon(
                           pending > 0 ? Icons.mark_email_unread : Icons.route_outlined,
                           size: 18,
@@ -146,7 +151,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
                   child: switch (_tab) {
                     0 => _newRoutesBody(),
                     _ => RefreshIndicator(
-                        onRefresh: _load,
+                        onRefresh: _reload,
                         child: OwnerPortalRouteHistoryView(
                           partnerId: widget.partner.id,
                           pastRoutes: _data!.routesPast,
@@ -154,6 +159,8 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
                           shifts: _data!.shiftsById,
                           vehicleFilterId: _vehicleFilterId,
                           onVehicleFilter: (id) => setState(() => _vehicleFilterId = id),
+                          onReload: _reload,
+                          onBehalfOfDriver: !widget.staffPortal,
                         ),
                       ),
                   },
@@ -164,40 +171,24 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
   }
 
   Widget _newRoutesBody() {
-    final filtered = _sortedPendingFirst(_filtered(_data!.routesNew));
+    final filtered = _sortedPendingFirst(_filtered(_data!.routesKommende));
+    final buckets = buildOwnerDayBuckets(filtered, OwnerRouteHistorySort.dateAsc);
+    final muted = PartnerUi.mutedText(context);
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: _reload,
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           if (!widget.staffPortal) SliverToBoxAdapter(child: _vehicleFilters()),
-          if (!widget.staffPortal && _data!.vehicleStats.isNotEmpty)
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                child: Text(
-                  'Flåte per bil',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                    color: PartnerUi.mutedText(context),
-                  ),
-                ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
+              child: Text(
+                'Her ligger både nye ruter og aksepterte ruter for i dag og fremover.',
+                style: TextStyle(fontSize: 12.5, height: 1.35, color: muted),
               ),
             ),
-          if (!widget.staffPortal && _data!.vehicleStats.isNotEmpty)
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 84,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                  itemCount: _data!.vehicleStats.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) => _compactVehicleTile(_data!.vehicleStats[i]),
-                ),
-              ),
-            ),
+          ),
           if (filtered.isEmpty)
             SliverFillRemaining(
               hasScrollBody: false,
@@ -205,39 +196,79 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Text(
-                    'Ingen nye ruter. Du får varsel når noe tildeles.',
+                    'Ingen kommende ruter. Du får varsel når noe tildeles.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: PartnerUi.mutedText(context)),
+                    style: TextStyle(color: muted),
                   ),
                 ),
               ),
             )
           else
             SliverPadding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 24),
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 24),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, i) {
-                    final route = filtered[i];
-                    final vehicle = _vehicles[route.partnerVehicleId];
-                    final vehicleLabel = vehicle != null
-                        ? '${MaviUnitCodes.normalize(vehicle.unitCode)} · ${vehicle.registrationNumber}'
-                        : null;
-                    return PartnerPortalRouteListTile(
-                      route: route,
-                      shifts: _data!.shiftsById,
-                      onReload: _load,
-                      onBehalfOfDriver: !widget.staffPortal,
-                      vehicleLabel: vehicleLabel,
-                    );
+                    final b = buckets[i];
+                    return _kommendeDaySection(b, muted);
                   },
-                  childCount: filtered.length,
+                  childCount: buckets.length,
                 ),
               ),
             ),
         ],
       ),
     );
+  }
+
+  Widget _kommendeDaySection(OwnerRouteDayBucket b, Color muted) {
+    final today = _startOfLocalDay(DateTime.now());
+    final day = b.day;
+    final String dayLabel;
+    if (day == today) {
+      dayLabel = 'I dag · ${DateFormat('d. MMM', 'nb').format(day)}';
+    } else if (day == today.add(const Duration(days: 1))) {
+      dayLabel = 'I morgen · ${DateFormat('d. MMM', 'nb').format(day)}';
+    } else {
+      dayLabel = DateFormat('EEEE d. MMMM', 'nb').format(day);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
+            child: Text(
+              dayLabel,
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+            ),
+          ),
+          for (final route in b.routes)
+            PartnerPortalRouteListTile(
+              route: route,
+              shifts: _data!.shiftsById,
+              onReload: _reload,
+              onBehalfOfDriver: !widget.staffPortal,
+              vehicleLabel: _vehicleLabel(route),
+              unitCode: _vehicles[route.partnerVehicleId]?.unitCode,
+            ),
+        ],
+      ),
+    );
+  }
+
+  DateTime _startOfLocalDay(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  String? _vehicleLabel(PartnerRouteShare route) {
+    final vehicle = _vehicles[route.partnerVehicleId];
+    if (vehicle == null) return null;
+    final plate = vehicle.registrationNumber.trim();
+    if (plate.isEmpty || plate == '—') {
+      return MaviUnitCodes.shortLabel(vehicle.unitCode);
+    }
+    return '${MaviUnitCodes.shortLabel(vehicle.unitCode)} · $plate';
   }
 
   List<PartnerRouteShare> _filtered(List<PartnerRouteShare> routes) {
@@ -257,7 +288,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
 
   Widget _vehicleFilters() {
     final stats = _data!.vehicleStats;
-    final newCount = _data!.routesNew.length;
+    final newCount = _data!.routesKommende.length;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
@@ -274,7 +305,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
               padding: const EdgeInsets.only(right: 6),
               child: FilterChip(
                 label: Text(
-                  '${MaviUnitCodes.normalize(s.vehicle.unitCode)}'
+                  '${MaviUnitCodes.shortLabel(s.vehicle.unitCode)}'
                   '${s.pendingAck > 0 ? ' · ${s.pendingAck}' : ''}',
                 ),
                 selected: _vehicleFilterId == s.vehicle.id,
@@ -293,68 +324,4 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
     );
   }
 
-  Widget _compactVehicleTile(OwnerVehicleStats stats) {
-    final unit = MaviUnitCodes.normalize(stats.vehicle.unitCode);
-    final util = stats.utilizationPercent.clamp(0, 100);
-    final selected = _vehicleFilterId == stats.vehicle.id;
-    final pending = stats.pendingAck;
-    return Material(
-      color: selected
-          ? DriftProTheme.primaryGreen.withValues(alpha: 0.12)
-          : Theme.of(context).cardColor,
-      borderRadius: BorderRadius.circular(14),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () {
-          if (selected) {
-            setState(() => _vehicleFilterId = null);
-          } else {
-            _selectVehicle(stats.vehicle.id);
-          }
-        },
-        child: Container(
-          width: 132,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected
-                  ? DriftProTheme.primaryGreen
-                  : pending > 0
-                      ? Colors.orange.shade300
-                      : Colors.black12,
-              width: selected || pending > 0 ? 1.5 : 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                unit,
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 13),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              Text(
-                pending > 0
-                    ? '$pending venter · ${util.toStringAsFixed(0)}%'
-                    : '${util.toStringAsFixed(0)}% utnyttelse',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: pending > 0
-                      ? Colors.orange.shade800
-                      : PartnerUi.mutedText(context),
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

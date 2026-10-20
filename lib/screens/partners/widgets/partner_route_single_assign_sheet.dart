@@ -159,6 +159,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
         vehicles: _maviFleet.map((r) => r.vehicle),
         unitCodeOf: (v) => v.unitCode,
         registrationOf: (v) => v.registrationNumber,
+        driverNameOf: (v) => v.driverName,
       );
 
       final bundle = RoutePdfTextService.parseBundle(bytes, fallbackDate: _day);
@@ -168,16 +169,21 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
         shifts: shifts,
         bundle: bundle,
       );
+      final driverName = RoutePdfTextService.parseDriverName(
+        bundle.headerText.isNotEmpty ? bundle.headerText : bundle.fullText,
+      );
 
       FleetPartnerVehicleRow? matchedRow;
-      if (auto.maviCode != null) {
-        final vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, auto.maviCode);
-        if (vehicle != null) {
-          for (final r in _maviFleet) {
-            if (r.vehicle.id == vehicle.id) {
-              matchedRow = r;
-              break;
-            }
+      final vehicle = RoutePdfTextService.findVehicleInLookup(
+        vehicleMap,
+        auto.maviCode,
+        driverName: driverName,
+      );
+      if (vehicle != null) {
+        for (final r in _maviFleet) {
+          if (r.vehicle.id == vehicle.id) {
+            matchedRow = r;
+            break;
           }
         }
       }
@@ -487,7 +493,7 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
             title: 'Dra hit eller velg rute-PDF',
             subtitle:
                 'MAVI, sjåfør, dato, skift og starttid leses automatisk. '
-                'Du ser forhåndsvisning og kontrollerer før du sender push, SMS eller e-post.',
+                'Du ser forhåndsvisning og sender med SMS og push. E-post kan slås på.',
           ),
         ] else ...[
           if (_pdfFileName != null)
@@ -510,21 +516,27 @@ class _PartnerRouteSingleAssignSheetState extends State<PartnerRouteSingleAssign
             ),
           ],
           const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: PartnerRoutePdfThumbnail(
-              bytes: _pdfBytes,
-              height: 160,
-              showFullPage: true,
-              zoomTripHeader: true,
-              onTapOpen: busy
-                  ? null
-                  : () => PartnerRoutePdfActions.openPdfBytes(
-                        context,
-                        bytes: _pdfBytes!,
-                        title: _pdfFileName ?? 'Rute-PDF',
-                      ),
-            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.maxWidth;
+              final height = (width * 0.72).clamp(240.0, 420.0);
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: PartnerRoutePdfThumbnail(
+                  bytes: _pdfBytes,
+                  height: height,
+                  showFullPage: true,
+                  zoomTripHeader: true,
+                  onTapOpen: busy
+                      ? null
+                      : () => PartnerRoutePdfActions.openPdfBytes(
+                            context,
+                            bytes: _pdfBytes!,
+                            title: _pdfFileName ?? 'Rute-PDF',
+                          ),
+                ),
+              );
+            },
           ),
           const SizedBox(height: 12),
           _buildReviewBody(busy),

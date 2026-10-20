@@ -2184,7 +2184,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
   Future<void> _publishOne(
     PartnerRouteShare s, {
     required bool notifyDriver,
-    RouteNotifyPrefs notifyPrefs = RouteNotifyPrefs.all,
+    RouteNotifyPrefs notifyPrefs = RouteNotifyPrefs.smsAndPush,
     bool closeSheet = true,
   }) async {
     final shiftItems = widget.shifts.where((x) => !x.isAvailability).toList();

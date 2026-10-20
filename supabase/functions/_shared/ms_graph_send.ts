@@ -23,7 +23,7 @@ export function readGraphSendConfig(): GraphSendConfig | { error: string } {
   const fromName =
     Deno.env.get("MS_GRAPH_FROM_NAME")?.trim() ||
     Deno.env.get("RESEND_FROM_NAME")?.trim() ||
-    "DriftPro";
+    "MAVI/DriftPro";
   const replyTo =
     Deno.env.get("MS_GRAPH_REPLY_TO")?.trim() ||
     Deno.env.get("RESEND_REPLY_TO")?.trim() ||

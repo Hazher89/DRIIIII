@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { brandSmsMessage } from "../_shared/message_brand.ts";
 import { readSveveConfig, sendViaSveve } from "../_shared/sveve.ts";
 
 type SmsRow = {
@@ -79,7 +80,7 @@ Deno.serve(async (req) => {
       cfg.user,
       cfg.passwd,
       row.to_phone,
-      row.message,
+      brandSmsMessage(row.message),
       cfg.from,
       cfg.test,
     );

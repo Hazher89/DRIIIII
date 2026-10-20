@@ -7,7 +7,8 @@ Future<bool> isSupported() async => false;
 Future<WorkStepsHealthAuthResult> requestAuthorization() async {
   return const WorkStepsHealthAuthResult(
     ok: false,
-    message: 'Skritt synkes i DriftPro-appen på iPhone eller Android.',
+    message:
+        'Skritt på jobb er midlertidig utilgjengelig i denne app-versjonen.',
   );
 }
 

@@ -68,12 +68,8 @@
 		<string>remote-notification</string>
 		<string>location</string>
 	</array>
-	<key>NSHealthShareUsageDescription</key>
-	<string>DriftPro (MAVI) leser kun skritt for ansatte som frivillig aktiverer «Skritt på jobb». Skritt lagres bare når telefonen er på MAVI arbeidssted. Ingen sporing, ingen tredjepartsdeling. Du kan slå av når som helst.</string>
-	<key>NSHealthUpdateUsageDescription</key>
-	<string>DriftPro skriver ikke helse-data. Denne teksten kreves av iOS; appen ber kun om lesetilgang til skritt for frivillig «Skritt på jobb» for MAVI-ansatte.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>DriftPro kan bruke bevegelsessensorer på dedikerte leiebil-enheter for å registrere hard oppbremsing/sving under aktiv kjøringssporing, og for skrittrelatert funksjonalitet. Ikke brukt til markedsføring.</string>
+	<string>DriftPro kan bruke bevegelsessensorer på dedikerte leiebil-enheter for å registrere hard oppbremsing/sving under aktiv kjøringssporing. Ikke brukt til markedsføring.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Mikrofon brukes bare hvis du tar video med lyd som dokumentasjon. Stillbilder og strekkodeskanning krever ikke mikrofon.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

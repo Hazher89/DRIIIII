@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
@@ -123,16 +124,24 @@ abstract final class NativePermissionsService {
   static Future<bool> ensureCamera({BuildContext? context}) =>
       ensure(AppPermissionKind.camera, context: context);
 
-  static Future<bool> ensurePhotos({BuildContext? context}) =>
-      ensure(AppPermissionKind.photos, context: context);
+  static Future<bool> ensurePhotos({BuildContext? context}) {
+    // Android: systemets bildevelger gir midlertidig tilgang. Ingen READ_MEDIA.
+    if (!kIsWeb && Platform.isAndroid) return Future.value(true);
+    return ensure(AppPermissionKind.photos, context: context);
+  }
 
   static Future<bool> ensureLocation({BuildContext? context}) =>
       ensure(AppPermissionKind.location, context: context);
 
-  /// Bakgrunnslokasjon — kun for leiebil-kiosk (Apple Always / Android BACKGROUND).
-  /// Krever først when-in-use (Google Play / iOS-krav).
+  /// Leiebil-sporing.
+  /// Android (Play): kun mens appen er åpen. iOS: Always / bakgrunn som før.
   static Future<bool> ensureBackgroundLocation({BuildContext? context}) async {
     if (!_native) return true;
+
+    // Android: no ACCESS_BACKGROUND_LOCATION in the Play binary.
+    if (!kIsWeb && Platform.isAndroid) {
+      return ensureLocation(context: context);
+    }
 
     final whenInUse = await ensureLocation(context: context);
     if (!whenInUse) return false;
@@ -143,8 +152,6 @@ abstract final class NativePermissionsService {
       permission = await Geolocator.requestPermission();
     }
     if (permission == LocationPermission.whileInUse) {
-      // iOS/Android: second step may upgrade to Always when Info.plist /
-      // ACCESS_BACKGROUND_LOCATION are declared.
       permission = await Geolocator.requestPermission();
     }
 
@@ -158,20 +165,6 @@ abstract final class NativePermissionsService {
       );
     }
 
-    // Android 10+: også permission_handler for BACKGROUND.
-    if (Platform.isAndroid) {
-      final bg = await Permission.locationAlways.status;
-      if (!bg.isGranted) {
-        final req = await Permission.locationAlways.request();
-        if (!req.isGranted) {
-          // Foreground service + when-in-use still works with persistent notification.
-          return whenInUse;
-        }
-      }
-      return true;
-    }
-
-    // iOS bakgrunn krever Always (Info.plist UIBackgroundModes=location).
     return alwaysOk;
   }
 

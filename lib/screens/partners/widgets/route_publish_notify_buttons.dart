@@ -12,7 +12,7 @@ class RoutePublishNotifyButtons extends StatefulWidget {
     required this.onPublish,
     this.showWithoutNotify = true,
     this.compact = false,
-    this.initialPrefs = RouteNotifyPrefs.all,
+    this.initialPrefs = RouteNotifyPrefs.smsAndPush,
   });
 
   final bool busy;

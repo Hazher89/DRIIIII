@@ -7,7 +7,39 @@ import 'partner_service.dart';
 class PartnerPortalScope {
   PartnerPortalScope._();
 
+  static final Map<String, Future<void>> _assertInFlight = {};
+  static final Map<String, DateTime> _assertOkUntil = {};
+  static const Duration _assertTtl = Duration(seconds: 45);
+
+  static void clearAccessCache() {
+    _assertInFlight.clear();
+    _assertOkUntil.clear();
+  }
+
   static Future<void> assertAccess({
+    required String partnerId,
+    String? partnerVehicleId,
+  }) async {
+    final key = '$partnerId|${partnerVehicleId ?? ''}';
+    final until = _assertOkUntil[key];
+    if (until != null && DateTime.now().isBefore(until)) return;
+
+    final existing = _assertInFlight[key];
+    if (existing != null) return existing;
+
+    final future = _assertAccessUncached(
+      partnerId: partnerId,
+      partnerVehicleId: partnerVehicleId,
+    ).then((_) {
+      _assertOkUntil[key] = DateTime.now().add(_assertTtl);
+    }).whenComplete(() {
+      _assertInFlight.remove(key);
+    });
+    _assertInFlight[key] = future;
+    return future;
+  }
+
+  static Future<void> _assertAccessUncached({
     required String partnerId,
     String? partnerVehicleId,
   }) async {
