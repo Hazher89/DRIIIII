@@ -309,7 +309,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     return ok == true;
   }
 
-  Future<void> _loadPortals() async {
+  Future<void> _loadPortals({String? preferPhone}) async {
     final accounts = await PartnerService.fetchPortalAccounts(widget.partner.id);
     if (!mounted) return;
     final owners = accounts.where((a) => a.isOwner).toList();
@@ -319,6 +319,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         byVehicle[a.partnerVehicleId!] = a;
       }
     }
+    final fallbackPhone = (preferPhone ?? _phone.text).trim().isNotEmpty
+        ? (preferPhone ?? _phone.text).trim()
+        : widget.partner.phone;
     setState(() {
       _portalByVehicle = byVehicle;
       for (final row in _ownerRows) {
@@ -328,9 +331,20 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         ..clear()
         ..addAll(
           owners.isEmpty
-              ? [_OwnerPortalRowState(phone: widget.partner.phone)]
+              ? [_OwnerPortalRowState(phone: fallbackPhone)]
               : owners.map(_OwnerPortalRowState.fromAccount),
         );
+      // Etter lagring: tving frem ønsket telefon så gammel portal-data ikke vinner i UI.
+      final forced = preferPhone?.trim();
+      if (forced != null && forced.isNotEmpty) {
+        _phone.text = forced;
+        for (final row in _ownerRows) {
+          row.phone.text = forced;
+          final n = normalizePhoneNo(forced);
+          if (n != null) row.savedNormalizedPhone = n;
+          row.pendingPhoneReplace = false;
+        }
+      }
     });
     for (final row in _rows) {
       if (row.id == null) continue;
@@ -591,7 +605,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     _ecoDrivingCompletedAt = p.ecoDrivingCompletedAt;
     if (_vehiclesDiffer(oldWidget.vehicles, widget.vehicles)) {
       _resetVehicles(widget.vehicles);
-      _loadPortals();
+      // Behold telefon som står i feltet — ikke hent gammelt nr fra stale partner-widget.
+      final keepPhone = _phone.text.trim();
+      _loadPortals(preferPhone: keepPhone.isEmpty ? null : keepPhone);
     }
   }
 
@@ -1297,21 +1313,31 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     try {
       final p = widget.partner;
 
-      // Hold kontakt-telefon og bedriftsansvarlig-portal synket ved Lagre endringer.
-      // Ellers ble portal-telefon ikke lagret, og _loadPortals() hentet gammelt nr tilbake.
-      String contactPhone = _phone.text.trim();
-      if (_ownerRows.length == 1) {
-        final ownerPhone = _ownerRows.first.phone.text.trim();
-        final ownerChanged = _ownerRows.first.phoneChangedFromSaved() ||
-            _ownerRows.first.pendingPhoneReplace;
-        if (ownerChanged && ownerPhone.length >= 8) {
-          contactPhone = ownerPhone;
-          _phone.text = ownerPhone;
-        } else if (contactPhone.length >= 8 &&
-            normalizePhoneNo(contactPhone) !=
-                normalizePhoneNo(ownerPhone)) {
-          _ownerRows.first.phone.text = contactPhone;
-        }
+      // Velg telefon som skal lagres: ny verdi fra Bedrift ELLER Bedriftsansvarlig-fanen.
+      final contactTyped = _phone.text.trim();
+      final ownerTyped = _ownerRows.isEmpty ? '' : _ownerRows.first.phone.text.trim();
+      final savedPartnerPhone = normalizePhoneNo(p.phone ?? '');
+      final contactNorm = normalizePhoneNo(contactTyped);
+      final ownerNorm = normalizePhoneNo(ownerTyped);
+      final ownerChanged = _ownerRows.isNotEmpty &&
+          (_ownerRows.first.phoneChangedFromSaved() ||
+              _ownerRows.first.pendingPhoneReplace ||
+              (ownerNorm != null &&
+                  ownerNorm != (_ownerRows.first.savedNormalizedPhone ?? savedPartnerPhone)));
+      final contactChanged =
+          contactNorm != null && contactNorm != savedPartnerPhone;
+
+      String desiredPhone = contactTyped;
+      if (ownerChanged && ownerTyped.length >= 8) {
+        desiredPhone = ownerTyped;
+      } else if (contactChanged && contactTyped.length >= 8) {
+        desiredPhone = contactTyped;
+      } else if (ownerTyped.length >= 8 && contactTyped.isEmpty) {
+        desiredPhone = ownerTyped;
+      }
+      _phone.text = desiredPhone;
+      if (_ownerRows.isNotEmpty && desiredPhone.isNotEmpty) {
+        _ownerRows.first.phone.text = desiredPhone;
       }
 
       // Kun bedriftsinfo oppdateres her — MAVI/biler lagres videre under (samme partner-id).
@@ -1322,7 +1348,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         name: name,
         tradeName: (_tradeName?.trim().isNotEmpty ?? false) ? _tradeName!.trim() : null,
         ownerName: _owner.text.trim().isEmpty ? null : _owner.text.trim(),
-        phone: contactPhone.isEmpty ? null : contactPhone,
+        phone: desiredPhone.isEmpty ? null : desiredPhone,
         email: _email.text.trim().isEmpty ? null : _email.text.trim(),
         address: _address.text.trim().isEmpty ? null : _address.text.trim(),
         postalCode: _postal.text.trim().isEmpty ? null : _postal.text.trim(),
@@ -1350,35 +1376,26 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         createdAt: p.createdAt,
       );
       await PartnerService.updatePartner(p.id, updated);
+      // Eksplisitt telefon-update — unngår at andre felt/reload overskygger.
+      await PartnerService.updatePartnerFields(p.id, {
+        'phone': desiredPhone.isEmpty ? null : desiredPhone,
+      });
 
-      // Oppdater portal-kontoer når telefon er endret (fra Bedrift eller Bedriftsansvarlig).
-      for (final row in _ownerRows) {
-        if (!row.hasPortalAccount || row.accountId == null) continue;
-        final rowPhone = row.phone.text.trim();
-        if (rowPhone.length < 8 || !isValidNorwegianMobile(rowPhone)) continue;
-        final next = normalizePhoneNo(rowPhone);
-        if (next == null || next == row.savedNormalizedPhone) continue;
-        await PartnerService.provisionOwnerPortal(
-          partnerId: p.id,
-          companyId: p.companyId,
-          phone: rowPhone,
-          partnerName: name,
-          orgNumber: orgRaw.isEmpty ? null : orgRaw,
-          portalAccountId: row.accountId,
-          ownerDisplayName: row.displayName.text.trim().isEmpty
-              ? null
-              : row.displayName.text.trim(),
-          usernameOverride: row.usernameField.text.trim().isNotEmpty
-              ? row.usernameField.text.trim()
-              : row.username,
-          passwordOverride: row.passwordField.text.trim().isNotEmpty
-              ? row.passwordField.text.trim()
-              : PortalCredentials.defaultPassword,
-          regeneratePassword: false,
-          sendCredentialsSms: false,
-        );
-        row.savedNormalizedPhone = next;
-        row.pendingPhoneReplace = false;
+      // Oppdater portal-telefon direkte (uten SMS) for alle bedriftsansvarlige.
+      final desiredNorm = normalizePhoneNo(desiredPhone);
+      if (desiredNorm != null && desiredPhone.length >= 8) {
+        for (final row in _ownerRows) {
+          if (!row.hasPortalAccount || row.accountId == null) continue;
+          if (desiredNorm == row.savedNormalizedPhone) continue;
+          await PartnerService.updateOwnerPortalPhone(
+            partnerId: p.id,
+            portalAccountId: row.accountId!,
+            phone: desiredPhone,
+          );
+          row.savedNormalizedPhone = desiredNorm;
+          row.pendingPhoneReplace = false;
+          row.phone.text = desiredPhone;
+        }
       }
 
       final vehicles = <PartnerVehicle>[];
@@ -1483,7 +1500,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
 
       if (mounted) {
         _resetVehicles(saved);
-        await _loadPortals();
+        await _loadPortals(preferPhone: desiredPhone.isEmpty ? null : desiredPhone);
         final parts = <String>[];
         if (savedReg > 0) parts.add('$savedReg reg.nr');
         if (savedMavi > 0) parts.add('$savedMavi MAVI');
@@ -1495,6 +1512,16 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           ),
         );
         await widget.onSaved();
+        // Parent-reload kan komme med stale cache — behold det vi nettopp lagret.
+        if (mounted && desiredPhone.isNotEmpty) {
+          _phone.text = desiredPhone;
+          for (final row in _ownerRows) {
+            row.phone.text = desiredPhone;
+            final n = normalizePhoneNo(desiredPhone);
+            if (n != null) row.savedNormalizedPhone = n;
+          }
+          setState(() {});
+        }
       }
     } catch (e) {
       if (mounted) {

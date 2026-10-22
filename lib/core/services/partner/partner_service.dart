@@ -2393,6 +2393,38 @@ class PartnerService {
     await query;
   }
 
+  /// Oppdater kun telefon på bedriftsansvarlig-portal (uten ny SMS/passord).
+  static Future<void> updateOwnerPortalPhone({
+    required String partnerId,
+    required String portalAccountId,
+    required String phone,
+  }) async {
+    if (!_ok) return;
+    final normalized = normalizePhoneNo(phone.trim()) ?? phone.trim();
+    if (normalized.length < 8) return;
+
+    final existing = await _client
+        .from('partner_portal_accounts')
+        .select('id, profile_id')
+        .eq('id', portalAccountId)
+        .eq('partner_id', partnerId)
+        .eq('account_kind', 'owner')
+        .eq('is_active', true)
+        .maybeSingle();
+    if (existing == null) return;
+
+    await _client.from('partner_portal_accounts').update({
+      'phone': normalized,
+    }).eq('id', portalAccountId);
+
+    final profileId = existing['profile_id'] as String?;
+    if (profileId != null && profileId.isNotEmpty) {
+      try {
+        await _client.from('profiles').update({'phone': normalized}).eq('id', profileId);
+      } catch (_) {}
+    }
+  }
+
   static Future<PartnerFriRequest> createFriRequest({
     required String companyId,
     required String partnerId,
