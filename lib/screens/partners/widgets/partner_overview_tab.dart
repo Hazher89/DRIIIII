@@ -573,9 +573,16 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       if ((p.city ?? '').trim().isNotEmpty) _city.text = p.city!;
       if ((p.email ?? '').trim().isNotEmpty) _email.text = p.email!;
     }
-    _owner.text = p.ownerName ?? '';
-    _phone.text = p.phone ?? '';
-    _employees.text = p.employeeCount?.toString() ?? '';
+    // Ikke overskriv felter brukeren midt i å redigere — kun når parent faktisk har ny verdi.
+    if (oldWidget.partner.ownerName != p.ownerName) {
+      _owner.text = p.ownerName ?? '';
+    }
+    if (oldWidget.partner.phone != p.phone) {
+      _phone.text = p.phone ?? '';
+    }
+    if (oldWidget.partner.employeeCount != p.employeeCount) {
+      _employees.text = p.employeeCount?.toString() ?? '';
+    }
     _routesOwnerOnly = p.routesOwnerOnly;
     _workforceEnabled = p.workforceEnabled;
     _portalAccess = Map<String, dynamic>.from(p.portalAccess);
@@ -1289,6 +1296,24 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     setState(() => _saving = true);
     try {
       final p = widget.partner;
+
+      // Hold kontakt-telefon og bedriftsansvarlig-portal synket ved Lagre endringer.
+      // Ellers ble portal-telefon ikke lagret, og _loadPortals() hentet gammelt nr tilbake.
+      String contactPhone = _phone.text.trim();
+      if (_ownerRows.length == 1) {
+        final ownerPhone = _ownerRows.first.phone.text.trim();
+        final ownerChanged = _ownerRows.first.phoneChangedFromSaved() ||
+            _ownerRows.first.pendingPhoneReplace;
+        if (ownerChanged && ownerPhone.length >= 8) {
+          contactPhone = ownerPhone;
+          _phone.text = ownerPhone;
+        } else if (contactPhone.length >= 8 &&
+            normalizePhoneNo(contactPhone) !=
+                normalizePhoneNo(ownerPhone)) {
+          _ownerRows.first.phone.text = contactPhone;
+        }
+      }
+
       // Kun bedriftsinfo oppdateres her — MAVI/biler lagres videre under (samme partner-id).
       final updated = Partner(
         id: p.id,
@@ -1297,7 +1322,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         name: name,
         tradeName: (_tradeName?.trim().isNotEmpty ?? false) ? _tradeName!.trim() : null,
         ownerName: _owner.text.trim().isEmpty ? null : _owner.text.trim(),
-        phone: _phone.text.trim().isEmpty ? null : _phone.text.trim(),
+        phone: contactPhone.isEmpty ? null : contactPhone,
         email: _email.text.trim().isEmpty ? null : _email.text.trim(),
         address: _address.text.trim().isEmpty ? null : _address.text.trim(),
         postalCode: _postal.text.trim().isEmpty ? null : _postal.text.trim(),
@@ -1326,39 +1351,34 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       );
       await PartnerService.updatePartner(p.id, updated);
 
-      // Kontakt-telefon = bedriftsansvarlig: oppdater portal-konto hvis nummer endres.
-      final contactPhone = _phone.text.trim();
-      if (contactPhone.length >= 8 && isValidNorwegianMobile(contactPhone)) {
-        for (final row in _ownerRows) {
-          if (!row.hasPortalAccount || row.accountId == null) continue;
-          final saved = row.savedNormalizedPhone;
-          final next = normalizePhoneNo(contactPhone);
-          if (next == null || next == saved) continue;
-          row.phone.text = contactPhone;
-          try {
-            await PartnerService.provisionOwnerPortal(
-              partnerId: p.id,
-              companyId: p.companyId,
-              phone: contactPhone,
-              partnerName: name,
-              orgNumber: orgRaw.isEmpty ? null : orgRaw,
-              portalAccountId: row.accountId,
-              ownerDisplayName: row.displayName.text.trim().isEmpty
-                  ? null
-                  : row.displayName.text.trim(),
-              usernameOverride: row.usernameField.text.trim().isNotEmpty
-                  ? row.usernameField.text.trim()
-                  : row.username,
-              passwordOverride: row.passwordField.text.trim().isNotEmpty
-                  ? row.passwordField.text.trim()
-                  : PortalCredentials.defaultPassword,
-              regeneratePassword: false,
-              sendCredentialsSms: false,
-            );
-            row.savedNormalizedPhone = next;
-            row.pendingPhoneReplace = false;
-          } catch (_) {}
-        }
+      // Oppdater portal-kontoer når telefon er endret (fra Bedrift eller Bedriftsansvarlig).
+      for (final row in _ownerRows) {
+        if (!row.hasPortalAccount || row.accountId == null) continue;
+        final rowPhone = row.phone.text.trim();
+        if (rowPhone.length < 8 || !isValidNorwegianMobile(rowPhone)) continue;
+        final next = normalizePhoneNo(rowPhone);
+        if (next == null || next == row.savedNormalizedPhone) continue;
+        await PartnerService.provisionOwnerPortal(
+          partnerId: p.id,
+          companyId: p.companyId,
+          phone: rowPhone,
+          partnerName: name,
+          orgNumber: orgRaw.isEmpty ? null : orgRaw,
+          portalAccountId: row.accountId,
+          ownerDisplayName: row.displayName.text.trim().isEmpty
+              ? null
+              : row.displayName.text.trim(),
+          usernameOverride: row.usernameField.text.trim().isNotEmpty
+              ? row.usernameField.text.trim()
+              : row.username,
+          passwordOverride: row.passwordField.text.trim().isNotEmpty
+              ? row.passwordField.text.trim()
+              : PortalCredentials.defaultPassword,
+          regeneratePassword: false,
+          sendCredentialsSms: false,
+        );
+        row.savedNormalizedPhone = next;
+        row.pendingPhoneReplace = false;
       }
 
       final vehicles = <PartnerVehicle>[];
