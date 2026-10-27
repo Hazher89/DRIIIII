@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/services/brreg_service.dart';
 import '../../core/services/partner/partner_service.dart';
+import '../../core/services/sms/sms_phone_utils.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
@@ -116,9 +117,11 @@ class _BulkPartnersScreenState extends State<BulkPartnersScreen> {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) throw Exception('Mangler company_id');
       var ok = 0;
+      var onboarded = 0;
+      var missingPhone = 0;
       for (final row in picked) {
         final d = row.details!;
-        await PartnerService.createPartner(
+        final created = await PartnerService.createPartner(
           Partner(
             id: '',
             companyId: cid,
@@ -137,12 +140,32 @@ class _BulkPartnersScreenState extends State<BulkPartnersScreen> {
           ),
         );
         ok++;
+        final phone = (d.phone ?? '').trim();
+        if (isValidNorwegianMobile(phone)) {
+          try {
+            await PartnerService.onboardNewPartnerOwner(
+              partnerId: created.id,
+              companyId: created.companyId,
+              phone: phone,
+              partnerName: created.name,
+              orgNumber: created.orgNumber,
+              ownerDisplayName: created.ownerName,
+            );
+            onboarded++;
+          } catch (_) {
+            // Bedrift er opprettet — portal kan settes opp manuelt.
+          }
+        } else {
+          missingPhone++;
+        }
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Registrert $ok bedrifter. Åpne hver bedrift for å legge til MAVI og sjåfør.',
+              'Registrert $ok bedrifter'
+              '${onboarded > 0 ? ' · $onboarded fikk innlogging + iPhone/Android-SMS' : ''}'
+              '${missingPhone > 0 ? ' · $missingPhone manglet gyldig mobil (legg til telefon manuelt)' : ''}.',
             ),
           ),
         );

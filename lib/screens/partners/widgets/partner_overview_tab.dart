@@ -1340,6 +1340,18 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         _ownerRows.first.phone.text = desiredPhone;
       }
 
+      // Normaliser telefon før lagring (8 siffer → 47…).
+      final phoneForDb = desiredPhone.isEmpty
+          ? null
+          : (normalizePhoneNo(desiredPhone) ?? desiredPhone.trim());
+      if (phoneForDb != null) {
+        desiredPhone = phoneForDb;
+        _phone.text = displayPhoneNo(phoneForDb);
+        if (_ownerRows.isNotEmpty) {
+          _ownerRows.first.phone.text = displayPhoneNo(phoneForDb);
+        }
+      }
+
       // Kun bedriftsinfo oppdateres her — MAVI/biler lagres videre under (samme partner-id).
       final updated = Partner(
         id: p.id,
@@ -1348,7 +1360,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         name: name,
         tradeName: (_tradeName?.trim().isNotEmpty ?? false) ? _tradeName!.trim() : null,
         ownerName: _owner.text.trim().isEmpty ? null : _owner.text.trim(),
-        phone: desiredPhone.isEmpty ? null : desiredPhone,
+        phone: phoneForDb,
         email: _email.text.trim().isEmpty ? null : _email.text.trim(),
         address: _address.text.trim().isEmpty ? null : _address.text.trim(),
         postalCode: _postal.text.trim().isEmpty ? null : _postal.text.trim(),
@@ -1378,23 +1390,55 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       await PartnerService.updatePartner(p.id, updated);
       // Eksplisitt telefon-update — unngår at andre felt/reload overskygger.
       await PartnerService.updatePartnerFields(p.id, {
-        'phone': desiredPhone.isEmpty ? null : desiredPhone,
+        'phone': phoneForDb,
       });
 
-      // Oppdater portal-telefon direkte (uten SMS) for alle bedriftsansvarlige.
-      final desiredNorm = normalizePhoneNo(desiredPhone);
-      if (desiredNorm != null && desiredPhone.length >= 8) {
+      // Oppdater portal-telefon (uten SMS). Feiler ikke hele lagringen.
+      String? portalPhoneWarning;
+      final desiredNorm = normalizePhoneNo(phoneForDb ?? '');
+      if (desiredNorm != null) {
         for (final row in _ownerRows) {
           if (!row.hasPortalAccount || row.accountId == null) continue;
           if (desiredNorm == row.savedNormalizedPhone) continue;
-          await PartnerService.updateOwnerPortalPhone(
-            partnerId: p.id,
-            portalAccountId: row.accountId!,
-            phone: desiredPhone,
-          );
-          row.savedNormalizedPhone = desiredNorm;
-          row.pendingPhoneReplace = false;
-          row.phone.text = desiredPhone;
+          try {
+            await PartnerService.updateOwnerPortalPhone(
+              partnerId: p.id,
+              portalAccountId: row.accountId!,
+              phone: desiredNorm,
+            );
+            row.savedNormalizedPhone = desiredNorm;
+            row.pendingPhoneReplace = false;
+            row.phone.text = displayPhoneNo(desiredNorm);
+          } catch (e) {
+            // Fallback: edge provision uten SMS / uten passordbytte.
+            try {
+              await PartnerService.provisionOwnerPortal(
+                partnerId: p.id,
+                companyId: p.companyId,
+                phone: desiredNorm,
+                partnerName: name,
+                orgNumber: orgRaw.isEmpty ? null : orgRaw,
+                portalAccountId: row.accountId,
+                ownerDisplayName: row.displayName.text.trim().isEmpty
+                    ? null
+                    : row.displayName.text.trim(),
+                usernameOverride: row.usernameField.text.trim().isNotEmpty
+                    ? row.usernameField.text.trim()
+                    : row.username,
+                passwordOverride: row.passwordField.text.trim().isNotEmpty
+                    ? row.passwordField.text.trim()
+                    : PortalCredentials.defaultPassword,
+                regeneratePassword: false,
+                sendCredentialsSms: false,
+              );
+              row.savedNormalizedPhone = desiredNorm;
+              row.pendingPhoneReplace = false;
+              row.phone.text = displayPhoneNo(desiredNorm);
+            } catch (e2) {
+              portalPhoneWarning =
+                  'Bedrift lagret, men portal-telefon feilet: ${_friendlyPartnerSaveError(e2)}';
+            }
+          }
         }
       }
 
@@ -1428,95 +1472,113 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       }
 
       final pendingMavi = _rows.where((r) => !r.isRegOnly).toList();
-      final emptyMavi = pendingMavi
-          .where((r) => MaviUnitCodes.normalize(r.mavi.text).isEmpty)
+      // Kun usparte MAVI-rader uten nummer blokkerer bil-lagring — ikke bedrifts/telefon-lagring.
+      final emptyNewMavi = pendingMavi
+          .where((r) =>
+              (r.id == null || r.id!.isEmpty) &&
+              MaviUnitCodes.normalize(r.mavi.text).isEmpty)
           .toList();
-      if (emptyMavi.isNotEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Fyll inn MAVI-nummer på alle nye biler før lagring.'),
-              backgroundColor: Colors.orange,
+      final skipVehicleReplace = emptyNewMavi.isNotEmpty;
+      if (skipVehicleReplace && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Bedrift lagret. Fyll inn MAVI-nummer på nye biler før de kan lagres.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+
+      var savedReg = 0;
+      var savedMavi = 0;
+      if (!skipVehicleReplace) {
+        for (final row in pendingMavi) {
+          final unit = MaviUnitCodes.normalize(row.mavi.text);
+          if (unit.isEmpty || seenUnits.contains(unit)) continue;
+          seenUnits.add(unit);
+          final regRaw = row.reg.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
+          final reg = regRaw.isEmpty ? MaviUnitCodes.regNrPlaceholder : regRaw;
+          final driverName = row.driverName.text.trim();
+          vehicles.add(
+            PartnerVehicle(
+              id: row.id ?? '',
+              partnerId: p.id,
+              companyId: p.companyId,
+              unitCode: unit,
+              registrationNumber: reg,
+              vehicleKind: 'mavi',
+              driverName: driverName.isEmpty ? null : driverName,
+              phone: row.portalPhone.text.trim().isEmpty ? null : row.portalPhone.text.trim(),
+              imageUrls: row.imagePaths,
+              isActive: row.isActive,
+              fleetRoles: MaviFleetRoles.normalize(row.fleetRoles),
+              createdAt: DateTime.now(),
             ),
           );
         }
-        return;
-      }
+        final saved = await PartnerService.replaceVehicles(
+          partnerId: p.id,
+          companyId: p.companyId,
+          vehicles: vehicles,
+        );
 
-      for (final row in pendingMavi) {
-        final unit = MaviUnitCodes.normalize(row.mavi.text);
-        if (unit.isEmpty || seenUnits.contains(unit)) continue;
-        seenUnits.add(unit);
-        final regRaw = row.reg.text.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
-        final reg = regRaw.isEmpty ? MaviUnitCodes.regNrPlaceholder : regRaw;
-        final driverName = row.driverName.text.trim();
-        vehicles.add(
-          PartnerVehicle(
-            id: row.id ?? '',
-            partnerId: p.id,
-            companyId: p.companyId,
-            unitCode: unit,
-            registrationNumber: reg,
-            vehicleKind: 'mavi',
-            driverName: driverName.isEmpty ? null : driverName,
-            phone: row.portalPhone.text.trim().isEmpty ? null : row.portalPhone.text.trim(),
-            imageUrls: row.imagePaths,
-            isActive: row.isActive,
-            fleetRoles: MaviFleetRoles.normalize(row.fleetRoles),
-            createdAt: DateTime.now(),
-          ),
-        );
-      }
-      final saved = await PartnerService.replaceVehicles(
-        partnerId: p.id,
-        companyId: p.companyId,
-        vehicles: vehicles,
-      );
-
-      final savedMavi = saved
-          .where((v) =>
-              v.vehicleKind != 'registration' &&
-              !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
-          .length;
-      final expectedMavi = vehicles.where((v) => v.vehicleKind == 'mavi').length;
-      final expectedReg = vehicles.where((v) => v.vehicleKind == 'registration').length;
-      final savedReg = saved
-          .where((v) =>
-              v.vehicleKind == 'registration' ||
-              MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
-          .length;
-      if (savedMavi < expectedMavi) {
-        throw StateError(
-          'Kunne ikke lagre alle MAVI-biler ($savedMavi av $expectedMavi). '
-          'Sjekk at nummeret er gyldig (f.eks. M75 eller NO_O_M0075).',
-        );
-      }
-      if (savedReg < expectedReg) {
-        throw StateError(
-          'Kunne ikke lagre alle skiltnummer ($savedReg av $expectedReg). '
-          'Sjekk at reg.nr har minst 4 tegn.',
-        );
+        savedMavi = saved
+            .where((v) =>
+                v.vehicleKind != 'registration' &&
+                !MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
+            .length;
+        final expectedMavi = vehicles.where((v) => v.vehicleKind == 'mavi').length;
+        final expectedReg = vehicles.where((v) => v.vehicleKind == 'registration').length;
+        savedReg = saved
+            .where((v) =>
+                v.vehicleKind == 'registration' ||
+                MaviUnitCodes.isRegistrationOnlyUnit(v.unitCode))
+            .length;
+        if (savedMavi < expectedMavi) {
+          throw StateError(
+            'Kunne ikke lagre alle MAVI-biler ($savedMavi av $expectedMavi). '
+            'Sjekk at nummeret er gyldig (f.eks. M75 eller NO_O_M0075).',
+          );
+        }
+        if (savedReg < expectedReg) {
+          throw StateError(
+            'Kunne ikke lagre alle skiltnummer ($savedReg av $expectedReg). '
+            'Sjekk at reg.nr har minst 4 tegn.',
+          );
+        }
+        if (mounted) _resetVehicles(saved);
       }
 
       if (mounted) {
-        _resetVehicles(saved);
         await _loadPortals(preferPhone: desiredPhone.isEmpty ? null : desiredPhone);
-        final parts = <String>[];
-        if (savedReg > 0) parts.add('$savedReg reg.nr');
-        if (savedMavi > 0) parts.add('$savedMavi MAVI');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              parts.isEmpty ? 'Lagret' : 'Lagret — ${parts.join(' · ')}',
+        if (portalPhoneWarning != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(portalPhoneWarning), backgroundColor: Colors.orange),
+          );
+        } else if (!skipVehicleReplace) {
+          final parts = <String>[];
+          if (savedReg > 0) parts.add('$savedReg reg.nr');
+          if (savedMavi > 0) parts.add('$savedMavi MAVI');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                parts.isEmpty ? 'Lagret' : 'Lagret — ${parts.join(' · ')}',
+              ),
             ),
-          ),
-        );
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Bedrift og telefon lagret')),
+          );
+        }
         await widget.onSaved();
         // Parent-reload kan komme med stale cache — behold det vi nettopp lagret.
         if (mounted && desiredPhone.isNotEmpty) {
-          _phone.text = desiredPhone;
+          final shown = displayPhoneNo(desiredPhone);
+          _phone.text = shown;
           for (final row in _ownerRows) {
-            row.phone.text = desiredPhone;
+            row.phone.text = shown;
             final n = normalizePhoneNo(desiredPhone);
             if (n != null) row.savedNormalizedPhone = n;
           }

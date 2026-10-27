@@ -21,6 +21,7 @@ import '../../../models/partner/route_reminder_flag.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import '../../utils/portal_credentials.dart';
 import '../../utils/storage_path_sanitizer.dart';
+import '../app_download_sms_service.dart';
 import '../sms/sms_phone_utils.dart';
 import '../supabase_service.dart';
 import 'fleet_shift_filters.dart';
@@ -2119,6 +2120,76 @@ class PartnerService {
     );
   }
 
+  /// Ny bedrift: opprett bedriftsansvarlig-portal og send SMS med brukernavn/passord
+  /// pluss nedlastingslenke til både iPhone (Apple) og Android (Google Play).
+  static Future<({
+    PortalProvisionResult portal,
+    AppDownloadSmsResult? apple,
+    AppDownloadSmsResult? google,
+    String? appleError,
+    String? googleError,
+  })> onboardNewPartnerOwner({
+    required String partnerId,
+    required String companyId,
+    required String phone,
+    required String partnerName,
+    String? orgNumber,
+    String? ownerDisplayName,
+  }) async {
+    final portal = await provisionOwnerPortal(
+      partnerId: partnerId,
+      companyId: companyId,
+      phone: phone,
+      partnerName: partnerName,
+      orgNumber: orgNumber,
+      ownerDisplayName: ownerDisplayName,
+      passwordOverride: PortalCredentials.defaultPassword,
+      sendCredentialsSms: false,
+      regeneratePassword: true,
+    );
+
+    AppDownloadSmsResult? apple;
+    AppDownloadSmsResult? google;
+    String? appleError;
+    String? googleError;
+
+    try {
+      apple = await AppDownloadSmsService.sendApple(
+        phone: phone,
+        displayName: ownerDisplayName ?? partnerName,
+        username: portal.username,
+        password: portal.password,
+        refType: 'partners',
+        refId: partnerId,
+        companyId: companyId,
+      );
+    } catch (e) {
+      appleError = '$e';
+    }
+
+    try {
+      google = await AppDownloadSmsService.sendGoogle(
+        phone: phone,
+        displayName: ownerDisplayName ?? partnerName,
+        username: portal.username,
+        password: portal.password,
+        refType: 'partners',
+        refId: partnerId,
+        companyId: companyId,
+      );
+    } catch (e) {
+      googleError = '$e';
+    }
+
+    return (
+      portal: portal,
+      apple: apple,
+      google: google,
+      appleError: appleError,
+      googleError: googleError,
+    );
+  }
+
   /// Offentlig wrapper for portal-provision (brukes bl.a. av partner workforce / staff).
   static Future<PortalProvisionResult> invokePortalProvisionRaw({
     required String partnerId,
@@ -2401,7 +2472,9 @@ class PartnerService {
   }) async {
     if (!_ok) return;
     final normalized = normalizePhoneNo(phone.trim()) ?? phone.trim();
-    if (normalized.length < 8) return;
+    if (normalized.length < 8) {
+      throw ArgumentError('Ugyldig telefonnummer');
+    }
 
     final existing = await _client
         .from('partner_portal_accounts')
@@ -2411,7 +2484,9 @@ class PartnerService {
         .eq('account_kind', 'owner')
         .eq('is_active', true)
         .maybeSingle();
-    if (existing == null) return;
+    if (existing == null) {
+      throw StateError('Fant ikke aktiv portal-konto for bedriftsansvarlig');
+    }
 
     await _client.from('partner_portal_accounts').update({
       'phone': normalized,
@@ -2420,7 +2495,10 @@ class PartnerService {
     final profileId = existing['profile_id'] as String?;
     if (profileId != null && profileId.isNotEmpty) {
       try {
-        await _client.from('profiles').update({'phone': normalized}).eq('id', profileId);
+        await _client.from('profiles').update({
+          'phone': normalized,
+          'phone_normalized': normalized,
+        }).eq('id', profileId);
       } catch (_) {}
     }
   }

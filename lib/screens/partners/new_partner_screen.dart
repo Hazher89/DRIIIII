@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/services/brreg_service.dart';
 import '../../core/services/partner/mavi_unit_codes.dart';
 import '../../core/services/partner/partner_service.dart';
+import '../../core/services/sms/sms_phone_utils.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner.dart';
@@ -148,6 +149,18 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bedriftsnavn er påkrevd')));
       return;
     }
+    final phone = _phoneCtrl.text.trim();
+    if (!isValidNorwegianMobile(phone)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Telefon til bedriftsansvarlig er påkrevd (norsk mobil). '
+            'Da opprettes innlogging automatisk og SMS sendes med iPhone- og Android-lenke.',
+          ),
+        ),
+      );
+      return;
+    }
     setState(() => _saving = true);
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
@@ -166,7 +179,7 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
         orgNumber: orgTrim.isEmpty ? null : orgTrim,
         name: _nameCtrl.text.trim(),
         ownerName: _ownerCtrl.text.trim().isEmpty ? null : _ownerCtrl.text.trim(),
-        phone: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        phone: phone,
         email: _emailCtrl.text.trim().isEmpty ? null : _emailCtrl.text.trim(),
         address: _addressCtrl.text.trim().isEmpty ? null : _addressCtrl.text.trim(),
         postalCode: _postalCtrl.text.trim().isEmpty ? null : _postalCtrl.text.trim(),
@@ -192,6 +205,44 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
       if (linkEmail.contains('@')) {
         await _tryLinkInvite(created.id, emailOverride: linkEmail);
       }
+
+      final onboard = await PartnerService.onboardNewPartnerOwner(
+        partnerId: created.id,
+        companyId: created.companyId,
+        phone: phone,
+        partnerName: created.name,
+        orgNumber: created.orgNumber,
+        ownerDisplayName: created.ownerName,
+      );
+
+      if (!mounted) return;
+      final smsParts = <String>[];
+      if (onboard.apple != null) smsParts.add('iPhone');
+      if (onboard.google != null) smsParts.add('Android');
+      final smsLine = smsParts.isEmpty
+          ? 'Portal opprettet, men app-SMS feilet'
+              '${onboard.appleError != null || onboard.googleError != null ? ' — prøv «Send Apple/Google» på bedriften.' : '.'}'
+          : 'SMS sendt med innlogging + ${smsParts.join(' og ')}-lenke.';
+
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Bedrift registrert'),
+          content: SelectableText(
+            'Bedriftsansvarlig kan logge inn med:\n\n'
+            'Brukernavn: ${onboard.portal.username}\n'
+            'Passord: ${onboard.portal.password}\n\n'
+            '$smsLine\n'
+            'Telefon: ${displayPhoneNo(phone)}',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
@@ -408,7 +459,16 @@ class _NewPartnerScreenState extends State<NewPartnerScreen> {
       children: [
         PartnerInlineField(label: 'Navn *', controller: _nameCtrl),
         PartnerInlineField(label: 'Eier / kontakt', controller: _ownerCtrl),
-        PartnerInlineField(label: 'Telefon', controller: _phoneCtrl, keyboardType: TextInputType.phone),
+        PartnerInlineField(
+          label: 'Telefon bedriftsansvarlig *',
+          controller: _phoneCtrl,
+          keyboardType: TextInputType.phone,
+        ),
+        Text(
+          'Ved registrering opprettes innlogging automatisk, og SMS sendes med brukernavn, passord og lenke til iPhone og Android.',
+          style: TextStyle(fontSize: 12, height: 1.35, color: Colors.grey.shade700),
+        ),
+        const SizedBox(height: 8),
         PartnerInlineField(label: 'E-post', controller: _emailCtrl, keyboardType: TextInputType.emailAddress),
         PartnerInlineField(label: 'Adresse', controller: _addressCtrl),
         Row(
