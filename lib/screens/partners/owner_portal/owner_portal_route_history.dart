@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/services/partner/fleet_analytics_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/route_load_letters.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
@@ -598,6 +599,7 @@ class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryVie
         ? 'I går · ${DateFormat('d. MMM', 'nb').format(b.day)}'
         : DateFormat('EEEE d. MMMM', 'nb').format(b.day);
     final cust = b.customerCount;
+    final loadBadges = RouteLoadLetters.badgesForRoutes(b.routes);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 18),
@@ -634,6 +636,7 @@ class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryVie
               onBehalfOfDriver: widget.onBehalfOfDriver,
               vehicleLabel: _vehicleLabel(route),
               unitCode: widget.vehicles[route.partnerVehicleId]?.unitCode,
+              loadBadge: loadBadges[route.id],
             ),
         ],
       ),

@@ -2221,6 +2221,26 @@ class PartnerService {
         regeneratePassword: regeneratePassword,
       );
 
+  static String _portalProvisionErrorMessage(Object e) {
+    if (e is FunctionException) {
+      final details = e.details;
+      if (details is Map) {
+        final err = details['error'] ?? details['message'];
+        if (err != null) {
+          final s = err.toString().trim();
+          if (s.isNotEmpty && s != '[object Object]') return s;
+        }
+        try {
+          return details.toString();
+        } catch (_) {}
+      } else if (details is String && details.trim().isNotEmpty) {
+        return details.trim();
+      }
+      return e.reasonPhrase ?? 'Intern feil ved portal-oppretting (${e.status})';
+    }
+    return e.toString();
+  }
+
   static Future<PortalProvisionResult> _invokePortalProvision({
     required String partnerId,
     required String companyId,
@@ -2235,23 +2255,28 @@ class PartnerService {
     bool sendCredentialsSms = true,
     bool regeneratePassword = false,
   }) async {
-    final response = await _client.functions.invoke(
-      'partner-portal-provision',
-      body: {
-        'partner_id': partnerId,
-        'company_id': companyId,
-        if (partnerVehicleId != null) 'partner_vehicle_id': partnerVehicleId,
-        if (portalAccountId != null) 'portal_account_id': portalAccountId,
-        'username': username,
-        'login_email': loginEmail,
-        'phone': normalizePhoneNo(phone.trim()) ?? phone.trim(),
-        'password': password,
-        if (driverName != null && driverName.trim().isNotEmpty) 'driver_name': driverName.trim(),
-        'account_kind': accountKind,
-        'send_credentials_sms': sendCredentialsSms,
-        'regenerate_password': regeneratePassword,
-      },
-    );
+    late final dynamic response;
+    try {
+      response = await _client.functions.invoke(
+        'partner-portal-provision',
+        body: {
+          'partner_id': partnerId,
+          'company_id': companyId,
+          if (partnerVehicleId != null) 'partner_vehicle_id': partnerVehicleId,
+          if (portalAccountId != null) 'portal_account_id': portalAccountId,
+          'username': username,
+          'login_email': loginEmail,
+          'phone': normalizePhoneNo(phone.trim()) ?? phone.trim(),
+          'password': password,
+          if (driverName != null && driverName.trim().isNotEmpty) 'driver_name': driverName.trim(),
+          'account_kind': accountKind,
+          'send_credentials_sms': sendCredentialsSms,
+          'regenerate_password': regeneratePassword,
+        },
+      );
+    } on FunctionException catch (e) {
+      throw Exception(_portalProvisionErrorMessage(e));
+    }
     final data = response.data;
     if (data is Map<String, dynamic>) {
       if (data['error'] != null) {

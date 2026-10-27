@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/route_load_letters.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../widgets/partner_portal_page_shell.dart';
@@ -233,6 +234,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
       dayLabel = DateFormat('EEEE d. MMMM', 'nb').format(day);
     }
 
+    final loadBadges = RouteLoadLetters.badgesForRoutes(b.routes);
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
@@ -253,6 +255,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
               onBehalfOfDriver: !widget.staffPortal,
               vehicleLabel: _vehicleLabel(route),
               unitCode: _vehicles[route.partnerVehicleId]?.unitCode,
+              loadBadge: loadBadges[route.id],
             ),
         ],
       ),

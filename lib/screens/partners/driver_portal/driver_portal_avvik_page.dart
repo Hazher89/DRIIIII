@@ -1,9 +1,13 @@
+import 'dart:async';
+
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/native_permissions_service.dart';
+import '../../../core/services/partner/partner_driver_deviation_offline_queue.dart';
 import '../../../core/services/partner/partner_driver_deviation_refs.dart';
 import '../../../core/services/partner/partner_driver_deviation_service.dart';
 import '../../../core/services/partner/partner_service.dart';
@@ -51,6 +55,11 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
   final _commentCtrl = TextEditingController();
   final _orderRefCtrl = TextEditingController();
   final _customerSearchCtrl = TextEditingController();
+  final _composeScroll = ScrollController();
+  final _commentFocus = FocusNode();
+  final _orderFocus = FocusNode();
+  final _commentFieldKey = GlobalKey();
+  final _orderFieldKey = GlobalKey();
   final List<PartnerDriverDeviationMedia> _images = [];
   PartnerDriverDeviationMedia? _video;
   late DateTime _day;
@@ -67,6 +76,9 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
   bool _submitting = false;
   String? _routeError;
   String? _mineError;
+  int _pendingOffline = 0;
+  bool _bilagLocked = false;
+  StreamSubscription<List<ConnectivityResult>>? _netSub;
 
   bool get _owner => widget.isOwnerMode;
   bool get _pickVehicle => widget.isOwnerMode || widget.isStaffMode;
@@ -80,19 +92,92 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
     super.initState();
     _day = _dateOnly(DateTime.now());
     _tabs = TabController(length: 2, vsync: this);
+    _tabs.addListener(_onTabChanged);
+    _commentFocus.addListener(_onFieldFocus);
+    _orderFocus.addListener(_onFieldFocus);
     if (_pickVehicle) {
       _loadVehicles();
     } else {
       _loadRoutes();
     }
     _loadMine();
+    _bootstrapOffline();
+  }
+
+  Future<void> _bootstrapOffline() async {
+    await PartnerDriverDeviationOfflineQueue.init();
+    if (!mounted) return;
+    setState(() => _pendingOffline = PartnerDriverDeviationOfflineQueue.pendingCount);
+    await _flushOffline(showToast: false);
+    _netSub = Connectivity().onConnectivityChanged.listen((results) {
+      final up = results.any((r) => r != ConnectivityResult.none);
+      if (up) _flushOffline(showToast: true);
+    });
+  }
+
+  void _onTabChanged() {
+    if (_tabs.indexIsChanging) return;
+    setState(() {});
+    FocusScope.of(context).unfocus();
+  }
+
+  void _onFieldFocus() {
+    if (!_commentFocus.hasFocus && !_orderFocus.hasFocus) return;
+    // Scroll kun i compose-ListView — Scrollable.ensureVisible treffer
+    // også TabBarView/PageView og hopper hele skjermen til toppen.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollFocusedFieldIntoView();
+    });
+    Future<void>.delayed(const Duration(milliseconds: 320), () {
+      if (!mounted) return;
+      if (_commentFocus.hasFocus || _orderFocus.hasFocus) {
+        _scrollFocusedFieldIntoView();
+      }
+    });
+  }
+
+  void _scrollFocusedFieldIntoView() {
+    final key = _commentFocus.hasFocus ? _commentFieldKey : _orderFieldKey;
+    final ctx = key.currentContext;
+    if (ctx == null || !_composeScroll.hasClients) return;
+    final box = ctx.findRenderObject();
+    if (box is! RenderObject) return;
+    _composeScroll.position.ensureVisible(
+      box,
+      alignment: 0.12,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  Future<void> _flushOffline({required bool showToast}) async {
+    final n = await PartnerDriverDeviationOfflineQueue.flushPending();
+    if (!mounted) return;
+    setState(() => _pendingOffline = PartnerDriverDeviationOfflineQueue.pendingCount);
+    if (n > 0) {
+      await _loadMine();
+      if (showToast && mounted) {
+        _message(
+          n == 1
+              ? '1 avvik sendt nå som nett er tilbake.'
+              : '$n avvik sendt nå som nett er tilbake.',
+        );
+      }
+    }
   }
 
   @override
   void dispose() {
+    _netSub?.cancel();
+    _tabs.removeListener(_onTabChanged);
+    _commentFocus.removeListener(_onFieldFocus);
+    _orderFocus.removeListener(_onFieldFocus);
     _commentCtrl.dispose();
     _orderRefCtrl.dispose();
     _customerSearchCtrl.dispose();
+    _composeScroll.dispose();
+    _commentFocus.dispose();
+    _orderFocus.dispose();
     _tabs.dispose();
     super.dispose();
   }
@@ -169,6 +254,7 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
       _routes = const [];
       _route = null;
       _customer = null;
+      _bilagLocked = false;
       _orderRefCtrl.clear();
       _customerSearchCtrl.clear();
     });
@@ -211,6 +297,7 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
     setState(() {
       _route = option;
       _customer = null;
+      _bilagLocked = false;
       _orderRefCtrl.clear();
       _customerSearchCtrl.clear();
     });
@@ -319,14 +406,35 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
     await _setVideo(file);
   }
 
-  void _onCustomerPicked(RoutePdfCustomer customer) {
-    final bilag = PartnerDriverDeviationRefs.primaryBilag(
+  /// Skjemafelt: 41… / 39… fra rute-PDF (FU).
+  String? _formNumberForCustomer(RoutePdfCustomer customer) {
+    return PartnerDriverDeviationRefs.primaryFormNumber(
+      freightRaw: [
+        customer.freightUnit,
+        customer.name,
+        customer.addressHint,
+      ].whereType<String>().join(' '),
       salesOrder: customer.salesOrder,
-      freightRaw: customer.freightUnit,
     );
+  }
+
+  void _onCustomerPicked(RoutePdfCustomer customer) {
+    final formNo = _formNumberForCustomer(customer);
+    // Ikke autofokus — tastatur + lang liste scroller skjemaet ut av synsfeltet.
+    FocusScope.of(context).unfocus();
     setState(() {
       _customer = customer;
-      if (bilag != null) _orderRefCtrl.text = bilag;
+      if (formNo != null && formNo.isNotEmpty) {
+        _orderRefCtrl.text = formNo;
+        _bilagLocked = true;
+      } else {
+        _orderRefCtrl.clear();
+        _bilagLocked = false;
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _scrollFocusedFieldIntoView();
     });
   }
 
@@ -355,50 +463,114 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
     setState(() => _submitting = true);
     try {
       final rawFreight = customer.freightUnit?.trim() ?? '';
-      final freightStored =
-          PartnerDriverDeviationRefs.freightUnitForStorage(rawFreight);
-      final customerRef =
-          PartnerDriverDeviationRefs.primaryFreightUnit(rawFreight) ??
-              (freightStored.isNotEmpty
-                  ? freightStored.split(',').first.trim()
-                  : customer.sequence.toString());
-      final bilag = PartnerDriverDeviationRefs.primaryBilag(
+      final formNo = PartnerDriverDeviationRefs.primaryFormNumber(
+            freightRaw: rawFreight,
+            manual: _orderRefCtrl.text,
+            salesOrder: customer.salesOrder,
+          ) ??
+          _formNumberForCustomer(customer) ??
+          _orderRefCtrl.text.trim();
+      final freightStored = formNo.isNotEmpty
+          ? formNo
+          : PartnerDriverDeviationRefs.freightUnitForStorage(rawFreight);
+      final customerRef = formNo.isNotEmpty
+          ? formNo
+          : (freightStored.isNotEmpty
+              ? freightStored.split(',').first.trim()
+              : customer.sequence.toString());
+      // 21/22/60 (sales order) lagres for CCC-søk — ikke i skjemafeltet.
+      final orderRef = PartnerDriverDeviationRefs.primaryBilag(
         salesOrder: customer.salesOrder,
-        manual: _orderRefCtrl.text,
         freightRaw: rawFreight,
       );
-      if (bilag == null || bilag.isEmpty) {
-        _message(
-          'Fant ikke bilagsnummer (starter med 2). Skriv inn bilag manuelt.',
-          error: true,
+      final phone = customer.phoneDisplay.trim().isNotEmpty
+          ? customer.phoneDisplay.trim()
+          : null;
+
+      final images = List<PartnerDriverDeviationMedia>.from(_images);
+      final videos = _video == null
+          ? const <PartnerDriverDeviationMedia>[]
+          : [_video!];
+
+      Future<void> sendOnline() => PartnerDriverDeviationService.create(
+            companyId: widget.partner.companyId,
+            partnerId: widget.partner.id,
+            partnerVehicleId: vehicleId,
+            routeDate: _day,
+            routeShareId: route.route.id,
+            customerName: customer.name,
+            freightUnit: freightStored.isNotEmpty ? freightStored : customerRef,
+            customerRef: customerRef,
+            orderRef: orderRef,
+            customerPhone: phone,
+            comment: comment,
+            reporterName: widget.profile.fullName,
+            images: images,
+            videos: videos,
+          );
+
+      final online = await PartnerDriverDeviationOfflineQueue.isOnline();
+      if (!online) {
+        await PartnerDriverDeviationOfflineQueue.enqueue(
+          companyId: widget.partner.companyId,
+          partnerId: widget.partner.id,
+          partnerVehicleId: vehicleId,
+          routeDate: _day,
+          routeShareId: route.route.id,
+          customerName: customer.name,
+          freightUnit: freightStored.isNotEmpty ? freightStored : customerRef,
+          customerRef: customerRef,
+          orderRef: orderRef,
+          customerPhone: phone,
+          comment: comment,
+          reporterName: widget.profile.fullName,
+          images: images,
+          videos: videos,
         );
-        setState(() => _submitting = false);
+        if (!mounted) return;
+        _resetComposeForm();
+        setState(() {
+          _pendingOffline = PartnerDriverDeviationOfflineQueue.pendingCount;
+        });
+        _message(
+          'Ingen nett — avviket er lagret og sendes automatisk når du er online.',
+        );
         return;
       }
-      await PartnerDriverDeviationService.create(
-        companyId: widget.partner.companyId,
-        partnerId: widget.partner.id,
-        partnerVehicleId: vehicleId,
-        routeDate: _day,
-        routeShareId: route.route.id,
-        customerName: customer.name,
-        freightUnit: freightStored.isNotEmpty ? freightStored : customerRef,
-        customerRef: customerRef,
-        orderRef: bilag,
-        comment: comment,
-        reporterName: widget.profile.fullName,
-        images: _images,
-        videos: _video == null ? const [] : [_video!],
-      );
+
+      try {
+        await sendOnline();
+      } catch (e) {
+        // Nettfeil midt i sending → kø for sync.
+        await PartnerDriverDeviationOfflineQueue.enqueue(
+          companyId: widget.partner.companyId,
+          partnerId: widget.partner.id,
+          partnerVehicleId: vehicleId,
+          routeDate: _day,
+          routeShareId: route.route.id,
+          customerName: customer.name,
+          freightUnit: freightStored.isNotEmpty ? freightStored : customerRef,
+          customerRef: customerRef,
+          orderRef: orderRef,
+          customerPhone: phone,
+          comment: comment,
+          reporterName: widget.profile.fullName,
+          images: images,
+          videos: videos,
+        );
+        if (!mounted) return;
+        _resetComposeForm();
+        setState(() {
+          _pendingOffline = PartnerDriverDeviationOfflineQueue.pendingCount;
+        });
+        _message(
+          'Lagret offline (sending feilet). Sendes automatisk når nett er stabilt.',
+        );
+        return;
+      }
+
       if (!mounted) return;
-      _commentCtrl.clear();
-      _orderRefCtrl.clear();
-      _customerSearchCtrl.clear();
-      setState(() {
-        _images.clear();
-        _video = null;
-        _customer = null;
-      });
+      _resetComposeForm();
       _message('Avviket er sendt til MAVI.');
       await _loadMine();
       if (mounted) _tabs.animateTo(1);
@@ -407,6 +579,18 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  void _resetComposeForm() {
+    _commentCtrl.clear();
+    _orderRefCtrl.clear();
+    _customerSearchCtrl.clear();
+    setState(() {
+      _images.clear();
+      _video = null;
+      _customer = null;
+      _bilagLocked = false;
+    });
   }
 
   void _message(String text, {bool error = false}) {
@@ -429,22 +613,83 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
 
   @override
   Widget build(BuildContext context) {
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+
+    // Ikke resize her — DriftProBrandedScaffold gjør allerede inset.
+    // Dobbel resize + bytte av widget-tre stjal fokus / lukket tastatur.
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         title: Text(_owner ? 'Avvik' : 'Meld avvik'),
-        bottom: TabBar(
-          controller: _tabs,
-          tabs: [
-            const Tab(text: 'Meld'),
-            Tab(text: _mine.isEmpty ? 'Mine' : 'Mine (${_mine.length})'),
-          ],
-        ),
+        actions: [
+          if (keyboardOpen)
+            IconButton(
+              tooltip: 'Lukk tastatur',
+              onPressed: () => FocusScope.of(context).unfocus(),
+              icon: const Icon(Icons.keyboard_hide_outlined),
+            ),
+        ],
       ),
-      body: TabBarView(
-        controller: _tabs,
+      body: Column(
         children: [
-          _buildComposeTab(),
-          _buildArchiveTab(),
+          Material(
+            color: Theme.of(context).colorScheme.surface,
+            child: TabBar(
+              controller: _tabs,
+              tabs: [
+                const Tab(text: 'Meld'),
+                Tab(
+                  text: _mine.isEmpty
+                      ? 'Mine'
+                      : 'Mine (${_mine.length})',
+                ),
+              ],
+            ),
+          ),
+          if (_pendingOffline > 0 && !keyboardOpen)
+            Material(
+              color: Colors.orange.shade50,
+              child: InkWell(
+                onTap: () => _flushOffline(showToast: true),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.cloud_upload_outlined,
+                        color: Colors.orange.shade900,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          '$_pendingOffline avvik venter på nett — trykk for å sende nå',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          Expanded(
+            // IndexedStack: behold TextField montert (TabBarView/PageView
+            // som ancestor fikk Scrollable.ensureVisible til å hoppe til toppen).
+            child: IndexedStack(
+              index: _tabs.index,
+              sizing: StackFit.expand,
+              children: [
+                _buildComposeTab(),
+                _buildArchiveTab(),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -454,9 +699,12 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
     final now = _dateOnly(DateTime.now());
     final yesterday = now.subtract(const Duration(days: 1));
     final customers = _filteredCustomers;
+    final keyboard = MediaQuery.viewInsetsOf(context).bottom;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      controller: _composeScroll,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
+      padding: EdgeInsets.fromLTRB(16, 16, 16, 40 + keyboard),
       children: [
         Text(
           'Meld rute-/kundeavvik',
@@ -745,28 +993,87 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
         ],
         if (_customer != null) ...[
           const SizedBox(height: 16),
-          TextField(
-            controller: _orderRefCtrl,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'Bilagsnummer *',
-              hintText: 'Starter med 2…',
-              helperText: 'Fylles automatisk fra PDF (Sales order).',
-              border: OutlineInputBorder(),
+          if (_bilagLocked && _orderRefCtrl.text.trim().isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.35),
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.receipt_long,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Kundenummer (fra rute-PDF)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          _orderRefCtrl.text.trim(),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _bilagLocked = false),
+                    child: const Text('Endre'),
+                  ),
+                ],
+              ),
+            )
+          else
+            KeyedSubtree(
+              key: _orderFieldKey,
+              child: TextField(
+                controller: _orderRefCtrl,
+                focusNode: _orderFocus,
+                keyboardType: TextInputType.number,
+                scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 200),
+                decoration: InputDecoration(
+                  labelText: 'Kundenummer (39… / 41…)',
+                  hintText: 'Starter med 39 eller 41…',
+                  helperText: _formNumberForCustomer(_customer!) != null
+                      ? 'Hentet fra valgt kunde — kan endres.'
+                      : 'Ikke funnet i PDF for denne kunden — fyll inn om du har det.',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
             ),
-          ),
           const SizedBox(height: 12),
-          TextField(
-            controller: _commentCtrl,
-            minLines: 5,
-            maxLines: null,
-            keyboardType: TextInputType.multiline,
-            textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(
-              labelText: 'Beskriv avviket *',
-              hintText: 'Skriv så mye du trenger…',
-              alignLabelWithHint: true,
-              border: OutlineInputBorder(),
+          KeyedSubtree(
+            key: _commentFieldKey,
+            child: TextField(
+              controller: _commentCtrl,
+              focusNode: _commentFocus,
+              minLines: 4,
+              maxLines: 8,
+              keyboardType: TextInputType.multiline,
+              textCapitalization: TextCapitalization.sentences,
+              scrollPadding: const EdgeInsets.fromLTRB(20, 20, 20, 280),
+              decoration: const InputDecoration(
+                labelText: 'Beskriv avviket *',
+                hintText: 'Skriv så mye du trenger…',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(),
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -944,7 +1251,10 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (_, index) {
           final item = _mine[index];
-          final bilag = item.orderRef?.trim() ?? '';
+          final nr = item.freightUnit?.trim().isNotEmpty == true
+              ? item.freightUnit!.trim()
+              : (item.customerRef?.trim() ?? '');
+          final ordre = item.orderRef?.trim() ?? '';
           final media = item.imageUrls.length + item.videoUrls.length;
           return Card(
             clipBehavior: Clip.antiAlias,
@@ -992,7 +1302,8 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
                     const SizedBox(height: 4),
                     Text(
                       [
-                        if (bilag.isNotEmpty) 'Bilag $bilag',
+                        if (nr.isNotEmpty) 'Nr $nr',
+                        if (ordre.isNotEmpty) 'Ordre $ordre',
                         DateFormat('d. MMM', 'nb').format(item.routeDate),
                         if (media > 0) '$media fil(er)',
                       ].join(' · '),

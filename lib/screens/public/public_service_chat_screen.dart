@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/services/assistant/public_montage_assistant_service.dart';
+import '../../core/services/partner/partner_driver_deviation_refs.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
+import 'public_driver_deviation_lookup.dart';
 
 class _ChatMessage {
   const _ChatMessage({
@@ -43,6 +45,7 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
   bool _ready = false;
   int _liveChunks = 0;
   String _topic = 'alle';
+  String? _avvikSeedQuery;
 
   bool get _isEmpty => _messages.isEmpty;
 
@@ -52,7 +55,10 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
     (id: 'montering', label: 'Montering', icon: Icons.handyman_outlined),
     (id: 'endring', label: 'Endringer', icon: Icons.edit_note_rounded),
     (id: 'status', label: 'Status', icon: Icons.local_shipping_outlined),
+    (id: 'avvik', label: 'Avvik', icon: Icons.photo_library_outlined),
   ];
+
+  bool get _isAvvikMode => _topic == 'avvik';
 
   static const _topicSuggestions = <String, List<String>>{
     'alle': PublicMontageAssistantService.suggestedQueries,
@@ -108,6 +114,17 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
   Future<void> _send([String? preset]) async {
     final q = (preset ?? _controller.text).trim();
     if (q.isEmpty || _busy) return;
+
+    // Bilag / tlf / kundenavn → Avvik-søk, ikke AI-svar.
+    if (PartnerDriverDeviationRefs.looksLikeDeviationLookupInput(q)) {
+      if (preset == null) _controller.clear();
+      setState(() {
+        _topic = 'avvik';
+        _avvikSeedQuery = q;
+      });
+      return;
+    }
+
     setState(() {
       _messages.add(_ChatMessage(text: q, isUser: true));
       _busy = true;
@@ -185,7 +202,10 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
                 topic: _topic,
                 liveChunks: _liveChunks,
                 ready: _ready,
-                onTopic: (id) => setState(() => _topic = id),
+                onTopic: (id) => setState(() {
+                  _topic = id;
+                  if (id != 'avvik') _avvikSeedQuery = null;
+                }),
                 topics: _topics,
               ),
             Expanded(
@@ -209,79 +229,90 @@ class _PublicServiceChatScreenState extends State<PublicServiceChatScreen> {
                       _TopicStrip(
                         topic: _topic,
                         topics: _topics,
-                        onTopic: (id) => setState(() => _topic = id),
+                        onTopic: (id) => setState(() {
+                          _topic = id;
+                          if (id != 'avvik') _avvikSeedQuery = null;
+                        }),
                       ),
-                    Expanded(
-                      child: _isEmpty
-                          ? _EmptyHero(
-                              ready: _ready,
-                              suggestions: _suggestions,
-                              onSuggestion: _send,
-                            )
-                          : ListView.builder(
-                              controller: _scroll,
-                              padding: EdgeInsets.symmetric(
-                                horizontal: wide ? 40 : 14,
-                                vertical: 10,
+                    if (_isAvvikMode)
+                      Expanded(
+                        child: PublicDriverDeviationLookup(
+                          initialQuery: _avvikSeedQuery,
+                        ),
+                      )
+                    else ...[
+                      Expanded(
+                        child: _isEmpty
+                            ? _EmptyHero(
+                                ready: _ready,
+                                suggestions: _suggestions,
+                                onSuggestion: _send,
+                              )
+                            : ListView.builder(
+                                controller: _scroll,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: wide ? 40 : 14,
+                                  vertical: 10,
+                                ),
+                                itemCount: _messages.length + (_busy ? 1 : 0),
+                                itemBuilder: (context, i) {
+                                  if (_busy && i == _messages.length) {
+                                    return const _TypingRow();
+                                  }
+                                  return _MessageRow(
+                                    message: _messages[i],
+                                    maxWidth: wide ? 760 : double.infinity,
+                                    onCopy: _messages[i].isUser
+                                        ? null
+                                        : () => _copy(i),
+                                    onFollowUp: _busy ? null : _send,
+                                  );
+                                },
                               ),
-                              itemCount: _messages.length + (_busy ? 1 : 0),
-                              itemBuilder: (context, i) {
-                                if (_busy && i == _messages.length) {
-                                  return const _TypingRow();
-                                }
-                                return _MessageRow(
-                                  message: _messages[i],
-                                  maxWidth: wide ? 760 : double.infinity,
-                                  onCopy: _messages[i].isUser
-                                      ? null
-                                      : () => _copy(i),
-                                  onFollowUp: _busy ? null : _send,
-                                );
-                              },
+                      ),
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          wide ? 40 : 14,
+                          0,
+                          wide ? 40 : 14,
+                          10 +
+                              bottomInset +
+                              (bottomInset > 0 ? 0 : safeBottom),
+                        ),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 760),
+                            child: Column(
+                              children: [
+                                if (!_isEmpty && _ready)
+                                  _SuggestionStrip(
+                                    suggestions: _suggestions.take(4).toList(),
+                                    onTap: _send,
+                                    disabled: _busy,
+                                  ),
+                                _Composer(
+                                  controller: _controller,
+                                  focusNode: _focus,
+                                  busy: _busy || !_ready,
+                                  onSend: () => _send(),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _ready
+                                      ? 'Live kunnskapsbase · $_liveChunks trenede bits · konkrete handlinger for CCC & butikk'
+                                      : 'Laster kunnskapsbase…',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.black.withValues(alpha: 0.42),
+                                  ),
+                                ),
+                              ],
                             ),
-                    ),
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        wide ? 40 : 14,
-                        0,
-                        wide ? 40 : 14,
-                        10 +
-                            bottomInset +
-                            (bottomInset > 0 ? 0 : safeBottom),
-                      ),
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 760),
-                          child: Column(
-                            children: [
-                              if (!_isEmpty && _ready)
-                                _SuggestionStrip(
-                                  suggestions: _suggestions.take(4).toList(),
-                                  onTap: _send,
-                                  disabled: _busy,
-                                ),
-                              _Composer(
-                                controller: _controller,
-                                focusNode: _focus,
-                                busy: _busy || !_ready,
-                                onSend: () => _send(),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                _ready
-                                    ? 'Live kunnskapsbase · $_liveChunks trenede bits · konkrete handlinger for CCC & butikk'
-                                    : 'Laster kunnskapsbase…',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.black.withValues(alpha: 0.42),
-                                ),
-                              ),
-                            ],
                           ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -964,7 +995,8 @@ class _Composer extends StatelessWidget {
               textInputAction: TextInputAction.send,
               onSubmitted: (_) => onSend(),
               decoration: const InputDecoration(
-                hintText: 'Spør som CCC/butikk — ombooking, SA, montering…',
+                hintText:
+                    'Spør CCC-spørsmål, eller lim inn bilag/tlf/navn for avvik…',
                 border: InputBorder.none,
                 contentPadding: EdgeInsets.symmetric(
                   horizontal: 16,

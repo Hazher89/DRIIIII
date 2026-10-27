@@ -82,6 +82,7 @@ class DriftProBrandedScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stripTopInset = DriftProClient.isMobile && showBrandBar;
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     var content = stripTopInset
         ? MediaQuery.removePadding(
             context: context,
@@ -101,13 +102,15 @@ class DriftProBrandedScaffold extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: backgroundColor,
+      resizeToAvoidBottomInset: true,
+      // Skjul bunnmeny når tastatur er åpent — ellers forsvinner input-felt.
+      bottomNavigationBar: keyboardOpen ? null : bottomNavigationBar,
       body: Column(
         children: [
           if (showBrandBar) const DriftProBrandBar(),
           Expanded(child: content),
         ],
       ),
-      bottomNavigationBar: bottomNavigationBar,
     );
   }
 }

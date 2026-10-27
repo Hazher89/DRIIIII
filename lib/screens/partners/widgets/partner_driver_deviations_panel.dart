@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/services/partner/partner_driver_deviation_service.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner_driver_deviation.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 import 'partner_driver_deviation_detail_sheet.dart';
@@ -15,7 +14,7 @@ class PartnerDriverDeviationsPanel extends StatefulWidget {
     this.title = 'Sjåføravvik fra partnere',
     this.subtitle =
         'Rute-/kundeavvik fra partnerfirmaene (bil-eier/sjåfør). '
-        'Ikke HMS-avvik for MAVI-ansatte.',
+        'Søk på navn, tlf, 21/22/60 eller 39/41. Ingen status — bare avvik.',
   });
 
   final String companyId;
@@ -196,8 +195,10 @@ class _PartnerDriverDeviationsPanelState
                         ),
                         Text(
                           [
-                            if (customer.isNotEmpty) 'FU $customer',
-                            if (order.isNotEmpty) 'Bilag $order',
+                            if (customer.isNotEmpty) 'Nr $customer',
+                            if (order.isNotEmpty) 'Ordre $order',
+                            if ((item.customerPhone ?? '').trim().isNotEmpty)
+                              item.customerPhone!.trim(),
                             DateFormat(
                               'd. MMM yyyy',
                               'nb',
@@ -217,23 +218,6 @@ class _PartnerDriverDeviationsPanelState
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      item.status == 'open' ? 'Åpen' : item.status,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
                     ),
                   ),
                 ],

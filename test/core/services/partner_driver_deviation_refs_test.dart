@@ -4,9 +4,19 @@ import 'package:driftpro/core/services/partner/route_pdf_text_service.dart';
 
 void main() {
   group('PartnerDriverDeviationRefs', () {
-    test('skiller bilag (2…) fra freight unit (4…)', () {
-      expect(PartnerDriverDeviationRefs.isBilagNumber('2123831828'), isTrue);
-      expect(PartnerDriverDeviationRefs.isFreightUnit('4106155580'), isTrue);
+    test('skiller skjemanr (39/41) fra søkbar ordre (21/22/60)', () {
+      expect(PartnerDriverDeviationRefs.isFormFillNumber('4106155580'), isTrue);
+      expect(PartnerDriverDeviationRefs.isFormFillNumber('3900123456'), isTrue);
+      expect(PartnerDriverDeviationRefs.isSearchableOrderNumber('2123831828'), isTrue);
+      expect(PartnerDriverDeviationRefs.isSearchableOrderNumber('2212345678'), isTrue);
+      expect(PartnerDriverDeviationRefs.isSearchableOrderNumber('6012345678'), isTrue);
+      expect(
+        PartnerDriverDeviationRefs.primaryFormNumber(
+          freightRaw: '4106155580',
+          salesOrder: '2123831828',
+        ),
+        '4106155580',
+      );
       expect(
         PartnerDriverDeviationRefs.primaryBilag(
           salesOrder: '2123831828',
@@ -18,22 +28,50 @@ void main() {
         PartnerDriverDeviationRefs.primaryBilag(freightRaw: '4106155580'),
         isNull,
       );
-      expect(
-        PartnerDriverDeviationRefs.primaryFreightUnit('4106155580'),
-        '4106155580',
-      );
     });
 
-    test('picker-label viser bilag før FU', () {
+    test('picker-label viser 41-nr og ordre', () {
       final label = PartnerDriverDeviationRefs.customerPickerLabel(
         name: 'Espen Sevendal',
         freightRaw: '4106155580',
         salesOrder: '2123831828',
         sequence: 3,
       );
-      expect(label, contains('Bilag 2123831828'));
-      expect(label, contains('FU 4106155580'));
+      expect(label, contains('4106155580'));
+      expect(label, contains('Ordre 2123831828'));
       expect(label, contains('Espen Sevendal'));
+    });
+
+    test('telefon normaliseres til norske sifre', () {
+      expect(
+        PartnerDriverDeviationRefs.normalizePhoneDigits('+47 970 29 756'),
+        '97029756',
+      );
+      expect(
+        PartnerDriverDeviationRefs.looksLikeDeviationQuery('97029756'),
+        isTrue,
+      );
+      expect(
+        PartnerDriverDeviationRefs.looksLikeDeviationQuery('Hansen'),
+        isTrue,
+      );
+    });
+
+    test('chat: bilag/tlf åpner avvik, vanlige spørsmål ikke', () {
+      expect(
+        PartnerDriverDeviationRefs.looksLikeDeviationLookupInput('2123831828'),
+        isTrue,
+      );
+      expect(
+        PartnerDriverDeviationRefs.looksLikeDeviationLookupInput('Hansen'),
+        isTrue,
+      );
+      expect(
+        PartnerDriverDeviationRefs.looksLikeDeviationLookupInput(
+          'Kan kunden få levering tidligere?',
+        ),
+        isFalse,
+      );
     });
   });
 
@@ -58,8 +96,18 @@ Stop # Customer Start date/time End date/time
       expect(espen, isNotEmpty);
       expect(espen.first.freightUnit, '4106155580');
       expect(espen.first.salesOrder, '2123831828');
-      expect(espen.first.salesOrder!.startsWith('2'), isTrue);
-      expect(espen.first.freightUnit!.startsWith('4'), isTrue);
+      expect(
+        PartnerDriverDeviationRefs.primaryFormNumber(
+          freightRaw: espen.first.freightUnit,
+        ),
+        '4106155580',
+      );
+      expect(
+        PartnerDriverDeviationRefs.primaryBilag(
+          salesOrder: espen.first.salesOrder,
+        ),
+        '2123831828',
+      );
     });
   });
 }

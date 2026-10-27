@@ -15,6 +15,7 @@ import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/postal_code_registry.dart';
 import '../../../core/services/partner/route_pdf_bytes_cache.dart';
 import '../../../core/services/partner/route_pdf_split_service.dart';
+import '../../../core/services/partner/route_load_letters.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
 import '../../../core/services/partner/route_shift_resolver.dart';
 import '../../../core/services/partner/sap_route_import_service.dart';
@@ -4252,14 +4253,22 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       return d.year == day.year && d.month == day.month && d.day == day.day;
     }).toList()
       ..sort((a, b) {
+        final ta = _startByShare[a.id];
+        final tb = _startByShare[b.id];
+        if (ta != null && tb != null) {
+          final c = (ta.hour * 60 + ta.minute).compareTo(tb.hour * 60 + tb.minute);
+          if (c != 0) return c;
+        } else if (ta != null) {
+          return -1;
+        } else if (tb != null) {
+          return 1;
+        }
         final c = (_stowingForShare(a) ?? '').compareTo(_stowingForShare(b) ?? '');
         if (c != 0) return c;
-        return (a.title ?? '').compareTo(b.title ?? '');
+        return a.id.compareTo(b.id);
       });
-    if (group.length < 2) return null;
-    final i = group.indexWhere((s) => s.id == share.id);
-    if (i < 0) return null;
-    final label = 'Last ${i + 1}/${group.length}';
+    final label = RouteLoadLetters.badgeInOrderedGroup(share, group);
+    if (label == null) return null;
     if (_groupHasContentDuplicates(group)) return 'Dobbel · $label';
     return label;
   }

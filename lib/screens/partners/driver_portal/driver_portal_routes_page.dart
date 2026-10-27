@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/services/partner/route_load_letters.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -186,6 +187,7 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
             dayLabel = DateFormat('EEEE d. MMMM', 'nb').format(day);
           }
 
+          final loadBadges = RouteLoadLetters.badgesForRoutes(b.routes);
           return Padding(
             padding: const EdgeInsets.only(bottom: 16),
             child: Column(
@@ -203,6 +205,7 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
                     route: route,
                     shifts: _data!.shiftsById,
                     onReload: _reload,
+                    loadBadge: loadBadges[route.id],
                   ),
               ],
             ),

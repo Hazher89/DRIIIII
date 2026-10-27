@@ -74,6 +74,17 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
   String get _driverLabel =>
       MaviUnitCodes.fleetDriverLabel(row.vehicle.unitCode, row.partner.name);
 
+  String get _driverLineWithLoad {
+    final badge = loadBadge?.trim();
+    if (badge == null || badge.isEmpty || badge == 'Lagring feilet') {
+      return _driverLabel;
+    }
+    final m = RegExp(r'Last [A-Z]\d*').firstMatch(badge);
+    if (m != null) return '$_driverLabel · ${m.group(0)}';
+    if (badge.startsWith('Last ')) return '$_driverLabel · $badge';
+    return _driverLabel;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -181,7 +192,7 @@ class PartnerMassRouteQueueCard extends StatelessWidget {
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
-                              _driverLabel,
+                              _driverLineWithLoad,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(

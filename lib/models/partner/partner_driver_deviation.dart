@@ -14,6 +14,7 @@ class PartnerDriverDeviation {
     this.freightUnit,
     this.customerRef,
     this.orderRef,
+    this.customerPhone,
     this.reporterName,
     this.imageUrls = const [],
     this.videoUrls = const [],
@@ -30,10 +31,12 @@ class PartnerDriverDeviation {
   final String? freightUnit;
   final String? customerRef;
   final String? orderRef;
+  final String? customerPhone;
   final String? reporterName;
   final String comment;
   final List<String> imageUrls;
   final List<String> videoUrls;
+  /// Beholdes i DB for bakoverkompatibilitet — brukes ikke i UI.
   final String status;
   final DateTime createdAt;
 
@@ -55,6 +58,7 @@ class PartnerDriverDeviation {
       freightUnit: json['freight_unit'] as String?,
       customerRef: json['customer_ref'] as String?,
       orderRef: json['order_ref'] as String?,
+      customerPhone: json['customer_phone'] as String?,
       reporterName: json['reporter_name'] as String?,
       comment: json['comment'] as String,
       imageUrls: _stringList(json['image_urls']),

@@ -1,13 +1,15 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
 
 import '../../../core/services/partner/partner_driver_deviation_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner_driver_deviation.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
-/// Profesjonell detaljvisning for sjåføravvik (kommentar, bilder, video).
+/// Profesjonell detaljvisning for sjåføravvik (kommentar, bilder, inline video).
 Future<void> showPartnerDriverDeviationDetail(
   BuildContext context,
   PartnerDriverDeviation item,
@@ -24,6 +26,17 @@ Future<void> showPartnerDriverDeviationDetail(
   );
 }
 
+class _ResolvedMedia {
+  const _ResolvedMedia({this.url, this.bytes, this.error});
+
+  final String? url;
+  final Uint8List? bytes;
+  final String? error;
+
+  bool get ok =>
+      (url != null && url!.isNotEmpty) || (bytes != null && bytes!.isNotEmpty);
+}
+
 class PartnerDriverDeviationDetailSheet extends StatefulWidget {
   const PartnerDriverDeviationDetailSheet({super.key, required this.item});
 
@@ -36,9 +49,8 @@ class PartnerDriverDeviationDetailSheet extends StatefulWidget {
 
 class _PartnerDriverDeviationDetailSheetState
     extends State<PartnerDriverDeviationDetailSheet> {
-  final Map<String, String> _resolved = {};
+  final Map<String, _ResolvedMedia> _resolved = {};
   bool _loadingMedia = true;
-  String? _mediaError;
 
   @override
   void initState() {
@@ -52,35 +64,66 @@ class _PartnerDriverDeviationDetailSheetState
       setState(() => _loadingMedia = false);
       return;
     }
-    try {
-      for (final ref in refs) {
-        _resolved[ref] =
-            await PartnerDriverDeviationService.resolveMediaUrl(ref);
+    for (final ref in refs) {
+      try {
+        final hit = await PartnerDriverDeviationService.resolveMedia(ref);
+        _resolved[ref] = _ResolvedMedia(url: hit.url, bytes: hit.bytes);
+      } catch (e) {
+        _resolved[ref] = _ResolvedMedia(error: e.toString());
       }
-      if (mounted) setState(() => _loadingMedia = false);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _loadingMedia = false;
-          _mediaError = e.toString();
-        });
-      }
+      if (mounted) setState(() {});
     }
+    if (mounted) setState(() => _loadingMedia = false);
   }
 
-  Future<void> _openUrl(String url) async {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  void _openImageFullscreen(_ResolvedMedia media) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: const EdgeInsets.all(12),
+        child: Stack(
+          children: [
+            InteractiveViewer(
+              child: Center(
+                child: media.bytes != null
+                    ? Image.memory(media.bytes!, fit: BoxFit.contain)
+                    : Image.network(
+                        media.url!,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, _, _) => const Icon(
+                          Icons.broken_image,
+                          color: Colors.white54,
+                          size: 48,
+                        ),
+                      ),
+              ),
+            ),
+            Positioned(
+              top: 8,
+              right: 8,
+              child: IconButton(
+                onPressed: () => Navigator.pop(ctx),
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
-    final customer = item.customerRef?.trim().isNotEmpty == true
-        ? item.customerRef!.trim()
-        : (item.freightUnit?.trim() ?? '');
+    final fu = item.freightUnit?.trim().isNotEmpty == true
+        ? item.freightUnit!.trim()
+        : (item.customerRef?.trim() ?? '');
     final order = item.orderRef?.trim() ?? '';
     final scheme = Theme.of(context).colorScheme;
-    final maxH = MediaQuery.sizeOf(context).height * 0.92;
+    final maxH = MediaQuery.sizeOf(context).height * 0.94;
+    final imageCount = item.imageUrls.length;
+    final videoCount = item.videoUrls.length;
 
     return SizedBox(
       height: maxH,
@@ -96,8 +139,9 @@ class _PartnerDriverDeviationDetailSheetState
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+            padding: const EdgeInsets.fromLTRB(20, 14, 8, 6),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.all(10),
@@ -120,16 +164,22 @@ class _PartnerDriverDeviationDetailSheetState
                             ? item.customerName!.trim()
                             : 'Sjåføravvik',
                         style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Rute ${DateFormat('d. MMMM yyyy', 'nb').format(item.routeDate)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey.shade800,
                         ),
                       ),
                       Text(
-                        [
-                          'Rute ${DateFormat('d. MMMM yyyy', 'nb').format(item.routeDate)}',
-                          'meldt ${DateFormat('d.M.yyyy HH:mm', 'nb').format(item.createdAt.toLocal())}',
-                          'av ${item.reporterLabel}',
-                        ].join(' · '),
+                        'Meldt ${DateFormat('d.M.yyyy HH:mm', 'nb').format(item.createdAt.toLocal())}'
+                        ' · ${item.reporterLabel}',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade600,
@@ -148,32 +198,39 @@ class _PartnerDriverDeviationDetailSheetState
           ),
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 28),
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
               children: [
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _chip(
-                      'Sendt av ${item.reporterLabel}',
-                      Icons.person_outline,
-                    ),
-                    if (customer.isNotEmpty)
-                      _chip('FU $customer', Icons.badge_outlined),
+                    if (fu.isNotEmpty)
+                      _chip('Nr $fu', Icons.badge_outlined),
                     if (order.isNotEmpty)
-                      _chip('Bilag $order', Icons.receipt_long_outlined),
-                    _chip(
-                      item.status == 'open' ? 'Åpen' : item.status,
-                      Icons.flag_outlined,
-                      color: DriftProTheme.primaryGreen,
-                    ),
+                      _chip('Ordre $order', Icons.receipt_long_outlined),
+                    if ((item.customerPhone ?? '').trim().isNotEmpty)
+                      _chip(
+                        item.customerPhone!.trim(),
+                        Icons.phone_outlined,
+                      ),
+                    if (imageCount > 0)
+                      _chip(
+                        '$imageCount bilde${imageCount == 1 ? '' : 'r'}',
+                        Icons.photo_outlined,
+                      ),
+                    if (videoCount > 0)
+                      _chip(
+                        '$videoCount video${videoCount == 1 ? '' : 'er'}',
+                        Icons.videocam_outlined,
+                      ),
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 18),
                 Text(
                   'Kommentar',
                   style: TextStyle(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
                     color: scheme.onSurface,
                   ),
                 ),
@@ -182,32 +239,28 @@ class _PartnerDriverDeviationDetailSheetState
                   width: double.infinity,
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
+                    color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(
                     item.comment,
-                    style: const TextStyle(height: 1.4, fontSize: 15),
+                    style: const TextStyle(height: 1.45, fontSize: 15),
                   ),
                 ),
                 const SizedBox(height: 22),
                 Text(
                   'Dokumentasjon',
                   style: TextStyle(
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
                     color: scheme.onSurface,
                   ),
                 ),
-                const SizedBox(height: 8),
-                if (_loadingMedia)
+                const SizedBox(height: 10),
+                if (_loadingMedia && _resolved.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 28),
                     child: DriftProLoadingCenter(),
-                  )
-                else if (_mediaError != null)
-                  Text(
-                    'Vedlegg kunne ikke lastes: $_mediaError',
-                    style: TextStyle(color: Colors.red.shade700),
                   )
                 else if (item.imageUrls.isEmpty && item.videoUrls.isEmpty)
                   Text(
@@ -216,63 +269,42 @@ class _PartnerDriverDeviationDetailSheetState
                   )
                 else ...[
                   if (item.imageUrls.isNotEmpty) ...[
-                    SizedBox(
-                      height: 200,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: item.imageUrls.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 10),
-                        itemBuilder: (_, i) {
-                          final url = _resolved[item.imageUrls[i]];
-                          return InkWell(
-                            onTap: url == null ? null : () => _openUrl(url),
-                            borderRadius: BorderRadius.circular(14),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(14),
-                              child: url == null
-                                  ? Container(
-                                      width: 160,
-                                      color: Colors.grey.shade200,
-                                      child: const Icon(Icons.broken_image),
-                                    )
-                                  : Image.network(
-                                      url,
-                                      width: 220,
-                                      height: 200,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, _, _) => Container(
-                                        width: 160,
-                                        color: Colors.grey.shade200,
-                                        child: const Icon(Icons.broken_image),
-                                      ),
-                                    ),
-                            ),
-                          );
-                        },
+                    const Text(
+                      'Bilder',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                    const SizedBox(height: 8),
+                    for (var i = 0; i < item.imageUrls.length; i++) ...[
+                      _ImageTile(
+                        index: i + 1,
+                        total: item.imageUrls.length,
+                        media: _resolved[item.imageUrls[i]],
+                        loading: _loadingMedia &&
+                            !_resolved.containsKey(item.imageUrls[i]),
+                        onOpen: (m) => _openImageFullscreen(m),
                       ),
-                    ),
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
+                    ],
                   ],
-                  if (item.videoUrls.isNotEmpty)
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (var i = 0; i < item.videoUrls.length; i++)
-                          FilledButton.tonalIcon(
-                            onPressed: () {
-                              final url = _resolved[item.videoUrls[i]];
-                              if (url != null) _openUrl(url);
-                            },
-                            icon: const Icon(Icons.play_circle_outline),
-                            label: Text(
-                              item.videoUrls.length == 1
-                                  ? 'Spill av video'
-                                  : 'Video ${i + 1}',
-                            ),
-                          ),
-                      ],
+                  if (item.videoUrls.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Video',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
                     ),
+                    const SizedBox(height: 8),
+                    for (var i = 0; i < item.videoUrls.length; i++) ...[
+                      _InlineVideoTile(
+                        label: item.videoUrls.length == 1
+                            ? 'Video'
+                            : 'Video ${i + 1}',
+                        media: _resolved[item.videoUrls[i]],
+                        loading: _loadingMedia &&
+                            !_resolved.containsKey(item.videoUrls[i]),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  ],
                 ],
               ],
             ),
@@ -305,6 +337,261 @@ class _PartnerDriverDeviationDetailSheetState
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ImageTile extends StatelessWidget {
+  const _ImageTile({
+    required this.index,
+    required this.total,
+    required this.media,
+    required this.loading,
+    required this.onOpen,
+  });
+
+  final int index;
+  final int total;
+  final _ResolvedMedia? media;
+  final bool loading;
+  final void Function(_ResolvedMedia media) onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          total > 1 ? 'Bilde $index av $total' : 'Bilde',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: AspectRatio(
+            aspectRatio: 4 / 3,
+            child: Material(
+              color: Colors.grey.shade200,
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : media == null || !media!.ok
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              media?.error != null
+                                  ? 'Bildet kunne ikke lastes'
+                                  : 'Mangler bilde',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: Colors.grey.shade700),
+                            ),
+                          ),
+                        )
+                      : InkWell(
+                          onTap: () => onOpen(media!),
+                          child: media!.bytes != null
+                              ? Image.memory(
+                                  media!.bytes!,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                )
+                              : Image.network(
+                                  media!.url!,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  errorBuilder: (_, _, _) => Center(
+                                    child: Icon(
+                                      Icons.broken_image_outlined,
+                                      color: Colors.grey.shade600,
+                                      size: 40,
+                                    ),
+                                  ),
+                                ),
+                        ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _InlineVideoTile extends StatefulWidget {
+  const _InlineVideoTile({
+    required this.label,
+    required this.media,
+    required this.loading,
+  });
+
+  final String label;
+  final _ResolvedMedia? media;
+  final bool loading;
+
+  @override
+  State<_InlineVideoTile> createState() => _InlineVideoTileState();
+}
+
+class _InlineVideoTileState extends State<_InlineVideoTile> {
+  VideoPlayerController? _controller;
+  bool _ready = false;
+  String? _error;
+  String? _boundTo;
+
+  @override
+  void didUpdateWidget(covariant _InlineVideoTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _maybeInit();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _maybeInit();
+  }
+
+  void _maybeInit() {
+    final media = widget.media;
+    if (media == null || !media.ok) return;
+    final url = media.url?.trim();
+    if (url == null || url.isEmpty) {
+      if (_boundTo == 'no-url') return;
+      _boundTo = 'no-url';
+      setState(() {
+        _error = 'Video mangler avspillingslenke. Prøv å lukke og åpne igjen.';
+        _controller = null;
+        _ready = false;
+      });
+      return;
+    }
+    if (_boundTo == url) return;
+    _boundTo = url;
+    _controller?.dispose();
+    _ready = false;
+    _error = null;
+
+    final ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
+    _controller = ctrl;
+    ctrl.addListener(() {
+      if (mounted) setState(() {});
+    });
+    ctrl.initialize().then((_) {
+      if (mounted && identical(_controller, ctrl)) {
+        setState(() => _ready = true);
+      }
+    }).catchError((Object e) {
+      if (mounted && identical(_controller, ctrl)) {
+        setState(() => _error = 'Video kunne ikke spilles av');
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          widget.label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: AspectRatio(
+            aspectRatio: _ready && _controller != null
+                ? _controller!.value.aspectRatio
+                : 16 / 9,
+            child: ColoredBox(
+              color: Colors.black,
+              child: widget.loading
+                  ? const Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    )
+                  : _error != null || widget.media == null || !widget.media!.ok
+                      ? Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              _error ??
+                                  widget.media?.error ??
+                                  'Video kunne ikke lastes',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ),
+                        )
+                      : !_ready || _controller == null
+                          ? const Center(
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                              ),
+                            )
+                          : Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                VideoPlayer(_controller!),
+                                Positioned(
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  child: VideoProgressIndicator(
+                                    _controller!,
+                                    allowScrubbing: true,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                      horizontal: 12,
+                                    ),
+                                    colors: const VideoProgressColors(
+                                      playedColor: DriftProTheme.primaryGreen,
+                                      bufferedColor: Colors.white24,
+                                      backgroundColor: Colors.white12,
+                                    ),
+                                  ),
+                                ),
+                                Material(
+                                  color: Colors.black45,
+                                  shape: const CircleBorder(),
+                                  child: IconButton(
+                                    iconSize: 52,
+                                    color: Colors.white,
+                                    onPressed: () {
+                                      setState(() {
+                                        if (_controller!.value.isPlaying) {
+                                          _controller!.pause();
+                                        } else {
+                                          _controller!.play();
+                                        }
+                                      });
+                                    },
+                                    icon: Icon(
+                                      _controller!.value.isPlaying
+                                          ? Icons.pause_circle_filled
+                                          : Icons.play_circle_filled,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

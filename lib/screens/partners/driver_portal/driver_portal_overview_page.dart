@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/services/partner/mavi_unit_codes.dart';
+import '../../../core/services/partner/route_load_letters.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
@@ -69,6 +70,9 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
     final v = _data?.vehicle;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final surface = isDark ? const Color(0xFF0F1419) : const Color(0xFFF4F6F8);
+    final loadBadges = _data == null
+        ? const <String, String>{}
+        : RouteLoadLetters.badgesForRoutes(_data!.routesKommende);
 
     return PartnerPortalPageShell(
       backgroundColor: surface,
@@ -183,6 +187,7 @@ class _DriverPortalOverviewPageState extends State<DriverPortalOverviewPage> {
                           route: r,
                           shifts: _data!.shiftsById,
                           onReload: _reload,
+                          loadBadge: loadBadges[r.id],
                         ),
                       ),
                     ),

@@ -27,6 +27,7 @@ class PartnerDriverDeviationService {
     required String customerRef,
     required String comment,
     String? orderRef,
+    String? customerPhone,
     String? routeShareId,
     String? reporterName,
     List<PartnerDriverDeviationMedia> images = const [],
@@ -66,6 +67,7 @@ class PartnerDriverDeviationService {
           'freight_unit': freightUnit.trim(),
           'customer_ref': customerRef.trim(),
           'order_ref': _nullable(orderRef),
+          'customer_phone': _nullable(customerPhone),
           'comment': comment.trim(),
           'image_urls': imageUrls,
           'video_urls': videoUrls,
@@ -224,6 +226,24 @@ class PartnerDriverDeviationService {
 
   static Future<String> resolveMediaUrl(String reference) {
     return StorageFileAccess.resolveViewUrl(reference);
+  }
+
+  /// URL eller rå-bytes (når signed URL ikke finnes / Dropbox fallback).
+  static Future<({String? url, Uint8List? bytes})> resolveMedia(
+    String reference,
+  ) async {
+    try {
+      final url = await StorageFileAccess.resolveViewUrl(reference);
+      return (url: url, bytes: null);
+    } on StorageBytesReady catch (e) {
+      return (url: null, bytes: e.bytes);
+    } catch (_) {
+      final bytes = await StorageFileAccess.downloadBytes(reference);
+      if (bytes != null && bytes.isNotEmpty) {
+        return (url: null, bytes: bytes);
+      }
+      rethrow;
+    }
   }
 
   static String _date(DateTime value) =>

@@ -583,12 +583,12 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                   ),
                   title: Text(
                     [
-                      if ((item.orderRef ?? '').isNotEmpty)
-                        'Bilag ${item.orderRef}'
+                      if ((item.freightUnit ?? '').isNotEmpty)
+                        'Nr ${item.freightUnit}'
                       else if ((item.customerRef ?? '').isNotEmpty)
-                        'FU ${item.customerRef}'
-                      else if ((item.freightUnit ?? '').isNotEmpty)
-                        'FU ${item.freightUnit}',
+                        'Nr ${item.customerRef}',
+                      if ((item.orderRef ?? '').isNotEmpty)
+                        'Ordre ${item.orderRef}',
                       item.customerName ?? 'Ukjent kunde',
                     ].join(' · '),
                     style: const TextStyle(fontWeight: FontWeight.w700),
@@ -758,7 +758,7 @@ class _PartnerChatHubScreenState extends State<PartnerChatHubScreen> with Single
                         child: TextField(
                           decoration: InputDecoration(
                             hintText: _isMavi
-                                ? 'Søk samtale, bilag (2…) eller FU (4…)'
+                                ? 'Søk samtale, navn, tlf, 21…/41…'
                                 : 'Søk i samtaler…',
                             prefixIcon: const Icon(Icons.search),
                             border: OutlineInputBorder(

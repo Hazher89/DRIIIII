@@ -1,7 +1,8 @@
-/// Klassifiserer SAP/MAVI-numre fra rute-PDF.
+/// Klassifiserer SAP/MAVI-numre fra rute-PDF for sjåføravvik.
 ///
-/// - **Freight Unit** (forside): starter typisk med **4…** — ikke CCC-søkenøkkel
-/// - **Sales order / bilag** (detaljsider): starter typisk med **2…** — det CCC søker på
+/// - **Skjemafelt (auto-fyll):** 39… eller 41… (FU / kundenummer)
+/// - **Søkbare bilag:** 21…, 22…, 60… (+ øvrige 2…)
+/// - **Søk også:** kundenavn og telefon
 class PartnerDriverDeviationRefs {
   PartnerDriverDeviationRefs._();
 
@@ -18,24 +19,67 @@ class PartnerDriverDeviationRefs {
     return out;
   }
 
-  /// Freight unit / «kundenummer» på forsiden (4…).
+  /// Nummer som skal stå i skjemaet (39… / 41…).
+  static bool isFormFillNumber(String n) =>
+      n.startsWith('41') || n.startsWith('39');
+
+  /// Freight unit generelt (4…).
   static bool isFreightUnit(String n) => n.startsWith('4');
 
-  /// Bilag / sales order (2…).
-  static bool isBilagNumber(String n) => n.startsWith('2');
+  /// Søkbare sales order / bilag: 21…, 22…, 60… (og øvrige 2…).
+  static bool isSearchableOrderNumber(String n) =>
+      n.startsWith('21') ||
+      n.startsWith('22') ||
+      n.startsWith('60') ||
+      n.startsWith('2');
+
+  /// @Deprecated — bruk [isSearchableOrderNumber].
+  static bool isBilagNumber(String n) => isSearchableOrderNumber(n);
+
+  static List<String> formFillNumbersFrom(String? raw) =>
+      extractNumbers(raw).where(isFormFillNumber).toList(growable: false);
 
   static List<String> freightUnitsFrom(String? raw) =>
       extractNumbers(raw).where(isFreightUnit).toList(growable: false);
 
-  static List<String> bilagNumbersFrom(String? raw) =>
-      extractNumbers(raw).where(isBilagNumber).toList(growable: false);
+  static List<String> searchableOrdersFrom(String? raw) =>
+      extractNumbers(raw).where(isSearchableOrderNumber).toList(growable: false);
+
+  /// @Deprecated — bruk [searchableOrdersFrom].
+  static List<String> bilagNumbersFrom(String? raw) => searchableOrdersFrom(raw);
+
+  /// Auto-fyll til skjemafelt: 41… først, deretter 39…, ellers annen 4….
+  static String? primaryFormNumber({
+    String? freightRaw,
+    String? salesOrder,
+    String? manual,
+  }) {
+    for (final candidate in [manual, freightRaw, salesOrder]) {
+      final digits = (candidate ?? '').replaceAll(RegExp(r'\D'), '');
+      if (digits.length >= 6 && isFormFillNumber(digits)) return digits;
+    }
+    final fromFreight = formFillNumbersFrom(freightRaw);
+    if (fromFreight.isNotEmpty) {
+      final prefer41 = fromFreight.where((n) => n.startsWith('41'));
+      if (prefer41.isNotEmpty) return prefer41.first;
+      return fromFreight.first;
+    }
+    // Fallback: hvilken som helst FU (4…)
+    return primaryFreightUnit(freightRaw);
+  }
 
   static String? primaryFreightUnit(String? freightRaw) {
+    final prefer = formFillNumbersFrom(freightRaw);
+    if (prefer.isNotEmpty) {
+      final p41 = prefer.where((n) => n.startsWith('41'));
+      if (p41.isNotEmpty) return p41.first;
+      return prefer.first;
+    }
     final list = freightUnitsFrom(freightRaw);
     return list.isEmpty ? null : list.first;
   }
 
-  /// Bilag for lagring/søk: eksplisitt salesOrder, ellers manuell, ellers fra råtekst.
+  /// Sales order / bilag for lagring og søk (21/22/60/2…).
   static String? primaryBilag({
     String? salesOrder,
     String? manual,
@@ -43,19 +87,29 @@ class PartnerDriverDeviationRefs {
   }) {
     for (final candidate in [salesOrder, manual]) {
       final digits = (candidate ?? '').replaceAll(RegExp(r'\D'), '');
-      if (digits.isNotEmpty && isBilagNumber(digits)) return digits;
-      final from = bilagNumbersFrom(candidate);
+      if (digits.isNotEmpty && isSearchableOrderNumber(digits)) return digits;
+      final from = searchableOrdersFrom(candidate);
       if (from.isNotEmpty) return from.first;
     }
-    // Ikke plukk 2… fra freight-feltet hvis det bare er 4… der
-    final fromFreight = bilagNumbersFrom(freightRaw);
+    final fromFreight = searchableOrdersFrom(freightRaw);
     return fromFreight.isEmpty ? null : fromFreight.first;
   }
 
   static String freightUnitForStorage(String? freightRaw) {
+    final form = primaryFormNumber(freightRaw: freightRaw);
+    if (form != null) return form;
     final units = freightUnitsFrom(freightRaw);
     if (units.isNotEmpty) return units.join(', ');
     return freightRaw?.trim() ?? '';
+  }
+
+  static String? normalizePhoneDigits(String? phone) {
+    if (phone == null) return null;
+    var d = phone.replaceAll(RegExp(r'\D'), '');
+    if (d.isEmpty) return null;
+    if (d.startsWith('0047') && d.length >= 12) d = d.substring(4);
+    if (d.startsWith('47') && d.length >= 10) d = d.substring(2);
+    return d;
   }
 
   static String customerPickerLabel({
@@ -64,25 +118,53 @@ class PartnerDriverDeviationRefs {
     String? salesOrder,
     int? sequence,
   }) {
-    final freight = primaryFreightUnit(freightRaw);
+    final form = primaryFormNumber(freightRaw: freightRaw);
     final bilag = primaryBilag(salesOrder: salesOrder, freightRaw: freightRaw);
     final parts = <String>[];
     if (sequence != null) parts.add('#$sequence');
-    if (bilag != null) parts.add('Bilag $bilag');
-    if (freight != null) parts.add('FU $freight');
+    if (form != null) parts.add(form);
+    if (bilag != null && bilag != form) parts.add('Ordre $bilag');
     parts.add(name);
     return parts.join(' · ');
   }
 
-  /// True når CCC-søk ser ut som bilag (2…) eller FU (4…).
+  /// CCC/MAVI-søk: navn, telefon, 21/22/60/39/41/2/4…
   static bool looksLikeDeviationQuery(String query) {
     final q = query.trim();
     if (q.length < 2) return false;
     final digits = q.replaceAll(RegExp(r'\D'), '');
-    if (digits.length >= 4 &&
-        (digits.startsWith('2') || digits.startsWith('4'))) {
+    if (digits.length >= 4) {
+      return digits.startsWith('21') ||
+          digits.startsWith('22') ||
+          digits.startsWith('60') ||
+          digits.startsWith('39') ||
+          digits.startsWith('41') ||
+          digits.startsWith('2') ||
+          digits.startsWith('4') ||
+          digits.length >= 8; // telefon
+    }
+    return q.replaceAll(RegExp(r'[^a-zA-ZæøåÆØÅäöÄÖüÜ]'), '').length >= 3;
+  }
+
+  /// Strengere: bilag/tlf (eller kort kundenavn) — ikke vanlige CCC-spørsmål.
+  static bool looksLikeDeviationLookupInput(String query) {
+    final q = query.trim();
+    if (q.length < 3) return false;
+    final digits = q.replaceAll(RegExp(r'\D'), '');
+    if (digits.length >= 6 &&
+        (digits.startsWith('21') ||
+            digits.startsWith('22') ||
+            digits.startsWith('60') ||
+            digits.startsWith('39') ||
+            digits.startsWith('41') ||
+            digits.startsWith('2') ||
+            digits.startsWith('4') ||
+            digits.length >= 8)) {
       return true;
     }
-    return RegExp(r'\d{6,}').hasMatch(q);
+    // Kort kundenavn uten spørsmålstegn / setningsord
+    if (q.contains('?') || q.contains(' ')) return false;
+    final letters = q.replaceAll(RegExp(r'[^a-zA-ZæøåÆØÅäöÄÖüÜ]'), '');
+    return letters.length >= 3 && letters.length <= 40 && digits.isEmpty;
   }
 }

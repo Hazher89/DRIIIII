@@ -18,6 +18,8 @@ class PartnerPortalRouteListTile extends StatelessWidget {
   final String? vehicleLabel;
   /// Rå enhetskode (NO_O_M0096) — brukes til ren M0096-tittel.
   final String? unitCode;
+  /// F.eks. «Last A» når samme bil har flere ruter samme dag.
+  final String? loadBadge;
 
   const PartnerPortalRouteListTile({
     super.key,
@@ -27,6 +29,7 @@ class PartnerPortalRouteListTile extends StatelessWidget {
     this.onBehalfOfDriver = false,
     this.vehicleLabel,
     this.unitCode,
+    this.loadBadge,
   });
 
   @override
@@ -91,11 +94,41 @@ class PartnerPortalRouteListTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        mavi,
-                        style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              mavi,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                fontSize: 18,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (loadBadge != null && loadBadge!.trim().isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6A1B9A).withValues(alpha: 0.14),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                loadBadge!,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF6A1B9A),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 4),
                       Text(

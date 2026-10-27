@@ -51,6 +51,48 @@ function normalizePhoneNo(phone: string): string | null {
   return null;
 }
 
+/** PostgREST/Auth errors are plain objects — String(e) becomes "[object Object]". */
+function errorMessage(e: unknown): string {
+  if (e instanceof Error) return e.message || e.name;
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    const msg = o.message ?? o.error_description ?? o.error ?? o.msg;
+    if (typeof msg === "string" && msg.length > 0 && msg !== "[object Object]") {
+      const code = typeof o.code === "string" ? ` (${o.code})` : "";
+      const details = typeof o.details === "string" && o.details ? `: ${o.details}` : "";
+      return `${msg}${code}${details}`;
+    }
+    try {
+      return JSON.stringify(e);
+    } catch {
+      /* ignore */
+    }
+  }
+  return String(e);
+}
+
+type PortalRow = {
+  id: string;
+  profile_id: string | null;
+  login_email: string | null;
+  username: string | null;
+  is_active?: boolean | null;
+};
+
+async function firstRow(
+  // deno-lint-ignore no-explicit-any
+  query: any,
+): Promise<PortalRow | null> {
+  const { data, error } = await query.limit(1).maybeSingle();
+  if (error) {
+    // PGRST116 = 0 rows for maybeSingle; ignore. Multiple rows: use limit(1).
+    if (error.code === "PGRST116") return null;
+    throw error;
+  }
+  return (data as PortalRow | null) ?? null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -187,13 +229,14 @@ Deno.serve(async (req) => {
 
     // Unikt brukernavn: avvis hvis aktiv konto hos ANNET firma har samme username.
     if (user) {
-      const { data: userClash } = await admin
-        .from("partner_portal_accounts")
-        .select("id, partner_id")
-        .eq("is_active", true)
-        .ilike("username", user)
-        .maybeSingle();
-      if (userClash && String(userClash.partner_id) !== String(partner_id)) {
+      const clash = await firstRow(
+        admin
+          .from("partner_portal_accounts")
+          .select("id, partner_id")
+          .eq("is_active", true)
+          .ilike("username", user),
+      );
+      if (clash && String((clash as { partner_id?: string }).partner_id) !== String(partner_id)) {
         return new Response(
           JSON.stringify({
             error: "Brukernavn er allerede i bruk. Velg et annet unikt brukernavn.",
@@ -212,27 +255,70 @@ Deno.serve(async (req) => {
       }).eq("id", partner_vehicle_id);
     }
 
-    let existingQuery = admin
-      .from("partner_portal_accounts")
-      .select("id, profile_id, login_email, username")
-      .eq("partner_id", partner_id)
-      .eq("is_active", true);
-
+    // Finn eksisterende rad — inkludert inaktive (deaktivering nuller phone, men
+    // username/login_email ligger igjen og blokkerer insert).
+    let existing: PortalRow | null = null;
     if (portal_account_id) {
-      existingQuery = existingQuery.eq("id", portal_account_id);
-    } else if (isOwner) {
-      existingQuery = existingQuery
-        .eq("account_kind", "owner")
-        .eq("phone", normalizedPhone);
-    } else if (isStaff) {
-      existingQuery = existingQuery
-        .eq("account_kind", "staff")
-        .eq("phone", normalizedPhone);
+      existing = await firstRow(
+        admin
+          .from("partner_portal_accounts")
+          .select("id, profile_id, login_email, username, is_active")
+          .eq("id", portal_account_id)
+          .eq("partner_id", partner_id),
+      );
+    } else if (isOwner || isStaff) {
+      // Username / login_email først — unngår å overskrive annen eier som deler telefon.
+      if (user) {
+        existing = await firstRow(
+          admin
+            .from("partner_portal_accounts")
+            .select("id, profile_id, login_email, username, is_active")
+            .eq("partner_id", partner_id)
+            .eq("account_kind", kind)
+            .ilike("username", user),
+        );
+      }
+      if (!existing) {
+        existing = await firstRow(
+          admin
+            .from("partner_portal_accounts")
+            .select("id, profile_id, login_email, username, is_active")
+            .eq("partner_id", partner_id)
+            .eq("account_kind", kind)
+            .ilike("login_email", email),
+        );
+      }
+      if (!existing) {
+        existing = await firstRow(
+          admin
+            .from("partner_portal_accounts")
+            .select("id, profile_id, login_email, username, is_active")
+            .eq("partner_id", partner_id)
+            .eq("account_kind", kind)
+            .eq("is_active", true)
+            .eq("phone", normalizedPhone),
+        );
+      }
     } else {
-      existingQuery = existingQuery.eq("partner_vehicle_id", partner_vehicle_id);
+      existing = await firstRow(
+        admin
+          .from("partner_portal_accounts")
+          .select("id, profile_id, login_email, username, is_active")
+          .eq("partner_id", partner_id)
+          .eq("is_active", true)
+          .eq("partner_vehicle_id", partner_vehicle_id),
+      );
+      if (!existing && partner_vehicle_id) {
+        existing = await firstRow(
+          admin
+            .from("partner_portal_accounts")
+            .select("id, profile_id, login_email, username, is_active")
+            .eq("partner_id", partner_id)
+            .eq("partner_vehicle_id", partner_vehicle_id)
+            .order("updated_at", { ascending: false }),
+        );
+      }
     }
-
-    const { data: existing } = await existingQuery.maybeSingle();
 
     // Superadmin kan sette nytt brukernavn. Eksisterende beholdes bare når ingen er sendt.
     const requestedUser = typeof username === "string" ? username.trim().toLowerCase() : "";
@@ -250,6 +336,7 @@ Deno.serve(async (req) => {
     }
 
     let profileId: string | null = existing?.profile_id ?? null;
+    // Behold Auth-e-post på gjenopplivet konto — unngår unikhetskollisjon og orphan Auth-user.
     const authEmail = (existing?.login_email ?? email).toLowerCase();
 
     const userMetadata: Record<string, unknown> = {
@@ -288,9 +375,8 @@ Deno.serve(async (req) => {
           });
           profileId = existingAuthId;
         } else {
-          const msg = createErr.message ?? String(createErr);
           throw new Error(
-            `Kunne ikke opprette Auth-bruker: ${msg}. Kjør migrasjon partner_portal_user_fix i Supabase.`,
+            `Kunne ikke opprette Auth-bruker: ${errorMessage(createErr)}. Kjør migrasjon partner_portal_user_fix i Supabase.`,
           );
         }
       } else if (created?.user) {
@@ -315,7 +401,7 @@ Deno.serve(async (req) => {
       });
       if (profErr) {
         console.error("profiles upsert:", profErr);
-        throw new Error(`Profil kunne ikke lagres: ${profErr.message}`);
+        throw new Error(`Profil kunne ikke lagres: ${errorMessage(profErr)}`);
       }
     }
 
@@ -333,21 +419,46 @@ Deno.serve(async (req) => {
 
     if (existing?.id) {
       const { error: updErr } = await admin.from("partner_portal_accounts").update(row).eq("id", existing.id);
-      if (updErr) throw updErr;
+      if (updErr) throw new Error(`Portal-konto kunne ikke oppdateres: ${errorMessage(updErr)}`);
     } else {
-      const { data: emailTaken } = await admin
-        .from("partner_portal_accounts")
-        .select("id")
-        .eq("is_active", true)
-        .ilike("login_email", authEmail)
-        .maybeSingle();
+      const emailTaken = await firstRow(
+        admin
+          .from("partner_portal_accounts")
+          .select("id, partner_id")
+          .eq("is_active", true)
+          .ilike("login_email", authEmail),
+      );
       if (emailTaken) {
         throw new Error(
           `Innloggings-e-posten ${authEmail} er allerede knyttet til en annen portal-konto.`,
         );
       }
-      const { error: insErr } = await admin.from("partner_portal_accounts").insert(row);
-      if (insErr) throw insErr;
+      // Gjenbruk inaktiv rad med samme username eller login_email (globale unik-indekser).
+      let reuse =
+        (await firstRow(
+          admin
+            .from("partner_portal_accounts")
+            .select("id, profile_id, login_email, username, is_active")
+            .ilike("login_email", authEmail)
+            .order("updated_at", { ascending: false }),
+        )) ??
+        (await firstRow(
+          admin
+            .from("partner_portal_accounts")
+            .select("id, profile_id, login_email, username, is_active")
+            .ilike("username", user)
+            .order("updated_at", { ascending: false }),
+        ));
+      if (reuse?.id) {
+        const { error: updErr } = await admin
+          .from("partner_portal_accounts")
+          .update(row)
+          .eq("id", reuse.id);
+        if (updErr) throw new Error(`Portal-konto kunne ikke gjenåpnes: ${errorMessage(updErr)}`);
+      } else {
+        const { error: insErr } = await admin.from("partner_portal_accounts").insert(row);
+        if (insErr) throw new Error(`Portal-konto kunne ikke opprettes: ${errorMessage(insErr)}`);
+      }
     }
 
     let smsSent = false;
@@ -430,7 +541,8 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {
-    return new Response(JSON.stringify({ error: String(e) }), {
+    console.error("partner-portal-provision:", e);
+    return new Response(JSON.stringify({ error: errorMessage(e) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
