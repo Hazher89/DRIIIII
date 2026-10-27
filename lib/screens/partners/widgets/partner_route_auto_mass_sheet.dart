@@ -191,6 +191,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   final Map<String, TextEditingController> _noteByShare = {};
   List<FleetShiftDefinition> _shifts = [];
   Map<String, PartnerPortalAccount> _portalByVehicle = {};
+  /// Bedriftsansvarlig-telefon per partner (for publiserings-oversikt).
+  Map<String, String> _ownerPhoneByPartner = {};
   List<_PdfAssignmentRow> _importLog = [];
   final Map<String, String> _stowingByShare = {};
   late DateTime _routeDate;
@@ -1125,6 +1127,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       }
     }
     _portalByVehicle = portals;
+    // Owner-telefon settes i _hydrateQueueFromCompany når tilgjengelig.
     final firstLoad = !_selectionInitialized;
     if (preserveSelection) {
       _selected.removeWhere((id) => !_staged.any((s) => s.id == id));
@@ -1276,10 +1279,23 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ? await _collectSapManualSkipped(companyId)
           : const <_SkippedPdf>[];
       final portals = <String, PartnerPortalAccount>{};
-      final partnerIds = _maviFleet.map((r) => r.partner.id).toSet();
-      for (final pid in partnerIds) {
-        for (final a in await PartnerService.fetchPortalAccounts(pid)) {
-          if (a.partnerVehicleId != null) portals[a.partnerVehicleId!] = a;
+      final ownerPhones = <String, String>{};
+      // Én company-query i stedet for N+1 per partner.
+      for (final a in await PartnerService.fetchCompanyPortalAccounts(companyId)) {
+        if (a.partnerVehicleId != null) {
+          portals[a.partnerVehicleId!] = a;
+        }
+        if (a.isOwner) {
+          final phone = (a.phone ?? '').trim();
+          if (phone.length >= 8) {
+            ownerPhones.putIfAbsent(a.partnerId, () => phone);
+          }
+        }
+      }
+      for (final row in _maviFleet) {
+        final pPhone = (row.partner.phone ?? '').trim();
+        if (pPhone.length >= 8) {
+          ownerPhones.putIfAbsent(row.partner.id, () => pPhone);
         }
       }
       await PostalCodeRegistry.ensureLoaded();
@@ -1289,6 +1305,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       }
       if (!mounted) return;
       setState(() {
+        _ownerPhoneByPartner = ownerPhones;
         _applyStagedQueueState(
           staged: working,
           shifts: shifts,
@@ -1426,7 +1443,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       final mavi = row != null ? MaviUnitCodes.compactLabel(row.vehicle.unitCode) : '?';
       return '• $mavi (${e.value.length} last)';
     }).join('\n');
-    return '\n\n⚠ ${multi.length} sjåfør(er) har 2+ last:\n$lines${multi.length > 6 ? '\n…' : ''}';
+    return '${multi.length} MAVI har 2+ last samme dag:\n$lines${multi.length > 6 ? '\n…' : ''}';
   }
 
   Future<bool> _confirmPublish({
@@ -1446,7 +1463,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       final vid = share.partnerVehicleId;
       if (vid != null) driverIds.add(vid);
       final portal = vid != null ? _portalByVehicle[vid] : null;
-      final phone = portal?.phone ?? row?.vehicle.phone;
+      final driverPhone = (portal?.phone ?? row?.vehicle.phone ?? '').trim();
+      final ownerPhone = (
+        (row != null ? _ownerPhoneByPartner[row.partner.id] : null) ??
+            row?.partner.phone ??
+            ''
+      ).trim();
       final start = _startByShare[id] ?? const TimeOfDay(hour: 6, minute: 0);
       entries.add(
         PartnerRoutePublishReviewEntry(
@@ -1456,7 +1478,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           shiftName: _shiftLabel(_effectiveShiftId(id)),
           dateLabel: DateFormat('EEE d.M.y', 'nb').format(_routeDayFor(id)),
           startLabel: '${start.hour.toString().padLeft(2, '0')}:${start.minute.toString().padLeft(2, '0')}',
-          hasPhone: phone != null && phone.trim().length >= 8,
+          hasDriverPhone: driverPhone.length >= 8,
+          hasOwnerPhone: ownerPhone.length >= 8,
         ),
       );
     }

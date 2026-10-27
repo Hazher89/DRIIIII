@@ -67,9 +67,10 @@ class _PartnerCompanyGridCardState extends State<PartnerCompanyGridCard> {
   Widget build(BuildContext context) {
     final initial =
         widget.name.trim().isNotEmpty ? widget.name.trim()[0].toUpperCase() : '?';
+    // Vis alle registrerte MAVI på kortet — også de deaktivert i ruteplanlegger.
     final maviList = PartnerMaviVehicleOverview.filterMavi(
       widget.maviVehicles,
-      includeInactive: !widget.isActive,
+      includeInactive: true,
     );
     const accent = Color(0xFF15803D);
     final surface = !widget.isActive
@@ -242,19 +243,28 @@ class _PartnerCompanyGridCardState extends State<PartnerCompanyGridCard> {
                                   spacing: 6,
                                   runSpacing: 6,
                                   children: [
-                                    for (final v in maviList.take(8))
+                                    for (final v in maviList.take(10))
                                       Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                         decoration: BoxDecoration(
-                                          color: accent.withValues(alpha: 0.08),
+                                          color: v.isActive
+                                              ? accent.withValues(alpha: 0.08)
+                                              : const Color(0xFFF3F4F6),
                                           borderRadius: BorderRadius.circular(999),
+                                          border: v.isActive
+                                              ? null
+                                              : Border.all(color: const Color(0xFFD1D5DB)),
                                         ),
                                         child: Text(
-                                          _shortUnit(v.unitCode),
-                                          style: const TextStyle(
+                                          v.isActive
+                                              ? _shortUnit(v.unitCode)
+                                              : '${_shortUnit(v.unitCode)} · av',
+                                          style: TextStyle(
                                             fontSize: 12,
                                             fontWeight: FontWeight.w800,
-                                            color: Color(0xFF166534),
+                                            color: v.isActive
+                                                ? const Color(0xFF166534)
+                                                : const Color(0xFF6B7280),
                                           ),
                                         ),
                                       ),
