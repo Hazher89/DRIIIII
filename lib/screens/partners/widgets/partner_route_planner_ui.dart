@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/constants/route_dispatch_status.dart';
+import '../../../models/partner/partner_links.dart';
 
 /// Delte UI-komponenter for rute-planlegger — fargerik, lys og tydelig.
 class RoutePlannerUi {
@@ -520,6 +521,90 @@ class RoutePlannerUi {
 }
 
 enum RoutePlannerViewMode { day, week, month }
+
+/// Status for én sjåfør på én dag — styrer kortfarge.
+enum DriverDayCardStatus {
+  free,
+  draft,
+  waiting,
+  seen,
+  accepted,
+  rejected,
+}
+
+abstract final class DriverDayStatus {
+  static String label(DriverDayCardStatus s) {
+    switch (s) {
+      case DriverDayCardStatus.free:
+        return 'Ledig';
+      case DriverDayCardStatus.draft:
+        return 'Kladd';
+      case DriverDayCardStatus.waiting:
+        return 'Venter';
+      case DriverDayCardStatus.seen:
+        return 'Sett · ikke akseptert';
+      case DriverDayCardStatus.accepted:
+        return 'Akseptert';
+      case DriverDayCardStatus.rejected:
+        return 'Avvist';
+    }
+  }
+
+  static Color color(DriverDayCardStatus s) {
+    switch (s) {
+      case DriverDayCardStatus.free:
+        return const Color(0xFF64748B);
+      case DriverDayCardStatus.draft:
+        return RouteDispatchStatus.colorDraft;
+      case DriverDayCardStatus.waiting:
+        return RouteDispatchStatus.colorWaiting;
+      case DriverDayCardStatus.seen:
+        return const Color(0xFFD97706);
+      case DriverDayCardStatus.accepted:
+        return RouteDispatchStatus.colorAccepted;
+      case DriverDayCardStatus.rejected:
+        return RouteDispatchStatus.colorRejected;
+    }
+  }
+
+  static int sortRank(DriverDayCardStatus s) {
+    switch (s) {
+      case DriverDayCardStatus.waiting:
+        return 0;
+      case DriverDayCardStatus.seen:
+        return 1;
+      case DriverDayCardStatus.draft:
+        return 2;
+      case DriverDayCardStatus.rejected:
+        return 3;
+      case DriverDayCardStatus.accepted:
+        return 4;
+      case DriverDayCardStatus.free:
+        return 5;
+    }
+  }
+
+  static DriverDayCardStatus fromShares(List<PartnerRouteShare> shares) {
+    if (shares.isEmpty) return DriverDayCardStatus.free;
+    var worst = DriverDayCardStatus.accepted;
+    for (final s in shares) {
+      final st = fromShare(s);
+      if (sortRank(st) < sortRank(worst)) worst = st;
+    }
+    return worst;
+  }
+
+  static DriverDayCardStatus fromShare(PartnerRouteShare s) {
+    if (s.isStaged) return DriverDayCardStatus.draft;
+    if (s.ackStatus == 'accepted') return DriverDayCardStatus.accepted;
+    if (s.ackStatus == 'rejected') return DriverDayCardStatus.rejected;
+    if (s.requiresAck || s.isSentWithNotify || s.isRegistered) {
+      if (s.pdfWasOpened) return DriverDayCardStatus.seen;
+      return DriverDayCardStatus.waiting;
+    }
+    return DriverDayCardStatus.draft;
+  }
+}
 
 class RoutePlannerTool {
   const RoutePlannerTool({
