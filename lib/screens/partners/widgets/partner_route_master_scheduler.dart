@@ -55,6 +55,7 @@ class PartnerRouteMasterScheduler extends StatefulWidget {
   final List<FleetPartnerVehicleRow> fleet;
   final VoidCallback? onChanged;
   final List<Widget> leadingSlivers;
+  final Widget? toolsBar;
   final bool nestedScroll;
 
   const PartnerRouteMasterScheduler({
@@ -62,6 +63,7 @@ class PartnerRouteMasterScheduler extends StatefulWidget {
     required this.fleet,
     this.onChanged,
     this.leadingSlivers = const [],
+    this.toolsBar,
     this.nestedScroll = false,
   });
 
@@ -524,19 +526,20 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       sapBadge = '$_sapInboxPending nye PDF';
     }
 
+    const ink = Color(0xFF111827);
     return [
       RoutePlannerAction(
         icon: Icons.add_circle_outline,
         title: 'Ny rute',
         subtitle: 'Last opp PDF og tildel én sjåfør',
-        color: DriftProTheme.accentBlue,
+        color: ink,
         onPressed: _busy || _filteredFleet.isEmpty ? null : _openSingleAssign,
       ),
       RoutePlannerAction(
         icon: Icons.auto_awesome,
         title: 'Auto masse',
         subtitle: 'Mange PDF-er — smart tildeling',
-        color: const Color(0xFF6A1B9A),
+        color: ink,
         badge: _manualStagedCount > 0 ? '$_manualStagedCount' : null,
         onPressed: _busy || _maviFleet.isEmpty ? null : _openAutoMass,
       ),
@@ -548,9 +551,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             : hasQueue
                 ? '$_sapStagedCount i kø — klar til kontroll'
                 : 'Ingen nye',
-        color: const Color(0xFF1565C0),
+        color: ink,
         badge: sapBadge,
-        badgeColor: const Color(0xFFFFC107),
         glow: sapActive,
         onPressed: _busy || _maviFleet.isEmpty ? null : _openSapRoutes,
       ),
@@ -701,7 +703,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   Widget _buildToolbarContent(bool isDark, Color hdrBg, Color borderCol) {
     return Material(
-      color: hdrBg,
+      color: Colors.white,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Column(
@@ -709,6 +711,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           children: [
             RoutePlannerUi.header(context: context, busy: _busy),
             const SizedBox(height: 14),
+            RoutePlannerUi.sectionLabel('Periode'),
+            const SizedBox(height: 8),
             RoutePlannerUi.dateNavigator(
               weekStart: _weekStart,
               weekEnd: _weekEnd,
@@ -736,6 +740,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             const SizedBox(height: 12),
             RoutePlannerUi.searchField(controller: _searchCtrl),
             const SizedBox(height: 14),
+            RoutePlannerUi.sectionLabel('Handlinger'),
+            const SizedBox(height: 8),
             RoutePlannerUi.actionGrid(
               context: context,
               actions: _plannerActions(),
@@ -750,18 +756,24 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               draft: _weekDraftRoutes,
               waiting: _weekWaitingRoutes,
             ),
-            const SizedBox(height: 10),
+            if (widget.toolsBar != null) ...[
+              const SizedBox(height: 12),
+              widget.toolsBar!,
+            ],
+            const SizedBox(height: 12),
+            RoutePlannerUi.sectionLabel('Kalender'),
+            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(
-                  'Sorter sjåfører',
+                const Text(
+                  'Sorter',
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF6B7280),
                   ),
                 ),
                 for (final mode in _FleetSortMode.values)
@@ -770,6 +782,20 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     selected: _fleetSort == mode,
                     onSelected: (_) => setState(() => _fleetSort = mode),
                     visualDensity: VisualDensity.compact,
+                    selectedColor: const Color(0xFFF3F4F6),
+                    backgroundColor: Colors.white,
+                    side: BorderSide(
+                      color: _fleetSort == mode
+                          ? const Color(0xFF111827)
+                          : const Color(0xFFE5E7EB),
+                    ),
+                    labelStyle: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _fleetSort == mode
+                          ? const Color(0xFF111827)
+                          : const Color(0xFF6B7280),
+                    ),
                   ),
               ],
             ),
@@ -817,13 +843,18 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                   right: BorderSide(color: borderCol),
                   bottom: BorderSide(color: borderCol),
                 ),
-                color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF8FAFC),
+                color: Colors.white,
               ),
               padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
               alignment: Alignment.bottomLeft,
               child: const Text(
                 'Sjåfører · MAVI',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 11),
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                  color: Color(0xFF6B7280),
+                  letterSpacing: 0.3,
+                ),
               ),
             ),
             Expanded(child: _buildDayHeaderRow(borderCol)),
@@ -851,7 +882,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                 right: BorderSide(color: borderCol),
                 bottom: BorderSide(color: borderCol),
               ),
-              color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF8FAFC),
+              color: Colors.white,
             ),
             child: _buildSidebarRow(row, borderCol),
           ),
@@ -881,7 +912,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         SliverToBoxAdapter(
           child: Card(
             margin: EdgeInsets.zero,
-            elevation: 1,
+            elevation: 0,
+            color: Colors.white,
             clipBehavior: Clip.antiAlias,
             shape: RoundedRectangleBorder(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
@@ -975,6 +1007,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     return Card(
       margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       elevation: 0,
+      color: Colors.white,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(color: borderCol),
@@ -990,6 +1023,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               subtitle: 'Trykk på en sjåfør for å legge til eller administrere ruter.',
             ),
             const SizedBox(height: 12),
+            RoutePlannerUi.sectionLabel('Periode'),
+            const SizedBox(height: 8),
             RoutePlannerUi.dateNavigator(
               weekStart: _weekStart,
               weekEnd: _weekEnd,
@@ -1018,6 +1053,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             const SizedBox(height: 12),
             RoutePlannerUi.searchField(controller: _searchCtrl),
             const SizedBox(height: 12),
+            RoutePlannerUi.sectionLabel('Handlinger'),
+            const SizedBox(height: 8),
             RoutePlannerUi.actionGrid(
               context: context,
               actions: _plannerActions(),
@@ -1025,6 +1062,10 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                 onPressed: _busy ? null : _reload,
               ),
             ),
+            if (widget.toolsBar != null) ...[
+              const SizedBox(height: 12),
+              widget.toolsBar!,
+            ],
             if (_mode == RoutePlannerViewMode.month) ...[
               const SizedBox(height: 10),
               CalendarDatePicker(
@@ -1065,11 +1106,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             final isFocus = _dayOnly(d) == _dayOnly(_focusDay);
             final n = _weekRouteCount(d);
             return Material(
-              color: isFocus
-                  ? DriftProTheme.primaryGreen.withValues(alpha: 0.14)
-                  : isDark
-                      ? DriftProTheme.cardDark
-                      : Colors.white,
+              color: Colors.white,
               borderRadius: BorderRadius.circular(12),
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
@@ -1084,9 +1121,9 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
                       color: isFocus
-                          ? DriftProTheme.primaryGreen
+                          ? const Color(0xFF111827)
                           : isToday
-                              ? DriftProTheme.accentBlue.withValues(alpha: 0.5)
+                              ? const Color(0xFF9CA3AF)
                               : borderCol,
                       width: isFocus ? 2 : 1,
                     ),
@@ -1099,7 +1136,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 11,
-                          color: isFocus ? DriftProTheme.primaryGreenDark : null,
+                          color: isFocus ? const Color(0xFF111827) : const Color(0xFF6B7280),
                         ),
                       ),
                       Text(
@@ -1208,7 +1245,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                   ),
                   Icon(
                     list.isEmpty ? Icons.add_circle_outline : Icons.chevron_right,
-                    color: list.isEmpty ? Colors.grey : DriftProTheme.primaryGreen,
+                    color: list.isEmpty ? const Color(0xFF9CA3AF) : const Color(0xFF111827),
                   ),
                 ],
               ),
@@ -1350,25 +1387,16 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           return Expanded(
             child: Container(
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: isFocus
-                    ? [
-                        DriftProTheme.primaryGreen.withValues(alpha: 0.16),
-                        Colors.white.withValues(alpha: 0.55),
-                      ]
-                    : isToday
-                        ? [
-                            Colors.lightBlue.withValues(alpha: 0.14),
-                            Colors.white.withValues(alpha: 0.5),
-                          ]
-                        : [
-                            Colors.white.withValues(alpha: 0.7),
-                            Colors.white.withValues(alpha: 0.35),
-                          ],
+              color: isFocus
+                  ? const Color(0xFFF3F4F6)
+                  : Colors.white,
+              border: Border(
+                right: BorderSide(color: borderCol.withValues(alpha: 0.5)),
+                bottom: BorderSide(
+                  color: isFocus ? const Color(0xFF111827) : Colors.transparent,
+                  width: isFocus ? 2 : 0,
+                ),
               ),
-              border: Border(right: BorderSide(color: borderCol.withValues(alpha: 0.5))),
             ),
             padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
             alignment: Alignment.topLeft,
@@ -1385,10 +1413,10 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     fontWeight: FontWeight.w800,
                     fontSize: 11,
                     color: isFocus
-                        ? DriftProTheme.primaryGreen
+                        ? const Color(0xFF111827)
                         : isToday
-                            ? DriftProTheme.accentBlue
-                            : null,
+                            ? const Color(0xFF374151)
+                            : const Color(0xFF6B7280),
                   ),
                 ),
                 Text(
@@ -1448,7 +1476,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                 bottom: BorderSide(color: borderCol),
               ),
               color: isFocusDay
-                  ? DriftProTheme.primaryGreen.withValues(alpha: isDark ? 0.08 : 0.04)
+                  ? const Color(0xFFF9FAFB)
                   : Colors.transparent,
             ),
             padding: const EdgeInsets.all(4),

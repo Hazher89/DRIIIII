@@ -174,6 +174,10 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
         fleet: _fleet,
         nestedScroll: widget.nestedScroll,
         onChanged: () => reload(notifyParent: true, silent: true),
+        toolsBar: RoutePlannerUi.toolChipGroup(
+          context: context,
+          tools: _tools(),
+        ),
         leadingSlivers: [
           SliverToBoxAdapter(
             child: Padding(
@@ -187,15 +191,6 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
                 fleet: _fleet,
                 sharesToday: _sharesToday,
                 day: day,
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
-              child: RoutePlannerUi.toolChipGroup(
-                context: context,
-                tools: _tools(),
               ),
             ),
           ),

@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/constants/route_dispatch_status.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/theme/driftpro_theme_context.dart';
 
 /// Delte UI-komponenter for rute-planlegger — tydelig hierarki og konsistent design.
 class RoutePlannerUi {
@@ -137,32 +135,30 @@ class RoutePlannerUi {
     );
   }
 
-  /// Samlet verktøyrad — like chips, grupperte handlinger.
+  /// Samlet verktøyrad — hvite chips, grupperte handlinger.
   static Widget toolChipGroup({
     required BuildContext context,
     required List<RoutePlannerTool> tools,
   }) {
-    final drift = context.driftColors;
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: drift.surfaceMuted,
-        borderRadius: BorderRadius.circular(_radius),
-        border: Border.all(color: drift.borderSubtle),
-      ),
-      child: Wrap(
-        spacing: 6,
-        runSpacing: 6,
-        children: [
-          for (final t in tools)
-            _ToolChip(
-              icon: t.icon,
-              label: t.label,
-              onPressed: t.onPressed,
-              emphasized: t.emphasized,
-            ),
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        sectionLabel('Verktøy'),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final t in tools)
+              _ToolChip(
+                icon: t.icon,
+                label: t.label,
+                onPressed: t.onPressed,
+                emphasized: t.emphasized,
+              ),
+          ],
+        ),
+      ],
     );
   }
 
@@ -171,17 +167,21 @@ class RoutePlannerUi {
       controller: controller,
       decoration: InputDecoration(
         hintText: 'Søk MAVI-kode eller partner…',
-        prefixIcon: const Icon(Icons.search, size: 20),
+        prefixIcon: const Icon(Icons.search, size: 20, color: Color(0xFF6B7280)),
         isDense: true,
         filled: true,
-        fillColor: Colors.grey.withValues(alpha: 0.06),
+        fillColor: Colors.white,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.withValues(alpha: 0.2)),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF9CA3AF)),
         ),
       ),
     );
@@ -219,7 +219,7 @@ class RoutePlannerUi {
     );
   }
 
-  /// Glass-statistikk: akseptert av totalt + kladd/venter.
+  /// Status for uken — hvit flate, nøytral fremdrift.
   static Widget acceptanceOverview({
     required int total,
     required int accepted,
@@ -233,23 +233,9 @@ class RoutePlannerUi {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.85),
-            RouteDispatchStatus.colorAccepted.withValues(alpha: 0.08),
-          ],
-        ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.7)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
-          ),
-        ],
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -262,8 +248,8 @@ class RoutePlannerUi {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
                     letterSpacing: -0.2,
                   ),
                 ),
@@ -271,10 +257,10 @@ class RoutePlannerUi {
               const SizedBox(width: 8),
               Text(
                 '$pct%',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 16,
-                  color: RouteDispatchStatus.colorAccepted,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  color: Color(0xFF374151),
                 ),
               ),
             ],
@@ -284,9 +270,9 @@ class RoutePlannerUi {
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
               value: accepted / total,
-              minHeight: 8,
-              backgroundColor: Colors.black.withValues(alpha: 0.06),
-              color: RouteDispatchStatus.colorAccepted,
+              minHeight: 6,
+              backgroundColor: const Color(0xFFF3F4F6),
+              color: const Color(0xFF111827),
             ),
           ),
           const SizedBox(height: 10),
@@ -294,18 +280,9 @@ class RoutePlannerUi {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _CountBadge(
-                label: '$draft kladd',
-                color: RouteDispatchStatus.colorDraft,
-              ),
-              _CountBadge(
-                label: '$waiting venter',
-                color: RouteDispatchStatus.colorWaiting,
-              ),
-              _CountBadge(
-                label: '$accepted akseptert',
-                color: RouteDispatchStatus.colorAccepted,
-              ),
+              _CountBadge(label: '$draft kladd', color: const Color(0xFF6B7280)),
+              _CountBadge(label: '$waiting venter', color: const Color(0xFF6B7280)),
+              _CountBadge(label: '$accepted akseptert', color: const Color(0xFF111827)),
             ],
           ),
         ],
@@ -325,8 +302,8 @@ class RoutePlannerUi {
             child: _MiniDayButton(
               icon: Icons.notifications_active_outlined,
               label: 'Purr',
-              color: const Color(0xFFE65100),
-              bg: const Color(0xFFFFF3E0),
+              color: const Color(0xFF374151),
+              bg: Colors.white,
               onTap: onNudge,
             ),
           ),
@@ -335,8 +312,8 @@ class RoutePlannerUi {
           child: _MiniDayButton(
             icon: Icons.delete_outline,
             label: 'Tøm',
-            color: DriftProTheme.error,
-            bg: const Color(0xFFFFEBEE),
+            color: const Color(0xFF374151),
+            bg: Colors.white,
             onTap: onClear,
           ),
         ),
@@ -349,41 +326,31 @@ class RoutePlannerUi {
     bool busy = false,
     String? subtitle,
   }) {
-    final drift = context.driftColors;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(
-            Icons.route_outlined,
-            color: DriftProTheme.primaryGreen,
-            size: 26,
-          ),
-        ),
-        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 'Rute-planlegger',
                 style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
                   letterSpacing: -0.3,
-                  color: drift.textPrimary,
+                  color: Color(0xFF111827),
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle ??
                     'Velg dag, trykk tom celle eller bruk handlingsknappene under.',
-                style: TextStyle(fontSize: 12, height: 1.35, color: drift.textMuted),
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.35,
+                  color: Color(0xFF6B7280),
+                ),
               ),
             ],
           ),
@@ -392,7 +359,7 @@ class RoutePlannerUi {
           const SizedBox(
             width: 22,
             height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2),
+            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF111827)),
           ),
       ],
     );
@@ -404,12 +371,27 @@ class RoutePlannerUi {
       child: OutlinedButton(
         onPressed: onPressed,
         style: OutlinedButton.styleFrom(
+          foregroundColor: const Color(0xFF374151),
+          side: const BorderSide(color: Color(0xFFE5E7EB)),
+          backgroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
         ),
         child: const Icon(Icons.refresh_rounded),
+      ),
+    );
+  }
+
+  static Widget sectionLabel(String text) {
+    return Text(
+      text.toUpperCase(),
+      style: const TextStyle(
+        fontSize: 10,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.5,
+        color: Color(0xFF6B7280),
       ),
     );
   }
@@ -468,39 +450,36 @@ class _ToolChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final drift = context.driftColors;
     final enabled = onPressed != null;
     return Material(
-      color: emphasized
-          ? DriftProTheme.primaryGreen.withValues(alpha: 0.12)
-          : drift.card,
-      borderRadius: BorderRadius.circular(10),
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(999),
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: emphasized ? const Color(0xFF111827) : const Color(0xFFE5E7EB),
+            ),
+          ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 icon,
-                size: 16,
-                color: enabled
-                    ? (emphasized ? DriftProTheme.primaryGreen : drift.textPrimary)
-                    : drift.iconMuted,
+                size: 15,
+                color: enabled ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
               ),
               const SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: enabled
-                      ? (emphasized
-                          ? DriftProTheme.primaryGreenDark
-                          : drift.textPrimary)
-                      : drift.textMuted,
+                  fontWeight: FontWeight.w600,
+                  color: enabled ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
                 ),
               ),
             ],
@@ -519,10 +498,12 @@ class _ActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = action.onPressed != null;
-    final drift = context.driftColors;
+    const ink = Color(0xFF111827);
+    const muted = Color(0xFF6B7280);
+    const line = Color(0xFFE5E7EB);
 
-    Widget card = Material(
-      color: drift.card,
+    final card = Material(
+      color: Colors.white,
       borderRadius: BorderRadius.circular(RoutePlannerUi._radius),
       child: InkWell(
         onTap: action.onPressed,
@@ -532,33 +513,22 @@ class _ActionCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(RoutePlannerUi._radius),
             border: Border.all(
-              color: enabled
-                  ? action.color.withValues(alpha: 0.35)
-                  : drift.borderSubtle,
-              width: 1.5,
+              color: action.glow && enabled ? ink : line,
+              width: action.glow && enabled ? 1.5 : 1,
             ),
-            gradient: enabled
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      action.color.withValues(alpha: 0.08),
-                      action.color.withValues(alpha: 0.02),
-                    ],
-                  )
-                : null,
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: action.color.withValues(alpha: enabled ? 0.15 : 0.06),
+                  color: const Color(0xFFF9FAFB),
                   borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: line),
                 ),
                 child: Icon(
                   action.icon,
-                  color: enabled ? action.color : drift.iconMuted,
+                  color: enabled ? ink : const Color(0xFF9CA3AF),
                   size: 22,
                 ),
               ),
@@ -570,15 +540,15 @@ class _ActionCard extends StatelessWidget {
                     Text(
                       action.title,
                       style: TextStyle(
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                         fontSize: 14,
-                        color: enabled ? drift.textPrimary : drift.textMuted,
+                        color: enabled ? ink : muted,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       action.subtitle,
-                      style: TextStyle(fontSize: 11, color: drift.textMuted),
+                      style: const TextStyle(fontSize: 11, color: muted),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -590,45 +560,30 @@ class _ActionCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: (action.badgeColor ?? action.color).withValues(alpha: 0.15),
+                    color: const Color(0xFFF3F4F6),
                     borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: line),
                   ),
                   child: Text(
                     action.badge!,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: action.badgeColor ?? action.color,
+                      fontWeight: FontWeight.w700,
+                      color: ink,
                     ),
                   ),
                 ),
               ],
-              Icon(
+              const Icon(
                 Icons.arrow_forward_ios_rounded,
                 size: 14,
-                color: enabled ? action.color.withValues(alpha: 0.6) : drift.iconMuted,
+                color: Color(0xFF9CA3AF),
               ),
             ],
           ),
         ),
       ),
     );
-
-    if (action.glow && enabled) {
-      card = DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(RoutePlannerUi._radius),
-          boxShadow: [
-            BoxShadow(
-              color: action.color.withValues(alpha: 0.25),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: card,
-      );
-    }
 
     return Opacity(opacity: enabled ? 1 : 0.55, child: card);
   }
@@ -642,8 +597,9 @@ class _NavPill extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.withValues(alpha: 0.25)),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
       child: child,
     );
@@ -660,12 +616,13 @@ class _CountBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
       ),
     );
   }
@@ -689,39 +646,28 @@ class _LegendChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
+          color: Colors.white,
           borderRadius: BorderRadius.circular(999),
-          gradient: LinearGradient(
-            colors: [
-              Colors.white.withValues(alpha: 0.9),
-              item.color.withValues(alpha: 0.14),
-            ],
-          ),
-          border: Border.all(color: item.color.withValues(alpha: 0.35)),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 9,
-              height: 9,
+              width: 8,
+              height: 8,
               decoration: BoxDecoration(
                 color: item.color,
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: item.color.withValues(alpha: 0.45),
-                    blurRadius: 4,
-                  ),
-                ],
               ),
             ),
             const SizedBox(width: 6),
             Text(
               item.label,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.w800,
-                color: item.color,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF374151),
               ),
             ),
           ],
@@ -754,8 +700,12 @@ class _MiniDayButton extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(6),
-        child: Padding(
+        child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -765,7 +715,7 @@ class _MiniDayButton extends StatelessWidget {
                 label,
                 style: TextStyle(
                   fontSize: 9,
-                  fontWeight: FontWeight.w800,
+                  fontWeight: FontWeight.w700,
                   color: color,
                 ),
               ),
