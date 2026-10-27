@@ -123,37 +123,44 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
         label: 'Ruteoversikt',
         onPressed: _openRouteOverview,
         emphasized: true,
+        color: RoutePlannerUi.colorNew,
       ),
       RoutePlannerTool(
         icon: Icons.history_rounded,
         label: 'Historikk',
         onPressed: _openHistory,
+        color: RoutePlannerUi.colorSap,
       ),
       RoutePlannerTool(
         icon: Icons.schedule_outlined,
         label: 'Skiftplan',
         onPressed: _openShiftAdmin,
+        color: RoutePlannerUi.colorMass,
       ),
       RoutePlannerTool(
         icon: Icons.insights_outlined,
         label: 'MAVI-statistikk',
         onPressed: _openStats,
+        color: RoutePlannerUi.colorTool,
       ),
       RoutePlannerTool(
         icon: Icons.manage_search_outlined,
         label: 'Søk PDF',
         onPressed: _openPdfSearch,
+        color: const Color(0xFFDB2777),
       ),
       if (_chatEnabled)
         RoutePlannerTool(
           icon: Icons.forum_outlined,
           label: 'Meldinger',
           onPressed: _openChat,
+          color: const Color(0xFF0891B2),
         ),
       RoutePlannerTool(
         icon: Icons.refresh_rounded,
         label: 'Oppdater',
         onPressed: () => reload(),
+        color: RoutePlannerUi.colorNew,
       ),
     ];
   }

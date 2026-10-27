@@ -74,7 +74,7 @@ class PartnerRouteMasterScheduler extends StatefulWidget {
 class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterScheduler>
     with WidgetsBindingObserver {
   bool _busy = false;
-  RoutePlannerViewMode _mode = RoutePlannerViewMode.week;
+  RoutePlannerViewMode _mode = RoutePlannerViewMode.day;
   DateTime _weekStart = _monday(DateTime.now());
   DateTime _focusDay = _dayOnly(DateTime.now());
   late final TextEditingController _searchCtrl;
@@ -526,20 +526,19 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       sapBadge = '$_sapInboxPending nye PDF';
     }
 
-    const ink = Color(0xFF111827);
     return [
       RoutePlannerAction(
         icon: Icons.add_circle_outline,
         title: 'Ny rute',
         subtitle: 'Last opp PDF og tildel én sjåfør',
-        color: ink,
+        color: RoutePlannerUi.colorNew,
         onPressed: _busy || _filteredFleet.isEmpty ? null : _openSingleAssign,
       ),
       RoutePlannerAction(
         icon: Icons.auto_awesome,
         title: 'Auto masse',
         subtitle: 'Mange PDF-er — smart tildeling',
-        color: ink,
+        color: RoutePlannerUi.colorMass,
         badge: _manualStagedCount > 0 ? '$_manualStagedCount' : null,
         onPressed: _busy || _maviFleet.isEmpty ? null : _openAutoMass,
       ),
@@ -551,12 +550,26 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             : hasQueue
                 ? '$_sapStagedCount i kø — klar til kontroll'
                 : 'Ingen nye',
-        color: ink,
+        color: sapActive ? const Color(0xFFD97706) : RoutePlannerUi.colorSap,
         badge: sapBadge,
+        badgeColor: sapActive ? const Color(0xFFD97706) : null,
         glow: sapActive,
         onPressed: _busy || _maviFleet.isEmpty ? null : _openSapRoutes,
       ),
     ];
+  }
+
+  void _shiftPeriod(int direction) {
+    if (_mode == RoutePlannerViewMode.day) {
+      setState(() {
+        _focusDay = _focusDay.add(Duration(days: direction));
+        _jumpWeek(_focusDay);
+      });
+      _reload();
+      return;
+    }
+    setState(() => _weekStart = _weekStart.add(Duration(days: 7 * direction)));
+    _reload();
   }
 
   Future<void> _pickFocusDay() async {
@@ -711,7 +724,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           children: [
             RoutePlannerUi.header(context: context, busy: _busy),
             const SizedBox(height: 14),
-            RoutePlannerUi.sectionLabel('Periode'),
+            RoutePlannerUi.sectionLabel('Visning'),
             const SizedBox(height: 8),
             RoutePlannerUi.dateNavigator(
               weekStart: _weekStart,
@@ -719,14 +732,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               focusDay: _focusDay,
               mode: _mode,
               onModeChanged: (m) => setState(() => _mode = m),
-              onPrevWeek: () {
-                setState(() => _weekStart = _weekStart.subtract(const Duration(days: 7)));
-                _reload();
-              },
-              onNextWeek: () {
-                setState(() => _weekStart = _weekStart.add(const Duration(days: 7)));
-                _reload();
-              },
+              onPrevWeek: () => _shiftPeriod(-1),
+              onNextWeek: () => _shiftPeriod(1),
               onToday: () {
                 final now = _dayOnly(DateTime.now());
                 setState(() {
@@ -761,7 +768,9 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               widget.toolsBar!,
             ],
             const SizedBox(height: 12),
-            RoutePlannerUi.sectionLabel('Kalender'),
+            RoutePlannerUi.sectionLabel(
+              _mode == RoutePlannerViewMode.day ? 'Dagstavle' : 'Ukeoversikt',
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -772,7 +781,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                   'Sorter',
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: Color(0xFF6B7280),
                   ),
                 ),
@@ -782,18 +791,18 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     selected: _fleetSort == mode,
                     onSelected: (_) => setState(() => _fleetSort = mode),
                     visualDensity: VisualDensity.compact,
-                    selectedColor: const Color(0xFFF3F4F6),
+                    selectedColor: RoutePlannerUi.colorNew.withValues(alpha: 0.15),
                     backgroundColor: Colors.white,
                     side: BorderSide(
                       color: _fleetSort == mode
-                          ? const Color(0xFF111827)
+                          ? RoutePlannerUi.colorNew
                           : const Color(0xFFE5E7EB),
                     ),
                     labelStyle: TextStyle(
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       color: _fleetSort == mode
-                          ? const Color(0xFF111827)
+                          ? RoutePlannerUi.colorNew
                           : const Color(0xFF6B7280),
                     ),
                   ),
@@ -801,25 +810,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             ),
             const SizedBox(height: 10),
             RoutePlannerUi.statusLegend(),
-            if (_mode == RoutePlannerViewMode.month) ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 300,
-                child: CalendarDatePicker(
-                  initialDate: _weekStart,
-                  firstDate: DateTime(2023),
-                  lastDate: DateTime.now().add(const Duration(days: 540)),
-                  onDateChanged: (d) {
-                    setState(() {
-                      _focusDay = _dayOnly(d);
-                      _weekStart = _monday(d);
-                      _mode = RoutePlannerViewMode.week;
-                    });
-                    _reload();
-                  },
-                ),
-              ),
-            ],
           ],
         ),
       ),
@@ -901,6 +891,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     final hdrBg = isDark ? DriftProTheme.cardDark : Colors.white;
     final borderCol = Colors.grey.withValues(alpha: isDark ? 0.35 : 0.22);
 
+    final dayMode = _mode == RoutePlannerViewMode.day;
+
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
@@ -922,31 +914,73 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
             child: _buildToolbarContent(isDark, hdrBg, borderCol),
           ),
         ),
-        SliverPersistentHeader(
-          pinned: true,
-          delegate: _PlannerPinnedHeaderDelegate(
-            height: _dayHeaderHeight,
-            child: _buildPinnedWeekHeader(borderCol, isDark),
+        if (dayMode) ...[
+          ..._dayBoardSlivers(isDark, borderCol),
+        ] else ...[
+          ..._weekGridSlivers(isDark, borderCol),
+        ],
+        const SliverToBoxAdapter(child: SizedBox(height: 96)),
+      ],
+    );
+  }
+
+  List<Widget> _dayBoardSlivers(bool isDark, Color borderCol) {
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: RoutePlannerUi.dayStrip(
+            days: _days,
+            focusDay: _focusDay,
+            routeCount: _weekRouteCount,
+            onSelect: (d) {
+              setState(() => _focusDay = d);
+              _refreshSapPendingCount();
+            },
           ),
         ),
-        if (_filteredFleet.isEmpty)
-          SliverToBoxAdapter(
-            child: Card(
-              margin: EdgeInsets.zero,
-              shape: RoundedRectangleBorder(
-                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
-                side: BorderSide(color: borderCol),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Sjåfører · ${DateFormat('EEEE d. MMMM', 'nb_NO').format(_focusDay)}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 15,
+                    color: Color(0xFF111827),
+                  ),
+                ),
               ),
-              child: const Padding(
-                padding: EdgeInsets.all(32),
-                child: Center(child: Text('Ingen MAVI-biler i listen.')),
+              Text(
+                '${_filteredFleet.where((r) => _sharesCell(r.vehicle.id, _focusDay).isNotEmpty).length}'
+                ' med rute · ${_filteredFleet.length} totalt',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF6B7280),
+                ),
               ),
-            ),
-          )
-        else
-          SliverList(
+            ],
+          ),
+        ),
+      ),
+      if (_filteredFleet.isEmpty)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: Text('Ingen MAVI-biler i listen.')),
+          ),
+        )
+      else
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          sliver: SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, i) => _buildCombinedDriverRow(
+              (context, i) => _buildMobileDriverCard(
                 context,
                 _filteredFleet[i],
                 isDark,
@@ -955,9 +989,46 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               childCount: _filteredFleet.length,
             ),
           ),
-        const SliverToBoxAdapter(child: SizedBox(height: 96)),
-      ],
-    );
+        ),
+    ];
+  }
+
+  List<Widget> _weekGridSlivers(bool isDark, Color borderCol) {
+    return [
+      SliverPersistentHeader(
+        pinned: true,
+        delegate: _PlannerPinnedHeaderDelegate(
+          height: _dayHeaderHeight,
+          child: _buildPinnedWeekHeader(borderCol, isDark),
+        ),
+      ),
+      if (_filteredFleet.isEmpty)
+        SliverToBoxAdapter(
+          child: Card(
+            margin: EdgeInsets.zero,
+            shape: RoundedRectangleBorder(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+              side: BorderSide(color: borderCol),
+            ),
+            child: const Padding(
+              padding: EdgeInsets.all(32),
+              child: Center(child: Text('Ingen MAVI-biler i listen.')),
+            ),
+          ),
+        )
+      else
+        SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, i) => _buildCombinedDriverRow(
+              context,
+              _filteredFleet[i],
+              isDark,
+              borderCol,
+            ),
+            childCount: _filteredFleet.length,
+          ),
+        ),
+    ];
   }
 
   Widget _buildMobilePlanner(BuildContext context) {
@@ -1023,7 +1094,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               subtitle: 'Trykk på en sjåfør for å legge til eller administrere ruter.',
             ),
             const SizedBox(height: 12),
-            RoutePlannerUi.sectionLabel('Periode'),
+            RoutePlannerUi.sectionLabel('Visning'),
             const SizedBox(height: 8),
             RoutePlannerUi.dateNavigator(
               weekStart: _weekStart,
@@ -1032,14 +1103,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               mode: _mode,
               compact: true,
               onModeChanged: (m) => setState(() => _mode = m),
-              onPrevWeek: () {
-                setState(() => _weekStart = _weekStart.subtract(const Duration(days: 7)));
-                _reload();
-              },
-              onNextWeek: () {
-                setState(() => _weekStart = _weekStart.add(const Duration(days: 7)));
-                _reload();
-              },
+              onPrevWeek: () => _shiftPeriod(-1),
+              onNextWeek: () => _shiftPeriod(1),
               onToday: () {
                 final now = _dayOnly(DateTime.now());
                 setState(() {
@@ -1066,22 +1131,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               const SizedBox(height: 12),
               widget.toolsBar!,
             ],
-            if (_mode == RoutePlannerViewMode.month) ...[
-              const SizedBox(height: 10),
-              CalendarDatePicker(
-                initialDate: _weekStart,
-                firstDate: DateTime(2023),
-                lastDate: DateTime.now().add(const Duration(days: 540)),
-                onDateChanged: (d) {
-                  setState(() {
-                    _focusDay = _dayOnly(d);
-                    _weekStart = _monday(d);
-                    _mode = RoutePlannerViewMode.week;
-                  });
-                  _reload();
-                },
-              ),
-            ],
             const SizedBox(height: 8),
             RoutePlannerUi.statusLegend(scrollable: true),
           ],
@@ -1093,67 +1142,14 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   Widget _buildMobileDayStrip(bool isDark, Color borderCol) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-      child: SizedBox(
-        height: 72,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: _days.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (context, i) {
-            final d = _days[i];
-            final now = _dayOnly(DateTime.now());
-            final isToday = _dayOnly(d) == now;
-            final isFocus = _dayOnly(d) == _dayOnly(_focusDay);
-            final n = _weekRouteCount(d);
-            return Material(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(12),
-                onTap: () {
-                  setState(() => _focusDay = _dayOnly(d));
-                  _refreshSapPendingCount();
-                },
-                child: Container(
-                  width: 64,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isFocus
-                          ? const Color(0xFF111827)
-                          : isToday
-                              ? const Color(0xFF9CA3AF)
-                              : borderCol,
-                      width: isFocus ? 2 : 1,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        DateFormat.E('nb_NO').format(d),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 11,
-                          color: isFocus ? const Color(0xFF111827) : const Color(0xFF6B7280),
-                        ),
-                      ),
-                      Text(
-                        DateFormat('d/M', 'nb_NO').format(d),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                      ),
-                      Text(
-                        '$n ruter',
-                        style: TextStyle(fontSize: 9, color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
+      child: RoutePlannerUi.dayStrip(
+        days: _days,
+        focusDay: _focusDay,
+        routeCount: _weekRouteCount,
+        onSelect: (d) {
+          setState(() => _focusDay = d);
+          _refreshSapPendingCount();
+        },
       ),
     );
   }
@@ -1169,15 +1165,22 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     final mavi = MaviUnitCodes.compactLabel(row.vehicle.unitCode);
     final ackDot = _vehicleAckDotColor(row.vehicle.id);
 
+    final hasRoutes = list.isNotEmpty;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       elevation: 0,
+      color: Colors.white,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: borderCol),
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: hasRoutes
+              ? RoutePlannerUi.colorNew.withValues(alpha: 0.35)
+              : borderCol,
+          width: hasRoutes ? 1.5 : 1,
+        ),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         onTap: _busy
             ? null
             : () {
@@ -1199,10 +1202,14 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     children: [
                       CircleAvatar(
                         radius: 22,
-                        backgroundColor: Colors.teal.withValues(alpha: 0.25),
+                        backgroundColor: RoutePlannerUi.colorNew.withValues(alpha: 0.18),
                         child: Text(
                           mavi.length >= 2 ? mavi.substring(0, 2) : mavi,
-                          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 12,
+                            color: RoutePlannerUi.colorNew,
+                          ),
                         ),
                       ),
                       if (ackDot != null)
@@ -1243,18 +1250,40 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                       ],
                     ),
                   ),
-                  Icon(
-                    list.isEmpty ? Icons.add_circle_outline : Icons.chevron_right,
-                    color: list.isEmpty ? const Color(0xFF9CA3AF) : const Color(0xFF111827),
-                  ),
+                  if (hasRoutes)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: RoutePlannerUi.colorNew.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${list.length} rute${list.length == 1 ? '' : 'r'}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: RoutePlannerUi.colorNew,
+                        ),
+                      ),
+                    )
+                  else
+                    const Icon(Icons.add_circle_outline, color: Color(0xFF9CA3AF)),
                 ],
               ),
-              if (list.isEmpty) ...[
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
+              if (!hasRoutes) ...[
+                const SizedBox(height: 12),
+                FilledButton.icon(
                   onPressed: _busy ? null : () => _openRouteEditor(row, day),
                   icon: const Icon(Icons.upload_file_outlined, size: 18),
                   label: const Text('Legg til rute'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: RoutePlannerUi.colorNew,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 ),
               ] else ...[
                 const SizedBox(height: 10),

@@ -3,11 +3,19 @@ import 'package:intl/intl.dart';
 
 import '../../../core/constants/route_dispatch_status.dart';
 
-/// Delte UI-komponenter for rute-planlegger — tydelig hierarki og konsistent design.
+/// Delte UI-komponenter for rute-planlegger — fargerik, lys og tydelig.
 class RoutePlannerUi {
   RoutePlannerUi._();
 
-  static const _radius = 14.0;
+  static const _radius = 16.0;
+
+  static const colorNew = Color(0xFF0D9488);
+  static const colorMass = Color(0xFF7C3AED);
+  static const colorSap = Color(0xFF2563EB);
+  static const colorTool = Color(0xFFEA580C);
+  static const colorInk = Color(0xFF111827);
+  static const colorMuted = Color(0xFF6B7280);
+  static const colorLine = Color(0xFFE5E7EB);
 
   static Widget actionGrid({
     required BuildContext context,
@@ -25,20 +33,20 @@ class RoutePlannerUi {
                 return Row(
                   children: [
                     for (var i = 0; i < actions.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 10),
+                      if (i > 0) const SizedBox(width: 12),
                       Expanded(child: _ActionCard(action: actions[i])),
                     ],
                   ],
                 );
               }
               return Wrap(
-                spacing: 10,
-                runSpacing: 10,
+                spacing: 12,
+                runSpacing: 12,
                 children: actions
                     .map(
                       (a) => SizedBox(
                         width: constraints.maxWidth >= 340
-                            ? (constraints.maxWidth - 10) / 2
+                            ? (constraints.maxWidth - 12) / 2
                             : constraints.maxWidth,
                         child: _ActionCard(action: a),
                       ),
@@ -49,7 +57,7 @@ class RoutePlannerUi {
           ),
         ),
         if (trailing != null) ...[
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           trailing,
         ],
       ],
@@ -83,17 +91,17 @@ class RoutePlannerUi {
           ),
           segments: const [
             ButtonSegment(
+              value: RoutePlannerViewMode.day,
+              label: Text('Dag'),
+              icon: Icon(Icons.view_agenda_outlined, size: 18),
+            ),
+            ButtonSegment(
               value: RoutePlannerViewMode.week,
               label: Text('Uke'),
               icon: Icon(Icons.view_week_outlined, size: 18),
             ),
-            ButtonSegment(
-              value: RoutePlannerViewMode.month,
-              label: Text('Måned'),
-              icon: Icon(Icons.calendar_month_outlined, size: 18),
-            ),
           ],
-          selected: {mode},
+          selected: {mode == RoutePlannerViewMode.month ? RoutePlannerViewMode.week : mode},
           onSelectionChanged: (s) => onModeChanged(s.first),
         ),
         _NavPill(
@@ -101,19 +109,21 @@ class RoutePlannerUi {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                tooltip: 'Forrige uke',
+                tooltip: mode == RoutePlannerViewMode.day ? 'Forrige dag' : 'Forrige uke',
                 visualDensity: VisualDensity.compact,
                 onPressed: onPrevWeek,
                 icon: const Icon(Icons.chevron_left),
               ),
               Text(
-                compact
-                    ? '${DateFormat('d. MMM', 'nb_NO').format(weekStart)} – ${DateFormat('d. MMM', 'nb_NO').format(weekEnd)}'
-                    : '${DateFormat.MMMd('nb_NO').format(weekStart)} – ${DateFormat.MMMd('nb_NO').format(weekEnd)}',
+                mode == RoutePlannerViewMode.day
+                    ? DateFormat('EEE d. MMM', 'nb_NO').format(focusDay)
+                    : compact
+                        ? '${DateFormat('d. MMM', 'nb_NO').format(weekStart)} – ${DateFormat('d. MMM', 'nb_NO').format(weekEnd)}'
+                        : '${DateFormat.MMMd('nb_NO').format(weekStart)} – ${DateFormat.MMMd('nb_NO').format(weekEnd)}',
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
               ),
               IconButton(
-                tooltip: 'Neste uke',
+                tooltip: mode == RoutePlannerViewMode.day ? 'Neste dag' : 'Neste uke',
                 visualDensity: VisualDensity.compact,
                 onPressed: onNextWeek,
                 icon: const Icon(Icons.chevron_right),
@@ -121,10 +131,14 @@ class RoutePlannerUi {
             ],
           ),
         ),
-        TextButton.icon(
+        FilledButton.tonalIcon(
           onPressed: onToday,
           icon: const Icon(Icons.today_outlined, size: 18),
           label: const Text('I dag'),
+          style: FilledButton.styleFrom(
+            foregroundColor: colorNew,
+            backgroundColor: colorNew.withValues(alpha: 0.12),
+          ),
         ),
         OutlinedButton.icon(
           onPressed: onPickDay,
@@ -135,7 +149,7 @@ class RoutePlannerUi {
     );
   }
 
-  /// Samlet verktøyrad — hvite chips, grupperte handlinger.
+  /// Fargerike verktøy-knapper.
   static Widget toolChipGroup({
     required BuildContext context,
     required List<RoutePlannerTool> tools,
@@ -146,15 +160,16 @@ class RoutePlannerUi {
         sectionLabel('Verktøy'),
         const SizedBox(height: 8),
         Wrap(
-          spacing: 6,
-          runSpacing: 6,
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            for (final t in tools)
+            for (var i = 0; i < tools.length; i++)
               _ToolChip(
-                icon: t.icon,
-                label: t.label,
-                onPressed: t.onPressed,
-                emphasized: t.emphasized,
+                icon: tools[i].icon,
+                label: tools[i].label,
+                onPressed: tools[i].onPressed,
+                emphasized: tools[i].emphasized,
+                color: tools[i].color ?? _toolPalette[i % _toolPalette.length],
               ),
           ],
         ),
@@ -162,26 +177,36 @@ class RoutePlannerUi {
     );
   }
 
+  static const _toolPalette = [
+    Color(0xFF0D9488),
+    Color(0xFF2563EB),
+    Color(0xFF7C3AED),
+    Color(0xFFEA580C),
+    Color(0xFFDB2777),
+    Color(0xFF0891B2),
+    Color(0xFF4F46E5),
+  ];
+
   static Widget searchField({required TextEditingController controller}) {
     return TextField(
       controller: controller,
       decoration: InputDecoration(
         hintText: 'Søk MAVI-kode eller partner…',
-        prefixIcon: const Icon(Icons.search, size: 20, color: Color(0xFF6B7280)),
+        prefixIcon: const Icon(Icons.search, size: 20, color: colorMuted),
         isDense: true,
         filled: true,
         fillColor: Colors.white,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          borderSide: const BorderSide(color: colorLine),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+          borderSide: const BorderSide(color: colorLine),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFF9CA3AF)),
+          borderSide: BorderSide(color: colorNew.withValues(alpha: 0.7), width: 1.5),
         ),
       ),
     );
@@ -219,7 +244,6 @@ class RoutePlannerUi {
     );
   }
 
-  /// Status for uken — hvit flate, nøytral fremdrift.
   static Widget acceptanceOverview({
     required int total,
     required int accepted,
@@ -235,7 +259,7 @@ class RoutePlannerUi {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: colorLine),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -255,12 +279,19 @@ class RoutePlannerUi {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                '$pct%',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: Color(0xFF374151),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: RouteDispatchStatus.colorAccepted.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '$pct%',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                    color: RouteDispatchStatus.colorAccepted,
+                  ),
                 ),
               ),
             ],
@@ -270,9 +301,9 @@ class RoutePlannerUi {
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
               value: accepted / total,
-              minHeight: 6,
+              minHeight: 8,
               backgroundColor: const Color(0xFFF3F4F6),
-              color: const Color(0xFF111827),
+              color: RouteDispatchStatus.colorAccepted,
             ),
           ),
           const SizedBox(height: 10),
@@ -280,9 +311,18 @@ class RoutePlannerUi {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _CountBadge(label: '$draft kladd', color: const Color(0xFF6B7280)),
-              _CountBadge(label: '$waiting venter', color: const Color(0xFF6B7280)),
-              _CountBadge(label: '$accepted akseptert', color: const Color(0xFF111827)),
+              _CountBadge(
+                label: '$draft kladd',
+                color: RouteDispatchStatus.colorDraft,
+              ),
+              _CountBadge(
+                label: '$waiting venter',
+                color: RouteDispatchStatus.colorWaiting,
+              ),
+              _CountBadge(
+                label: '$accepted akseptert',
+                color: RouteDispatchStatus.colorAccepted,
+              ),
             ],
           ),
         ],
@@ -302,8 +342,8 @@ class RoutePlannerUi {
             child: _MiniDayButton(
               icon: Icons.notifications_active_outlined,
               label: 'Purr',
-              color: const Color(0xFF374151),
-              bg: Colors.white,
+              color: RouteDispatchStatus.colorWaiting,
+              bg: RouteDispatchStatus.colorWaiting.withValues(alpha: 0.1),
               onTap: onNudge,
             ),
           ),
@@ -312,12 +352,95 @@ class RoutePlannerUi {
           child: _MiniDayButton(
             icon: Icons.delete_outline,
             label: 'Tøm',
-            color: const Color(0xFF374151),
-            bg: Colors.white,
+            color: colorMuted,
+            bg: const Color(0xFFF3F4F6),
             onTap: onClear,
           ),
         ),
       ],
+    );
+  }
+
+  /// Horisontal dag-stripe for dagstavle.
+  static Widget dayStrip({
+    required List<DateTime> days,
+    required DateTime focusDay,
+    required int Function(DateTime day) routeCount,
+    required ValueChanged<DateTime> onSelect,
+  }) {
+    final now = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    return SizedBox(
+      height: 78,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: days.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, i) {
+          final d = days[i];
+          final dayOnly = DateTime(d.year, d.month, d.day);
+          final isToday = dayOnly == now;
+          final isFocus = dayOnly == DateTime(focusDay.year, focusDay.month, focusDay.day);
+          final n = routeCount(d);
+          return Material(
+            color: isFocus ? colorNew : Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            elevation: isFocus ? 1 : 0,
+            shadowColor: colorNew.withValues(alpha: 0.35),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => onSelect(dayOnly),
+              child: Container(
+                width: 72,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isFocus
+                        ? colorNew
+                        : isToday
+                            ? colorNew.withValues(alpha: 0.45)
+                            : colorLine,
+                    width: isFocus || isToday ? 1.5 : 1,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      DateFormat.E('nb_NO').format(d),
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                        color: isFocus ? Colors.white : colorMuted,
+                      ),
+                    ),
+                    Text(
+                      DateFormat('d/M', 'nb_NO').format(d),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: isFocus ? Colors.white : colorInk,
+                      ),
+                    ),
+                    Text(
+                      n == 0 ? 'tom' : '$n ruter',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: isFocus
+                            ? Colors.white.withValues(alpha: 0.9)
+                            : n == 0
+                                ? colorMuted
+                                : colorNew,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -336,20 +459,20 @@ class RoutePlannerUi {
               const Text(
                 'Rute-planlegger',
                 style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 18,
-                  letterSpacing: -0.3,
-                  color: Color(0xFF111827),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                  letterSpacing: -0.4,
+                  color: colorInk,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
                 subtitle ??
-                    'Velg dag, trykk tom celle eller bruk handlingsknappene under.',
+                    'Velg dag → se sjåfører → legg til eller send ruter.',
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 13,
                   height: 1.35,
-                  color: Color(0xFF6B7280),
+                  color: colorMuted,
                 ),
               ),
             ],
@@ -359,7 +482,7 @@ class RoutePlannerUi {
           const SizedBox(
             width: 22,
             height: 22,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF111827)),
+            child: CircularProgressIndicator(strokeWidth: 2, color: colorNew),
           ),
       ],
     );
@@ -367,16 +490,15 @@ class RoutePlannerUi {
 
   static Widget refreshButton({required VoidCallback? onPressed}) {
     return Tooltip(
-      message: 'Oppdater kalender',
-      child: OutlinedButton(
+      message: 'Oppdater',
+      child: FilledButton(
         onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          foregroundColor: const Color(0xFF374151),
-          side: const BorderSide(color: Color(0xFFE5E7EB)),
-          backgroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        style: FilledButton.styleFrom(
+          backgroundColor: colorNew,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(14),
           ),
         ),
         child: const Icon(Icons.refresh_rounded),
@@ -388,16 +510,16 @@ class RoutePlannerUi {
     return Text(
       text.toUpperCase(),
       style: const TextStyle(
-        fontSize: 10,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 0.5,
-        color: Color(0xFF6B7280),
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.6,
+        color: colorMuted,
       ),
     );
   }
 }
 
-enum RoutePlannerViewMode { week, month }
+enum RoutePlannerViewMode { day, week, month }
 
 class RoutePlannerTool {
   const RoutePlannerTool({
@@ -405,12 +527,14 @@ class RoutePlannerTool {
     required this.label,
     required this.onPressed,
     this.emphasized = false,
+    this.color,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
   final bool emphasized;
+  final Color? color;
 }
 
 class RoutePlannerAction {
@@ -440,46 +564,45 @@ class _ToolChip extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.onPressed,
+    required this.color,
     this.emphasized = false,
   });
 
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
+  final Color color;
   final bool emphasized;
 
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(999),
+      color: color.withValues(alpha: emphasized ? 0.18 : 0.1),
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onPressed,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(999),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: emphasized ? const Color(0xFF111827) : const Color(0xFFE5E7EB),
+              color: color.withValues(alpha: emphasized ? 0.55 : 0.28),
+              width: emphasized ? 1.5 : 1,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
-                size: 15,
-                color: enabled ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
-              ),
-              const SizedBox(width: 6),
+              Icon(icon, size: 16, color: enabled ? color : RoutePlannerUi.colorMuted),
+              const SizedBox(width: 7),
               Text(
                 label,
                 style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: enabled ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: enabled ? color : RoutePlannerUi.colorMuted,
                 ),
               ),
             ],
@@ -498,41 +621,36 @@ class _ActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = action.onPressed != null;
-    const ink = Color(0xFF111827);
-    const muted = Color(0xFF6B7280);
-    const line = Color(0xFFE5E7EB);
+    final c = action.color;
 
     final card = Material(
-      color: Colors.white,
+      color: c.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(RoutePlannerUi._radius),
+      elevation: action.glow && enabled ? 2 : 0,
+      shadowColor: c.withValues(alpha: 0.4),
       child: InkWell(
         onTap: action.onPressed,
         borderRadius: BorderRadius.circular(RoutePlannerUi._radius),
         child: Container(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(RoutePlannerUi._radius),
             border: Border.all(
-              color: action.glow && enabled ? ink : line,
-              width: action.glow && enabled ? 1.5 : 1,
+              color: c.withValues(alpha: action.glow && enabled ? 0.7 : 0.35),
+              width: action.glow && enabled ? 2 : 1.5,
             ),
           ),
           child: Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF9FAFB),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: line),
+                  color: c,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(
-                  action.icon,
-                  color: enabled ? ink : const Color(0xFF9CA3AF),
-                  size: 22,
-                ),
+                child: Icon(action.icon, color: Colors.white, size: 24),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,15 +658,22 @@ class _ActionCard extends StatelessWidget {
                     Text(
                       action.title,
                       style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                        color: enabled ? ink : muted,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: enabled ? RoutePlannerUi.colorInk : RoutePlannerUi.colorMuted,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       action.subtitle,
-                      style: const TextStyle(fontSize: 11, color: muted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.3,
+                        color: enabled
+                            ? c.withValues(alpha: 0.9)
+                            : RoutePlannerUi.colorMuted,
+                        fontWeight: FontWeight.w600,
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -558,34 +683,29 @@ class _ActionCard extends StatelessWidget {
               if (action.badge != null) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF3F4F6),
+                    color: action.badgeColor ?? c,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: line),
                   ),
                   child: Text(
                     action.badge!,
                     style: const TextStyle(
                       fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: ink,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
                     ),
                   ),
                 ),
               ],
-              const Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 14,
-                color: Color(0xFF9CA3AF),
-              ),
+              Icon(Icons.arrow_forward_rounded, size: 20, color: c),
             ],
           ),
         ),
       ),
     );
 
-    return Opacity(opacity: enabled ? 1 : 0.55, child: card);
+    return Opacity(opacity: enabled ? 1 : 0.5, child: card);
   }
 }
 
@@ -599,7 +719,7 @@ class _NavPill extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: RoutePlannerUi.colorLine),
       ),
       child: child,
     );
@@ -614,15 +734,15 @@ class _CountBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
       ),
     );
   }
@@ -646,28 +766,25 @@ class _LegendChip extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: item.color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
+          border: Border.all(color: item.color.withValues(alpha: 0.35)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: item.color,
-                shape: BoxShape.circle,
-              ),
+              width: 9,
+              height: 9,
+              decoration: BoxDecoration(color: item.color, shape: BoxShape.circle),
             ),
             const SizedBox(width: 6),
             Text(
               item.label,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF374151),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: item.color,
               ),
             ),
           ],
@@ -704,7 +821,7 @@ class _MiniDayButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
