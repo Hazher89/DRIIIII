@@ -35,7 +35,7 @@ class PartnerCompanyWorkspace {
   static Future<bool?> open(
     BuildContext context, {
     required Partner partner,
-    required VoidCallback onDataChanged,
+    required FutureOr<void> Function() onDataChanged,
   }) {
     final wide = MediaQuery.sizeOf(context).width >= 720;
     if (wide) {
@@ -84,7 +84,7 @@ class PartnerCompanyWorkspacePage extends StatelessWidget {
   });
 
   final Partner partner;
-  final VoidCallback onDataChanged;
+  final FutureOr<void> Function() onDataChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -111,7 +111,7 @@ class PartnerCompanyWorkspaceBody extends StatefulWidget {
   });
 
   final Partner partner;
-  final VoidCallback onDataChanged;
+  final FutureOr<void> Function() onDataChanged;
   final void Function(bool? result) onClose;
   final ScrollController? scrollController;
 
@@ -187,7 +187,7 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
       if (fresh != null) _p = fresh;
       _vehicles = vehicles;
     });
-    widget.onDataChanged();
+    await widget.onDataChanged();
   }
 
   int get _maviCount => _vehicles

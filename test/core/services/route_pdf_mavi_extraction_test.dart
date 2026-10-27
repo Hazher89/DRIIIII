@@ -34,6 +34,34 @@ Start date 24.04.26
       );
     });
 
+    test('leser MJIM fra filnavn som starter med kode', () {
+      expect(
+        RoutePdfTextService.extractResourceIdFromFileName('MJIM_p119-123.pdf'),
+        'MJIM',
+      );
+      expect(
+        RoutePdfTextService.extractResourceIdFromFileName('JIM_p119-123.pdf'),
+        'MJIM',
+      );
+      expect(
+        RoutePdfTextService.extractResourceIdFromFileName('M24_KVELD.pdf'),
+        'M24',
+      );
+    });
+
+    test('matcher MJIM mot bil lagret som JIM', () {
+      final vehicles = [
+        (id: 'v1', unit: 'JIM', driver: null as String?),
+      ];
+      final map = RoutePdfTextService.buildVehicleLookupMap(
+        vehicles: vehicles,
+        unitCodeOf: (v) => v.unit,
+        driverNameOf: (v) => v.driver,
+      );
+      expect(RoutePdfTextService.findVehicleInLookup(map, 'MJIM')?.id, 'v1');
+      expect(RoutePdfTextService.findVehicleInLookup(map, 'JIM')?.id, 'v1');
+    });
+
     test('NO_O_M0045Resource ID (glued) — ikke M27 fra Lillestrøm-dato', () {
       const text = '''
 Trip Overview

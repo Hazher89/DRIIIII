@@ -731,10 +731,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   FleetPartnerVehicleRow? _fleetRowForMaviCode(String? code) {
     final want = _normalizedMaviKey(code);
     if (want.isEmpty) return null;
-    for (final row in _maviFleet) {
-      if (_normalizedMaviKey(row.vehicle.unitCode) == want) return row;
-    }
-    return null;
+    final map = RoutePdfTextService.buildVehicleLookupMap<FleetPartnerVehicleRow>(
+      vehicles: _maviFleet,
+      unitCodeOf: (r) => r.vehicle.unitCode,
+      registrationOf: (r) => r.vehicle.registrationNumber,
+      driverNameOf: (r) => r.vehicle.driverName,
+    );
+    return RoutePdfTextService.findVehicleInLookup(map, code) ??
+        RoutePdfTextService.findVehicleInLookup(map, want);
   }
 
   int get _duplicateExtraCount =>
@@ -1910,13 +1914,13 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Future<Map<String, PartnerVehicle>> _loadAllVehiclesLookup(String companyId) async {
-    final partners = await PartnerService.fetchPartners(companyId: companyId);
-    final vehicles = <PartnerVehicle>[];
-    for (final p in partners) {
-      vehicles.addAll(await PartnerService.fetchVehicles(p.id));
-    }
+    // Én fleet-query — ikke N+1 fetchVehicles per partner (spar Supabase-kvote).
+    final fleet = await PartnerService.fetchCompanyFleet(
+      companyId,
+      forPlanning: true,
+    );
     return RoutePdfTextService.buildVehicleLookupMap<PartnerVehicle>(
-      vehicles: vehicles.where(PartnerService.isMaviFleetVehicle),
+      vehicles: fleet.map((r) => r.vehicle).where(PartnerService.isMaviFleetVehicle),
       unitCodeOf: (v) => v.unitCode,
       registrationOf: (v) => v.registrationNumber,
       driverNameOf: (v) => v.driverName,
@@ -1951,7 +1955,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final driverName = RoutePdfTextService.parseDriverName(
       bundle.headerText.isNotEmpty ? bundle.headerText : bundle.fullText,
     );
-    var code = bundle.meta.maviCode;
+    var code = bundle.meta.maviCode ??
+        RoutePdfTextService.extractResourceIdFromFileName(fileName);
     var vehicle = RoutePdfTextService.findVehicleInLookup(
       vehicleMap,
       code,
@@ -1967,6 +1972,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       code ??= RoutePdfTextService.normalizeUnitCodeForMatch(
         'M${driverName.split(RegExp(r'\s+')).first}',
       );
+    }
+    // Siste sjans: filnavn alene (MJIM_….pdf) hvis PDF-tekst var støy.
+    if (vehicle == null) {
+      final fromFile = RoutePdfTextService.extractResourceIdFromFileName(fileName);
+      if (fromFile != null) {
+        code ??= fromFile;
+        vehicle = RoutePdfTextService.findVehicleInLookup(vehicleMap, fromFile);
+      }
     }
     if (code == null && vehicle == null) {
       return (
@@ -2096,13 +2109,19 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) throw Exception('Fant ikke bedrift.');
-      final vehicleMap = await _loadAllVehiclesLookup(cid);
-      final partnerById = {
-        for (final r in _maviFleet) r.partner.id: r.partner,
-      };
-      for (final p in await PartnerService.fetchPartners(companyId: cid)) {
-        partnerById.putIfAbsent(p.id, () => p);
-      }
+      final partners = await PartnerService.fetchPartners(companyId: cid);
+      final fleet = await PartnerService.fetchCompanyFleet(
+        cid,
+        forPlanning: true,
+        partnersAlreadyLoaded: partners,
+      );
+      final vehicleMap = RoutePdfTextService.buildVehicleLookupMap<PartnerVehicle>(
+        vehicles: fleet.map((r) => r.vehicle).where(PartnerService.isMaviFleetVehicle),
+        unitCodeOf: (v) => v.unitCode,
+        registrationOf: (v) => v.registrationNumber,
+        driverNameOf: (v) => v.driverName,
+      );
+      final partnerById = {for (final p in partners) p.id: p};
 
       final newSkipped = <_SkippedPdf>[];
       final log = <_PdfAssignmentRow>[];
@@ -3821,18 +3840,20 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             text: '$_multiLoadDriverCount bil(er) med 2+ last/rute — trykk for liste',
             onTap: _showMultiLoadDetails,
           ),
-        if (_orphanShares.isNotEmpty && _viewFilter == _QueueViewFilter.all || _viewFilter == _QueueViewFilter.ready)
+        if (_orphanShares.isNotEmpty &&
+            (_viewFilter == _QueueViewFilter.all || _viewFilter == _QueueViewFilter.ready))
           _buildCompactAlert(
             icon: Icons.link_off_outlined,
             color: Colors.blue.shade800,
-            text: '${_orphanShares.length} rute(r) uten sjåfør — koble fra MAVI i filnavn',
+            text:
+                '${_orphanShares.length} rute(r) i kø uten sjåfør — trykk for auto-koble',
             onTap: _relinkAllOrphanShares,
           ),
         if (_skipped.isNotEmpty && _viewFilter != _QueueViewFilter.manual)
           _buildCompactAlert(
             icon: Icons.pan_tool_alt_outlined,
             color: Colors.orange.shade900,
-            text: '${_skipped.length} PDF krever manuell tildeling',
+            text: '${_skipped.length} PDF ikke i kø — velg sjåfør (røde kort)',
             onTap: () => _setViewFilter(_QueueViewFilter.manual),
           ),
         if (_missingShiftCount > 0 && _viewFilter != _QueueViewFilter.missingShift)
@@ -4367,31 +4388,102 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     );
   }
 
-  /// Kompakt manuell-grid (samme størrelse som vanlige rute-kort) — brukes i Biler-steget.
+  /// Samlet «trenger handling»: manuelle PDF-er + ruter i kø uten sjåfør.
   Widget _buildManualAssignStrip(_MassUi ui) {
-    if (_skipped.isEmpty) return const SizedBox.shrink();
+    final orphans = _orphanShares;
+    if (_skipped.isEmpty && orphans.isEmpty) return const SizedBox.shrink();
+    final total = _skipped.length + orphans.length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Manuelle PDF-er (${_skipped.length}) — røde kort, velg sjåfør eller slett',
-            style: TextStyle(
-              fontWeight: FontWeight.w900,
-              color: Colors.red.shade900,
-              fontSize: 13,
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: Colors.red.shade50,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.shade200),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Trenger handling ($total)',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: Colors.red.shade900,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  [
+                    if (_skipped.isNotEmpty)
+                      '${_skipped.length} PDF ikke i kø — velg sjåfør',
+                    if (orphans.isNotEmpty)
+                      '${orphans.length} rute i kø uten bil — koble eller bytt',
+                  ].join(' · '),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.red.shade800,
+                    height: 1.3,
+                  ),
+                ),
+                if (orphans.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.tonalIcon(
+                      onPressed: _busyUpload ? null : _relinkAllOrphanShares,
+                      icon: const Icon(Icons.link_rounded, size: 18),
+                      label: Text('Auto-koble ${orphans.length} fra MAVI/filnavn'),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: _skipped.length,
-            gridDelegate: _routeCardGridDelegate,
-            itemBuilder: (context, i) =>
-                _buildSkippedCompactCard(_skipped[i], ui, showDelete: true),
-          ),
+          const SizedBox(height: 10),
+          if (_skipped.isNotEmpty) ...[
+            Text(
+              'PDF utenfor kø (${_skipped.length})',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: Colors.orange.shade900,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 6),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _skipped.length,
+              gridDelegate: _routeCardGridDelegate,
+              itemBuilder: (context, i) =>
+                  _buildSkippedCompactCard(_skipped[i], ui, showDelete: true),
+            ),
+          ],
+          if (orphans.isNotEmpty) ...[
+            if (_skipped.isNotEmpty) const SizedBox(height: 12),
+            Text(
+              'I kø uten sjåfør (${orphans.length})',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: Colors.blue.shade900,
+                fontSize: 12,
+              ),
+            ),
+            const SizedBox(height: 6),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: orphans.length,
+              gridDelegate: _routeCardGridDelegate,
+              itemBuilder: (context, i) => _buildOrphanRouteCard(orphans[i], ui),
+            ),
+          ],
         ],
       ),
     );

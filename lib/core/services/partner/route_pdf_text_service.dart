@@ -952,7 +952,7 @@ class RoutePdfTextService {
     return out;
   }
 
-  /// Leser MAVI fra filnavn når PDF-tekst mangler treff (f.eks. `_M24_KVELD.pdf`).
+  /// Leser MAVI fra filnavn når PDF-tekst mangler treff (f.eks. `_M24_KVELD.pdf`, `MJIM_p119.pdf`).
   static String? extractResourceIdFromFileName(String fileName) {
     final base = fileName.split(RegExp(r'[/\\]')).last.trim();
     if (base.isEmpty) return null;
@@ -968,6 +968,32 @@ class RoutePdfTextService {
     final noOmAlpha = RegExp(r'NO_O_M0*([A-Z][A-Z0-9]{1,8})', caseSensitive: false).firstMatch(upper);
     if (noOmAlpha != null) {
       return _codeFromAlphaToken(noOmAlpha.group(1)!);
+    }
+
+    // Fil starter med kode: MJIM_p119-123.pdf / M24_KVELD.pdf
+    final leadingDigits = RegExp(
+      r'^M0*(\d{1,5})(?=[_\-\.]|\.PDF|$)',
+      caseSensitive: false,
+    ).firstMatch(upper);
+    if (leadingDigits != null) {
+      return _codeFromDigits(leadingDigits.group(1)!);
+    }
+    final leadingAlpha = RegExp(
+      r'^M0*([A-Z][A-Z0-9]{1,8})(?=[_\-\.]|\.PDF|$)',
+      caseSensitive: false,
+    ).firstMatch(upper);
+    if (leadingAlpha != null) {
+      return _codeFromAlphaToken(leadingAlpha.group(1)!);
+    }
+    // Kort navn uten M-prefiks: JIM_p119.pdf (ikke UUID/hex)
+    final leadingName = RegExp(
+      r'^([A-Z][A-Z]{1,8})(?=[_\-\.]|\.PDF$)',
+    ).firstMatch(upper);
+    if (leadingName != null) {
+      final token = leadingName.group(1)!;
+      if (!_looksLikeHexId(token)) {
+        return _codeFromAlphaToken(token);
+      }
     }
 
     String? last;
@@ -992,7 +1018,19 @@ class RoutePdfTextService {
     if (bare != null) {
       return _codeFromDigits(bare.group(1)!);
     }
+    final bareAlpha = RegExp(
+      r'(?:^|[_\-\.])M0*([A-Z][A-Z0-9]{1,8})\.PDF$',
+      caseSensitive: false,
+    ).firstMatch(upper);
+    if (bareAlpha != null) {
+      return _codeFromAlphaToken(bareAlpha.group(1)!);
+    }
     return null;
+  }
+
+  static bool _looksLikeHexId(String token) {
+    if (token.length >= 8) return true;
+    return RegExp(r'^[0-9A-F]+$').hasMatch(token) && RegExp(r'[0-9]').hasMatch(token);
   }
 
   static const int _minAcceptScore = 28;
@@ -1169,7 +1207,7 @@ class RoutePdfTextService {
     return RegExp(r'^[A-Z][A-Z0-9]{1,8}$').hasMatch(rest.toUpperCase());
   }
 
-  /// Flere nøkler per bil (M42, NO_O_M0042, MJIM, sjåførnavn …) for robust matching.
+  /// Flere nøkler per bil (M42, NO_O_M0042, MJIM↔JIM, sjåførnavn …) for robust matching.
   static Map<String, T> buildVehicleLookupMap<T>({
     required Iterable<T> vehicles,
     required String Function(T) unitCodeOf,
@@ -1180,10 +1218,17 @@ class RoutePdfTextService {
     void put(String? key, T v) {
       if (key == null || key.isEmpty) return;
       final norm = normalizeUnitCodeForMatch(key);
-      if (norm.isNotEmpty) map.putIfAbsent(norm, () => v);
+      if (norm.isNotEmpty) {
+        map.putIfAbsent(norm, () => v);
+        _putAlphaAliases(map, norm, v);
+      }
       final compact = key.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
-      if (compact.isNotEmpty) map.putIfAbsent(compact, () => v);
+      if (compact.isNotEmpty) {
+        map.putIfAbsent(compact, () => v);
+        _putAlphaAliases(map, compact, v);
+      }
     }
+
     for (final v in vehicles) {
       put(unitCodeOf(v), v);
       final reg = registrationOf?.call(v);
@@ -1191,14 +1236,32 @@ class RoutePdfTextService {
       final driver = driverNameOf?.call(v)?.trim();
       if (driver != null && driver.isNotEmpty) {
         put(driver, v);
-        final first = driver.split(RegExp(r'\s+')).first;
+        final parts = driver.toUpperCase().split(RegExp(r'\s+'));
+        final first = parts.first;
         if (first.length >= 2) {
           put(first, v);
           put('M$first', v);
         }
+        // «Jim jim» / «JIM JIM» → også MJIM
+        if (parts.length >= 2 && parts[0] == parts[1] && parts[0].length >= 2) {
+          put('M${parts[0]}', v);
+        }
       }
     }
     return map;
+  }
+
+  static void _putAlphaAliases<T>(Map<String, T> map, String key, T v) {
+    final upper = key.toUpperCase();
+    final withM = RegExp(r'^M([A-Z][A-Z0-9]{1,8})$').firstMatch(upper);
+    if (withM != null) {
+      map.putIfAbsent(withM.group(1)!, () => v);
+      return;
+    }
+    if (RegExp(r'^[A-Z][A-Z0-9]{1,8}$').hasMatch(upper) &&
+        !RegExp(r'^\d+$').hasMatch(upper)) {
+      map.putIfAbsent('M$upper', () => v);
+    }
   }
 
   static T? findVehicleInLookup<T>(
@@ -1209,7 +1272,10 @@ class RoutePdfTextService {
     if (code != null && code.isNotEmpty) {
       final norm = normalizeUnitCodeForMatch(code);
       final compact = code.trim().toUpperCase().replaceAll(RegExp(r'\s'), '');
-      final hit = map[norm] ?? map[compact];
+      final hit = map[norm] ??
+          map[compact] ??
+          map[_alphaAliasOf(norm)] ??
+          map[_alphaAliasOf(compact)];
       if (hit != null) return hit;
     }
     if (driverName != null && driverName.trim().isNotEmpty) {
@@ -1220,7 +1286,20 @@ class RoutePdfTextService {
           map[compact] ??
           map[first] ??
           map['M$first'] ??
-          map[normalizeUnitCodeForMatch('M$first')];
+          map[normalizeUnitCodeForMatch('M$first')] ??
+          map[_alphaAliasOf(first)];
+    }
+    return null;
+  }
+
+  static String? _alphaAliasOf(String? key) {
+    if (key == null || key.isEmpty) return null;
+    final upper = key.toUpperCase();
+    final withM = RegExp(r'^M([A-Z][A-Z0-9]{1,8})$').firstMatch(upper);
+    if (withM != null) return withM.group(1);
+    if (RegExp(r'^[A-Z][A-Z0-9]{1,8}$').hasMatch(upper) &&
+        !RegExp(r'^\d+$').hasMatch(upper)) {
+      return 'M$upper';
     }
     return null;
   }

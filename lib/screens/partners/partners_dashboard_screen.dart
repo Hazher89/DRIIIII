@@ -240,13 +240,16 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
         return;
       }
 
-      unawaited(PartnerService.syncPartnerNotificationEmails(cid));
+      // E-post-sync kun én gang per app-økt — sparer Supabase-kvote.
+      unawaited(_syncEmailsOnce(cid));
 
-      final partnersFuture = PartnerService.fetchPartners(companyId: cid);
-      final fleetFuture = PartnerService.fetchCompanyFleet(cid);
-      final accountsFuture = PartnerService.fetchCompanyPortalAccounts(cid);
-      final partners = await partnersFuture;
-      final fleet = await fleetFuture;
+      final partners = await PartnerService.fetchPartners(companyId: cid);
+      // Board skal vise alle MAVI (inkl. nettopp lagrede). Én partners-liste gjenbrukes.
+      final fleet = await PartnerService.fetchCompanyFleet(
+        cid,
+        forPlanning: false,
+        partnersAlreadyLoaded: partners,
+      );
       if (!mounted) return;
       final knownAccounts = [
         for (final list in _portalAccountsByPartner.values) ...list,
@@ -259,7 +262,7 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
         );
         _loading = false;
       });
-      final accounts = await accountsFuture;
+      final accounts = await PartnerService.fetchCompanyPortalAccounts(cid);
       if (!mounted) return;
       setState(() {
         _applyPartnerData(
@@ -278,24 +281,36 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
     }
   }
 
-  /// Oppdater partnerliste uten å nullstille faner (kalles fra ruteplanlegger).
+  static final Set<String> _emailSyncedCompanies = {};
+
+  Future<void> _syncEmailsOnce(String companyId) async {
+    if (_emailSyncedCompanies.contains(companyId)) return;
+    _emailSyncedCompanies.add(companyId);
+    await PartnerService.syncPartnerNotificationEmails(companyId);
+  }
+
+  /// Oppdater partnerliste uten å nullstille faner (kalles fra ruteplanlegger / bedrift-lagring).
   Future<void> _refreshPartnersOnly() async {
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null || !mounted) return;
-      final results = await Future.wait([
-        PartnerService.fetchPartners(companyId: cid),
-        PartnerService.fetchCompanyFleet(cid),
-        PartnerService.fetchCompanyPortalAccounts(cid),
-      ]);
+      final partners = await PartnerService.fetchPartners(companyId: cid);
+      final fleet = await PartnerService.fetchCompanyFleet(
+        cid,
+        forPlanning: false,
+        partnersAlreadyLoaded: partners,
+      );
+      final accounts = await PartnerService.fetchCompanyPortalAccounts(cid);
       if (mounted) {
         setState(() {
           _applyPartnerData(
-            list: results[0] as List<Partner>,
-            fleet: results[1] as List<FleetPartnerVehicleRow>,
-            portalAccounts: results[2] as List<PartnerPortalAccount>,
+            list: partners,
+            fleet: fleet,
+            portalAccounts: accounts,
           );
         });
+        // Ny MAVI skal også dukke opp i ruteplanlegger uten hard refresh.
+        unawaited(_routesKey.currentState?.reload(silent: true) ?? Future.value());
       }
     } catch (_) {}
   }

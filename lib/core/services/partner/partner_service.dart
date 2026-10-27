@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../../config/app_origin.dart';
 import '../../config/supabase_config.dart';
+import '../../permissions/access_session_cache.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/shared_partner_document.dart';
@@ -2728,11 +2729,15 @@ class PartnerService {
     if (!_ok) {
       throw StateError('Supabase er ikke konfigurert');
     }
+    String unitKey(String raw) => MaviUnitCodes.normalize(raw).toUpperCase();
     final existing = await fetchVehicles(partnerId);
-    final keepUnits = vehicles.map((v) => v.unitCode.toUpperCase()).toSet();
+    final byNormalized = <String, PartnerVehicle>{
+      for (final e in existing) unitKey(e.unitCode): e,
+    };
+    final keepUnits = vehicles.map((v) => unitKey(v.unitCode)).where((k) => k.isNotEmpty).toSet();
 
     for (final old in existing) {
-      if (!keepUnits.contains(old.unitCode.toUpperCase())) {
+      if (!keepUnits.contains(unitKey(old.unitCode))) {
         await deleteDriverPortal(
           partnerVehicleId: old.id,
           partnerId: partnerId,
@@ -2743,20 +2748,24 @@ class PartnerService {
     }
 
     for (final v in vehicles) {
+      final key = unitKey(v.unitCode);
+      if (key.isEmpty) continue;
       final json = v.toUpsertJson()..remove('id');
-      if (v.id.isNotEmpty) {
-        await _client.from('partner_vehicles').update(json).eq('id', v.id);
+      json['unit_code'] = MaviUnitCodes.normalize(v.unitCode);
+      final existingId = v.id.isNotEmpty ? v.id : byNormalized[key]?.id;
+      if (existingId != null && existingId.isNotEmpty) {
+        await _client.from('partner_vehicles').update(json).eq('id', existingId);
         final phoneEmpty = v.phone == null || v.phone!.trim().isEmpty;
         if (phoneEmpty && v.vehicleKind == 'mavi') {
           final portal = await _client
               .from('partner_portal_accounts')
               .select('id')
-              .eq('partner_vehicle_id', v.id)
+              .eq('partner_vehicle_id', existingId)
               .eq('is_active', true)
               .maybeSingle();
           if (portal != null) {
             await deleteDriverPortal(
-              partnerVehicleId: v.id,
+              partnerVehicleId: existingId,
               partnerId: partnerId,
               companyId: companyId,
             );
@@ -2766,7 +2775,16 @@ class PartnerService {
         await _client.from('partner_vehicles').insert(json);
       }
     }
-    return fetchVehicles(partnerId);
+    final saved = await fetchVehicles(partnerId);
+    final savedKeys = saved.map((v) => unitKey(v.unitCode)).toSet();
+    final missing = keepUnits.where((k) => !savedKeys.contains(k)).toList();
+    if (missing.isNotEmpty) {
+      throw StateError(
+        'MAVI ble ikke lagret: ${missing.map(MaviUnitCodes.compactLabel).join(', ')}. '
+        'Prøv igjen eller sjekk at nummeret ikke finnes på en annen bedrift.',
+      );
+    }
+    return saved;
   }
 
   static Future<void> upsertPortalAccount({
@@ -3156,17 +3174,17 @@ class PartnerService {
   static Future<List<FleetPartnerVehicleRow>> fetchCompanyFleet(
     String companyId, {
     bool forPlanning = true,
+    List<Partner>? partnersAlreadyLoaded,
   }) async {
     if (!_ok) return const [];
-    final partnerFuture =
-        fetchPartners(companyId: companyId, activeOnly: forPlanning);
+    // Unngå dobbel partners-fetch når dashboard allerede har listen.
+    final partners = partnersAlreadyLoaded ??
+        await fetchPartners(companyId: companyId, activeOnly: forPlanning);
     var vehicleQuery =
         _client.from('partner_vehicles').select().eq('company_id', companyId);
     if (forPlanning) vehicleQuery = vehicleQuery.eq('is_active', true);
-    final vehicleFuture = vehicleQuery.order('unit_code', ascending: true);
-
-    final partners = await partnerFuture;
-    final rawVehicles = await vehicleFuture as List<dynamic>;
+    final rawVehicles =
+        await vehicleQuery.order('unit_code', ascending: true) as List<dynamic>;
     final byId = {for (final p in partners) p.id: p};
 
     final out = <FleetPartnerVehicleRow>[];
@@ -3180,7 +3198,9 @@ class PartnerService {
       out.add(FleetPartnerVehicleRow(partner: partner, vehicle: vehicle));
     }
 
-    final me = await SupabaseService.fetchCurrentUserProfile();
+    // Bruk session-cache — ikke ekstra profil-roundtrip for admin-brukere.
+    final me = AccessSessionCache.profile ??
+        await SupabaseService.fetchCurrentUserProfile();
     if (me?.partnerId == null && me?.isPartnerPortalUser != true) return out;
 
     final allowedIds = <String>{};

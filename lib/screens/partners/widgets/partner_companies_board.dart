@@ -180,7 +180,7 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
     final deleted = await PartnerCompanyWorkspace.open(
       context,
       partner: partner,
-      onDataChanged: () => widget.onRefresh(),
+      onDataChanged: () async => widget.onRefresh(),
     );
     if (deleted == true) await widget.onRefresh();
   }

@@ -60,10 +60,12 @@ class _PartnerMassRoutePanelState extends State<PartnerMassRoutePanel> {
 
       final partners = await PartnerService.fetchPartners(companyId: cid);
       final partnerById = {for (final p in partners) p.id: p};
-      final vehicleRows = <PartnerVehicle>[];
-      for (final p in partners) {
-        vehicleRows.addAll(await PartnerService.fetchVehicles(p.id));
-      }
+      final fleet = await PartnerService.fetchCompanyFleet(
+        cid,
+        forPlanning: true,
+        partnersAlreadyLoaded: partners,
+      );
+      final vehicleRows = fleet.map((r) => r.vehicle).toList();
       final vehicleMap = _vehicleLookupMap(vehicleRows);
 
       int staged = 0;
