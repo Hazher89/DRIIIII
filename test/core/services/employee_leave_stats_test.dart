@@ -71,8 +71,17 @@ void main() {
         userId: 'u2',
         companyId: 'c',
         type: AbsenceType.syktBarn,
-        startDate: DateTime(2026, 2, 1),
-        endDate: DateTime(2026, 2, 1),
+        startDate: DateTime(2026, 2, 2),
+        endDate: DateTime(2026, 2, 2),
+        status: AbsenceStatus.godkjent,
+      ),
+      Absence(
+        id: '3',
+        userId: 'u1',
+        companyId: 'c',
+        type: AbsenceType.sykmelding,
+        startDate: DateTime(2026, 3, 2),
+        endDate: DateTime(2026, 3, 6),
         status: AbsenceStatus.godkjent,
       ),
     ];
@@ -85,8 +94,39 @@ void main() {
     );
 
     expect(summary.employeeCount, 2);
-    expect(summary.totalFravaerDays, 4);
+    // 3 egen (5–7.jan) + 1 sykt barn (2.feb) + 5 sykmelding (2–6.mar)
+    expect(summary.totalFravaerDays, 9);
+    expect(summary.totalSykmeldingDays, 5);
     expect(summary.averageAbsencePercent, greaterThan(0));
-    expect(summary.averageAbsencePercent, lessThan(10));
+  });
+
+  test('sykmelding teller i fraværsprosent', () {
+    final ref = DateTime(2026, 10, 28);
+    const employee = UserProfile(
+      id: 'u1',
+      email: 'ingrid@test.no',
+      fullName: 'Ingrid',
+    );
+    final absences = [
+      Absence(
+        id: 's1',
+        userId: 'u1',
+        companyId: 'c',
+        type: AbsenceType.sykmelding,
+        startDate: DateTime(2026, 1, 2),
+        endDate: DateTime(2026, 3, 5),
+        status: AbsenceStatus.godkjent,
+      ),
+    ];
+
+    final snap = EmployeeLeaveSnapshot.compute(
+      employee: employee,
+      employeeAbsences: absences,
+      referenceDate: ref,
+    );
+
+    expect(snap.sykmeldingDays, greaterThan(40));
+    expect(snap.totalFravaerDager, snap.sykmeldingDays);
+    expect(snap.absenceRatePercent(ref), greaterThan(9.9));
   });
 }

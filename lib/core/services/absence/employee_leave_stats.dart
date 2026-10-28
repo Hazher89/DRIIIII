@@ -17,6 +17,8 @@ class EmployeeLeaveSnapshot {
   final int egenTilfellerMax;
   final int syktDays;
   final int syktMax;
+  final int sykmeldingDays;
+  /// KPI-fravær: egenmelding + sykt barn + sykmelding (ikke ferie).
   final int totalFravaerDager;
   final LeavePeriodUsage periodUsage;
 
@@ -30,6 +32,7 @@ class EmployeeLeaveSnapshot {
     required this.egenTilfellerMax,
     required this.syktDays,
     required this.syktMax,
+    required this.sykmeldingDays,
     required this.totalFravaerDager,
     required this.periodUsage,
   });
@@ -85,6 +88,38 @@ class EmployeeLeaveSnapshot {
         10,
       );
 
+  /// Typer som teller i bedriftens fraværs-% (ferie/permisjon telles ikke).
+  static const kpiAbsenceTypes = {
+    AbsenceType.egenmelding,
+    AbsenceType.syktBarn,
+    AbsenceType.sykmelding,
+  };
+
+  /// Virkedager i [year] frem til [through] som overlapper godkjente fravær.
+  static int businessDaysInYearToDate({
+    required List<Absence> absences,
+    required int year,
+    required DateTime through,
+    Set<AbsenceType> types = kpiAbsenceTypes,
+  }) {
+    final rangeStart = DateTime(year, 1, 1);
+    final rangeEnd = BusinessDays.dayOnly(through);
+    if (rangeEnd.isBefore(rangeStart)) return 0;
+
+    var total = 0;
+    for (final a in absences) {
+      if (a.status != AbsenceStatus.godkjent) continue;
+      if (!types.contains(a.type)) continue;
+      final start = BusinessDays.dayOnly(a.startDate);
+      final end = BusinessDays.dayOnly(a.endDate);
+      final from = start.isAfter(rangeStart) ? start : rangeStart;
+      final to = end.isBefore(rangeEnd) ? end : rangeEnd;
+      if (to.isBefore(from)) continue;
+      total += BusinessDays.countInRange(from, to);
+    }
+    return total;
+  }
+
   static EmployeeLeaveSnapshot compute({
     required UserProfile employee,
     required List<Absence> employeeAbsences,
@@ -93,13 +128,14 @@ class EmployeeLeaveSnapshot {
     DateTime? referenceDate,
     LeavePeriodUsage? periodUsageOverride,
   }) {
+    final ref = referenceDate ?? DateTime.now();
     final periodUsage = periodUsageOverride ??
         LeavePeriodUsageService.compute(
           absences: employeeAbsences,
           hireDate: employee.hireDate,
-          referenceDate: referenceDate,
+          referenceDate: ref,
         );
-    // Kun egenmelding/sykt barn i aktiv periode — ikke alle år.
+    // Kvote-meter: egenmelding/sykt barn i aktiv periode.
     final egenDaysTotal = periodUsage.egenmeldingDaysUsed;
     final egenTilfeller = periodUsage.egenmeldingPeriodsUsed;
     final syktMax = company.syktBarnDaysLimit(
@@ -109,6 +145,20 @@ class EmployeeLeaveSnapshot {
     final ferieTotal = quota?.totalVacationDays ?? LeaveRules.ferieLegalMinimumDays;
     final ferieUsed = quota?.vacationDaysUsed ?? 0;
     final ferieRemaining = quota?.vacationDaysRemaining ?? ferieTotal;
+
+    // KPI-fravær: kalenderår YTD inkl. sykmelding (ikke bare egen/sykt barn).
+    final sykmeldingDays = businessDaysInYearToDate(
+      absences: employeeAbsences,
+      year: ref.year,
+      through: ref,
+      types: {AbsenceType.sykmelding},
+    );
+    final totalFravaerDager = businessDaysInYearToDate(
+      absences: employeeAbsences,
+      year: ref.year,
+      through: ref,
+      types: kpiAbsenceTypes,
+    );
 
     return EmployeeLeaveSnapshot(
       ferieRemaining: ferieRemaining,
@@ -120,7 +170,8 @@ class EmployeeLeaveSnapshot {
       egenTilfellerMax: LeaveRules.egenmeldingMaxPeriodsPerYear,
       syktDays: syktDays,
       syktMax: syktMax,
-      totalFravaerDager: egenDaysTotal + syktDays,
+      sykmeldingDays: sykmeldingDays,
+      totalFravaerDager: totalFravaerDager,
       periodUsage: periodUsage,
     );
   }
@@ -132,6 +183,7 @@ class TeamLeaveSummary {
   final int totalFravaerDays;
   final int totalEgenDays;
   final int totalSyktDays;
+  final int totalSykmeldingDays;
   final int totalEgenTilfeller;
   final int employeeCount;
 
@@ -140,6 +192,7 @@ class TeamLeaveSummary {
     required this.totalFravaerDays,
     required this.totalEgenDays,
     required this.totalSyktDays,
+    required this.totalSykmeldingDays,
     required this.totalEgenTilfeller,
     required this.employeeCount,
   });
@@ -149,6 +202,7 @@ class TeamLeaveSummary {
     totalFravaerDays: 0,
     totalEgenDays: 0,
     totalSyktDays: 0,
+    totalSykmeldingDays: 0,
     totalEgenTilfeller: 0,
     employeeCount: 0,
   );
@@ -175,6 +229,7 @@ class TeamLeaveSummary {
     var totalDays = 0;
     var egenDays = 0;
     var syktDays = 0;
+    var sykmeldingDays = 0;
     var tilfeller = 0;
 
     for (final e in employees) {
@@ -189,6 +244,7 @@ class TeamLeaveSummary {
       totalDays += snap.totalFravaerDager;
       egenDays += snap.egenDaysTotal;
       syktDays += snap.syktDays;
+      sykmeldingDays += snap.sykmeldingDays;
       tilfeller += snap.egenTilfeller;
     }
 
@@ -203,6 +259,7 @@ class TeamLeaveSummary {
       totalFravaerDays: totalDays,
       totalEgenDays: egenDays,
       totalSyktDays: syktDays,
+      totalSykmeldingDays: sykmeldingDays,
       totalEgenTilfeller: tilfeller,
       employeeCount: employees.length,
     );
