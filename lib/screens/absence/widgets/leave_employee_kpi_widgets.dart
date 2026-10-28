@@ -14,6 +14,8 @@ class LeaveEmployeeKpiCard extends StatelessWidget {
   final LeaveUsageLevel level;
   final double progress;
   final bool compact;
+  final VoidCallback? onInfoTap;
+  final bool showInfo;
 
   const LeaveEmployeeKpiCard({
     super.key,
@@ -26,7 +28,34 @@ class LeaveEmployeeKpiCard extends StatelessWidget {
     required this.level,
     required this.progress,
     this.compact = true,
+    this.onInfoTap,
+    this.showInfo = false,
   });
+
+  Widget _infoButton(Color color) {
+    if (!showInfo || onInfoTap == null) {
+      if (level == LeaveUsageLevel.ok) return const SizedBox.shrink();
+      return Icon(
+        level == LeaveUsageLevel.critical
+            ? Icons.error_outline
+            : Icons.warning_amber_rounded,
+        size: compact ? 14 : 16,
+        color: color,
+      );
+    }
+    return InkWell(
+      onTap: onInfoTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.all(2),
+        child: Icon(
+          Icons.info_outline_rounded,
+          size: compact ? 16 : 18,
+          color: color,
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,134 +63,148 @@ class LeaveEmployeeKpiCard extends StatelessWidget {
     final color = LeaveUsageColors.colorFor(level, baseColor);
 
     if (!compact) {
-      return Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isDark ? DriftProTheme.surfaceDark : color.withValues(alpha: 0.06),
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onInfoTap,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: color.withValues(alpha: level == LeaveUsageLevel.ok ? 0.2 : 0.45),
-            width: level == LeaveUsageLevel.ok ? 1 : 1.5,
-          ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 22),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: DriftProTheme.labelMd.copyWith(fontWeight: FontWeight.w800),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(unit, style: DriftProTheme.caption),
-                  const SizedBox(height: 2),
-                  Text(sub, style: DriftProTheme.caption.copyWith(fontSize: 11)),
-                ],
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark
+                  ? DriftProTheme.surfaceDark
+                  : color.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: color.withValues(
+                  alpha: level == LeaveUsageLevel.ok ? 0.2 : 0.45,
+                ),
+                width: level == LeaveUsageLevel.ok ? 1 : 1.5,
               ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            child: Row(
               children: [
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: color,
-                    height: 1,
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: color, size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: DriftProTheme.labelMd
+                            .copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(unit, style: DriftProTheme.caption),
+                      const SizedBox(height: 2),
+                      Text(
+                        sub,
+                        style: DriftProTheme.caption.copyWith(fontSize: 11),
+                      ),
+                    ],
                   ),
                 ),
-                if (level != LeaveUsageLevel.ok)
-                  Icon(
-                    level == LeaveUsageLevel.critical
-                        ? Icons.error_outline
-                        : Icons.warning_amber_rounded,
-                    size: 16,
-                    color: color,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: color,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    _infoButton(color),
+                  ],
+                ),
               ],
             ),
-          ],
+          ),
         ),
       );
     }
 
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.surfaceDark : color.withValues(alpha: 0.06),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onInfoTap,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: color.withValues(alpha: level == LeaveUsageLevel.ok ? 0.2 : 0.45),
-          width: level == LeaveUsageLevel.ok ? 1 : 1.5,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: isDark
+                ? DriftProTheme.surfaceDark
+                : color.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: color.withValues(
+                alpha: level == LeaveUsageLevel.ok ? 0.2 : 0.45,
+              ),
+              width: level == LeaveUsageLevel.ok ? 1 : 1.5,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  label,
-                  style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w700),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  Icon(icon, size: 14, color: color),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: DriftProTheme.caption
+                          .copyWith(fontWeight: FontWeight.w700),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  _infoButton(color),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                  height: 1,
                 ),
               ),
-              if (level != LeaveUsageLevel.ok)
-                Icon(
-                  level == LeaveUsageLevel.critical
-                      ? Icons.error_outline
-                      : Icons.warning_amber_rounded,
-                  size: 14,
-                  color: color,
+              Text(unit, style: DriftProTheme.caption.copyWith(fontSize: 10)),
+              const SizedBox(height: 4),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(3),
+                child: LinearProgressIndicator(
+                  value: progress.clamp(0.0, 1.0),
+                  minHeight: 3,
+                  backgroundColor: color.withValues(alpha: 0.12),
+                  valueColor: AlwaysStoppedAnimation(color),
                 ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                sub,
+                style: DriftProTheme.caption.copyWith(fontSize: 9),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: color,
-              height: 1,
-            ),
-          ),
-          Text(unit, style: DriftProTheme.caption.copyWith(fontSize: 10)),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              minHeight: 3,
-              backgroundColor: color.withValues(alpha: 0.12),
-              valueColor: AlwaysStoppedAnimation(color),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            sub,
-            style: DriftProTheme.caption.copyWith(fontSize: 9),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -170,11 +213,17 @@ class LeaveEmployeeKpiCard extends StatelessWidget {
 class LeaveEmployeeKpiRow extends StatelessWidget {
   final EmployeeLeaveSnapshot stats;
   final int selectedYear;
+  final VoidCallback? onFerieInfo;
+  final VoidCallback? onEgenmeldingInfo;
+  final VoidCallback? onSyktBarnInfo;
 
   const LeaveEmployeeKpiRow({
     super.key,
     required this.stats,
     required this.selectedYear,
+    this.onFerieInfo,
+    this.onEgenmeldingInfo,
+    this.onSyktBarnInfo,
   });
 
   @override
@@ -190,16 +239,21 @@ class LeaveEmployeeKpiRow extends StatelessWidget {
         baseColor: DriftProTheme.absenceVacation,
         level: stats.ferieLevel,
         progress: stats.ferieProgress,
+        showInfo: true,
+        onInfoTap: onFerieInfo,
       ),
       LeaveEmployeeKpiCard(
         icon: Icons.sick_outlined,
         label: 'Egenmelding',
         value: '${stats.egenDaysTotal} d',
-        unit: '${stats.egenTilfeller}/${stats.egenTilfellerMax} tilfeller · max ${stats.egenMax} d',
+        unit:
+            '${stats.egenTilfeller}/${stats.egenTilfellerMax} tilfeller · max ${stats.egenMax} d',
         sub: period,
         baseColor: DriftProTheme.absenceSickSelf,
         level: stats.egenLevel,
         progress: stats.egenProgress,
+        showInfo: true,
+        onInfoTap: onEgenmeldingInfo,
       ),
       LeaveEmployeeKpiCard(
         icon: Icons.child_care_outlined,
@@ -210,6 +264,8 @@ class LeaveEmployeeKpiRow extends StatelessWidget {
         baseColor: DriftProTheme.absenceSickChild,
         level: stats.syktLevel,
         progress: stats.syktProgress,
+        showInfo: true,
+        onInfoTap: onSyktBarnInfo,
       ),
     ];
 
@@ -221,18 +277,20 @@ class LeaveEmployeeKpiRow extends StatelessWidget {
         if (stacked) {
           return Column(
             children: [
-              for (var i = 0; i < cards.length; i++) ...[
-                if (i > 0) const SizedBox(height: 8),
+              for (final c in cards) ...[
+                if (c != cards.first) const SizedBox(height: 8),
                 LeaveEmployeeKpiCard(
-                  icon: cards[i].icon,
-                  label: cards[i].label,
-                  value: cards[i].value,
-                  unit: cards[i].unit,
-                  sub: cards[i].sub,
-                  baseColor: cards[i].baseColor,
-                  level: cards[i].level,
-                  progress: cards[i].progress,
+                  icon: c.icon,
+                  label: c.label,
+                  value: c.value,
+                  unit: c.unit,
+                  sub: c.sub,
+                  baseColor: c.baseColor,
+                  level: c.level,
+                  progress: c.progress,
                   compact: false,
+                  showInfo: c.showInfo,
+                  onInfoTap: c.onInfoTap,
                 ),
               ],
             ],

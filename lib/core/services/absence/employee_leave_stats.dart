@@ -4,7 +4,6 @@ import '../../utils/leave_usage_colors.dart';
 import '../../../models/absence.dart';
 import '../../../models/leave_period_usage.dart';
 import '../../../models/user_profile.dart';
-import 'absence_service.dart';
 import 'leave_period_usage_service.dart';
 
 /// Felles fraværsstatistikk — brukes i Team & kalender og Avdelinger.
@@ -92,22 +91,17 @@ class EmployeeLeaveSnapshot {
     AbsenceQuota? quota,
     CompanyLeaveSettings company = const CompanyLeaveSettings(),
     DateTime? referenceDate,
+    LeavePeriodUsage? periodUsageOverride,
   }) {
-    final periodUsage = LeavePeriodUsageService.compute(
-      absences: employeeAbsences,
-      hireDate: employee.hireDate,
-      referenceDate: referenceDate,
-    );
-    final approved = employeeAbsences
-        .where((a) => a.status == AbsenceStatus.godkjent)
-        .toList();
-    final egenRecords =
-        approved.where((a) => a.type == AbsenceType.egenmelding).toList();
-    final egenDaysTotal = egenRecords.fold<int>(
-      0,
-      (sum, a) =>
-          sum + (a.totalDays ?? AbsenceService.dayCount(a.startDate, a.endDate)),
-    );
+    final periodUsage = periodUsageOverride ??
+        LeavePeriodUsageService.compute(
+          absences: employeeAbsences,
+          hireDate: employee.hireDate,
+          referenceDate: referenceDate,
+        );
+    // Kun egenmelding/sykt barn i aktiv periode — ikke alle år.
+    final egenDaysTotal = periodUsage.egenmeldingDaysUsed;
+    final egenTilfeller = periodUsage.egenmeldingPeriodsUsed;
     final syktMax = company.syktBarnDaysLimit(
       childrenUnder12: employee.childrenUnder12Count,
     );
@@ -121,7 +115,7 @@ class EmployeeLeaveSnapshot {
       ferieTotal: ferieTotal,
       ferieUsed: ferieUsed,
       egenDaysTotal: egenDaysTotal,
-      egenTilfeller: egenRecords.length,
+      egenTilfeller: egenTilfeller,
       egenMax: company.effectiveEgenmeldingDaysPerYear,
       egenTilfellerMax: LeaveRules.egenmeldingMaxPeriodsPerYear,
       syktDays: syktDays,

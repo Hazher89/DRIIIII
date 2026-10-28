@@ -60,9 +60,7 @@ class ManagerLeaveApprovalsPanel extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        pending.isEmpty
-                            ? 'Ingen saker som krever handling'
-                            : '${pending.length} ${pending.length == 1 ? 'søknad venter' : 'søknader venter'}',
+                        '${pending.length} ${pending.length == 1 ? 'søknad venter' : 'søknader venter'}',
                         style: DriftProTheme.caption.copyWith(
                           color: const Color(0xFF64748B),
                         ),
@@ -70,86 +68,50 @@ class ManagerLeaveApprovalsPanel extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (pending.isNotEmpty)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: DriftProTheme.warning.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      '${pending.length}',
-                      style: TextStyle(
-                        color: Colors.orange.shade800,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                      ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: DriftProTheme.warning.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${pending.length}',
+                    style: TextStyle(
+                      color: Colors.orange.shade800,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
                     ),
                   ),
+                ),
               ],
             ),
           ),
-          if (pending.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 28, 18, 36),
-              child: Column(
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    decoration: BoxDecoration(
-                      color: DriftProTheme.success.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.check_circle_outline_rounded,
-                      color: DriftProTheme.success,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Ingen ventende søknader akkurat nå',
-                    style: DriftProTheme.labelMd.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Nye ferie- og fraværssøknader dukker opp her.',
-                    style: DriftProTheme.caption,
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            )
-          else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth < 720) {
-                  return Column(
-                    children: [
-                      for (final a in pending)
-                        _ApprovalMobileCard(
-                          absence: a,
-                          isDark: isDark,
-                          onApprove: () => onApprove(a),
-                          onReject: () => onReject(a),
-                          onOpen: () => onOpen(a),
-                        ),
-                    ],
-                  );
-                }
-                return _ApprovalsTable(
-                  pending: pending,
-                  isDark: isDark,
-                  onApprove: onApprove,
-                  onReject: onReject,
-                  onOpen: onOpen,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              if (constraints.maxWidth < 720) {
+                return Column(
+                  children: [
+                    for (final a in pending)
+                      _ApprovalMobileCard(
+                        absence: a,
+                        isDark: isDark,
+                        onApprove: () => onApprove(a),
+                        onReject: () => onReject(a),
+                        onOpen: () => onOpen(a),
+                      ),
+                  ],
                 );
-              },
-            ),
+              }
+              return _ApprovalsTable(
+                pending: pending,
+                isDark: isDark,
+                onApprove: onApprove,
+                onReject: onReject,
+                onOpen: onOpen,
+              );
+            },
+          ),
         ],
       ),
     );

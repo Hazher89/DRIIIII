@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/config/driftpro_client.dart';
+import '../../../../core/constants/leave_rules.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../models/absence.dart';
 import '../../../../models/user_profile.dart';
+import '../absence_excel_export_sheet.dart';
+import '../leave_period_scope.dart';
 import 'manager_leave_approvals_panel.dart';
 import 'manager_leave_helpers.dart';
 import 'manager_leave_kpi_cards.dart';
@@ -29,6 +32,9 @@ class ManagerLeaveOverview extends StatefulWidget {
     this.onYearChanged,
     this.onOpenMine,
     this.onOpenVacationAdmin,
+    this.companySettings = const CompanyLeaveSettings(),
+    this.approverNames = const {},
+    this.companyName,
     this.isLoading = false,
   });
 
@@ -49,6 +55,9 @@ class ManagerLeaveOverview extends StatefulWidget {
   final ValueChanged<int>? onYearChanged;
   final VoidCallback? onOpenMine;
   final VoidCallback? onOpenVacationAdmin;
+  final CompanyLeaveSettings companySettings;
+  final Map<String, String> approverNames;
+  final String? companyName;
   final bool isLoading;
 
   @override
@@ -186,6 +195,17 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
                   onOpenMine: widget.onOpenMine,
                   onOpenVacationAdmin: widget.onOpenVacationAdmin,
                   onRefresh: widget.onRefresh,
+                  onExportExcel: () => showAbsenceExcelExportSheet(
+                    context,
+                    employees: widget.teamProfiles,
+                    absences: widget.scopedAbsences,
+                    quotas: widget.teamQuotas,
+                    departmentNames: widget.departmentNames,
+                    approverNames: widget.approverNames,
+                    initialScope: LeavePeriodScope.year(widget.selectedYear),
+                    company: widget.companySettings,
+                    companyName: widget.companyName,
+                  ),
                 ),
               ),
             ),
@@ -202,20 +222,25 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
                 ),
               ),
             ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: KeyedSubtree(
-                  key: _approvalsKey,
-                  child: ManagerLeaveApprovalsPanel(
-                    pending: pending,
-                    onApprove: widget.onApprove,
-                    onReject: _rejectWithComment,
-                    onOpen: widget.onOpenAbsence,
+            if (pending.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                  child: KeyedSubtree(
+                    key: _approvalsKey,
+                    child: ManagerLeaveApprovalsPanel(
+                      pending: pending,
+                      onApprove: widget.onApprove,
+                      onReject: _rejectWithComment,
+                      onOpen: widget.onOpenAbsence,
+                    ),
                   ),
                 ),
+              )
+            else
+              SliverToBoxAdapter(
+                child: SizedBox(key: _approvalsKey, height: 0),
               ),
-            ),
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(
@@ -248,12 +273,14 @@ class _PageHeader extends StatelessWidget {
     required this.onRefresh,
     this.onOpenMine,
     this.onOpenVacationAdmin,
+    this.onExportExcel,
   });
 
   final VoidCallback onRegister;
   final Future<void> Function() onRefresh;
   final VoidCallback? onOpenMine;
   final VoidCallback? onOpenVacationAdmin;
+  final VoidCallback? onExportExcel;
 
   @override
   Widget build(BuildContext context) {
@@ -308,6 +335,8 @@ class _PageHeader extends StatelessWidget {
             onOpenMine?.call();
           case 'admin':
             onOpenVacationAdmin?.call();
+          case 'export':
+            onExportExcel?.call();
           case 'refresh':
             onRefresh();
         }
@@ -321,6 +350,16 @@ class _PageHeader extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               leading: Icon(Icons.person_outline),
               title: Text('Mine søknader'),
+            ),
+          ),
+        if (onExportExcel != null)
+          const PopupMenuItem(
+            value: 'export',
+            child: ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.file_download_outlined),
+              title: Text('Eksporter Excel'),
             ),
           ),
         if (onOpenVacationAdmin != null)

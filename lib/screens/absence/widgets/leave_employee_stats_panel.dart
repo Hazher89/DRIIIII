@@ -138,6 +138,12 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
   final List<Absence> employeeAbsences;
   final Map<String, String> departmentNames;
   final VoidCallback? onEditQuota;
+  final VoidCallback? onFerieInfo;
+  final VoidCallback? onEgenmeldingInfo;
+  final VoidCallback? onSyktBarnInfo;
+  final EmployeeLeaveSnapshot? statsOverride;
+  final bool hideDragHandle;
+  final bool hideRecentList;
 
   const LeaveEmployeeStatsPanel({
     super.key,
@@ -148,6 +154,12 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
     required this.employeeAbsences,
     required this.departmentNames,
     this.onEditQuota,
+    this.onFerieInfo,
+    this.onEgenmeldingInfo,
+    this.onSyktBarnInfo,
+    this.statsOverride,
+    this.hideDragHandle = false,
+    this.hideRecentList = false,
   });
 
   static Future<void> showSheet(
@@ -193,13 +205,14 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final refDate = _leaveStatsReferenceDate(selectedYear);
-    final stats = EmployeeLeaveSnapshot.compute(
-      employee: employee,
-      employeeAbsences: employeeAbsences,
-      quota: quota,
-      company: company,
-      referenceDate: refDate,
-    );
+    final stats = statsOverride ??
+        EmployeeLeaveSnapshot.compute(
+          employee: employee,
+          employeeAbsences: employeeAbsences,
+          quota: quota,
+          company: company,
+          referenceDate: refDate,
+        );
     final dept = employee.departmentId != null
         ? departmentNames[employee.departmentId!]
         : null;
@@ -226,17 +239,18 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Center(
-          child: Container(
-            width: 36,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade300,
-              borderRadius: BorderRadius.circular(2),
+        if (!hideDragHandle)
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
           ),
-        ),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -282,12 +296,6 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
                 ],
               ),
             ),
-            if (onEditQuota != null)
-              IconButton(
-                tooltip: 'Rediger feriekvote',
-                onPressed: onEditQuota,
-                icon: const Icon(Icons.edit_calendar_outlined),
-              ),
           ],
         ),
         const SizedBox(height: 10),
@@ -333,7 +341,13 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 16),
-        LeaveEmployeeKpiRow(stats: stats, selectedYear: selectedYear),
+        LeaveEmployeeKpiRow(
+          stats: stats,
+          selectedYear: selectedYear,
+          onFerieInfo: onFerieInfo,
+          onEgenmeldingInfo: onEgenmeldingInfo,
+          onSyktBarnInfo: onSyktBarnInfo,
+        ),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(12),
@@ -364,7 +378,7 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
                 'Totalt ${stats.totalFravaerDager} fraværsdager '
                 '(${stats.egenDaysTotal} d egen · ${stats.egenTilfeller} tilf. · '
                 '${stats.syktDays} d sykt barn). '
-                'Fravær YTD: ${stats.absenceRatePercent(refDate).round()}% av virkedager.',
+                'Fravær i perioden: ${stats.absenceRatePercent(refDate).round()}% av virkedager.',
                 style: DriftProTheme.caption.copyWith(height: 1.35),
               ),
             ],
@@ -381,16 +395,19 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
             (a) => _absenceLine(a, dfShort, highlight: true),
           ),
         ],
-        const SizedBox(height: 16),
-        Text(
-          'Siste fravær',
-          style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
-        if (recent.isEmpty)
-          Text('Ingen registrerte søknader', style: DriftProTheme.caption)
-        else
-          ...recent.take(8).map((a) => _absenceLine(a, dfShort)),
+        if (!hideRecentList) ...[
+          const SizedBox(height: 16),
+          Text(
+            'Siste fravær i perioden',
+            style: DriftProTheme.labelSm.copyWith(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          if (recent.isEmpty)
+            Text('Ingen registrerte søknader i perioden',
+                style: DriftProTheme.caption)
+          else
+            ...recent.take(8).map((a) => _absenceLine(a, dfShort)),
+        ],
       ],
     );
   }

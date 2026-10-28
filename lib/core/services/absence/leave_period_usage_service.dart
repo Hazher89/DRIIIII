@@ -19,7 +19,19 @@ class LeavePeriodUsageService {
       hireDate: hireDate,
       referenceDate: referenceDate,
     );
+    return computeForWindow(
+      absences: absences,
+      window: window,
+      includePending: includePending,
+    );
+  }
 
+  /// Beregner bruk innenfor et eksplisitt vindusintervall (f.eks. valgt fra–til).
+  static LeavePeriodUsage computeForWindow({
+    required List<Absence> absences,
+    required LeavePeriodWindow window,
+    bool includePending = false,
+  }) {
     bool counts(Absence a) =>
         a.status == AbsenceStatus.godkjent ||
         (includePending && a.status == AbsenceStatus.ventende);

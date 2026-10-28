@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_theme.dart';
 import '../../../../models/absence.dart';
 import '../../../../models/user_profile.dart';
 import 'manager_leave_helpers.dart';
+
+enum _RosterFilter { alle, borte, ferieLav }
 
 class ManagerLeaveRosterTable extends StatefulWidget {
   const ManagerLeaveRosterTable({
@@ -34,7 +37,7 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
   final _searchCtrl = TextEditingController();
   String _search = '';
   String? _departmentId;
-  ManagerLeaveStatusFilter _status = ManagerLeaveStatusFilter.alle;
+  _RosterFilter _filter = _RosterFilter.alle;
 
   @override
   void dispose() {
@@ -68,7 +71,7 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
   }
 
   List<UserProfile> get _filtered {
-    return widget.employees.where((e) {
+    final list = widget.employees.where((e) {
       if (_search.isNotEmpty) {
         final q = _search.toLowerCase();
         final match = e.fullName.toLowerCase().contains(q) ||
@@ -82,18 +85,25 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
         return false;
       }
       final status = ManagerLeaveHelpers.todayStatusFor(_absencesFor(e.id));
-      switch (_status) {
-        case ManagerLeaveStatusFilter.alle:
+      final quota = _quota(e.id);
+      switch (_filter) {
+        case _RosterFilter.alle:
           return true;
-        case ManagerLeaveStatusFilter.paJobb:
-          return status == ManagerLeaveTodayStatus.paJobb;
-        case ManagerLeaveStatusFilter.ferie:
-          return status == ManagerLeaveTodayStatus.ferie;
-        case ManagerLeaveStatusFilter.sykemeldt:
-          return status == ManagerLeaveTodayStatus.sykemeldt ||
-              status == ManagerLeaveTodayStatus.egenmelding;
+        case _RosterFilter.borte:
+          return status != ManagerLeaveTodayStatus.paJobb;
+        case _RosterFilter.ferieLav:
+          return (quota?.vacationDaysRemaining ?? 25) <= 5;
       }
     }).toList();
+
+    list.sort((a, b) {
+      final qa = _quota(a.id)?.vacationDaysRemaining ?? 999;
+      final qb = _quota(b.id)?.vacationDaysRemaining ?? 999;
+      final byLeft = qa.compareTo(qb);
+      if (byLeft != 0) return byLeft;
+      return a.fullName.compareTo(b.fullName);
+    });
+    return list;
   }
 
   @override
@@ -138,7 +148,7 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Saldo, status i dag og neste planlagte fravær · ${widget.year}',
+                        'Feriedager ${widget.year} · brukt, igjen og neste fravær',
                         style: DriftProTheme.caption.copyWith(
                           color: const Color(0xFF64748B),
                         ),
@@ -147,31 +157,39 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
                   ),
                 ),
                 if (widget.onYearChanged != null)
-                  DropdownButtonHideUnderline(
-                    child: DropdownButton<int>(
-                      value: widget.year,
-                      items: [
-                        for (final y in [
-                          widget.year - 1,
-                          widget.year,
-                          widget.year + 1,
-                        ])
-                          DropdownMenuItem(value: y, child: Text('$y')),
-                      ],
-                      onChanged: (y) {
-                        if (y != null) widget.onYearChanged!(y);
-                      },
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.06)
+                          : const Color(0xFFF1F5F2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<int>(
+                        value: widget.year,
+                        items: [
+                          for (final y in [
+                            widget.year - 1,
+                            widget.year,
+                            widget.year + 1,
+                          ])
+                            DropdownMenuItem(value: y, child: Text('$y')),
+                        ],
+                        onChanged: (y) {
+                          if (y != null) widget.onYearChanged!(y);
+                        },
+                      ),
                     ),
                   ),
               ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final wrap = constraints.maxWidth < 780;
-                final search = TextField(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+            child: Column(
+              children: [
+                TextField(
                   controller: _searchCtrl,
                   onChanged: (v) => setState(() => _search = v.trim()),
                   decoration: InputDecoration(
@@ -184,11 +202,7 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
                         : const Color(0xFFF8FAFC),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(
-                        color: isDark
-                            ? DriftProTheme.dividerDark
-                            : const Color(0xFFE2E8F0),
-                      ),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -199,106 +213,78 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
                       ),
                     ),
                   ),
-                );
-                final dept = InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'Avdeling',
-                    isDense: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InputDecorator(
+                        decoration: InputDecoration(
+                          labelText: 'Avdeling',
+                          isDense: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String?>(
+                            value: _departmentId,
+                            isExpanded: true,
+                            items: [
+                              for (final id in _departmentOptions)
+                                DropdownMenuItem(
+                                  value: id,
+                                  child: Text(
+                                    id == null
+                                        ? 'Alle'
+                                        : (widget.departmentNames[id] ??
+                                            'Uten navn'),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _departmentId = v),
+                          ),
+                        ),
+                      ),
                     ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String?>(
-                      value: _departmentId,
-                      isExpanded: true,
-                      items: [
-                        for (final id in _departmentOptions)
-                          DropdownMenuItem(
-                            value: id,
-                            child: Text(
-                              id == null
-                                  ? 'Alle avdelinger'
-                                  : (widget.departmentNames[id] ?? 'Uten navn'),
-                              overflow: TextOverflow.ellipsis,
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        alignment: WrapAlignment.end,
+                        children: [
+                          _FilterChip(
+                            label: 'Alle',
+                            selected: _filter == _RosterFilter.alle,
+                            onTap: () =>
+                                setState(() => _filter = _RosterFilter.alle),
+                          ),
+                          _FilterChip(
+                            label: 'Borte nå',
+                            selected: _filter == _RosterFilter.borte,
+                            onTap: () =>
+                                setState(() => _filter = _RosterFilter.borte),
+                          ),
+                          _FilterChip(
+                            label: '≤ 5 d igjen',
+                            selected: _filter == _RosterFilter.ferieLav,
+                            onTap: () => setState(
+                              () => _filter = _RosterFilter.ferieLav,
                             ),
                           ),
-                      ],
-                      onChanged: (v) => setState(() => _departmentId = v),
-                    ),
-                  ),
-                );
-                final status = InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'Status',
-                    isDense: true,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<ManagerLeaveStatusFilter>(
-                      value: _status,
-                      isExpanded: true,
-                      items: const [
-                        DropdownMenuItem(
-                          value: ManagerLeaveStatusFilter.alle,
-                          child: Text('Alle'),
-                        ),
-                        DropdownMenuItem(
-                          value: ManagerLeaveStatusFilter.paJobb,
-                          child: Text('På jobb'),
-                        ),
-                        DropdownMenuItem(
-                          value: ManagerLeaveStatusFilter.ferie,
-                          child: Text('Ferie'),
-                        ),
-                        DropdownMenuItem(
-                          value: ManagerLeaveStatusFilter.sykemeldt,
-                          child: Text('Sykemeldt'),
-                        ),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) setState(() => _status = v);
-                      },
-                    ),
-                  ),
-                );
-
-                if (wrap) {
-                  return Column(
-                    children: [
-                      search,
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          Expanded(child: dept),
-                          const SizedBox(width: 10),
-                          Expanded(child: status),
                         ],
                       ),
-                    ],
-                  );
-                }
-
-                return Row(
-                  children: [
-                    Expanded(flex: 3, child: search),
-                    const SizedBox(width: 10),
-                    Expanded(flex: 2, child: dept),
-                    const SizedBox(width: 10),
-                    Expanded(flex: 2, child: status),
+                    ),
                   ],
-                );
-              },
+                ),
+              ],
             ),
           ),
           if (rows.isEmpty)
@@ -313,164 +299,94 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
                 ),
               ),
             )
-          else
-            LayoutBuilder(
-              builder: (context, constraints) {
-                if (constraints.maxWidth < 820) {
-                  return Column(
-                    children: [
-                      for (final e in rows)
-                        _EmployeeMobileRow(
-                          employee: e,
-                          departmentName: e.departmentId == null
-                              ? null
-                              : widget.departmentNames[e.departmentId!],
-                          status: ManagerLeaveHelpers.todayStatusFor(
-                            _absencesFor(e.id),
-                          ),
-                          quota: _quota(e.id),
-                          next: ManagerLeaveHelpers.nextOrOngoingAbsence(
-                            _absencesFor(e.id),
-                          ),
-                          onOpen: () => widget.onOpenEmployee(e),
-                          isDark: isDark,
-                        ),
-                    ],
-                  );
-                }
-                return _DesktopRosterTable(
-                  employees: rows,
-                  departmentNames: widget.departmentNames,
-                  quotaFor: _quota,
-                  absencesFor: _absencesFor,
-                  onOpen: widget.onOpenEmployee,
-                );
-              },
+          else ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 4, 18, 6),
+              child: Text(
+                '${rows.length} ansatte',
+                style: DriftProTheme.caption.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF94A3B8),
+                ),
+              ),
             ),
+            for (final e in rows)
+              _EmployeeRow(
+                employee: e,
+                departmentName: e.departmentId == null
+                    ? null
+                    : widget.departmentNames[e.departmentId!],
+                quota: _quota(e.id),
+                year: widget.year,
+                status: ManagerLeaveHelpers.todayStatusFor(_absencesFor(e.id)),
+                next: ManagerLeaveHelpers.nextOrOngoingAbsence(
+                  _absencesFor(e.id),
+                ),
+                onOpen: () => widget.onOpenEmployee(e),
+                isDark: isDark,
+              ),
+            const SizedBox(height: 8),
+          ],
         ],
       ),
     );
   }
 }
 
-class _DesktopRosterTable extends StatelessWidget {
-  const _DesktopRosterTable({
-    required this.employees,
-    required this.departmentNames,
-    required this.quotaFor,
-    required this.absencesFor,
-    required this.onOpen,
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
   });
 
-  final List<UserProfile> employees;
-  final Map<String, String> departmentNames;
-  final AbsenceQuota? Function(String userId) quotaFor;
-  final List<Absence> Function(String userId) absencesFor;
-  final void Function(UserProfile) onOpen;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          minWidth: MediaQuery.sizeOf(context).width - 64,
-        ),
-        child: DataTable(
-          headingRowHeight: 42,
-          dataRowMinHeight: 68,
-          dataRowMaxHeight: 84,
-          horizontalMargin: 18,
-          columnSpacing: 20,
-          headingTextStyle: DriftProTheme.caption.copyWith(
-            fontWeight: FontWeight.w800,
-            color: const Color(0xFF64748B),
+    return Material(
+      color: selected
+          ? DriftProTheme.primaryGreen.withValues(alpha: 0.14)
+          : const Color(0xFFF1F5F9),
+      borderRadius: BorderRadius.circular(999),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: selected
+                  ? DriftProTheme.primaryGreen.withValues(alpha: 0.45)
+                  : const Color(0xFFE2E8F0),
+            ),
           ),
-          columns: const [
-            DataColumn(label: Text('ANSATT')),
-            DataColumn(label: Text('STATUS I DAG')),
-            DataColumn(label: Text('FERIEDAGER BRUKT')),
-            DataColumn(label: Text('GJENSTÅENDE')),
-            DataColumn(label: Text('NESTE PLANLAGTE FRAVÆR')),
-            DataColumn(label: Text('')),
-          ],
-          rows: [
-            for (final e in employees)
-              DataRow(
-                cells: [
-                  DataCell(
-                    _NameCell(
-                      name: e.fullName,
-                      avatarUrl: e.avatarUrl,
-                      department: e.departmentId == null
-                          ? null
-                          : departmentNames[e.departmentId!],
-                    ),
-                  ),
-                  DataCell(
-                    _StatusBadge(
-                      ManagerLeaveHelpers.todayStatusFor(absencesFor(e.id)),
-                    ),
-                  ),
-                  DataCell(_VacationProgress(quota: quotaFor(e.id))),
-                  DataCell(
-                    Text(
-                      '${quotaFor(e.id)?.vacationDaysRemaining ?? '—'} dager',
-                      style: DriftProTheme.bodySm.copyWith(
-                        fontWeight: FontWeight.w800,
-                        color: DriftProTheme.primaryGreen,
-                      ),
-                    ),
-                  ),
-                  DataCell(
-                    Builder(
-                      builder: (_) {
-                        final next =
-                            ManagerLeaveHelpers.nextOrOngoingAbsence(
-                          absencesFor(e.id),
-                        );
-                        if (next == null) {
-                          return Text(
-                            'Ingen planlagt',
-                            style: DriftProTheme.caption.copyWith(
-                              color: const Color(0xFF94A3B8),
-                            ),
-                          );
-                        }
-                        return Text(
-                          ManagerLeaveHelpers.nextAbsenceLabel(next),
-                          style: DriftProTheme.bodySm.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  DataCell(
-                    TextButton(
-                      onPressed: () => onOpen(e),
-                      style: TextButton.styleFrom(
-                        foregroundColor: DriftProTheme.primaryGreen,
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      child: const Text('Detaljer'),
-                    ),
-                  ),
-                ],
-              ),
-          ],
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: selected
+                  ? DriftProTheme.primaryGreen
+                  : const Color(0xFF64748B),
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
-class _EmployeeMobileRow extends StatelessWidget {
-  const _EmployeeMobileRow({
+class _EmployeeRow extends StatelessWidget {
+  const _EmployeeRow({
     required this.employee,
     required this.departmentName,
-    required this.status,
     required this.quota,
+    required this.year,
+    required this.status,
     required this.next,
     required this.onOpen,
     required this.isDark,
@@ -478,90 +394,92 @@ class _EmployeeMobileRow extends StatelessWidget {
 
   final UserProfile employee;
   final String? departmentName;
-  final ManagerLeaveTodayStatus status;
   final AbsenceQuota? quota;
+  final int year;
+  final ManagerLeaveTodayStatus status;
   final Absence? next;
   final VoidCallback onOpen;
   final bool isDark;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onOpen,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          border: Border(
-            top: BorderSide(
-              color: isDark
-                  ? DriftProTheme.dividerDark
-                  : const Color(0xFFF1F5F9),
+    final used = quota?.vacationDaysUsed ?? 0;
+    final total = quota?.totalVacationDays ?? 25;
+    final left = quota?.vacationDaysRemaining ?? total;
+    final pct = total <= 0 ? 0.0 : (used / total).clamp(0.0, 1.0);
+    final low = left <= 5;
+    final away = status != ManagerLeaveTodayStatus.paJobb;
+    final df = DateFormat('d. MMM', 'nb_NO');
+    final wide = MediaQuery.sizeOf(context).width >= 760;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onOpen,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.03)
+                : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: away
+                  ? status.color.withValues(alpha: 0.35)
+                  : (isDark
+                      ? DriftProTheme.dividerDark
+                      : const Color(0xFFEEF2F6)),
             ),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _NameCell(
-                    name: employee.fullName,
-                    avatarUrl: employee.avatarUrl,
-                    department: departmentName,
-                  ),
+          child: wide
+              ? Row(
+                  children: [
+                    Expanded(flex: 3, child: _identity(away)),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 168,
+                      child: _daysBlock(
+                        used: used,
+                        left: left,
+                        total: total,
+                        pct: pct,
+                        low: low,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(flex: 3, child: _nextBlock(df)),
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.55),
+                    ),
+                  ],
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _identity(away),
+                    const SizedBox(height: 12),
+                    _daysBlock(
+                      used: used,
+                      left: left,
+                      total: total,
+                      pct: pct,
+                      low: low,
+                    ),
+                    const SizedBox(height: 10),
+                    _nextBlock(df),
+                  ],
                 ),
-                _StatusBadge(status),
-              ],
-            ),
-            const SizedBox(height: 10),
-            _VacationProgress(quota: quota),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Text(
-                  '${quota?.vacationDaysRemaining ?? '—'} dager igjen',
-                  style: DriftProTheme.caption.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: DriftProTheme.primaryGreen,
-                  ),
-                ),
-                const Spacer(),
-                Flexible(
-                  child: Text(
-                    next == null
-                        ? 'Ingen planlagt'
-                        : ManagerLeaveHelpers.nextAbsenceLabel(next!),
-                    textAlign: TextAlign.end,
-                    overflow: TextOverflow.ellipsis,
-                    style: DriftProTheme.caption,
-                  ),
-                ),
-              ],
-            ),
-          ],
         ),
       ),
     );
   }
-}
 
-class _NameCell extends StatelessWidget {
-  const _NameCell({
-    required this.name,
-    this.avatarUrl,
-    this.department,
-  });
-
-  final String name;
-  final String? avatarUrl;
-  final String? department;
-
-  @override
-  Widget build(BuildContext context) {
-    final initials = name.trim().isEmpty
+  Widget _identity(bool away) {
+    final initials = employee.fullName.trim().isEmpty
         ? '?'
-        : name
+        : employee.fullName
             .trim()
             .split(RegExp(r'\s+'))
             .take(2)
@@ -571,13 +489,13 @@ class _NameCell extends StatelessWidget {
     return Row(
       children: [
         CircleAvatar(
-          radius: 18,
+          radius: 20,
           backgroundColor: DriftProTheme.primaryGreen.withValues(alpha: 0.14),
           backgroundImage:
-              (avatarUrl != null && avatarUrl!.isNotEmpty)
-                  ? NetworkImage(avatarUrl!)
+              (employee.avatarUrl != null && employee.avatarUrl!.isNotEmpty)
+                  ? NetworkImage(employee.avatarUrl!)
                   : null,
-          child: (avatarUrl == null || avatarUrl!.isEmpty)
+          child: (employee.avatarUrl == null || employee.avatarUrl!.isEmpty)
               ? Text(
                   initials,
                   style: const TextStyle(
@@ -589,27 +507,104 @@ class _NameCell extends StatelessWidget {
               : null,
         ),
         const SizedBox(width: 10),
-        Flexible(
+        Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                name,
+                employee.fullName,
                 overflow: TextOverflow.ellipsis,
                 style: DriftProTheme.bodySm.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
-              if (department != null && department!.isNotEmpty)
-                Text(
-                  department!,
-                  overflow: TextOverflow.ellipsis,
-                  style: DriftProTheme.caption.copyWith(
-                    color: const Color(0xFF64748B),
-                  ),
+              const SizedBox(height: 2),
+              Text(
+                [
+                  if (departmentName != null && departmentName!.isNotEmpty)
+                    departmentName!,
+                  if (away) status.label,
+                ].join(' · '),
+                overflow: TextOverflow.ellipsis,
+                style: DriftProTheme.caption.copyWith(
+                  color: away ? status.color : const Color(0xFF64748B),
+                  fontWeight: away ? FontWeight.w700 : FontWeight.w500,
                 ),
+              ),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _daysBlock({
+    required int used,
+    required int left,
+    required int total,
+    required double pct,
+    required bool low,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            _DayStat(label: 'Brukt', value: '$used', muted: true),
+            const SizedBox(width: 10),
+            _DayStat(
+              label: 'Igjen',
+              value: '$left',
+              accent: low ? DriftProTheme.warning : DriftProTheme.primaryGreen,
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '/ $total d',
+              style: DriftProTheme.caption.copyWith(
+                color: const Color(0xFF94A3B8),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: pct,
+            minHeight: 6,
+            backgroundColor: const Color(0xFFE2E8F0),
+            color: low ? DriftProTheme.warning : DriftProTheme.primaryGreen,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _nextBlock(DateFormat df) {
+    if (next == null) {
+      return Text(
+        'Ingen planlagt fravær',
+        style: DriftProTheme.caption.copyWith(
+          color: const Color(0xFF94A3B8),
+        ),
+      );
+    }
+    final days = ManagerLeaveHelpers.daysFor(next!);
+    final pending = next!.status == AbsenceStatus.ventende;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '${next!.type.label} · $days dager${pending ? ' (venter)' : ''}',
+          style: DriftProTheme.bodySm.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '${df.format(next!.startDate)} – ${df.format(next!.endDate)}',
+          style: DriftProTheme.caption.copyWith(
+            color: const Color(0xFF64748B),
+            fontWeight: FontWeight.w600,
           ),
         ),
       ],
@@ -617,66 +612,44 @@ class _NameCell extends StatelessWidget {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge(this.status);
+class _DayStat extends StatelessWidget {
+  const _DayStat({
+    required this.label,
+    required this.value,
+    this.accent,
+    this.muted = false,
+  });
 
-  final ManagerLeaveTodayStatus status;
+  final String label;
+  final String value;
+  final Color? accent;
+  final bool muted;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        status.label,
-        style: TextStyle(
-          color: status.color,
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: DriftProTheme.caption.copyWith(
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF94A3B8),
+          ),
         ),
-      ),
-    );
-  }
-}
-
-class _VacationProgress extends StatelessWidget {
-  const _VacationProgress({required this.quota});
-
-  final AbsenceQuota? quota;
-
-  @override
-  Widget build(BuildContext context) {
-    final used = quota?.vacationDaysUsed ?? 0;
-    final total = quota?.totalVacationDays ?? 25;
-    final pct = total <= 0 ? 0.0 : (used / total).clamp(0.0, 1.0);
-
-    return SizedBox(
-      width: 160,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            '$used / $total dager',
-            style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w700),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.w900,
+            height: 1.1,
+            color: muted
+                ? const Color(0xFF475569)
+                : (accent ?? DriftProTheme.primaryGreen),
           ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: pct,
-              minHeight: 7,
-              backgroundColor: const Color(0xFFE2E8F0),
-              color: pct >= 0.9
-                  ? DriftProTheme.warning
-                  : DriftProTheme.primaryGreen,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

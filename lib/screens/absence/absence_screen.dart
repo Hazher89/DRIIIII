@@ -296,6 +296,8 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       leaderProfile: _profile,
       selectedYear: _selectedYear,
       isLoading: _isLoading,
+      companySettings: _companySettings,
+      approverNames: _approverNamesById,
       onRefresh: _loadAllData,
       onRegister: () => _showRegisterOptions(context),
       onApprove: (a) => _updateStatus(a.id, AbsenceStatus.godkjent),
@@ -1186,6 +1188,11 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
     return null;
   }
 
+  Map<String, String> get _approverNamesById => {
+        for (final p in _teamProfiles) p.id: p.fullName,
+        if (_profile != null) _profile!.id: _profile!.fullName,
+      };
+
   Future<void> _openEmployeeLeavePage(UserProfile employee) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -1205,6 +1212,17 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
           onAbsenceTap: (a) =>
               _openAbsenceDetail(a, _days(a), managerView: true),
           onChanged: _loadAllData,
+          onYearChanged: (y) async {
+            setState(() => _selectedYear = y);
+            if (_profile != null) {
+              await _loadTeamOverview(_profile!);
+              await _loadSaldo(_profile!);
+            }
+          },
+          teamProfiles: _teamProfiles,
+          teamQuotas: _teamQuotas,
+          allAbsences: _scopedAbsences,
+          approverNames: _approverNamesById,
         ),
       ),
     );
