@@ -406,14 +406,10 @@ class _DriverPortalAvvikPageState extends State<DriverPortalAvvikPage>
     await _setVideo(file);
   }
 
-  /// Skjemafelt: 41… / 39… fra rute-PDF (FU).
+  /// Skjemafelt: 41… / 39… kun fra FU-felt (ikke navn/adresse — limer sifre).
   String? _formNumberForCustomer(RoutePdfCustomer customer) {
     return PartnerDriverDeviationRefs.primaryFormNumber(
-      freightRaw: [
-        customer.freightUnit,
-        customer.name,
-        customer.addressHint,
-      ].whereType<String>().join(' '),
+      freightRaw: customer.freightUnit,
       salesOrder: customer.salesOrder,
     );
   }

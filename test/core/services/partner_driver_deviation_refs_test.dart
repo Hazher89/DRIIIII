@@ -7,6 +7,10 @@ void main() {
     test('skiller skjemanr (39/41) fra søkbar ordre (21/22/60)', () {
       expect(PartnerDriverDeviationRefs.isFormFillNumber('4106155580'), isTrue);
       expect(PartnerDriverDeviationRefs.isFormFillNumber('3900123456'), isTrue);
+      expect(
+        PartnerDriverDeviationRefs.isFormFillNumber('4106746844131776'),
+        isFalse,
+      );
       expect(PartnerDriverDeviationRefs.isSearchableOrderNumber('2123831828'), isTrue);
       expect(PartnerDriverDeviationRefs.isSearchableOrderNumber('2212345678'), isTrue);
       expect(PartnerDriverDeviationRefs.isSearchableOrderNumber('6012345678'), isTrue);
@@ -27,6 +31,28 @@ void main() {
       expect(
         PartnerDriverDeviationRefs.primaryBilag(freightRaw: '4106155580'),
         isNull,
+      );
+    });
+
+    test('limer ikke flere FU til ett digittog', () {
+      expect(
+        PartnerDriverDeviationRefs.primaryFormNumber(
+          freightRaw: '4106746844, 3900328413',
+        ),
+        '4106746844',
+      );
+      expect(
+        PartnerDriverDeviationRefs.primaryFormNumber(
+          freightRaw: '3900328413 HUB Oslo leilighet 131776',
+        ),
+        '3900328413',
+      );
+      // Tidligere bug: strippet alle sifre → 4106746844131776
+      expect(
+        PartnerDriverDeviationRefs.primaryFormNumber(
+          freightRaw: '4106746844 addr 131776',
+        ),
+        '4106746844',
       );
     });
 

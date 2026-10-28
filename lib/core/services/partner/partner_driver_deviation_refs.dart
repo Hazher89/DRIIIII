@@ -6,6 +6,10 @@
 class PartnerDriverDeviationRefs {
   PartnerDriverDeviationRefs._();
 
+  /// SAP FU / kundenr er typisk 8–12 siffer (ofte 10). Lengre = limte nummer.
+  static const int minRefLength = 8;
+  static const int maxRefLength = 12;
+
   static final _digitRun = RegExp(r'\d{6,14}');
 
   static List<String> extractNumbers(String? raw) {
@@ -19,19 +23,26 @@ class PartnerDriverDeviationRefs {
     return out;
   }
 
-  /// Nummer som skal stå i skjemaet (39… / 41…).
+  /// Nummer som skal stå i skjemaet (39… / 41…, gyldig lengde).
   static bool isFormFillNumber(String n) =>
-      n.startsWith('41') || n.startsWith('39');
+      (n.startsWith('41') || n.startsWith('39')) &&
+      n.length >= minRefLength &&
+      n.length <= maxRefLength;
 
   /// Freight unit generelt (4…).
-  static bool isFreightUnit(String n) => n.startsWith('4');
+  static bool isFreightUnit(String n) =>
+      n.startsWith('4') &&
+      n.length >= minRefLength &&
+      n.length <= maxRefLength;
 
   /// Søkbare sales order / bilag: 21…, 22…, 60… (og øvrige 2…).
   static bool isSearchableOrderNumber(String n) =>
-      n.startsWith('21') ||
-      n.startsWith('22') ||
-      n.startsWith('60') ||
-      n.startsWith('2');
+      (n.startsWith('21') ||
+          n.startsWith('22') ||
+          n.startsWith('60') ||
+          n.startsWith('2')) &&
+      n.length >= minRefLength &&
+      n.length <= maxRefLength;
 
   /// @Deprecated — bruk [isSearchableOrderNumber].
   static bool isBilagNumber(String n) => isSearchableOrderNumber(n);
@@ -48,22 +59,31 @@ class PartnerDriverDeviationRefs {
   /// @Deprecated — bruk [searchableOrdersFrom].
   static List<String> bilagNumbersFrom(String? raw) => searchableOrdersFrom(raw);
 
+  static String? _prefer41Then39(List<String> nums) {
+    if (nums.isEmpty) return null;
+    final p41 = nums.where((n) => n.startsWith('41'));
+    if (p41.isNotEmpty) return p41.first;
+    final p39 = nums.where((n) => n.startsWith('39'));
+    if (p39.isNotEmpty) return p39.first;
+    return nums.first;
+  }
+
   /// Auto-fyll til skjemafelt: 41… først, deretter 39…, ellers annen 4….
+  /// Viktig: lim aldri sammen flere FU (f.eks. «4106…, 3900…» → ett digittog).
   static String? primaryFormNumber({
     String? freightRaw,
     String? salesOrder,
     String? manual,
   }) {
-    for (final candidate in [manual, freightRaw, salesOrder]) {
-      final digits = (candidate ?? '').replaceAll(RegExp(r'\D'), '');
-      if (digits.length >= 6 && isFormFillNumber(digits)) return digits;
-    }
+    final fromManual = formFillNumbersFrom(manual);
+    if (fromManual.isNotEmpty) return _prefer41Then39(fromManual);
+
     final fromFreight = formFillNumbersFrom(freightRaw);
-    if (fromFreight.isNotEmpty) {
-      final prefer41 = fromFreight.where((n) => n.startsWith('41'));
-      if (prefer41.isNotEmpty) return prefer41.first;
-      return fromFreight.first;
-    }
+    if (fromFreight.isNotEmpty) return _prefer41Then39(fromFreight);
+
+    final fromSales = formFillNumbersFrom(salesOrder);
+    if (fromSales.isNotEmpty) return _prefer41Then39(fromSales);
+
     // Fallback: hvilken som helst FU (4…)
     return primaryFreightUnit(freightRaw);
   }
@@ -85,14 +105,11 @@ class PartnerDriverDeviationRefs {
     String? manual,
     String? freightRaw,
   }) {
-    for (final candidate in [salesOrder, manual]) {
-      final digits = (candidate ?? '').replaceAll(RegExp(r'\D'), '');
-      if (digits.isNotEmpty && isSearchableOrderNumber(digits)) return digits;
+    for (final candidate in [salesOrder, manual, freightRaw]) {
       final from = searchableOrdersFrom(candidate);
       if (from.isNotEmpty) return from.first;
     }
-    final fromFreight = searchableOrdersFrom(freightRaw);
-    return fromFreight.isEmpty ? null : fromFreight.first;
+    return null;
   }
 
   static String freightUnitForStorage(String? freightRaw) {
