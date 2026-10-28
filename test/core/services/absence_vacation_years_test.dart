@@ -4,11 +4,14 @@ import 'package:driftpro/models/absence.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('VacationYearWindow dekker 10 år fremover', () {
+  test('VacationYearWindow dekker historikk + neste år', () {
     final now = VacationYearWindow.currentYear;
-    expect(VacationYearWindow.toYear, now + 10);
-    expect(VacationYearWindow.years, contains(now + 10));
+    expect(VacationYearWindow.toYear, now + 1);
+    expect(VacationYearWindow.years, contains(now));
+    expect(VacationYearWindow.years, contains(now + 1));
     expect(VacationYearWindow.years, contains(now - 5));
+    expect(VacationYearWindow.years, isNot(contains(now + 2)));
+    expect(VacationYearWindow.yearsNewestFirst.first, now + 1);
   });
 
   test('godkjente feriedager fordeles per kalenderår', () {

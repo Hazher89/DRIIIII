@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../../core/constants/leave_rules.dart';
+import '../../../../core/services/absence/employee_leave_stats.dart';
+import '../../../../core/services/absence/leave_period_usage_service.dart';
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/utils/leave_period_window.dart';
 import '../../../../models/absence.dart';
 import '../../../../models/user_profile.dart';
+import '../leave_period_scope.dart';
 import 'manager_leave_helpers.dart';
 
 enum _RosterFilter { alle, borte, ferieLav }
@@ -18,6 +23,8 @@ class ManagerLeaveRosterTable extends StatefulWidget {
     required this.year,
     required this.onOpenEmployee,
     this.onYearChanged,
+    this.scope,
+    this.company = const CompanyLeaveSettings(),
   });
 
   final List<UserProfile> employees;
@@ -25,6 +32,8 @@ class ManagerLeaveRosterTable extends StatefulWidget {
   final List<AbsenceQuota> quotas;
   final Map<String, String> departmentNames;
   final int year;
+  final LeavePeriodScope? scope;
+  final CompanyLeaveSettings company;
   final void Function(UserProfile employee) onOpenEmployee;
   final ValueChanged<int>? onYearChanged;
 
@@ -54,6 +63,28 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
 
   List<Absence> _absencesFor(String userId) =>
       widget.absences.where((a) => a.userId == userId).toList();
+
+  LeavePeriodScope get _scope =>
+      widget.scope ?? LeavePeriodScope.year(widget.year);
+
+  EmployeeLeaveSnapshot _statsFor(UserProfile e) {
+    final abs = _absencesFor(e.id);
+    final usage = LeavePeriodUsageService.computeForWindow(
+      absences: abs,
+      window: LeavePeriodWindow(
+        periodStart: _scope.rangeStart,
+        periodEnd: _scope.rangeEnd,
+      ),
+    );
+    return EmployeeLeaveSnapshot.compute(
+      employee: e,
+      employeeAbsences: abs,
+      quota: _quota(e.id),
+      company: widget.company,
+      referenceDate: _scope.referenceDate,
+      periodUsageOverride: usage,
+    );
+  }
 
   List<String?> get _departmentOptions {
     final ids = widget.employees
@@ -148,7 +179,7 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Feriedager ${widget.year} · brukt, igjen og neste fravær',
+                        '${_scope.shortLabel} · ferie, egenmelding, sykt barn og sykmelding',
                         style: DriftProTheme.caption.copyWith(
                           color: const Color(0xFF64748B),
                         ),
@@ -317,6 +348,7 @@ class _ManagerLeaveRosterTableState extends State<ManagerLeaveRosterTable> {
                     ? null
                     : widget.departmentNames[e.departmentId!],
                 quota: _quota(e.id),
+                stats: _statsFor(e),
                 year: widget.year,
                 status: ManagerLeaveHelpers.todayStatusFor(_absencesFor(e.id)),
                 next: ManagerLeaveHelpers.nextOrOngoingAbsence(
@@ -385,6 +417,7 @@ class _EmployeeRow extends StatelessWidget {
     required this.employee,
     required this.departmentName,
     required this.quota,
+    required this.stats,
     required this.year,
     required this.status,
     required this.next,
@@ -395,6 +428,7 @@ class _EmployeeRow extends StatelessWidget {
   final UserProfile employee;
   final String? departmentName;
   final AbsenceQuota? quota;
+  final EmployeeLeaveSnapshot stats;
   final int year;
   final ManagerLeaveTodayStatus status;
   final Absence? next;
@@ -403,14 +437,14 @@ class _EmployeeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final used = quota?.vacationDaysUsed ?? 0;
-    final total = quota?.totalVacationDays ?? 25;
-    final left = quota?.vacationDaysRemaining ?? total;
+    final used = quota?.vacationDaysUsed ?? stats.ferieUsed;
+    final total = quota?.totalVacationDays ?? stats.ferieTotal;
+    final left = quota?.vacationDaysRemaining ?? stats.ferieRemaining;
     final pct = total <= 0 ? 0.0 : (used / total).clamp(0.0, 1.0);
     final low = left <= 5;
     final away = status != ManagerLeaveTodayStatus.paJobb;
     final df = DateFormat('d. MMM', 'nb_NO');
-    final wide = MediaQuery.sizeOf(context).width >= 760;
+    final wide = MediaQuery.sizeOf(context).width >= 900;
 
     return Material(
       color: Colors.transparent,
@@ -434,11 +468,12 @@ class _EmployeeRow extends StatelessWidget {
           ),
           child: wide
               ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(flex: 3, child: _identity(away)),
                     const SizedBox(width: 12),
                     SizedBox(
-                      width: 168,
+                      width: 150,
                       child: _daysBlock(
                         used: used,
                         left: left,
@@ -447,7 +482,9 @@ class _EmployeeRow extends StatelessWidget {
                         low: low,
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
+                    Expanded(flex: 4, child: _absenceStats()),
+                    const SizedBox(width: 12),
                     Expanded(flex: 3, child: _nextBlock(df)),
                     Icon(
                       Icons.chevron_right_rounded,
@@ -468,11 +505,40 @@ class _EmployeeRow extends StatelessWidget {
                       low: low,
                     ),
                     const SizedBox(height: 10),
+                    _absenceStats(),
+                    const SizedBox(height: 10),
                     _nextBlock(df),
                   ],
                 ),
         ),
       ),
+    );
+  }
+
+  Widget _absenceStats() {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        _StatChip(
+          label: 'Egen',
+          value: '${stats.egenDaysTotal} d · ${stats.egenTilfeller} tilf.',
+          color: DriftProTheme.absenceSickSelf,
+          emphasize: stats.egenDaysTotal > 0,
+        ),
+        _StatChip(
+          label: 'Sykt barn',
+          value: '${stats.syktDays} d',
+          color: DriftProTheme.absenceSickChild,
+          emphasize: stats.syktDays > 0,
+        ),
+        _StatChip(
+          label: 'Sykm.',
+          value: '${stats.sykmeldingDays} d',
+          color: DriftProTheme.absenceSickNote,
+          emphasize: stats.sykmeldingDays > 0,
+        ),
+      ],
     );
   }
 
@@ -650,6 +716,57 @@ class _DayStat extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  const _StatChip({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.emphasize = false,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: emphasize ? 0.14 : 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: color.withValues(alpha: emphasize ? 0.4 : 0.18),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              color: color.withValues(alpha: 0.9),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              color: emphasize ? color : const Color(0xFF475569),
+              height: 1.15,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

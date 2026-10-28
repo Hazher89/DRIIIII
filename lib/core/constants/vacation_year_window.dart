@@ -1,16 +1,21 @@
-/// Felles årsvindu for ferie/fravær — historikk og planlegging fremover.
+/// Felles årsvindu for ferie/fravær — historikk + maks ett år frem.
 class VacationYearWindow {
   VacationYearWindow._();
 
   static const int yearsBack = 5;
-  static const int yearsForward = 10;
+  /// Kun inneværende + neste år (ferieplanlegging) — ikke langt inn i fremtiden.
+  static const int yearsForward = 1;
 
   static int get currentYear => DateTime.now().year;
 
+  /// Eldst → nyest (fra … til).
   static List<int> get years => List.generate(
         yearsBack + yearsForward + 1,
         (i) => currentYear - yearsBack + i,
       );
+
+  /// Nyest først — til årvelger i UI (inneværende nær toppen).
+  static List<int> get yearsNewestFirst => years.reversed.toList();
 
   static int get fromYear => currentYear - yearsBack;
   static int get toYear => currentYear + yearsForward;

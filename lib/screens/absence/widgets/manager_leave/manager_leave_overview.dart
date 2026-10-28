@@ -343,6 +343,8 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
                   quotas: widget.teamQuotas,
                   departmentNames: widget.departmentNames,
                   year: widget.selectedYear,
+                  scope: _scope,
+                  company: widget.companySettings,
                   onOpenEmployee: widget.onOpenEmployee,
                   onYearChanged: widget.onYearChanged,
                 ),

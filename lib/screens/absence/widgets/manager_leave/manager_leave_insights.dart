@@ -1162,15 +1162,21 @@ class _MonthlyAbsenceChart extends StatefulWidget {
 }
 
 class _MonthlyAbsenceChartState extends State<_MonthlyAbsenceChart> {
+  final _layerLink = LayerLink();
+  final _portal = OverlayPortalController();
   int? _hoverMonth;
   Offset? _hoverLocal;
+  double _chartWidth = 400;
 
   void _clearHover() {
-    if (_hoverMonth == null && _hoverLocal == null) return;
+    if (_hoverMonth == null && _hoverLocal == null && !_portal.isShowing) {
+      return;
+    }
     setState(() {
       _hoverMonth = null;
       _hoverLocal = null;
     });
+    if (_portal.isShowing) _portal.hide();
   }
 
   void _setHover(int month, Offset? local) {
@@ -1179,6 +1185,18 @@ class _MonthlyAbsenceChartState extends State<_MonthlyAbsenceChart> {
       _hoverMonth = month;
       _hoverLocal = local;
     });
+    if (!_portal.isShowing) _portal.show();
+  }
+
+  Offset _anchorFor(int month, List<double> monthly, double chartMaxY) {
+    const chartH = 180.0;
+    const leftPad = 28.0;
+    const bottomPad = 22.0;
+    final plotW = (_chartWidth - leftPad).clamp(1.0, 9999.0);
+    final plotH = chartH - bottomPad;
+    final x = leftPad + (month / 11) * plotW;
+    final y = plotH - (monthly[month] / chartMaxY) * plotH;
+    return _hoverLocal ?? Offset(x, y.clamp(8.0, plotH));
   }
 
   @override
@@ -1196,66 +1214,86 @@ class _MonthlyAbsenceChartState extends State<_MonthlyAbsenceChart> {
         ? const <MonthEmployeeAbsence>[]
         : (widget.monthPeople[selected] ?? const []);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Fravær per måned ${widget.year}',
-                    style: DriftProTheme.labelLg
-                        .copyWith(fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    maxY <= 0
-                        ? 'Ingen fraværsdager registrert ennå'
-                        : 'Mest fravær i $peakLabel (${monthly[widget.peakMonth].round()} person-dager) · hold over prikk for detaljer',
-                    style: DriftProTheme.caption
-                        .copyWith(color: const Color(0xFF64748B)),
-                  ),
-                ],
+    return OverlayPortal(
+      controller: _portal,
+      overlayChildBuilder: (context) {
+        if (selected == null) return const SizedBox.shrink();
+        final anchor = _anchorFor(selected, monthly, chartMaxY);
+        final offset = _FloatingMonthPopup.offsetFor(
+          anchor: anchor,
+          chartWidth: _chartWidth,
+          peopleCount: people.length,
+        );
+        // Root overlay — over «Mest ferie»-kortene under diagrammet.
+        return CompositedTransformFollower(
+          link: _layerLink,
+          showWhenUnlinked: false,
+          targetAnchor: Alignment.topLeft,
+          followerAnchor: Alignment.topLeft,
+          offset: offset,
+          child: _FloatingMonthPopup(
+            monthIndex: selected,
+            year: widget.year,
+            totalDays: monthly[selected].round(),
+            people: people,
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Fravær per måned ${widget.year}',
+                      style: DriftProTheme.labelLg
+                          .copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      maxY <= 0
+                          ? 'Ingen fraværsdager registrert ennå'
+                          : 'Mest fravær i $peakLabel (${monthly[widget.peakMonth].round()} person-dager) · hold over prikk for detaljer',
+                      style: DriftProTheme.caption
+                          .copyWith(color: const Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            if (mom != null) _MomChip(mom: mom),
-          ],
-        ),
-        const SizedBox(height: 12),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            const chartH = 180.0;
-            const leftPad = 28.0;
-            const bottomPad = 22.0;
-            final plotW = (constraints.maxWidth - leftPad).clamp(1.0, 9999.0);
-            final plotH = chartH - bottomPad;
+              if (mom != null) _MomChip(mom: mom),
+            ],
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const chartH = 180.0;
+              const leftPad = 28.0;
+              if (_chartWidth != constraints.maxWidth) {
+                _chartWidth = constraints.maxWidth;
+              }
 
-            Offset? popupAnchor;
-            if (selected != null) {
-              final x = leftPad + (selected / 11) * plotW;
-              final yVal = monthly[selected];
-              final y = plotH - (yVal / chartMaxY) * plotH;
-              popupAnchor = _hoverLocal ?? Offset(x, y.clamp(8.0, plotH));
-            }
-
-            return SizedBox(
-              height: chartH,
-              child: maxY <= 0
-                  ? Center(
-                      child:
-                          Text('Ingen data å vise', style: DriftProTheme.caption),
-                    )
-                  : MouseRegion(
-                      onHover: (e) => setState(() => _hoverLocal = e.localPosition),
-                      onExit: (_) => _clearHover(),
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          LineChart(
+              return CompositedTransformTarget(
+                link: _layerLink,
+                child: SizedBox(
+                  width: constraints.maxWidth,
+                  height: chartH,
+                  child: maxY <= 0
+                      ? Center(
+                          child: Text(
+                            'Ingen data å vise',
+                            style: DriftProTheme.caption,
+                          ),
+                        )
+                      : MouseRegion(
+                          onHover: (e) =>
+                              setState(() => _hoverLocal = e.localPosition),
+                          onExit: (_) => _clearHover(),
+                          child: LineChart(
                             LineChartData(
                               minX: 0,
                               maxX: 11,
@@ -1414,23 +1452,13 @@ class _MonthlyAbsenceChartState extends State<_MonthlyAbsenceChart> {
                               ],
                             ),
                           ),
-                          if (selected != null && popupAnchor != null)
-                            _FloatingMonthPopup(
-                              anchor: popupAnchor,
-                              chartWidth: constraints.maxWidth,
-                              chartHeight: chartH,
-                              monthIndex: selected,
-                              year: widget.year,
-                              totalDays: monthly[selected].round(),
-                              people: people,
-                            ),
-                        ],
-                      ),
-                    ),
-            );
-          },
-        ),
-      ],
+                        ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -1460,24 +1488,33 @@ class _MonthlyAbsenceChartState extends State<_MonthlyAbsenceChart> {
 
 class _FloatingMonthPopup extends StatelessWidget {
   const _FloatingMonthPopup({
-    required this.anchor,
-    required this.chartWidth,
-    required this.chartHeight,
     required this.monthIndex,
     required this.year,
     required this.totalDays,
     required this.people,
   });
 
-  final Offset anchor;
-  final double chartWidth;
-  final double chartHeight;
   final int monthIndex;
   final int year;
   final int totalDays;
   final List<MonthEmployeeAbsence> people;
 
-  static const _popupW = 260.0;
+  static const popupW = 260.0;
+
+  static Offset offsetFor({
+    required Offset anchor,
+    required double chartWidth,
+    required int peopleCount,
+  }) {
+    final rows = peopleCount.clamp(0, 5);
+    final estimatedH = 72.0 + rows * 36.0;
+    var left = anchor.dx - popupW / 2;
+    left = left.clamp(4.0, math.max(4.0, chartWidth - popupW - 4));
+    var top = anchor.dy - estimatedH - 12;
+    // Prefer above; if far above chart origin, flip below the point.
+    if (top < -160) top = anchor.dy + 14;
+    return Offset(left, top);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1485,24 +1522,14 @@ class _FloatingMonthPopup extends StatelessWidget {
     final month = ManagerLeaveInsights.monthNames[monthIndex];
     final rows = people.take(5).toList();
 
-    // Prefer above the point; flip below if near top. Clamp horizontally.
-    const estimatedH = 150.0;
-    var left = anchor.dx - _popupW / 2;
-    left = left.clamp(4.0, math.max(4.0, chartWidth - _popupW - 4));
-    var top = anchor.dy - estimatedH - 10;
-    if (top < 4) top = anchor.dy + 14;
-    top = top.clamp(4.0, math.max(4.0, chartHeight - 40));
-
-    return Positioned(
-      left: left,
-      top: top,
-      width: _popupW,
-      child: IgnorePointer(
-        child: Material(
-          elevation: 10,
-          shadowColor: Colors.black38,
-          borderRadius: BorderRadius.circular(12),
-          color: const Color(0xFF0F172A),
+    return IgnorePointer(
+      child: Material(
+        elevation: 24,
+        shadowColor: Colors.black54,
+        borderRadius: BorderRadius.circular(12),
+        color: const Color(0xFF0F172A),
+        child: SizedBox(
+          width: popupW,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
             child: Column(

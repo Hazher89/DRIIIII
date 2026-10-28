@@ -148,17 +148,19 @@ class MobileShellScaffold extends StatelessWidget {
 
     if (!DriftProClient.isMobile) {
       final canPop = ModalRoute.of(context)?.canPop ?? false;
-      final hasAppBar = _showHeader(actions) || bottom != null || canPop;
+      // hideMobileTitleBar: også på web — unngå dobbel tittel når siden har egen header.
+      final showTitleRow = !hideMobileTitleBar && _showHeader(actions);
+      final hasAppBar = showTitleRow || bottom != null || (canPop && !hideMobileTitleBar);
       return Scaffold(
         backgroundColor: backgroundColor,
         appBar: hasAppBar
             ? AppBar(
-                title: title != null ? Text(title!) : null,
-                actions: actions,
+                title: showTitleRow && title != null ? Text(title!) : null,
+                actions: showTitleRow ? actions : null,
                 bottom: bottom,
-                toolbarHeight: _showHeader(actions) ? kToolbarHeight : 0,
-                automaticallyImplyLeading: canPop,
-                leading: leading,
+                toolbarHeight: showTitleRow ? kToolbarHeight : 0,
+                automaticallyImplyLeading: canPop && !hideMobileTitleBar,
+                leading: showTitleRow ? leading : null,
                 scrolledUnderElevation: 0,
               )
             : null,
