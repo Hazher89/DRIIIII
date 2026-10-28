@@ -9,7 +9,7 @@ import '../absence_excel_export_sheet.dart';
 import '../leave_period_scope.dart';
 import 'manager_leave_approvals_panel.dart';
 import 'manager_leave_helpers.dart';
-import 'manager_leave_kpi_cards.dart';
+import 'manager_leave_insights.dart';
 import 'manager_leave_roster_table.dart';
 
 /// Moderne lederoversikt for Fravær & Ferie — uten faner og uten årskalender.
@@ -67,6 +67,8 @@ class ManagerLeaveOverview extends StatefulWidget {
 class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
   final _scrollCtrl = ScrollController();
   final _approvalsKey = GlobalKey();
+  String? _departmentId;
+  String? _employeeId;
 
   @override
   void dispose() {
@@ -141,31 +143,44 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final employees = ManagerLeaveHelpers.employeesInScope(
+    final allEmployees = ManagerLeaveHelpers.employeesInScope(
       teamProfiles: widget.teamProfiles,
       leader: widget.leaderProfile,
     );
+    var scopedEmployees = allEmployees;
+    if (_departmentId != null) {
+      scopedEmployees =
+          scopedEmployees.where((e) => e.departmentId == _departmentId).toList();
+    }
+    if (_employeeId != null) {
+      scopedEmployees =
+          scopedEmployees.where((e) => e.id == _employeeId).toList();
+    }
+    final scopedIds = scopedEmployees.map((e) => e.id).toSet();
+    final scopedAbsences = widget.scopedAbsences
+        .where((a) => scopedIds.contains(a.userId))
+        .toList();
+
     final pending = List<Absence>.from(widget.pendingApprovals)
+        .where((a) => scopedIds.contains(a.userId))
+        .toList()
       ..sort((a, b) {
         final ac = a.createdAt ?? a.startDate;
         final bc = b.createdAt ?? b.startDate;
         return bc.compareTo(ac);
       });
 
-    final awayToday = widget.scopedAbsences
+    final awayToday = scopedAbsences
         .where(ManagerLeaveHelpers.isApprovedActiveToday)
         .toList()
       ..sort((a, b) => (a.userName ?? '').compareTo(b.userName ?? ''));
 
-    final awayUserIds = ManagerLeaveHelpers.uniqueUsers(awayToday);
-    final onJob = (employees.length - awayUserIds.length).clamp(0, employees.length);
-
-    final nextWeek = ManagerLeaveHelpers.absencesNextWeek(widget.scopedAbsences);
+    final nextWeek = ManagerLeaveHelpers.absencesNextWeek(scopedAbsences);
     final nextWeekUsers = ManagerLeaveHelpers.uniqueUsers(nextWeek).length;
 
     final bg = isDark ? DriftProTheme.surfaceDark : const Color(0xFFF8FAFC);
 
-    if (widget.isLoading && employees.isEmpty && pending.isEmpty) {
+    if (widget.isLoading && allEmployees.isEmpty && pending.isEmpty) {
       return ColoredBox(
         color: bg,
         child: const Center(child: CircularProgressIndicator()),
@@ -211,14 +226,38 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
-                child: ManagerLeaveKpiCards(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                child: ManagerLeaveScopeFilters(
+                  employees: allEmployees,
+                  departmentNames: widget.departmentNames,
+                  departmentId: _departmentId,
+                  employeeId: _employeeId,
+                  onDepartmentChanged: (id) => setState(() {
+                    _departmentId = id;
+                    if (_employeeId != null &&
+                        !allEmployees.any((e) =>
+                            e.id == _employeeId &&
+                            (id == null || e.departmentId == id))) {
+                      _employeeId = null;
+                    }
+                  }),
+                  onEmployeeChanged: (id) => setState(() => _employeeId = id),
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                child: ManagerLeaveInsights(
+                  employees: scopedEmployees,
+                  absences: scopedAbsences,
+                  quotas: widget.teamQuotas,
+                  year: widget.selectedYear,
                   pendingCount: pending.length,
                   awayToday: awayToday,
-                  onJobCount: onJob,
-                  totalEmployees: employees.length,
                   nextWeekAwayCount: nextWeekUsers,
                   onScrollToApprovals: _scrollToApprovals,
+                  onOpenEmployee: widget.onOpenEmployee,
                 ),
               ),
             ),
@@ -250,8 +289,8 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
                   DriftProClient.isMobile ? 100 : 32,
                 ),
                 child: ManagerLeaveRosterTable(
-                  employees: employees,
-                  absences: widget.scopedAbsences,
+                  employees: scopedEmployees,
+                  absences: scopedAbsences,
                   quotas: widget.teamQuotas,
                   departmentNames: widget.departmentNames,
                   year: widget.selectedYear,
