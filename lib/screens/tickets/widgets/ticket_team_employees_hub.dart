@@ -5,12 +5,6 @@ import '../../../core/config/driftpro_client.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/ticket.dart';
 import '../../../models/user_profile.dart';
-import '../../../widgets/common/team_equal_controls.dart';
-import '../../../widgets/common/team_kpi_strip.dart';
-
-enum TicketTeamViewMode { oversikt, liste }
-
-enum _TicketTeamFilter { alle, apne, kritisk, underBeh }
 
 class TicketEmployeeSummary {
   const TicketEmployeeSummary({
@@ -45,7 +39,9 @@ class TicketEmployeeSummary {
   }
 }
 
-/// Lederoversikt for avvik per ansatt.
+enum _TeamFilter { alle, apne, kritisk }
+
+/// Kompakt ledervisning: KPI, prioritert, ansatte — uten ekstra faner.
 class TicketTeamEmployeesHub extends StatefulWidget {
   const TicketTeamEmployeesHub({
     super.key,
@@ -54,10 +50,8 @@ class TicketTeamEmployeesHub extends StatefulWidget {
     required this.leaderProfile,
     required this.onTicketTap,
     required this.onEmployeeSelected,
+    this.onShowAllTickets,
     this.selectedEmployeeId,
-    this.onViewChanged,
-    this.initialView = TicketTeamViewMode.oversikt,
-    this.listChild,
   });
 
   final List<UserProfile> teamProfiles;
@@ -65,10 +59,8 @@ class TicketTeamEmployeesHub extends StatefulWidget {
   final UserProfile? leaderProfile;
   final void Function(Ticket ticket) onTicketTap;
   final void Function(String? employeeId) onEmployeeSelected;
+  final VoidCallback? onShowAllTickets;
   final String? selectedEmployeeId;
-  final ValueChanged<TicketTeamViewMode>? onViewChanged;
-  final TicketTeamViewMode initialView;
-  final Widget? listChild;
 
   @override
   State<TicketTeamEmployeesHub> createState() => _TicketTeamEmployeesHubState();
@@ -77,13 +69,11 @@ class TicketTeamEmployeesHub extends StatefulWidget {
 class _TicketTeamEmployeesHubState extends State<TicketTeamEmployeesHub> {
   final _searchCtrl = TextEditingController();
   String _search = '';
-  _TicketTeamFilter _filter = _TicketTeamFilter.alle;
-  TicketTeamViewMode _view = TicketTeamViewMode.oversikt;
+  _TeamFilter _filter = _TeamFilter.alle;
 
   @override
   void initState() {
     super.initState();
-    _view = widget.initialView;
     _searchCtrl.addListener(
       () => setState(() => _search = _searchCtrl.text.trim().toLowerCase()),
     );
@@ -115,7 +105,6 @@ class _TicketTeamEmployeesHubState extends State<TicketTeamEmployeesHub> {
     for (final t in widget.teamTickets) {
       byUser.putIfAbsent(t.reportedBy, () => []).add(t);
     }
-
     final out = <TicketEmployeeSummary>[];
     for (final p in _employees) {
       final tickets = [...(byUser[p.id] ?? const <Ticket>[])];
@@ -135,16 +124,19 @@ class _TicketTeamEmployeesHubState extends State<TicketTeamEmployeesHub> {
   List<TicketEmployeeSummary> get _filteredSummaries {
     return _summaries.where((s) {
       switch (_filter) {
-        case _TicketTeamFilter.alle:
+        case _TeamFilter.alle:
           return true;
-        case _TicketTeamFilter.apne:
+        case _TeamFilter.apne:
           return s.openCount > 0;
-        case _TicketTeamFilter.kritisk:
+        case _TeamFilter.kritisk:
           return s.criticalOpenCount > 0;
-        case _TicketTeamFilter.underBeh:
-          return s.inProgressCount > 0;
       }
-    }).toList();
+    }).toList()
+      ..sort((a, b) {
+        final byOpen = b.openCount.compareTo(a.openCount);
+        if (byOpen != 0) return byOpen;
+        return a.profile.fullName.compareTo(b.profile.fullName);
+      });
   }
 
   List<Ticket> get _priorityTickets {
@@ -168,250 +160,181 @@ class _TicketTeamEmployeesHubState extends State<TicketTeamEmployeesHub> {
       .where((t) => t.isOpen && t.severity == TicketSeverity.kritisk)
       .length;
 
-  int get _inProgressCount => widget.teamTickets
-      .where((t) => t.status == TicketStatus.underBehandling)
-      .length;
-
-  int get _employeesWithOpen =>
-      _summaries.where((s) => s.openCount > 0).length;
-
-  int get _employeesWithCritical =>
-      _summaries.where((s) => s.criticalOpenCount > 0).length;
-
-  int get _employeesInProgress =>
-      _summaries.where((s) => s.inProgressCount > 0).length;
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final summaries = _filteredSummaries;
-    final priority = _priorityTickets.take(5).toList();
+    final priority = _priorityTickets.take(4).toList();
+    final df = DateFormat('d. MMM', 'nb_NO');
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        0,
+        16,
+        DriftProClient.isMobile ? 100 : 32,
+      ),
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: TeamEqualSegmentBar<TicketTeamViewMode>(
-            value: _view,
-            onChanged: (v) {
-              setState(() => _view = v);
-              widget.onViewChanged?.call(v);
-            },
-            items: const [
-              TeamEqualSegmentItem(
-                value: TicketTeamViewMode.oversikt,
-                label: 'Oversikt',
-                icon: Icons.dashboard_outlined,
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark ? DriftProTheme.cardDark : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color:
+                  isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Row(
+            children: [
+              _kpi(
+                '${_employees.length}',
+                'Ansatte',
+                DriftProTheme.primaryGreen,
+                selected: _filter == _TeamFilter.alle,
+                onTap: () => setState(() => _filter = _TeamFilter.alle),
               ),
-              TeamEqualSegmentItem(
-                value: TicketTeamViewMode.liste,
-                label: 'Liste',
-                icon: Icons.list_alt,
+              const SizedBox(width: 8),
+              _kpi(
+                '$_openCount',
+                'Åpne',
+                DriftProTheme.info,
+                selected: _filter == _TeamFilter.apne,
+                onTap: () => setState(() => _filter = _TeamFilter.apne),
+              ),
+              const SizedBox(width: 8),
+              _kpi(
+                '$_criticalCount',
+                'Kritisk',
+                DriftProTheme.severityCritical,
+                selected: _filter == _TeamFilter.kritisk,
+                onTap: () => setState(() => _filter = _TeamFilter.kritisk),
               ),
             ],
           ),
         ),
-        if (_view == TicketTeamViewMode.oversikt)
-          Expanded(child: _buildOverview(isDark, summaries, priority))
-        else if (widget.listChild != null)
-          Expanded(child: widget.listChild!)
-        else
-          Expanded(
-            child: Center(
-              child: Text('Ingen liste', style: DriftProTheme.bodySm),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _searchCtrl,
+          decoration: InputDecoration(
+            hintText: 'Søk ansatt…',
+            prefixIcon: const Icon(Icons.search_rounded, size: 20),
+            isDense: true,
+            filled: true,
+            fillColor: isDark ? DriftProTheme.cardDark : Colors.white,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
             ),
           ),
-      ],
-    );
-  }
-
-  Widget _buildOverview(
-    bool isDark,
-    List<TicketEmployeeSummary> summaries,
-    List<Ticket> priority,
-  ) {
-    return ListView(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        8,
-        16,
-        DriftProClient.isMobile ? 8 : 24,
-      ),
-      children: [
-        TeamHubIntro(
-          title: 'Mine ansatte',
-          subtitle:
-              'Følg opp avvik og status for ${_employees.length} ansatte i avdelingen',
-        ),
-        const SizedBox(height: 14),
-        TeamKpiStrip(
-          children: [
-            TeamKpiTile(
-              value: '${_employees.length}',
-              label: 'Ansatte',
-              color: DriftProTheme.primaryGreen,
-              icon: Icons.groups_outlined,
-              onTap: () => setState(() => _filter = _TicketTeamFilter.alle),
-            ),
-            TeamKpiTile(
-              value: '$_openCount',
-              label: 'Åpne',
-              color: DriftProTheme.info,
-              icon: Icons.flag_outlined,
-              onTap: () => setState(() => _filter = _TicketTeamFilter.apne),
-            ),
-            TeamKpiTile(
-              value: '$_criticalCount',
-              label: 'Kritisk',
-              color: DriftProTheme.severityCritical,
-              icon: Icons.warning_amber_rounded,
-              onTap: () => setState(() => _filter = _TicketTeamFilter.kritisk),
-            ),
-            TeamKpiTile(
-              value: '$_inProgressCount',
-              label: 'Under beh.',
-              color: DriftProTheme.warning,
-              icon: Icons.hourglass_top_rounded,
-              onTap: () =>
-                  setState(() => _filter = _TicketTeamFilter.underBeh),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        TeamEqualSearchField(
-          controller: _searchCtrl,
-          hintText: 'Søk ansatt…',
-        ),
-        const SizedBox(height: 10),
-        TeamEqualFilterGrid<_TicketTeamFilter>(
-          value: _filter,
-          onChanged: (v) => setState(() => _filter = v),
-          items: [
-            TeamEqualFilterItem(
-              value: _TicketTeamFilter.alle,
-              label: 'Alle',
-              icon: Icons.people_outline,
-              badge: '${_employees.length}',
-            ),
-            TeamEqualFilterItem(
-              value: _TicketTeamFilter.apne,
-              label: 'Har åpne',
-              icon: Icons.flag_outlined,
-              badge: '$_employeesWithOpen',
-              accent: DriftProTheme.info,
-            ),
-            TeamEqualFilterItem(
-              value: _TicketTeamFilter.kritisk,
-              label: 'Kritisk',
-              icon: Icons.warning_amber_rounded,
-              badge: '$_employeesWithCritical',
-              accent: DriftProTheme.severityCritical,
-            ),
-            TeamEqualFilterItem(
-              value: _TicketTeamFilter.underBeh,
-              label: 'Under beh.',
-              icon: Icons.hourglass_top_rounded,
-              badge: '$_employeesInProgress',
-              accent: DriftProTheme.warning,
-            ),
-          ],
         ),
         if (priority.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          TeamSectionHeader(
-            title: 'Prioritert nå',
-            subtitle: 'Kritiske og nylige åpne avvik',
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Trenger oppfølging',
+                  style: DriftProTheme.labelMd
+                      .copyWith(fontWeight: FontWeight.w900),
+                ),
+              ),
+              if (widget.onShowAllTickets != null)
+                TextButton(
+                  onPressed: widget.onShowAllTickets,
+                  child: const Text('Se alle'),
+                ),
+            ],
           ),
-          ...priority.map((t) => _priorityTicketRow(t, isDark)),
+          const SizedBox(height: 6),
+          ...priority.map((t) => _priorityRow(t, isDark, df)),
+        ] else if (widget.onShowAllTickets != null) ...[
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: widget.onShowAllTickets,
+              icon: const Icon(Icons.list_alt, size: 18),
+              label: const Text('Se alle saker'),
+            ),
+          ),
         ],
-        const SizedBox(height: 12),
-        TeamSectionHeader(
-          title: 'Per ansatt',
-          subtitle: summaries.isEmpty
-              ? 'Ingen treff'
-              : '${summaries.length} vist · trykk for å åpne listen',
+        const SizedBox(height: 14),
+        Text(
+          'Ansatte',
+          style: DriftProTheme.labelMd.copyWith(fontWeight: FontWeight.w900),
         ),
+        const SizedBox(height: 2),
+        Text(
+          summaries.isEmpty
+              ? 'Ingen treff'
+              : 'Trykk en ansatt for å se sakene deres',
+          style: DriftProTheme.caption.copyWith(color: const Color(0xFF64748B)),
+        ),
+        const SizedBox(height: 10),
         if (summaries.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
+            padding: const EdgeInsets.symmetric(vertical: 28),
             child: Center(
-              child: Text(
-                'Ingen ansatte matcher filteret',
-                style: DriftProTheme.bodySm,
-              ),
+              child: Text('Ingen ansatte matcher', style: DriftProTheme.caption),
             ),
           )
         else
-          ...summaries.map((s) => _employeeCard(s, isDark)),
+          ...summaries.map((s) => _employeeRow(s, isDark)),
       ],
     );
   }
 
-  Widget _priorityTicketRow(Ticket t, bool isDark) {
-    final df = DateFormat('d. MMM', 'nb_NO');
-    final sevColor = switch (t.severity) {
-      TicketSeverity.kritisk => DriftProTheme.severityCritical,
-      TicketSeverity.hoy => DriftProTheme.severityHigh,
-      TicketSeverity.middels => DriftProTheme.severityMedium,
-      TicketSeverity.lav => DriftProTheme.severityLow,
-    };
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+  Widget _kpi(
+    String value,
+    String label,
+    Color color, {
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
       child: Material(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        color: selected
+            ? color.withValues(alpha: 0.16)
+            : color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
-          onTap: () => widget.onTicketTap(t),
-          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
           child: Container(
-            constraints: const BoxConstraints(minHeight: 64),
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: sevColor.withValues(alpha: 0.28),
+                color: selected
+                    ? color.withValues(alpha: 0.5)
+                    : color.withValues(alpha: 0.15),
               ),
             ),
-            child: Row(
+            child: Column(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: sevColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.report_problem_outlined,
-                    color: sevColor,
-                    size: 22,
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
+                    color: color,
+                    height: 1,
                   ),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        t.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: DriftProTheme.labelMd.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${t.reporterName ?? 'Ansatt'} · ${t.severity.label} · ${t.status.label}'
-                        '${t.createdAt != null ? ' · ${df.format(t.createdAt!)}' : ''}',
-                        style: DriftProTheme.caption,
-                      ),
-                    ],
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: color.withValues(alpha: 0.9),
                   ),
                 ),
-                const Icon(Icons.chevron_right, size: 20),
               ],
             ),
           ),
@@ -420,132 +343,132 @@ class _TicketTeamEmployeesHubState extends State<TicketTeamEmployeesHub> {
     );
   }
 
-  Widget _employeeCard(TicketEmployeeSummary s, bool isDark) {
-    final selected = widget.selectedEmployeeId == s.profile.id;
-    final latest = s.latestOpen;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
+  Widget _priorityRow(Ticket t, bool isDark, DateFormat df) {
+    final sevColor = switch (t.severity) {
+      TicketSeverity.kritisk => DriftProTheme.severityCritical,
+      TicketSeverity.hoy => DriftProTheme.severityHigh,
+      TicketSeverity.middels => DriftProTheme.severityMedium,
+      TicketSeverity.lav => DriftProTheme.severityLow,
+    };
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
         color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: selected
-              ? DriftProTheme.primaryGreen
-              : (isDark ? DriftProTheme.dividerDark : Colors.grey.shade200),
-          width: selected ? 1.5 : 1,
-        ),
-        boxShadow: DriftProTheme.cardShadow,
-      ),
-      child: InkWell(
-        onTap: () {
-          widget.onEmployeeSelected(selected ? null : s.profile.id);
-          setState(() => _view = TicketTeamViewMode.liste);
-          widget.onViewChanged?.call(TicketTeamViewMode.liste);
-        },
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor:
-                    DriftProTheme.primaryGreen.withValues(alpha: 0.12),
-                child: Text(
-                  s.profile.initials,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    color: DriftProTheme.primaryGreen,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      s.profile.fullName,
-                      style: DriftProTheme.labelLg.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _statPill(
-                            '${s.openCount} åpne',
-                            DriftProTheme.info,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: _statPill(
-                            s.criticalOpenCount > 0
-                                ? '${s.criticalOpenCount} kritisk'
-                                : '${s.tickets.length} totalt',
-                            s.criticalOpenCount > 0
-                                ? DriftProTheme.severityCritical
-                                : Colors.grey,
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (latest != null) ...[
-                      const SizedBox(height: 8),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => widget.onTicketTap(t),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: sevColor.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.report_problem_outlined, color: sevColor, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        latest.title,
+                        t.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
+                        style: DriftProTheme.bodySm
+                            .copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        '${t.reporterName ?? 'Ansatt'} · ${t.severity.label}'
+                        '${t.createdAt != null ? ' · ${df.format(t.createdAt!)}' : ''}',
                         style: DriftProTheme.caption,
                       ),
-                    ] else
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          'Ingen åpne avvik',
-                          style: DriftProTheme.caption.copyWith(
-                            color: DriftProTheme.success,
-                          ),
-                        ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Icon(
-                selected ? Icons.check_circle : Icons.chevron_right,
-                color: selected
-                    ? DriftProTheme.primaryGreen
-                    : (isDark ? Colors.white38 : Colors.grey),
-              ),
-            ],
+                const Icon(Icons.chevron_right, size: 18),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _statPill(String label, Color color) {
-    return Container(
-      height: 28,
-      alignment: Alignment.center,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: color,
+  Widget _employeeRow(TicketEmployeeSummary s, bool isDark) {
+    final selected = widget.selectedEmployeeId == s.profile.id;
+    final latest = s.latestOpen;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: () => widget.onEmployeeSelected(s.profile.id),
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: selected
+                    ? DriftProTheme.primaryGreen
+                    : (isDark
+                        ? DriftProTheme.dividerDark
+                        : const Color(0xFFE8EEF0)),
+                width: selected ? 1.5 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor:
+                      DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                  child: Text(
+                    s.profile.initials,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: DriftProTheme.primaryGreen,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        s.profile.fullName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: DriftProTheme.bodySm
+                            .copyWith(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        s.openCount > 0
+                            ? '${s.openCount} åpne'
+                                '${s.criticalOpenCount > 0 ? ' · ${s.criticalOpenCount} kritisk' : ''}'
+                                '${latest != null ? ' · ${latest.title}' : ''}'
+                            : 'Ingen åpne avvik',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: DriftProTheme.caption.copyWith(
+                          color: s.openCount > 0
+                              ? DriftProTheme.info
+                              : DriftProTheme.success,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right, size: 18),
+              ],
+            ),
+          ),
         ),
       ),
     );

@@ -304,9 +304,7 @@ class LeaveEmployeeStatsPanel extends StatelessWidget {
           runSpacing: 8,
           children: [
             if (onLeaveToday)
-              _badge('Borte i dag', DriftProTheme.warning)
-            else
-              _badge('På jobb', DriftProTheme.primaryGreen),
+              _badge('Borte i dag', DriftProTheme.warning),
             if (pending.isNotEmpty)
               _badge('${pending.length} venter', DriftProTheme.warning),
             _badge(

@@ -1163,19 +1163,38 @@ class _MonthlyAbsenceChart extends StatefulWidget {
 
 class _MonthlyAbsenceChartState extends State<_MonthlyAbsenceChart> {
   int? _hoverMonth;
+  Offset? _hoverLocal;
+
+  void _clearHover() {
+    if (_hoverMonth == null && _hoverLocal == null) return;
+    setState(() {
+      _hoverMonth = null;
+      _hoverLocal = null;
+    });
+  }
+
+  void _setHover(int month, Offset? local) {
+    if (_hoverMonth == month && _hoverLocal == local) return;
+    setState(() {
+      _hoverMonth = month;
+      _hoverLocal = local;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final monthly = widget.monthly;
     final maxY = monthly.fold<double>(0, math.max);
+    final chartMaxY = (maxY * 1.25).clamp(4.0, double.infinity).toDouble();
     final spots = <FlSpot>[
       for (var i = 0; i < 12; i++) FlSpot(i.toDouble(), monthly[i]),
     ];
     final peakLabel = ManagerLeaveInsights.monthNames[widget.peakMonth];
     final mom = _monthOverMonth(monthly, widget.currentMonth);
     final selected = _hoverMonth;
-    final people =
-        selected == null ? const <MonthEmployeeAbsence>[] : (widget.monthPeople[selected] ?? const []);
+    final people = selected == null
+        ? const <MonthEmployeeAbsence>[]
+        : (widget.monthPeople[selected] ?? const []);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1207,160 +1226,216 @@ class _MonthlyAbsenceChartState extends State<_MonthlyAbsenceChart> {
           ],
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 180,
-          child: maxY <= 0
-              ? Center(child: Text('Ingen data å vise', style: DriftProTheme.caption))
-              : MouseRegion(
-                  onExit: (_) => setState(() => _hoverMonth = null),
-                  child: LineChart(
-                    LineChartData(
-                      minX: 0,
-                      maxX: 11,
-                      minY: 0,
-                      maxY: (maxY * 1.25).clamp(4, double.infinity),
-                      gridData: FlGridData(
-                        show: true,
-                        drawVerticalLine: false,
-                        getDrawingHorizontalLine: (v) => FlLine(
-                          color: widget.isDark
-                              ? Colors.white12
-                              : const Color(0xFFE2E8F0),
-                          strokeWidth: 1,
-                        ),
-                      ),
-                      borderData: FlBorderData(show: false),
-                      titlesData: FlTitlesData(
-                        topTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        rightTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
-                        ),
-                        leftTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            reservedSize: 28,
-                            getTitlesWidget: (v, m) => Text(
-                              v.toInt().toString(),
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFF94A3B8),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const chartH = 180.0;
+            const leftPad = 28.0;
+            const bottomPad = 22.0;
+            final plotW = (constraints.maxWidth - leftPad).clamp(1.0, 9999.0);
+            final plotH = chartH - bottomPad;
+
+            Offset? popupAnchor;
+            if (selected != null) {
+              final x = leftPad + (selected / 11) * plotW;
+              final yVal = monthly[selected];
+              final y = plotH - (yVal / chartMaxY) * plotH;
+              popupAnchor = _hoverLocal ?? Offset(x, y.clamp(8.0, plotH));
+            }
+
+            return SizedBox(
+              height: chartH,
+              child: maxY <= 0
+                  ? Center(
+                      child:
+                          Text('Ingen data å vise', style: DriftProTheme.caption),
+                    )
+                  : MouseRegion(
+                      onHover: (e) => setState(() => _hoverLocal = e.localPosition),
+                      onExit: (_) => _clearHover(),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          LineChart(
+                            LineChartData(
+                              minX: 0,
+                              maxX: 11,
+                              minY: 0,
+                              maxY: chartMaxY,
+                              gridData: FlGridData(
+                                show: true,
+                                drawVerticalLine: false,
+                                getDrawingHorizontalLine: (v) => FlLine(
+                                  color: widget.isDark
+                                      ? Colors.white12
+                                      : const Color(0xFFE2E8F0),
+                                  strokeWidth: 1,
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
-                        bottomTitles: AxisTitles(
-                          sideTitles: SideTitles(
-                            showTitles: true,
-                            interval: 1,
-                            getTitlesWidget: (v, m) {
-                              final i = v.toInt();
-                              if (i < 0 || i > 11) {
-                                return const SizedBox.shrink();
-                              }
-                              final active = i == selected || i == widget.peakMonth;
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 6),
-                                child: Text(
-                                  ManagerLeaveInsights.monthNames[i],
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: active
-                                        ? FontWeight.w900
-                                        : FontWeight.w600,
-                                    color: active
-                                        ? DriftProTheme.error
-                                        : const Color(0xFF94A3B8),
+                              borderData: FlBorderData(show: false),
+                              titlesData: FlTitlesData(
+                                topTitles: const AxisTitles(
+                                  sideTitles: SideTitles(showTitles: false),
+                                ),
+                                rightTitles: const AxisTitles(
+                                  sideTitles: SideTitles(showTitles: false),
+                                ),
+                                leftTitles: AxisTitles(
+                                  sideTitles: SideTitles(
+                                    showTitles: true,
+                                    reservedSize: leftPad,
+                                    getTitlesWidget: (v, m) => Text(
+                                      v.toInt().toString(),
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: Color(0xFF94A3B8),
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              );
-                            },
+                                bottomTitles: AxisTitles(
+                                  sideTitles: SideTitles(
+                                    showTitles: true,
+                                    interval: 1,
+                                    getTitlesWidget: (v, m) {
+                                      final i = v.toInt();
+                                      if (i < 0 || i > 11) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      final active = i == selected ||
+                                          i == widget.peakMonth;
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 6),
+                                        child: Text(
+                                          ManagerLeaveInsights.monthNames[i],
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: active
+                                                ? FontWeight.w900
+                                                : FontWeight.w600,
+                                            color: active
+                                                ? DriftProTheme.error
+                                                : const Color(0xFF94A3B8),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                              lineTouchData: LineTouchData(
+                                enabled: true,
+                                handleBuiltInTouches: false,
+                                touchTooltipData: const LineTouchTooltipData(
+                                  getTooltipItems: _emptyTooltipItems,
+                                ),
+                                getTouchedSpotIndicator: (bar, indexes) =>
+                                    indexes
+                                        .map(
+                                          (i) => TouchedSpotIndicatorData(
+                                            FlLine(
+                                              color: DriftProTheme.primaryGreen
+                                                  .withValues(alpha: 0.45),
+                                              strokeWidth: 1.5,
+                                              dashArray: [4, 3],
+                                            ),
+                                            FlDotData(
+                                              show: true,
+                                              getDotPainter:
+                                                  (spot, pct, b, idx) =>
+                                                      FlDotCirclePainter(
+                                                radius: 6,
+                                                color: DriftProTheme
+                                                    .primaryGreenDark,
+                                                strokeWidth: 2,
+                                                strokeColor: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                touchCallback: (event, response) {
+                                  if (event is FlPointerExitEvent) {
+                                    _clearHover();
+                                    return;
+                                  }
+                                  final spot =
+                                      response?.lineBarSpots?.firstOrNull;
+                                  if (spot == null) {
+                                    if (event is FlPanEndEvent ||
+                                        event is FlLongPressEnd ||
+                                        event is FlTapUpEvent) {
+                                      _clearHover();
+                                    }
+                                    return;
+                                  }
+                                  final m = spot.x.round().clamp(0, 11);
+                                  Offset? local;
+                                  if (event is FlPointerHoverEvent) {
+                                    local = event.localPosition;
+                                  } else if (event is FlTapDownEvent) {
+                                    local = event.localPosition;
+                                  } else if (event is FlLongPressMoveUpdate) {
+                                    local = event.localPosition;
+                                  } else if (event is FlPanUpdateEvent) {
+                                    local = event.localPosition;
+                                  }
+                                  _setHover(m, local ?? _hoverLocal);
+                                },
+                              ),
+                              lineBarsData: [
+                                LineChartBarData(
+                                  spots: spots,
+                                  isCurved: true,
+                                  color: DriftProTheme.primaryGreen,
+                                  barWidth: 3,
+                                  dotData: FlDotData(
+                                    show: true,
+                                    getDotPainter: (spot, pct, bar, i) {
+                                      final peak = i == widget.peakMonth;
+                                      final hover = i == selected;
+                                      return FlDotCirclePainter(
+                                        radius: hover || peak ? 5.5 : 3.2,
+                                        color: hover
+                                            ? DriftProTheme.primaryGreenDark
+                                            : peak
+                                                ? DriftProTheme.error
+                                                : DriftProTheme.primaryGreen,
+                                        strokeWidth: hover ? 2 : 0,
+                                        strokeColor: Colors.white,
+                                      );
+                                    },
+                                  ),
+                                  belowBarData: BarAreaData(
+                                    show: true,
+                                    color: DriftProTheme.primaryGreen
+                                        .withValues(alpha: 0.12),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                          if (selected != null && popupAnchor != null)
+                            _FloatingMonthPopup(
+                              anchor: popupAnchor,
+                              chartWidth: constraints.maxWidth,
+                              chartHeight: chartH,
+                              monthIndex: selected,
+                              year: widget.year,
+                              totalDays: monthly[selected].round(),
+                              people: people,
+                            ),
+                        ],
                       ),
-                      lineTouchData: LineTouchData(
-                        enabled: true,
-                        handleBuiltInTouches: true,
-                        touchTooltipData: LineTouchTooltipData(
-                          getTooltipItems: (_) => [],
-                        ),
-                        touchCallback: (event, response) {
-                          if (event is FlPointerExitEvent ||
-                              event is FlTapUpEvent) {
-                            // Keep selection on tap for mobile; clear on pointer exit.
-                            if (event is FlPointerExitEvent) {
-                              setState(() => _hoverMonth = null);
-                            }
-                            return;
-                          }
-                          final spot = response?.lineBarSpots?.firstOrNull;
-                          if (spot == null) {
-                            if (event is FlPanEndEvent ||
-                                event is FlLongPressEnd) {
-                              setState(() => _hoverMonth = null);
-                            }
-                            return;
-                          }
-                          final m = spot.x.round().clamp(0, 11);
-                          if (_hoverMonth != m) {
-                            setState(() => _hoverMonth = m);
-                          }
-                        },
-                      ),
-                      lineBarsData: [
-                        LineChartBarData(
-                          spots: spots,
-                          isCurved: true,
-                          color: DriftProTheme.primaryGreen,
-                          barWidth: 3,
-                          dotData: FlDotData(
-                            show: true,
-                            getDotPainter: (spot, pct, bar, i) {
-                              final peak = i == widget.peakMonth;
-                              final hover = i == selected;
-                              return FlDotCirclePainter(
-                                radius: hover || peak ? 5.5 : 3.2,
-                                color: hover
-                                    ? DriftProTheme.primaryGreenDark
-                                    : peak
-                                        ? DriftProTheme.error
-                                        : DriftProTheme.primaryGreen,
-                                strokeWidth: hover ? 2 : 0,
-                                strokeColor: Colors.white,
-                              );
-                            },
-                          ),
-                          belowBarData: BarAreaData(
-                            show: true,
-                            color: DriftProTheme.primaryGreen
-                                .withValues(alpha: 0.12),
-                          ),
-                        ),
-                      ],
                     ),
-                  ),
-                ),
-        ),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 180),
-          child: selected == null
-              ? const SizedBox.shrink(key: ValueKey('empty'))
-              : _MonthHoverPanel(
-                  key: ValueKey('m$selected'),
-                  monthIndex: selected,
-                  year: widget.year,
-                  totalDays: monthly[selected].round(),
-                  people: people,
-                  employees: widget.employees,
-                  onOpenEmployee: widget.onOpenEmployee,
-                  onOpenAbsence: widget.onOpenAbsence,
-                  onClose: () => setState(() => _hoverMonth = null),
-                ),
+            );
+          },
         ),
       ],
     );
   }
+
+  static List<LineTooltipItem?> _emptyTooltipItems(List<LineBarSpot> spots) =>
+      spots.map((_) => null).toList();
 
   static ({bool up, double pct, String label})? _monthOverMonth(
     List<double> monthly,
@@ -1383,140 +1458,127 @@ class _MonthlyAbsenceChartState extends State<_MonthlyAbsenceChart> {
   }
 }
 
-class _MonthHoverPanel extends StatelessWidget {
-  const _MonthHoverPanel({
-    super.key,
+class _FloatingMonthPopup extends StatelessWidget {
+  const _FloatingMonthPopup({
+    required this.anchor,
+    required this.chartWidth,
+    required this.chartHeight,
     required this.monthIndex,
     required this.year,
     required this.totalDays,
     required this.people,
-    required this.employees,
-    required this.onClose,
-    this.onOpenEmployee,
-    this.onOpenAbsence,
   });
 
+  final Offset anchor;
+  final double chartWidth;
+  final double chartHeight;
   final int monthIndex;
   final int year;
   final int totalDays;
   final List<MonthEmployeeAbsence> people;
-  final List<UserProfile> employees;
-  final VoidCallback onClose;
-  final void Function(UserProfile)? onOpenEmployee;
-  final void Function(Absence)? onOpenAbsence;
+
+  static const _popupW = 260.0;
 
   @override
   Widget build(BuildContext context) {
     final df = DateFormat('d. MMM', 'nb_NO');
     final month = ManagerLeaveInsights.monthNames[monthIndex];
-    return Container(
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: DriftProTheme.primaryGreen.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: DriftProTheme.primaryGreen.withValues(alpha: 0.28),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '$month $year · $totalDays person-dager · ${people.length} ansatte',
-                  style: DriftProTheme.labelMd
-                      .copyWith(fontWeight: FontWeight.w900),
-                ),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                onPressed: onClose,
-                icon: const Icon(Icons.close, size: 18),
-                tooltip: 'Lukk',
-              ),
-            ],
-          ),
-          if (people.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Text('Ingen fravær denne måneden', style: DriftProTheme.caption),
-            )
-          else
-            ...people.take(8).map((p) {
-              UserProfile? emp;
-              for (final e in employees) {
-                if (e.id == p.userId) {
-                  emp = e;
-                  break;
-                }
-              }
-              final dates = p.entries
-                  .map((a) =>
-                      '${a.type.label}: ${df.format(a.startDate)}–${df.format(a.endDate)}')
-                  .take(3)
-                  .join(' · ');
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(10),
-                  onTap: () {
-                    if (p.entries.length == 1 && onOpenAbsence != null) {
-                      onOpenAbsence!(p.entries.first);
-                    } else if (emp != null && onOpenEmployee != null) {
-                      onOpenEmployee!(emp);
-                    }
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                p.name,
-                                style: DriftProTheme.bodySm
-                                    .copyWith(fontWeight: FontWeight.w800),
-                              ),
-                              if (dates.isNotEmpty)
-                                Text(
-                                  dates,
-                                  style: DriftProTheme.caption.copyWith(
-                                    fontSize: 11,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                            ],
-                          ),
-                        ),
-                        Text(
-                          '${p.days} d',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: DriftProTheme.primaryGreen,
-                          ),
-                        ),
-                      ],
-                    ),
+    final rows = people.take(5).toList();
+
+    // Prefer above the point; flip below if near top. Clamp horizontally.
+    const estimatedH = 150.0;
+    var left = anchor.dx - _popupW / 2;
+    left = left.clamp(4.0, math.max(4.0, chartWidth - _popupW - 4));
+    var top = anchor.dy - estimatedH - 10;
+    if (top < 4) top = anchor.dy + 14;
+    top = top.clamp(4.0, math.max(4.0, chartHeight - 40));
+
+    return Positioned(
+      left: left,
+      top: top,
+      width: _popupW,
+      child: IgnorePointer(
+        child: Material(
+          elevation: 10,
+          shadowColor: Colors.black38,
+          borderRadius: BorderRadius.circular(12),
+          color: const Color(0xFF0F172A),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '$month $year',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
                   ),
                 ),
-              );
-            }),
-          if (people.length > 8)
-            Text(
-              '+ ${people.length - 8} flere…',
-              style: DriftProTheme.caption,
+                Text(
+                  '$totalDays person-d · ${people.length} ${people.length == 1 ? 'ansatt' : 'ansatte'}',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (rows.isEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Ingen fravær',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.65),
+                      fontSize: 12,
+                    ),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 8),
+                  for (final p in rows) ...[
+                    Text(
+                      p.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    for (final a in p.entries.take(2))
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Text(
+                          '${a.type.label} · ${df.format(a.startDate)}–${df.format(a.endDate)} · ${p.days} d',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.78),
+                            fontSize: 11,
+                            height: 1.25,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    if (p != rows.last) const SizedBox(height: 6),
+                  ],
+                  if (people.length > rows.length) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      '+${people.length - rows.length} flere…',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ],
+              ],
             ),
-        ],
+          ),
+        ),
       ),
     );
   }

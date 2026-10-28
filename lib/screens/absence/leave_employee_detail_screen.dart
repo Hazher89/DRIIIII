@@ -407,6 +407,11 @@ class _LeaveEmployeeDetailScreenState extends State<LeaveEmployeeDetailScreen> {
             year: _scope.year,
             monthly: monthly,
             isDark: isDark,
+            totalDays: stats.totalFravaerDager,
+            sykmeldingDays: sykDays,
+            egenDays: stats.egenDaysTotal,
+            syktDays: stats.syktDays,
+            permisjonDays: permDays,
           ),
           const SizedBox(height: 14),
           _TipsCard(tips: tips, isDark: isDark),
@@ -635,12 +640,8 @@ class _HeroCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _chip(
-                onLeaveToday ? 'Borte i dag' : 'På jobb',
-                onLeaveToday
-                    ? DriftProTheme.warning
-                    : DriftProTheme.primaryGreen,
-              ),
+              if (onLeaveToday)
+                _chip('Borte i dag', DriftProTheme.warning),
               _chip(
                 '$totalDays d fravær',
                 rateColor,
@@ -843,16 +844,33 @@ class _TypeGrid extends StatelessWidget {
   }
 }
 
-class _EmployeeMonthChart extends StatelessWidget {
+class _EmployeeMonthChart extends StatefulWidget {
   const _EmployeeMonthChart({
     required this.year,
     required this.monthly,
     required this.isDark,
+    required this.totalDays,
+    required this.sykmeldingDays,
+    required this.egenDays,
+    required this.syktDays,
+    required this.permisjonDays,
   });
 
   final int year;
   final List<double> monthly;
   final bool isDark;
+  final int totalDays;
+  final int sykmeldingDays;
+  final int egenDays;
+  final int syktDays;
+  final int permisjonDays;
+
+  @override
+  State<_EmployeeMonthChart> createState() => _EmployeeMonthChartState();
+}
+
+class _EmployeeMonthChartState extends State<_EmployeeMonthChart> {
+  int? _touched;
 
   static const _names = [
     'Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun',
@@ -861,54 +879,219 @@ class _EmployeeMonthChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final monthly = widget.monthly;
     final maxY = monthly.fold<double>(0, math.max);
     var peak = 0;
-    for (var i = 1; i < 12; i++) {
+    var activeMonths = 0;
+    var sum = 0.0;
+    for (var i = 0; i < 12; i++) {
       if (monthly[i] > monthly[peak]) peak = i;
+      if (monthly[i] > 0) {
+        activeMonths++;
+        sum += monthly[i];
+      }
     }
+    final avg = activeMonths > 0 ? sum / activeMonths : 0.0;
+    final now = DateTime.now();
+    final curIdx = widget.year == now.year ? now.month - 1 : peak;
+    final prevIdx = curIdx > 0 ? curIdx - 1 : null;
+    double? momPct;
+    bool? momUp;
+    if (prevIdx != null && monthly[prevIdx] > 0) {
+      final d = ((monthly[curIdx] - monthly[prevIdx]) / monthly[prevIdx]) * 100;
+      momPct = d.abs();
+      momUp = d > 0.5;
+      if (d.abs() < 0.5) momUp = null;
+    }
+    final chartMaxY = (maxY * 1.35).clamp(4.0, double.infinity).toDouble();
+    final selected = _touched ?? peak;
+    final sykShare = widget.totalDays > 0
+        ? (widget.sykmeldingDays / widget.totalDays * 100)
+        : 0.0;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        color: widget.isDark ? DriftProTheme.cardDark : Colors.white,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: isDark ? DriftProTheme.dividerDark : const Color(0xFFE8EEF0),
+          color: widget.isDark
+              ? DriftProTheme.dividerDark
+              : const Color(0xFFE8EEF0),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Fravær per måned $year',
-            style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            maxY <= 0
-                ? 'Ingen fravær registrert'
-                : 'Mest i ${_names[peak]} (${monthly[peak].round()} d)',
-            style: DriftProTheme.caption.copyWith(color: const Color(0xFF64748B)),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Fravær per måned ${widget.year}',
+                      style: DriftProTheme.labelLg
+                          .copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      maxY <= 0
+                          ? 'Ingen fravær registrert'
+                          : 'Topp ${_names[peak]} · snitt ${avg.toStringAsFixed(1)} d i måneder med fravær',
+                      style: DriftProTheme.caption
+                          .copyWith(color: const Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ),
+              if (momPct != null)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: (momUp == true
+                            ? DriftProTheme.error
+                            : momUp == false
+                                ? DriftProTheme.success
+                                : const Color(0xFF64748B))
+                        .withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        momUp == true
+                            ? Icons.arrow_upward_rounded
+                            : momUp == false
+                                ? Icons.arrow_downward_rounded
+                                : Icons.horizontal_rule_rounded,
+                        size: 14,
+                        color: momUp == true
+                            ? DriftProTheme.error
+                            : momUp == false
+                                ? DriftProTheme.success
+                                : const Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        momUp == null
+                            ? 'Stabilt'
+                            : '${momUp == true ? '+' : '−'}${momPct.toStringAsFixed(0)}%',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                          color: momUp == true
+                              ? DriftProTheme.error
+                              : momUp == false
+                                  ? DriftProTheme.success
+                                  : const Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _miniStat(
+                'Totalt',
+                '${widget.totalDays} d',
+                DriftProTheme.primaryGreen,
+              ),
+              _miniStat(
+                'Topp',
+                '${_names[peak]} ${monthly[peak].round()} d',
+                DriftProTheme.error,
+              ),
+              _miniStat(
+                'Snitt',
+                '${avg.toStringAsFixed(1)} d',
+                const Color(0xFF475569),
+              ),
+              if (widget.sykmeldingDays > 0)
+                _miniStat(
+                  'Sykmelding',
+                  '${sykShare.round()}%',
+                  DriftProTheme.absenceSickNote,
+                ),
+              if (widget.egenDays > 0)
+                _miniStat(
+                  'Egen',
+                  '${widget.egenDays} d',
+                  DriftProTheme.absenceSickSelf,
+                ),
+              if (widget.syktDays > 0)
+                _miniStat(
+                  'Sykt barn',
+                  '${widget.syktDays} d',
+                  DriftProTheme.absenceSickChild,
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
           SizedBox(
-            height: 160,
+            height: 188,
             child: maxY <= 0
-                ? Center(child: Text('Ingen data', style: DriftProTheme.caption))
+                ? Center(
+                    child: Text('Ingen data', style: DriftProTheme.caption),
+                  )
                 : BarChart(
                     BarChartData(
-                      maxY: (maxY * 1.3).clamp(3, double.infinity),
+                      maxY: chartMaxY,
+                      alignment: BarChartAlignment.spaceAround,
+                      groupsSpace: 6,
                       gridData: FlGridData(
                         show: true,
                         drawVerticalLine: false,
+                        horizontalInterval: math.max(1, (chartMaxY / 4).ceilToDouble()),
                         getDrawingHorizontalLine: (v) => FlLine(
-                          color: isDark
+                          color: widget.isDark
                               ? Colors.white12
                               : const Color(0xFFE2E8F0),
                           strokeWidth: 1,
                         ),
                       ),
                       borderData: FlBorderData(show: false),
+                      barTouchData: BarTouchData(
+                        enabled: true,
+                        handleBuiltInTouches: true,
+                        touchTooltipData: BarTouchTooltipData(
+                          getTooltipColor: (_) => const Color(0xFF0F172A),
+                          tooltipPadding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            final i = group.x;
+                            return BarTooltipItem(
+                              '${_names[i]} ${widget.year}\n${rod.toY.round()} virkedager',
+                              const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 12,
+                                height: 1.35,
+                              ),
+                            );
+                          },
+                        ),
+                        touchCallback: (event, response) {
+                          if (!event.isInterestedForInteractions ||
+                              response?.spot == null) {
+                            setState(() => _touched = null);
+                            return;
+                          }
+                          setState(
+                            () => _touched = response!.spot!.touchedBarGroupIndex,
+                          );
+                        },
+                      ),
                       titlesData: FlTitlesData(
                         topTitles: const AxisTitles(
                           sideTitles: SideTitles(showTitles: false),
@@ -916,8 +1099,19 @@ class _EmployeeMonthChart extends StatelessWidget {
                         rightTitles: const AxisTitles(
                           sideTitles: SideTitles(showTitles: false),
                         ),
-                        leftTitles: const AxisTitles(
-                          sideTitles: SideTitles(showTitles: false),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 28,
+                            interval: math.max(1, (chartMaxY / 4).ceilToDouble()),
+                            getTitlesWidget: (v, m) => Text(
+                              v.toInt().toString(),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFF94A3B8),
+                              ),
+                            ),
+                          ),
                         ),
                         bottomTitles: AxisTitles(
                           sideTitles: SideTitles(
@@ -927,16 +1121,20 @@ class _EmployeeMonthChart extends StatelessWidget {
                               if (i < 0 || i > 11) {
                                 return const SizedBox.shrink();
                               }
-                              return Text(
-                                _names[i],
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: i == peak
-                                      ? FontWeight.w900
-                                      : FontWeight.w600,
-                                  color: i == peak
-                                      ? DriftProTheme.error
-                                      : const Color(0xFF94A3B8),
+                              final hot = i == selected;
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  _names[i],
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: hot
+                                        ? FontWeight.w900
+                                        : FontWeight.w600,
+                                    color: hot
+                                        ? DriftProTheme.error
+                                        : const Color(0xFF94A3B8),
+                                  ),
                                 ),
                               );
                             },
@@ -947,20 +1145,114 @@ class _EmployeeMonthChart extends StatelessWidget {
                         for (var i = 0; i < 12; i++)
                           BarChartGroupData(
                             x: i,
+                            barsSpace: 0,
                             barRods: [
                               BarChartRodData(
-                                toY: monthly[i],
-                                width: 12,
-                                borderRadius: BorderRadius.circular(4),
-                                color: i == peak
-                                    ? DriftProTheme.error
-                                    : DriftProTheme.primaryGreen,
+                                toY: monthly[i] <= 0 ? 0.15 : monthly[i],
+                                width: 16,
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(7),
+                                ),
+                                gradient: LinearGradient(
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                  colors: i == selected
+                                      ? [
+                                          DriftProTheme.error
+                                              .withValues(alpha: 0.55),
+                                          DriftProTheme.error,
+                                        ]
+                                      : monthly[i] <= 0
+                                          ? [
+                                              const Color(0xFFE2E8F0),
+                                              const Color(0xFFE2E8F0),
+                                            ]
+                                          : [
+                                              DriftProTheme.primaryGreen
+                                                  .withValues(alpha: 0.45),
+                                              DriftProTheme.primaryGreen,
+                                            ],
+                                ),
+                                backDrawRodData: BackgroundBarChartRodData(
+                                  show: true,
+                                  toY: chartMaxY,
+                                  color: widget.isDark
+                                      ? Colors.white.withValues(alpha: 0.04)
+                                      : const Color(0xFFF1F5F9),
+                                ),
                               ),
                             ],
                           ),
                       ],
                     ),
                   ),
+          ),
+          if (maxY > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: widget.isDark
+                    ? Colors.white.withValues(alpha: 0.04)
+                    : const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.calendar_month_outlined,
+                    size: 16,
+                    color: selected == peak
+                        ? DriftProTheme.error
+                        : DriftProTheme.primaryGreen,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${_names[selected]}: ${monthly[selected].round()} d'
+                      '${selected == peak ? ' · høyeste måned' : ''}'
+                      '${widget.sykmeldingDays > 0 && selected == peak ? ' · mye sykmelding i perioden' : ''}',
+                      style: DriftProTheme.caption.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF334155),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _miniStat(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: color.withValues(alpha: 0.85),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              color: color,
+            ),
           ),
         ],
       ),

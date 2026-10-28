@@ -22,7 +22,7 @@ extension ManagerLeaveTodayStatusX on ManagerLeaveTodayStatus {
   String get label {
     switch (this) {
       case ManagerLeaveTodayStatus.paJobb:
-        return 'På jobb';
+        return '';
       case ManagerLeaveTodayStatus.ferie:
         return 'Ferie';
       case ManagerLeaveTodayStatus.sykemeldt:

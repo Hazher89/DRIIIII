@@ -110,7 +110,7 @@ class _LeaveTeamRosterState extends State<LeaveTeamRoster> {
                 children: [
                   Text(
                     awayCount == 0
-                        ? 'Alle er på jobb'
+                        ? 'Ingen borte i dag'
                         : '$awayCount borte nå',
                     style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
                   ),
@@ -321,7 +321,7 @@ class _LeaveTeamRosterState extends State<LeaveTeamRoster> {
     if (row.daysUntilFerie != null && row.daysUntilFerie! <= 21) {
       return (label: 'Snart ferie', color: DriftProTheme.primaryGreen);
     }
-    return (label: 'På jobb', color: DriftProTheme.primaryGreen);
+    return (label: '', color: DriftProTheme.primaryGreen);
   }
 
   Widget _pill(String label, Color color) {

@@ -55,7 +55,7 @@ class ManagerLeaveKpiCards extends StatelessWidget {
               label: 'I dag',
               value: '$onJobCount / $totalEmployees',
               hint: awayToday.isEmpty
-                  ? 'på jobb'
+                  ? 'ingen borte'
                   : '${awayToday.length} borte',
               child: awayToday.isEmpty
                   ? null
