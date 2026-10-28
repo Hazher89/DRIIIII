@@ -95,6 +95,36 @@ class EmployeeLeaveSnapshot {
     AbsenceType.sykmelding,
   };
 
+  /// Unike virkedager i [rangeStart]–[rangeEnd] for godkjente fravær av [types].
+  /// Overlappende perioder for samme person telles bare én gang (person-dager).
+  static int uniqueBusinessDaysInWindow({
+    required List<Absence> absences,
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+    Set<AbsenceType> types = kpiAbsenceTypes,
+  }) {
+    final from = BusinessDays.dayOnly(rangeStart);
+    final to = BusinessDays.dayOnly(rangeEnd);
+    if (to.isBefore(from)) return 0;
+
+    final days = <int>{};
+    for (final a in absences) {
+      if (a.status != AbsenceStatus.godkjent) continue;
+      if (!types.contains(a.type)) continue;
+      var cursor = BusinessDays.dayOnly(a.startDate);
+      final end = BusinessDays.dayOnly(a.endDate);
+      while (!cursor.isAfter(end)) {
+        if (!cursor.isBefore(from) &&
+            !cursor.isAfter(to) &&
+            BusinessDays.isBusinessDay(cursor)) {
+          days.add(cursor.millisecondsSinceEpoch);
+        }
+        cursor = cursor.add(const Duration(days: 1));
+      }
+    }
+    return days.length;
+  }
+
   /// Virkedager i [year] frem til [through] som overlapper godkjente fravær.
   static int businessDaysInYearToDate({
     required List<Absence> absences,
@@ -102,22 +132,12 @@ class EmployeeLeaveSnapshot {
     required DateTime through,
     Set<AbsenceType> types = kpiAbsenceTypes,
   }) {
-    final rangeStart = DateTime(year, 1, 1);
-    final rangeEnd = BusinessDays.dayOnly(through);
-    if (rangeEnd.isBefore(rangeStart)) return 0;
-
-    var total = 0;
-    for (final a in absences) {
-      if (a.status != AbsenceStatus.godkjent) continue;
-      if (!types.contains(a.type)) continue;
-      final start = BusinessDays.dayOnly(a.startDate);
-      final end = BusinessDays.dayOnly(a.endDate);
-      final from = start.isAfter(rangeStart) ? start : rangeStart;
-      final to = end.isBefore(rangeEnd) ? end : rangeEnd;
-      if (to.isBefore(from)) continue;
-      total += BusinessDays.countInRange(from, to);
-    }
-    return total;
+    return uniqueBusinessDaysInWindow(
+      absences: absences,
+      rangeStart: DateTime(year, 1, 1),
+      rangeEnd: through,
+      types: types,
+    );
   }
 
   static EmployeeLeaveSnapshot compute({
@@ -219,13 +239,30 @@ class TeamLeaveSummary {
     CompanyLeaveSettings company = const CompanyLeaveSettings(),
     DateTime? referenceDate,
   }) {
+    final ref = referenceDate ?? DateTime.now();
+    return computeForRange(
+      employees: employees,
+      allAbsences: allAbsences,
+      company: company,
+      rangeStart: DateTime(ref.year, 1, 1),
+      rangeEnd: ref,
+    );
+  }
+
+  /// Fraværssum for vilkårlig periode (år eller fra–til).
+  /// Sykmelding/egen/sykt barn = unike person-virkedager per ansatt (ingen dobbelttelling).
+  static TeamLeaveSummary computeForRange({
+    required List<UserProfile> employees,
+    required List<Absence> allAbsences,
+    required DateTime rangeStart,
+    required DateTime rangeEnd,
+    CompanyLeaveSettings company = const CompanyLeaveSettings(),
+  }) {
     if (employees.isEmpty) return empty;
 
-    final ref = referenceDate ?? DateTime.now();
-    final workDaysYtd = BusinessDays.countInRange(
-      DateTime(ref.year, 1, 1),
-      ref,
-    );
+    final from = BusinessDays.dayOnly(rangeStart);
+    final to = BusinessDays.dayOnly(rangeEnd);
+    final workDays = BusinessDays.countInRange(from, to);
     var totalDays = 0;
     var egenDays = 0;
     var syktDays = 0;
@@ -235,21 +272,42 @@ class TeamLeaveSummary {
     for (final e in employees) {
       final pool =
           allAbsences.where((a) => a.userId == e.id).toList(growable: false);
+      totalDays += EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: pool,
+        rangeStart: from,
+        rangeEnd: to,
+        types: EmployeeLeaveSnapshot.kpiAbsenceTypes,
+      );
+      egenDays += EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: pool,
+        rangeStart: from,
+        rangeEnd: to,
+        types: {AbsenceType.egenmelding},
+      );
+      syktDays += EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: pool,
+        rangeStart: from,
+        rangeEnd: to,
+        types: {AbsenceType.syktBarn},
+      );
+      sykmeldingDays += EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: pool,
+        rangeStart: from,
+        rangeEnd: to,
+        types: {AbsenceType.sykmelding},
+      );
+      // Tilfeller fortsatt fra kvote-vindu via snapshot (best effort).
       final snap = EmployeeLeaveSnapshot.compute(
         employee: e,
         employeeAbsences: pool,
         company: company,
-        referenceDate: ref,
+        referenceDate: to,
       );
-      totalDays += snap.totalFravaerDager;
-      egenDays += snap.egenDaysTotal;
-      syktDays += snap.syktDays;
-      sykmeldingDays += snap.sykmeldingDays;
       tilfeller += snap.egenTilfeller;
     }
 
-    final pooledRate = workDaysYtd > 0
-        ? (totalDays / (employees.length * workDaysYtd) * 100)
+    final pooledRate = workDays > 0
+        ? (totalDays / (employees.length * workDays) * 100)
             .clamp(0.0, 100.0)
             .toDouble()
         : 0.0;

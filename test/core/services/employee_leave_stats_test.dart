@@ -100,6 +100,44 @@ void main() {
     expect(summary.averageAbsencePercent, greaterThan(0));
   });
 
+  test('overlappende sykmeldinger telles én gang (person-dager)', () {
+    final ref = DateTime(2026, 3, 10);
+    const employee = UserProfile(
+      id: 'u1',
+      email: 'a@test.no',
+      fullName: 'Overlap',
+    );
+    final absences = [
+      Absence(
+        id: 's1',
+        userId: 'u1',
+        companyId: 'c',
+        type: AbsenceType.sykmelding,
+        startDate: DateTime(2026, 3, 2),
+        endDate: DateTime(2026, 3, 6),
+        status: AbsenceStatus.godkjent,
+      ),
+      Absence(
+        id: 's2',
+        userId: 'u1',
+        companyId: 'c',
+        type: AbsenceType.sykmelding,
+        startDate: DateTime(2026, 3, 4),
+        endDate: DateTime(2026, 3, 8),
+        status: AbsenceStatus.godkjent,
+      ),
+    ];
+
+    final days = EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+      absences: absences,
+      rangeStart: DateTime(2026, 1, 1),
+      rangeEnd: ref,
+      types: {AbsenceType.sykmelding},
+    );
+    // 2–8. mar = 5 virkedager (ikke 5+3=8)
+    expect(days, 5);
+  });
+
   test('sykmelding teller i fraværsprosent', () {
     final ref = DateTime(2026, 10, 28);
     const employee = UserProfile(

@@ -11,6 +11,7 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/utils/business_days.dart';
 import '../../../../models/absence.dart';
 import '../../../../models/user_profile.dart';
+import '../leave_period_scope.dart';
 
 class _FerieRow {
   const _FerieRow({
@@ -26,6 +27,32 @@ class _FerieRow {
   double get usedPct => total <= 0 ? 0 : used / total;
 }
 
+class _DriverRow {
+  const _DriverRow({
+    required this.user,
+    required this.days,
+    required this.share,
+    required this.sykmeldingDays,
+  });
+  final UserProfile user;
+  final int days;
+  final double share;
+  final int sykmeldingDays;
+}
+
+class MonthEmployeeAbsence {
+  const MonthEmployeeAbsence({
+    required this.userId,
+    required this.name,
+    required this.days,
+    required this.entries,
+  });
+  final String userId;
+  final String name;
+  final int days;
+  final List<Absence> entries;
+}
+
 /// Strategisk fraværs-/ferieinnsikt med diagrammer, rangering og trender.
 class ManagerLeaveInsights extends StatelessWidget {
   const ManagerLeaveInsights({
@@ -33,19 +60,23 @@ class ManagerLeaveInsights extends StatelessWidget {
     required this.employees,
     required this.absences,
     required this.quotas,
-    required this.year,
+    required this.scope,
     required this.pending,
     required this.awayToday,
     required this.nextWeekAwayCount,
     required this.onScrollToApprovals,
+    this.allAbsencesForLive,
     this.onOpenEmployee,
     this.onOpenAbsence,
   });
 
   final List<UserProfile> employees;
+  /// Absences already filtered to the selected period (år / fra–til).
   final List<Absence> absences;
+  /// Full list for live views (borte i dag / snart ferie) — optional.
+  final List<Absence>? allAbsencesForLive;
   final List<AbsenceQuota> quotas;
-  final int year;
+  final LeavePeriodScope scope;
   final List<Absence> pending;
   final List<Absence> awayToday;
   final int nextWeekAwayCount;
@@ -54,27 +85,30 @@ class ManagerLeaveInsights extends StatelessWidget {
   final void Function(Absence absence)? onOpenAbsence;
 
   static const _targetPct = 9.9;
-  static const _monthNames = [
+  static const monthNames = [
     'Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun',
     'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des',
   ];
+
+  List<Absence> get _live => allAbsencesForLive ?? absences;
 
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final now = DateTime.now();
-    final ref = year == now.year
-        ? now
-        : year < now.year
-            ? DateTime(year, 12, 31)
-            : DateTime(year, 1, 1);
+    final from = BusinessDays.dayOnly(scope.rangeStart);
+    var to = BusinessDays.dayOnly(scope.rangeEnd);
+    final today = BusinessDays.dayOnly(now);
+    if (to.isAfter(today)) to = today;
 
-    final summary = TeamLeaveSummary.compute(
+    final summary = TeamLeaveSummary.computeForRange(
       employees: employees,
       allAbsences: absences,
-      referenceDate: ref,
+      rangeStart: from,
+      rangeEnd: to,
     );
 
+    final year = scope.year;
     final ferieRows = <_FerieRow>[];
     for (final e in employees) {
       AbsenceQuota? q;
@@ -90,30 +124,57 @@ class ManagerLeaveInsights extends StatelessWidget {
       ferieRows.add(_FerieRow(user: e, used: used, left: left, total: total));
     }
 
-    final ferieUsed = ferieRows.fold<int>(0, (s, r) => s + r.used);
-    final ferieTotal = ferieRows.fold<int>(0, (s, r) => s + r.total);
-    final ferieLeft = ferieRows.fold<int>(0, (s, r) => s + r.left);
-    final feriePct = ferieTotal <= 0 ? 0.0 : ferieUsed / ferieTotal;
+    final mostLeft = [...ferieRows]..sort((a, b) => b.left.compareTo(a.left));
+    final mostUsed = [...ferieRows]..sort((a, b) => b.used.compareTo(a.used));
 
-    final mostLeft = [...ferieRows]
-      ..sort((a, b) => b.left.compareTo(a.left));
-    final mostUsed = [...ferieRows]
-      ..sort((a, b) => b.used.compareTo(a.used));
+    final drivers = <_DriverRow>[];
+    for (final e in employees) {
+      final pool = absences.where((a) => a.userId == e.id).toList();
+      final days = EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: pool,
+        rangeStart: from,
+        rangeEnd: to,
+      );
+      if (days <= 0) continue;
+      final syk = EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: pool,
+        rangeStart: from,
+        rangeEnd: to,
+        types: {AbsenceType.sykmelding},
+      );
+      drivers.add(
+        _DriverRow(
+          user: e,
+          days: days,
+          share: summary.totalFravaerDays <= 0
+              ? 0
+              : days / summary.totalFravaerDays,
+          sykmeldingDays: syk,
+        ),
+      );
+    }
+    drivers.sort((a, b) => b.days.compareTo(a.days));
 
-    final upcomingFerie = absences
+    final sykPeople = <String>{};
+    for (final a in absences) {
+      if (a.status != AbsenceStatus.godkjent) continue;
+      if (a.type != AbsenceType.sykmelding) continue;
+      if (!scope.overlaps(a)) continue;
+      sykPeople.add(a.userId);
+    }
+
+    final upcomingFerie = _live
         .where((a) =>
             a.type == AbsenceType.ferie &&
             (a.status == AbsenceStatus.godkjent ||
                 a.status == AbsenceStatus.ventende) &&
-            !BusinessDays.dayOnly(a.endDate).isBefore(BusinessDays.dayOnly(now)) &&
-            BusinessDays.dayOnly(a.startDate)
-                    .difference(BusinessDays.dayOnly(now))
-                    .inDays <=
-                45)
+            !BusinessDays.dayOnly(a.endDate).isBefore(today) &&
+            BusinessDays.dayOnly(a.startDate).difference(today).inDays <= 45)
         .toList()
       ..sort((a, b) => a.startDate.compareTo(b.startDate));
 
-    final monthly = _monthlyAbsenceDays(absences, year, ref);
+    final monthly = _monthlyAbsenceDays(absences, from, to);
+    final monthPeople = _monthlyPeople(absences, from, to, employees);
     final peakMonth = _peakMonth(monthly);
     final trend = _recentTrend(absences, now);
 
@@ -134,11 +195,15 @@ class ManagerLeaveInsights extends StatelessWidget {
       }
     }
 
+    final workDays = BusinessDays.countInRange(from, to);
     final capacityPct = employees.isEmpty
         ? 100
         : (((employees.length - nextWeekAwayCount) / employees.length) * 100)
             .round()
             .clamp(0, 100);
+    final fteSyk = workDays > 0
+        ? (summary.totalSykmeldingDays / workDays)
+        : 0.0;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -164,7 +229,7 @@ class ManagerLeaveInsights extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Innsikt $year',
+                          'Innsikt · ${scope.shortLabel}',
                           style: DriftProTheme.labelLg
                               .copyWith(fontWeight: FontWeight.w900),
                         ),
@@ -198,17 +263,17 @@ class ManagerLeaveInsights extends StatelessWidget {
                     target: _targetPct,
                     fravaerDays: summary.totalFravaerDays,
                     sykmeldingDays: summary.totalSykmeldingDays,
+                    sykmeldingPeople: sykPeople.length,
+                    fteEquivalent: fteSyk,
                     employeeCount: employees.length,
+                    workDays: workDays,
                     trend: trend,
                   );
-                  final right = _FerieSplitCard(
-                    used: ferieUsed,
-                    left: ferieLeft,
-                    total: ferieTotal,
-                    usedPct: feriePct,
-                    avgLeft: employees.isEmpty
-                        ? 0
-                        : (ferieLeft / employees.length).round(),
+                  final right = _TopDriversCard(
+                    drivers: drivers.take(5).toList(),
+                    totalDays: summary.totalFravaerDays,
+                    onOpen: onOpenEmployee,
+                    isDark: isDark,
                   );
                   if (wide) {
                     return Row(
@@ -245,7 +310,8 @@ class ManagerLeaveInsights extends StatelessWidget {
                   _MetricPill(
                     icon: Icons.medical_services_outlined,
                     label: 'Sykmelding',
-                    value: '${summary.totalSykmeldingDays} d',
+                    value:
+                        '${summary.totalSykmeldingDays} person-d · ${sykPeople.length} ans.',
                     color: DriftProTheme.absenceSickNote,
                   ),
                   _MetricPill(
@@ -291,9 +357,13 @@ class ManagerLeaveInsights extends StatelessWidget {
           child: _MonthlyAbsenceChart(
             year: year,
             monthly: monthly,
+            monthPeople: monthPeople,
             peakMonth: peakMonth,
             currentMonth: year == now.year ? now.month - 1 : peakMonth,
             isDark: isDark,
+            onOpenEmployee: onOpenEmployee,
+            onOpenAbsence: onOpenAbsence,
+            employees: employees,
           ),
         ),
         const SizedBox(height: 12),
@@ -350,9 +420,11 @@ class ManagerLeaveInsights extends StatelessWidget {
         ],
         const SizedBox(height: 8),
         Text(
-          'Beregnet på virkedager hittil i $year'
-          '${year == now.year ? ' (YTD)' : ''} · '
-          '${BusinessDays.countInRange(DateTime(year, 1, 1), ref)} virkedager',
+          'Tallene er person-virkedager (ikke antall sykmeldinger). '
+          'Overlappende perioder telles én gang per ansatt. '
+          '${DateFormat('d. MMM', 'nb_NO').format(from)} – '
+          '${DateFormat('d. MMM yyyy', 'nb_NO').format(to)} · '
+          '$workDays virkedager',
           style: DriftProTheme.caption.copyWith(
             color: const Color(0xFF94A3B8),
             fontSize: 11,
@@ -364,29 +436,95 @@ class ManagerLeaveInsights extends StatelessWidget {
 
   static List<double> _monthlyAbsenceDays(
     List<Absence> absences,
-    int year,
-    DateTime through,
+    DateTime from,
+    DateTime to,
   ) {
     final months = List<double>.filled(12, 0);
-    final yearStart = DateTime(year, 1, 1);
-    final yearEnd = BusinessDays.dayOnly(through);
-
-    for (final a in absences) {
-      if (a.status != AbsenceStatus.godkjent) continue;
-      if (!EmployeeLeaveSnapshot.kpiAbsenceTypes.contains(a.type)) continue;
-      var day = BusinessDays.dayOnly(a.startDate);
-      final end = BusinessDays.dayOnly(a.endDate);
-      while (!day.isAfter(end)) {
-        if (!day.isBefore(yearStart) &&
-            !day.isAfter(yearEnd) &&
-            !BusinessDays.isWeekend(day) &&
-            !BusinessDays.isNorwegianPublicHoliday(day)) {
-          months[day.month - 1] += 1;
+    for (var m = 0; m < 12; m++) {
+      final monthStart = DateTime(from.year, m + 1, 1);
+      final monthEnd = DateTime(from.year, m + 2, 0);
+      final s = monthStart.isBefore(from) ? from : monthStart;
+      final e = monthEnd.isAfter(to) ? to : monthEnd;
+      if (e.isBefore(s)) continue;
+      // Sum unique days per employee then total (person-days).
+      final byUser = <String, Set<int>>{};
+      for (final a in absences) {
+        if (a.status != AbsenceStatus.godkjent) continue;
+        if (!EmployeeLeaveSnapshot.kpiAbsenceTypes.contains(a.type)) continue;
+        var day = BusinessDays.dayOnly(a.startDate);
+        final end = BusinessDays.dayOnly(a.endDate);
+        while (!day.isAfter(end)) {
+          if (!day.isBefore(s) &&
+              !day.isAfter(e) &&
+              BusinessDays.isBusinessDay(day)) {
+            byUser
+                .putIfAbsent(a.userId, () => <int>{})
+                .add(day.millisecondsSinceEpoch);
+          }
+          day = day.add(const Duration(days: 1));
         }
-        day = day.add(const Duration(days: 1));
       }
+      months[m] = byUser.values.fold<int>(0, (n, set) => n + set.length).toDouble();
     }
     return months;
+  }
+
+  static Map<int, List<MonthEmployeeAbsence>> _monthlyPeople(
+    List<Absence> absences,
+    DateTime from,
+    DateTime to,
+    List<UserProfile> employees,
+  ) {
+    final names = {for (final e in employees) e.id: e.fullName};
+    final result = <int, List<MonthEmployeeAbsence>>{};
+    for (var m = 0; m < 12; m++) {
+      final monthStart = DateTime(from.year, m + 1, 1);
+      final monthEnd = DateTime(from.year, m + 2, 0);
+      final s = monthStart.isBefore(from) ? from : monthStart;
+      final e = monthEnd.isAfter(to) ? to : monthEnd;
+      if (e.isBefore(s)) {
+        result[m] = const [];
+        continue;
+      }
+      final daysByUser = <String, Set<int>>{};
+      final entriesByUser = <String, List<Absence>>{};
+      for (final a in absences) {
+        if (a.status != AbsenceStatus.godkjent) continue;
+        if (!EmployeeLeaveSnapshot.kpiAbsenceTypes.contains(a.type)) continue;
+        var day = BusinessDays.dayOnly(a.startDate);
+        final end = BusinessDays.dayOnly(a.endDate);
+        var hit = false;
+        while (!day.isAfter(end)) {
+          if (!day.isBefore(s) &&
+              !day.isAfter(e) &&
+              BusinessDays.isBusinessDay(day)) {
+            daysByUser
+                .putIfAbsent(a.userId, () => <int>{})
+                .add(day.millisecondsSinceEpoch);
+            hit = true;
+          }
+          day = day.add(const Duration(days: 1));
+        }
+        if (hit) {
+          entriesByUser.putIfAbsent(a.userId, () => []).add(a);
+        }
+      }
+      final rows = daysByUser.entries
+          .map(
+            (e) => MonthEmployeeAbsence(
+              userId: e.key,
+              name: names[e.key] ??
+                  entriesByUser[e.key]?.first.userName ??
+                  'Ansatt',
+              days: e.value.length,
+              entries: entriesByUser[e.key] ?? const [],
+            ),
+          )
+          .toList()
+        ..sort((a, b) => b.days.compareTo(a.days));
+      result[m] = rows;
+    }
+    return result;
   }
 
   static int _peakMonth(List<double> monthly) {
@@ -397,7 +535,6 @@ class ManagerLeaveInsights extends StatelessWidget {
     return peak;
   }
 
-  /// Positiv = mer fravær siste 30 dager enn forrige 30 (opp = dårligere).
   static ({double deltaPct, bool up}) _recentTrend(
     List<Absence> absences,
     DateTime now,
@@ -408,18 +545,24 @@ class ManagerLeaveInsights extends StatelessWidget {
     final prevStart = prevEnd.subtract(const Duration(days: 29));
 
     int daysIn(DateTime from, DateTime to) {
-      var n = 0;
+      final byUser = <String, Set<int>>{};
       for (final a in absences) {
         if (a.status != AbsenceStatus.godkjent) continue;
         if (!EmployeeLeaveSnapshot.kpiAbsenceTypes.contains(a.type)) continue;
-        final s = BusinessDays.dayOnly(a.startDate);
-        final e = BusinessDays.dayOnly(a.endDate);
-        final fromClamped = s.isAfter(from) ? s : from;
-        final toClamped = e.isBefore(to) ? e : to;
-        if (toClamped.isBefore(fromClamped)) continue;
-        n += BusinessDays.countInRange(fromClamped, toClamped);
+        var day = BusinessDays.dayOnly(a.startDate);
+        final end = BusinessDays.dayOnly(a.endDate);
+        while (!day.isAfter(end)) {
+          if (!day.isBefore(from) &&
+              !day.isAfter(to) &&
+              BusinessDays.isBusinessDay(day)) {
+            byUser
+                .putIfAbsent(a.userId, () => <int>{})
+                .add(day.millisecondsSinceEpoch);
+          }
+          day = day.add(const Duration(days: 1));
+        }
       }
-      return n;
+      return byUser.values.fold<int>(0, (n, s) => n + s.length);
     }
 
     final cur = daysIn(curStart, today).toDouble();
@@ -455,7 +598,7 @@ class ManagerLeaveInsights extends StatelessWidget {
   }
 }
 
-// ── Scope filters (shared with overview) ─────────────────────────────────────
+// ── Scope filters ─────────────────────────────────────────────────────────────
 
 class ManagerLeaveScopeFilters extends StatelessWidget {
   const ManagerLeaveScopeFilters({
@@ -576,7 +719,7 @@ class ManagerLeaveScopeFilters extends StatelessWidget {
   }
 }
 
-// ── Private UI pieces ─────────────────────────────────────────────────────────
+// ── Private UI ────────────────────────────────────────────────────────────────
 
 class _PendingPeopleBanner extends StatelessWidget {
   const _PendingPeopleBanner({
@@ -723,7 +866,10 @@ class _RateHero extends StatelessWidget {
     required this.target,
     required this.fravaerDays,
     required this.sykmeldingDays,
+    required this.sykmeldingPeople,
+    required this.fteEquivalent,
     required this.employeeCount,
+    required this.workDays,
     required this.trend,
   });
 
@@ -732,7 +878,10 @@ class _RateHero extends StatelessWidget {
   final double target;
   final int fravaerDays;
   final int sykmeldingDays;
+  final int sykmeldingPeople;
+  final double fteEquivalent;
   final int employeeCount;
+  final int workDays;
   final ({double deltaPct, bool up}) trend;
 
   @override
@@ -787,12 +936,23 @@ class _RateHero extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '$fravaerDays virkedager'
-                  '${sykmeldingDays > 0 ? ' · $sykmeldingDays d sykmelding' : ''}'
-                  ' · $employeeCount ansatte',
+                  '$fravaerDays person-dager · $employeeCount ansatte · $workDays virkedager',
                   style: DriftProTheme.caption
                       .copyWith(color: const Color(0xFF64748B)),
                 ),
+                if (sykmeldingDays > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Sykmelding: $sykmeldingDays person-dager hos $sykmeldingPeople '
+                    '${sykmeldingPeople == 1 ? 'ansatt' : 'ansatte'}'
+                    '${fteEquivalent >= 0.1 ? ' (≈ ${fteEquivalent.toStringAsFixed(1)} årsverk)' : ''}',
+                    style: DriftProTheme.caption.copyWith(
+                      color: DriftProTheme.absenceSickNote,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 _TrendBadge(trend: trend),
               ],
@@ -810,9 +970,10 @@ class _TrendBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final worse = trend.up; // mer fravær = dårligere
+    final worse = trend.up;
     final color = worse ? DriftProTheme.error : DriftProTheme.success;
-    final icon = worse ? Icons.trending_up_rounded : Icons.trending_down_rounded;
+    final icon =
+        worse ? Icons.trending_up_rounded : Icons.trending_down_rounded;
     final label = trend.deltaPct < 0.5
         ? 'Stabilt siste 30 dager'
         : worse
@@ -845,178 +1006,176 @@ class _TrendBadge extends StatelessWidget {
   }
 }
 
-class _FerieSplitCard extends StatelessWidget {
-  const _FerieSplitCard({
-    required this.used,
-    required this.left,
-    required this.total,
-    required this.usedPct,
-    required this.avgLeft,
+class _TopDriversCard extends StatelessWidget {
+  const _TopDriversCard({
+    required this.drivers,
+    required this.totalDays,
+    required this.isDark,
+    this.onOpen,
   });
 
-  final int used;
-  final int left;
-  final int total;
-  final double usedPct;
-  final int avgLeft;
+  final List<_DriverRow> drivers;
+  final int totalDays;
+  final bool isDark;
+  final void Function(UserProfile)? onOpen;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: isDark
             ? Colors.white.withValues(alpha: 0.03)
-            : DriftProTheme.absenceVacation.withValues(alpha: 0.05),
+            : DriftProTheme.error.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: DriftProTheme.absenceVacation.withValues(alpha: 0.22),
+          color: DriftProTheme.error.withValues(alpha: 0.18),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Feriesaldo',
+            'Største bidrag til fravær',
             style: DriftProTheme.labelMd.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 2),
           Text(
-            'Snitt $avgLeft d igjen per ansatt',
+            totalDays <= 0
+                ? 'Ingen fravær i perioden'
+                : 'Hvem driver opp prosenten ($totalDays person-dager)',
             style: DriftProTheme.caption.copyWith(
-              color: DriftProTheme.absenceVacation,
-              fontWeight: FontWeight.w700,
+              color: DriftProTheme.error.withValues(alpha: 0.85),
+              fontWeight: FontWeight.w600,
             ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _MiniStat(
-                  label: 'Brukt',
-                  value: '$used',
-                  color: const Color(0xFF475569),
-                ),
-              ),
-              Expanded(
-                child: _MiniStat(
-                  label: 'Igjen',
-                  value: '$left',
-                  color: DriftProTheme.primaryGreen,
-                ),
-              ),
-              Expanded(
-                child: _MiniStat(
-                  label: 'Andel brukt',
-                  value: '${(usedPct * 100).round()}%',
-                  color: DriftProTheme.absenceVacation,
-                ),
-              ),
-            ],
           ),
           const SizedBox(height: 12),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: SizedBox(
-              height: 10,
-              child: total <= 0
-                  ? Container(color: const Color(0xFFE2E8F0))
-                  : Row(
-                      children: [
-                        if (used > 0)
-                          Expanded(
-                            flex: used,
-                            child: Container(
-                              color: DriftProTheme.absenceVacation,
-                            ),
-                          ),
-                        if (left > 0)
-                          Expanded(
-                            flex: left,
-                            child: Container(
-                              color: DriftProTheme.primaryGreen
-                                  .withValues(alpha: 0.35),
-                            ),
-                          ),
-                      ],
-                    ),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Lilla = brukt · Grønn = igjen (av $total d totalt)',
-            style: DriftProTheme.caption.copyWith(
-              color: const Color(0xFF94A3B8),
-              fontSize: 11,
-            ),
-          ),
+          if (drivers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Text('Ingen data', style: DriftProTheme.caption),
+            )
+          else
+            for (var i = 0; i < drivers.length; i++)
+              _driverRow(drivers[i], i + 1),
         ],
+      ),
+    );
+  }
+
+  Widget _driverRow(_DriverRow row, int place) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onOpen == null ? null : () => onOpen!(row.user),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 22,
+              child: Text(
+                '$place',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF94A3B8),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    row.user.fullName,
+                    overflow: TextOverflow.ellipsis,
+                    style: DriftProTheme.bodySm
+                        .copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: row.share.clamp(0.0, 1.0),
+                      minHeight: 4,
+                      backgroundColor: const Color(0xFFE2E8F0),
+                      color: row.sykmeldingDays > 0
+                          ? DriftProTheme.absenceSickNote
+                          : DriftProTheme.error,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${row.days} d',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 13,
+                  ),
+                ),
+                Text(
+                  '${(row.share * 100).round()}%',
+                  style: DriftProTheme.caption.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _MiniStat extends StatelessWidget {
-  const _MiniStat({
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: DriftProTheme.caption.copyWith(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF94A3B8),
-          ),
-        ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: color,
-            height: 1.1,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _MonthlyAbsenceChart extends StatelessWidget {
+class _MonthlyAbsenceChart extends StatefulWidget {
   const _MonthlyAbsenceChart({
     required this.year,
     required this.monthly,
+    required this.monthPeople,
     required this.peakMonth,
     required this.currentMonth,
     required this.isDark,
+    required this.employees,
+    this.onOpenEmployee,
+    this.onOpenAbsence,
   });
 
   final int year;
   final List<double> monthly;
+  final Map<int, List<MonthEmployeeAbsence>> monthPeople;
   final int peakMonth;
   final int currentMonth;
   final bool isDark;
+  final List<UserProfile> employees;
+  final void Function(UserProfile)? onOpenEmployee;
+  final void Function(Absence)? onOpenAbsence;
+
+  @override
+  State<_MonthlyAbsenceChart> createState() => _MonthlyAbsenceChartState();
+}
+
+class _MonthlyAbsenceChartState extends State<_MonthlyAbsenceChart> {
+  int? _hoverMonth;
 
   @override
   Widget build(BuildContext context) {
+    final monthly = widget.monthly;
     final maxY = monthly.fold<double>(0, math.max);
     final spots = <FlSpot>[
       for (var i = 0; i < 12; i++) FlSpot(i.toDouble(), monthly[i]),
     ];
-    final peakLabel = ManagerLeaveInsights._monthNames[peakMonth];
-    final mom = _monthOverMonth(monthly, currentMonth);
+    final peakLabel = ManagerLeaveInsights.monthNames[widget.peakMonth];
+    final mom = _monthOverMonth(monthly, widget.currentMonth);
+    final selected = _hoverMonth;
+    final people =
+        selected == null ? const <MonthEmployeeAbsence>[] : (widget.monthPeople[selected] ?? const []);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1029,7 +1188,7 @@ class _MonthlyAbsenceChart extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Fravær per måned $year',
+                    'Fravær per måned ${widget.year}',
                     style: DriftProTheme.labelLg
                         .copyWith(fontWeight: FontWeight.w900),
                   ),
@@ -1037,7 +1196,7 @@ class _MonthlyAbsenceChart extends StatelessWidget {
                   Text(
                     maxY <= 0
                         ? 'Ingen fraværsdager registrert ennå'
-                        : 'Mest fravær i $peakLabel (${monthly[peakMonth].round()} virkedager)',
+                        : 'Mest fravær i $peakLabel (${monthly[widget.peakMonth].round()} person-dager) · hold over prikk for detaljer',
                     style: DriftProTheme.caption
                         .copyWith(color: const Color(0xFF64748B)),
                   ),
@@ -1051,127 +1210,158 @@ class _MonthlyAbsenceChart extends StatelessWidget {
         SizedBox(
           height: 180,
           child: maxY <= 0
-              ? Center(
-                  child: Text(
-                    'Ingen data å vise',
-                    style: DriftProTheme.caption,
-                  ),
-                )
-              : LineChart(
-                  LineChartData(
-                    minX: 0,
-                    maxX: 11,
-                    minY: 0,
-                    maxY: (maxY * 1.25).clamp(4, double.infinity),
-                    gridData: FlGridData(
-                      show: true,
-                      drawVerticalLine: false,
-                      getDrawingHorizontalLine: (v) => FlLine(
-                        color: isDark
-                            ? Colors.white12
-                            : const Color(0xFFE2E8F0),
-                        strokeWidth: 1,
+              ? Center(child: Text('Ingen data å vise', style: DriftProTheme.caption))
+              : MouseRegion(
+                  onExit: (_) => setState(() => _hoverMonth = null),
+                  child: LineChart(
+                    LineChartData(
+                      minX: 0,
+                      maxX: 11,
+                      minY: 0,
+                      maxY: (maxY * 1.25).clamp(4, double.infinity),
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        getDrawingHorizontalLine: (v) => FlLine(
+                          color: widget.isDark
+                              ? Colors.white12
+                              : const Color(0xFFE2E8F0),
+                          strokeWidth: 1,
+                        ),
                       ),
-                    ),
-                    borderData: FlBorderData(show: false),
-                    titlesData: FlTitlesData(
-                      topTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      rightTitles: const AxisTitles(
-                        sideTitles: SideTitles(showTitles: false),
-                      ),
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 28,
-                          getTitlesWidget: (v, m) => Text(
-                            v.toInt().toString(),
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Color(0xFF94A3B8),
+                      borderData: FlBorderData(show: false),
+                      titlesData: FlTitlesData(
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            reservedSize: 28,
+                            getTitlesWidget: (v, m) => Text(
+                              v.toInt().toString(),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                color: Color(0xFF94A3B8),
+                              ),
                             ),
                           ),
                         ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            interval: 1,
+                            getTitlesWidget: (v, m) {
+                              final i = v.toInt();
+                              if (i < 0 || i > 11) {
+                                return const SizedBox.shrink();
+                              }
+                              final active = i == selected || i == widget.peakMonth;
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                  ManagerLeaveInsights.monthNames[i],
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: active
+                                        ? FontWeight.w900
+                                        : FontWeight.w600,
+                                    color: active
+                                        ? DriftProTheme.error
+                                        : const Color(0xFF94A3B8),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
                       ),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          interval: 1,
-                          getTitlesWidget: (v, m) {
-                            final i = v.toInt();
-                            if (i < 0 || i > 11) {
-                              return const SizedBox.shrink();
+                      lineTouchData: LineTouchData(
+                        enabled: true,
+                        handleBuiltInTouches: true,
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipItems: (_) => [],
+                        ),
+                        touchCallback: (event, response) {
+                          if (event is FlPointerExitEvent ||
+                              event is FlTapUpEvent) {
+                            // Keep selection on tap for mobile; clear on pointer exit.
+                            if (event is FlPointerExitEvent) {
+                              setState(() => _hoverMonth = null);
                             }
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Text(
-                                ManagerLeaveInsights._monthNames[i],
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: i == peakMonth
-                                      ? FontWeight.w900
-                                      : FontWeight.w600,
-                                  color: i == peakMonth
-                                      ? DriftProTheme.error
-                                      : const Color(0xFF94A3B8),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
+                            return;
+                          }
+                          final spot = response?.lineBarSpots?.firstOrNull;
+                          if (spot == null) {
+                            if (event is FlPanEndEvent ||
+                                event is FlLongPressEnd) {
+                              setState(() => _hoverMonth = null);
+                            }
+                            return;
+                          }
+                          final m = spot.x.round().clamp(0, 11);
+                          if (_hoverMonth != m) {
+                            setState(() => _hoverMonth = m);
+                          }
+                        },
                       ),
+                      lineBarsData: [
+                        LineChartBarData(
+                          spots: spots,
+                          isCurved: true,
+                          color: DriftProTheme.primaryGreen,
+                          barWidth: 3,
+                          dotData: FlDotData(
+                            show: true,
+                            getDotPainter: (spot, pct, bar, i) {
+                              final peak = i == widget.peakMonth;
+                              final hover = i == selected;
+                              return FlDotCirclePainter(
+                                radius: hover || peak ? 5.5 : 3.2,
+                                color: hover
+                                    ? DriftProTheme.primaryGreenDark
+                                    : peak
+                                        ? DriftProTheme.error
+                                        : DriftProTheme.primaryGreen,
+                                strokeWidth: hover ? 2 : 0,
+                                strokeColor: Colors.white,
+                              );
+                            },
+                          ),
+                          belowBarData: BarAreaData(
+                            show: true,
+                            color: DriftProTheme.primaryGreen
+                                .withValues(alpha: 0.12),
+                          ),
+                        ),
+                      ],
                     ),
-                    lineTouchData: LineTouchData(
-                      touchTooltipData: LineTouchTooltipData(
-                        getTooltipItems: (spots) => spots
-                            .map(
-                              (s) => LineTooltipItem(
-                                '${ManagerLeaveInsights._monthNames[s.x.toInt()]}: ${s.y.round()} d',
-                                const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
-                    ),
-                    lineBarsData: [
-                      LineChartBarData(
-                        spots: spots,
-                        isCurved: true,
-                        color: DriftProTheme.primaryGreen,
-                        barWidth: 3,
-                        dotData: FlDotData(
-                          show: true,
-                          getDotPainter: (spot, pct, bar, i) {
-                            final peak = i == peakMonth;
-                            return FlDotCirclePainter(
-                              radius: peak ? 5 : 3,
-                              color: peak
-                                  ? DriftProTheme.error
-                                  : DriftProTheme.primaryGreen,
-                              strokeWidth: 0,
-                            );
-                          },
-                        ),
-                        belowBarData: BarAreaData(
-                          show: true,
-                          color: DriftProTheme.primaryGreen
-                              .withValues(alpha: 0.12),
-                        ),
-                      ),
-                    ],
                   ),
+                ),
+        ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          child: selected == null
+              ? const SizedBox.shrink(key: ValueKey('empty'))
+              : _MonthHoverPanel(
+                  key: ValueKey('m$selected'),
+                  monthIndex: selected,
+                  year: widget.year,
+                  totalDays: monthly[selected].round(),
+                  people: people,
+                  employees: widget.employees,
+                  onOpenEmployee: widget.onOpenEmployee,
+                  onOpenAbsence: widget.onOpenAbsence,
+                  onClose: () => setState(() => _hoverMonth = null),
                 ),
         ),
       ],
     );
   }
 
-  /// Null hvis ikke nok data til sammenligning.
   static ({bool up, double pct, String label})? _monthOverMonth(
     List<double> monthly,
     int currentMonth,
@@ -1179,8 +1369,8 @@ class _MonthlyAbsenceChart extends StatelessWidget {
     if (currentMonth <= 0 || currentMonth >= monthly.length) return null;
     final cur = monthly[currentMonth];
     final prev = monthly[currentMonth - 1];
-    final curName = ManagerLeaveInsights._monthNames[currentMonth];
-    final prevName = ManagerLeaveInsights._monthNames[currentMonth - 1];
+    final curName = ManagerLeaveInsights.monthNames[currentMonth];
+    final prevName = ManagerLeaveInsights.monthNames[currentMonth - 1];
     if (prev <= 0 && cur <= 0) return null;
     if (prev <= 0) {
       return (up: true, pct: 100, label: '$curName vs $prevName');
@@ -1189,10 +1379,145 @@ class _MonthlyAbsenceChart extends StatelessWidget {
     if (delta.abs() < 0.5) {
       return (up: false, pct: 0, label: 'Stabilt $curName');
     }
-    return (
-      up: delta > 0,
-      pct: delta.abs(),
-      label: '$curName vs $prevName',
+    return (up: delta > 0, pct: delta.abs(), label: '$curName vs $prevName');
+  }
+}
+
+class _MonthHoverPanel extends StatelessWidget {
+  const _MonthHoverPanel({
+    super.key,
+    required this.monthIndex,
+    required this.year,
+    required this.totalDays,
+    required this.people,
+    required this.employees,
+    required this.onClose,
+    this.onOpenEmployee,
+    this.onOpenAbsence,
+  });
+
+  final int monthIndex;
+  final int year;
+  final int totalDays;
+  final List<MonthEmployeeAbsence> people;
+  final List<UserProfile> employees;
+  final VoidCallback onClose;
+  final void Function(UserProfile)? onOpenEmployee;
+  final void Function(Absence)? onOpenAbsence;
+
+  @override
+  Widget build(BuildContext context) {
+    final df = DateFormat('d. MMM', 'nb_NO');
+    final month = ManagerLeaveInsights.monthNames[monthIndex];
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: DriftProTheme.primaryGreen.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: DriftProTheme.primaryGreen.withValues(alpha: 0.28),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$month $year · $totalDays person-dager · ${people.length} ansatte',
+                  style: DriftProTheme.labelMd
+                      .copyWith(fontWeight: FontWeight.w900),
+                ),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                onPressed: onClose,
+                icon: const Icon(Icons.close, size: 18),
+                tooltip: 'Lukk',
+              ),
+            ],
+          ),
+          if (people.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('Ingen fravær denne måneden', style: DriftProTheme.caption),
+            )
+          else
+            ...people.take(8).map((p) {
+              UserProfile? emp;
+              for (final e in employees) {
+                if (e.id == p.userId) {
+                  emp = e;
+                  break;
+                }
+              }
+              final dates = p.entries
+                  .map((a) =>
+                      '${a.type.label}: ${df.format(a.startDate)}–${df.format(a.endDate)}')
+                  .take(3)
+                  .join(' · ');
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(10),
+                  onTap: () {
+                    if (p.entries.length == 1 && onOpenAbsence != null) {
+                      onOpenAbsence!(p.entries.first);
+                    } else if (emp != null && onOpenEmployee != null) {
+                      onOpenEmployee!(emp);
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                p.name,
+                                style: DriftProTheme.bodySm
+                                    .copyWith(fontWeight: FontWeight.w800),
+                              ),
+                              if (dates.isNotEmpty)
+                                Text(
+                                  dates,
+                                  style: DriftProTheme.caption.copyWith(
+                                    fontSize: 11,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          '${p.days} d',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: DriftProTheme.primaryGreen,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          if (people.length > 8)
+            Text(
+              '+ ${people.length - 8} flere…',
+              style: DriftProTheme.caption,
+            ),
+        ],
+      ),
     );
   }
 }
@@ -1310,8 +1635,7 @@ class _RankPanel extends StatelessWidget {
               ),
             )
           else
-            for (var i = 0; i < rows.length; i++)
-              _rankRow(rows[i], i + 1),
+            for (var i = 0; i < rows.length; i++) _rankRow(rows[i], i + 1),
         ],
       ),
     );
@@ -1460,7 +1784,7 @@ class _UpcomingFeriePanel extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.beach_access_rounded,
                       color: DriftProTheme.absenceVacation,
                       size: 20,

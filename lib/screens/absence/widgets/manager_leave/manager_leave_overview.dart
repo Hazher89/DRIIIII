@@ -69,11 +69,33 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
   final _approvalsKey = GlobalKey();
   String? _departmentId;
   String? _employeeId;
+  late LeavePeriodScope _scope;
+
+  @override
+  void initState() {
+    super.initState();
+    _scope = LeavePeriodScope.year(widget.selectedYear);
+  }
+
+  @override
+  void didUpdateWidget(covariant ManagerLeaveOverview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.selectedYear != widget.selectedYear &&
+        _scope.mode == LeavePeriodMode.year &&
+        _scope.year != widget.selectedYear) {
+      _scope = LeavePeriodScope.year(widget.selectedYear);
+    }
+  }
 
   @override
   void dispose() {
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _onScopeChanged(LeavePeriodScope scope) {
+    setState(() => _scope = scope);
+    widget.onYearChanged?.call(scope.year);
   }
 
   Future<void> _scrollToApprovals() async {
@@ -160,6 +182,7 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
     final scopedAbsences = widget.scopedAbsences
         .where((a) => scopedIds.contains(a.userId))
         .toList();
+    final periodAbsences = _scope.filter(scopedAbsences);
 
     final pending = List<Absence>.from(widget.pendingApprovals)
         .where((a) => scopedIds.contains(a.userId))
@@ -227,21 +250,45 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-                child: ManagerLeaveScopeFilters(
-                  employees: allEmployees,
-                  departmentNames: widget.departmentNames,
-                  departmentId: _departmentId,
-                  employeeId: _employeeId,
-                  onDepartmentChanged: (id) => setState(() {
-                    _departmentId = id;
-                    if (_employeeId != null &&
-                        !allEmployees.any((e) =>
-                            e.id == _employeeId &&
-                            (id == null || e.departmentId == id))) {
-                      _employeeId = null;
-                    }
-                  }),
-                  onEmployeeChanged: (id) => setState(() => _employeeId = id),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Periode for all statistikk',
+                            style: DriftProTheme.caption.copyWith(
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF64748B),
+                            ),
+                          ),
+                        ),
+                        LeavePeriodScopeButton(
+                          scope: _scope,
+                          onChanged: _onScopeChanged,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    ManagerLeaveScopeFilters(
+                      employees: allEmployees,
+                      departmentNames: widget.departmentNames,
+                      departmentId: _departmentId,
+                      employeeId: _employeeId,
+                      onDepartmentChanged: (id) => setState(() {
+                        _departmentId = id;
+                        if (_employeeId != null &&
+                            !allEmployees.any((e) =>
+                                e.id == _employeeId &&
+                                (id == null || e.departmentId == id))) {
+                          _employeeId = null;
+                        }
+                      }),
+                      onEmployeeChanged: (id) =>
+                          setState(() => _employeeId = id),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -250,9 +297,10 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                 child: ManagerLeaveInsights(
                   employees: scopedEmployees,
-                  absences: scopedAbsences,
+                  absences: periodAbsences,
+                  allAbsencesForLive: scopedAbsences,
                   quotas: widget.teamQuotas,
-                  year: widget.selectedYear,
+                  scope: _scope,
                   pending: pending,
                   awayToday: awayToday,
                   nextWeekAwayCount: nextWeekUsers,
