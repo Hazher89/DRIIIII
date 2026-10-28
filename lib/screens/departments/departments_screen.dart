@@ -20,7 +20,7 @@ import '../../widgets/driftpro_loading_indicator.dart';
 
 enum _DepartmentFilter { all, needsLeader, hasMembers, empty }
 
-enum _DepartmentSort { name, membersDesc, membersAsc }
+enum _DepartmentSort { name, membersDesc, membersAsc, absenceDesc }
 
 class DepartmentsScreen extends StatefulWidget {
   const DepartmentsScreen({super.key});
@@ -108,11 +108,9 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
       _profiles.where((p) => p.departmentId == null || p.departmentId!.isEmpty).toList()
         ..sort((a, b) => a.fullName.compareTo(b.fullName));
 
-  List<UserProfile> get _assignedProfiles =>
-      _profiles.where((p) => p.departmentId != null && p.departmentId!.isNotEmpty).toList();
-
+  /// Samme KPI-formel og populasjon som Fravær & Ferie (aktive ansatte).
   TeamLeaveSummary get _companyLeaveSummary => TeamLeaveSummary.compute(
-        employees: _assignedProfiles,
+        employees: _profiles,
         allAbsences: _absences,
         company: _companySettings,
       );
@@ -147,6 +145,8 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
     list.sort((a, b) {
       final aCount = DepartmentUiHelpers.membersFor(a, _membersByDept).length;
       final bCount = DepartmentUiHelpers.membersFor(b, _membersByDept).length;
+      final aAbs = _absenceByDept[a.id]?.averageAbsencePercent ?? 0;
+      final bAbs = _absenceByDept[b.id]?.averageAbsencePercent ?? 0;
       switch (_sort) {
         case _DepartmentSort.name:
           return a.name.toLowerCase().compareTo(b.name.toLowerCase());
@@ -154,6 +154,8 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
           return bCount.compareTo(aCount);
         case _DepartmentSort.membersAsc:
           return aCount.compareTo(bCount);
+        case _DepartmentSort.absenceDesc:
+          return bAbs.compareTo(aAbs);
       }
     });
 
@@ -252,7 +254,21 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                             child: LeaveAbsenceSummaryBar(
                               summary: _companyLeaveSummary,
                               title: 'Fravær snitt bedriften',
-                              subtitle: '${_assignedProfiles.length} ansatte med avdeling',
+                              subtitle:
+                                  '${_profiles.length} aktive ansatte · samme KPI som Fravær & Ferie '
+                                  '(egen + sykt barn + sykmelding)',
+                            ),
+                          ),
+                        ),
+                      if (_visibleDepartments.isNotEmpty)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                            child: _DepartmentAbsenceChart(
+                              departments: _visibleDepartments,
+                              absenceByDept: _absenceByDept,
+                              membersByDept: _membersByDept,
+                              isDark: isDark,
                             ),
                           ),
                         ),
@@ -389,6 +405,10 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
                       value: _DepartmentSort.membersAsc,
                       child: Text('Sorter: Færrest ansatte'),
                     ),
+                    PopupMenuItem(
+                      value: _DepartmentSort.absenceDesc,
+                      child: Text('Sorter: Høyest fravær %'),
+                    ),
                   ],
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -433,6 +453,8 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
         return 'Flest ansatte';
       case _DepartmentSort.membersAsc:
         return 'Færrest ansatte';
+      case _DepartmentSort.absenceDesc:
+        return 'Høyest fravær';
     }
   }
 
@@ -521,6 +543,132 @@ class _DepartmentsScreenState extends State<DepartmentsScreen> {
             style: DriftProTheme.bodySm.copyWith(color: Colors.grey[600]),
             textAlign: TextAlign.center,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Stolpediagram: fraværs-% per avdeling (samme KPI som Fravær-siden).
+class _DepartmentAbsenceChart extends StatelessWidget {
+  const _DepartmentAbsenceChart({
+    required this.departments,
+    required this.absenceByDept,
+    required this.membersByDept,
+    required this.isDark,
+  });
+
+  final List<Department> departments;
+  final Map<String, DepartmentAbsenceOverview> absenceByDept;
+  final Map<String, List<UserProfile>> membersByDept;
+  final bool isDark;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = departments
+        .where((d) => (membersByDept[d.id] ?? const []).isNotEmpty)
+        .map((d) {
+          final s = absenceByDept[d.id];
+          return (
+            name: d.name,
+            pct: s?.averageAbsencePercent ?? 0.0,
+            days: s?.totalDaysYtd ?? 0,
+            color: DepartmentUiHelpers.parseColor(d.colorCode),
+          );
+        })
+        .toList()
+      ..sort((a, b) => b.pct.compareTo(a.pct));
+
+    if (rows.isEmpty) return const SizedBox.shrink();
+    final maxPct = rows.fold<double>(9.9, (m, r) => m > r.pct ? m : r.pct);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Fravær % per avdeling',
+            style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Person-virkedager ÷ (ansatte × virkedager YTD) · mål ≤ 9,9%',
+            style: DriftProTheme.caption.copyWith(color: const Color(0xFF64748B)),
+          ),
+          const SizedBox(height: 14),
+          for (final r in rows.take(8)) ...[
+            Row(
+              children: [
+                SizedBox(
+                  width: 110,
+                  child: Text(
+                    r.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: DriftProTheme.caption.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: Stack(
+                      children: [
+                        Container(
+                          height: 18,
+                          color: isDark
+                              ? Colors.white10
+                              : const Color(0xFFF1F5F9),
+                        ),
+                        FractionallySizedBox(
+                          widthFactor: (r.pct / (maxPct * 1.05)).clamp(0.0, 1.0),
+                          child: Container(
+                            height: 18,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  r.color.withValues(alpha: 0.55),
+                                  r.pct > 9.9
+                                      ? DriftProTheme.error
+                                      : r.color,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 72,
+                  child: Text(
+                    '${r.pct.toStringAsFixed(1)}% · ${r.days}d',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: r.pct > 9.9
+                          ? DriftProTheme.error
+                          : DriftProTheme.primaryGreen,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+          ],
         ],
       ),
     );

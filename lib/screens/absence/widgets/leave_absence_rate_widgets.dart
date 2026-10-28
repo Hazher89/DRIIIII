@@ -20,9 +20,10 @@ class AbsenceRateBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pct = percent.round().clamp(0, 100);
-    final lv = level ?? LeaveUsageColors.levelFromUsed(pct, 100);
+    final pctRounded = percent.round().clamp(0, 100);
+    final lv = level ?? LeaveUsageColors.levelFromUsed(pctRounded, 100);
     final color = LeaveUsageColors.colorFor(lv, AbsencePalette.indigo);
+    final label = '${percent.toStringAsFixed(1)}%';
 
     return Container(
       padding: EdgeInsets.symmetric(
@@ -40,7 +41,7 @@ class AbsenceRateBadge extends StatelessWidget {
           Icon(Icons.pie_chart_outline_rounded, size: compact ? 11 : 13, color: color),
           SizedBox(width: compact ? 4 : 5),
           Text(
-            '$pct%',
+            label,
             style: TextStyle(
               fontSize: compact ? 10 : 12,
               fontWeight: FontWeight.w900,
@@ -83,7 +84,7 @@ class LeaveAbsenceSummaryBar extends StatelessWidget {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     if (summary.employeeCount <= 0) return const SizedBox.shrink();
     final border = isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0);
-    final pct = summary.averageAbsencePercentRounded;
+    final pctLabel = summary.averageAbsencePercent.toStringAsFixed(1);
 
     return Material(
       color: isDark ? DriftProTheme.cardDark : Colors.white,
@@ -139,13 +140,20 @@ class LeaveAbsenceSummaryBar extends StatelessWidget {
                   ),
                   _SummaryKpi(
                     label: 'Snitt fravær',
-                    value: '$pct%',
+                    value: '$pctLabel%',
+                    hint: 'mål ≤ 9,9%',
                     color: AbsencePalette.indigo,
                   ),
                   _SummaryKpi(
-                    label: 'Dager i år',
+                    label: 'Person-dager',
                     value: '${summary.totalFravaerDays}',
+                    hint: 'egen+sykt+sykm.',
                     color: AbsencePalette.sky,
+                  ),
+                  _SummaryKpi(
+                    label: 'Sykmelding',
+                    value: '${summary.totalSykmeldingDays} d',
+                    color: DriftProTheme.absenceSickNote,
                   ),
                   _SummaryKpi(
                     label: 'Egenmelding',

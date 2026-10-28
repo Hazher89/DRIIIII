@@ -107,16 +107,18 @@ void main() {
       company: const CompanyLeaveSettings(),
     );
 
+    // YTD 2026: Bjørn 1 egen-dag (feb), Anna 1 sykt barn (jan). 2025-fravær teller ikke.
     expect(stats.topByAbsence.length, 2);
-    expect(stats.topByAbsence.first.fullName, 'Bjørn Sol');
-    expect(stats.topByAbsence.first.totalDaysYtd, 4);
-    expect(stats.topByAbsence.first.egenDays, 4);
-    expect(stats.topByAbsence.last.fullName, 'Anna Nord');
-    expect(stats.topByAbsence.last.syktDays, 1);
-    expect(stats.totalDaysYtd, 5);
-    expect(stats.registeredEgenDays, 4);
+    expect(stats.topByAbsence.map((e) => e.fullName).toSet(), {
+      'Bjørn Sol',
+      'Anna Nord',
+    });
+    expect(stats.topByAbsence.first.totalDaysYtd, 1);
+    expect(stats.totalDaysYtd, 2);
+    expect(stats.registeredEgenDays, 1);
     expect(stats.registeredSyktDays, 1);
-    expect(stats.typeBreakdownYtd[AbsenceType.egenmelding], 4);
+    expect(stats.typeBreakdownYtd[AbsenceType.egenmelding], 1);
     expect(stats.typeBreakdownYtd[AbsenceType.syktBarn], 1);
+    expect(stats.averageAbsencePercent, greaterThan(0));
   });
 }

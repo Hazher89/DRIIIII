@@ -128,18 +128,20 @@ class DepartmentGridCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: _KpiTile(
-                      label: 'På jobb',
-                      value: s.memberCount == 0 ? '—' : '${s.presentCount}',
-                      hint: s.memberCount == 0
-                          ? '—'
-                          : 'av ${s.memberCount} · ${s.presentPercent}%',
-                      color: AbsencePalette.sky,
+                      label: 'Borte i dag',
+                      value: s.memberCount == 0 ? '—' : '${s.awayToday}',
+                      hint: s.awayToday == 0
+                          ? 'ingen'
+                          : '${s.presentPercent}% til stede',
+                      color: s.awayToday > 0
+                          ? DriftProTheme.warning
+                          : AbsencePalette.sky,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: _KpiTile(
-                      label: 'Ventende',
+                      label: 'Venter',
                       value: '${s.pendingCount}',
                       hint: s.upcomingWeek > 0
                           ? '${s.upcomingWeek} neste 7 d'
@@ -153,14 +155,16 @@ class DepartmentGridCard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: _KpiTile(
-                      label: 'Fravær',
+                      label: 'Fravær %',
                       value: s.memberCount == 0
                           ? '—'
-                          : '${s.averageAbsencePercentRounded}%',
+                          : '${s.averageAbsencePercent.toStringAsFixed(1)}%',
                       hint: s.totalDaysYtd > 0
-                          ? '${s.totalDaysYtd} d i år'
-                          : 'snitt i år',
-                      color: AbsencePalette.indigo,
+                          ? '${s.totalDaysYtd} person-d'
+                          : 'YTD KPI',
+                      color: s.averageAbsencePercent > 9.9
+                          ? DriftProTheme.error
+                          : AbsencePalette.indigo,
                     ),
                   ),
                 ],
@@ -233,7 +237,7 @@ class DepartmentGridCard extends StatelessWidget {
 
   String _awayLabel(DepartmentAbsenceOverview s) {
     if (s.memberCount == 0) return 'Ingen ansatte';
-    if (s.awayToday == 0) return 'Alle på jobb i dag';
+    if (s.awayToday == 0) return 'Ingen borte i dag';
     final parts = <String>[];
     if (s.onVacationToday > 0) parts.add('${s.onVacationToday} ferie');
     if (s.otherAbsenceToday > 0) parts.add('${s.otherAbsenceToday} fravær');

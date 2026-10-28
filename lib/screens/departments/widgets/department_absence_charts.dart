@@ -200,6 +200,11 @@ class AbsenceLeaderboard extends StatelessWidget {
                   height: 6,
                   child: Row(
                     children: [
+                      if ((entry.daysByType[AbsenceType.sykmelding] ?? 0) > 0)
+                        Expanded(
+                          flex: entry.daysByType[AbsenceType.sykmelding]!,
+                          child: ColoredBox(color: DriftProTheme.absenceSickNote),
+                        ),
                       if (entry.egenDays > 0)
                         Expanded(
                           flex: entry.egenDays,
@@ -234,6 +239,8 @@ class AbsenceLeaderboard extends StatelessWidget {
 
   String _detailLabel(DepartmentMemberAbsenceRank entry) {
     final parts = <String>[];
+    final syk = entry.daysByType[AbsenceType.sykmelding] ?? 0;
+    if (syk > 0) parts.add('$syk d sykmelding');
     if (entry.egenDays > 0) {
       parts.add('${entry.egenDays} d egen');
       if (entry.egenTilfeller > 0) {

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/absence_palette.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../models/absence.dart';
 import 'department_absence_stats.dart';
 
 /// Kompakt fraværspanel under KPI-raden — «i dag» + årstall.
@@ -47,7 +46,9 @@ class DepartmentAbsencePanel extends StatelessWidget {
               ),
               const Spacer(),
               Text(
-                '${stats.presentPercent}% på jobb',
+                stats.awayToday == 0
+                    ? 'Ingen borte'
+                    : '${stats.awayToday} borte · ${stats.presentPercent}% til stede',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
@@ -79,16 +80,11 @@ class DepartmentAbsencePanel extends StatelessWidget {
             spacing: 6,
             runSpacing: 6,
             children: [
-              _pill(
-                '${stats.presentCount} på jobb',
-                accent,
-                isDark,
-              ),
               if (stats.onVacationToday > 0)
                 _pill('${stats.onVacationToday} ferie', AbsencePalette.sky, isDark),
               if (stats.otherAbsenceToday > 0)
                 _pill(
-                  '${stats.otherAbsenceToday} fravær',
+                  '${stats.otherAbsenceToday} syk/annet',
                   AbsencePalette.violet,
                   isDark,
                 ),
@@ -111,7 +107,7 @@ class DepartmentAbsencePanel extends StatelessWidget {
             Divider(height: 1, color: AbsencePalette.panelBorder(isDark)),
             const SizedBox(height: 10),
             Text(
-              'Registrert ${stats.ytdYear}',
+              'Fravær ${stats.ytdYear} (KPI · person-virkedager)',
               style: DriftProTheme.caption.copyWith(fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 6),
@@ -119,7 +115,19 @@ class DepartmentAbsencePanel extends StatelessWidget {
               spacing: 6,
               runSpacing: 6,
               children: [
-                _pill('${stats.totalDaysYtd} d totalt', AbsencePalette.indigo, isDark),
+                _pill(
+                  '${stats.averageAbsencePercent.toStringAsFixed(1)}% · ${stats.totalDaysYtd} person-d',
+                  stats.averageAbsencePercent > 9.9
+                      ? DriftProTheme.error
+                      : AbsencePalette.indigo,
+                  isDark,
+                ),
+                if (stats.registeredSykmeldingDays > 0)
+                  _pill(
+                    '${stats.registeredSykmeldingDays} d sykmelding',
+                    DriftProTheme.absenceSickNote,
+                    isDark,
+                  ),
                 if (stats.registeredEgenDays > 0)
                   _pill(
                     '${stats.registeredEgenDays} d egen',
@@ -134,34 +142,16 @@ class DepartmentAbsencePanel extends StatelessWidget {
                   ),
                 if (stats.registeredFerieDays > 0)
                   _pill(
-                    '${stats.registeredFerieDays} d ferie',
+                    '${stats.registeredFerieDays} d ferie (ikke i %)',
                     AbsencePalette.sky,
                     isDark,
                   ),
-                if (stats.totalEgenTilfeller > 0)
-                  _pill(
-                    '${stats.totalEgenTilfeller} tilfeller',
-                    AbsencePalette.slate,
-                    isDark,
-                  ),
-                ..._typePills(isDark),
               ],
             ),
           ],
         ],
       ),
     );
-  }
-
-  List<Widget> _typePills(bool isDark) {
-    final entries = stats.typeBreakdownYtd.entries
-        .where((e) => e.value > 0 && e.key != AbsenceType.egenmelding && e.key != AbsenceType.syktBarn && e.key != AbsenceType.ferie)
-        .toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return entries
-        .take(3)
-        .map((e) => _pill('${e.value} d ${e.key.label}', AbsencePalette.slateLight, isDark))
-        .toList();
   }
 
   Widget _shell(bool isDark, {required Widget child}) {

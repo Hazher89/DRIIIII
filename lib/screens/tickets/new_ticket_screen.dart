@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_strings.dart';
@@ -48,9 +47,6 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
     WhistlePrincipal.hazher,
   };
   List<HmsTicketTemplate> _templates = [];
-  bool _capturingGps = false;
-  double? _gpsLat;
-  double? _gpsLng;
   HmsDomain _domain = HmsDomain.hms;
   bool _hasPersonalInjury = false;
 
@@ -79,29 +75,6 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
           await HmsEcosystemService.fetchTicketTemplates(companyId: companyId);
       if (mounted) setState(() => _templates = templates);
     } catch (_) {}
-  }
-
-  Future<void> _captureGps() async {
-    setState(() => _capturingGps = true);
-    try {
-      final allowed = await NativePermissionsService.ensureLocation(context: context);
-      if (!allowed) return;
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 8),
-        ),
-      );
-      if (mounted) {
-        setState(() {
-          _gpsLat = pos.latitude;
-          _gpsLng = pos.longitude;
-        });
-      }
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _capturingGps = false);
-    }
   }
 
   void _applyTemplate(HmsTicketTemplate t) {
@@ -304,8 +277,6 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
         isAnonymous: _isAnonymous,
         imageUrls: imageUrls,
         status: TicketStatus.aapen,
-        gpsLatitude: _gpsLat,
-        gpsLongitude: _gpsLng,
         hmsDomain: _domain,
         hasPersonalInjury: _hasPersonalInjury,
         observedAt: DateTime.now(),
@@ -597,316 +568,435 @@ class _NewTicketScreenState extends State<NewTicketScreen> {
     );
   }
 
+  Widget _sectionCard({
+    required bool isDark,
+    required int step,
+    required String title,
+    required String hint,
+    required List<Widget> children,
+  }) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  '$step',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: DriftProTheme.labelLg
+                          .copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    Text(
+                      hint,
+                      style: DriftProTheme.caption
+                          .copyWith(color: const Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ...children,
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+    final canSend = !_isSubmitting &&
+        !_loadingHandlers &&
+        (_isAnonymous
+            ? _resolveAnonymousProfileIds().isNotEmpty
+            : (!_assignees.isEmpty && _selectedHandlerId != null));
 
     return Scaffold(
       resizeToAvoidBottomInset: true,
-      appBar: AppBar(
-        title: const Text(AppStrings.newTicket),
-      ),
+      appBar: AppBar(title: const Text(AppStrings.newTicket)),
       backgroundColor:
-          isDark ? DriftProTheme.surfaceDark : DriftProTheme.surfaceLight,
+          isDark ? DriftProTheme.surfaceDark : const Color(0xFFF4F7F5),
       body: Form(
         key: _formKey,
         child: Column(
           children: [
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                keyboardDismissBehavior:
-                    ScrollViewKeyboardDismissBehavior.onDrag,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.sms_outlined,
-                            color: DriftProTheme.primaryGreen),
-                        SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Beskriv hva som skjedde. Velg mottaker under — '
-                            'valgt person får SMS med en gang.',
-                            style: TextStyle(fontSize: 13),
-                          ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: DriftProTheme.primaryGreen
+                              .withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  // Tekstfeltene først — synlige når tastaturet er oppe.
-                  TextFormField(
-                    controller: _titleController,
-                    textInputAction: TextInputAction.next,
-                    scrollPadding: const EdgeInsets.only(bottom: 140),
-                    decoration: const InputDecoration(
-                      labelText: 'Hva skjedde?',
-                      hintText: 'Kort tittel',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (v) =>
-                        v == null || v.trim().isEmpty ? 'Påkrevd' : null,
-                  ),
-                  const SizedBox(height: 14),
-                  TextFormField(
-                    controller: _descriptionController,
-                    scrollPadding: const EdgeInsets.only(bottom: 180),
-                    decoration: const InputDecoration(
-                      labelText: 'Beskriv situasjonen',
-                      alignLabelWithHint: true,
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 4,
-                    minLines: 3,
-                    validator: (v) =>
-                        v == null || v.trim().isEmpty ? 'Påkrevd' : null,
-                  ),
-                  const SizedBox(height: 18),
-                  if (_templates.isNotEmpty) ...[
-                    Text('Hurtigmaler', style: DriftProTheme.labelLg),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 42,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _templates.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (_, i) {
-                          final t = _templates[i];
-                          return ActionChip(
-                            avatar: Icon(
-                              t.domain == HmsDomain.logistikk
-                                  ? Icons.local_shipping_outlined
-                                  : Icons.report_outlined,
-                              size: 18,
+                        child: const Row(
+                          children: [
+                            Icon(Icons.sms_outlined,
+                                color: DriftProTheme.primaryGreen),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'Fyll inn hva som skjedde, velg hvem som skal få saken — '
+                                'de får SMS med en gang.',
+                                style: TextStyle(fontSize: 13, height: 1.35),
+                              ),
                             ),
-                            label: Text(t.title),
-                            onPressed: () => _applyTemplate(t),
-                          );
-                        },
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text('Område', style: DriftProTheme.labelLg),
-                      ),
-                      if (_capturingGps)
-                        SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: DriftProLoadingIndicator(size: 16))
-                      else if (_gpsLat != null)
-                        Text(
-                          'GPS OK',
-                          style: TextStyle(
-                            color: DriftProTheme.success,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
+                      const SizedBox(height: 14),
+                      if (_templates.isNotEmpty)
+                        _sectionCard(
+                          isDark: isDark,
+                          step: 1,
+                          title: 'Hurtigstart',
+                          hint: 'Valgfritt — fyller tittel og beskrivelse',
+                          children: [
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                for (final t in _templates)
+                                  ActionChip(
+                                    avatar: Icon(
+                                      t.domain == HmsDomain.logistikk
+                                          ? Icons.local_shipping_outlined
+                                          : Icons.report_outlined,
+                                      size: 16,
+                                    ),
+                                    label: Text(t.title),
+                                    onPressed: () => _applyTemplate(t),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      _sectionCard(
+                        isDark: isDark,
+                        step: _templates.isEmpty ? 1 : 2,
+                        title: 'Hva skjedde?',
+                        hint: 'Kort og klart — dette ser saksbehandler først',
+                        children: [
+                          TextFormField(
+                            controller: _titleController,
+                            textInputAction: TextInputAction.next,
+                            scrollPadding: const EdgeInsets.only(bottom: 140),
+                            decoration: const InputDecoration(
+                              labelText: 'Kort tittel',
+                              hintText: 'F.eks. Nestenulykke med truck',
+                              border: OutlineInputBorder(),
+                            ),
+                            validator: (v) =>
+                                v == null || v.trim().isEmpty ? 'Påkrevd' : null,
                           ),
-                        ),
-                      IconButton(
-                        icon: const Icon(Icons.my_location_outlined, size: 20),
-                        onPressed: _captureGps,
-                        tooltip: 'Oppdater posisjon',
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _descriptionController,
+                            scrollPadding: const EdgeInsets.only(bottom: 180),
+                            decoration: const InputDecoration(
+                              labelText: 'Beskriv situasjonen',
+                              hintText:
+                                  'Hva skjedde, hvor, og om noen ble skadet?',
+                              alignLabelWithHint: true,
+                              border: OutlineInputBorder(),
+                            ),
+                            maxLines: 4,
+                            minLines: 3,
+                            validator: (v) =>
+                                v == null || v.trim().isEmpty ? 'Påkrevd' : null,
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    children: HmsDomain.values.map((d) {
-                      final sel = _domain == d;
-                      return FilterChip(
-                        label: Text(d.label),
-                        selected: sel,
-                        onSelected: (_) => setState(() => _domain = d),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 16),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    value: _isAnonymous,
-                    onChanged: (v) => setState(() => _isAnonymous = v),
-                    title: const Text(AppStrings.anonymous),
-                    subtitle: const Text(
-                      'Navnet ditt skjules. Kun Tommy, Nico eller Hazher kan motta — '
-                      'ikke avdelingsledere.',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_loadingHandlers)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      child: DriftProLoadingCenter(),
-                    )
-                  else if (_isAnonymous)
-                    _buildAnonymousRecipientPicker()
-                  else
-                    _buildAssigneePicker(),
-                  const SizedBox(height: 18),
-                  Text('Kategori', style: DriftProTheme.labelLg),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _categories.map((c) {
-                      final sel = _category == c;
-                      return FilterChip(
-                        label: Text(c),
-                        selected: sel,
-                        onSelected: (_) =>
-                            setState(() => _category = sel ? null : c),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(AppStrings.severity, style: DriftProTheme.labelLg),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: TicketSeverity.values.map((s) {
-                      final selected = s == _severity;
-                      return ChoiceChip(
-                        label: Text(s.label),
-                        selected: selected,
-                        onSelected: (_) => setState(() => _severity = s),
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 14),
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    value: _hasPersonalInjury,
-                    onChanged: (v) => setState(() => _hasPersonalInjury = v),
-                    title: const Text('Personskade / sensitive opplysninger'),
-                    subtitle: const Text(
-                      'Navn på skadde lagres kryptert og kun synlig for leder/HR.',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text('Bilder', style: DriftProTheme.labelLg),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _pickGallery,
-                          icon: const Icon(Icons.photo_library_outlined),
-                          label: const Text('Galleri'),
-                        ),
+                      _sectionCard(
+                        isDark: isDark,
+                        step: _templates.isEmpty ? 2 : 3,
+                        title: 'Hvem skal behandle?',
+                        hint: 'Én person får SMS når du sender',
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isDark
+                                  ? Colors.white.withValues(alpha: 0.04)
+                                  : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: SwitchListTile.adaptive(
+                              contentPadding: EdgeInsets.zero,
+                              value: _isAnonymous,
+                              onChanged: (v) =>
+                                  setState(() => _isAnonymous = v),
+                              title: const Text(
+                                'Anonym melding',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                              subtitle: Text(
+                                _isAnonymous
+                                    ? 'Navnet ditt skjules. Kun Tommy, Nico eller Hazher.'
+                                    : 'Navnet ditt vises for saksbehandler.',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          if (_loadingHandlers)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: DriftProLoadingCenter(),
+                            )
+                          else if (_isAnonymous)
+                            _buildAnonymousRecipientPicker()
+                          else
+                            _buildAssigneePicker(),
+                        ],
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _pickCamera,
-                          icon: const Icon(Icons.camera_alt_outlined),
-                          label: const Text('Kamera'),
-                        ),
+                      _sectionCard(
+                        isDark: isDark,
+                        step: _templates.isEmpty ? 3 : 4,
+                        title: 'Klassifisering',
+                        hint: 'Hjelper leder å prioritere riktig',
+                        children: [
+                          Text('Område',
+                              style: DriftProTheme.caption
+                                  .copyWith(fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: HmsDomain.values.map((d) {
+                              final sel = _domain == d;
+                              return ChoiceChip(
+                                label: Text(d.label),
+                                selected: sel,
+                                onSelected: (_) =>
+                                    setState(() => _domain = d),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 14),
+                          Text('Kategori',
+                              style: DriftProTheme.caption
+                                  .copyWith(fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _categories.map((c) {
+                              final sel = _category == c;
+                              return FilterChip(
+                                label: Text(c),
+                                selected: sel,
+                                onSelected: (_) => setState(
+                                  () => _category = sel ? null : c,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(AppStrings.severity,
+                              style: DriftProTheme.caption
+                                  .copyWith(fontWeight: FontWeight.w800)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: TicketSeverity.values.map((s) {
+                              final selected = s == _severity;
+                              return ChoiceChip(
+                                label: Text(s.label),
+                                selected: selected,
+                                onSelected: (_) =>
+                                    setState(() => _severity = s),
+                              );
+                            }).toList(),
+                          ),
+                          const SizedBox(height: 8),
+                          SwitchListTile.adaptive(
+                            contentPadding: EdgeInsets.zero,
+                            value: _hasPersonalInjury,
+                            onChanged: (v) =>
+                                setState(() => _hasPersonalInjury = v),
+                            title: const Text(
+                              'Personskade / sensitive opplysninger',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                              ),
+                            ),
+                            subtitle: const Text(
+                              'Lagres kryptert — kun synlig for leder/HR.',
+                              style: TextStyle(fontSize: 12),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  if (_images.isNotEmpty) ...[
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 88,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _images.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
-                        itemBuilder: (_, i) {
-                          return Stack(
+                      _sectionCard(
+                        isDark: isDark,
+                        step: _templates.isEmpty ? 4 : 5,
+                        title: 'Bilder',
+                        hint: 'Valgfritt, men anbefalt',
+                        children: [
+                          Row(
                             children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.memory(
-                                  _images[i].bytes,
-                                  width: 88,
-                                  height: 88,
-                                  fit: BoxFit.cover,
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _pickGallery,
+                                  icon: const Icon(
+                                      Icons.photo_library_outlined),
+                                  label: const Text('Galleri'),
                                 ),
                               ),
-                              Positioned(
-                                top: 2,
-                                right: 2,
-                                child: IconButton(
-                                  style: IconButton.styleFrom(
-                                    backgroundColor: Colors.black54,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.all(4),
-                                  ),
-                                  iconSize: 18,
-                                  onPressed: () =>
-                                      setState(() => _images.removeAt(i)),
-                                  icon: const Icon(Icons.close),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: _pickCamera,
+                                  icon: const Icon(
+                                      Icons.camera_alt_outlined),
+                                  label: const Text('Kamera'),
                                 ),
                               ),
                             ],
-                          );
-                        },
+                          ),
+                          if (_images.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              height: 88,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _images.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(width: 8),
+                                itemBuilder: (_, i) {
+                                  return Stack(
+                                    children: [
+                                      ClipRRect(
+                                        borderRadius:
+                                            BorderRadius.circular(8),
+                                        child: Image.memory(
+                                          _images[i].bytes,
+                                          width: 88,
+                                          height: 88,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                      Positioned(
+                                        top: 2,
+                                        right: 2,
+                                        child: IconButton(
+                                          style: IconButton.styleFrom(
+                                            backgroundColor: Colors.black54,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.all(4),
+                                          ),
+                                          iconSize: 18,
+                                          onPressed: () => setState(
+                                              () => _images.removeAt(i)),
+                                          icon: const Icon(Icons.close),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
-                    ),
-                  ],
-                  if (_error != null) ...[
-                    const SizedBox(height: 16),
-                    Text(
-                      _error!,
-                      style: const TextStyle(
-                          color: DriftProTheme.error, fontSize: 13),
-                    ),
-                  ],
-                  // Luft slik at siste felt ikke skjules bak Send-knappen.
-                  SizedBox(height: keyboard > 0 ? 8 : 16),
-                ],
+                      if (_error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(
+                              color: DriftProTheme.error,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      SizedBox(height: keyboard > 0 ? 8 : 8),
+                    ],
+                  ),
+                ),
               ),
             ),
             ColoredBox(
               color: isDark ? DriftProTheme.cardDark : Colors.white,
               child: SafeArea(
                 top: false,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton(
-                      style: FilledButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 720),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: FilledButton(
+                          style: FilledButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          onPressed: canSend ? _submit : null,
+                          child: _isSubmitting
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: DriftProLoadingIndicator(size: 22),
+                                )
+                              : const Text(
+                                  'Send avvik',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
                         ),
                       ),
-                      onPressed: _isSubmitting ||
-                              _loadingHandlers ||
-                              (_isAnonymous
-                                  ? _resolveAnonymousProfileIds().isEmpty
-                                  : (_assignees.isEmpty ||
-                                      _selectedHandlerId == null))
-                          ? null
-                          : _submit,
-                      child: _isSubmitting
-                          ? SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: DriftProLoadingIndicator(size: 22),
-                            )
-                          : const Text(
-                              'Send avvik',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
                     ),
                   ),
                 ),

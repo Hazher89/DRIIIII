@@ -12,6 +12,8 @@ import '../../models/ticket.dart';
 import '../../models/absence.dart';
 import '../employees/widgets/employee_display.dart';
 import '../employees/widgets/employee_move_department_sheet.dart';
+import '../absence/widgets/leave_absence_rate_widgets.dart';
+import 'widgets/department_absence_charts.dart';
 import 'widgets/department_absence_panel.dart';
 import 'widgets/department_absence_stats.dart';
 import 'widgets/department_member_leave_card.dart';
@@ -198,13 +200,20 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
       allAbsences: _absences,
       company: _companySettings,
     );
-    final leaders = _allProfiles.where((p) => _selectedLeaderIds.contains(p.id)).toList();
+    final leaveSummary = TeamLeaveSummary.compute(
+      employees: _members,
+      allAbsences: _absences,
+      company: _companySettings,
+    );
+    final leaders =
+        _allProfiles.where((p) => _selectedLeaderIds.contains(p.id)).toList();
+    final border = isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
         Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
@@ -214,8 +223,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: DriftProTheme.cardShadow,
+            borderRadius: BorderRadius.circular(18),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,19 +231,19 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
               Row(
                 children: [
                   Container(
-                    width: 52,
-                    height: 52,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                     child: Icon(
                       DepartmentUiHelpers.iconForName(_currentDept.iconName),
                       color: Colors.white,
-                      size: 28,
+                      size: 26,
                     ),
                   ),
-                  const SizedBox(width: 14),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -247,8 +255,7 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
                             fontWeight: FontWeight.w800,
                           ),
                         ),
-                        if (_currentDept.description != null &&
-                            _currentDept.description!.trim().isNotEmpty)
+                        if ((_currentDept.description ?? '').trim().isNotEmpty)
                           Text(
                             _currentDept.description!.trim(),
                             style: DriftProTheme.bodySm.copyWith(
@@ -260,18 +267,30 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
                       ],
                     ),
                   ),
+                  if (leaveSummary.employeeCount > 0)
+                    AbsenceRateBadge(percent: leaveSummary.averageAbsencePercent),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: [
                   _heroChip(Icons.people_alt_rounded, '${_members.length} ansatte'),
-                  _heroChip(Icons.report_problem_outlined, '$openTickets åpne avvik'),
-                  _heroChip(Icons.event_busy_rounded, '${absenceStats.awayToday} fravær i dag'),
                   _heroChip(
-                    leaders.isEmpty ? Icons.warning_amber_rounded : Icons.verified_user_outlined,
+                    Icons.report_problem_outlined,
+                    '$openTickets åpne avvik',
+                  ),
+                  _heroChip(
+                    Icons.event_busy_rounded,
+                    absenceStats.awayToday == 0
+                        ? 'Ingen borte i dag'
+                        : '${absenceStats.awayToday} borte i dag',
+                  ),
+                  _heroChip(
+                    leaders.isEmpty
+                        ? Icons.warning_amber_rounded
+                        : Icons.verified_user_outlined,
                     leaders.isEmpty
                         ? 'Mangler leder'
                         : '${leaders.length} leder${leaders.length == 1 ? '' : 'e'}',
@@ -281,28 +300,51 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
             ],
           ),
         ),
-        const SizedBox(height: 16),
-        DepartmentAbsencePanel(stats: absenceStats, accent: color),
+        if (leaveSummary.employeeCount > 0) ...[
+          const SizedBox(height: 14),
+          LeaveAbsenceSummaryBar(
+            summary: leaveSummary,
+            title: 'Fravær snitt avdeling',
+            subtitle:
+                'Samme KPI som Fravær & Ferie · egen + sykt barn + sykmelding',
+          ),
+        ],
         const SizedBox(height: 12),
+        DepartmentAbsencePanel(stats: absenceStats, accent: color),
+        if (absenceStats.typeBreakdownYtd.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? DriftProTheme.cardDark : Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Fordeling ${absenceStats.ytdYear}',
+                  style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 10),
+                AbsenceTypeBreakdownBar(
+                  breakdown: absenceStats.typeBreakdownYtd,
+                  totalDays: absenceStats.totalDaysYtd,
+                ),
+                if (absenceStats.topByAbsence.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  AbsenceLeaderboard(entries: absenceStats.topByAbsence),
+                ],
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
-            OutlinedButton.icon(
-              onPressed: () => _tabController.animateTo(5),
-              icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('Rediger avdeling'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => _tabController.animateTo(1),
-              icon: const Icon(Icons.groups_outlined, size: 18),
-              label: const Text('Administrer ansatte'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => _tabController.animateTo(2),
-              icon: const Icon(Icons.verified_user_outlined, size: 18),
-              label: const Text('Ledere'),
-            ),
             FilledButton.icon(
               onPressed: () => _tabController.animateTo(3),
               icon: const Icon(Icons.event_available_outlined, size: 18),
@@ -311,51 +353,36 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
               ),
               label: const Text('Fravær per ansatt'),
             ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: _buildStatCard(
-                'Medlemmer',
-                _members.length.toString(),
-                Icons.people_outline,
-                Colors.blue,
-                isDark,
-              ),
+            OutlinedButton.icon(
+              onPressed: () => _tabController.animateTo(1),
+              icon: const Icon(Icons.groups_outlined, size: 18),
+              label: const Text('Ansatte'),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _buildStatCard(
-                'Åpne avvik',
-                openTickets.toString(),
-                AppIcons.error,
-                Colors.orange,
-                isDark,
-              ),
+            OutlinedButton.icon(
+              onPressed: () => _tabController.animateTo(2),
+              icon: const Icon(Icons.verified_user_outlined, size: 18),
+              label: const Text('Ledere'),
+            ),
+            OutlinedButton.icon(
+              onPressed: () => _tabController.animateTo(5),
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Innstillinger'),
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        _buildStatCard(
-          'Fravær i dag',
-          absenceStats.awayToday.toString(),
-          AppIcons.absence,
-          absenceStats.awayToday > 0 ? Colors.orange.shade700 : Colors.teal,
-          isDark,
-        ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 18),
         Row(
           children: [
-            Expanded(child: Text('Ansatte i avdelingen', style: DriftProTheme.headingMd)),
+            Expanded(
+              child: Text('Ansatte', style: DriftProTheme.headingSm),
+            ),
             TextButton(
               onPressed: () => _tabController.animateTo(1),
               child: const Text('Se alle'),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         if (_members.isEmpty)
           Container(
             padding: const EdgeInsets.all(16),
@@ -368,26 +395,28 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
             ),
           )
         else
-          ..._members.take(8).map((m) => _memberCard(m, isDark, compact: true)),
-        if (_members.length > 8)
+          ..._members.take(6).map((m) => _memberCard(m, isDark, compact: true)),
+        if (_members.length > 6)
           Padding(
-            padding: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsets.only(top: 4),
             child: Text(
-              '+ ${_members.length - 8} flere under Ansatte',
+              '+ ${_members.length - 6} flere under Ansatte',
               style: DriftProTheme.caption,
             ),
           ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 16),
         Row(
           children: [
-            Expanded(child: Text('Avdelingsledere', style: DriftProTheme.headingMd)),
+            Expanded(
+              child: Text('Avdelingsledere', style: DriftProTheme.headingSm),
+            ),
             TextButton(
               onPressed: () => _tabController.animateTo(2),
               child: const Text('Endre'),
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         _buildLeaderProfile(isDark),
       ],
     );
@@ -413,22 +442,6 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
               fontWeight: FontWeight.w600,
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatCard(String label, String value, IconData icon, Color color, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: isDark ? DriftProTheme.cardDark : Colors.white, borderRadius: BorderRadius.circular(DriftProTheme.radiusLg), boxShadow: DriftProTheme.cardShadow),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 12),
-          Text(value, style: DriftProTheme.headingLg),
-          Text(label, style: DriftProTheme.bodySm.copyWith(color: Colors.grey[500])),
         ],
       ),
     );
@@ -537,6 +550,28 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
   }
 
   Widget _buildMembersTab(bool isDark) {
+    final leaveSummary = _members.isEmpty
+        ? TeamLeaveSummary.empty
+        : TeamLeaveSummary.compute(
+            employees: _members,
+            allAbsences: _absences,
+            company: _companySettings,
+          );
+    final sorted = [..._members]
+      ..sort((a, b) {
+        final da = EmployeeLeaveSnapshot.compute(
+          employee: a,
+          employeeAbsences: _absencesFor(a.id),
+          company: _companySettings,
+        ).totalFravaerDager;
+        final db = EmployeeLeaveSnapshot.compute(
+          employee: b,
+          employeeAbsences: _absencesFor(b.id),
+          company: _companySettings,
+        ).totalFravaerDager;
+        return db.compareTo(da);
+      });
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -545,15 +580,27 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  '${_members.length} ansatte',
-                  style: DriftProTheme.headingSm,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${_members.length} ansatte',
+                      style: DriftProTheme.headingSm.copyWith(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Text(
+                      'Sortert etter fravær · ansattnr. brukes ved innlogging',
+                      style: DriftProTheme.caption,
+                    ),
+                  ],
                 ),
               ),
               FilledButton.icon(
-                onPressed: widget.isNew ? _promptSaveDepartmentFirst : _showAddMemberPicker,
+                onPressed:
+                    widget.isNew ? _promptSaveDepartmentFirst : _showAddMemberPicker,
                 icon: const Icon(Icons.person_add_alt_1, size: 18),
-                label: const Text('Legg til ansatt'),
+                label: const Text('Legg til'),
                 style: FilledButton.styleFrom(
                   backgroundColor: DriftProTheme.primaryGreen,
                 ),
@@ -561,27 +608,107 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Alle som tilhører ${_currentDept.name}. Ansattnummer brukes ved innlogging.',
-            style: DriftProTheme.caption,
+        if (leaveSummary.employeeCount > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: LeaveAbsenceSummaryBar(
+              summary: leaveSummary,
+              title: 'Avdelingsfravær',
+              subtitle: 'Samme KPI som Fravær & Ferie',
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
         Expanded(
-          child: _members.isEmpty
+          child: sorted.isEmpty
               ? Center(
                   child: Text(
-                    'Ingen ansatte her ennå.\nTrykk «Legg til ansatt».',
+                    'Ingen ansatte her ennå.\nTrykk «Legg til».',
                     textAlign: TextAlign.center,
                     style: DriftProTheme.bodyMd.copyWith(color: Colors.grey),
                   ),
                 )
               : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: _members.length,
-                  itemBuilder: (_, i) => _memberCard(_members[i], isDark),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  itemCount: sorted.length,
+                  itemBuilder: (_, i) {
+                    final m = sorted[i];
+                    final snap = EmployeeLeaveSnapshot.compute(
+                      employee: m,
+                      employeeAbsences: _absencesFor(m.id),
+                      quota: _memberQuotas[m.id],
+                      company: _companySettings,
+                    );
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      color: isDark ? DriftProTheme.cardDark : Colors.white,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              DriftProTheme.primaryGreen.withValues(alpha: 0.15),
+                          child: Text(
+                            m.initials,
+                            style: const TextStyle(
+                              color: DriftProTheme.primaryGreen,
+                            ),
+                          ),
+                        ),
+                        title: EmployeeDisplay.nameWithNumber(m),
+                        subtitle: Text(
+                          [
+                            m.displayTitle,
+                            if (snap.totalFravaerDager > 0)
+                              '${snap.totalFravaerDager} person-d YTD',
+                            if (m.phone != null && m.phone!.isNotEmpty) m.phone!,
+                          ].join(' · '),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (snap.absenceRatePercent() > 0)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 4),
+                                child: AbsenceRateBadge(
+                                  percent: snap.absenceRatePercent(),
+                                  compact: true,
+                                ),
+                              ),
+                            IconButton(
+                              tooltip: 'Flytt',
+                              icon: const Icon(
+                                Icons.swap_horiz,
+                                color: DriftProTheme.primaryGreen,
+                              ),
+                              onPressed: () async {
+                                final depts = await SupabaseService.fetchDepartments(
+                                  companyId: _currentDept.companyId,
+                                );
+                                if (!mounted) return;
+                                final ok = await showEmployeeMoveDepartmentSheet(
+                                  context,
+                                  employee: m,
+                                  departments: depts,
+                                );
+                                if (ok == true) _loadData();
+                              },
+                            ),
+                            IconButton(
+                              tooltip: 'Fjern',
+                              icon: const Icon(
+                                Icons.person_remove_outlined,
+                                color: Colors.red,
+                              ),
+                              onPressed: () => _removeMember(m.id),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 ),
         ),
       ],
@@ -688,6 +815,19 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
       );
     }
 
+    final leaveSummary = TeamLeaveSummary.compute(
+      employees: _members,
+      allAbsences: _absences,
+      company: _companySettings,
+    );
+    final absenceStats = DepartmentAbsenceStats.forDepartment(
+      departmentId: _currentDept.id,
+      members: _members,
+      allAbsences: _absences,
+      company: _companySettings,
+    );
+    final color = DepartmentUiHelpers.parseColor(_currentDept.colorCode);
+
     final sorted = [..._members]
       ..sort((a, b) {
         final sa = EmployeeLeaveSnapshot.compute(
@@ -708,20 +848,38 @@ class _DepartmentDetailsScreenState extends State<DepartmentDetailsScreen>
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: isDark ? DriftProTheme.surfaceDark : const Color(0xFFF4FAF5),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.2)),
-          ),
-          child: Text(
-            'Samme saldo som i Fravær → Team & kalender. '
-            'Oransje = nær max · rød = grense nådd.',
-            style: DriftProTheme.caption.copyWith(height: 1.35),
-          ),
+        LeaveAbsenceSummaryBar(
+          summary: leaveSummary,
+          title: 'Fravær snitt ${_currentDept.name}',
+          subtitle: 'Person-virkedager YTD · samme formel som Fravær & Ferie',
         ),
         const SizedBox(height: 12),
+        DepartmentAbsencePanel(stats: absenceStats, accent: color),
+        if (absenceStats.topByAbsence.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDark ? DriftProTheme.cardDark : Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: AbsenceLeaderboard(entries: absenceStats.topByAbsence),
+          ),
+        ],
+        const SizedBox(height: 14),
+        Text(
+          'Per ansatt',
+          style: DriftProTheme.headingSm.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Oransje = nær max · rød = grense nådd. Samme saldo som Fravær.',
+          style: DriftProTheme.caption.copyWith(height: 1.35),
+        ),
+        const SizedBox(height: 10),
         ...sorted.map((m) {
           final stats = EmployeeLeaveSnapshot.compute(
             employee: m,

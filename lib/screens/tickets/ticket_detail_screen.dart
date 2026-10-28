@@ -443,14 +443,15 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: isDark ? DriftProTheme.bgDark : DriftProTheme.bgLight,
+      backgroundColor:
+          isDark ? DriftProTheme.bgDark : const Color(0xFFF4F7F5),
       appBar: AppBar(
         title: Text(_ticket.displayTraceRef),
         actions: [
-          if (!_isClosed)
+          if (!_isClosed && _canProcess)
             IconButton(
               icon: const Icon(Icons.mail_outline),
-              tooltip: 'Send e-post / push',
+              tooltip: 'Send oppfølging',
               onPressed: _sendFollowUpNotify,
             ),
           HmsPdfExportButton(
@@ -477,81 +478,90 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
           : Column(
               children: [
                 Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _buildHero(isDark),
-                      if (_followUps.any((e) => e.isOpen)) ...[
-                        const SizedBox(height: 16),
-                        HmsFollowUpPanel(
-                          items: _followUps,
-                          canClose: _canProcess || _isReporter,
-                          onChanged: _loadFollowUps,
-                        ),
-                      ],
-                      if (_isClosed) ...[
-                        const SizedBox(height: 16),
-                        _buildOutcomeCard(isDark),
-                        if (_ticket.annotatedImageUrls.isNotEmpty) ...[
-                          const SizedBox(height: 20),
-                          _buildImageStrip(
-                            isDark,
-                            title: 'Lukkedokumentasjon',
-                            urls: _ticket.annotatedImageUrls,
-                          ),
-                        ],
-                      ],
-                      if (_canProcess && !_isClosed) ...[
-                        const SizedBox(height: 16),
-                        _buildStampBar(isDark),
-                        const SizedBox(height: 16),
-                        _buildProcessingCard(isDark),
-                      ],
-                      if (_canProcess && _isClosed) ...[
-                        const SizedBox(height: 16),
-                        _buildProcessingCard(isDark, readOnly: true),
-                      ],
-                      if (_me?.isAdmin == true && !_ticket.isDeleted) ...[
-                        const SizedBox(height: 16),
-                        OutlinedButton.icon(
-                          onPressed: _deleteTicket,
-                          icon: const Icon(Icons.archive_outlined),
-                          label: const Text('Slett til arkiv (beholder sporings-ID)'),
-                        ),
-                      ],
-                      const SizedBox(height: 20),
-                      _buildDescription(isDark),
-                      if (_ticket.imageUrls.isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        _buildImageStrip(
-                          isDark,
-                          title: 'Dokumentasjon fra innmelder',
-                          urls: _ticket.imageUrls,
-                        ),
-                      ],
-                      const Divider(height: 40),
-                      Row(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 820),
+                      child: ListView(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                         children: [
-                          Text('Historikk', style: DriftProTheme.headingMd),
-                          const Spacer(),
-                          Text(
-                            '${_comments.length} hendelse(r)',
-                            style: DriftProTheme.bodySm.copyWith(
-                              color: Colors.grey,
+                          _buildHero(isDark),
+                          const SizedBox(height: 12),
+                          _buildDescription(isDark),
+                          if (_ticket.imageUrls.isNotEmpty) ...[
+                            const SizedBox(height: 14),
+                            _buildImageStrip(
+                              isDark,
+                              title: 'Bilder fra innmelder',
+                              urls: _ticket.imageUrls,
                             ),
+                          ],
+                          if (_followUps.any((e) => e.isOpen)) ...[
+                            const SizedBox(height: 14),
+                            HmsFollowUpPanel(
+                              items: _followUps,
+                              canClose: _canProcess || _isReporter,
+                              onChanged: _loadFollowUps,
+                            ),
+                          ],
+                          if (_isClosed) ...[
+                            const SizedBox(height: 14),
+                            _buildOutcomeCard(isDark),
+                            if (_ticket.annotatedImageUrls.isNotEmpty) ...[
+                              const SizedBox(height: 14),
+                              _buildImageStrip(
+                                isDark,
+                                title: 'Lukkedokumentasjon',
+                                urls: _ticket.annotatedImageUrls,
+                              ),
+                            ],
+                          ],
+                          if (_canProcess && !_isClosed) ...[
+                            const SizedBox(height: 14),
+                            _buildStampBar(isDark),
+                            const SizedBox(height: 12),
+                            _buildProcessingCard(isDark),
+                          ],
+                          if (_canProcess && _isClosed) ...[
+                            const SizedBox(height: 14),
+                            _buildProcessingCard(isDark, readOnly: true),
+                          ],
+                          if (_me?.isAdmin == true && !_ticket.isDeleted) ...[
+                            const SizedBox(height: 14),
+                            OutlinedButton.icon(
+                              onPressed: _deleteTicket,
+                              icon: const Icon(Icons.archive_outlined),
+                              label: const Text(
+                                  'Slett til arkiv (beholder sporings-ID)'),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              Text(
+                                'Historikk',
+                                style: DriftProTheme.labelLg
+                                    .copyWith(fontWeight: FontWeight.w900),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${_comments.length}',
+                                style: DriftProTheme.caption.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
                           ),
+                          const SizedBox(height: 10),
+                          if (_comments.isEmpty)
+                            Text(
+                              'Ingen hendelser ennå.',
+                              style: DriftProTheme.caption,
+                            ),
+                          ..._comments.map((c) => _buildCommentTile(c, isDark)),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      if (_comments.isEmpty)
-                        Text(
-                          'Ingen hendelser ennå.',
-                          style: DriftProTheme.bodySm.copyWith(
-                            color: Colors.grey,
-                          ),
-                        ),
-                      ..._comments.map((c) => _buildCommentTile(c, isDark)),
-                    ],
+                    ),
                   ),
                 ),
                 _buildCommentBar(isDark),
@@ -565,12 +575,33 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: isDark ? DriftProTheme.cardDark : Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: DriftProTheme.cardShadow,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  _ticket.title,
+                  style: DriftProTheme.headingSm
+                      .copyWith(fontWeight: FontWeight.w900),
+                ),
+              ),
+              const SizedBox(width: 8),
+              CaseTraceChip(
+                traceRef: _ticket.displayTraceRef,
+                id: _ticket.id,
+                compact: true,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -579,72 +610,74 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               _miniBadge(_ticket.severity.label, _sevColor(_ticket.severity)),
               if (_ticket.departmentName != null)
                 _miniBadge(_ticket.departmentName!, Colors.indigo),
+              if (_ticket.category != null && _ticket.category!.isNotEmpty)
+                _miniBadge(_ticket.category!, const Color(0xFF64748B)),
             ],
           ),
-          const SizedBox(height: 12),
-          CaseTraceChip(traceRef: _ticket.displayTraceRef, id: _ticket.id),
           if (_ticket.isDeleted) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Text(
-              'Slettet — sporings-ID ${_ticket.displayTraceRef} beholdes for revisjon.',
+              'Slettet — sporings-ID beholdes for revisjon.',
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
                 color: Colors.red.shade700,
               ),
             ),
-            if (_ticket.deletionComment?.isNotEmpty == true)
-              Text(
-                '«${_ticket.deletionComment}»',
-                style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
-              ),
           ],
           const SizedBox(height: 12),
-          Text(_ticket.title, style: DriftProTheme.headingMd),
-          const SizedBox(height: 8),
-          Text(
+          _metaLine(
+            Icons.person_outline,
             _ticket.isAnonymous
-                ? 'Innrapportert anonymt'
-                : 'Rapportert av: ${_ticket.reporterName ?? "Ukjent"}',
-            style: DriftProTheme.bodySm.copyWith(color: Colors.grey),
+                ? 'Anonym innmelder'
+                : (_ticket.reporterName ?? 'Ukjent innmelder'),
           ),
-          if (_ticket.createdAt != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Mottatt: ${_stampFmt.format(_ticket.createdAt!.toLocal())}',
-              style: DriftProTheme.bodySm.copyWith(color: Colors.grey),
+          if (_ticket.assigneeName != null)
+            _metaLine(
+              Icons.badge_outlined,
+              'Saksbehandler: ${_ticket.assigneeName}',
+              color: DriftProTheme.primaryGreen,
+            ),
+          if (_ticket.createdAt != null)
+            _metaLine(
+              Icons.schedule,
+              'Mottatt ${_stampFmt.format(_ticket.createdAt!.toLocal())}',
+            ),
+          if (_isReporter && !_isClosed) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: DriftProTheme.info.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'Du får SMS når saken settes under arbeid og når den er ferdig.',
+                style: TextStyle(fontSize: 12, height: 1.35),
+              ),
             ),
           ],
-          if (_ticket.assigneeName != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Saksbehandler: ${_ticket.assigneeName}',
-              style: DriftProTheme.bodySm.copyWith(
-                color: DriftProTheme.primaryGreen,
+        ],
+      ),
+    );
+  }
+
+  Widget _metaLine(IconData icon, String text, {Color? color}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 15, color: color ?? const Color(0xFF64748B)),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: DriftProTheme.caption.copyWith(
+                color: color ?? const Color(0xFF64748B),
                 fontWeight: FontWeight.w600,
               ),
             ),
-          ],
-          if (_isReporter && !_isClosed)
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Row(
-                children: [
-                  Icon(Icons.sms_outlined,
-                      size: 16, color: Colors.grey.shade600),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Du får SMS når saken settes under arbeid og når den er ferdig behandlet.',
-                      style: DriftProTheme.bodySm.copyWith(
-                        color: Colors.grey.shade600,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+          ),
         ],
       ),
     );
@@ -713,28 +746,121 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 
   Widget _buildStampBar(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Stempler (navn + dato/tid)', style: DriftProTheme.labelLg),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: TicketStatus.values.map((s) {
-            final active = _ticket.status == s;
-            return FilledButton.tonal(
-              onPressed: _savingComment || active ? null : () => _stamp(s),
-              style: FilledButton.styleFrom(
-                backgroundColor: active
-                    ? DriftProTheme.primaryGreen.withValues(alpha: 0.2)
-                    : null,
-              ),
-              child: Text(s.label, style: const TextStyle(fontSize: 12)),
-            );
-          }).toList(),
+    final steps = TicketStatus.values;
+    final currentIdx = steps.indexOf(_ticket.status);
+    TicketStatus? nextStep;
+    for (final s in steps) {
+      if (steps.indexOf(s) > currentIdx) {
+        nextStep = s;
+        break;
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0),
         ),
-      ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Status & neste steg',
+            style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Trykk et steg for å flytte saken. Navn og tid lagres automatisk.',
+            style: DriftProTheme.caption.copyWith(color: const Color(0xFF64748B)),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              for (var i = 0; i < steps.length; i++) ...[
+                Expanded(
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 28,
+                        height: 28,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: i <= currentIdx
+                              ? DriftProTheme.primaryGreen
+                              : const Color(0xFFE2E8F0),
+                          shape: BoxShape.circle,
+                        ),
+                        child: i < currentIdx
+                            ? const Icon(Icons.check, size: 16, color: Colors.white)
+                            : Text(
+                                '${i + 1}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 12,
+                                  color: i == currentIdx
+                                      ? Colors.white
+                                      : const Color(0xFF64748B),
+                                ),
+                              ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        steps[i].label,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: i == currentIdx
+                              ? FontWeight.w900
+                              : FontWeight.w600,
+                          color: i <= currentIdx
+                              ? DriftProTheme.primaryGreen
+                              : const Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (i < steps.length - 1)
+                  Expanded(
+                    child: Container(
+                      height: 2,
+                      margin: const EdgeInsets.only(bottom: 22),
+                      color: i < currentIdx
+                          ? DriftProTheme.primaryGreen
+                          : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (nextStep != null)
+            FilledButton.icon(
+              onPressed: _savingComment ? null : () => _stamp(nextStep!),
+              icon: const Icon(Icons.arrow_forward_rounded),
+              label: Text('Flytt til «${nextStep.label}»'),
+            ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final s in steps)
+                if (s != _ticket.status)
+                  OutlinedButton(
+                    onPressed: _savingComment ? null : () => _stamp(s),
+                    child: Text(s.label, style: const TextStyle(fontSize: 12)),
+                  ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -742,26 +868,34 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isDark ? DriftProTheme.surfaceDark : Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(14),
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isDark ? DriftProTheme.dividerDark : Colors.grey.shade200,
+          color: isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            readOnly ? 'Behandlingsdokumentasjon' : 'Behandle avvik',
-            style: DriftProTheme.headingSm,
+            readOnly ? 'Dokumentasjon' : 'Skriv vurdering',
+            style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w900),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
+          Text(
+            readOnly
+                ? 'Lagret analyse og svar til innmelder'
+                : 'Fyll inn før du lukker — innmelder får SMS med vurderingen',
+            style: DriftProTheme.caption.copyWith(color: const Color(0xFF64748B)),
+          ),
+          const SizedBox(height: 14),
           TextField(
             controller: _rootCauseController,
             readOnly: readOnly,
             maxLines: 3,
             decoration: const InputDecoration(
               labelText: 'Årsak / analyse',
+              hintText: 'Hva forårsaket hendelsen?',
               border: OutlineInputBorder(),
             ),
           ),
@@ -771,8 +905,9 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             readOnly: readOnly,
             maxLines: 4,
             decoration: const InputDecoration(
-              labelText: 'Vurdering til avsender *',
-              helperText: 'Vises for den som meldte inn + sendes i SMS ved lukking',
+              labelText: 'Svar til innmelder *',
+              hintText: 'Hva er gjort / konklusjon',
+              helperText: 'Sendes i SMS når saken lukkes',
               border: OutlineInputBorder(),
             ),
           ),
@@ -783,7 +918,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
               readOnly: readOnly,
               maxLines: 2,
               decoration: const InputDecoration(
-                labelText: 'Internt notat (kun koordinatorer)',
+                labelText: 'Internt notat (kun ledere)',
                 border: OutlineInputBorder(),
               ),
             ),
@@ -794,7 +929,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
-              child: FilledButton(
+              child: FilledButton.tonal(
                 onPressed: _savingMeta ? null : _saveCoordinatorFields,
                 child: _savingMeta
                     ? const SizedBox(
@@ -802,7 +937,7 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
                         width: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Lagre med tidsstempel'),
+                    : const Text('Lagre notater'),
               ),
             ),
           ],
@@ -812,13 +947,30 @@ class _TicketDetailScreenState extends State<TicketDetailScreen> {
   }
 
   Widget _buildDescription(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Beskrivelse', style: DriftProTheme.labelLg),
-        const SizedBox(height: 8),
-        Text(_ticket.description, style: DriftProTheme.bodyMd),
-      ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDark ? DriftProTheme.cardDark : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark ? DriftProTheme.dividerDark : const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Beskrivelse',
+            style: DriftProTheme.labelMd.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _ticket.description,
+            style: DriftProTheme.bodyMd.copyWith(height: 1.45),
+          ),
+        ],
+      ),
     );
   }
 

@@ -45,6 +45,7 @@ class DepartmentAbsenceOverview {
   final int totalDaysYtd;
   final int registeredEgenDays;
   final int registeredSyktDays;
+  final int registeredSykmeldingDays;
   final int registeredFerieDays;
   final Map<AbsenceType, int> typeBreakdownYtd;
   final List<DepartmentMemberAbsenceRank> topByAbsence;
@@ -63,6 +64,7 @@ class DepartmentAbsenceOverview {
     this.totalDaysYtd = 0,
     this.registeredEgenDays = 0,
     this.registeredSyktDays = 0,
+    this.registeredSykmeldingDays = 0,
     this.registeredFerieDays = 0,
     this.typeBreakdownYtd = const {},
     this.topByAbsence = const [],
@@ -139,6 +141,7 @@ class DepartmentAbsenceStats {
     required List<UserProfile> members,
     required List<Absence> pool,
     CompanyLeaveSettings company = const CompanyLeaveSettings(),
+    DateTime? referenceDate,
   }) {
     return {
       for (final m in members)
@@ -146,56 +149,47 @@ class DepartmentAbsenceStats {
           employee: m,
           employeeAbsences: _absencesForUser(pool, m.id),
           company: company,
+          referenceDate: referenceDate,
         ),
     };
   }
 
-  static Map<AbsenceType, int> _fravaerBreakdownFromSnapshots(
-    Iterable<EmployeeLeaveSnapshot> snapshots,
-  ) {
+  /// KPI-fordeling = samme person-virkedager som Fravær & Ferie (kalenderår YTD).
+  static Map<AbsenceType, int> _kpiBreakdownForRange({
+    required List<UserProfile> members,
+    required List<Absence> pool,
+    required DateTime from,
+    required DateTime to,
+  }) {
     var egen = 0;
     var sykt = 0;
-    for (final s in snapshots) {
-      egen += s.egenDaysTotal;
-      sykt += s.syktDays;
+    var syk = 0;
+    for (final m in members) {
+      final userAbs = _absencesForUser(pool, m.id);
+      egen += EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: userAbs,
+        rangeStart: from,
+        rangeEnd: to,
+        types: {AbsenceType.egenmelding},
+      );
+      sykt += EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: userAbs,
+        rangeStart: from,
+        rangeEnd: to,
+        types: {AbsenceType.syktBarn},
+      );
+      syk += EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: userAbs,
+        rangeStart: from,
+        rangeEnd: to,
+        types: {AbsenceType.sykmelding},
+      );
     }
     final map = <AbsenceType, int>{};
     if (egen > 0) map[AbsenceType.egenmelding] = egen;
     if (sykt > 0) map[AbsenceType.syktBarn] = sykt;
+    if (syk > 0) map[AbsenceType.sykmelding] = syk;
     return map;
-  }
-
-  static List<DepartmentMemberAbsenceRank> _topMembersFromSnapshots({
-    required List<UserProfile> members,
-    required Map<String, EmployeeLeaveSnapshot> snapshots,
-    int limit = 3,
-  }) {
-    final ranks = <DepartmentMemberAbsenceRank>[];
-    for (final m in members) {
-      final snap = snapshots[m.id];
-      if (snap == null || snap.totalFravaerDager <= 0) continue;
-      final byType = <AbsenceType, int>{};
-      if (snap.egenDaysTotal > 0) {
-        byType[AbsenceType.egenmelding] = snap.egenDaysTotal;
-      }
-      if (snap.syktDays > 0) {
-        byType[AbsenceType.syktBarn] = snap.syktDays;
-      }
-      ranks.add(
-        DepartmentMemberAbsenceRank(
-          userId: m.id,
-          fullName: m.fullName,
-          initials: m.initials,
-          totalDaysYtd: snap.totalFravaerDager,
-          egenDays: snap.egenDaysTotal,
-          syktDays: snap.syktDays,
-          egenTilfeller: snap.egenTilfeller,
-          daysByType: Map.unmodifiable(byType),
-        ),
-      );
-    }
-    ranks.sort((a, b) => b.totalDaysYtd.compareTo(a.totalDaysYtd));
-    return ranks.take(limit).toList();
   }
 
   static int _registeredFerieDays({
@@ -237,26 +231,29 @@ class DepartmentAbsenceStats {
       members: members,
       pool: pool,
       company: company,
+      referenceDate: day,
     );
-    final typeBreakdown = _fravaerBreakdownFromSnapshots(snapshots.values);
-    final registeredEgen = typeBreakdown[AbsenceType.egenmelding] ?? 0;
-    final registeredSykt = typeBreakdown[AbsenceType.syktBarn] ?? 0;
-    final registeredFerie = _registeredFerieDays(pool: approved, year: day.year);
-    final totalFravaer = snapshots.values.fold<int>(
-      0,
-      (sum, s) => sum + s.totalFravaerDager,
-    );
+    // Samme formel som Fravær & Ferie: person-virkedager YTD / (ansatte × virkedager).
     final leaveSummary = TeamLeaveSummary.compute(
       employees: members,
       allAbsences: pool,
       company: company,
       referenceDate: day,
     );
-    final avgPercent = leaveSummary.averageAbsencePercent;
-    final totalTilfeller = snapshots.values.fold<int>(
-      0,
-      (sum, s) => sum + s.egenTilfeller,
+    final yearStart = DateTime(day.year, 1, 1);
+    final typeBreakdown = _kpiBreakdownForRange(
+      members: members,
+      pool: pool,
+      from: yearStart,
+      to: day,
     );
+    final registeredEgen = typeBreakdown[AbsenceType.egenmelding] ?? 0;
+    final registeredSykt = typeBreakdown[AbsenceType.syktBarn] ?? 0;
+    final registeredSyk = typeBreakdown[AbsenceType.sykmelding] ?? 0;
+    final registeredFerie = _registeredFerieDays(pool: approved, year: day.year);
+    final totalFravaer = leaveSummary.totalFravaerDays;
+    final avgPercent = leaveSummary.averageAbsencePercent;
+    final totalTilfeller = leaveSummary.totalEgenTilfeller;
 
     final awayTodayIds = <String>{};
     final vacationIds = <String>{};
@@ -296,15 +293,77 @@ class DepartmentAbsenceStats {
       totalDaysYtd: totalFravaer,
       registeredEgenDays: registeredEgen,
       registeredSyktDays: registeredSykt,
+      registeredSykmeldingDays: registeredSyk,
       registeredFerieDays: registeredFerie,
       typeBreakdownYtd: typeBreakdown,
-      topByAbsence: _topMembersFromSnapshots(
+      topByAbsence: _topMembersForYtd(
         members: members,
+        pool: pool,
+        from: yearStart,
+        to: day,
         snapshots: snapshots,
       ),
       averageAbsencePercent: avgPercent,
       totalEgenTilfeller: totalTilfeller,
     );
+  }
+
+  /// Topp-bidragsytere på samme YTD person-virkedager som bedrifts-% .
+  static List<DepartmentMemberAbsenceRank> _topMembersForYtd({
+    required List<UserProfile> members,
+    required List<Absence> pool,
+    required DateTime from,
+    required DateTime to,
+    required Map<String, EmployeeLeaveSnapshot> snapshots,
+    int limit = 5,
+  }) {
+    final ranks = <DepartmentMemberAbsenceRank>[];
+    for (final m in members) {
+      final userAbs = _absencesForUser(pool, m.id);
+      final egen = EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: userAbs,
+        rangeStart: from,
+        rangeEnd: to,
+        types: {AbsenceType.egenmelding},
+      );
+      final sykt = EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: userAbs,
+        rangeStart: from,
+        rangeEnd: to,
+        types: {AbsenceType.syktBarn},
+      );
+      final syk = EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: userAbs,
+        rangeStart: from,
+        rangeEnd: to,
+        types: {AbsenceType.sykmelding},
+      );
+      final total = EmployeeLeaveSnapshot.uniqueBusinessDaysInWindow(
+        absences: userAbs,
+        rangeStart: from,
+        rangeEnd: to,
+        types: EmployeeLeaveSnapshot.kpiAbsenceTypes,
+      );
+      if (total <= 0) continue;
+      final byType = <AbsenceType, int>{};
+      if (egen > 0) byType[AbsenceType.egenmelding] = egen;
+      if (sykt > 0) byType[AbsenceType.syktBarn] = sykt;
+      if (syk > 0) byType[AbsenceType.sykmelding] = syk;
+      ranks.add(
+        DepartmentMemberAbsenceRank(
+          userId: m.id,
+          fullName: m.fullName,
+          initials: m.initials,
+          totalDaysYtd: total,
+          egenDays: egen,
+          syktDays: sykt,
+          egenTilfeller: snapshots[m.id]?.egenTilfeller ?? 0,
+          daysByType: Map.unmodifiable(byType),
+        ),
+      );
+    }
+    ranks.sort((a, b) => b.totalDaysYtd.compareTo(a.totalDaysYtd));
+    return ranks.take(limit).toList();
   }
 
   static Map<String, DepartmentAbsenceOverview> forAllDepartments({
