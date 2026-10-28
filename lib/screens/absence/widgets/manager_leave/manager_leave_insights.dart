@@ -294,6 +294,14 @@ class ManagerLeaveInsights extends StatelessWidget {
                   );
                 },
               ),
+              const SizedBox(height: 12),
+              _UpcomingFeriePanel(
+                items: upcomingFerie.take(8).toList(),
+                onOpen: onOpenAbsence,
+                onOpenEmployee: onOpenEmployee,
+                employees: employees,
+                isDark: isDark,
+              ),
               const SizedBox(height: 14),
               Wrap(
                 spacing: 8,
@@ -405,19 +413,6 @@ class ManagerLeaveInsights extends StatelessWidget {
             );
           },
         ),
-        if (upcomingFerie.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          _card(
-            isDark: isDark,
-            child: _UpcomingFeriePanel(
-              items: upcomingFerie.take(6).toList(),
-              onOpen: onOpenAbsence,
-              onOpenEmployee: onOpenEmployee,
-              employees: employees,
-              isDark: isDark,
-            ),
-          ),
-        ],
         const SizedBox(height: 8),
         Text(
           'Tallene er person-virkedager (ikke antall sykmeldinger). '
@@ -1827,87 +1822,242 @@ class _UpcomingFeriePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final df = DateFormat('d. MMM', 'nb_NO');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          'Snart ferie',
-          style: DriftProTheme.labelLg.copyWith(fontWeight: FontWeight.w900),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          'Godkjent eller ventende ferie de neste 45 dagene',
-          style: DriftProTheme.caption.copyWith(color: const Color(0xFF64748B)),
-        ),
-        const SizedBox(height: 12),
-        ...items.map((a) {
-          final days = a.vacationDayCount ??
-              AbsenceService.vacationDayCount(a.startDate, a.endDate);
-          final pending = a.status == AbsenceStatus.ventende;
-          UserProfile? emp;
-          for (final e in employees) {
-            if (e.id == a.userId) {
-              emp = e;
-              break;
-            }
-          }
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(12),
-              onTap: () {
-                if (onOpen != null) {
-                  onOpen!(a);
-                } else if (emp != null && onOpenEmployee != null) {
-                  onOpenEmployee!(emp);
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.all(12),
+    final accent = DriftProTheme.absenceVacation;
+    final peopleCount = items.map((a) => a.userId).toSet().length;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.03)
+            : accent.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  color: DriftProTheme.absenceVacation.withValues(alpha: 0.08),
+                  color: accent.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: DriftProTheme.absenceVacation.withValues(alpha: 0.25),
-                  ),
                 ),
-                child: Row(
+                child: Icon(Icons.beach_access_rounded, color: accent, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(
-                      Icons.beach_access_rounded,
-                      color: DriftProTheme.absenceVacation,
-                      size: 20,
+                    Text(
+                      'Kommende ferie',
+                      style: DriftProTheme.labelMd
+                          .copyWith(fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            a.userName ?? emp?.fullName ?? 'Ansatt',
-                            style: DriftProTheme.bodySm
-                                .copyWith(fontWeight: FontWeight.w800),
-                          ),
-                          Text(
-                            '${df.format(a.startDate)} – ${df.format(a.endDate)} · $days d'
-                            '${pending ? ' · venter' : ''}',
-                            style: DriftProTheme.caption,
-                          ),
-                        ],
+                    const SizedBox(height: 2),
+                    Text(
+                      items.isEmpty
+                          ? 'Ingen planlagt ferie de neste 45 dagene'
+                          : '$peopleCount ${peopleCount == 1 ? 'ansatt' : 'ansatte'} · ${items.length} perioder neste 45 dager',
+                      style: DriftProTheme.caption.copyWith(
+                        color: accent.withValues(alpha: 0.9),
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
-                    if (pending)
-                      const _StatusChip(
-                        label: 'Venter',
-                        color: DriftProTheme.warning,
-                      ),
                   ],
                 ),
               ),
+              if (items.isNotEmpty)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${items.length}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: accent,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(0, 14, 0, 4),
+              child: Text(
+                'Når noen søker eller får godkjent ferie, vises de her.',
+                style: DriftProTheme.caption.copyWith(
+                  color: const Color(0xFF94A3B8),
+                ),
+              ),
+            )
+          else ...[
+            const SizedBox(height: 12),
+            LayoutBuilder(
+              builder: (context, c) {
+                final wide = c.maxWidth >= 640;
+                final tiles = [
+                  for (final a in items)
+                    _upcomingTile(
+                      a: a,
+                      df: df,
+                      accent: accent,
+                    ),
+                ];
+                if (!wide) {
+                  return Column(
+                    children: [
+                      for (var i = 0; i < tiles.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 8),
+                        tiles[i],
+                      ],
+                    ],
+                  );
+                }
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final t in tiles)
+                      SizedBox(
+                        width: (c.maxWidth - 8) / 2,
+                        child: t,
+                      ),
+                  ],
+                );
+              },
             ),
-          );
-        }),
-      ],
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _upcomingTile({
+    required Absence a,
+    required DateFormat df,
+    required Color accent,
+  }) {
+    final days = a.vacationDayCount ??
+        AbsenceService.vacationDayCount(a.startDate, a.endDate);
+    final pending = a.status == AbsenceStatus.ventende;
+    final today = BusinessDays.dayOnly(DateTime.now());
+    final start = BusinessDays.dayOnly(a.startDate);
+    final end = BusinessDays.dayOnly(a.endDate);
+    final ongoing = !today.isBefore(start) && !today.isAfter(end);
+    UserProfile? emp;
+    for (final e in employees) {
+      if (e.id == a.userId) {
+        emp = e;
+        break;
+      }
+    }
+    final daysUntil = start.difference(today).inDays;
+    final whenLabel = ongoing
+        ? 'Pågår nå'
+        : daysUntil == 0
+            ? 'Starter i dag'
+            : daysUntil == 1
+                ? 'I morgen'
+                : 'Om $daysUntil dager';
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          if (onOpen != null) {
+            onOpen!(a);
+          } else if (emp != null && onOpenEmployee != null) {
+            onOpenEmployee!(emp);
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.04)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: accent.withValues(alpha: 0.2)),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: accent.withValues(alpha: 0.14),
+                child: Text(
+                  (a.userName ?? emp?.fullName ?? '?')
+                      .trim()
+                      .split(RegExp(r'\s+'))
+                      .take(2)
+                      .map((p) => p.isEmpty ? '' : p[0].toUpperCase())
+                      .join(),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    color: accent,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      a.userName ?? emp?.fullName ?? 'Ansatt',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: DriftProTheme.bodySm
+                          .copyWith(fontWeight: FontWeight.w800),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${df.format(a.startDate)} – ${df.format(a.endDate)} · $days d',
+                      style: DriftProTheme.caption.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    whenLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: ongoing ? DriftProTheme.warning : accent,
+                    ),
+                  ),
+                  if (pending) ...[
+                    const SizedBox(height: 4),
+                    const _StatusChip(
+                      label: 'Venter',
+                      color: DriftProTheme.warning,
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

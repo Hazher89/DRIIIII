@@ -5,14 +5,18 @@ import '../../../../core/constants/leave_rules.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../models/absence.dart';
 import '../../../../models/user_profile.dart';
+import '../../../../widgets/common/team_equal_controls.dart';
 import '../absence_excel_export_sheet.dart';
+import '../leave_dual_calendar_tab.dart';
 import '../leave_period_scope.dart';
 import 'manager_leave_approvals_panel.dart';
 import 'manager_leave_helpers.dart';
 import 'manager_leave_insights.dart';
 import 'manager_leave_roster_table.dart';
 
-/// Moderne lederoversikt for Fravær & Ferie — uten faner og uten årskalender.
+enum _ManagerLeaveTab { oversikt, oversiktFerie }
+
+/// Lederoversikt for Fravær & Ferie — innsikt + gammel feriekalender som egen fane.
 class ManagerLeaveOverview extends StatefulWidget {
   const ManagerLeaveOverview({
     super.key,
@@ -29,6 +33,8 @@ class ManagerLeaveOverview extends StatefulWidget {
     required this.onReject,
     required this.onOpenAbsence,
     required this.onOpenEmployee,
+    required this.colorForType,
+    this.iconForType,
     this.onYearChanged,
     this.onOpenMine,
     this.onOpenVacationAdmin,
@@ -52,6 +58,8 @@ class ManagerLeaveOverview extends StatefulWidget {
       onReject;
   final void Function(Absence absence) onOpenAbsence;
   final void Function(UserProfile employee) onOpenEmployee;
+  final Color Function(AbsenceType) colorForType;
+  final IconData Function(AbsenceType)? iconForType;
   final ValueChanged<int>? onYearChanged;
   final VoidCallback? onOpenMine;
   final VoidCallback? onOpenVacationAdmin;
@@ -70,20 +78,37 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
   String? _departmentId;
   String? _employeeId;
   late LeavePeriodScope _scope;
+  late DateTime _calendarMonth;
+  _ManagerLeaveTab _tab = _ManagerLeaveTab.oversikt;
 
   @override
   void initState() {
     super.initState();
     _scope = LeavePeriodScope.year(widget.selectedYear);
+    final now = DateTime.now();
+    _calendarMonth = DateTime(
+      widget.selectedYear,
+      widget.selectedYear == now.year ? now.month : 1,
+      1,
+    );
   }
 
   @override
   void didUpdateWidget(covariant ManagerLeaveOverview oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.selectedYear != widget.selectedYear &&
-        _scope.mode == LeavePeriodMode.year &&
-        _scope.year != widget.selectedYear) {
-      _scope = LeavePeriodScope.year(widget.selectedYear);
+    if (oldWidget.selectedYear != widget.selectedYear) {
+      if (_scope.mode == LeavePeriodMode.year &&
+          _scope.year != widget.selectedYear) {
+        _scope = LeavePeriodScope.year(widget.selectedYear);
+      }
+      if (_calendarMonth.year != widget.selectedYear) {
+        final now = DateTime.now();
+        _calendarMonth = DateTime(
+          widget.selectedYear,
+          widget.selectedYear == now.year ? now.month : 1,
+          1,
+        );
+      }
     }
   }
 
@@ -96,6 +121,13 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
   void _onScopeChanged(LeavePeriodScope scope) {
     setState(() => _scope = scope);
     widget.onYearChanged?.call(scope.year);
+  }
+
+  void _onCalendarMonthChanged(DateTime month) {
+    setState(() => _calendarMonth = DateTime(month.year, month.month, 1));
+    if (month.year != widget.selectedYear) {
+      widget.onYearChanged?.call(month.year);
+    }
   }
 
   Future<void> _scrollToApprovals() async {
@@ -212,146 +244,189 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
 
     return ColoredBox(
       color: bg,
-      child: RefreshIndicator(
-        onRefresh: widget.onRefresh,
-        child: CustomScrollView(
-          controller: _scrollCtrl,
-          physics: const AlwaysScrollableScrollPhysics(
-            parent: BouncingScrollPhysics(),
-          ),
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  DriftProClient.isMobile ? 8 : 16,
-                  16,
-                  8,
-                ),
-                child: _PageHeader(
-                  onRegister: widget.onRegister,
-                  onOpenMine: widget.onOpenMine,
-                  onOpenVacationAdmin: widget.onOpenVacationAdmin,
-                  onRefresh: widget.onRefresh,
-                  onExportExcel: () => showAbsenceExcelExportSheet(
-                    context,
-                    employees: widget.teamProfiles,
-                    absences: widget.scopedAbsences,
-                    quotas: widget.teamQuotas,
-                    departmentNames: widget.departmentNames,
-                    approverNames: widget.approverNames,
-                    initialScope: LeavePeriodScope.year(widget.selectedYear),
-                    company: widget.companySettings,
-                    companyName: widget.companyName,
-                  ),
-                ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              DriftProClient.isMobile ? 8 : 16,
+              16,
+              8,
+            ),
+            child: _PageHeader(
+              onRegister: widget.onRegister,
+              onOpenMine: widget.onOpenMine,
+              onOpenVacationAdmin: widget.onOpenVacationAdmin,
+              onRefresh: widget.onRefresh,
+              onExportExcel: () => showAbsenceExcelExportSheet(
+                context,
+                employees: widget.teamProfiles,
+                absences: widget.scopedAbsences,
+                quotas: widget.teamQuotas,
+                departmentNames: widget.departmentNames,
+                approverNames: widget.approverNames,
+                initialScope: LeavePeriodScope.year(widget.selectedYear),
+                company: widget.companySettings,
+                companyName: widget.companyName,
               ),
             ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Periode for all statistikk',
-                            style: DriftProTheme.caption.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF64748B),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TeamEqualSegmentBar<_ManagerLeaveTab>(
+              value: _tab,
+              onChanged: (v) => setState(() => _tab = v),
+              items: const [
+                TeamEqualSegmentItem(
+                  value: _ManagerLeaveTab.oversikt,
+                  label: 'Oversikt',
+                  icon: Icons.insights_outlined,
+                ),
+                TeamEqualSegmentItem(
+                  value: _ManagerLeaveTab.oversiktFerie,
+                  label: 'Oversikt ferie',
+                  icon: Icons.calendar_month_outlined,
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _tab == _ManagerLeaveTab.oversiktFerie
+                ? LeaveDualCalendarTab(
+                    isManager: true,
+                    month: _calendarMonth,
+                    scopedAbsences: widget.scopedAbsences,
+                    teamProfiles: allEmployees,
+                    teamQuotas: widget.teamQuotas,
+                    companySettings: widget.companySettings,
+                    selectedYear: widget.selectedYear,
+                    departmentNames: widget.departmentNames,
+                    profile: widget.leaderProfile,
+                    colorForType: widget.colorForType,
+                    iconForType: widget.iconForType,
+                    onMonthChanged: _onCalendarMonthChanged,
+                    onRefresh: widget.onRefresh,
+                    onAbsenceTap: widget.onOpenAbsence,
+                  )
+                : RefreshIndicator(
+                    onRefresh: widget.onRefresh,
+                    child: CustomScrollView(
+                      controller: _scrollCtrl,
+                      physics: const AlwaysScrollableScrollPhysics(
+                        parent: BouncingScrollPhysics(),
+                      ),
+                      slivers: [
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        'Periode for all statistikk',
+                                        style: DriftProTheme.caption.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          color: const Color(0xFF64748B),
+                                        ),
+                                      ),
+                                    ),
+                                    LeavePeriodScopeButton(
+                                      scope: _scope,
+                                      onChanged: _onScopeChanged,
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                ManagerLeaveScopeFilters(
+                                  employees: allEmployees,
+                                  departmentNames: widget.departmentNames,
+                                  departmentId: _departmentId,
+                                  employeeId: _employeeId,
+                                  onDepartmentChanged: (id) => setState(() {
+                                    _departmentId = id;
+                                    if (_employeeId != null &&
+                                        !allEmployees.any((e) =>
+                                            e.id == _employeeId &&
+                                            (id == null ||
+                                                e.departmentId == id))) {
+                                      _employeeId = null;
+                                    }
+                                  }),
+                                  onEmployeeChanged: (id) =>
+                                      setState(() => _employeeId = id),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                        LeavePeriodScopeButton(
-                          scope: _scope,
-                          onChanged: _onScopeChanged,
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                            child: ManagerLeaveInsights(
+                              employees: scopedEmployees,
+                              absences: periodAbsences,
+                              allAbsencesForLive: scopedAbsences,
+                              quotas: widget.teamQuotas,
+                              scope: _scope,
+                              pending: pending,
+                              awayToday: awayToday,
+                              nextWeekAwayCount: nextWeekUsers,
+                              onScrollToApprovals: _scrollToApprovals,
+                              onOpenEmployee: widget.onOpenEmployee,
+                              onOpenAbsence: widget.onOpenAbsence,
+                            ),
+                          ),
+                        ),
+                        if (pending.isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 0, 16, 14),
+                              child: KeyedSubtree(
+                                key: _approvalsKey,
+                                child: ManagerLeaveApprovalsPanel(
+                                  pending: pending,
+                                  onApprove: widget.onApprove,
+                                  onReject: _rejectWithComment,
+                                  onOpen: widget.onOpenAbsence,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          SliverToBoxAdapter(
+                            child: SizedBox(key: _approvalsKey, height: 0),
+                          ),
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              16,
+                              0,
+                              16,
+                              DriftProClient.isMobile ? 100 : 32,
+                            ),
+                            child: ManagerLeaveRosterTable(
+                              employees: scopedEmployees,
+                              absences: scopedAbsences,
+                              quotas: widget.teamQuotas,
+                              departmentNames: widget.departmentNames,
+                              year: widget.selectedYear,
+                              scope: _scope,
+                              company: widget.companySettings,
+                              onOpenEmployee: widget.onOpenEmployee,
+                              onYearChanged: widget.onYearChanged,
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
-                    ManagerLeaveScopeFilters(
-                      employees: allEmployees,
-                      departmentNames: widget.departmentNames,
-                      departmentId: _departmentId,
-                      employeeId: _employeeId,
-                      onDepartmentChanged: (id) => setState(() {
-                        _departmentId = id;
-                        if (_employeeId != null &&
-                            !allEmployees.any((e) =>
-                                e.id == _employeeId &&
-                                (id == null || e.departmentId == id))) {
-                          _employeeId = null;
-                        }
-                      }),
-                      onEmployeeChanged: (id) =>
-                          setState(() => _employeeId = id),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                child: ManagerLeaveInsights(
-                  employees: scopedEmployees,
-                  absences: periodAbsences,
-                  allAbsencesForLive: scopedAbsences,
-                  quotas: widget.teamQuotas,
-                  scope: _scope,
-                  pending: pending,
-                  awayToday: awayToday,
-                  nextWeekAwayCount: nextWeekUsers,
-                  onScrollToApprovals: _scrollToApprovals,
-                  onOpenEmployee: widget.onOpenEmployee,
-                  onOpenAbsence: widget.onOpenAbsence,
-                ),
-              ),
-            ),
-            if (pending.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-                  child: KeyedSubtree(
-                    key: _approvalsKey,
-                    child: ManagerLeaveApprovalsPanel(
-                      pending: pending,
-                      onApprove: widget.onApprove,
-                      onReject: _rejectWithComment,
-                      onOpen: widget.onOpenAbsence,
-                    ),
                   ),
-                ),
-              )
-            else
-              SliverToBoxAdapter(
-                child: SizedBox(key: _approvalsKey, height: 0),
-              ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  0,
-                  16,
-                  DriftProClient.isMobile ? 100 : 32,
-                ),
-                child: ManagerLeaveRosterTable(
-                  employees: scopedEmployees,
-                  absences: scopedAbsences,
-                  quotas: widget.teamQuotas,
-                  departmentNames: widget.departmentNames,
-                  year: widget.selectedYear,
-                  scope: _scope,
-                  company: widget.companySettings,
-                  onOpenEmployee: widget.onOpenEmployee,
-                  onYearChanged: widget.onYearChanged,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

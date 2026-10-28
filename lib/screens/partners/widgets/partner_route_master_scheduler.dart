@@ -9,7 +9,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
-import '../../../core/config/driftpro_client.dart';
 import '../../../core/layout/mobile_layout.dart';
 import '../../../core/constants/route_dispatch_status.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
@@ -885,9 +884,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
 
   @override
   Widget build(BuildContext context) {
-    if (DriftProClient.isMobile) {
-      return _buildMobilePlanner(context);
-    }
+    // Samme uke-/dagkalender på mobil og web (ikke dagskort-erstatning).
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final hdrBg = isDark ? DriftProTheme.cardDark : Colors.white;
     final borderCol = Colors.grey.withValues(alpha: isDark ? 0.35 : 0.22);
@@ -1112,134 +1109,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     ];
   }
 
-  Widget _buildMobilePlanner(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final borderCol = Colors.grey.withValues(alpha: isDark ? 0.35 : 0.22);
-
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        if (widget.nestedScroll)
-          SliverOverlapInjector(
-            handle: NestedScrollView.sliverOverlapAbsorberHandleFor(context),
-          ),
-        ...widget.leadingSlivers,
-        SliverToBoxAdapter(child: _buildMobileToolbar(isDark, borderCol)),
-        SliverToBoxAdapter(child: _buildMobileDayStrip(isDark, borderCol)),
-        if (_filteredFleet.isEmpty)
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(32),
-              child: Center(child: Text('Ingen MAVI-biler i listen.')),
-            ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-            sliver: Builder(
-              builder: (context) {
-                final board = _dayBoardFleet();
-                return SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, i) => _buildMobileDriverCard(
-                      context,
-                      board[i],
-                      isDark,
-                      borderCol,
-                    ),
-                    childCount: board.length,
-                  ),
-                );
-              },
-            ),
-          ),
-        SliverToBoxAdapter(
-          child: SizedBox(height: MobileLayout.shellBottomInset(context) + 96),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMobileToolbar(bool isDark, Color borderCol) {
-    return Card(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: borderCol),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            RoutePlannerUi.header(
-              context: context,
-              busy: _busy,
-              subtitle: 'Trykk på en sjåfør for å legge til eller administrere ruter.',
-            ),
-            const SizedBox(height: 12),
-            RoutePlannerUi.sectionLabel('Visning'),
-            const SizedBox(height: 8),
-            RoutePlannerUi.dateNavigator(
-              weekStart: _weekStart,
-              weekEnd: _weekEnd,
-              focusDay: _focusDay,
-              mode: _mode,
-              compact: true,
-              onModeChanged: (m) => setState(() => _mode = m),
-              onPrevWeek: () => _shiftPeriod(-1),
-              onNextWeek: () => _shiftPeriod(1),
-              onToday: () {
-                final now = _dayOnly(DateTime.now());
-                setState(() {
-                  _focusDay = now;
-                  _jumpWeek(now);
-                });
-                _reload();
-              },
-              onPickDay: _busy ? null : _pickFocusDay,
-            ),
-            const SizedBox(height: 12),
-            RoutePlannerUi.searchField(controller: _searchCtrl),
-            const SizedBox(height: 12),
-            RoutePlannerUi.sectionLabel('Handlinger'),
-            const SizedBox(height: 8),
-            RoutePlannerUi.actionGrid(
-              context: context,
-              actions: _plannerActions(),
-              trailing: RoutePlannerUi.refreshButton(
-                onPressed: _busy ? null : _reload,
-              ),
-            ),
-            if (widget.toolsBar != null) ...[
-              const SizedBox(height: 12),
-              widget.toolsBar!,
-            ],
-            const SizedBox(height: 8),
-            RoutePlannerUi.statusLegend(scrollable: true),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMobileDayStrip(bool isDark, Color borderCol) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-      child: RoutePlannerUi.dayStrip(
-        days: _days,
-        focusDay: _focusDay,
-        routeCount: _weekRouteCount,
-        onSelect: (d) {
-          setState(() => _focusDay = d);
-          _refreshSapPendingCount();
-        },
-      ),
-    );
-  }
-
   Widget _buildDayDriverCard(
     BuildContext context,
     FleetPartnerVehicleRow row,
@@ -1425,46 +1294,6 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildMobileDriverCard(
-    BuildContext context,
-    FleetPartnerVehicleRow row,
-    bool isDark,
-    Color borderCol,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: SizedBox(
-        height: 128,
-        child: _buildDayDriverCard(context, row, isDark),
-      ),
-    );
-  }
-
-  Widget _buildMobileRouteChip(
-    BuildContext context,
-    PartnerRouteShare s,
-    DateTime day,
-    bool isDark,
-  ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        RouteCalendarChip(
-          share: s,
-          day: day,
-          isDark: isDark,
-          shiftColor: _shiftColor(s.shiftId),
-          shiftName: _shiftName(s.shiftId),
-        ),
-        if (s.isSentWithNotify) ...[
-          const SizedBox(height: 6),
-          PartnerRoutePartnerStatus(share: s, compact: true),
-        ],
-      ],
     );
   }
 

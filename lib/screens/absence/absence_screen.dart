@@ -298,6 +298,8 @@ class _AbsenceScreenState extends State<AbsenceScreen> with SingleTickerProvider
       isLoading: _isLoading,
       companySettings: _companySettings,
       approverNames: _approverNamesById,
+      colorForType: _colorForType,
+      iconForType: _iconForType,
       onRefresh: _loadAllData,
       onRegister: () => _showRegisterOptions(context),
       onApprove: (a) => _updateStatus(a.id, AbsenceStatus.godkjent),
