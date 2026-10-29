@@ -575,11 +575,18 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   }
 
   Future<void> _pickFocusDay() async {
+    final now = DateTime.now();
+    // Historikk (Connecteam/SAP) går tilbake til 2024 — ikke begrens til 30 dager.
+    final first = DateTime(2024, 1, 1);
+    var initial = _focusDay;
+    if (initial.isBefore(first)) initial = first;
+    final last = now.add(const Duration(days: 365));
+    if (initial.isAfter(last)) initial = last;
     final d = await showDatePicker(
       context: context,
-      initialDate: _focusDay,
-      firstDate: DateTime.now().subtract(const Duration(days: 30)),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDate: initial,
+      firstDate: first,
+      lastDate: last,
     );
     if (d != null) {
       setState(() {
