@@ -1,10 +1,10 @@
 import 'dart:typed_data';
 
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:printing/printing.dart';
 
-/// PDF-visning: musehjul/trackpad scroller, knipe + knapper zoomer.
+/// PDF-visning: musehjul/trackpad scroller sidene.
+/// Zoom kun via +/- (ikke musehjul).
 class PlatformPdfBytesView extends StatefulWidget {
   const PlatformPdfBytesView({
     super.key,
@@ -20,7 +20,7 @@ class PlatformPdfBytesView extends StatefulWidget {
 }
 
 class _PlatformPdfBytesViewState extends State<PlatformPdfBytesView> {
-  final _transform = TransformationController();
+  final _scroll = ScrollController();
   final List<Uint8List> _pages = [];
   bool _loading = true;
   String? _error;
@@ -45,7 +45,7 @@ class _PlatformPdfBytesViewState extends State<PlatformPdfBytesView> {
 
   @override
   void dispose() {
-    _transform.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -79,46 +79,8 @@ class _PlatformPdfBytesViewState extends State<PlatformPdfBytesView> {
     }
   }
 
-  void _setScale(double next) {
-    final clamped = next.clamp(0.6, 5.0);
-    final focal = Offset(
-      MediaQuery.sizeOf(context).width / 2,
-      MediaQuery.sizeOf(context).height / 3,
-    );
-    final sceneFocal = _transform.toScene(focal);
-    final m = Matrix4.identity()
-      ..translateByDouble(focal.dx, focal.dy, 0, 1)
-      ..scaleByDouble(clamped, clamped, clamped, 1)
-      ..translateByDouble(-sceneFocal.dx, -sceneFocal.dy, 0, 1);
-    _transform.value = m;
-    setState(() => _scale = clamped);
-  }
-
-  void _zoomIn() => _setScale(_scale + 0.35);
-  void _zoomOut() => _setScale(_scale - 0.35);
-
-  /// Musehjul zoomer ellers i [InteractiveViewer] — stjel signalet og pan i stedet.
-  void _onPointerSignal(PointerSignalEvent event) {
-    if (event is! PointerScrollEvent) return;
-    // Trackpad: InteractiveViewer pan'er allerede (trackpadScrollCausesScale=false).
-    if (event.kind == PointerDeviceKind.trackpad) return;
-
-    GestureBinding.instance.pointerSignalResolver.register(event, (e) {
-      final scroll = e as PointerScrollEvent;
-      final local = scroll.localPosition;
-      final focalPointScene = _transform.toScene(local);
-      final newFocalPointScene =
-          _transform.toScene(local - scroll.scrollDelta);
-      final next = Matrix4.copy(_transform.value)
-        ..translateByDouble(
-          newFocalPointScene.dx - focalPointScene.dx,
-          newFocalPointScene.dy - focalPointScene.dy,
-          0,
-          1,
-        );
-      _transform.value = next;
-    });
-  }
+  void _zoomIn() => setState(() => _scale = (_scale + 0.25).clamp(0.6, 3.0));
+  void _zoomOut() => setState(() => _scale = (_scale - 0.25).clamp(0.6, 3.0));
 
   @override
   Widget build(BuildContext context) {
@@ -143,60 +105,55 @@ class _PlatformPdfBytesViewState extends State<PlatformPdfBytesView> {
       );
     }
 
-    final width = MediaQuery.sizeOf(context).width;
-    final pageWidth = (width - 16).clamp(280.0, 1200.0);
+    final viewportW = MediaQuery.sizeOf(context).width;
+    final basePageW = (viewportW - 16).clamp(280.0, 1200.0);
+    final pageW = basePageW * _scale;
 
     return Stack(
       children: [
         ColoredBox(
           color: const Color(0xFFF4F7F5),
-          child: Listener(
-            onPointerSignal: _onPointerSignal,
-            child: InteractiveViewer(
-              transformationController: _transform,
-              constrained: false,
-              boundaryMargin: const EdgeInsets.all(120),
-              minScale: 0.6,
-              maxScale: 5,
-              // Scroll = pan (ikke zoom). Zoom via knipe eller +/- knapper.
-              trackpadScrollCausesScale: false,
-              scaleEnabled: true,
-              panEnabled: true,
-              onInteractionUpdate: (_) {
-                final s = _transform.value.getMaxScaleOnAxis();
-                if ((s - _scale).abs() > 0.01) {
-                  setState(() => _scale = s);
-                }
-              },
-              child: SizedBox(
-                width: pageWidth,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < _pages.length; i++)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
-                        child: Material(
-                          color: Colors.white,
-                          elevation: 1.5,
-                          borderRadius: BorderRadius.circular(4),
-                          clipBehavior: Clip.antiAlias,
-                          child: Image.memory(
-                            _pages[i],
-                            width: pageWidth - 16,
-                            fit: BoxFit.fitWidth,
-                            filterQuality: FilterQuality.medium,
-                            gaplessPlayback: true,
+          child: Scrollbar(
+            controller: _scroll,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _scroll,
+              // Eksplisitt: musehjul skal scrolle, aldri zoome.
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: ClampingScrollPhysics(),
+              ),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: pageW + 16,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (var i = 0; i < _pages.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+                          child: Material(
+                            color: Colors.white,
+                            elevation: 1.5,
+                            borderRadius: BorderRadius.circular(4),
+                            clipBehavior: Clip.antiAlias,
+                            child: Image.memory(
+                              _pages[i],
+                              width: pageW,
+                              fit: BoxFit.fitWidth,
+                              filterQuality: FilterQuality.medium,
+                              gaplessPlayback: true,
+                            ),
                           ),
                         ),
-                      ),
-                    if (_loading)
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    const SizedBox(height: 24),
-                  ],
+                      if (_loading)
+                        const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      const SizedBox(height: 72),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -211,7 +168,25 @@ class _PlatformPdfBytesViewState extends State<PlatformPdfBytesView> {
               _ZoomFab(
                 tooltip: 'Zoom inn',
                 icon: Icons.add,
-                onPressed: _scale >= 4.9 ? null : _zoomIn,
+                onPressed: _scale >= 2.95 ? null : _zoomIn,
+              ),
+              const SizedBox(height: 8),
+              Material(
+                elevation: 3,
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  child: Text(
+                    '${(_scale * 100).round()}%',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                      color: Color(0xFF1B5E20),
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               _ZoomFab(
