@@ -101,25 +101,90 @@ abstract final class RouteDispatchStatus {
     return share.isRegistered || share.isSentWithNotify || share.requiresAck;
   }
 
-  static String tooltipForShare(PartnerRouteShare share, {String? shiftName}) {
-    final buf = <String>[labelForShare(share)];
-
-    if (share.title?.trim().isNotEmpty == true) {
-      buf.add(share.title!.trim());
+  /// Kort, lesbar tittel — uten UUID/filnavn-søppel.
+  static String cleanTitle(PartnerRouteShare share) {
+    final raw = (share.title ?? '').trim();
+    if (raw.isEmpty) return 'Rute';
+    final unitPdf = RegExp(
+      r'^([A-Za-z0-9_]+)\s*[—–-]\s*.+\.pdf$',
+      caseSensitive: false,
+    ).firstMatch(raw);
+    if (unitPdf != null) return unitPdf.group(1)!;
+    if (raw.toLowerCase().endsWith('.pdf') && raw.length > 28) {
+      return 'PDF-rute';
     }
+    final head = raw.split(RegExp(r'[—–]')).first.trim();
+    return head.isEmpty ? 'Rute' : head;
+  }
+
+  static String? _metaLine(String notes, RegExp pattern) {
+    final m = pattern.firstMatch(notes);
+    if (m == null) return null;
+    final v = (m.group(1) ?? '').trim();
+    return v.isEmpty ? null : v;
+  }
+
+  /// Nyttige felt fra auto-notater (uten rå PDF-linjer).
+  static ({String? area, String? stowing, String? freeNote}) parseUsefulNotes(
+    String? notes,
+  ) {
+    final raw = (notes ?? '').trim();
+    if (raw.isEmpty) {
+      return (area: null, stowing: null, freeNote: null);
+    }
+    final area = _metaLine(
+      raw,
+      RegExp(r'Omr[aå]de:\s*([^\n]+)', caseSensitive: false),
+    );
+    final stowing = _metaLine(
+      raw,
+      RegExp(
+        r'(?:Stowing\s*Lane|Stowing):\s*([^\n]+)',
+        caseSensitive: false,
+      ),
+    );
+    final free = raw
+        .split('\n')
+        .map((l) => l.trim())
+        .where(
+          (l) =>
+              l.isNotEmpty &&
+              !RegExp(
+                r'^(Rutedato\s*\(PDF\)|Omr[aå]de|Skift\s*\(auto\)|Sjåfør\s*\(PDF\)|Stowing)',
+                caseSensitive: false,
+              ).hasMatch(l),
+        )
+        .join(' · ');
+    return (
+      area: area?.replaceAll(RegExp(r'\s*\(gjetning\)\s*', caseSensitive: false), '').trim(),
+      stowing: stowing,
+      freeNote: free.isEmpty ? null : free,
+    );
+  }
+
+  static String tooltipForShare(PartnerRouteShare share, {String? shiftName}) {
+    final meta = parseUsefulNotes(share.notes);
+    final day = (share.routeStartAt ?? share.shareDate).toLocal();
+    final start = share.routeStartAt != null
+        ? DateFormat('HH:mm', 'nb').format(share.routeStartAt!.toLocal())
+        : null;
+
+    final buf = <String>[
+      simpleLabelForShare(share),
+      cleanTitle(share),
+      [
+        DateFormat('EEE d. MMM', 'nb').format(day),
+        if (start != null) 'kl. $start',
+      ].join(' · '),
+    ];
 
     if (shiftName?.trim().isNotEmpty == true) {
       buf.add('Skift: ${shiftName!.trim()}');
     }
+    if (meta.area != null) buf.add('Område: ${meta.area}');
+    if (meta.stowing != null) buf.add('Stowing: ${meta.stowing}');
 
-    final day = share.routeStartAt ?? share.shareDate;
-    buf.add('Dag: ${DateFormat('EEEE d. MMM yyyy', 'nb').format(day.toLocal())}');
-
-    if (share.routeStartAt != null) {
-      buf.add('Start: ${DateFormat('HH:mm', 'nb').format(share.routeStartAt!.toLocal())}');
-    }
-
-    if (share.isSentWithNotify && share.notifyChannels.isNotEmpty) {
+    if (share.isSentWithNotify) {
       final channels = share.notifyChannels
           .map((c) => switch (c) {
                 'app' => 'Push',
@@ -127,34 +192,26 @@ abstract final class RouteDispatchStatus {
                 'email' => 'E-post',
                 _ => c,
               })
-          .join(', ');
-      buf.add('Varslet via: $channels');
-    }
-
-    if (share.sentAt != null) {
-      buf.add('Sendt: ${_timeFmt.format(share.sentAt!.toLocal())}');
-    }
-
-    if (share.pdfWasOpened) {
-      buf.add('PDF lest: ${_timeFmt.format(share.pdfOpenedAt!.toLocal())}');
-      if (share.pdfOpenCount > 1) buf.add('(${share.pdfOpenCount} ganger)');
-    } else if (share.isSentWithNotify) {
-      buf.add('PDF: ikke åpnet ennå');
+          .where((c) => c.isNotEmpty)
+          .join('+');
+      final pdf = share.pdfWasOpened ? 'PDF åpnet' : 'PDF ikke åpnet';
+      buf.add(
+        [
+          if (channels.isNotEmpty) 'Varslet $channels',
+          pdf,
+        ].join(' · '),
+      );
+    } else if (share.isStaged) {
+      buf.add('Kladd — ikke varslet');
     }
 
     if (share.ackStatus == 'accepted' && share.ackAt != null) {
-      buf.add('Akseptert: ${_timeFmt.format(share.ackAt!.toLocal())}');
+      buf.add('Akseptert ${_timeFmt.format(share.ackAt!.toLocal())}');
     } else if (share.ackStatus == 'rejected') {
-      buf.add(
-        'Avvist${share.ackAt != null ? ' ${_timeFmt.format(share.ackAt!.toLocal())}' : ''}',
-      );
-    } else if (share.requiresAck) {
-      buf.add('Venter på aksept fra sjåfør');
+      buf.add('Avvist');
     }
 
-    if ((share.notes ?? '').trim().isNotEmpty) {
-      buf.add('Notat: ${share.notes!.trim()}');
-    }
+    if (meta.freeNote != null) buf.add(meta.freeNote!);
 
     return buf.join('\n');
   }

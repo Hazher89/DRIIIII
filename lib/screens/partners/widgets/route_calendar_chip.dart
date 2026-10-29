@@ -31,11 +31,7 @@ class RouteCalendarChip extends StatelessWidget {
     ).format(context);
     final status = RouteDispatchStatus.cellColorForShare(share);
     final label = RouteDispatchStatus.simpleLabelForShare(share);
-    final title = compact
-        ? label
-        : (share.title?.split('—').first.trim().isNotEmpty == true
-            ? share.title!.split('—').first.trim()
-            : label);
+    final title = compact ? label : RouteDispatchStatus.cleanTitle(share);
 
     // Soft fill that still reads clearly as status (not a thin pill).
     final fillTop = Color.lerp(status, Colors.white, isDark ? 0.18 : 0.42)!;

@@ -1803,141 +1803,316 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
     }
   }
 
+  Widget _infoChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _kv(String k, String v) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 88,
+            child: Text(
+              k,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey.shade600,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              v,
+              style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final unit = MaviUnitCodes.normalize(widget.fleetRow.vehicle.unitCode);
+    final dayLabel = DateFormat('EEEE d. MMM yyyy', 'nb_NO').format(widget.day);
+
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+      child: SizedBox(
+        height: MediaQuery.sizeOf(context).height * 0.78,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '${MaviUnitCodes.normalize(widget.fleetRow.vehicle.unitCode)} · ${DateFormat.yMMMMEEEEd('nb_NO').format(widget.day)}',
-              style: DriftProTheme.headingMd,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              '${widget.shares.length} rute${widget.shares.length == 1 ? '' : 'r'} — velg handling',
-              style: TextStyle(color: Colors.grey[700]),
-            ),
-            const SizedBox(height: 12),
-            ...widget.shares.map((s) {
-              final start = s.routeStartAt != null
-                  ? TimeOfDay.fromDateTime(s.routeStartAt!.toLocal()).format(context)
-                  : '06:00';
-              final st = DriverDayStatus.fromShare(s);
-              final stColor = DriverDayStatus.color(st);
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                color: stColor.withValues(alpha: 0.06),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(color: stColor.withValues(alpha: 0.4), width: 1.5),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          PartnerRoutePdfActions.ackDot(s, size: 10),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              s.title ?? 'Rute',
-                              style: const TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: stColor,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Text(
-                              DriverDayStatus.label(st),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
+            // Sticky topp — synlig mens man skroller.
+            Material(
+              elevation: 1.5,
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 12, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                unit,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -0.4,
+                                ),
                               ),
+                              Text(
+                                '${widget.fleetRow.partner.name} · $dayLabel',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Angre / lukk',
+                          onPressed: _busy ? null : () => Navigator.pop(context),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _infoChip(
+                          '${widget.shares.length} rute${widget.shares.length == 1 ? '' : 'r'}',
+                          const Color(0xFF2563EB),
+                        ),
+                        for (final s in widget.shares.take(3))
+                          _infoChip(
+                            DriverDayStatus.label(DriverDayStatus.fromShare(s)),
+                            DriverDayStatus.color(DriverDayStatus.fromShare(s)),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+                children: [
+                  for (final s in widget.shares) ...[
+                    Builder(
+                      builder: (context) {
+                        final start = s.routeStartAt != null
+                            ? DateFormat('HH:mm', 'nb')
+                                .format(s.routeStartAt!.toLocal())
+                            : '06:00';
+                        final st = DriverDayStatus.fromShare(s);
+                        final stColor = DriverDayStatus.color(st);
+                        final meta =
+                            RouteDispatchStatus.parseUsefulNotes(s.notes);
+                        final shift = shiftNameFor(widget.shifts, s.shiftId);
+                        return Container(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: stColor.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: stColor.withValues(alpha: 0.35),
                             ),
                           ),
-                        ],
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Row(
+                                children: [
+                                  PartnerRoutePdfActions.ackDot(s, size: 10),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      RouteDispatchStatus.cleanTitle(s),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  ),
+                                  _infoChip(DriverDayStatus.label(st), stColor),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              _kv('Start', '$start'),
+                              if (shift != null) _kv('Skift', shift),
+                              if (meta.area != null) _kv('Område', meta.area!),
+                              if (meta.stowing != null)
+                                _kv('Stowing', meta.stowing!),
+                              _kv('Status', _dispatchLabel(s)),
+                              if (s.isSentWithNotify)
+                                _kv(
+                                  'PDF',
+                                  s.pdfWasOpened
+                                      ? 'Åpnet${s.pdfOpenedAt != null ? ' ${DateFormat('dd.MM HH:mm', 'nb').format(s.pdfOpenedAt!.toLocal())}' : ''}'
+                                      : 'Ikke åpnet ennå',
+                                ),
+                              if (meta.freeNote != null)
+                                _kv('Notat', meta.freeNote!),
+                              if (s.isSentWithNotify) ...[
+                                const SizedBox(height: 6),
+                                PartnerRoutePartnerStatus(
+                                  share: s,
+                                  compact: true,
+                                ),
+                              ],
+                              RouteReminderBadge(
+                                share: s,
+                                flag: widget.reminderFlags[s.id],
+                              ),
+                              const SizedBox(height: 10),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed: _busy
+                                        ? null
+                                        : () => PartnerRoutePdfActions.openPdf(
+                                              context,
+                                              s,
+                                            ),
+                                    icon: const Icon(
+                                      Icons.picture_as_pdf_outlined,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Vis PDF'),
+                                  ),
+                                  FilledButton.icon(
+                                    onPressed:
+                                        _busy ? null : () => _reassign(s),
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: RoutePlannerUi.colorSap,
+                                    ),
+                                    icon: const Icon(Icons.swap_horiz, size: 18),
+                                    label: const Text('Bytt sjåfør'),
+                                  ),
+                                  if (s.requiresAck)
+                                    FilledButton.tonalIcon(
+                                      onPressed:
+                                          _busy ? null : () => _nudge(s),
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: Colors.orange.shade50,
+                                        foregroundColor: Colors.orange.shade900,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.notifications_active_outlined,
+                                        size: 18,
+                                      ),
+                                      label: const Text('Purr'),
+                                    ),
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        _busy ? null : () => _delete(s),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                      side: const BorderSide(color: Colors.red),
+                                    ),
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      size: 18,
+                                    ),
+                                    label: const Text('Slett'),
+                                  ),
+                                ],
+                              ),
+                              if (s.isStaged ||
+                                  s.isRegistered ||
+                                  s.isSentWithNotify) ...[
+                                const SizedBox(height: 10),
+                                RoutePublishNotifyButtons(
+                                  busy: _busy,
+                                  showWithoutNotify:
+                                      s.isStaged || s.isRegistered,
+                                  onPublish: (prefs) => _dispatchShare(
+                                    s,
+                                    notifyPrefs:
+                                        prefs ?? RouteNotifyPrefs.none,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            // Sticky bunn: Angre + Lagre (åpner redigering med lagring).
+            Material(
+              elevation: 6,
+              color: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed:
+                            _busy ? null : () => Navigator.pop(context),
+                        child: const Text('Angre'),
                       ),
-                      const SizedBox(height: 4),
-                      Text('Start $start · ${_dispatchLabel(s)}', style: const TextStyle(fontSize: 12)),
-                      if (s.isSentWithNotify) ...[
-                        const SizedBox(height: 8),
-                        PartnerRoutePartnerStatus(share: s, compact: false),
-                      ],
-                      RouteReminderBadge(
-                        share: s,
-                        flag: widget.reminderFlags[s.id],
-                      ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: _busy ? null : () => PartnerRoutePdfActions.openPdf(context, s),
-                        icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                        label: const Text('Vis PDF'),
-                      ),
-                      const SizedBox(height: 8),
-                      FilledButton.icon(
-                        onPressed: _busy ? null : () => _reassign(s),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: FilledButton.icon(
+                        onPressed: _busy
+                            ? null
+                            : () {
+                                Navigator.pop(context);
+                                widget.onOpenFullEditor();
+                              },
                         style: FilledButton.styleFrom(
-                          backgroundColor: RoutePlannerUi.colorSap,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: DriftProTheme.primaryGreen,
+                          minimumSize: const Size(0, 46),
                         ),
-                        icon: const Icon(Icons.swap_horiz),
-                        label: const Text('Bytt sjåfør + varsle'),
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('Rediger / Lagre'),
                       ),
-                      const SizedBox(height: 8),
-                      if (s.isStaged || s.isRegistered || s.isSentWithNotify) ...[
-                        const SizedBox(height: 8),
-                        RoutePublishNotifyButtons(
-                          busy: _busy,
-                          showWithoutNotify: s.isStaged || s.isRegistered,
-                          onPublish: (prefs) => _dispatchShare(
-                            s,
-                            notifyPrefs: prefs ?? RouteNotifyPrefs.none,
-                          ),
-                        ),
-                      ],
-                      if (s.requiresAck) ...[
-                        const SizedBox(height: 8),
-                        FilledButton.tonalIcon(
-                          onPressed: _busy ? null : () => _nudge(s),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: Colors.orange.shade50,
-                            foregroundColor: Colors.orange.shade900,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                          icon: const Icon(Icons.notifications_active_outlined),
-                          label: const Text('Purr'),
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      OutlinedButton.icon(
-                        onPressed: _busy ? null : () => _delete(s),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        icon: const Icon(Icons.delete_outline),
-                        label: const Text('Slett rute'),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-              );
-            }),
-            TextButton.icon(
-              onPressed: _busy ? null : widget.onOpenFullEditor,
-              icon: const Icon(Icons.tune),
-              label: const Text('Avansert redigering (skift, start, notat)'),
+              ),
             ),
           ],
         ),
@@ -2164,27 +2339,65 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
     }
   }
 
-  Future<void> _saveDraft(PartnerRouteShare s) async {
+  Future<void> _saveDraft(PartnerRouteShare s, {bool showSnack = true}) async {
     final shiftId = _shiftByShare[s.id];
     final start = _startByShare[s.id] ?? const TimeOfDay(hour: 6, minute: 0);
     final routeDay = PartnerService.routeDayForShare(s);
     final at = DateTime(routeDay.year, routeDay.month, routeDay.day, start.hour, start.minute);
+    await PartnerService.updateRouteShareFields(s.id, {
+      'notes': _noteCtrls[s.id]?.text,
+      if (shiftId != null) 'shift_id': shiftId,
+      'route_start_at': at.toUtc().toIso8601String(),
+      'share_date': routeDay.toIso8601String().split('T').first,
+    });
+    if (showSnack && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(s.isStaged ? 'Kladd lagret' : 'Endringer lagret')),
+      );
+    }
+  }
+
+  Future<void> _saveDraftWithUi(PartnerRouteShare s) async {
     setState(() => _busy = true);
     try {
-      await PartnerService.updateRouteShareFields(s.id, {
-        'notes': _noteCtrls[s.id]?.text,
-        if (shiftId != null) 'shift_id': shiftId,
-        'route_start_at': at.toUtc().toIso8601String(),
-        'share_date': routeDay.toIso8601String().split('T').first,
-      });
+      await _saveDraft(s);
+      widget.onSaved();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _saveAllAndClose() async {
+    if (_live.isEmpty) {
+      if (mounted) Navigator.pop(context);
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      for (final s in _live) {
+        await _saveDraft(s, showSnack: false);
+      }
       widget.onSaved();
       if (mounted) {
+        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(s.isStaged ? 'Kladd lagret' : 'Endringer lagret')),
+          SnackBar(
+            content: Text(
+              _live.length == 1
+                  ? 'Rute lagret'
+                  : '${_live.length} ruter lagret',
+            ),
+          ),
         );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -2464,32 +2677,54 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
   Widget build(BuildContext context) {
     final shiftItems = widget.shifts.where((s) => !s.isAvailability).toList();
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(20, 0, 20, 24 + bottom),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              '${MaviUnitCodes.normalize(widget.fleetRow.vehicle.unitCode)} • ${widget.fleetRow.partner.name}',
-              style: DriftProTheme.headingMd,
-            ),
-            Text(DateFormat.yMMMMEEEEd('nb_NO').format(widget.day)),
-            const SizedBox(height: 14),
-            if (_live.isNotEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.25)),
-                ),
-                child: const Text(
-                  'Administrer ruter: flytt til annen sjåfør, slett, eller send SMS på nytt.',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                ),
+    final unit = MaviUnitCodes.normalize(widget.fleetRow.vehicle.unitCode);
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.86,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Material(
+            elevation: 1.5,
+            color: Colors.white,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          unit,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.4,
+                          ),
+                        ),
+                        Text(
+                          '${widget.fleetRow.partner.name} · ${DateFormat.yMMMMEEEEd('nb_NO').format(widget.day)}',
+                          style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Angre / lukk',
+                    onPressed: _busy ? null : () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
               ),
-              const SizedBox(height: 12),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, 12, 20, 16 + bottom),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+            if (_live.isNotEmpty) ...[
               const Text(
                 'Ruter på denne dagen',
                 style: TextStyle(fontWeight: FontWeight.w800),
@@ -2499,7 +2734,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                 final shiftId = _shiftByShare[s.id] ?? s.shiftId ?? _draftShiftId ?? (shiftItems.isNotEmpty ? shiftItems.first.id : null);
                 final start = _startByShare[s.id] ?? const TimeOfDay(hour: 6, minute: 0);
                 if (shiftId == null) {
-                  return Card(child: ListTile(title: Text(s.title ?? 'Rute'), subtitle: const Text('Mangler skift')));
+                  return Card(child: ListTile(title: Text(RouteDispatchStatus.cleanTitle(s)), subtitle: const Text('Mangler skift')));
                 }
                 return Card(
                   margin: const EdgeInsets.only(bottom: 10),
@@ -2514,7 +2749,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                s.title ?? s.pdfStoragePath.split('/').last,
+                                RouteDispatchStatus.cleanTitle(s),
                                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
                               ),
                             ),
@@ -2614,7 +2849,7 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                           runSpacing: 8,
                           children: [
                             OutlinedButton(
-                              onPressed: _busy ? null : () => _saveDraft(s),
+                              onPressed: _busy ? null : () => _saveDraftWithUi(s),
                               child: Text(s.isStaged ? 'Lagre kladd' : 'Lagre endringer'),
                             ),
                             OutlinedButton.icon(
@@ -2713,8 +2948,50 @@ class _RouteEditorSheetState extends State<_RouteEditorSheet> {
                 child: Text('Ingen ruter på denne dagen ennå — last opp PDF eller vent på import.', style: TextStyle(color: Colors.grey[700])),
               ),
             ],
-          ],
-        ),
+                ],
+              ),
+            ),
+          ),
+          Material(
+            elevation: 6,
+            color: Colors.white,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 10, 16, 14 + bottom),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _busy ? null : () => Navigator.pop(context),
+                      child: const Text('Angre'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      onPressed: _busy ? null : _saveAllAndClose,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: DriftProTheme.primaryGreen,
+                        minimumSize: const Size(0, 46),
+                      ),
+                      icon: _busy
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.check_rounded, size: 18),
+                      label: Text(_busy ? 'Lagrer…' : 'Lagre alt'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
