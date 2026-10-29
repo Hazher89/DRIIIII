@@ -1219,18 +1219,22 @@ class _MonthlyAbsenceChartState extends State<_MonthlyAbsenceChart> {
           chartWidth: _chartWidth,
           peopleCount: people.length,
         );
-        // Root overlay — over «Mest ferie»-kortene under diagrammet.
+        // Root overlay — UnconstrainedBox så popup ikke strekkes over hele skjermen.
         return CompositedTransformFollower(
           link: _layerLink,
           showWhenUnlinked: false,
           targetAnchor: Alignment.topLeft,
           followerAnchor: Alignment.topLeft,
           offset: offset,
-          child: _FloatingMonthPopup(
-            monthIndex: selected,
-            year: widget.year,
-            totalDays: monthly[selected].round(),
-            people: people,
+          child: UnconstrainedBox(
+            alignment: Alignment.topLeft,
+            constrainedAxis: null,
+            child: _FloatingMonthPopup(
+              monthIndex: selected,
+              year: widget.year,
+              totalDays: monthly[selected].round(),
+              people: people,
+            ),
           ),
         );
       },
@@ -1494,20 +1498,19 @@ class _FloatingMonthPopup extends StatelessWidget {
   final int totalDays;
   final List<MonthEmployeeAbsence> people;
 
-  static const popupW = 260.0;
+  static const popupW = 232.0;
 
   static Offset offsetFor({
     required Offset anchor,
     required double chartWidth,
     required int peopleCount,
   }) {
-    final rows = peopleCount.clamp(0, 5);
-    final estimatedH = 72.0 + rows * 36.0;
+    final rows = peopleCount.clamp(0, 4);
+    final estimatedH = 56.0 + rows * 28.0;
     var left = anchor.dx - popupW / 2;
     left = left.clamp(4.0, math.max(4.0, chartWidth - popupW - 4));
-    var top = anchor.dy - estimatedH - 12;
-    // Prefer above; if far above chart origin, flip below the point.
-    if (top < -160) top = anchor.dy + 14;
+    var top = anchor.dy - estimatedH - 10;
+    if (top < -80) top = anchor.dy + 12;
     return Offset(left, top);
   }
 
@@ -1515,18 +1518,18 @@ class _FloatingMonthPopup extends StatelessWidget {
   Widget build(BuildContext context) {
     final df = DateFormat('d. MMM', 'nb_NO');
     final month = ManagerLeaveInsights.monthNames[monthIndex];
-    final rows = people.take(5).toList();
+    final rows = people.take(4).toList();
 
     return IgnorePointer(
       child: Material(
-        elevation: 24,
-        shadowColor: Colors.black54,
-        borderRadius: BorderRadius.circular(12),
+        elevation: 16,
+        shadowColor: Colors.black45,
+        borderRadius: BorderRadius.circular(10),
         color: const Color(0xFF0F172A),
         child: SizedBox(
           width: popupW,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -1536,62 +1539,59 @@ class _FloatingMonthPopup extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
-                    fontSize: 13,
+                    fontSize: 12,
                   ),
                 ),
                 Text(
-                  '$totalDays person-d · ${people.length} ${people.length == 1 ? 'ansatt' : 'ansatte'}',
+                  '$totalDays person-d · ${people.length} ans.',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
-                    fontSize: 11,
+                    color: Colors.white.withValues(alpha: 0.65),
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
                 if (rows.isEmpty) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Text(
                     'Ingen fravær',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.65),
-                      fontSize: 12,
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 11,
                     ),
                   ),
                 ] else ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   for (final p in rows) ...[
                     Text(
-                      p.name,
+                      '${p.name} · ${p.days} d',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
-                        fontSize: 12,
+                        fontSize: 11,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    for (final a in p.entries.take(2))
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 2),
-                        child: Text(
-                          '${a.type.label} · ${df.format(a.startDate)}–${df.format(a.endDate)} · ${p.days} d',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.78),
-                            fontSize: 11,
-                            height: 1.25,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                    if (p.entries.isNotEmpty)
+                      Text(
+                        '${p.entries.first.type.label} · ${df.format(p.entries.first.startDate)}',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 10,
+                          height: 1.2,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    if (p != rows.last) const SizedBox(height: 6),
+                    if (p != rows.last) const SizedBox(height: 4),
                   ],
                   if (people.length > rows.length) ...[
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       '+${people.length - rows.length} flere…',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.55),
-                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 10,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

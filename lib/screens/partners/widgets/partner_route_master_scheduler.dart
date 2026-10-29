@@ -73,7 +73,8 @@ class PartnerRouteMasterScheduler extends StatefulWidget {
 class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterScheduler>
     with WidgetsBindingObserver {
   bool _busy = false;
-  RoutePlannerViewMode _mode = RoutePlannerViewMode.day;
+  /// Ukegrid (sjåfør × dager) er standard — som før.
+  RoutePlannerViewMode _mode = RoutePlannerViewMode.week;
   DateTime _weekStart = _monday(DateTime.now());
   DateTime _focusDay = _dayOnly(DateTime.now());
   late final TextEditingController _searchCtrl;
@@ -92,9 +93,9 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   List<DateTime> get _days =>
       List.generate(7, (i) => DateTime(_weekStart.year, _weekStart.month, _weekStart.day + i));
 
-  static const double _rowHeight = 96;
-  static const double _dayHeaderHeight = 88;
-  static const double _sidebarW = 220;
+  static const double _rowHeight = 104;
+  static const double _dayHeaderHeight = 72;
+  static const double _sidebarW = 168;
 
   @override
   void initState() {
@@ -1383,62 +1384,80 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           final n = _weekRouteCount(d);
           final pendingAck = _pendingAckCountForDay(d);
           return Expanded(
-            child: Container(
-            decoration: BoxDecoration(
+            child: Material(
               color: isFocus
-                  ? const Color(0xFFF3F4F6)
-                  : Colors.white,
-              border: Border(
-                right: BorderSide(color: borderCol.withValues(alpha: 0.5)),
-                bottom: BorderSide(
-                  color: isFocus ? const Color(0xFF111827) : Colors.transparent,
-                  width: isFocus ? 2 : 0,
+                  ? const Color(0xFFEFF6FF)
+                  : isToday
+                      ? const Color(0xFFF0FDF4)
+                      : Colors.white,
+              child: InkWell(
+                onTap: () {
+                  setState(() => _focusDay = _dayOnly(d));
+                  _refreshSapPendingCount();
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border(
+                      right: BorderSide(color: borderCol.withValues(alpha: 0.45)),
+                      bottom: BorderSide(
+                        color: isFocus
+                            ? DriftProTheme.primaryGreen
+                            : borderCol.withValues(alpha: 0.35),
+                        width: isFocus ? 2.5 : 1,
+                      ),
+                    ),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        DateFormat.E('nb_NO').format(d).toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 10,
+                          letterSpacing: 0.4,
+                          color: isFocus
+                              ? DriftProTheme.primaryGreen
+                              : const Color(0xFF64748B),
+                        ),
+                      ),
+                      Text(
+                        DateFormat('d. MMM', 'nb_NO').format(d),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          height: 1.2,
+                          color: isFocus
+                              ? const Color(0xFF0F172A)
+                              : const Color(0xFF334155),
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        n == 0
+                            ? 'Ledig'
+                            : '$n rute${n == 1 ? '' : 'r'}'
+                                '${pendingAck > 0 ? ' · $pendingAck ⏳' : ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: n == 0
+                              ? const Color(0xFF94A3B8)
+                              : const Color(0xFF475569),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-            padding: const EdgeInsets.fromLTRB(6, 4, 4, 4),
-            alignment: Alignment.topLeft,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisAlignment: MainAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  DateFormat.E('nb_NO').format(d),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11,
-                    color: isFocus
-                        ? const Color(0xFF111827)
-                        : isToday
-                            ? const Color(0xFF374151)
-                            : const Color(0xFF6B7280),
-                  ),
-                ),
-                Text(
-                  DateFormat('d/M', 'nb_NO').format(d),
-                  maxLines: 1,
-                  style: const TextStyle(fontSize: 10, height: 1.1),
-                ),
-                Text(
-                  '$n ruter${pendingAck > 0 ? ' · $pendingAck venter' : ''}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 9, height: 1.2, color: Colors.grey[700]),
-                ),
-                if (n > 0) ...[
-                  const SizedBox(height: 3),
-                  RoutePlannerUi.dayColumnActions(
-                    pendingAck: pendingAck,
-                    onNudge: _busy ? null : () => _nudgePendingForDay(d),
-                    onClear: _busy ? null : () => _clearAllRoutesForDay(d),
-                  ),
-                ],
-              ],
-            ),
-          ),
           );
         }).toList(),
       ),
@@ -1456,31 +1475,33 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         final list = _sharesCell(row.vehicle.id, day);
         final isFocusDay = _dayOnly(day) == _dayOnly(_focusDay);
         return Expanded(
-          child: InkWell(
-          onTap: () {
-            setState(() => _focusDay = _dayOnly(day));
-            _refreshSapPendingCount();
-            if (list.isEmpty) {
-              _openRouteEditor(row, day);
-            } else {
-              _openRouteManageMenu(row, day, list);
-            }
-          },
-          child: Container(
-            height: _rowHeight,
-            decoration: BoxDecoration(
-              border: Border(
-                right: BorderSide(color: borderCol),
-                bottom: BorderSide(color: borderCol),
+          child: Material(
+            color: isFocusDay ? const Color(0xFFF8FAFC) : Colors.white,
+            child: InkWell(
+              onTap: _busy
+                  ? null
+                  : () {
+                      setState(() => _focusDay = _dayOnly(day));
+                      _refreshSapPendingCount();
+                      if (list.isEmpty) {
+                        _openRouteEditor(row, day);
+                      } else {
+                        _openRouteManageMenu(row, day, list);
+                      }
+                    },
+              child: Container(
+                height: _rowHeight,
+                decoration: BoxDecoration(
+                  border: Border(
+                    right: BorderSide(color: borderCol.withValues(alpha: 0.55)),
+                    bottom: BorderSide(color: borderCol.withValues(alpha: 0.55)),
+                  ),
+                ),
+                padding: const EdgeInsets.all(4),
+                child: _buildDayCell(context, row, day, list, isDark),
               ),
-              color: isFocusDay
-                  ? const Color(0xFFF9FAFB)
-                  : Colors.transparent,
             ),
-            padding: const EdgeInsets.all(4),
-            child: _buildDayCell(context, row, day, list, isDark),
           ),
-        ),
         );
       }).toList(),
     );
@@ -1493,37 +1514,64 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     List<PartnerRouteShare> list,
     bool isDark,
   ) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: list.isEmpty
-              ? Align(
-                  alignment: Alignment.topLeft,
-                  child: Icon(Icons.add_circle_outline, size: 20, color: Colors.grey[400]),
-                )
-              : ListView(
-                  padding: EdgeInsets.zero,
-                  physics: const NeverScrollableScrollPhysics(),
-                  shrinkWrap: true,
-                  children: [
-                    for (final s in list.take(2))
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 4),
-                        child: RouteCalendarChip(
-                          share: s,
-                          day: day,
-                          isDark: isDark,
-                          shiftColor: _shiftColor(s.shiftId),
-                          shiftName: _shiftName(s.shiftId),
-                          compact: true,
-                        ),
-                      ),
-                    if (list.length > 2)
-                      Text('+${list.length - 2}', style: TextStyle(fontSize: 10, color: Colors.grey[600])),
-                  ],
+    if (list.isEmpty) {
+      return Center(
+        child: Container(
+          width: double.infinity,
+          height: double.infinity,
+          margin: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: const Color(0xFFE2E8F0),
+              style: BorderStyle.solid,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.add_rounded, size: 18, color: Colors.grey[400]),
+              const SizedBox(height: 2),
+              Text(
+                'Legg til',
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey[500],
                 ),
+              ),
+            ],
+          ),
         ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final s in list.take(2))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 3),
+            child: RouteCalendarChip(
+              share: s,
+              day: day,
+              isDark: isDark,
+              shiftColor: _shiftColor(s.shiftId),
+              shiftName: _shiftName(s.shiftId),
+              compact: true,
+            ),
+          ),
+        if (list.length > 2)
+          Text(
+            '+${list.length - 2} mer',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey[600],
+            ),
+          ),
       ],
     );
   }

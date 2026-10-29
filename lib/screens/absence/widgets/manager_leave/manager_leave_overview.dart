@@ -285,7 +285,7 @@ class _ManagerLeaveOverviewState extends State<ManagerLeaveOverview> {
                 ),
                 TeamEqualSegmentItem(
                   value: _ManagerLeaveTab.oversiktFerie,
-                  label: 'Oversikt ferie',
+                  label: 'Kalender oversikt',
                   icon: Icons.calendar_month_outlined,
                 ),
               ],
