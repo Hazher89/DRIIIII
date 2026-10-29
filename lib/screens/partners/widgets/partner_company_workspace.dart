@@ -15,7 +15,6 @@ import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
 import '../../../models/user_profile.dart';
 import 'partner_assigned_routes_tab.dart';
-import 'partner_company_lifecycle_panel.dart';
 import 'partner_compliance_tab.dart';
 import 'partner_deduction_tab.dart';
 import 'partner_documents_tab.dart';
@@ -210,17 +209,15 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _header(context),
-        PartnerCompanyLifecyclePanel(
-          partner: _p,
-          profile: _profile,
-          initiallyExpanded: true,
-          onChanged: _reload,
-          onDeleted: () => widget.onClose(true),
-        ),
         if (_tabCtrl != null) ...[
-          PartnerDetailTabBar(
-            controller: _tabCtrl!,
-            tabs: _tabs.map((t) => (t.icon, t.label)).toList(),
+          Material(
+            elevation: 1,
+            shadowColor: Colors.black.withValues(alpha: 0.06),
+            color: PartnerModernUi.surface(context),
+            child: PartnerDetailTabBar(
+              controller: _tabCtrl!,
+              tabs: _tabs.map((t) => (t.icon, t.label)).toList(),
+            ),
           ),
           Expanded(
             child: DriftProTabView(
@@ -299,6 +296,7 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
           vehicles: _vehicles,
           onSaved: _reload,
           profile: _profile,
+          onDeleted: () => widget.onClose(true),
         );
         break;
       case AccessKeys.partnersTabBilkontroll:

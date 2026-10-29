@@ -723,16 +723,26 @@ class PartnerWorkspaceField extends StatelessWidget {
                   ? Colors.white.withValues(alpha: 0.02)
                   : const Color(0xFFF1F5F9))
               : (isDark
-                  ? Colors.white.withValues(alpha: 0.04)
-                  : const Color(0xFFF8FAFC)),
+                  ? DriftProTheme.primaryGreen.withValues(alpha: 0.12)
+                  : const Color(0xFFECFDF5)),
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: PartnerModernUi.border(context)),
+            borderSide: BorderSide(
+              color: readOnly
+                  ? PartnerModernUi.border(context)
+                  : DriftProTheme.primaryGreen.withValues(alpha: 0.55),
+              width: readOnly ? 1 : 1.5,
+            ),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: PartnerModernUi.border(context)),
+            borderSide: BorderSide(
+              color: readOnly
+                  ? PartnerModernUi.border(context)
+                  : DriftProTheme.primaryGreen.withValues(alpha: 0.55),
+              width: readOnly ? 1 : 1.5,
+            ),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -740,7 +750,7 @@ class PartnerWorkspaceField extends StatelessWidget {
               color: readOnly
                   ? PartnerModernUi.border(context)
                   : DriftProTheme.primaryGreen,
-              width: readOnly ? 1 : 1.5,
+              width: readOnly ? 1 : 2,
             ),
           ),
         ),

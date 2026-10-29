@@ -47,6 +47,8 @@ class PartnerOverviewTab extends StatefulWidget {
   final Future<void> Function() onSaved;
   final UserProfile? profile;
   final VoidCallback? onDeleted;
+  /// Valgfri bedriftsheader som skroller bort med innholdet.
+  final Widget? scrollHeader;
 
   const PartnerOverviewTab({
     super.key,
@@ -55,6 +57,7 @@ class PartnerOverviewTab extends StatefulWidget {
     required this.onSaved,
     this.profile,
     this.onDeleted,
+    this.scrollHeader,
   });
 
   @override
@@ -1656,7 +1659,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       ...maviRows.map((r) => r.portalPhone.text.trim()).where((v) => v.isNotEmpty),
     };
     final activeOwnerCount = _ownerRows.where((r) => r.hasPortalAccount).length;
-    final wide = MediaQuery.sizeOf(context).width >= 960;
+    final wide = MediaQuery.sizeOf(context).width >= 900;
 
     int countFor(_OverviewSection s) => switch (s) {
           _OverviewSection.profile =>
@@ -2129,8 +2132,12 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     };
 
     final scrollBody = ListView(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 32),
       children: [
+        if (widget.scrollHeader != null) ...[
+          widget.scrollHeader!,
+          const SizedBox(height: 10),
+        ],
         _SectionPageHeader(
           section: _activeSection,
           meta:
@@ -2138,7 +2145,21 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           editing: _editing,
         ),
         const SizedBox(height: 12),
-        sectionBody,
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          decoration: _editing
+              ? BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: DriftProTheme.primaryGreen.withValues(alpha: 0.45),
+                    width: 2,
+                  ),
+                  color: DriftProTheme.primaryGreen.withValues(alpha: 0.04),
+                )
+              : null,
+          padding: _editing ? const EdgeInsets.all(10) : EdgeInsets.zero,
+          child: sectionBody,
+        ),
       ],
     );
 
@@ -2147,11 +2168,13 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Sticky: seksjonsfaner + Rediger / Lagre — følger ikke med ned i lista.
+            // Sticky: seksjonsfaner + Rediger / Lagre.
             Material(
               elevation: 1,
               shadowColor: Colors.black.withValues(alpha: 0.06),
-              color: PartnerModernUi.surface(context),
+              color: _editing
+                  ? DriftProTheme.primaryGreen.withValues(alpha: 0.06)
+                  : PartnerModernUi.surface(context),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 child: Column(
@@ -2175,17 +2198,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 ),
               ),
             ),
-            Expanded(
-              child: wide
-                  ? Align(
-                      alignment: Alignment.topCenter,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 920),
-                        child: scrollBody,
-                      ),
-                    )
-                  : scrollBody,
-            ),
+            Expanded(child: scrollBody),
           ],
         ),
         if (_saving) const ModalBarrier(dismissible: false),
@@ -2351,6 +2364,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       border = DriftProTheme.warning;
     }
 
+    final edge = _editing
+        ? DriftProTheme.primaryGreen.withValues(alpha: 0.55)
+        : (border ?? Colors.grey.withValues(alpha: 0.2));
     return IgnorePointer(
       ignoring: !_editing,
       child: Opacity(
@@ -2359,9 +2375,13 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: border != null ? border.withValues(alpha: 0.04) : Colors.grey.withValues(alpha: 0.04),
+        color: _editing
+            ? const Color(0xFFECFDF5)
+            : (border != null
+                ? border.withValues(alpha: 0.04)
+                : Colors.grey.withValues(alpha: 0.04)),
         borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
-        border: Border.all(color: border ?? Colors.grey.withValues(alpha: 0.2)),
+        border: Border.all(color: edge, width: _editing ? 1.5 : 1),
       ),
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2483,11 +2503,17 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         opacity: _editing ? 1 : 0.92,
         child: Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: DriftProTheme.primaryGreen.withValues(alpha: 0.03),
+        color: _editing
+            ? const Color(0xFFECFDF5)
+            : DriftProTheme.primaryGreen.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(DriftProTheme.radiusMd),
-        border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.18)),
+        border: Border.all(
+          color: DriftProTheme.primaryGreen
+              .withValues(alpha: _editing ? 0.55 : 0.18),
+          width: _editing ? 1.5 : 1,
+        ),
       ),
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

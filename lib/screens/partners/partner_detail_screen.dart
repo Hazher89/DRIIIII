@@ -196,6 +196,31 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
             if (!mounted) return;
             context.go(AppPaths.partnersPath(tab: 'bedrifter'));
           },
+          scrollHeader: PartnerModernDetailHeader(
+            title: _p.tradeName?.isNotEmpty == true ? _p.tradeName! : _p.name,
+            subtitle: [
+              if (_p.orgNumber != null) 'Org.nr ${_p.orgNumber}',
+              if (_p.ownerName != null && _p.ownerName!.isNotEmpty) _p.ownerName!,
+              if ([_p.city, _p.postalCode]
+                  .whereType<String>()
+                  .where((s) => s.isNotEmpty)
+                  .isNotEmpty)
+                [_p.city, _p.postalCode]
+                    .whereType<String>()
+                    .where((s) => s.isNotEmpty)
+                    .join(' · '),
+            ].join(' · '),
+            maviCount: _maviCount,
+            regCount: _regCount,
+            smsCount: _smsCount,
+            portalCount: _portalCount,
+            isActive: _p.isActive,
+            canToggleActive: false,
+            onActiveChanged: null,
+            ecoDrivingStatus: _p.ecoDrivingStatus,
+            ecoDrivingDeadline: _p.ecoDrivingDeadline,
+            ecoDrivingCompletedAt: _p.ecoDrivingCompletedAt,
+          ),
         ),
       AccessKeys.partnersTabBilkontroll =>
         PartnerVehicleInspectionTab(partner: _p, vehicles: _vehicles),
@@ -238,11 +263,6 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
       );
     }
 
-    final loc = [_p.city, _p.postalCode]
-        .whereType<String>()
-        .where((s) => s.isNotEmpty)
-        .join(' · ');
-
     return Scaffold(
       backgroundColor: WebLayout.canvasColor(context),
       appBar: AppBar(
@@ -257,28 +277,10 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
           ),
         ],
       ),
-      // Header + faner er faste; kun fanens innhold skroller — maks synlig arbeidsflate.
+      // Faner faste øverst; bedriftskort ligger i Oversikt og skroller bort.
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          PartnerModernDetailHeader(
-            title: _p.tradeName?.isNotEmpty == true ? _p.tradeName! : _p.name,
-            subtitle: [
-              if (_p.orgNumber != null) 'Org.nr ${_p.orgNumber}',
-              if (_p.ownerName != null && _p.ownerName!.isNotEmpty) _p.ownerName!,
-              if (loc.isNotEmpty) loc,
-            ].join(' · '),
-            maviCount: _maviCount,
-            regCount: _regCount,
-            smsCount: _smsCount,
-            portalCount: _portalCount,
-            isActive: _p.isActive,
-            canToggleActive: false,
-            onActiveChanged: null,
-            ecoDrivingStatus: _p.ecoDrivingStatus,
-            ecoDrivingDeadline: _p.ecoDrivingDeadline,
-            ecoDrivingCompletedAt: _p.ecoDrivingCompletedAt,
-          ),
           if (_tabs != null)
             Material(
               elevation: 1.5,

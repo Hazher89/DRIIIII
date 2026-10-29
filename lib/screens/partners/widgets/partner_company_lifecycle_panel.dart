@@ -10,7 +10,7 @@ import '../../../models/user_profile.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 import 'partner_modern_ui.dart';
 
-/// Deaktiver, aktiver eller slett bedrift permanent.
+/// Farlige bedriftshandlinger — kompakt kort nederst under Bedrift (ikke i header).
 class PartnerCompanyLifecyclePanel extends StatelessWidget {
   const PartnerCompanyLifecyclePanel({
     super.key,
@@ -25,6 +25,7 @@ class PartnerCompanyLifecyclePanel extends StatelessWidget {
   final UserProfile? profile;
   final Future<void> Function() onChanged;
   final VoidCallback? onDeleted;
+  /// Beholdt for bakoverkompatibilitet — panelet er alltid kompakt.
   final bool initiallyExpanded;
 
   bool get _canManage =>
@@ -32,7 +33,8 @@ class PartnerCompanyLifecyclePanel extends StatelessWidget {
       profile?.access.canPartnersDelete == true;
 
   bool get _canDelete =>
-      profile?.access.canPartnersDelete == true || profile?.access.canPartnersAdmin == true;
+      profile?.access.canPartnersDelete == true ||
+      profile?.access.canPartnersAdmin == true;
 
   Future<bool> _confirm(
     BuildContext context, {
@@ -66,7 +68,10 @@ class PartnerCompanyLifecyclePanel extends StatelessWidget {
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Avbryt'),
+            ),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
               onPressed: typedConfirm == null || ctrl == null
@@ -112,7 +117,10 @@ class PartnerCompanyLifecyclePanel extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Kunne ikke deaktivere: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Kunne ikke deaktivere: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -141,7 +149,10 @@ class PartnerCompanyLifecyclePanel extends StatelessWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Kunne ikke aktivere: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Kunne ikke aktivere: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -172,16 +183,19 @@ class PartnerCompanyLifecyclePanel extends StatelessWidget {
     try {
       await PartnerService.deletePartner(partner.id);
       if (!context.mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // lukk lasting
+      Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bedrift slettet permanent')),
       );
       onDeleted?.call();
     } catch (e) {
       if (!context.mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // lukk lasting
+      Navigator.of(context, rootNavigator: true).pop();
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Sletting feilet: $e'), backgroundColor: Colors.red),
+        SnackBar(
+          content: Text('Sletting feilet: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -190,89 +204,64 @@ class PartnerCompanyLifecyclePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     if (!_canManage) return const SizedBox.shrink();
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: ExpansionTile(
-          initiallyExpanded: initiallyExpanded,
-          tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-          childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: PartnerModernUi.border(context).withValues(alpha: 0.8),
-            ),
-          ),
-          collapsedShape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: BorderSide(
-              color: PartnerModernUi.border(context).withValues(alpha: 0.8),
-            ),
-          ),
-          backgroundColor: PartnerModernUi.surface(context),
-          collapsedBackgroundColor: PartnerModernUi.surface(context),
-          leading: Icon(
-            Icons.settings_outlined,
-            size: 20,
-            color: PartnerModernUi.muted(context),
-          ),
-          title: Text(
-            'Bedriftsstatus',
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 13.5,
-              color: PartnerModernUi.textPrimary(context),
-            ),
-          ),
-          subtitle: Text(
-            partner.isActive ? 'Aktiv · deaktiver / slett' : 'Deaktivert · aktiver / slett',
-            style: TextStyle(fontSize: 11.5, color: PartnerModernUi.muted(context)),
-          ),
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                partner.isActive
-                    ? 'Bedriften er aktiv i ruteplanlegging og SMS.'
-                    : 'Bedriften er deaktivert — skjult fra aktive bedrifter.',
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.35,
-                  color: PartnerModernUi.muted(context),
-                ),
+    const orange = Color(0xFFEA580C);
+    const red = Color(0xFFDC2626);
+
+    return PartnerModernSection(
+      icon: Icons.shield_outlined,
+      title: 'Farlige handlinger',
+      subtitle: partner.isActive
+          ? 'Deaktiver skjuler bedriften midlertidig. Slett er permanent.'
+          : 'Bedriften er deaktivert. Aktiver for å bruke den igjen, eller slett.',
+      children: [
+        if (partner.isActive)
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => _deactivate(context),
+              icon: const Icon(Icons.pause_circle_filled_rounded),
+              label: const Text('Deaktiver bedrift'),
+              style: FilledButton.styleFrom(
+                backgroundColor: orange,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 46),
+                textStyle: const TextStyle(fontWeight: FontWeight.w800),
               ),
             ),
-            const SizedBox(height: 12),
-            if (partner.isActive)
-              OutlinedButton.icon(
-                onPressed: () => _deactivate(context),
-                icon: const Icon(Icons.pause_circle_outline),
-                label: const Text('Deaktiver bedrift'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFFB45309),
-                  side: const BorderSide(color: Color(0xFFB45309)),
-                ),
-              )
-            else
-              FilledButton.icon(
-                onPressed: () => _activate(context),
-                icon: const Icon(Icons.play_circle_outline),
-                label: const Text('Aktiver bedrift'),
-                style: FilledButton.styleFrom(backgroundColor: DriftProTheme.primaryGreen),
+          )
+        else
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => _activate(context),
+              icon: const Icon(Icons.play_circle_filled_rounded),
+              label: const Text('Aktiver bedrift'),
+              style: FilledButton.styleFrom(
+                backgroundColor: DriftProTheme.primaryGreen,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 46),
+                textStyle: const TextStyle(fontWeight: FontWeight.w800),
               ),
-            if (_canDelete) ...[
-              const SizedBox(height: 8),
-              TextButton.icon(
-                onPressed: () => _deletePermanent(context),
-                icon: const Icon(Icons.delete_forever_outlined),
-                label: const Text('Slett bedrift permanent'),
-                style: TextButton.styleFrom(foregroundColor: DriftProTheme.error),
+            ),
+          ),
+        if (_canDelete) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => _deletePermanent(context),
+              icon: const Icon(Icons.delete_forever_rounded),
+              label: const Text('Slett bedrift permanent'),
+              style: FilledButton.styleFrom(
+                backgroundColor: red,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 46),
+                textStyle: const TextStyle(fontWeight: FontWeight.w800),
               ),
-            ],
-          ],
-        ),
-      ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
