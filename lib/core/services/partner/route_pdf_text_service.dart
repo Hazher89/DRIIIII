@@ -86,12 +86,19 @@ class RoutePdfParseBundle {
   String get searchText => fullText.isNotEmpty ? fullText : headerText;
 }
 
-/// MAVI + Stowing Lane fra Trip Overview (første side).
+/// MAVI + Stowing Lane + FO fra Trip Overview (første side).
 class RoutePdfTripOverviewMeta {
   final String? maviCode;
   final String? stowingLane;
+  final String? freightOrder;
+  final String? driverName;
 
-  const RoutePdfTripOverviewMeta({this.maviCode, this.stowingLane});
+  const RoutePdfTripOverviewMeta({
+    this.maviCode,
+    this.stowingLane,
+    this.freightOrder,
+    this.driverName,
+  });
 }
 
 /// Ekstraherer og scorer PDF-tekst for smart rutesøk (klient-side).
@@ -154,6 +161,9 @@ class RoutePdfTextService {
           parseResourceId(primary) ??
           fromFile,
       stowingLane: parseStowingLane(headerText) ?? parseStowingLane(primary),
+      freightOrder:
+          parseFreightOrder(headerText) ?? parseFreightOrder(primary),
+      driverName: parseDriverName(headerText) ?? parseDriverName(primary),
     );
     return RoutePdfParseBundle(
       headerText: headerText,
@@ -256,6 +266,30 @@ class RoutePdfTextService {
     return null;
   }
 
+  /// Freight Order-nummer fra toppen av Trip Overview (f.eks. «Freight Order 6102948737»).
+  static String? parseFreightOrder(String raw) {
+    if (raw.trim().isEmpty) return null;
+    final text = raw.replaceAll('\uFF3F', '_');
+    final labeled = RegExp(
+      r'Freight\s*Order\s*[:#]?\s*(\d{6,14})',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (labeled != null) return labeled.group(1);
+
+    // Etikettsplit: «Freight Order» på egen linje, nummer under.
+    final below = RegExp(
+      r'Freight\s*Order\s*(?:\r?\n\s*)+(\d{6,14})',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (below != null) return below.group(1);
+
+    return null;
+  }
+
+  static String? parseFreightOrderFromBytes(Uint8List bytes) {
+    return parseFreightOrder(extractFullText(bytes));
+  }
+
   /// Sjåførnavn fra Trip Overview (ofte linjen rett over «Driver Name»).
   static String? parseDriverName(String raw) {
     if (raw.trim().isEmpty) return null;
@@ -266,7 +300,11 @@ class RoutePdfTextService {
       caseSensitive: false,
     ).firstMatch(text);
     if (aboveLabel != null) {
-      return _cleanDriverName(aboveLabel.group(1)!.trim());
+      final candidate = aboveLabel.group(1)!.trim();
+      if (!_looksLikeMaviCode(candidate) &&
+          !candidate.toLowerCase().contains('freight')) {
+        return _cleanDriverName(candidate);
+      }
     }
 
     final belowLabel = RegExp(
@@ -275,7 +313,9 @@ class RoutePdfTextService {
     ).firstMatch(text);
     if (belowLabel != null) {
       final line = belowLabel.group(1)!.trim();
-      if (!RegExp(r'^\d').hasMatch(line) && !line.contains('KG')) {
+      if (!RegExp(r'^\d').hasMatch(line) &&
+          !line.contains('KG') &&
+          !_looksLikeMaviCode(line)) {
         return _cleanDriverName(line);
       }
     }
@@ -295,8 +335,15 @@ class RoutePdfTextService {
     return parseDriverName(extractFullText(bytes));
   }
 
+  static bool _looksLikeMaviCode(String s) {
+    final t = s.trim();
+    return RegExp(r'^(NO_[A-Z]_M\w+|M\d{1,4}|MJIM|JIM)\b', caseSensitive: false)
+        .hasMatch(t);
+  }
+
   static String _cleanDriverName(String raw) {
     var s = raw.trim();
+    if (_looksLikeMaviCode(s)) return s; // caller skal filtrere bort
     final dup = RegExp(
       r'^([A-Za-zÆØÅæøå][\wæøåÆØÅ-]*)\s+(\d{2,4})\s+\2\s+(.+)$',
     ).firstMatch(s);
@@ -305,6 +352,14 @@ class RoutePdfTextService {
       final last = dup.group(3)!.trim();
       if (last.toLowerCase() == first.toLowerCase()) return _titleName(first);
       return _titleName('$first $last');
+    }
+    // «mavi artis 089 089 mavi artis» → «Mavi Artis»
+    final doubled = RegExp(
+      r'^(.+?)\s+(\d{2,4})\s+\2\s+\1$',
+      caseSensitive: false,
+    ).firstMatch(s);
+    if (doubled != null) {
+      return _titleName(doubled.group(1)!.trim());
     }
     s = s.replaceAll(RegExp(r'\s+\d{2,4}(\s+\d{2,4})*\s*'), ' ').trim();
     return _titleName(s);

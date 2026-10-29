@@ -4411,6 +4411,7 @@ class PartnerService {
         pdfSearchText: pdfText.isEmpty ? null : pdfText,
         partnerVehicleId: vehicle.id,
         notes: composedNotes.isEmpty ? null : composedNotes,
+        customerCount: auto.customerCount > 0 ? auto.customerCount : null,
       ),
     );
     RoutePdfBytesCache.putShare(share.id, bytes);
@@ -4424,6 +4425,9 @@ class PartnerService {
     }
     if (auto.shift != null) {
       patch['shift_id'] = auto.shift!.id;
+    }
+    if (auto.customerCount > 0) {
+      patch['customer_count'] = auto.customerCount;
     }
     if (patch.isNotEmpty) {
       await updateRouteShareFields(share.id, patch);

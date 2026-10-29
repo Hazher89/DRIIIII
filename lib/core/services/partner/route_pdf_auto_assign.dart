@@ -11,6 +11,7 @@ import 'route_time_band.dart';
 /// Alt som leses automatisk fra en rute-PDF (sjåfør, tid, postkoder, skift).
 class RoutePdfAutoAssign {
   final String? maviCode;
+  final String? freightOrder;
   final String? driverNameFromPdf;
   final String? driverNameOnVehicle;
   final bool driverNameMatchesVehicle;
@@ -20,9 +21,11 @@ class RoutePdfAutoAssign {
   final RoutePostalAnalysis postal;
   final FleetShiftDefinition? shift;
   final String? shiftLabel;
+  final int customerCount;
 
   const RoutePdfAutoAssign({
     this.maviCode,
+    this.freightOrder,
     this.driverNameFromPdf,
     this.driverNameOnVehicle,
     this.driverNameMatchesVehicle = false,
@@ -32,6 +35,7 @@ class RoutePdfAutoAssign {
     required this.postal,
     this.shift,
     this.shiftLabel,
+    this.customerCount = 0,
   });
 
   static Future<RoutePdfAutoAssign> analyze({
@@ -46,8 +50,12 @@ class RoutePdfAutoAssign {
     final text = parsed.searchText;
     final meta = parsed.meta;
     final mavi = meta.maviCode ?? RoutePdfTextService.extractResourceIdFromBytes(bytes);
-    final driverPdf = RoutePdfTextService.parseDriverName(parsed.headerText) ??
+    final driverPdf = meta.driverName ??
+        RoutePdfTextService.parseDriverName(parsed.headerText) ??
         RoutePdfTextService.parseDriverName(text);
+    final fo = meta.freightOrder ??
+        RoutePdfTextService.parseFreightOrder(parsed.headerText) ??
+        RoutePdfTextService.parseFreightOrder(text);
     final schedule = parsed.schedule;
     final stops = RoutePdfTextService.parseCustomers(text);
     final band = RouteTimeBand.inferFromStops(
@@ -74,6 +82,7 @@ class RoutePdfAutoAssign {
 
     return RoutePdfAutoAssign(
       maviCode: mavi,
+      freightOrder: fo,
       driverNameFromPdf: driverPdf,
       driverNameOnVehicle: vehicleDriver,
       driverNameMatchesVehicle: matches,
@@ -83,13 +92,20 @@ class RoutePdfAutoAssign {
       postal: postal,
       shift: shift,
       shiftLabel: shift?.name,
+      customerCount: stops.length,
     );
   }
 
   static String composeAutoNotes(RoutePdfAutoAssign a, {String? existing}) {
     final parts = <String>[];
+    if (a.freightOrder != null && a.freightOrder!.isNotEmpty) {
+      parts.add('FO: ${a.freightOrder}');
+    }
     if (a.driverNameFromPdf != null && a.driverNameFromPdf!.isNotEmpty) {
       parts.add('Sjåfør (PDF): ${a.driverNameFromPdf}');
+    }
+    if (a.customerCount > 0) {
+      parts.add('Kunder: ${a.customerCount}');
     }
     parts.add(
       'Rutedato (PDF): ${a.routeDate.day.toString().padLeft(2, '0')}.'

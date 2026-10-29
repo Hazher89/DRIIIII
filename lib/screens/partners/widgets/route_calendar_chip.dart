@@ -14,6 +14,7 @@ class RouteCalendarChip extends StatelessWidget {
     required this.isDark,
     required this.shiftColor,
     this.shiftName,
+    this.fallbackDriverName,
     this.compact = false,
   });
 
@@ -22,6 +23,7 @@ class RouteCalendarChip extends StatelessWidget {
   final bool isDark;
   final Color shiftColor;
   final String? shiftName;
+  final String? fallbackDriverName;
   final bool compact;
 
   @override
@@ -31,9 +33,11 @@ class RouteCalendarChip extends StatelessWidget {
     ).format(context);
     final status = RouteDispatchStatus.cellColorForShare(share);
     final label = RouteDispatchStatus.simpleLabelForShare(share);
-    final title = compact ? label : RouteDispatchStatus.cleanTitle(share);
+    final details = RouteDispatchStatus.chipDetailLines(
+      share,
+      fallbackDriverName: fallbackDriverName,
+    );
 
-    // Soft fill that still reads clearly as status (not a thin pill).
     final fillTop = Color.lerp(status, Colors.white, isDark ? 0.18 : 0.42)!;
     final fillBottom = Color.lerp(status, Colors.white, isDark ? 0.08 : 0.22)!;
     final onFill = isDark
@@ -44,8 +48,8 @@ class RouteCalendarChip extends StatelessWidget {
       width: double.infinity,
       height: double.infinity,
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 8 : 10,
-        vertical: compact ? 6 : 8,
+        horizontal: compact ? 7 : 10,
+        vertical: compact ? 5 : 8,
       ),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(compact ? 10 : 12),
@@ -73,13 +77,15 @@ class RouteCalendarChip extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 5),
               Expanded(
                 child: Text(
-                  start,
+                  '$start · $label',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
-                    fontSize: compact ? 11 : 12,
+                    fontSize: compact ? 10.5 : 12,
                     color: onFill,
                     height: 1.1,
                   ),
@@ -87,18 +93,20 @@ class RouteCalendarChip extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 3),
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: compact ? 10 : 11,
-              fontWeight: FontWeight.w700,
-              height: 1.15,
-              color: onFill.withValues(alpha: 0.88),
+          for (final line in details.take(compact ? 3 : 4)) ...[
+            const SizedBox(height: 2),
+            Text(
+              line,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: compact ? 9.5 : 11,
+                fontWeight: FontWeight.w700,
+                height: 1.15,
+                color: onFill.withValues(alpha: 0.9),
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

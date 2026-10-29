@@ -125,23 +125,52 @@ abstract final class RouteDispatchStatus {
   }
 
   /// Nyttige felt fra auto-notater (uten rå PDF-linjer).
-  static ({String? area, String? stowing, String? freeNote}) parseUsefulNotes(
+  static ({
+    String? fo,
+    String? driver,
+    String? area,
+    String? areaShort,
+    String? stowing,
+    int? customersFromNotes,
+    String? freeNote,
+  }) parseUsefulNotes(
     String? notes,
   ) {
     final raw = (notes ?? '').trim();
     if (raw.isEmpty) {
-      return (area: null, stowing: null, freeNote: null);
+      return (
+        fo: null,
+        driver: null,
+        area: null,
+        areaShort: null,
+        stowing: null,
+        customersFromNotes: null,
+        freeNote: null,
+      );
     }
-    final area = _metaLine(
+    final fo = _metaLine(raw, RegExp(r'FO:\s*(\d{6,14})', caseSensitive: false));
+    final driver = _metaLine(
+      raw,
+      RegExp(r'Sjåfør\s*\(PDF\):\s*([^\n]+)', caseSensitive: false),
+    );
+    final areaRaw = _metaLine(
       raw,
       RegExp(r'Omr[aå]de:\s*([^\n]+)', caseSensitive: false),
     );
+    final area = areaRaw
+        ?.replaceAll(RegExp(r'\s*\(gjetning\)\s*', caseSensitive: false), '')
+        .trim();
+    final areaShort = area?.split('(').first.trim();
     final stowing = _metaLine(
       raw,
       RegExp(
         r'(?:Stowing\s*Lane|Stowing):\s*([^\n]+)',
         caseSensitive: false,
       ),
+    );
+    final kunderLine = _metaLine(
+      raw,
+      RegExp(r'Kunder:\s*(\d+)', caseSensitive: false),
     );
     final free = raw
         .split('\n')
@@ -150,16 +179,39 @@ abstract final class RouteDispatchStatus {
           (l) =>
               l.isNotEmpty &&
               !RegExp(
-                r'^(Rutedato\s*\(PDF\)|Omr[aå]de|Skift\s*\(auto\)|Sjåfør\s*\(PDF\)|Stowing)',
+                r'^(FO:|Rutedato\s*\(PDF\)|Omr[aå]de|Skift\s*\(auto\)|Sjåfør\s*\(PDF\)|Stowing|Kunder:)',
                 caseSensitive: false,
               ).hasMatch(l),
         )
         .join(' · ');
     return (
-      area: area?.replaceAll(RegExp(r'\s*\(gjetning\)\s*', caseSensitive: false), '').trim(),
+      fo: fo,
+      driver: driver,
+      area: area,
+      areaShort: (areaShort == null || areaShort.isEmpty) ? null : areaShort,
       stowing: stowing,
+      customersFromNotes: int.tryParse(kunderLine ?? ''),
       freeNote: free.isEmpty ? null : free,
     );
+  }
+
+  /// Linjer til kalender-boksen (kompakt).
+  static List<String> chipDetailLines(
+    PartnerRouteShare share, {
+    String? fallbackDriverName,
+  }) {
+    final meta = parseUsefulNotes(share.notes);
+    final customers = share.customerCount ?? meta.customersFromNotes;
+    final driver = (meta.driver ?? fallbackDriverName)?.trim();
+    final lines = <String>[];
+    if (meta.fo != null) lines.add('FO ${meta.fo}');
+    if (driver != null && driver.isNotEmpty) lines.add(driver);
+    final bits = <String>[
+      if (customers != null && customers > 0) '$customers kunder',
+      if (meta.areaShort != null) 'ca ${meta.areaShort}',
+    ];
+    if (bits.isNotEmpty) lines.add(bits.join(' · '));
+    return lines;
   }
 
   static String tooltipForShare(PartnerRouteShare share, {String? shiftName}) {
@@ -168,10 +220,12 @@ abstract final class RouteDispatchStatus {
     final start = share.routeStartAt != null
         ? DateFormat('HH:mm', 'nb').format(share.routeStartAt!.toLocal())
         : null;
+    final customers = share.customerCount ?? meta.customersFromNotes;
 
     final buf = <String>[
       simpleLabelForShare(share),
-      cleanTitle(share),
+      if (meta.fo != null) 'FO ${meta.fo}',
+      if (meta.driver != null) meta.driver!,
       [
         DateFormat('EEE d. MMM', 'nb').format(day),
         if (start != null) 'kl. $start',
@@ -181,7 +235,14 @@ abstract final class RouteDispatchStatus {
     if (shiftName?.trim().isNotEmpty == true) {
       buf.add('Skift: ${shiftName!.trim()}');
     }
-    if (meta.area != null) buf.add('Område: ${meta.area}');
+    if (customers != null && customers > 0) {
+      buf.add('$customers kunder');
+    }
+    if (meta.areaShort != null) {
+      buf.add('Område ca ${meta.areaShort}');
+    } else if (meta.area != null) {
+      buf.add('Område: ${meta.area}');
+    }
     if (meta.stowing != null) buf.add('Stowing: ${meta.stowing}');
 
     if (share.isSentWithNotify) {

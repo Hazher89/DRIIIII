@@ -93,7 +93,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   List<DateTime> get _days =>
       List.generate(7, (i) => DateTime(_weekStart.year, _weekStart.month, _weekStart.day + i));
 
-  static const double _rowHeight = 104;
+  static const double _rowHeight = 122;
   static const double _dayHeaderHeight = 72;
   static const double _sidebarW = 168;
 
@@ -1560,6 +1560,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               isDark: isDark,
               shiftColor: _shiftColor(shown[i].shiftId),
               shiftName: _shiftName(shown[i].shiftId),
+              fallbackDriverName: row.vehicle.driverName,
               compact: true,
             ),
           ),
@@ -1972,8 +1973,29 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
                               ),
                               const SizedBox(height: 10),
                               _kv('Start', '$start'),
+                              if (meta.fo != null) _kv('FO', meta.fo!),
+                              if (meta.driver != null ||
+                                  widget.fleetRow.vehicle.driverName
+                                          ?.trim()
+                                          .isNotEmpty ==
+                                      true)
+                                _kv(
+                                  'Sjåfør',
+                                  meta.driver ??
+                                      widget.fleetRow.vehicle.driverName!.trim(),
+                                ),
+                              if ((s.customerCount ??
+                                      meta.customersFromNotes) !=
+                                  null)
+                                _kv(
+                                  'Kunder',
+                                  '${s.customerCount ?? meta.customersFromNotes}',
+                                ),
                               if (shift != null) _kv('Skift', shift),
-                              if (meta.area != null) _kv('Område', meta.area!),
+                              if (meta.areaShort != null)
+                                _kv('Område ca', meta.areaShort!)
+                              else if (meta.area != null)
+                                _kv('Område', meta.area!),
                               if (meta.stowing != null)
                                 _kv('Stowing', meta.stowing!),
                               _kv('Status', _dispatchLabel(s)),
