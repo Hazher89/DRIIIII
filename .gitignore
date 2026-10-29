@@ -65,3 +65,6 @@ services/vision_monitor/yolov8n.pt
 services/vision_monitor/models/yolov8n-pose.pt
 services/vision_monitor/models/yolov8s-worldv2.pt
 services/vision_monitor/models/yolov8s-world.pt
+
+# Local Connecteam PDF exports (large binaries)
+/exports/

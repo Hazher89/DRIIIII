@@ -148,7 +148,11 @@ abstract final class RouteDispatchStatus {
         freeNote: null,
       );
     }
-    final fo = _metaLine(raw, RegExp(r'FO:\s*(\d{6,14})', caseSensitive: false));
+    final fo = _metaLine(raw, RegExp(r'FO:\s*(\d{6,14})', caseSensitive: false)) ??
+        _metaLine(
+          raw,
+          RegExp(r'Freight\s*Order\s*[:#]?\s*(\d{6,14})', caseSensitive: false),
+        );
     final driver = _metaLine(
       raw,
       RegExp(r'Sjåfør\s*\(PDF\):\s*([^\n]+)', caseSensitive: false),
@@ -208,7 +212,12 @@ abstract final class RouteDispatchStatus {
     if (driver != null && driver.isNotEmpty) lines.add(driver);
     final bits = <String>[
       if (customers != null && customers > 0) '$customers kunder',
-      if (meta.areaShort != null) 'ca ${meta.areaShort}',
+      // Vis område kun når vi har stopp/kunder eller eksplisitt område-notat.
+      if (meta.areaShort != null &&
+          ((customers != null && customers > 0) ||
+              (meta.area?.contains('stopp') == true) ||
+              (meta.area?.contains('postnr') == true)))
+        'ca ${meta.areaShort}',
     ];
     if (bits.isNotEmpty) lines.add(bits.join(' · '));
     return lines;

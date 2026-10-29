@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_pdf/pdf.dart';
@@ -683,6 +684,37 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   }
 
   /// Synlig meny når kalendercelle har rute(r) — flytt, slett, varsle.
+  Future<void> _copyFoFromShares(List<PartnerRouteShare> shares) async {
+    final fos = <String>[];
+    for (final s in shares) {
+      final fo = RouteDispatchStatus.parseUsefulNotes(s.notes).fo;
+      if (fo != null && fo.isNotEmpty && !fos.contains(fo)) fos.add(fo);
+    }
+    if (fos.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ingen FO på denne ruten'),
+          duration: Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final text = fos.join('\n');
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          fos.length == 1 ? 'FO kopiert: ${fos.first}' : '${fos.length} FO kopiert',
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _openRouteManageMenu(
     FleetPartnerVehicleRow row,
     DateTime day,
@@ -1489,6 +1521,9 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         _openRouteManageMenu(row, day, list);
                       }
                     },
+              onLongPress: _busy || list.isEmpty
+                  ? null
+                  : () => _copyFoFromShares(list),
               child: Container(
                 height: _rowHeight,
                 decoration: BoxDecoration(
@@ -1823,7 +1858,7 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
     );
   }
 
-  Widget _kv(String k, String v) {
+  Widget _kv(String k, String v, {bool copyable = false}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
@@ -1841,15 +1876,48 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
             ),
           ),
           Expanded(
-            child: Text(
-              v,
-              style: const TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                height: 1.25,
-              ),
-            ),
+            child: copyable
+                ? SelectableText(
+                    v,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                      letterSpacing: 0.2,
+                    ),
+                  )
+                : Text(
+                    v,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      height: 1.25,
+                    ),
+                  ),
           ),
+          if (copyable)
+            IconButton(
+              tooltip: 'Kopier $k',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 28),
+              icon: Icon(
+                Icons.copy_rounded,
+                size: 16,
+                color: Colors.grey.shade700,
+              ),
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: v));
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('$k kopiert: $v'),
+                    duration: const Duration(seconds: 2),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
@@ -1973,7 +2041,8 @@ class _RouteManageSheetState extends State<_RouteManageSheet> {
                               ),
                               const SizedBox(height: 10),
                               _kv('Start', '$start'),
-                              if (meta.fo != null) _kv('FO', meta.fo!),
+                              if (meta.fo != null)
+                                _kv('FO', meta.fo!, copyable: true),
                               if (meta.driver != null ||
                                   widget.fleetRow.vehicle.driverName
                                           ?.trim()

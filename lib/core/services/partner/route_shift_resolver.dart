@@ -144,6 +144,7 @@ class RouteShiftResolver {
     final stops = RoutePdfTextService.parseCustomers(pdfText);
     final stopCount = stops.length;
     if (stops.isNotEmpty) {
+      // Kun leveringsstopp — ikke hub-adresse / fri tekst (PDF inneholder alltid «Oslo»).
       for (final stop in stops) {
         final region = regionForStop(stop);
         firstStopRegion ??= region;
@@ -153,8 +154,7 @@ class RouteShiftResolver {
       for (final code in RoutePdfTextService.extractPostalCodes(pdfText)) {
         countRegion(regionForPostal(code));
       }
-      final fromText = PostalRegionMapper.regionFromFreeText(pdfText);
-      countRegion(fromText);
+      // Ikke bruk regionFromFreeText på hele PDF — «Oslo»/HUB i header gir feil flertall.
     }
 
     var dominant = _pickDominantRegion(

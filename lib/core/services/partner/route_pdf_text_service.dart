@@ -267,6 +267,7 @@ class RoutePdfTextService {
   }
 
   /// Freight Order-nummer fra toppen av Trip Overview (f.eks. «Freight Order 6102948737»).
+  /// Tåler Syncfusion-liming: «Freight Order6102957822».
   static String? parseFreightOrder(String raw) {
     if (raw.trim().isEmpty) return null;
     final text = raw.replaceAll('\uFF3F', '_');
@@ -283,6 +284,13 @@ class RoutePdfTextService {
     ).firstMatch(text);
     if (below != null) return below.group(1);
 
+    // «F60586102957822» rett etter Trip Overview / Carrier (FO innebygd i F-kode).
+    final fCode = RegExp(
+      r'\bF\d{3,5}(61\d{8,12})\b',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (fCode != null) return fCode.group(1);
+
     return null;
   }
 
@@ -291,6 +299,7 @@ class RoutePdfTextService {
   }
 
   /// Sjåførnavn fra Trip Overview (ofte linjen rett over «Driver Name»).
+  /// Tåler limt tekst: «Driver NameAli 096 096 aliConsumed Weight…».
   static String? parseDriverName(String raw) {
     if (raw.trim().isEmpty) return null;
     final text = raw.replaceAll('\uFF3F', '_');
@@ -304,6 +313,20 @@ class RoutePdfTextService {
       if (!_looksLikeMaviCode(candidate) &&
           !candidate.toLowerCase().contains('freight')) {
         return _cleanDriverName(candidate);
+      }
+    }
+
+    // Stopp før neste Trip Overview-felt (ofte limt uten mellomrom).
+    // Tillat siffer: «Ali 096 096 aliConsumed…».
+    final glued = RegExp(
+      r'Driver\s*Name\s*([A-Za-zÆØÅæøå][A-Za-zÆØÅæøå0-9\s.\-]{0,80}?)'
+      r'(?=Consumed|Contact|Email|Phone|Notes|Seq\b|Resource|Freight|Total|HUB|\d{2,4}\.\d{2}\s*KG|$)',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (glued != null) {
+      final line = glued.group(1)!.trim();
+      if (!RegExp(r'^\d').hasMatch(line) && !_looksLikeMaviCode(line)) {
+        return _cleanDriverName(line);
       }
     }
 
@@ -344,12 +367,39 @@ class RoutePdfTextService {
   static String _cleanDriverName(String raw) {
     var s = raw.trim();
     if (_looksLikeMaviCode(s)) return s; // caller skal filtrere bort
+    // Limt suffix: «aliConsumed Weight…» / «Ali … Contact person»
+    s = s
+        .replaceAll(
+          RegExp(
+            r'(Consumed|Contact|Email|Phone|Notes|Weight|HUB|Seq\b).*$',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .trim();
+    // «Ali 096 096 aliConsumed» → kutt etter gjentatt navn
+    final doubledPrefix = RegExp(
+      r'^(.+?)\s+(\d{2,4})\s+\2\s+\1\b',
+      caseSensitive: false,
+    ).firstMatch(s);
+    if (doubledPrefix != null) {
+      return _titleName(doubledPrefix.group(1)!.trim());
+    }
     final dup = RegExp(
       r'^([A-Za-zÆØÅæøå][\wæøåÆØÅ-]*)\s+(\d{2,4})\s+\2\s+(.+)$',
     ).firstMatch(s);
     if (dup != null) {
       final first = dup.group(1)!.trim();
-      final last = dup.group(3)!.trim();
+      var last = dup.group(3)!.trim();
+      last = last
+          .replaceAll(
+            RegExp(
+              r'(Consumed|Contact|Email|Phone|Notes|Weight|HUB|Seq\b).*$',
+              caseSensitive: false,
+            ),
+            '',
+          )
+          .trim();
       if (last.toLowerCase() == first.toLowerCase()) return _titleName(first);
       return _titleName('$first $last');
     }

@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import '../../../models/partner/fleet_shift.dart';
 import '../../../models/partner/partner_links.dart';
 import 'postal_code_registry.dart';
-import 'postal_region_mapper.dart';
 import 'route_pdf_text_service.dart';
 import 'route_shift_resolver.dart';
 import 'route_time_band.dart';
@@ -63,8 +62,8 @@ class RoutePdfAutoAssign {
       fallbackStart: schedule.routeStartAt,
     );
     final postal = await RouteShiftResolver.analyzePdfText(text);
-    final region = postal.bestEffortRegion ??
-        PostalRegionMapper.regionFromFreeText(text);
+    // Unngå fri-tekst «Oslo» fra hub-adresse når stopp/postnr mangler signal.
+    final region = postal.bestEffortRegion;
     final shift = region != null
         ? RouteShiftResolver.pickShiftForRegion(
             shifts: shifts,
@@ -113,8 +112,12 @@ class RoutePdfAutoAssign {
     );
     if (a.postal.bestEffortRegion != null) {
       final conf = a.postal.hasConfidentRegion ? '' : ' (gjetning)';
+      final unit = a.postal.deliveryStopCount > 0 ? 'stopp' : 'postnr';
+      final n = a.postal.deliveryStopCount > 0
+          ? a.postal.dominantCount
+          : a.postal.dominantCount;
       parts.add(
-        'Område: ${a.postal.bestEffortRegion} (${a.postal.dominantCount} postnr, ${RouteTimeBand.label(a.timeBand)})$conf',
+        'Område: ${a.postal.bestEffortRegion} ($n $unit, ${RouteTimeBand.label(a.timeBand)})$conf',
       );
     }
     if (a.shiftLabel != null) {
