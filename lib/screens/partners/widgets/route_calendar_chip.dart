@@ -31,52 +31,50 @@ class RouteCalendarChip extends StatelessWidget {
     ).format(context);
     final status = RouteDispatchStatus.cellColorForShare(share);
     final label = RouteDispatchStatus.simpleLabelForShare(share);
+    final title = compact
+        ? label
+        : (share.title?.split('—').first.trim().isNotEmpty == true
+            ? share.title!.split('—').first.trim()
+            : label);
+
+    // Soft fill that still reads clearly as status (not a thin pill).
+    final fillTop = Color.lerp(status, Colors.white, isDark ? 0.18 : 0.42)!;
+    final fillBottom = Color.lerp(status, Colors.white, isDark ? 0.08 : 0.22)!;
+    final onFill = isDark
+        ? Colors.white
+        : Color.lerp(status, const Color(0xFF0F172A), 0.72)!;
 
     final chip = Container(
+      width: double.infinity,
+      height: double.infinity,
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 7 : 10,
+        horizontal: compact ? 8 : 10,
         vertical: compact ? 6 : 8,
       ),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(compact ? 12 : 14),
+        borderRadius: BorderRadius.circular(compact ? 10 : 12),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: isDark ? 0.14 : 0.72),
-            status.withValues(alpha: isDark ? 0.28 : 0.20),
-          ],
+          colors: [fillTop, fillBottom],
         ),
         border: Border.all(
-          color: status.withValues(alpha: 0.55),
-          width: 1.2,
+          color: status.withValues(alpha: isDark ? 0.55 : 0.35),
+          width: 1,
         ),
-        boxShadow: [
-          BoxShadow(
-            color: status.withValues(alpha: 0.18),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             children: [
               Container(
-                width: compact ? 8 : 9,
-                height: compact ? 8 : 9,
+                width: compact ? 7 : 8,
+                height: compact ? 7 : 8,
                 decoration: BoxDecoration(
                   color: status,
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: status.withValues(alpha: 0.45),
-                      blurRadius: 4,
-                    ),
-                  ],
                 ),
               ),
               const SizedBox(width: 6),
@@ -85,27 +83,24 @@ class RouteCalendarChip extends StatelessWidget {
                   start,
                   style: TextStyle(
                     fontWeight: FontWeight.w900,
-                    fontSize: compact ? 10 : 12,
-                    color: isDark ? Colors.white : const Color(0xFF1A1A1A),
+                    fontSize: compact ? 11 : 12,
+                    color: onFill,
+                    height: 1.1,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 2),
+          const SizedBox(height: 3),
           Text(
-            compact
-                ? label
-                : (share.title?.split('—').first.trim().isNotEmpty == true
-                    ? share.title!.split('—').first.trim()
-                    : label),
+            title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              fontSize: compact ? 9 : 11,
+              fontSize: compact ? 10 : 11,
               fontWeight: FontWeight.w700,
               height: 1.15,
-              color: status.withValues(alpha: 0.95),
+              color: onFill.withValues(alpha: 0.88),
             ),
           ),
         ],

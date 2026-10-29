@@ -294,7 +294,12 @@ class _PartnerCompanyWorkspaceBodyState extends State<PartnerCompanyWorkspaceBod
     Widget child;
     switch (tab.accessKey) {
       case AccessKeys.partnersTabOversikt:
-        child = PartnerOverviewTab(partner: _p, vehicles: _vehicles, onSaved: _reload);
+        child = PartnerOverviewTab(
+          partner: _p,
+          vehicles: _vehicles,
+          onSaved: _reload,
+          profile: _profile,
+        );
         break;
       case AccessKeys.partnersTabBilkontroll:
         child = PartnerVehicleInspectionTab(partner: _p, vehicles: _vehicles);

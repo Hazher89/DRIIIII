@@ -31,7 +31,6 @@ import 'widgets/partner_overview_tab.dart';
 import 'widgets/partner_transport_licenses_tab.dart';
 import 'widgets/partner_modern_ui.dart';
 import 'widgets/partner_ui.dart';
-import 'widgets/partner_company_lifecycle_panel.dart';
 import 'widgets/partner_vehicle_inspection_tab.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 
@@ -188,8 +187,16 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
 
   Widget _buildTabBody(PartnerDetailTabDef tab) {
     final child = switch (tab.accessKey) {
-      AccessKeys.partnersTabOversikt =>
-        PartnerOverviewTab(partner: _p, vehicles: _vehicles, onSaved: _reload),
+      AccessKeys.partnersTabOversikt => PartnerOverviewTab(
+          partner: _p,
+          vehicles: _vehicles,
+          onSaved: _reload,
+          profile: _profile,
+          onDeleted: () {
+            if (!mounted) return;
+            context.go(AppPaths.partnersPath(tab: 'bedrifter'));
+          },
+        ),
       AccessKeys.partnersTabBilkontroll =>
         PartnerVehicleInspectionTab(partner: _p, vehicles: _vehicles),
       AccessKeys.partnersTabRuter => PartnerAssignedRoutesTab(partner: _p),
@@ -250,6 +257,7 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
           ),
         ],
       ),
+      // Header + faner er faste; kun fanens innhold skroller — maks synlig arbeidsflate.
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -271,17 +279,16 @@ class _PartnerDetailScreenState extends State<PartnerDetailScreen> with SingleTi
             ecoDrivingDeadline: _p.ecoDrivingDeadline,
             ecoDrivingCompletedAt: _p.ecoDrivingCompletedAt,
           ),
-          PartnerCompanyLifecyclePanel(
-            partner: _p,
-            profile: _profile,
-            onChanged: _reload,
-            onDeleted: () {
-              if (!context.mounted) return;
-              context.go(AppPaths.partnersPath(tab: 'bedrifter'));
-            },
-          ),
           if (_tabs != null)
-            PartnerDetailTabBar(controller: _tabs!, tabs: _tabBarEntries),
+            Material(
+              elevation: 1.5,
+              shadowColor: Colors.black.withValues(alpha: 0.08),
+              color: PartnerModernUi.surface(context),
+              child: PartnerDetailTabBar(
+                controller: _tabs!,
+                tabs: _tabBarEntries,
+              ),
+            ),
           Expanded(
             child: _tabs == null
                 ? const SizedBox.shrink()

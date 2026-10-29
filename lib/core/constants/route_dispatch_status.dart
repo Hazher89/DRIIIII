@@ -10,11 +10,12 @@ abstract final class RouteDispatchStatus {
   static const registered = 'registered';
   static const sent = 'sent';
 
-  static const colorDraft = Color(0xFFEF6C00);
-  static const colorWaiting = Color(0xFFC62828);
-  static const colorAccepted = Color(0xFF2E7D32);
-  static const colorRejected = Color(0xFF8E24AA);
-  static const colorNeutral = Color(0xFF78909C);
+  // Soft, saturated status hues — readable as full cell fills.
+  static const colorDraft = Color(0xFFE8913A);
+  static const colorWaiting = Color(0xFFE05252);
+  static const colorAccepted = Color(0xFF3BA55C);
+  static const colorRejected = Color(0xFF9B59B6);
+  static const colorNeutral = Color(0xFF7B8A96);
 
   static final _timeFmt = DateFormat('dd.MM.yyyy HH:mm', 'nb');
 

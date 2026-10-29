@@ -1497,7 +1497,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     bottom: BorderSide(color: borderCol.withValues(alpha: 0.55)),
                   ),
                 ),
-                padding: const EdgeInsets.all(4),
+                padding: const EdgeInsets.all(3),
                 child: _buildDayCell(context, row, day, list, isDark),
               ),
             ),
@@ -1547,29 +1547,34 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       );
     }
 
+    final shown = list.take(2).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final s in list.take(2))
-          Padding(
-            padding: const EdgeInsets.only(bottom: 3),
+        for (var i = 0; i < shown.length; i++) ...[
+          if (i > 0) const SizedBox(height: 3),
+          Expanded(
             child: RouteCalendarChip(
-              share: s,
+              share: shown[i],
               day: day,
               isDark: isDark,
-              shiftColor: _shiftColor(s.shiftId),
-              shiftName: _shiftName(s.shiftId),
+              shiftColor: _shiftColor(shown[i].shiftId),
+              shiftName: _shiftName(shown[i].shiftId),
               compact: true,
             ),
           ),
+        ],
         if (list.length > 2)
-          Text(
-            '+${list.length - 2} mer',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w700,
-              color: Colors.grey[600],
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              '+${list.length - 2} mer',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w700,
+                color: Colors.grey[600],
+              ),
             ),
           ),
       ],

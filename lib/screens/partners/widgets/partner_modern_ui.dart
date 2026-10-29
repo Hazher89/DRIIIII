@@ -398,19 +398,19 @@ class PartnerModernDetailHeader extends StatelessWidget {
     final muted = PartnerModernUi.muted(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+      margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
       decoration: BoxDecoration(
         color: PartnerModernUi.surface(context),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: PartnerModernUi.border(context).withValues(alpha: 0.85),
         ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -427,18 +427,20 @@ class PartnerModernDetailHeader extends StatelessWidget {
                     Text(
                       title,
                       style: TextStyle(
-                        fontSize: 20,
+                        fontSize: 17,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: -0.5,
+                        letterSpacing: -0.4,
                         height: 1.15,
                         color: PartnerModernUi.textPrimary(context),
                       ),
                     ),
                     if (subtitle.trim().isNotEmpty) ...[
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 3),
                       Text(
                         subtitle,
-                        style: TextStyle(fontSize: 13, height: 1.35, color: muted),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12.5, height: 1.3, color: muted),
                       ),
                     ],
                   ],
@@ -484,13 +486,13 @@ class PartnerModernDetailHeader extends StatelessWidget {
               ],
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(child: _kpi(context, 'MAVI', '$maviCount', const Color(0xFF15803D))),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(child: _kpi(context, 'Skilt', '$regCount', const Color(0xFF2563EB))),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: _kpi(
                   context,
@@ -499,7 +501,7 @@ class PartnerModernDetailHeader extends StatelessWidget {
                   const Color(0xFF7C3AED),
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Expanded(
                 child: _kpi(
                   context,
@@ -513,10 +515,10 @@ class PartnerModernDetailHeader extends StatelessWidget {
             ],
           ),
           if (ecoDrivingStatus != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             EcoDrivingBadge(
               status: ecoDrivingStatus!,
-              prominent: true,
+              prominent: false,
               deadline: ecoDrivingDeadline,
               completedAt: ecoDrivingCompletedAt,
             ),
@@ -529,12 +531,12 @@ class PartnerModernDetailHeader extends StatelessWidget {
   Widget _kpi(BuildContext context, String label, String value, Color color) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
       decoration: BoxDecoration(
         color: isDark
             ? Colors.white.withValues(alpha: 0.04)
             : color.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
       child: Column(
@@ -543,17 +545,17 @@ class PartnerModernDetailHeader extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              fontSize: 10.5,
+              fontSize: 10,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.2,
               color: PartnerModernUi.muted(context),
             ),
           ),
-          const SizedBox(height: 3),
+          const SizedBox(height: 2),
           Text(
             value,
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: FontWeight.w900,
               letterSpacing: -0.4,
               color: color,
@@ -683,6 +685,7 @@ class PartnerWorkspaceField extends StatelessWidget {
     this.keyboardType,
     this.hint,
     this.onChanged,
+    this.readOnly = false,
   });
 
   final String label;
@@ -691,6 +694,7 @@ class PartnerWorkspaceField extends StatelessWidget {
   final TextInputType? keyboardType;
   final String? hint;
   final ValueChanged<String>? onChanged;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -701,19 +705,26 @@ class PartnerWorkspaceField extends StatelessWidget {
         controller: controller,
         maxLines: maxLines,
         keyboardType: keyboardType,
-        onChanged: onChanged,
+        onChanged: readOnly ? null : onChanged,
+        readOnly: readOnly,
+        enableInteractiveSelection: true,
         style: TextStyle(
           fontSize: 15,
           fontWeight: FontWeight.w600,
-          color: PartnerModernUi.textPrimary(context),
+          color: PartnerModernUi.textPrimary(context)
+              .withValues(alpha: readOnly ? 0.85 : 1),
         ),
         decoration: InputDecoration(
           labelText: label,
-          hintText: hint,
+          hintText: readOnly ? null : hint,
           filled: true,
-          fillColor: isDark
-              ? Colors.white.withValues(alpha: 0.04)
-              : const Color(0xFFF8FAFC),
+          fillColor: readOnly
+              ? (isDark
+                  ? Colors.white.withValues(alpha: 0.02)
+                  : const Color(0xFFF1F5F9))
+              : (isDark
+                  ? Colors.white.withValues(alpha: 0.04)
+                  : const Color(0xFFF8FAFC)),
           contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -725,7 +736,12 @@ class PartnerWorkspaceField extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: DriftProTheme.primaryGreen, width: 1.5),
+            borderSide: BorderSide(
+              color: readOnly
+                  ? PartnerModernUi.border(context)
+                  : DriftProTheme.primaryGreen,
+              width: readOnly ? 1 : 1.5,
+            ),
           ),
         ),
       ),

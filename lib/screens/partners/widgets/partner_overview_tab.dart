@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../../../core/services/sms/sms_phone_utils.dart';
 import '../../../core/utils/portal_credentials.dart';
 import '../../../core/constants/mavi_fleet_roles.dart';
-import '../../../core/layout/web_layout.dart';
 import '../../../core/services/brreg_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
@@ -18,8 +17,10 @@ import '../../../core/services/vegvesen/vehicle_registry_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../models/partner/partner.dart';
 import '../../../models/partner/partner_links.dart';
+import '../../../models/user_profile.dart';
 import 'partner_companies_ui.dart';
 import 'eco_driving_badge.dart';
+import 'partner_company_lifecycle_panel.dart';
 import 'partner_modern_ui.dart';
 import 'partner_ui.dart';
 import 'partner_workforce_admin_panel.dart';
@@ -44,12 +45,16 @@ class PartnerOverviewTab extends StatefulWidget {
   final Partner partner;
   final List<PartnerVehicle> vehicles;
   final Future<void> Function() onSaved;
+  final UserProfile? profile;
+  final VoidCallback? onDeleted;
 
   const PartnerOverviewTab({
     super.key,
     required this.partner,
     required this.vehicles,
     required this.onSaved,
+    this.profile,
+    this.onDeleted,
   });
 
   @override
@@ -251,6 +256,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
   Map<String, PartnerPortalAccount> _portalByVehicle = {};
   final List<_OwnerPortalRowState> _ownerRows = [];
   _OverviewSection _activeSection = _OverviewSection.profile;
+  /// Felter er låst til visning til brukeren trykker «Rediger».
+  bool _editing = false;
 
   @override
   void initState() {
@@ -1294,7 +1301,47 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
     }
   }
 
+  void _enterEditing() {
+    if (_saving) return;
+    setState(() => _editing = true);
+  }
+
+  void _cancelEditing() {
+    if (_saving) return;
+    final p = widget.partner;
+    setState(() {
+      _editing = false;
+      _orgNumber.text = p.orgNumber ?? '';
+      _companyName.text = p.name;
+      _owner.text = p.ownerName ?? '';
+      _phone.text = p.phone ?? '';
+      _email.text = p.email ?? '';
+      _address.text = p.address ?? '';
+      _postal.text = p.postalCode ?? '';
+      _city.text = p.city ?? '';
+      _veh.text = '${p.vehicleCountRegistered}';
+      _employees.text = p.employeeCount?.toString() ?? '';
+      _notes.text = p.notes ?? '';
+      _tradeName = p.tradeName;
+      _brregSnapshot = p.brregSnapshot == null
+          ? null
+          : Map<String, dynamic>.from(p.brregSnapshot!);
+      _routesOwnerOnly = p.routesOwnerOnly;
+      _workforceEnabled = p.workforceEnabled;
+      _portalAccess = Map<String, dynamic>.from(p.portalAccess);
+      _ecoDrivingCompleted = p.ecoDrivingCompleted;
+      _ecoDrivingDeadline = p.ecoDrivingDeadline;
+      _ecoDrivingCompletedAt = p.ecoDrivingCompletedAt;
+      _resetVehicles(widget.vehicles);
+    });
+    _loadPortals(preferPhone: (p.phone ?? '').trim().isEmpty ? null : p.phone);
+  }
+
   Future<void> _save() async {
+    if (!_editing) {
+      _enterEditing();
+      return;
+    }
     final name = _companyName.text.trim();
     if (name.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1582,8 +1629,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
             final n = normalizePhoneNo(desiredPhone);
             if (n != null) row.savedNormalizedPhone = n;
           }
-          setState(() {});
         }
+        if (mounted) setState(() => _editing = false);
       }
     } catch (e) {
       if (mounted) {
@@ -1601,7 +1648,6 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
 
   @override
   Widget build(BuildContext context) {
-    final p = widget.partner;
     final regRows = _rows.where((r) => r.isRegOnly).toList();
     final maviRows = _rows.where((r) => !r.isRegOnly).toList();
     final smsPhones = <String>{
@@ -1621,32 +1667,45 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           _OverviewSection.maviDrivers => maviRows.length,
         };
 
+    final locked = !_editing;
+
     final sectionBody = switch (_activeSection) {
       _OverviewSection.profile => Column(
           children: [
+            _OverviewStatusStrip(
+              partner: widget.partner,
+              maviCount: maviRows.length,
+              regCount: regRows.length,
+              smsCount: smsPhones.length,
+              portalCount: activeOwnerCount,
+              editing: _editing,
+            ),
             PartnerModernSection(
               icon: Icons.sticky_note_2_outlined,
               title: 'Intern notat',
-              subtitle: 'Kun synlig for MAVI',
+              subtitle: 'Kun synlig for MAVI-administrasjon — ikke for partneren',
               children: [
                 PartnerWorkspaceField(
                   label: 'Kommentar / notater',
                   controller: _notes,
                   maxLines: 4,
                   hint: 'Avtaler, spesielle forhold, kontaktperson …',
+                  readOnly: locked,
                 ),
               ],
             ),
             PartnerModernSection(
               icon: Icons.apartment_outlined,
               title: 'Kontakt & bedrift',
-              subtitle:
-                  'Bytt org.nr og hent ny bedriftsinfo — MAVI og biler beholdes',
+              subtitle: locked
+                  ? 'Trykk «Rediger» øverst for å endre bedriftsinfo'
+                  : 'Bytt org.nr og hent ny bedriftsinfo — MAVI og biler beholdes',
               children: [
                 PartnerWorkspaceField(
                   label: 'Bedriftsnavn',
                   controller: _companyName,
                   hint: 'Oppdateres fra Brreg ved «Hent»',
+                  readOnly: locked,
                 ),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1657,31 +1716,41 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                         controller: _orgNumber,
                         keyboardType: TextInputType.number,
                         hint: 'Skriv nytt org.nr og trykk Hent',
+                        readOnly: locked,
                       ),
                     ),
                     const SizedBox(width: 8),
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: FilledButton.icon(
-                        onPressed: _brregLoading || _saving ? null : _fetchBrregAndApply,
+                        onPressed: locked || _brregLoading || _saving
+                            ? null
+                            : _fetchBrregAndApply,
                         icon: _brregLoading
                             ? const SizedBox(
                                 width: 16,
                                 height: 16,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                             : const Icon(Icons.cloud_download_outlined, size: 18),
                         label: Text(_brregLoading ? 'Henter…' : 'Hent'),
                         style: FilledButton.styleFrom(
                           backgroundColor: DriftProTheme.primaryGreen,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
                 Text(
-                  'Kun bedriftsinfo oppdateres. MAVI-nummer, skilt, portal og ruter blir stående.',
+                  '«Hent» henter kun bedriftsinfo fra Brønnøysund. '
+                  'MAVI-nummer, skilt, portal og ruter blir stående.',
                   style: TextStyle(
                     fontSize: 12,
                     height: 1.35,
@@ -1701,6 +1770,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                           controller: _phone,
                           hint: 'Norsk mobil — lagres også på portal-konto',
                           keyboardType: TextInputType.phone,
+                          readOnly: locked,
                         ),
                       ),
                     ],
@@ -1731,6 +1801,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                     controller: _phone,
                     hint: 'Norsk mobil — lagres også på portal-konto',
                     keyboardType: TextInputType.phone,
+                    readOnly: locked,
                   ),
                   _field('E-post', _email),
                   _field('Adresse', _address),
@@ -1756,21 +1827,27 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               title: 'ECO Driving',
               subtitle: 'Synlig på bedriftskort når kurset er tatt',
               children: [
-                EcoDrivingCourseEditor(
-                  completed: _ecoDrivingCompleted,
-                  deadline: _ecoDrivingDeadline,
-                  onCompletedChanged: (v) {
-                    setState(() {
-                      _ecoDrivingCompleted = v;
-                      if (v) {
-                        _ecoDrivingCompletedAt = DateTime.now();
-                      } else {
-                        _ecoDrivingCompletedAt = null;
-                        _ecoDrivingDeadline ??=
-                            Partner.defaultEcoDrivingDeadline();
-                      }
-                    });
-                  },
+                IgnorePointer(
+                  ignoring: locked,
+                  child: Opacity(
+                    opacity: locked ? 0.72 : 1,
+                    child: EcoDrivingCourseEditor(
+                      completed: _ecoDrivingCompleted,
+                      deadline: _ecoDrivingDeadline,
+                      onCompletedChanged: (v) {
+                        setState(() {
+                          _ecoDrivingCompleted = v;
+                          if (v) {
+                            _ecoDrivingCompletedAt = DateTime.now();
+                          } else {
+                            _ecoDrivingCompletedAt = null;
+                            _ecoDrivingDeadline ??=
+                                Partner.defaultEcoDrivingDeadline();
+                          }
+                        });
+                      },
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1793,9 +1870,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                       title: Text(item.label),
                       subtitle: Text(item.hint),
                       value: PartnerPortalPages.isOn(_portalAccess, item.key),
-                      onChanged: _portalPageSaving == null
-                          ? (v) => _setPortalPage(item.key, v)
-                          : null,
+                      onChanged: locked || _portalPageSaving != null
+                          ? null
+                          : (v) => _setPortalPage(item.key, v),
                     ),
                   const Divider(height: 20),
                   Text(
@@ -1811,9 +1888,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                       title: Text(item.label),
                       subtitle: Text(item.hint),
                       value: PartnerPortalPages.isOn(_portalAccess, item.key),
-                      onChanged: _portalPageSaving == null
-                          ? (v) => _setPortalPage(item.key, v)
-                          : null,
+                      onChanged: locked || _portalPageSaving != null
+                          ? null
+                          : (v) => _setPortalPage(item.key, v),
                     ),
                 ],
               ),
@@ -1833,7 +1910,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Aktiver for denne bedriften'),
                   value: _workforceEnabled,
-                  onChanged: _workforceSaving ? null : _setWorkforceEnabled,
+                  onChanged: locked || _workforceSaving
+                      ? null
+                      : _setWorkforceEnabled,
                 ),
                 if (_isSuperAdmin)
                   ListTile(
@@ -1847,7 +1926,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : TextButton(
-                            onPressed: () => _setWorkforceAll(true),
+                            onPressed:
+                                locked ? null : () => _setWorkforceAll(true),
                             child: const Text('Slå på alle'),
                           ),
                   ),
@@ -1855,29 +1935,47 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                   const LinearProgressIndicator(minHeight: 2),
                 if (_workforceEnabled) ...[
                   const Divider(height: 24),
-                  PartnerWorkforceAdminPanel(
-                    partner: widget.partner,
-                    enabled: _workforceEnabled,
-                    isSuperAdmin: _isSuperAdmin,
-                    onStaffCountChanged: (n) {
-                      if (mounted) setState(() => _workforceStaffCount = n);
-                    },
+                  IgnorePointer(
+                    ignoring: locked,
+                    child: Opacity(
+                      opacity: locked ? 0.85 : 1,
+                      child: PartnerWorkforceAdminPanel(
+                        partner: widget.partner,
+                        enabled: _workforceEnabled,
+                        isSuperAdmin: _isSuperAdmin,
+                        onStaffCountChanged: (n) {
+                          if (mounted) setState(() => _workforceStaffCount = n);
+                        },
+                      ),
+                    ),
                   ),
                 ],
               ],
             ),
+            if (widget.profile != null)
+              PartnerCompanyLifecyclePanel(
+                partner: widget.partner,
+                profile: widget.profile,
+                onChanged: widget.onSaved,
+                onDeleted: widget.onDeleted,
+              ),
           ],
         ),
       _OverviewSection.routing => PartnerModernSection(
           icon: Icons.alt_route_rounded,
           title: 'Ruter og varsler',
-          subtitle: 'Styr hvem som mottar ruter fra DriftPro',
+          subtitle: locked
+              ? 'Trykk «Rediger» for å endre hvem som får ruter'
+              : 'Styr hvem som mottar ruter fra DriftPro',
           children: [
             Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: Text(
-                'Del ruter og godkjenning i portal (GDPR).',
-                style: TextStyle(fontSize: 12, color: PartnerModernUi.muted(context)),
+                'Bestemmer hvem som ser ruter i partner-appen (GDPR).',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: PartnerModernUi.muted(context),
+                ),
               ),
             ),
             RadioListTile<int>(
@@ -1891,8 +1989,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               subtitle: const Text(
                 'Sjåfører ser ikke ruter · bedriftsansvarlig håndterer ruter',
               ),
-              onChanged:
-                  _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(true),
+              onChanged: locked || _routesOwnerOnlySaving
+                  ? null
+                  : (v) => _setRoutesOwnerOnly(true),
             ),
             RadioListTile<int>(
               value: 2,
@@ -1905,8 +2004,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               subtitle: const Text(
                 'Sjåfører ser ruter for sin egen bil og kan godkjenne/avvise',
               ),
-              onChanged:
-                  _routesOwnerOnlySaving ? null : (v) => _setRoutesOwnerOnly(false),
+              onChanged: locked || _routesOwnerOnlySaving
+                  ? null
+                  : (v) => _setRoutesOwnerOnly(false),
             ),
             const RadioListTile<int>(
               value: 3,
@@ -1929,9 +2029,10 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       _OverviewSection.ownerPortal => PartnerModernSection(
           icon: Icons.manage_accounts_outlined,
           title: 'Portal for bedriftsansvarlig',
-          subtitle:
-              'Brukernavn/passord genereres og sendes på SMS. '
-              'Du kan endre telefon og lagre — samme konto oppdateres.',
+          subtitle: locked
+              ? 'Visning — trykk «Rediger» for å endre telefon eller legge til eier'
+              : 'Brukernavn/passord genereres og sendes på SMS. '
+                  'Endre telefon og lagre — samme konto oppdateres.',
           trailing: Text(
             '$activeOwnerCount/${_ownerRows.length}',
             style: TextStyle(
@@ -1942,7 +2043,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           children: [
             ..._ownerRows.map(_ownerPortalCard),
             OutlinedButton.icon(
-              onPressed: _portalSaving ? null : _addOwnerPortalRow,
+              onPressed: locked || _portalSaving ? null : _addOwnerPortalRow,
               icon: const Icon(Icons.person_add_outlined),
               label: const Text('Legg til bil-eier'),
             ),
@@ -1951,9 +2052,10 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       _OverviewSection.registrations => PartnerModernSection(
           icon: Icons.directions_car_outlined,
           title: 'Registrerte skiltnummer',
-          subtitle:
-              'Skiltnummer, årsmodell, nyttelast og EU-kontroll. '
-              'EU-dato hentes automatisk fra Vegvesen.',
+          subtitle: locked
+              ? 'Visning — trykk «Rediger» for å legge til eller endre skilt'
+              : 'Skiltnummer, årsmodell, nyttelast og EU-kontroll. '
+                  'EU-dato hentes automatisk fra Vegvesen.',
           trailing: Text(
             '${regRows.length}',
             style: TextStyle(
@@ -1966,12 +2068,14 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               PartnerEmptyState(
                 icon: Icons.add_road_outlined,
                 title: 'Ingen reg.nr registrert',
-                subtitle: 'Legg til alle registreringsnummer uavhengig av MAVI.',
+                subtitle: locked
+                    ? 'Trykk «Rediger» for å legge til skiltnummer.'
+                    : 'Legg til alle registreringsnummer uavhengig av MAVI.',
               )
             else
               ...regRows.map(_regCard),
             OutlinedButton.icon(
-              onPressed: _addRegRow,
+              onPressed: locked ? null : _addRegRow,
               icon: const Icon(Icons.add),
               label: const Text('Legg til reg.nr'),
             ),
@@ -1980,7 +2084,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       _OverviewSection.maviDrivers => PartnerModernSection(
           icon: Icons.local_shipping_outlined,
           title: 'MAVI & sjåfør',
-          subtitle: 'Auto brukernavn · SMS ved opprettelse',
+          subtitle: locked
+              ? 'Visning — trykk «Rediger» for å legge til MAVI eller endre sjåfør'
+              : 'Auto brukernavn · SMS ved opprettelse',
           trailing: Text(
             '${maviRows.length}',
             style: TextStyle(
@@ -1993,7 +2099,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               PartnerEmptyState(
                 icon: Icons.add_box_outlined,
                 title: 'Ingen MAVI-nummer ennå',
-                subtitle: 'Legg til MAVI og koble valgfritt til reg.nr.',
+                subtitle: locked
+                    ? 'Trykk «Rediger» for å legge til MAVI.'
+                    : 'Legg til MAVI og koble valgfritt til reg.nr.',
               )
             else
               ...maviRows.map(_vehicleCard),
@@ -2001,7 +2109,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _addMaviRow,
+                    onPressed: locked ? null : _addMaviRow,
                     icon: const Icon(Icons.add),
                     label: const Text('Legg til MAVI'),
                   ),
@@ -2009,7 +2117,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _bulkAddMavi,
+                    onPressed: locked ? null : _bulkAddMavi,
                     icon: const Icon(Icons.playlist_add),
                     label: const Text('Lim inn flere'),
                   ),
@@ -2020,85 +2128,65 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
         ),
     };
 
-    final nav = _OverviewSectionNav(
-      selected: _activeSection,
-      countFor: countFor,
-      onSelected: (s) => setState(() => _activeSection = s),
-      vertical: wide,
+    final scrollBody = ListView(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 28),
+      children: [
+        _SectionPageHeader(
+          section: _activeSection,
+          meta:
+              '${smsPhones.length} SMS · ${activeOwnerCount == 0 ? 'mangler portal' : '$activeOwnerCount portal'}',
+          editing: _editing,
+        ),
+        const SizedBox(height: 12),
+        sectionBody,
+      ],
     );
 
     return Stack(
       children: [
-        ListView(
-          padding: EdgeInsets.fromLTRB(
-            12,
-            WebLayout.prefersPointerNav && wide ? 64 : 4,
-            12,
-            WebLayout.prefersPointerNav && wide ? 28 : 100,
-          ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (wide)
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: 248,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(4, 4, 4, 10),
-                          child: Text(
-                            'Innhold',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: 0.2,
-                              color: PartnerModernUi.muted(context),
-                            ),
-                          ),
-                        ),
-                        nav,
-                      ],
+            // Sticky: seksjonsfaner + Rediger / Lagre — følger ikke med ned i lista.
+            Material(
+              elevation: 1,
+              shadowColor: Colors.black.withValues(alpha: 0.06),
+              color: PartnerModernUi.surface(context),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _OverviewSectionNav(
+                      selected: _activeSection,
+                      countFor: countFor,
+                      onSelected: (s) => setState(() => _activeSection = s),
+                      vertical: false,
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 820),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _SectionPageHeader(
-                            section: _activeSection,
-                            meta:
-                                '${smsPhones.length} SMS · ${activeOwnerCount == 0 ? 'mangler portal' : '$activeOwnerCount portal'}',
-                          ),
-                          const SizedBox(height: 12),
-                          sectionBody,
-                        ],
-                      ),
+                    const SizedBox(height: 10),
+                    _OverviewEditBar(
+                      editing: _editing,
+                      saving: _saving,
+                      onEdit: _enterEditing,
+                      onCancel: _cancelEditing,
+                      onSave: _save,
                     ),
-                  ),
-                ],
-              )
-            else ...[
-              nav,
-              const SizedBox(height: 12),
-              _SectionPageHeader(
-                section: _activeSection,
-                meta:
-                    '${smsPhones.length} SMS · ${activeOwnerCount == 0 ? 'mangler portal' : '$activeOwnerCount portal'}',
+                  ],
+                ),
               ),
-              const SizedBox(height: 10),
-              sectionBody,
-            ],
+            ),
+            Expanded(
+              child: wide
+                  ? Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 920),
+                        child: scrollBody,
+                      ),
+                    )
+                  : scrollBody,
+            ),
           ],
-        ),
-        PartnerStickySaveBar(
-          label: 'Lagre endringer',
-          loading: _saving,
-          onPressed: _saving ? null : _save,
         ),
         if (_saving) const ModalBarrier(dismissible: false),
       ],
@@ -2141,7 +2229,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
                   style: DriftProTheme.headingSm.copyWith(fontSize: 13),
                 ),
               ),
-              if (_ownerRows.length > 1 || row.hasPortalAccount)
+              if (_editing && (_ownerRows.length > 1 || row.hasPortalAccount))
                 IconButton(
                   tooltip: 'Fjern bil-eier',
                   icon: const Icon(Icons.delete_outline, color: Colors.red),
@@ -2151,6 +2239,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           ),
           TextField(
             controller: row.displayName,
+            readOnly: !_editing,
             textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(
               labelText: 'Navn (valgfri)',
@@ -2161,19 +2250,24 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           const SizedBox(height: 8),
           TextField(
             controller: row.phone,
+            readOnly: !_editing,
             keyboardType: TextInputType.phone,
             decoration: InputDecoration(
               labelText: 'Bedriftsansvarlig telefon (SMS) *',
               border: const OutlineInputBorder(),
               isDense: true,
-              helperText: phoneChanged
-                  ? 'Nummer endret — trykk lagre for å oppdatere konto og sende SMS.'
-                  : 'Endre fritt, deretter lagre.',
+              helperText: !_editing
+                  ? 'Trykk Rediger for å endre telefon.'
+                  : (phoneChanged
+                      ? 'Nummer endret — trykk lagre for å oppdatere konto og sende SMS.'
+                      : 'Endre fritt, deretter lagre.'),
             ),
-            onChanged: (_) {
-              setState(() {});
-              _markOwnerPhoneEdited(row);
-            },
+            onChanged: !_editing
+                ? null
+                : (_) {
+                    setState(() {});
+                    _markOwnerPhoneEdited(row);
+                  },
           ),
           const SizedBox(height: 8),
           Text(
@@ -2183,6 +2277,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           const SizedBox(height: 8),
           TextField(
             controller: row.usernameField,
+            readOnly: !_editing,
             autocorrect: false,
             decoration: const InputDecoration(
               labelText: 'Brukernavn',
@@ -2194,6 +2289,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           const SizedBox(height: 8),
           TextField(
             controller: row.passwordField,
+            readOnly: !_editing,
             decoration: const InputDecoration(
               labelText: 'Passord',
               border: OutlineInputBorder(),
@@ -2203,7 +2299,9 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
           ),
           const SizedBox(height: 8),
           FilledButton.icon(
-            onPressed: _portalSaving ? null : () => _saveOwnerPortal(row),
+            onPressed: !_editing || _portalSaving
+                ? null
+                : () => _saveOwnerPortal(row),
             icon: const Icon(Icons.sms_outlined, size: 18),
             label: Text(
               needsNewCredentials
@@ -2240,6 +2338,7 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       label: label,
       controller: c,
       maxLines: maxLines,
+      readOnly: !_editing,
     );
   }
 
@@ -2252,7 +2351,11 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
       border = DriftProTheme.warning;
     }
 
-    return Container(
+    return IgnorePointer(
+      ignoring: !_editing,
+      child: Opacity(
+        opacity: _editing ? 1 : 0.92,
+        child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -2368,11 +2471,17 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
             ),
           ],
         ),
+        ),
+      ),
     );
   }
 
   Widget _vehicleCard(_VehicleRowState row) {
-    return Container(
+    return IgnorePointer(
+      ignoring: !_editing,
+      child: Opacity(
+        opacity: _editing ? 1 : 0.92,
+        child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -2609,6 +2718,8 @@ class _PartnerOverviewTabState extends State<PartnerOverviewTab> {
               ),
           ],
         ),
+        ),
+      ),
     );
   }
 }
@@ -2617,10 +2728,12 @@ class _SectionPageHeader extends StatelessWidget {
   const _SectionPageHeader({
     required this.section,
     required this.meta,
+    this.editing = false,
   });
 
   final _OverviewSection section;
   final String meta;
+  final bool editing;
 
   @override
   Widget build(BuildContext context) {
@@ -2635,10 +2748,29 @@ class _SectionPageHeader extends StatelessWidget {
               child: Text(
                 section.label,
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.5,
                   color: PartnerModernUi.textPrimary(context),
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: editing
+                    ? DriftProTheme.primaryGreen.withValues(alpha: 0.12)
+                    : PartnerModernUi.muted(context).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                editing ? 'Redigerer' : 'Kun visning',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: editing
+                      ? DriftProTheme.primaryGreen
+                      : PartnerModernUi.muted(context),
                 ),
               ),
             ),
@@ -2654,6 +2786,194 @@ class _SectionPageHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _OverviewEditBar extends StatelessWidget {
+  const _OverviewEditBar({
+    required this.editing,
+    required this.saving,
+    required this.onEdit,
+    required this.onCancel,
+    required this.onSave,
+  });
+
+  final bool editing;
+  final bool saving;
+  final VoidCallback onEdit;
+  final VoidCallback onCancel;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!editing) {
+      return Row(
+        children: [
+          Expanded(
+            child: Text(
+              'Feltene er låst. Trykk Rediger før du endrer noe.',
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: PartnerModernUi.muted(context),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            onPressed: saving ? null : onEdit,
+            icon: const Icon(Icons.edit_outlined, size: 18),
+            label: const Text('Rediger'),
+            style: FilledButton.styleFrom(
+              backgroundColor: DriftProTheme.primaryGreen,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(0, 42),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'Du redigerer nå. Husk å lagre — ellers går endringene tapt.',
+            style: TextStyle(
+              fontSize: 12.5,
+              height: 1.35,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFFB45309),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton(
+          onPressed: saving ? null : onCancel,
+          child: const Text('Avbryt'),
+        ),
+        const SizedBox(width: 8),
+        FilledButton.icon(
+          onPressed: saving ? null : onSave,
+          icon: saving
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.check_rounded, size: 18),
+          label: Text(saving ? 'Lagrer…' : 'Lagre'),
+          style: FilledButton.styleFrom(
+            backgroundColor: DriftProTheme.primaryGreen,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(0, 42),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OverviewStatusStrip extends StatelessWidget {
+  const _OverviewStatusStrip({
+    required this.partner,
+    required this.maviCount,
+    required this.regCount,
+    required this.smsCount,
+    required this.portalCount,
+    required this.editing,
+  });
+
+  final Partner partner;
+  final int maviCount;
+  final int regCount;
+  final int smsCount;
+  final int portalCount;
+  final bool editing;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = PartnerModernUi.muted(context);
+    final chips = <(String, String, Color)>[
+      ('Status', partner.isActive ? 'Aktiv' : 'Deaktivert',
+          partner.isActive ? const Color(0xFF15803D) : const Color(0xFF6B7280)),
+      ('MAVI', '$maviCount', const Color(0xFF15803D)),
+      ('Skilt', '$regCount', const Color(0xFF2563EB)),
+      ('SMS', '$smsCount', const Color(0xFF7C3AED)),
+      (
+        'Portal',
+        portalCount == 0 ? 'Mangler' : '$portalCount',
+        portalCount == 0 ? const Color(0xFFB45309) : const Color(0xFF0F766E),
+      ),
+    ];
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: PartnerModernUi.surface(context),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: PartnerModernUi.border(context).withValues(alpha: 0.9),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            editing
+                ? 'Du er i redigeringsmodus — endre feltene under og trykk Lagre.'
+                : 'Hurtigoversikt. Trykk Rediger øverst når du skal endre noe.',
+            style: TextStyle(fontSize: 12.5, height: 1.35, color: muted),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final c in chips)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: c.$3.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: c.$3.withValues(alpha: 0.2)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        c.$1,
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: muted,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        c.$2,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: c.$3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
