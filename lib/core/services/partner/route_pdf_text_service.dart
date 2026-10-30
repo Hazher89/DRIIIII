@@ -824,6 +824,33 @@ class RoutePdfTextService {
     return rest.trim();
   }
 
+  /// Freight Order (61…), Freight Unit (41…) og bilag/sales order (21…) fra PDF-tekst.
+  static ({String? fo, List<String> fus, List<String> bilags, String? driver})
+      parseTrackingIds(String raw) {
+    if (raw.trim().isEmpty) {
+      return (fo: null, fus: const [], bilags: const [], driver: null);
+    }
+    final fo = parseFreightOrder(raw);
+    final fus = RegExp(r'\b(41\d{8,12})\b')
+        .allMatches(raw)
+        .map((m) => m.group(1)!)
+        .toSet()
+        .take(40)
+        .toList();
+    final bilags = RegExp(r'\b(2\d{9})\b')
+        .allMatches(raw)
+        .map((m) => m.group(1)!)
+        .toSet()
+        .take(40)
+        .toList();
+    return (
+      fo: fo,
+      fus: fus,
+      bilags: bilags,
+      driver: parseDriverName(raw),
+    );
+  }
+
   /// Score 0–100: høyere = bedre treff.
   static int scoreMatch({
     required String query,
@@ -838,12 +865,15 @@ class RoutePdfTextService {
     final tit = (title ?? '').toLowerCase();
     final file = (fileName ?? '').toLowerCase();
     final mavi = (maviCode ?? '').toLowerCase();
+    final digits = q.replaceAll(RegExp(r'\D'), '');
 
     var score = 0;
     if (text.contains(q)) score += 40;
     if (tit.contains(q)) score += 25;
     if (file.contains(q)) score += 20;
     if (mavi.contains(q)) score += 30;
+    // FO / FU / bilag — eksakt talltreff veier tungt.
+    if (digits.length >= 8 && text.contains(digits)) score += 45;
 
     final tokens = q.split(RegExp(r'\s+')).where((t) => t.length >= 2);
     var tokenHits = 0;

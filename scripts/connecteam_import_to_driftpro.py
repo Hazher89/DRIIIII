@@ -164,13 +164,15 @@ def extract_driver_from_pdf_text(text: str) -> str | None:
     return None
 
 
-def pdf_text(path: Path, max_pages: int = 2) -> str:
+def pdf_text(path: Path, max_pages: int | None = None) -> str:
+    """Extract PDF text. Default = alle sider (trengs for bilag/sales order i søk)."""
     if PdfReader is None:
         return ""
     try:
         reader = PdfReader(str(path))
+        pages = reader.pages if max_pages is None else reader.pages[:max_pages]
         parts: list[str] = []
-        for page in reader.pages[:max_pages]:
+        for page in pages:
             parts.append(page.extract_text() or "")
         return "\n".join(parts)
     except Exception:
@@ -249,7 +251,12 @@ class Supa:
             raise RuntimeError(f"upload HTTP {e.code}: {err[:400]}") from e
 
 
-def load_fleet(sb: Supa, company_id: str) -> dict[str, dict[str, Any]]:
+def load_fleet(
+    sb: Supa,
+    company_id: str,
+    *,
+    include_inactive: bool = False,
+) -> dict[str, dict[str, Any]]:
     """match_key → vehicle row (prefer active)."""
     partners = sb.rest(
         f"/rest/v1/partners?company_id=eq.{company_id}&select=id,name,is_active&limit=500"
@@ -270,6 +277,8 @@ def load_fleet(sb: Supa, company_id: str) -> dict[str, dict[str, Any]]:
     by_key: dict[str, dict[str, Any]] = {}
     for v in vehs:
         if v.get("partner_id") not in partner_ok:
+            continue
+        if not include_inactive and not v.get("is_active", True):
             continue
         code = v.get("unit_code") or ""
         if code.upper().startswith("REG-"):
@@ -344,6 +353,11 @@ def main() -> int:
     ap.add_argument("--from-month", default=None)
     ap.add_argument("--to-month", default=None)
     ap.add_argument("--sleep", type=float, default=0.03)
+    ap.add_argument(
+        "--archive-missing",
+        action="store_true",
+        help="Importer også til inaktive Connecteam-arkiv-MAVI (historikk/søk).",
+    )
     args = ap.parse_args()
 
     url = os.environ.get("SUPABASE_URL", "").strip()
@@ -362,8 +376,17 @@ def main() -> int:
 
     sb = Supa(url, key)
     print("Laster flåte…")
-    fleet = load_fleet(sb, args.company_id)
-    print(f"  MAVI-biler i DriftPro: {len(fleet)}")
+    fleet = load_fleet(
+        sb,
+        args.company_id,
+        include_inactive=bool(args.archive_missing),
+    )
+    active_n = sum(1 for v in fleet.values() if v.get("is_active", True))
+    print(
+        f"  MAVI-biler i DriftPro: {len(fleet)}"
+        f" (aktive={active_n}"
+        f"{', inkl. arkiv' if args.archive_missing else ''})"
+    )
     print("Laster allerede importerte Connecteam-kilder…")
     existing = load_existing_sources(sb, args.company_id)
     print(f"  allerede importert: {len(existing)}")
@@ -404,17 +427,14 @@ def main() -> int:
             source_key = rel
             if source_key in existing:
                 stats["skipped_exists"] += 1
-                w.writerow(
-                    {
-                        "rel_path": rel,
-                        "mavi": "",
-                        "vehicle_id": "",
-                        "share_date": "",
-                        "status": "skipped_exists",
-                        "share_id": "",
-                        "detail": "",
-                    }
-                )
+                # Ikke logg hvert hopp — holder CSV liten og unngår at jobben ser «død» ut.
+                if i % 500 == 0:
+                    print(
+                        f"  …{i}/{len(files)}  "
+                        f"ok={stats['imported']} skip_veh={stats['skipped_no_vehicle']} "
+                        f"exists={stats['skipped_exists']} err={stats['errors']}"
+                    )
+                    lf.flush()
                 continue
 
             if path.stat().st_size < 200:
@@ -454,7 +474,21 @@ def main() -> int:
                 continue
 
             veh = fleet.get(match_key(mavi))
-            if not veh or not veh.get("is_active", True):
+            if not veh:
+                stats["skipped_no_vehicle"] += 1
+                w.writerow(
+                    {
+                        "rel_path": rel,
+                        "mavi": mavi,
+                        "vehicle_id": "",
+                        "share_date": "",
+                        "status": "skipped_no_vehicle",
+                        "share_id": "",
+                        "detail": "ikke i DriftPro-flåte",
+                    }
+                )
+                continue
+            if not veh.get("is_active", True) and not args.archive_missing:
                 # Kun aktive biler som finnes i DriftPro nå — ingen nye sjåfører.
                 stats["skipped_no_vehicle"] += 1
                 w.writerow(
@@ -486,16 +520,22 @@ def main() -> int:
                 )
                 continue
 
-            # Lett PDF-parse for FO/sjåfør (første sider) når vi ikke allerede leste tekst.
+            # Full tekst for søk (bilag/sales order ligger ofte på side 2+).
+            # Bruk allerede lest tekst bare som start; fyll på med alle sider.
+            header = text or pdf_text(path, max_pages=1)
+            text = pdf_text(path)  # alle sider → pdf_search_text
             if not text:
-                text = pdf_text(path, max_pages=1)
-            driver = extract_driver_from_pdf_text(text) or veh.get("driver_name")
+                text = header
+            driver = extract_driver_from_pdf_text(header or text) or veh.get(
+                "driver_name"
+            )
             fo = None
-            if text:
+            fo_src = header or text
+            if fo_src:
                 import re as _re
 
                 mfo = _re.search(
-                    r"Freight\s*Order\s*[:#]?\s*(\d{6,14})", text, _re.I
+                    r"Freight\s*Order\s*[:#]?\s*(\d{6,14})", fo_src, _re.I
                 )
                 if mfo:
                     fo = mfo.group(1)
@@ -534,6 +574,10 @@ def main() -> int:
                 f"Connecteam-source: {source_key}",
                 f"Import: {SOURCE_NOTE}",
             ]
+            if not veh.get("is_active", True):
+                notes_parts.append(
+                    "Arkiv: historisk MAVI (ikke aktiv i dagens flåte)"
+                )
             if fo:
                 notes_parts.append(f"FO: {fo}")
             if driver:

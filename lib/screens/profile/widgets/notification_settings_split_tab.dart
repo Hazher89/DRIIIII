@@ -10,9 +10,14 @@ import '../../../core/layout/web_layout.dart';
 
 /// Varsel-hub: mottakere per ansatt | firmakanaler | samarbeid.
 class NotificationSettingsSplitTab extends StatefulWidget {
-  const NotificationSettingsSplitTab({super.key, this.initialTab});
+  const NotificationSettingsSplitTab({
+    super.key,
+    this.initialTab,
+    this.compactIntro = false,
+  });
 
   final String? initialTab;
+  final bool compactIntro;
 
   @override
   State<NotificationSettingsSplitTab> createState() =>
@@ -34,6 +39,7 @@ class _NotificationSettingsSplitTabState extends State<NotificationSettingsSplit
 
   void _onTabChanged() {
     if (_tabs.indexIsChanging || !mounted) return;
+    if (widget.compactIntro) setState(() {});
     final settings = RouteUrlSync.slugForIndex(_tabs.index, _settingsTabs);
     RouteUrlSync.goIfChanged(
       context,
@@ -52,6 +58,18 @@ class _NotificationSettingsSplitTabState extends State<NotificationSettingsSplit
   Widget build(BuildContext context) {
     return Column(
       children: [
+        if (widget.compactIntro)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Text(
+              _settingsHint(_tabs.index),
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: Colors.grey.shade700,
+              ),
+            ),
+          ),
         Material(
           color: Colors.grey.shade100,
           child: TabBar(
@@ -81,5 +99,15 @@ class _NotificationSettingsSplitTabState extends State<NotificationSettingsSplit
         ),
       ],
     );
+  }
+
+  String _settingsHint(int index) {
+    return switch (index) {
+      0 => 'Hvem på firmaet som skal få varsler (per ansatt).',
+      1 => 'Kanaler for Mavi-interne varsler (SMS/e-post på/av).',
+      2 => 'Varsler til samarbeidspartnere ved ruter og lignende.',
+      3 => 'Varsler når sjåføravvik registreres.',
+      _ => '',
+    };
   }
 }

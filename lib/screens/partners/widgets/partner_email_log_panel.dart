@@ -8,9 +8,14 @@ import '../../../models/email_log_filters.dart';
 import '../../../models/partner/partner.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 class PartnerEmailLogPanel extends StatefulWidget {
-  const PartnerEmailLogPanel({super.key, required this.partners});
+  const PartnerEmailLogPanel({
+    super.key,
+    required this.partners,
+    this.compactIntro = false,
+  });
 
   final List<Partner> partners;
+  final bool compactIntro;
 
   @override
   State<PartnerEmailLogPanel> createState() => _PartnerEmailLogPanelState();
@@ -72,12 +77,22 @@ class _PartnerEmailLogPanelState extends State<PartnerEmailLogPanel> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
           child: Row(
             children: [
-              Text('$_total e-poster', style: DriftProTheme.labelMd),
-              const Spacer(),
-              IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+              Expanded(
+                child: Text(
+                  widget.compactIntro
+                      ? '$_total e-poster · søk eller filtrer på bedrift'
+                      : '$_total e-poster',
+                  style: DriftProTheme.labelMd,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Oppdater',
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+              ),
             ],
           ),
         ),
@@ -86,7 +101,7 @@ class _PartnerEmailLogPanelState extends State<PartnerEmailLogPanel> {
           child: TextField(
             controller: _search,
             decoration: const InputDecoration(
-              labelText: 'Søk',
+              labelText: 'Søk i emne, mottaker eller bedrift',
               border: OutlineInputBorder(),
               isDense: true,
             ),

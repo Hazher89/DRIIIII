@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import 'partner_modern_ui.dart';
 
-/// Kompakt topp for Send-fanen — uten stor hero eller handlingsrutenett.
+/// Valgfri kompakt topp (brukes sjelden — hub har egen intro).
 class PartnerSmsHubHeader extends StatelessWidget {
   const PartnerSmsHubHeader({
     super.key,
@@ -18,73 +18,11 @@ class PartnerSmsHubHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final muted = PartnerModernUi.muted(context);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: DriftProTheme.primaryGreen.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(
-              Icons.sms_rounded,
-              color: DriftProTheme.primaryGreenDark,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Send SMS',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: PartnerModernUi.textPrimary(context),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Til kontakter eller kunder fra rute-PDF. '
-                  'Logg og innstillinger ligger i fanene over.',
-                  style: TextStyle(fontSize: 12, height: 1.35, color: muted),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  children: [
-                    _metaChip(context, '$activePartners aktive'),
-                    _metaChip(context, '$partnerCount bedrifter'),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _metaChip(BuildContext context, String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: PartnerModernUi.surface(context),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: PartnerModernUi.border(context)),
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: PartnerModernUi.textPrimary(context),
-        ),
+        '$activePartners aktive partnere · $partnerCount totalt. '
+        'Følg stegene under — én ting av gangen.',
+        style: TextStyle(fontSize: 12.5, height: 1.35, color: muted),
       ),
     );
   }

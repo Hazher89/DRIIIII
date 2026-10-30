@@ -2651,25 +2651,57 @@ class PartnerService {
     String companyId,
     String query, {
     int limit = 40,
+    DateTime? fromDay,
+    DateTime? toDay,
   }) async {
     if (!_ok || query.trim().length < 2) return const [];
     final q = query.trim();
+    final sd = fromDay != null
+        ? DateTime(fromDay.year, fromDay.month, fromDay.day)
+            .toIso8601String()
+            .split('T')
+            .first
+        : null;
+    final ed = toDay != null
+        ? DateTime(toDay.year, toDay.month, toDay.day)
+            .toIso8601String()
+            .split('T')
+            .first
+        : null;
     try {
-      final data = await _client
+      var req = _client
           .from('partner_route_shares')
           .select()
           .eq('company_id', companyId)
-          .ilike('pdf_search_text', '%$q%')
-          .order('created_at', ascending: false)
-          .limit(limit) as List<dynamic>;
-      return data.map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>)).toList();
+          .ilike('pdf_search_text', '%$q%');
+      if (sd != null) req = req.gte('share_date', sd);
+      if (ed != null) req = req.lte('share_date', ed);
+      final data = await req
+              .order('share_date', ascending: false)
+              .limit(limit)
+          as List<dynamic>;
+      return data
+          .map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (_) {
-      final all = await fetchRouteSharesForCompany(companyId, limit: 800);
+      final all = await fetchRouteSharesForCompany(companyId, limit: 2000);
       final lower = q.toLowerCase();
       return all
-          .where((s) =>
-              (s.pdfSearchText?.toLowerCase().contains(lower) ?? false) ||
-              (s.title?.toLowerCase().contains(lower) ?? false))
+          .where((s) {
+            if (fromDay != null) {
+              final d = DateTime(s.shareDate.year, s.shareDate.month, s.shareDate.day);
+              final f = DateTime(fromDay.year, fromDay.month, fromDay.day);
+              if (d.isBefore(f)) return false;
+            }
+            if (toDay != null) {
+              final d = DateTime(s.shareDate.year, s.shareDate.month, s.shareDate.day);
+              final t = DateTime(toDay.year, toDay.month, toDay.day);
+              if (d.isAfter(t)) return false;
+            }
+            return (s.pdfSearchText?.toLowerCase().contains(lower) ?? false) ||
+                (s.title?.toLowerCase().contains(lower) ?? false) ||
+                (s.notes?.toLowerCase().contains(lower) ?? false);
+          })
           .take(limit)
           .toList();
     }

@@ -289,7 +289,7 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
     final selectedCount = _selectedCustomers.length;
 
     final intro = widget.hubChrome
-        ? 'Velg dato og MAVI, hent kunder fra rute-PDF, marker mottakere og gå videre til melding.'
+        ? 'Velg dato og bil, trykk Hent, kryss av kundene, deretter Gå videre.'
         : 'Hent kunder fra MAVI-rute-PDF. Velg dato og sjåfør, marker kundene du vil sende SMS til, '
             'og trykk «Gå videre» for å velge mal og sende.';
 
@@ -742,7 +742,7 @@ class _PartnerSmsRouteCustomersTabState extends State<PartnerSmsRouteCustomersTa
           PartnerSmsSectionCard(
             step: 4,
             title: 'Send',
-            subtitle: 'Bekreft og send SMS',
+            subtitle: 'Du får et bekreftelsesvindu før SMS går ut',
             active: _hubStep == 3,
             child: FilledButton.icon(
               onPressed: widget.sending || msgEmpty ? null : _confirmAndSend,

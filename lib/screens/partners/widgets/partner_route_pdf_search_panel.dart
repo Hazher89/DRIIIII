@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../core/services/partner/route_pdf_text_service.dart';
@@ -13,15 +16,27 @@ class _PdfSearchHit {
   final PartnerRouteShare share;
   final int score;
   final String snippet;
+  final String? fo;
+  final List<String> fus;
+  final List<String> bilags;
+  final String? driver;
+  final List<RoutePdfCustomer> customers;
+  final bool archived;
 
   const _PdfSearchHit({
     required this.share,
     required this.score,
     required this.snippet,
+    this.fo,
+    this.fus = const [],
+    this.bilags = const [],
+    this.driver,
+    this.customers = const [],
+    this.archived = false,
   });
 }
 
-/// Smart søk i alle indekserte rute-PDF-er.
+/// Avansert sporingssøk i alle indekserte rute-PDF-er (inkl. arkiv-MAVI).
 class PartnerRoutePdfSearchPanel extends StatefulWidget {
   final List<FleetPartnerVehicleRow> fleet;
   final TextEditingController? searchController;
@@ -42,10 +57,10 @@ class PartnerRoutePdfSearchPanel extends StatefulWidget {
     return showDialog<void>(
       context: context,
       builder: (ctx) => Dialog(
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
         child: SizedBox(
-          width: (size.width - 32).clamp(320.0, 960.0),
-          height: (size.height - 40).clamp(420.0, 900.0),
+          width: (size.width - 24).clamp(320.0, 1100.0),
+          height: (size.height - 32).clamp(480.0, 960.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -57,7 +72,7 @@ class PartnerRoutePdfSearchPanel extends StatefulWidget {
                     const SizedBox(width: 8),
                     const Expanded(
                       child: Text(
-                        'Søk i rute-PDF',
+                        'Rute-sporing (PDF)',
                         style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
                       ),
                     ),
@@ -72,7 +87,8 @@ class PartnerRoutePdfSearchPanel extends StatefulWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
                 child: Text(
-                  'Finn adresse, kunde, MAVI eller sted i alle indekserte rute-PDF-er.',
+                  'Søk på bilag, FO, FU, kundenavn, telefon, adresse, MAVI, sjåfør eller dato. '
+                  'Inkluderer historiske Connecteam-arkiv når de er importert.',
                   style: TextStyle(fontSize: 12, color: Colors.grey[700]),
                 ),
               ),
@@ -101,6 +117,20 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
   bool _searching = false;
   List<_PdfSearchHit> _hits = [];
   List<PartnerRouteShare> _allShares = [];
+  DateTime? _fromDay;
+  DateTime? _toDay;
+  bool _includeArchive = true;
+  _PdfSearchHit? _selected;
+
+  static const _chipHints = [
+    'Bilag',
+    'FO',
+    'FU',
+    'Kundenavn',
+    'Telefon',
+    'MAVI',
+    'Adresse',
+  ];
 
   @override
   void initState() {
@@ -114,7 +144,7 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
   Future<void> _preload() async {
     final cid = await SupabaseService.getCurrentCompanyId();
     if (cid == null) return;
-    final shares = await PartnerService.fetchRouteSharesForCompany(cid, limit: 600);
+    final shares = await PartnerService.fetchRouteSharesForCompany(cid, limit: 1200);
     if (mounted) setState(() => _allShares = shares);
   }
 
@@ -137,13 +167,64 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
         return MaviUnitCodes.normalize(row.vehicle.unitCode);
       }
     }
+    final notes = share.notes ?? '';
+    final m = RegExp(r'NO_O_M0*\d+', caseSensitive: false).firstMatch(notes);
+    if (m != null) return MaviUnitCodes.normalize(m.group(0)!);
+    final t = share.title ?? '';
+    final tm = RegExp(r'(?:NO_O_)?M0*\d+', caseSensitive: false).firstMatch(t);
+    if (tm != null) return MaviUnitCodes.normalize(tm.group(0)!);
     return null;
+  }
+
+  bool _isArchiveShare(PartnerRouteShare share) {
+    final notes = (share.notes ?? '').toLowerCase();
+    final title = (share.title ?? '').toLowerCase();
+    return notes.contains('connecteam-arkiv') ||
+        notes.contains('arkiv:') ||
+        title.contains('arkiv');
+  }
+
+  Future<void> _pickFrom() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _fromDay ?? DateTime(2025, 1, 1),
+      firstDate: DateTime(2024, 1, 1),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      locale: const Locale('nb', 'NO'),
+      helpText: 'Fra dato',
+    );
+    if (picked == null) return;
+    setState(() {
+      _fromDay = DateTime(picked.year, picked.month, picked.day);
+      if (_toDay != null && _toDay!.isBefore(_fromDay!)) _toDay = _fromDay;
+    });
+    _runSearch();
+  }
+
+  Future<void> _pickTo() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _toDay ?? DateTime.now(),
+      firstDate: DateTime(2024, 1, 1),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      locale: const Locale('nb', 'NO'),
+      helpText: 'Til dato',
+    );
+    if (picked == null) return;
+    setState(() {
+      _toDay = DateTime(picked.year, picked.month, picked.day);
+      if (_fromDay != null && _toDay!.isBefore(_fromDay!)) _fromDay = _toDay;
+    });
+    _runSearch();
   }
 
   Future<void> _runSearch() async {
     final q = _ctrl.text.trim();
     if (q.length < 2) {
-      setState(() => _hits = []);
+      setState(() {
+        _hits = [];
+        _selected = null;
+      });
       return;
     }
     setState(() => _searching = true);
@@ -151,35 +232,77 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) return;
 
-      var pool = await PartnerService.searchRoutePdfText(cid, q, limit: 80);
+      var pool = await PartnerService.searchRoutePdfText(
+        cid,
+        q,
+        limit: 120,
+        fromDay: _fromDay,
+        toDay: _toDay,
+      );
       if (pool.isEmpty) {
-        pool = _allShares;
+        pool = _allShares.where((s) {
+          if (_fromDay != null) {
+            final d = DateTime(s.shareDate.year, s.shareDate.month, s.shareDate.day);
+            if (d.isBefore(_fromDay!)) return false;
+          }
+          if (_toDay != null) {
+            final d = DateTime(s.shareDate.year, s.shareDate.month, s.shareDate.day);
+            if (d.isAfter(_toDay!)) return false;
+          }
+          return true;
+        }).toList();
       }
 
       final hits = <_PdfSearchHit>[];
+      final lower = q.toLowerCase();
       for (final share in pool) {
+        final archived = _isArchiveShare(share);
+        if (!_includeArchive && archived) continue;
+
         final text = share.pdfSearchText ?? '';
+        final mavi = _maviForShare(share);
         final score = RoutePdfTextService.scoreMatch(
           query: q,
           pdfText: text,
           title: share.title,
           fileName: share.pdfStoragePath,
-          maviCode: _maviForShare(share),
+          maviCode: mavi,
         );
-        if (score < 8 && text.isNotEmpty && !text.toLowerCase().contains(q.toLowerCase())) {
+        final notesHit = (share.notes ?? '').toLowerCase().contains(lower);
+        if (score < 8 &&
+            text.isNotEmpty &&
+            !text.toLowerCase().contains(lower) &&
+            !notesHit) {
           continue;
         }
-        if (score == 0 && text.isEmpty) continue;
+        if (score == 0 && text.isEmpty && !notesHit) continue;
+
+        final ids = RoutePdfTextService.parseTrackingIds(text);
+        final customers = text.isEmpty
+            ? const <RoutePdfCustomer>[]
+            : RoutePdfTextService.parseCustomers(text);
+
         hits.add(
           _PdfSearchHit(
             share: share,
-            score: score,
+            score: score == 0 && notesHit ? 20 : score,
             snippet: RoutePdfTextService.snippet(text, q),
+            fo: ids.fo,
+            fus: ids.fus,
+            bilags: ids.bilags,
+            driver: ids.driver,
+            customers: customers,
+            archived: archived,
           ),
         );
       }
       hits.sort((a, b) => b.score.compareTo(a.score));
-      if (mounted) setState(() => _hits = hits.take(25).toList());
+      if (mounted) {
+        setState(() {
+          _hits = hits.take(40).toList();
+          _selected = _hits.isEmpty ? null : _hits.first;
+        });
+      }
     } finally {
       if (mounted) setState(() => _searching = false);
     }
@@ -189,52 +312,240 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
     await PartnerRoutePdfActions.openPdf(context, share);
   }
 
+  void _copy(String label, String value) {
+    Clipboard.setData(ClipboardData(text: value));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$label kopiert'), duration: const Duration(seconds: 1)),
+    );
+  }
+
   Widget _hitCard(_PdfSearchHit hit) {
     final mavi = _maviForShare(hit.share);
+    final selected = _selected?.share.id == hit.share.id;
+    final df = DateFormat('dd.MM.yyyy');
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Stack(
-          alignment: Alignment.bottomRight,
-          children: [
-            const Icon(Icons.picture_as_pdf, color: Colors.red, size: 32),
-            if (hit.score >= 50)
-              const Icon(Icons.verified, color: DriftProTheme.primaryGreen, size: 14),
-          ],
+      color: selected ? const Color(0xFFE3F2FD) : null,
+      child: InkWell(
+        onTap: () => setState(() => _selected = hit),
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.picture_as_pdf, color: Colors.red, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      hit.share.title ?? 'Rute-PDF',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                    ),
+                  ),
+                  if (hit.archived)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.brown.shade100,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'Arkiv',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.brown.shade800,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  _chip(df.format(hit.share.shareDate), Icons.event),
+                  if (mavi != null) _chip(mavi, Icons.local_shipping_outlined),
+                  if (hit.fo != null) _chip('FO ${hit.fo}', Icons.qr_code_2),
+                  if (hit.bilags.isNotEmpty) _chip('Bilag ${hit.bilags.first}', Icons.receipt_long),
+                  if (hit.fus.isNotEmpty) _chip('FU ${hit.fus.first}', Icons.inventory_2_outlined),
+                  if (hit.driver != null) _chip(hit.driver!, Icons.person_outline),
+                  _chip('${hit.customers.length} kunder', Icons.people_outline),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                hit.snippet,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+              ),
+            ],
+          ),
         ),
-        title: Text(
-          hit.share.title ?? 'Rute-PDF',
-          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      ),
+    );
+  }
+
+  Widget _chip(String t, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: Colors.grey.shade700),
+          const SizedBox(width: 3),
+          Text(t, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailPane(_PdfSearchHit hit) {
+    final mavi = _maviForShare(hit.share);
+    final df = DateFormat('EEEE d. MMMM yyyy', 'nb_NO');
+    return ListView(
+      padding: const EdgeInsets.all(4),
+      children: [
+        Row(
           children: [
-            if (mavi != null)
-              Text(mavi, style: const TextStyle(color: DriftProTheme.primaryGreen, fontSize: 12)),
-            const SizedBox(height: 4),
-            Text(hit.snippet, maxLines: 3, style: const TextStyle(fontSize: 11)),
-            Text(
-              'Treff-score ${hit.score}% · ${hit.share.dispatchStatus == 'staged' ? 'Ikke sendt' : 'Sendt'}',
-              style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+            Expanded(
+              child: Text(
+                hit.share.title ?? 'Rute',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              ),
+            ),
+            FilledButton.tonalIcon(
+              onPressed: () => _openPdf(hit.share),
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('Åpne PDF'),
             ),
           ],
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.open_in_new),
-          onPressed: () => _openPdf(hit.share),
+        const SizedBox(height: 6),
+        Text(
+          df.format(hit.share.shareDate),
+          style: TextStyle(fontSize: 12, color: Colors.grey[700]),
         ),
-        onTap: () => _openPdf(hit.share),
+        if (hit.archived)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Historisk Connecteam-arkiv — sjåfør/MAVI finnes ikke i dagens aktive flåte.',
+              style: TextStyle(fontSize: 11, color: Colors.brown.shade800),
+            ),
+          ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (mavi != null) _copyTile('MAVI', mavi),
+            if (hit.fo != null) _copyTile('Freight Order', hit.fo!),
+            if (hit.driver != null) _copyTile('Sjåfør (PDF)', hit.driver!),
+            ...hit.bilags.take(6).map((b) => _copyTile('Bilag', b)),
+            ...hit.fus.take(6).map((f) => _copyTile('Freight Unit', f)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Text(
+          'Kunder i PDF (${hit.customers.length})',
+          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+        ),
+        const SizedBox(height: 6),
+        if (hit.customers.isEmpty)
+          Text(
+            'Ingen kundeliste ekstrahert — åpne PDF for full detalj.',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+          )
+        else
+          ...hit.customers.map((c) {
+            return Card(
+              margin: const EdgeInsets.only(bottom: 6),
+              child: ListTile(
+                dense: true,
+                title: Text(
+                  '${c.sequence}. ${c.name}',
+                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if ((c.addressHint ?? '').isNotEmpty)
+                      Text(c.addressHint!, style: const TextStyle(fontSize: 11)),
+                    if (c.phoneDisplay.isNotEmpty)
+                      Text(c.phoneDisplay, style: const TextStyle(fontSize: 11)),
+                    Wrap(
+                      spacing: 6,
+                      children: [
+                        if ((c.freightUnit ?? '').isNotEmpty)
+                          Text('FU ${c.freightUnit}', style: const TextStyle(fontSize: 10)),
+                        if ((c.salesOrder ?? '').isNotEmpty)
+                          Text('Bilag ${c.salesOrder}', style: const TextStyle(fontSize: 10)),
+                        if ((c.deliveryWindow ?? '').isNotEmpty)
+                          Text(c.deliveryWindow!, style: const TextStyle(fontSize: 10)),
+                      ],
+                    ),
+                  ],
+                ),
+                trailing: c.phoneDisplay.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Kopier telefon',
+                        icon: const Icon(Icons.copy, size: 18),
+                        onPressed: () => _copy('Telefon', c.phoneDisplay),
+                      ),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  Widget _copyTile(String label, String value) {
+    return InkWell(
+      onTap: () => _copy(label, value),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey.shade300),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+                const SizedBox(width: 4),
+                Icon(Icons.copy, size: 14, color: Colors.grey[600]),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final df = DateFormat('d. MMM yyyy', 'nb_NO');
     final searchField = TextField(
       controller: _ctrl,
       autofocus: widget.expanded,
       decoration: InputDecoration(
-        hintText: 'Søk i alle rute-PDF-er (adresse, kunde, MAVI, sted…)',
+        hintText: 'Bilag, FO, FU, kunde, tlf, adresse, MAVI, sjåfør…',
         prefixIcon: const Icon(Icons.manage_search, color: DriftProTheme.primaryGreen),
         suffixIcon: _searching
             ? const Padding(
@@ -250,7 +561,10 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
                     icon: const Icon(Icons.clear),
                     onPressed: () {
                       _ctrl.clear();
-                      setState(() => _hits = []);
+                      setState(() {
+                        _hits = [];
+                        _selected = null;
+                      });
                     },
                   )
                 : null,
@@ -259,28 +573,77 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
       ),
     );
 
+    final filters = Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        OutlinedButton.icon(
+          onPressed: _pickFrom,
+          icon: const Icon(Icons.calendar_month, size: 16),
+          label: Text(_fromDay == null ? 'Fra dato' : df.format(_fromDay!)),
+        ),
+        OutlinedButton.icon(
+          onPressed: _pickTo,
+          icon: const Icon(Icons.event, size: 16),
+          label: Text(_toDay == null ? 'Til dato' : df.format(_toDay!)),
+        ),
+        if (_fromDay != null || _toDay != null)
+          TextButton(
+            onPressed: () {
+              setState(() {
+                _fromDay = null;
+                _toDay = null;
+              });
+              _runSearch();
+            },
+            child: const Text('Nullstill dato'),
+          ),
+        FilterChip(
+          label: const Text('Inkluder arkiv-MAVI', style: TextStyle(fontSize: 11)),
+          selected: _includeArchive,
+          onSelected: (v) {
+            setState(() => _includeArchive = v);
+            _runSearch();
+          },
+        ),
+        ..._chipHints.map(
+          (h) => ActionChip(
+            label: Text(h, style: const TextStyle(fontSize: 10)),
+            onPressed: () {
+              // Bare hint — bruker skriver selv
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Skriv $h-nummer eller navn i søkefeltet'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+
     final emptyHint = _ctrl.text.trim().length >= 2 && !_searching && _hits.isEmpty
         ? const Padding(
             padding: EdgeInsets.all(16),
-            child: Text('Ingen treff. Prøv gate, postnr, kundenavn eller MAVI.'),
+            child: Text(
+              'Ingen treff. Prøv bilag, FO, FU, kundenavn, telefon, MAVI — eller utvid datoperioden. '
+              'Historiske sjåfører krever at Connecteam-arkiv er importert.',
+            ),
           )
         : null;
-
-    final hitWidgets = _hits.map(_hitCard).toList();
 
     if (!widget.expanded) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           searchField,
-          const SizedBox(height: 6),
-          Text(
-            'Jo mer du skriver, desto mer presise forslag. Systemet leser og lagrer PDF-tekst ved fordeling.',
-            style: TextStyle(fontSize: 11, color: Colors.grey[700]),
-          ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+          filters,
+          const SizedBox(height: 8),
           if (emptyHint != null) emptyHint,
-          ...hitWidgets,
+          ..._hits.take(8).map(_hitCard),
         ],
       );
     }
@@ -290,15 +653,46 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
       children: [
         searchField,
         const SizedBox(height: 8),
-        Text(
-          'Jo mer du skriver, desto mer presise forslag.',
-          style: TextStyle(fontSize: 11, color: Colors.grey[700]),
-        ),
-        const SizedBox(height: 10),
+        filters,
+        const SizedBox(height: 8),
         if (emptyHint != null) emptyHint,
         Expanded(
-          child: ListView(
-            children: hitWidgets,
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final wide = c.maxWidth >= 720;
+              if (!wide) {
+                return ListView(
+                  children: [
+                    ..._hits.map(_hitCard),
+                    if (_selected != null) ...[
+                      const Divider(),
+                      SizedBox(height: 360, child: _detailPane(_selected!)),
+                    ],
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    flex: 5,
+                    child: ListView(children: _hits.map(_hitCard).toList()),
+                  ),
+                  const VerticalDivider(width: 16),
+                  Expanded(
+                    flex: 6,
+                    child: _selected == null
+                        ? Center(
+                            child: Text(
+                              'Velg et treff for FO/FU/bilag og kundedetaljer',
+                              style: TextStyle(color: Colors.grey[600]),
+                            ),
+                          )
+                        : _detailPane(_selected!),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ],

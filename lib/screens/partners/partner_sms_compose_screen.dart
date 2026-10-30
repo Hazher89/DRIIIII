@@ -677,6 +677,19 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
             )
           else ...[
             Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+              child: Text(
+                _hubTab == 0
+                    ? 'Til sjåfør, eier eller bedrift knyttet til en MAVI.'
+                    : 'Til kunder som står i rute-PDF for valgt dag og bil.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  height: 1.35,
+                  color: PartnerUi.mutedText(context),
+                ),
+              ),
+            ),
+            Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: SegmentedButton<int>(
                 segments: const [
@@ -721,6 +734,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
                               messageCtrl: _messageCtrl,
                               sending: _sending,
                               onSend: _sendRouteCustomers,
+                              // shrinkWrap-liste: hubens NestedScrollView scroller.
                               scrollable: true,
                               selectedVehicleId: _selectedVehicleId,
                               hideMaviPicker: false,
@@ -818,21 +832,23 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
         PartnerSmsSectionCard(
           step: 1,
           title: 'Velg MAVI',
-          subtitle: 'Hvilken bil/sjåfør skal SMS-en gjelde?',
+          subtitle: 'Hvilken bil SMS-en gjelder for',
           active: step == 0,
           child: _buildSharedMaviPicker(padding: EdgeInsets.zero),
         ),
         PartnerSmsSectionCard(
           step: 2,
           title: 'Velg mottakere',
-          subtitle: '$maviLabel · ${groupContacts.length} kontakt(er)',
+          subtitle:
+              '$maviLabel har ${groupContacts.length} lagrede kontakt(er). '
+              'Kryss av hvem som skal få meldingen.',
           active: step == 1,
           child: _buildHubContactPicker(groupContacts, maviLabel),
         ),
         PartnerSmsSectionCard(
           step: 3,
           title: 'Skriv melding',
-          subtitle: 'Mal eller egen tekst',
+          subtitle: 'Velg en mal, eller skriv din egen tekst',
           active: step == 2,
           child: PartnerSmsMessageSection(
             messageCtrl: _messageCtrl,
@@ -843,7 +859,7 @@ class _PartnerSmsComposeScreenState extends State<PartnerSmsComposeScreen>
         PartnerSmsSectionCard(
           step: 4,
           title: 'Send',
-          subtitle: 'Kontroller mottakere og send',
+          subtitle: 'Sjekk listen, så send. Bekreftelsesvindu kommer før utsending.',
           active: step == 3,
           child: _buildContactsSendSection(
             isDark,

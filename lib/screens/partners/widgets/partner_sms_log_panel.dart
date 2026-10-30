@@ -14,7 +14,14 @@ import '../../../widgets/driftpro_loading_indicator.dart';
 class PartnerSmsLogPanel extends StatefulWidget {
   final List<Partner> partners;
 
-  const PartnerSmsLogPanel({super.key, required this.partners});
+  /// Når true: ingen hero-banner (hub har allerede forklaring).
+  final bool compactIntro;
+
+  const PartnerSmsLogPanel({
+    super.key,
+    required this.partners,
+    this.compactIntro = false,
+  });
 
   @override
   State<PartnerSmsLogPanel> createState() => _PartnerSmsLogPanelState();
@@ -170,20 +177,32 @@ class _PartnerSmsLogPanelState extends State<PartnerSmsLogPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        PartnerHeroBanner(
-          compact: true,
-          title: 'SMS-logg',
-          subtitle:
-              'Kun utgående SMS fra samarbeid (ruter, portal, møter, manuell). HMS og fravær vises ikke her.',
-          leading: Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(12),
+        if (!widget.compactIntro)
+          PartnerHeroBanner(
+            compact: true,
+            title: 'SMS-logg',
+            subtitle:
+                'Kun utgående SMS fra samarbeid (ruter, portal, møter, manuell). HMS og fravær vises ikke her.',
+            leading: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.history, color: Colors.white, size: 26),
             ),
-            child: const Icon(Icons.history, color: Colors.white, size: 26),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Text(
+              '$_totalCount meldinger i loggen · trykk Filter for å snevre inn',
+              style: TextStyle(
+                fontSize: 12,
+                color: PartnerUi.mutedText(context),
+              ),
+            ),
           ),
-        ),
         Material(
           color: isDark ? DriftProTheme.cardDark : Colors.grey.shade50,
           child: Padding(

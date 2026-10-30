@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 
 import '../../../core/services/notification/notification_audit_service.dart';
 import '../../../core/services/notification/notification_log_admin_service.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../models/notification_audit_entry.dart';
 import '../../../widgets/driftpro_loading_indicator.dart';
 
@@ -12,9 +11,11 @@ class NotificationAuditPanel extends StatefulWidget {
   const NotificationAuditPanel({
     super.key,
     this.partnerScopeOnly = false,
+    this.compactIntro = false,
   });
 
   final bool partnerScopeOnly;
+  final bool compactIntro;
 
   @override
   State<NotificationAuditPanel> createState() => _NotificationAuditPanelState();
@@ -103,10 +104,25 @@ class _NotificationAuditPanelState extends State<NotificationAuditPanel> {
     final df = DateFormat('dd.MM.yyyy HH:mm');
     return Column(
       children: [
+        if (widget.compactIntro)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Velg type under. «Ikke sendt» = hoppet over. «I kø» = venter på utsending.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).textTheme.bodySmall?.color,
+                ),
+              ),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.all(12),
           child: Wrap(
             spacing: 8,
+            runSpacing: 6,
             children: [
               FilterChip(
                 label: const Text('Ikke sendt'),
