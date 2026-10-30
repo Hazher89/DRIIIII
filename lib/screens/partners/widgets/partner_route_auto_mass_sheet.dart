@@ -1567,32 +1567,61 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         flushOutbox: true,
       );
 
-      final labels = _driverLabelsFor(map.keys);
-      final phones = _phonesFor(map.keys);
-      await _refreshDeliveryStatus();
+      final publishedIds = map.keys.toSet();
+      // Hent etiketter før vi tømmer lokal kø (bruker _staged).
+      final labels = _driverLabelsFor(publishedIds);
+      final phones = _phonesFor(publishedIds);
+
+      // Ruter er sendt — fjern dem fra UI med en gang
+      // (ellers blir kortene stående hvis leveringsrapporten ikke er 100 % OK).
+      if (mounted) {
+        setState(() {
+          _staged.removeWhere((s) => publishedIds.contains(s.id));
+          _selected.removeWhere(publishedIds.contains);
+          for (final id in publishedIds) {
+            _shiftByShare.remove(id);
+            _startByShare.remove(id);
+            _dateByShare.remove(id);
+            _stowingByShare.remove(id);
+            _deliveryByShare.remove(id);
+            _storageBlockedShareIds.remove(id);
+            _noteByShare.remove(id)?.dispose();
+          }
+        });
+      }
       if (!mounted) return;
 
       final result = await runPostDispatchDeliveryReport(
         context: context,
         companyId: cid,
-        shareIds: map.keys,
+        shareIds: publishedIds,
         driverLabels: labels,
         phones: phones,
       );
       if (!mounted) return;
 
-      if (result == null) return;
+      // Synk mot DB — sendte ruter skal ikke ligge igjen i AUTO MASS.
+      await _reload();
+      if (!mounted) return;
 
-      if (result.report.allOk || result.closeWizard) {
+      final shouldClose =
+          result == null ||
+          result.report.allOk ||
+          result.closeWizard ||
+          _staged.isEmpty;
+
+      if (shouldClose) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              result.report.allOk
-                  ? notifyPrefs.successMessage(map.length)
-                  : 'Publisert med ${result.report.failedCount} uløst(e) feil — sjekk leveringsrapport.',
+              result == null || result.report.allOk
+                  ? notifyPrefs.successMessage(publishedIds.length)
+                  : 'Publisert med ${result.report.failedCount} uløst(e) feil — '
+                      'sjekk varsler under SMS-logg ved behov.',
             ),
-            backgroundColor:
-                result.report.allOk ? null : Colors.orange.shade900,
+            backgroundColor: result != null && !result.report.allOk
+                ? Colors.orange.shade900
+                : null,
           ),
         );
         Navigator.pop(context, true);
@@ -1601,7 +1630,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '${result.report.failedCount} rute(r) ikke ferdig levert — se «Uten varsel».',
+              '${result.report.failedCount} rute(r) ikke ferdig levert — '
+              'sendte ruter er fjernet fra køen.',
             ),
             backgroundColor: Colors.red.shade800,
             duration: const Duration(seconds: 6),
