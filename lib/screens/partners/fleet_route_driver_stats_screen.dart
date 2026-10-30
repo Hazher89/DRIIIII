@@ -37,6 +37,12 @@ class _FleetRouteDriverStatsScreenState
   bool _initialLoading = true;
   bool _refreshing = false;
   String? _error;
+  /// Periodevelger direkte i siden — ingen modal (web blir ellers grå).
+  bool _periodPickerOpen = false;
+  late DateTime _draftFrom;
+  late DateTime _draftTo;
+  /// true = redigerer fra, false = til
+  bool _editingFrom = true;
   List<FleetPartnerVehicleRow> _fleet = [];
   List<PartnerRouteShare> _shares = [];
   List<PartnerVehicleFleetSnapshot> _snaps = [];
@@ -69,6 +75,8 @@ class _FleetRouteDriverStatsScreenState
     final now = DateTime.now();
     _fromDay = DateTime(now.year, now.month, 1);
     _toDay = DateTime(now.year, now.month, now.day);
+    _draftFrom = _fromDay;
+    _draftTo = _toDay;
   }
 
   @override
@@ -89,6 +97,7 @@ class _FleetRouteDriverStatsScreenState
   void _applyPreset(FleetCalendarPeriod p) {
     final now = DateTime.now();
     setState(() {
+      _periodPickerOpen = false;
       _period = p;
       switch (p) {
         case FleetCalendarPeriod.day:
@@ -105,45 +114,48 @@ class _FleetRouteDriverStatsScreenState
           _fromDay = DateTime(now.year, 1, 1);
           _toDay = DateTime(now.year, now.month, now.day);
       }
+      _draftFrom = _fromDay;
+      _draftTo = _toDay;
     });
     _load();
   }
 
-  /// Inline kalender — Material showDateRangePicker etterlater grå barrier på web.
-  Future<void> _pickPeriod() async {
-    final first = DateTime(2024, 1, 1);
-    final last = DateTime.now().add(const Duration(days: 1));
-    final range = await showModalBottomSheet<DateTimeRange>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      useRootNavigator: false,
-      builder: (ctx) {
-        return _StatsPeriodPickerSheet(
-          initialFrom: _fromDay,
-          initialTo: _toDay,
-          firstDate: first,
-          lastDate: last,
-          accent: _accent,
-        );
-      },
-    );
-    if (!mounted || range == null) return;
-
-    final from = DateTime(range.start.year, range.start.month, range.start.day);
-    final to = DateTime(range.end.year, range.end.month, range.end.day);
+  void _togglePeriodPicker() {
     setState(() {
-      _fromDay = from;
-      _toDay = to;
+      if (_periodPickerOpen) {
+        _periodPickerOpen = false;
+      } else {
+        _draftFrom = _fromDay;
+        _draftTo = _toDay;
+        _editingFrom = true;
+        _periodPickerOpen = true;
+      }
+    });
+  }
+
+  void _onDraftDateChanged(DateTime d) {
+    final day = DateTime(d.year, d.month, d.day);
+    setState(() {
+      if (_editingFrom) {
+        _draftFrom = day;
+        if (_draftTo.isBefore(_draftFrom)) _draftTo = _draftFrom;
+      } else {
+        _draftTo = day;
+        if (_draftTo.isBefore(_draftFrom)) _draftFrom = _draftTo;
+      }
+    });
+  }
+
+  Future<void> _applyDraftPeriod() async {
+    setState(() {
+      _fromDay = _draftFrom;
+      _toDay = _draftTo;
       _period = FleetCalendarPeriod.month;
+      _periodPickerOpen = false;
       _initialLoading = false;
       _refreshing = true;
       _error = null;
     });
-    // Last etter at sheet-ruten er helt borte (unngår grå overlay på web).
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    if (!mounted) return;
     await _load();
   }
 
@@ -372,6 +384,9 @@ class _FleetRouteDriverStatsScreenState
   }
 
   Widget _periodCard(DateFormat df) {
+    final longDf = DateFormat('d. MMM yyyy', 'nb_NO');
+    final first = DateTime(2024, 1, 1);
+    final last = DateTime.now().add(const Duration(days: 1));
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -396,19 +411,134 @@ class _FleetRouteDriverStatsScreenState
               ])
                 ChoiceChip(
                   label: Text(p.label),
-                  selected: _period == p,
+                  selected: !_periodPickerOpen && _period == p,
                   onSelected: _refreshing ? null : (_) => _applyPreset(p),
                   selectedColor: _accent.withValues(alpha: 0.2),
                   visualDensity: VisualDensity.compact,
                 ),
               FilledButton.tonalIcon(
-                onPressed: _refreshing ? null : _pickPeriod,
-                icon: const Icon(Icons.date_range, size: 18),
-                label: const Text('Velg periode'),
+                onPressed: _refreshing ? null : _togglePeriodPicker,
+                icon: Icon(
+                  _periodPickerOpen
+                      ? Icons.close
+                      : Icons.date_range,
+                  size: 18,
+                ),
+                label: Text(
+                  _periodPickerOpen ? 'Lukk' : 'Velg periode',
+                ),
               ),
             ],
           ),
+          if (_periodPickerOpen) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Trykk Fra eller Til, velg dato, deretter Bruk.',
+              style: TextStyle(
+                fontSize: 12,
+                color: PartnerModernUi.muted(context),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: _inlinePeriodTile(
+                    label: 'Fra',
+                    value: longDf.format(_draftFrom),
+                    selected: _editingFrom,
+                    onTap: () => setState(() => _editingFrom = true),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _inlinePeriodTile(
+                    label: 'Til',
+                    value: longDf.format(_draftTo),
+                    selected: !_editingFrom,
+                    onTap: () => setState(() => _editingFrom = false),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Material(
+              color: PartnerModernUi.surface(context),
+              borderRadius: BorderRadius.circular(12),
+              child: CalendarDatePicker(
+                // Key tvinger ny kalender når man bytter Fra/Til.
+                key: ValueKey(
+                  '${_editingFrom ? 'from' : 'to'}-${_editingFrom ? _draftFrom : _draftTo}',
+                ),
+                initialDate: _editingFrom ? _draftFrom : _draftTo,
+                firstDate: first,
+                lastDate: last,
+                currentDate: DateTime.now(),
+                onDateChanged: _onDraftDateChanged,
+              ),
+            ),
+            const SizedBox(height: 10),
+            FilledButton(
+              onPressed: _refreshing ? null : _applyDraftPeriod,
+              style: FilledButton.styleFrom(
+                backgroundColor: _accent,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: Text(
+                'Bruk ${longDf.format(_draftFrom)} – ${longDf.format(_draftTo)}',
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _inlinePeriodTile({
+    required String label,
+    required String value,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected
+          ? _accent.withValues(alpha: 0.12)
+          : PartnerModernUi.surface(context),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? _accent : PartnerModernUi.border(context),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: PartnerModernUi.muted(context),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1990,199 +2120,4 @@ class _DriverFoRow {
   final List<String> bilags;
   final List<String> fus;
   final String? driverFromPdf;
-}
-
-/// Periodevelger uten Material DateRangePicker (web-barrier-bug).
-class _StatsPeriodPickerSheet extends StatefulWidget {
-  const _StatsPeriodPickerSheet({
-    required this.initialFrom,
-    required this.initialTo,
-    required this.firstDate,
-    required this.lastDate,
-    required this.accent,
-  });
-
-  final DateTime initialFrom;
-  final DateTime initialTo;
-  final DateTime firstDate;
-  final DateTime lastDate;
-  final Color accent;
-
-  @override
-  State<_StatsPeriodPickerSheet> createState() =>
-      _StatsPeriodPickerSheetState();
-}
-
-class _StatsPeriodPickerSheetState extends State<_StatsPeriodPickerSheet> {
-  late DateTime _from;
-  late DateTime _to;
-  /// true = redigerer fra, false = til, null = skjult kalender
-  bool? _editingFrom;
-
-  @override
-  void initState() {
-    super.initState();
-    _from = DateTime(
-      widget.initialFrom.year,
-      widget.initialFrom.month,
-      widget.initialFrom.day,
-    );
-    _to = DateTime(
-      widget.initialTo.year,
-      widget.initialTo.month,
-      widget.initialTo.day,
-    );
-  }
-
-  void _setDate(DateTime d) {
-    final day = DateTime(d.year, d.month, d.day);
-    setState(() {
-      if (_editingFrom == true) {
-        _from = day;
-        if (_to.isBefore(_from)) _to = _from;
-      } else if (_editingFrom == false) {
-        _to = day;
-        if (_to.isBefore(_from)) _from = _to;
-      }
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final df = DateFormat('d. MMMM yyyy', 'nb_NO');
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Velg periode',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Trykk Fra / Til og velg dato i kalenderen under.',
-            style: TextStyle(
-              fontSize: 12,
-              color: PartnerModernUi.muted(context),
-            ),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _periodTile(
-                  label: 'Fra',
-                  value: df.format(_from),
-                  selected: _editingFrom == true,
-                  onTap: () => setState(
-                    () => _editingFrom =
-                        _editingFrom == true ? null : true,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _periodTile(
-                  label: 'Til',
-                  value: df.format(_to),
-                  selected: _editingFrom == false,
-                  onTap: () => setState(
-                    () => _editingFrom =
-                        _editingFrom == false ? null : false,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (_editingFrom != null) ...[
-            const SizedBox(height: 10),
-            Material(
-              color: PartnerModernUi.surface(context),
-              borderRadius: BorderRadius.circular(12),
-              child: CalendarDatePicker(
-                initialDate: _editingFrom! ? _from : _to,
-                firstDate: widget.firstDate,
-                lastDate: widget.lastDate,
-                currentDate: DateTime.now(),
-                onDateChanged: _setDate,
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(
-                context,
-                DateTimeRange(start: _from, end: _to),
-              );
-            },
-            style: FilledButton.styleFrom(
-              backgroundColor: widget.accent,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            child: const Text('Bruk periode'),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Avbryt'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _periodTile({
-    required String label,
-    required String value,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return Material(
-      color: selected
-          ? widget.accent.withValues(alpha: 0.12)
-          : PartnerModernUi.surface(context),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected
-                  ? widget.accent
-                  : PartnerModernUi.border(context),
-              width: selected ? 1.5 : 1,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: PartnerModernUi.muted(context),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }
