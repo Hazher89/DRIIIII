@@ -109,32 +109,26 @@ class _FleetRouteDriverStatsScreenState
     _load();
   }
 
-  /// Én periodevelger — unngår hengende modal-barriere fra showDatePicker på web.
+  /// Inline kalender — Material showDateRangePicker etterlater grå barrier på web.
   Future<void> _pickPeriod() async {
-    final range = await showDateRangePicker(
+    final first = DateTime(2024, 1, 1);
+    final last = DateTime.now().add(const Duration(days: 1));
+    final range = await showModalBottomSheet<DateTimeRange>(
       context: context,
-      initialDateRange: DateTimeRange(start: _fromDay, end: _toDay),
-      firstDate: DateTime(2024, 1, 1),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
-      locale: const Locale('nb', 'NO'),
-      helpText: 'Velg periode',
-      saveText: 'Bruk',
-      cancelText: 'Avbryt',
-      useRootNavigator: true,
-      builder: (ctx, child) {
-        return Theme(
-          data: Theme.of(ctx).copyWith(
-            // Ikke la barrier «klebe» over hele appen.
-            dialogTheme: const DialogThemeData(
-              backgroundColor: Colors.white,
-            ),
-          ),
-          child: child ?? const SizedBox.shrink(),
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      useRootNavigator: false,
+      builder: (ctx) {
+        return _StatsPeriodPickerSheet(
+          initialFrom: _fromDay,
+          initialTo: _toDay,
+          firstDate: first,
+          lastDate: last,
+          accent: _accent,
         );
       },
     );
-    // Vent til modal-ruten er helt borte før setState (web-barriere-bug).
-    await Future<void>.delayed(const Duration(milliseconds: 80));
     if (!mounted || range == null) return;
 
     final from = DateTime(range.start.year, range.start.month, range.start.day);
@@ -147,6 +141,9 @@ class _FleetRouteDriverStatsScreenState
       _refreshing = true;
       _error = null;
     });
+    // Last etter at sheet-ruten er helt borte (unngår grå overlay på web).
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (!mounted) return;
     await _load();
   }
 
@@ -1639,24 +1636,71 @@ class _FleetRouteDriverStatsScreenState
                     color: PartnerModernUi.muted(ctx),
                   ),
                 ),
+                if ((row.driverFromPdf ?? '').isNotEmpty)
+                  Text(
+                    'Sjåfør i PDF: ${row.driverFromPdf}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: PartnerModernUi.muted(ctx),
+                    ),
+                  ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _pill('${row.customers} kunder', _blue),
-                    if (row.km != null)
-                      _pill('${row.km!.toStringAsFixed(1)} km', _orange),
-                    if (row.weightKg != null && row.weightKg! > 0)
-                      _pill(
-                        '${row.weightKg!.toStringAsFixed(0)} kg',
-                        Colors.teal.shade700,
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _accent.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: _accent.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _foStatCell(
+                          'Kunder',
+                          '${row.customers}',
+                          _blue,
+                        ),
                       ),
-                    for (final fu in row.fus.take(3)) _pill('FU $fu', _purple),
-                    for (final b in row.bilags.take(4))
-                      _pill('Bilag $b', Colors.blueGrey),
-                  ],
+                      Expanded(
+                        child: _foStatCell(
+                          'Km',
+                          row.km != null
+                              ? row.km!.toStringAsFixed(0)
+                              : '–',
+                          _orange,
+                        ),
+                      ),
+                      Expanded(
+                        child: _foStatCell(
+                          'Vekt',
+                          row.weightKg != null && row.weightKg! > 0
+                              ? '${(row.weightKg! / 1000).toStringAsFixed(1)} t'
+                              : '–',
+                          Colors.teal.shade700,
+                        ),
+                      ),
+                      Expanded(
+                        child: _foStatCell(
+                          'Stopp',
+                          '${customers.length}',
+                          _purple,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                if (row.fus.isNotEmpty || row.bilags.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final fu in row.fus.take(6)) _pill('FU $fu', _purple),
+                      for (final b in row.bilags.take(8))
+                        _pill('Bilag $b', Colors.blueGrey),
+                    ],
+                  ),
+                ],
                 if ((row.share.title ?? '').isNotEmpty) ...[
                   const SizedBox(height: 12),
                   Text(
@@ -1671,16 +1715,12 @@ class _FleetRouteDriverStatsScreenState
                 FilledButton.icon(
                   onPressed: () =>
                       PartnerRoutePdfActions.openPdf(ctx, row.share),
-                  style: FilledButton.styleFrom(backgroundColor: _accent),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _accent,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
                   icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: const Text('Åpne PDF'),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      PartnerRoutePdfActions.openPdf(ctx, row.share),
-                  icon: const Icon(Icons.open_in_new, size: 18),
-                  label: const Text('Vis rute-PDF i full størrelse'),
+                  label: const Text('Åpne PDF for denne FO'),
                 ),
                 if (customers.isNotEmpty) ...[
                   const SizedBox(height: 18),
@@ -1691,14 +1731,28 @@ class _FleetRouteDriverStatsScreenState
                       fontSize: 15,
                     ),
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Stopp i rekkefølge fra PDF, med bilag og FU der det finnes.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: PartnerModernUi.muted(ctx),
+                    ),
+                  ),
                   const SizedBox(height: 8),
-                  ...customers.take(40).map((c) {
+                  ...customers.map((c) {
+                    final meta = <String>[
+                      if ((c.postalCode ?? '').isNotEmpty) c.postalCode!,
+                      if ((c.deliveryWindow ?? '').isNotEmpty)
+                        c.deliveryWindow!,
+                      if (c.phoneDisplay.isNotEmpty) c.phoneDisplay,
+                    ];
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: PartnerModernUi.border(ctx),
                           ),
@@ -1706,45 +1760,72 @@ class _FleetRouteDriverStatsScreenState
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '${c.sequence}. ${c.name}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13,
-                              ),
-                            ),
-                            if (c.phoneDisplay.isNotEmpty)
-                              Text(
-                                c.phoneDisplay,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: PartnerModernUi.muted(ctx),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: _blue.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    '${c.sequence}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 12,
+                                      color: _blue,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            if ((c.addressHint ?? '').isNotEmpty)
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    c.name,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if ((c.addressHint ?? '').isNotEmpty) ...[
+                              const SizedBox(height: 6),
                               Text(
                                 c.addressHint!,
                                 style: TextStyle(
+                                  fontSize: 13,
+                                  color: PartnerModernUi.muted(ctx),
+                                ),
+                              ),
+                            ],
+                            if (meta.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                meta.join(' · '),
+                                style: TextStyle(
                                   fontSize: 12,
                                   color: PartnerModernUi.muted(ctx),
                                 ),
                               ),
-                            if (c.salesOrder != null || c.freightUnit != null)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Text(
-                                  [
-                                    if (c.salesOrder != null)
-                                      'Bilag ${c.salesOrder}',
-                                    if (c.freightUnit != null)
-                                      'FU ${c.freightUnit}',
-                                  ].join(' · '),
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
+                            ],
+                            if (c.salesOrder != null ||
+                                c.freightUnit != null) ...[
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  if (c.salesOrder != null)
+                                    _pill('Bilag ${c.salesOrder}', Colors.blueGrey),
+                                  if (c.freightUnit != null)
+                                    _pill('FU ${c.freightUnit}', _purple),
+                                ],
                               ),
+                            ],
                           ],
                         ),
                       ),
@@ -1822,6 +1903,30 @@ class _FleetRouteDriverStatsScreenState
     );
   }
 
+  Widget _foStatCell(String label, String value, Color color) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: color,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: PartnerModernUi.muted(context),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _pill(String t, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1885,4 +1990,199 @@ class _DriverFoRow {
   final List<String> bilags;
   final List<String> fus;
   final String? driverFromPdf;
+}
+
+/// Periodevelger uten Material DateRangePicker (web-barrier-bug).
+class _StatsPeriodPickerSheet extends StatefulWidget {
+  const _StatsPeriodPickerSheet({
+    required this.initialFrom,
+    required this.initialTo,
+    required this.firstDate,
+    required this.lastDate,
+    required this.accent,
+  });
+
+  final DateTime initialFrom;
+  final DateTime initialTo;
+  final DateTime firstDate;
+  final DateTime lastDate;
+  final Color accent;
+
+  @override
+  State<_StatsPeriodPickerSheet> createState() =>
+      _StatsPeriodPickerSheetState();
+}
+
+class _StatsPeriodPickerSheetState extends State<_StatsPeriodPickerSheet> {
+  late DateTime _from;
+  late DateTime _to;
+  /// true = redigerer fra, false = til, null = skjult kalender
+  bool? _editingFrom;
+
+  @override
+  void initState() {
+    super.initState();
+    _from = DateTime(
+      widget.initialFrom.year,
+      widget.initialFrom.month,
+      widget.initialFrom.day,
+    );
+    _to = DateTime(
+      widget.initialTo.year,
+      widget.initialTo.month,
+      widget.initialTo.day,
+    );
+  }
+
+  void _setDate(DateTime d) {
+    final day = DateTime(d.year, d.month, d.day);
+    setState(() {
+      if (_editingFrom == true) {
+        _from = day;
+        if (_to.isBefore(_from)) _to = _from;
+      } else if (_editingFrom == false) {
+        _to = day;
+        if (_to.isBefore(_from)) _from = _to;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final df = DateFormat('d. MMMM yyyy', 'nb_NO');
+    final bottom = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottom),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Velg periode',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Trykk Fra / Til og velg dato i kalenderen under.',
+            style: TextStyle(
+              fontSize: 12,
+              color: PartnerModernUi.muted(context),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _periodTile(
+                  label: 'Fra',
+                  value: df.format(_from),
+                  selected: _editingFrom == true,
+                  onTap: () => setState(
+                    () => _editingFrom =
+                        _editingFrom == true ? null : true,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _periodTile(
+                  label: 'Til',
+                  value: df.format(_to),
+                  selected: _editingFrom == false,
+                  onTap: () => setState(
+                    () => _editingFrom =
+                        _editingFrom == false ? null : false,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (_editingFrom != null) ...[
+            const SizedBox(height: 10),
+            Material(
+              color: PartnerModernUi.surface(context),
+              borderRadius: BorderRadius.circular(12),
+              child: CalendarDatePicker(
+                initialDate: _editingFrom! ? _from : _to,
+                firstDate: widget.firstDate,
+                lastDate: widget.lastDate,
+                currentDate: DateTime.now(),
+                onDateChanged: _setDate,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          FilledButton(
+            onPressed: () {
+              Navigator.pop(
+                context,
+                DateTimeRange(start: _from, end: _to),
+              );
+            },
+            style: FilledButton.styleFrom(
+              backgroundColor: widget.accent,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            child: const Text('Bruk periode'),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Avbryt'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _periodTile({
+    required String label,
+    required String value,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: selected
+          ? widget.accent.withValues(alpha: 0.12)
+          : PartnerModernUi.surface(context),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? widget.accent
+                  : PartnerModernUi.border(context),
+              width: selected ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: PartnerModernUi.muted(context),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
