@@ -624,12 +624,18 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
       ],
     );
 
-    final emptyHint = _ctrl.text.trim().length >= 2 && !_searching && _hits.isEmpty
-        ? const Padding(
-            padding: EdgeInsets.all(16),
+    final qTrim = _ctrl.text.trim();
+    final looksLikeBilag = RegExp(r'^2\d{9}$').hasMatch(qTrim);
+    final emptyHint = qTrim.length >= 2 && !_searching && _hits.isEmpty
+        ? Padding(
+            padding: const EdgeInsets.all(16),
             child: Text(
-              'Ingen treff. Prøv bilag, FO, FU, kundenavn, telefon, MAVI — eller utvid datoperioden. '
-              'Historiske sjåfører krever at Connecteam-arkiv er importert.',
+              looksLikeBilag
+                  ? 'Fant ikke bilag $qTrim i importerte rute-PDF-er. '
+                      'Nummeret finnes ikke i Connecteam-filene vi har lastet ned — '
+                      'det kan være SAP/annen kilde, eller PDF-en er ikke eksportert ennå.'
+                  : 'Ingen treff. Prøv bilag, FO, FU, kundenavn, telefon, MAVI — '
+                      'eller fjern datofilter. Historikk krever at Connecteam-arkiv er importert.',
             ),
           )
         : null;

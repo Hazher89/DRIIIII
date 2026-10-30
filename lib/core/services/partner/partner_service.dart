@@ -2668,42 +2668,67 @@ class PartnerService {
             .split('T')
             .first
         : null;
+    // Prefer RPC + trigram index (direct ILIKE timed out on large pdf_search_text).
     try {
-      var req = _client
-          .from('partner_route_shares')
-          .select()
-          .eq('company_id', companyId)
-          .ilike('pdf_search_text', '%$q%');
-      if (sd != null) req = req.gte('share_date', sd);
-      if (ed != null) req = req.lte('share_date', ed);
-      final data = await req
-              .order('share_date', ascending: false)
-              .limit(limit)
-          as List<dynamic>;
+      final data = await _client.rpc(
+        'search_partner_route_pdf_text',
+        params: {
+          'p_company_id': companyId,
+          'p_query': q,
+          'p_limit': limit.clamp(1, 120),
+          'p_from_day': sd,
+          'p_to_day': ed,
+        },
+      ) as List<dynamic>;
       return data
           .map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>))
           .toList();
     } catch (_) {
-      final all = await fetchRouteSharesForCompany(companyId, limit: 2000);
-      final lower = q.toLowerCase();
-      return all
-          .where((s) {
-            if (fromDay != null) {
-              final d = DateTime(s.shareDate.year, s.shareDate.month, s.shareDate.day);
-              final f = DateTime(fromDay.year, fromDay.month, fromDay.day);
-              if (d.isBefore(f)) return false;
-            }
-            if (toDay != null) {
-              final d = DateTime(s.shareDate.year, s.shareDate.month, s.shareDate.day);
-              final t = DateTime(toDay.year, toDay.month, toDay.day);
-              if (d.isAfter(t)) return false;
-            }
-            return (s.pdfSearchText?.toLowerCase().contains(lower) ?? false) ||
-                (s.title?.toLowerCase().contains(lower) ?? false) ||
-                (s.notes?.toLowerCase().contains(lower) ?? false);
-          })
-          .take(limit)
-          .toList();
+      try {
+        var req = _client
+            .from('partner_route_shares')
+            .select()
+            .eq('company_id', companyId)
+            .ilike('pdf_search_text', '%$q%');
+        if (sd != null) req = req.gte('share_date', sd);
+        if (ed != null) req = req.lte('share_date', ed);
+        final data = await req
+                .order('share_date', ascending: false)
+                .limit(limit)
+            as List<dynamic>;
+        return data
+            .map((e) => PartnerRouteShare.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } catch (_) {
+        final all = await fetchRouteSharesForCompany(companyId, limit: 2000);
+        final lower = q.toLowerCase();
+        return all
+            .where((s) {
+              if (fromDay != null) {
+                final d = DateTime(
+                  s.shareDate.year,
+                  s.shareDate.month,
+                  s.shareDate.day,
+                );
+                final f = DateTime(fromDay.year, fromDay.month, fromDay.day);
+                if (d.isBefore(f)) return false;
+              }
+              if (toDay != null) {
+                final d = DateTime(
+                  s.shareDate.year,
+                  s.shareDate.month,
+                  s.shareDate.day,
+                );
+                final t = DateTime(toDay.year, toDay.month, toDay.day);
+                if (d.isAfter(t)) return false;
+              }
+              return (s.pdfSearchText?.toLowerCase().contains(lower) ?? false) ||
+                  (s.title?.toLowerCase().contains(lower) ?? false) ||
+                  (s.notes?.toLowerCase().contains(lower) ?? false);
+            })
+            .take(limit)
+            .toList();
+      }
     }
   }
 

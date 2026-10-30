@@ -179,6 +179,62 @@ def pdf_text(path: Path, max_pages: int | None = None) -> str:
         return ""
 
 
+_VISION_OCR_BIN = Path("/tmp/VisionOCR")
+
+
+def ocr_pdf_text(path: Path, max_pages: int | None = None) -> str:
+    """OCR for vector-tegnet SAP-PDF uten tekstlag (macOS Vision via /tmp/VisionOCR)."""
+    try:
+        import fitz  # pymupdf
+    except ImportError:
+        return ""
+    if not _VISION_OCR_BIN.is_file():
+        return ""
+    try:
+        doc = fitz.open(str(path))
+    except Exception:
+        return ""
+    parts: list[str] = []
+    n = doc.page_count if max_pages is None else min(doc.page_count, max_pages)
+    for i in range(n):
+        try:
+            page = doc.load_page(i)
+            pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+            img = Path(f"/tmp/driftpro_ocr_{os.getpid()}_{i}.png")
+            pix.save(str(img))
+            import subprocess
+
+            r = subprocess.run(
+                [str(_VISION_OCR_BIN), str(img)],
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+            t = (r.stdout or "").strip()
+            if t:
+                # OCR legger ofte komma foran bilag: ",2120262557"
+                t = re.sub(r",(?=\d{7,})", "", t)
+                parts.append(t)
+            try:
+                img.unlink(missing_ok=True)
+            except Exception:
+                pass
+        except Exception:
+            continue
+    return "\n".join(parts)
+
+
+def pdf_search_text(path: Path) -> str:
+    """Tekst for søk: vanlig ekstraksjon, ellers OCR når PDF er vector uten tekstlag."""
+    text = pdf_text(path)
+    if len((text or "").strip()) >= 80:
+        return text
+    ocr = ocr_pdf_text(path)
+    if ocr.strip():
+        return ocr
+    return text or ""
+
+
 class Supa:
     def __init__(self, url: str, key: str) -> None:
         self.url = url.rstrip("/")
@@ -358,6 +414,11 @@ def main() -> int:
         action="store_true",
         help="Importer også til inaktive Connecteam-arkiv-MAVI (historikk/søk).",
     )
+    ap.add_argument(
+        "--only",
+        default=None,
+        help="Kun filer som inneholder denne delstrengen i relativ sti/filnavn.",
+    )
     args = ap.parse_args()
 
     url = os.environ.get("SUPABASE_URL", "").strip()
@@ -392,6 +453,14 @@ def main() -> int:
     print(f"  allerede importert: {len(existing)}")
 
     files = iter_pdfs(root, args.from_month, args.to_month)
+    if args.only:
+        needle = args.only.strip().lower()
+        files = [
+            p
+            for p in files
+            if needle in str(p.relative_to(root)).replace("\\", "/").lower()
+            or needle in p.name.lower()
+        ]
     if args.limit > 0:
         files = files[: args.limit]
     print(f"PDF-filer å vurdere: {len(files)}")
@@ -521,22 +590,29 @@ def main() -> int:
                 continue
 
             # Full tekst for søk (bilag/sales order ligger ofte på side 2+).
-            # Bruk allerede lest tekst bare som start; fyll på med alle sider.
+            # SAP Trip Overview er ofte vector uten tekstlag → OCR-fallback.
             header = text or pdf_text(path, max_pages=1)
-            text = pdf_text(path)  # alle sider → pdf_search_text
+            text = pdf_search_text(path)
             if not text:
                 text = header
+            if text and len(text.strip()) >= 80 and len((header or "").strip()) < 40:
+                print(f"  OCR: {rel} ({len(text)} tegn)")
             driver = extract_driver_from_pdf_text(header or text) or veh.get(
                 "driver_name"
             )
             fo = None
             fo_src = header or text
             if fo_src:
-                import re as _re
-
-                mfo = _re.search(
-                    r"Freight\s*Order\s*[:#]?\s*(\d{6,14})", fo_src, _re.I
+                mfo = re.search(
+                    r"Freight\s*Order\s*[:#]?\s*(\d{6,14})", fo_src, re.I
                 )
+                if not mfo:
+                    # OCR: "Freight Order" på egen linje, tallet under
+                    mfo = re.search(
+                        r"Freight\s*Order\s*\n\s*(\d{6,14})", fo_src, re.I
+                    )
+                if not mfo:
+                    mfo = re.search(r"\b(610\d{7})\b", fo_src)
                 if mfo:
                     fo = mfo.group(1)
             # Områdehint fra Connecteam-filnavn: «Kveldsrute_-_Østfold_…»
