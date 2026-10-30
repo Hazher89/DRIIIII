@@ -1,6 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Result from [AppDownloadSmsService.send].
+/// Offentlig Google Play-lenke (ingen kodepool).
+const String kDriftProGooglePlayUrl =
+    'https://play.google.com/store/apps/details?id=no.driftpro.driftpro';
+
+/// Result from [AppDownloadSmsService.send] / [claimLink].
 class AppDownloadSmsResult {
   const AppDownloadSmsResult({
     required this.smsId,
@@ -9,6 +13,7 @@ class AppDownloadSmsResult {
     this.redeemUrl,
     this.remainingCodes,
     this.toPhone,
+    this.consumed = false,
   });
 
   final String smsId;
@@ -17,6 +22,7 @@ class AppDownloadSmsResult {
   final String? redeemUrl;
   final int? remainingCodes;
   final String? toPhone;
+  final bool consumed;
 
   factory AppDownloadSmsResult.fromJson(Map<String, dynamic> json) {
     return AppDownloadSmsResult(
@@ -26,6 +32,7 @@ class AppDownloadSmsResult {
       redeemUrl: json['redeem_url']?.toString(),
       remainingCodes: (json['remaining_codes'] as num?)?.toInt(),
       toPhone: json['to_phone']?.toString(),
+      consumed: json['consumed'] == true,
     );
   }
 }
@@ -126,5 +133,53 @@ class AppDownloadSmsService {
         refId: refId,
         userId: userId,
         companyId: companyId,
+      );
+
+  /// Hent lenke til utklippstavle / WhatsApp.
+  /// Apple: forbruker én engangskode. Google: offentlig Play-lenke.
+  static Future<AppDownloadSmsResult> claimLink({
+    required String platform,
+    String? phone,
+    String? refType,
+    String? refId,
+    String? note,
+  }) async {
+    final data = await _client.rpc('claim_app_download_link', params: {
+      'p_platform': platform,
+      'p_phone': phone,
+      'p_ref_type': refType ?? 'clipboard_whatsapp',
+      'p_ref_id': refId,
+      'p_note': note,
+    });
+    if (data is! Map) {
+      throw Exception('Uventet svar fra claim_app_download_link');
+    }
+    return AppDownloadSmsResult.fromJson(Map<String, dynamic>.from(data));
+  }
+
+  static Future<AppDownloadSmsResult> claimAppleLink({
+    String? phone,
+    String? refType,
+    String? refId,
+    String? note,
+  }) =>
+      claimLink(
+        platform: 'apple',
+        phone: phone,
+        refType: refType,
+        refId: refId,
+        note: note,
+      );
+
+  static Future<AppDownloadSmsResult> claimGoogleLink({
+    String? phone,
+    String? refType,
+    String? refId,
+  }) =>
+      claimLink(
+        platform: 'google',
+        phone: phone,
+        refType: refType,
+        refId: refId,
       );
 }

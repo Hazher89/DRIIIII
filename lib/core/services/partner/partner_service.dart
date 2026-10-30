@@ -1480,6 +1480,10 @@ class PartnerService {
       'notify_channels,sent_at,sent_by,pdf_opened_at,pdf_opened_by,pdf_open_count,'
       'created_at';
 
+  /// Statistikk: inkl. pdf_search_text for km/kunder fra Trip Overview.
+  static const String routeShareColumnsAnalytics =
+      '$routeShareColumnsLight,pdf_search_text';
+
   static String friendlySapFailure(Object error) {
     final raw = error.toString();
     final lower = raw.toLowerCase();
@@ -3437,6 +3441,7 @@ class PartnerService {
     required DateTime fromDay,
     required DateTime toDay,
     int limitPerQuery = 2000,
+    bool includePdfSearchText = false,
   }) async {
     if (!_ok) return const [];
     final dFrom = DateTime(fromDay.year, fromDay.month, fromDay.day);
@@ -3446,11 +3451,13 @@ class PartnerService {
     final fromTs = DateTime(dFrom.year, dFrom.month, dFrom.day).toUtc().toIso8601String();
     final toTsExclusive =
         DateTime(dTo.year, dTo.month, dTo.day).add(const Duration(days: 1)).toUtc().toIso8601String();
+    final columns =
+        includePdfSearchText ? routeShareColumnsAnalytics : routeShareColumnsLight;
 
-    Future<List<dynamic>> byShareDateQuery(String columns) {
+    Future<List<dynamic>> byShareDateQuery(String cols) {
       return _client
           .from('partner_route_shares')
-          .select(columns)
+          .select(cols)
           .eq('company_id', companyId)
           .gte('share_date', sd)
           .lte('share_date', ed)
@@ -3460,16 +3467,18 @@ class PartnerService {
 
     List<dynamic> byShareDate;
     try {
-      byShareDate = await byShareDateQuery(routeShareColumnsLight);
+      byShareDate = await byShareDateQuery(columns);
     } catch (_) {
-      byShareDate = await byShareDateQuery('*');
+      byShareDate = await byShareDateQuery(
+        includePdfSearchText ? '*' : routeShareColumnsLight,
+      );
     }
 
     List<dynamic> byStartAt = const [];
     try {
       byStartAt = await _client
               .from('partner_route_shares')
-              .select(routeShareColumnsLight)
+              .select(columns)
               .eq('company_id', companyId)
               .gte('route_start_at', fromTs)
               .lt('route_start_at', toTsExclusive)

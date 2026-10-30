@@ -92,12 +92,16 @@ class RoutePdfTripOverviewMeta {
   final String? stowingLane;
   final String? freightOrder;
   final String? driverName;
+  final double? totalDistanceKm;
+  final double? consumedWeightKg;
 
   const RoutePdfTripOverviewMeta({
     this.maviCode,
     this.stowingLane,
     this.freightOrder,
     this.driverName,
+    this.totalDistanceKm,
+    this.consumedWeightKg,
   });
 }
 
@@ -164,6 +168,10 @@ class RoutePdfTextService {
       freightOrder:
           parseFreightOrder(headerText) ?? parseFreightOrder(primary),
       driverName: parseDriverName(headerText) ?? parseDriverName(primary),
+      totalDistanceKm:
+          parseTotalDistanceKm(headerText) ?? parseTotalDistanceKm(primary),
+      consumedWeightKg:
+          parseConsumedWeightKg(headerText) ?? parseConsumedWeightKg(primary),
     );
     return RoutePdfParseBundle(
       headerText: headerText,
@@ -296,6 +304,42 @@ class RoutePdfTextService {
 
   static String? parseFreightOrderFromBytes(Uint8List bytes) {
     return parseFreightOrder(extractFullText(bytes));
+  }
+
+  /// `Total distance 175.33 KM` fra Trip Overview (tåler limt tekst uten mellomrom).
+  static double? parseTotalDistanceKm(String raw) {
+    if (raw.trim().isEmpty) return null;
+    final text = raw.replaceAll('\uFF3F', '_');
+    final m = RegExp(
+      r'Total\s*distance\s*([0-9]+(?:[.,][0-9]+)?)\s*KM\b',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (m == null) return null;
+    final n = double.tryParse(m.group(1)!.replaceAll(',', '.'));
+    if (n == null || n < 0 || n > 5000) return null;
+    return n;
+  }
+
+  /// `317.55 KG` / `Consumed Weight` fra Trip Overview.
+  static double? parseConsumedWeightKg(String raw) {
+    if (raw.trim().isEmpty) return null;
+    final text = raw.replaceAll('\uFF3F', '_');
+    final labeled = RegExp(
+      r'([0-9]+(?:[.,][0-9]+)?)\s*KG\s*Consumed\s*Weight',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (labeled != null) {
+      final n = double.tryParse(labeled.group(1)!.replaceAll(',', '.'));
+      if (n != null && n >= 0 && n < 100000) return n;
+    }
+    final reverse = RegExp(
+      r'Consumed\s*Weight[^0-9]{0,24}([0-9]+(?:[.,][0-9]+)?)\s*KG\b',
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (reverse == null) return null;
+    final n = double.tryParse(reverse.group(1)!.replaceAll(',', '.'));
+    if (n == null || n < 0 || n >= 100000) return null;
+    return n;
   }
 
   /// Sjåførnavn fra Trip Overview (ofte linjen rett over «Driver Name»).

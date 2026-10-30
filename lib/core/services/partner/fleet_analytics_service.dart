@@ -72,6 +72,10 @@ class FleetDriverStat {
   final int routeCount;
   final int customerCount;
   final int friDays;
+  final double totalKm;
+  final double totalWeightKg;
+  final int routesWithKm;
+  final List<String> fleetRoles;
   final double routeVsAvg;
   final double customerVsAvg;
   final Map<String, int> routesByRegion;
@@ -85,6 +89,10 @@ class FleetDriverStat {
     required this.routeCount,
     required this.customerCount,
     required this.friDays,
+    this.totalKm = 0,
+    this.totalWeightKg = 0,
+    this.routesWithKm = 0,
+    this.fleetRoles = const [],
     this.routeVsAvg = 0,
     this.customerVsAvg = 0,
     this.routesByRegion = const {},
@@ -105,6 +113,30 @@ class FleetDriverStat {
 
   double get customersPerRoute => routeCount > 0 ? customerCount / routeCount : 0;
 
+  double get kmPerRoute => routeCount > 0 ? totalKm / routeCount : 0;
+
+  double get avgKmWhenKnown => routesWithKm > 0 ? totalKm / routesWithKm : 0;
+
+  String get fleetRolesLabel {
+    if (fleetRoles.isEmpty) return 'Uten type';
+    return fleetRoles.map((r) {
+      switch (r) {
+        case 'tjenestebil':
+          return 'Tjenestebil';
+        case 'enmannsbil':
+          return 'Enmannsbil';
+        case '2mannsbil':
+          return '2-mannsbil';
+        case 'intern':
+          return 'Intern';
+        default:
+          return r;
+      }
+    }).join(' · ');
+  }
+
+  bool hasFleetRole(String role) => fleetRoles.contains(role);
+
   String? get topRegion {
     if (routesByRegion.isEmpty) return null;
     return routesByRegion.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
@@ -114,6 +146,7 @@ class FleetDriverStat {
 
   String get description =>
       '$routeCount ${routeCount == 1 ? 'rute' : 'ruter'} · $customerCount ${customerCount == 1 ? 'kunde' : 'kunder'}'
+      '${totalKm > 0 ? ' · ${totalKm.toStringAsFixed(0)} km' : ''}'
       '${friDays > 0 ? ' · $friDays fri' : ''}';
 }
 
@@ -124,6 +157,8 @@ enum FleetDriverSortKey {
   customersAsc,
   customersPerRouteDesc,
   customersPerRouteAsc,
+  kmDesc,
+  kmAsc,
   friDesc,
   maviAsc,
   driverAsc,
@@ -149,6 +184,10 @@ extension FleetDriverSortKeyX on FleetDriverSortKey {
         return 'Færrest kunder';
       case FleetDriverSortKey.friDesc:
         return 'Mest fri';
+      case FleetDriverSortKey.kmDesc:
+        return 'Lengst kjørt (km)';
+      case FleetDriverSortKey.kmAsc:
+        return 'Kortest kjørt (km)';
       case FleetDriverSortKey.maviAsc:
         return 'MAVI A–Å';
       case FleetDriverSortKey.fairnessDesc:
@@ -223,7 +262,18 @@ extension FleetRegionSortKeyX on FleetRegionSortKey {
   }
 }
 
-enum FleetDriverFilterKey { all, withRoutes, withCustomers, friOnly, onlyActiveMavi }
+enum FleetDriverFilterKey {
+  all,
+  withRoutes,
+  withCustomers,
+  withKm,
+  friOnly,
+  onlyActiveMavi,
+  enmannsbil,
+  tomannsbil,
+  intern,
+  tjenestebil,
+}
 
 extension FleetDriverFilterKeyX on FleetDriverFilterKey {
   String get label {
@@ -234,62 +284,123 @@ extension FleetDriverFilterKeyX on FleetDriverFilterKey {
         return 'Har fått rute';
       case FleetDriverFilterKey.withCustomers:
         return 'Har kunder';
+      case FleetDriverFilterKey.withKm:
+        return 'Har km i PDF';
       case FleetDriverFilterKey.friOnly:
         return 'Kun fri';
       case FleetDriverFilterKey.onlyActiveMavi:
         return 'Aktive i flåte';
+      case FleetDriverFilterKey.enmannsbil:
+        return 'Enmannsbil';
+      case FleetDriverFilterKey.tomannsbil:
+        return '2-mannsbil';
+      case FleetDriverFilterKey.intern:
+        return 'Intern';
+      case FleetDriverFilterKey.tjenestebil:
+        return 'Tjenestebil';
+    }
+  }
+
+  String? get fleetRoleCode {
+    switch (this) {
+      case FleetDriverFilterKey.enmannsbil:
+        return 'enmannsbil';
+      case FleetDriverFilterKey.tomannsbil:
+        return '2mannsbil';
+      case FleetDriverFilterKey.intern:
+        return 'intern';
+      case FleetDriverFilterKey.tjenestebil:
+        return 'tjenestebil';
+      default:
+        return null;
     }
   }
 }
 
 class FleetDriverStatsBundle {
   final FleetCalendarPeriod period;
+  final DateTime fromDay;
+  final DateTime toDay;
   final List<FleetDriverStat> drivers;
   final List<FleetRegionStat> regions;
+  final List<FleetDailyTrendPoint> dailyTrend;
   final int totalRoutes;
   final int totalCustomers;
+  final double totalKm;
+  final double totalWeightKg;
+  final int totalFriDays;
   final int activeMaviCount;
   final double avgRoutesPerMavi;
   final double avgCustomersPerMavi;
+  final double avgKmPerMavi;
   final FleetDriverStat? mostRoutes;
   final FleetDriverStat? leastRoutes;
   final FleetDriverStat? mostCustomers;
   final FleetDriverStat? leastCustomers;
   final FleetDriverStat? mostFri;
+  final FleetDriverStat? mostKm;
   final FleetRegionStat? mostActiveRegion;
+  final Map<String, int> roleBreakdown;
 
   const FleetDriverStatsBundle({
     required this.period,
+    required this.fromDay,
+    required this.toDay,
     required this.drivers,
     this.regions = const [],
+    this.dailyTrend = const [],
     required this.totalRoutes,
     required this.totalCustomers,
+    this.totalKm = 0,
+    this.totalWeightKg = 0,
+    this.totalFriDays = 0,
     required this.activeMaviCount,
     required this.avgRoutesPerMavi,
     required this.avgCustomersPerMavi,
+    this.avgKmPerMavi = 0,
     this.mostRoutes,
     this.leastRoutes,
     this.mostCustomers,
     this.leastCustomers,
     this.mostFri,
+    this.mostKm,
     this.mostActiveRegion,
+    this.roleBreakdown = const {},
   });
+
+  String get rangeLabel {
+    String nb(DateTime d) => '${d.day}.${d.month}.${d.year}';
+    if (fromDay.year == toDay.year &&
+        fromDay.month == toDay.month &&
+        fromDay.day == toDay.day) {
+      return nb(fromDay);
+    }
+    return '${nb(fromDay)} – ${nb(toDay)}';
+  }
 
   List<FleetDriverStat> filtered({
     FleetDriverFilterKey filter = FleetDriverFilterKey.all,
     String? partnerName,
+    String? fleetRole,
     String maviQuery = '',
     Set<String>? activeVehicleIds,
+    Set<String>? onlyVehicleIds,
   }) {
-    final q = maviQuery.trim().toLowerCase();
+    final role = fleetRole ?? filter.fleetRoleCode;
     return drivers.where((d) {
       if (partnerName != null && partnerName.isNotEmpty && d.partnerName != partnerName) {
         return false;
       }
-      if (q.isNotEmpty &&
+      if (onlyVehicleIds != null && !onlyVehicleIds.contains(d.vehicleId)) {
+        return false;
+      }
+      if (role != null && role.isNotEmpty && !d.hasFleetRole(role)) {
+        return false;
+      }
+      if (maviQuery.trim().isNotEmpty &&
           !PartnerSearch.textMatches(
             query: maviQuery,
-            fields: [d.displayDriver, d.partnerName],
+            fields: [d.displayDriver, d.partnerName, d.fleetRolesLabel],
             unitCodes: [d.displayMavi],
           )) {
         return false;
@@ -299,12 +410,19 @@ class FleetDriverStatsBundle {
           return d.routeCount > 0;
         case FleetDriverFilterKey.withCustomers:
           return d.customerCount > 0;
+        case FleetDriverFilterKey.withKm:
+          return d.totalKm > 0;
         case FleetDriverFilterKey.friOnly:
           return d.friDays > 0 && d.routeCount == 0;
         case FleetDriverFilterKey.onlyActiveMavi:
           return activeVehicleIds == null || activeVehicleIds.contains(d.vehicleId);
+        case FleetDriverFilterKey.enmannsbil:
+        case FleetDriverFilterKey.tomannsbil:
+        case FleetDriverFilterKey.intern:
+        case FleetDriverFilterKey.tjenestebil:
+          return d.hasFleetRole(filter.fleetRoleCode!);
         case FleetDriverFilterKey.all:
-          return d.routeCount > 0 || d.customerCount > 0 || d.friDays > 0;
+          return d.routeCount > 0 || d.customerCount > 0 || d.friDays > 0 || d.totalKm > 0;
       }
     }).toList();
   }
@@ -326,6 +444,12 @@ class FleetDriverStatsBundle {
         break;
       case FleetDriverSortKey.friDesc:
         copy.sort((a, b) => b.friDays.compareTo(a.friDays));
+        break;
+      case FleetDriverSortKey.kmDesc:
+        copy.sort((a, b) => b.totalKm.compareTo(a.totalKm));
+        break;
+      case FleetDriverSortKey.kmAsc:
+        copy.sort((a, b) => a.totalKm.compareTo(b.totalKm));
         break;
       case FleetDriverSortKey.maviAsc:
         copy.sort((a, b) => a.displayMavi.compareTo(b.displayMavi));
@@ -760,6 +884,18 @@ class FleetAnalyticsService {
     return RoutePdfTextService.parseCustomers(text).length;
   }
 
+  static double? _kmOnShare(PartnerRouteShare s) {
+    final text = s.pdfSearchText;
+    if (text == null || text.trim().isEmpty) return null;
+    return RoutePdfTextService.parseTotalDistanceKm(text);
+  }
+
+  static double? _weightOnShare(PartnerRouteShare s) {
+    final text = s.pdfSearchText;
+    if (text == null || text.trim().isEmpty) return null;
+    return RoutePdfTextService.parseConsumedWeightKg(text);
+  }
+
   static bool _shareInRange(PartnerRouteShare s, DateTime start, DateTime end) {
     if (s.isStaged) return false;
     final d = DateTime(s.shareDate.year, s.shareDate.month, s.shareDate.day);
@@ -774,12 +910,6 @@ class FleetAnalyticsService {
   static bool _assignInRange(MaviDriverDayAssignment a, DateTime start, DateTime end) {
     final d = DateTime(a.assignmentDate.year, a.assignmentDate.month, a.assignmentDate.day);
     return !d.isBefore(start) && !d.isAfter(end);
-  }
-
-  static String _regionLabelForShift(FleetShiftDefinition shift) {
-    final r = shift.regionGroup?.trim();
-    if (r != null && r.isNotEmpty) return r;
-    return 'Ukjent område';
   }
 
   static String _regionLabelForShare(
@@ -841,16 +971,22 @@ class FleetAnalyticsService {
     List<FleetShiftDefinition> shifts = const [],
     List<MaviDriverDayAssignment> dayAssignments = const [],
     DateTime? referenceNow,
+    DateTime? fromDay,
+    DateTime? toDay,
   }) {
     final now = referenceNow ?? DateTime.now();
-    final start = period.rangeStart(now);
-    final end = DateTime(now.year, now.month, now.day);
+    final start = fromDay != null
+        ? DateTime(fromDay.year, fromDay.month, fromDay.day)
+        : period.rangeStart(now);
+    final end = toDay != null
+        ? DateTime(toDay.year, toDay.month, toDay.day)
+        : DateTime(now.year, now.month, now.day);
 
     final shiftById = <String, FleetShiftDefinition>{
       for (final sh in shifts) sh.id: sh,
     };
 
-    final vehicleMeta = <String, ({String? driver, String mavi, String partner})>{};
+    final vehicleMeta = <String, ({String? driver, String mavi, String partner, List<String> roles})>{};
     for (final row in fleet) {
       final v = row.vehicle;
       final driver = v.driverName?.trim();
@@ -858,6 +994,7 @@ class FleetAnalyticsService {
         driver: driver != null && driver.isNotEmpty ? driver : null,
         mavi: MaviUnitCodes.normalize(v.unitCode),
         partner: row.partner.name,
+        roles: List<String>.from(v.fleetRoles),
       );
     }
 
@@ -868,24 +1005,51 @@ class FleetAnalyticsService {
 
     final routesByV = <String, int>{};
     final customersByV = <String, int>{};
+    final kmByV = <String, double>{};
+    final weightByV = <String, double>{};
+    final kmRoutesByV = <String, int>{};
     final routesByVRegion = <String, Map<String, int>>{};
     final customersByVRegion = <String, Map<String, int>>{};
     final friByV = <String, int>{};
+    final dailyRoutes = <DateTime, int>{};
+    final dailyCustomers = <DateTime, int>{};
+    final dailyFri = <DateTime, int>{};
+    final dailyKm = <DateTime, double>{};
 
     String dayKey(DateTime d) => d.toIso8601String().split('T').first;
     String vehDayKey(String vid, String dk) => '$vid|$dk';
+    DateTime dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
-    final shareByVehDay = <String, PartnerRouteShare>{};
+    // Alle PDF-ruter i perioden (km/kunder summeres per bil — flere last pr dag tillatt).
     for (final s in shares) {
       if (!_shareInRange(s, start, end)) continue;
       if (s.dispatchStatus == 'staged') continue;
       final vid = s.partnerVehicleId;
       if (vid == null) continue;
-      final k = vehDayKey(vid, dayKey(s.shareDate));
-      final prev = shareByVehDay[k];
-      if (prev == null || s.createdAt.isAfter(prev.createdAt)) {
-        shareByVehDay[k] = s;
+      final region = _regionLabelForShare(s, regionByShiftId);
+      routesByV[vid] = (routesByV[vid] ?? 0) + 1;
+      final rMap = routesByVRegion.putIfAbsent(vid, () => {});
+      rMap[region] = (rMap[region] ?? 0) + 1;
+      final cust = _customersOnShare(s);
+      if (cust > 0) {
+        customersByV[vid] = (customersByV[vid] ?? 0) + cust;
+        final cMap = customersByVRegion.putIfAbsent(vid, () => {});
+        cMap[region] = (cMap[region] ?? 0) + cust;
       }
+      final km = _kmOnShare(s);
+      if (km != null && km > 0) {
+        kmByV[vid] = (kmByV[vid] ?? 0) + km;
+        kmRoutesByV[vid] = (kmRoutesByV[vid] ?? 0) + 1;
+        final dk = dayOnly(s.shareDate);
+        dailyKm[dk] = (dailyKm[dk] ?? 0) + km;
+      }
+      final kg = _weightOnShare(s);
+      if (kg != null && kg > 0) {
+        weightByV[vid] = (weightByV[vid] ?? 0) + kg;
+      }
+      final dk = dayOnly(s.shareDate);
+      dailyRoutes[dk] = (dailyRoutes[dk] ?? 0) + 1;
+      dailyCustomers[dk] = (dailyCustomers[dk] ?? 0) + cust;
     }
 
     final assignByVehDay = <String, MaviDriverDayAssignment>{};
@@ -900,59 +1064,17 @@ class FleetAnalyticsService {
       }
     }
 
-    final allVehDays = <String>{...shareByVehDay.keys, ...assignByVehDay.keys};
-
-    void addRoute(String vid, String region) {
-      routesByV[vid] = (routesByV[vid] ?? 0) + 1;
-      final rMap = routesByVRegion.putIfAbsent(vid, () => {});
-      rMap[region] = (rMap[region] ?? 0) + 1;
-    }
-
-    void addCustomers(String vid, String region, int cust) {
-      if (cust <= 0) return;
-      customersByV[vid] = (customersByV[vid] ?? 0) + cust;
-      final cMap = customersByVRegion.putIfAbsent(vid, () => {});
-      cMap[region] = (cMap[region] ?? 0) + cust;
-    }
-
     bool isFriShift(FleetShiftDefinition shift) {
       final n = shift.name.toLowerCase();
       return n.contains('fri') && !n.contains('ledig');
     }
 
-    for (final k in allVehDays) {
-      final share = shareByVehDay[k];
-      final assign = assignByVehDay[k];
-      final vid = share?.partnerVehicleId ?? assign?.partnerVehicleId;
-      if (vid == null) continue;
-
-      final assignAt = assign?.updatedAt ?? assign?.assignmentDate;
-      final shareAt = share?.createdAt;
-      final assignWins = assign != null &&
-          (shareAt == null || (assignAt != null && !assignAt.isBefore(shareAt)));
-
-      final shift = assign != null ? shiftById[assign.shiftId] : null;
-
-      if (assignWins && shift != null && shift.isAvailability && isFriShift(shift)) {
-        friByV[vid] = (friByV[vid] ?? 0) + 1;
-        continue;
-      }
-
-      String region;
-      if (assignWins && shift != null && !shift.isAvailability) {
-        region = _regionLabelForShift(shift);
-      } else if (share != null) {
-        region = _regionLabelForShare(share, regionByShiftId);
-      } else {
-        continue;
-      }
-
-      final hasRouteDay = (assignWins && shift != null && !shift.isAvailability) || share != null;
-      if (hasRouteDay) addRoute(vid, region);
-
-      if (share != null && !(assignWins && shift != null && isFriShift(shift))) {
-        addCustomers(vid, region, _customersOnShare(share));
-      }
+    for (final a in assignByVehDay.values) {
+      final shift = shiftById[a.shiftId];
+      if (shift == null || !shift.isAvailability || !isFriShift(shift)) continue;
+      friByV[a.partnerVehicleId] = (friByV[a.partnerVehicleId] ?? 0) + 1;
+      final dk = dayOnly(a.assignmentDate);
+      dailyFri[dk] = (dailyFri[dk] ?? 0) + 1;
     }
 
     for (final snap in snapshots) {
@@ -961,11 +1083,14 @@ class FleetAnalyticsService {
       final k = vehDayKey(snap.partnerVehicleId, dayKey(snap.snapshotDate));
       if (assignByVehDay.containsKey(k)) continue;
       friByV[snap.partnerVehicleId] = (friByV[snap.partnerVehicleId] ?? 0) + 1;
+      final dk = dayOnly(snap.snapshotDate);
+      dailyFri[dk] = (dailyFri[dk] ?? 0) + 1;
     }
 
     final ids = <String>{
       ...routesByV.keys,
       ...friByV.keys,
+      ...kmByV.keys,
       ...assignByVehDay.keys.map((k) => k.split('|').first),
       ...vehicleMeta.keys,
     };
@@ -981,16 +1106,25 @@ class FleetAnalyticsService {
         routeCount: routesByV[vid] ?? 0,
         customerCount: customersByV[vid] ?? 0,
         friDays: friByV[vid] ?? 0,
+        totalKm: kmByV[vid] ?? 0,
+        totalWeightKg: weightByV[vid] ?? 0,
+        routesWithKm: kmRoutesByV[vid] ?? 0,
+        fleetRoles: List.unmodifiable(meta?.roles ?? const []),
         routesByRegion: Map.unmodifiable(routesByVRegion[vid] ?? const {}),
         customersByRegion: Map.unmodifiable(customersByVRegion[vid] ?? const {}),
       );
-    }).where((d) => d.routeCount > 0 || d.customerCount > 0 || d.friDays > 0).toList();
+    }).where((d) => d.routeCount > 0 || d.customerCount > 0 || d.friDays > 0 || d.totalKm > 0).toList();
 
     final totalRoutes = routesByV.values.fold<int>(0, (a, b) => a + b);
     final totalCustomers = customersByV.values.fold<int>(0, (a, b) => a + b);
+    final totalKm = kmByV.values.fold<double>(0, (a, b) => a + b);
+    final totalWeight = weightByV.values.fold<double>(0, (a, b) => a + b);
+    final totalFri = friByV.values.fold<int>(0, (a, b) => a + b);
     final withRoutes = drivers.where((d) => d.routeCount > 0).toList();
+    final withKm = drivers.where((d) => d.totalKm > 0).toList();
     final avgRoutes = withRoutes.isEmpty ? 0.0 : totalRoutes / withRoutes.length;
     final avgCustomers = withRoutes.isEmpty ? 0.0 : totalCustomers / withRoutes.length;
+    final avgKm = withKm.isEmpty ? 0.0 : totalKm / withKm.length;
 
     drivers = drivers
         .map(
@@ -1002,6 +1136,10 @@ class FleetAnalyticsService {
             routeCount: d.routeCount,
             customerCount: d.customerCount,
             friDays: d.friDays,
+            totalKm: d.totalKm,
+            totalWeightKg: d.totalWeightKg,
+            routesWithKm: d.routesWithKm,
+            fleetRoles: d.fleetRoles,
             routeVsAvg: d.routeCount - avgRoutes,
             customerVsAvg: d.customerCount - avgCustomers,
             routesByRegion: d.routesByRegion,
@@ -1020,6 +1158,7 @@ class FleetAnalyticsService {
     FleetDriverStat? mostCustomers;
     FleetDriverStat? leastCustomers;
     FleetDriverStat? mostFri;
+    FleetDriverStat? mostKm;
 
     if (withRoutes.isNotEmpty) {
       mostRoutes = withRoutes.reduce((a, b) => a.routeCount >= b.routeCount ? a : b);
@@ -1034,6 +1173,9 @@ class FleetAnalyticsService {
     if (friList.isNotEmpty) {
       mostFri = friList.reduce((a, b) => a.friDays >= b.friDays ? a : b);
     }
+    if (withKm.isNotEmpty) {
+      mostKm = withKm.reduce((a, b) => a.totalKm >= b.totalKm ? a : b);
+    }
 
     final regions = _buildRegionStats(drivers);
     FleetRegionStat? mostActiveRegion;
@@ -1041,21 +1183,60 @@ class FleetAnalyticsService {
       mostActiveRegion = regions.reduce((a, b) => a.routeCount >= b.routeCount ? a : b);
     }
 
+    final roleBreakdown = <String, int>{};
+    for (final d in drivers) {
+      if (d.fleetRoles.isEmpty) {
+        roleBreakdown['uten_type'] = (roleBreakdown['uten_type'] ?? 0) + 1;
+      } else {
+        for (final r in d.fleetRoles) {
+          roleBreakdown[r] = (roleBreakdown[r] ?? 0) + 1;
+        }
+      }
+    }
+
+    final trendDays = <DateTime>{
+      ...dailyRoutes.keys,
+      ...dailyFri.keys,
+      ...dailyKm.keys,
+    }.toList()
+      ..sort();
+    final dailyTrend = trendDays
+        .map(
+          (d) => FleetDailyTrendPoint(
+            day: d,
+            harRute: dailyRoutes[d] ?? 0,
+            fri: dailyFri[d] ?? 0,
+            ledig: 0,
+            gittBort: 0,
+            routesSent: dailyRoutes[d] ?? 0,
+          ),
+        )
+        .toList();
+
     return FleetDriverStatsBundle(
       period: period,
+      fromDay: start,
+      toDay: end,
       drivers: drivers,
       regions: regions,
+      dailyTrend: dailyTrend,
       totalRoutes: totalRoutes,
       totalCustomers: totalCustomers,
+      totalKm: totalKm,
+      totalWeightKg: totalWeight,
+      totalFriDays: totalFri,
       activeMaviCount: fleet.length,
       avgRoutesPerMavi: avgRoutes,
       avgCustomersPerMavi: avgCustomers,
+      avgKmPerMavi: avgKm,
       mostRoutes: mostRoutes,
       leastRoutes: leastRoutes,
       mostCustomers: mostCustomers,
       leastCustomers: leastCustomers,
       mostFri: mostFri,
+      mostKm: mostKm,
       mostActiveRegion: mostActiveRegion,
+      roleBreakdown: roleBreakdown,
     );
   }
 }

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/services/app_download_sms_service.dart';
 import '../core/theme/app_theme.dart';
 
-/// «Send Apple» / «Send Google» app-download SMS buttons.
+/// «Send Apple» / «Send Google» SMS + kopier iOS/Android-lenke (WhatsApp).
 class AppDownloadSmsButtons extends StatefulWidget {
   const AppDownloadSmsButtons({
     super.key,
@@ -130,6 +131,77 @@ class _AppDownloadSmsButtonsState extends State<AppDownloadSmsButtons> {
     }
   }
 
+  Future<void> _copy(String platform) async {
+    final isApple = platform == 'apple';
+    if (isApple) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Kopier iOS-lenke?'),
+          content: Text(
+            'Henter en unik Apple-kode og kopierer lenken.\n\n'
+            'Koden slettes fra systemet og kan bare brukes én gang '
+            '(f.eks. lim inn i WhatsApp).'
+            '${_remaining != null ? '\n\nLedige koder: $_remaining' : ''}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Avbryt'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Kopier og slett kode'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true || !mounted) return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final result = await AppDownloadSmsService.claimLink(
+        platform: platform,
+        phone: widget.phone?.trim(),
+        refType: widget.refType ?? 'clipboard_whatsapp',
+        refId: widget.refId,
+        note: widget.displayName,
+      );
+      final url = result.redeemUrl?.trim();
+      if (url == null || url.isEmpty) {
+        throw Exception('Fant ingen lenke');
+      }
+      await Clipboard.setData(ClipboardData(text: url));
+      if (!mounted) return;
+      setState(() {
+        _remaining = result.remainingCodes ?? _remaining;
+        _busy = false;
+      });
+      _toast(
+        isApple
+            ? 'iOS-lenke kopiert · ${result.remainingCodes ?? '–'} koder igjen'
+            : 'Android-lenke kopiert',
+      );
+      widget.onSent?.call(result);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      // Fallback for Google hvis RPC ikke er deployet ennå
+      if (!isApple) {
+        await Clipboard.setData(
+          const ClipboardData(text: kDriftProGooglePlayUrl),
+        );
+        if (!mounted) return;
+        _toast('Android-lenke kopiert');
+        return;
+      }
+      final msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+      _toast(msg, error: true);
+      await _loadRemaining();
+    }
+  }
+
   void _toast(String msg, {bool error = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -142,20 +214,33 @@ class _AppDownloadSmsButtonsState extends State<AppDownloadSmsButtons> {
   @override
   Widget build(BuildContext context) {
     final canSend = widget.enabled && !_busy && _hasPhone;
+    final canCopy = widget.enabled && !_busy;
     final appleDisabled = !canSend || (_remaining != null && _remaining! <= 0);
+    final appleCopyDisabled =
+        !canCopy || (_remaining != null && _remaining! <= 0);
 
     final appleBtn = OutlinedButton.icon(
       onPressed: appleDisabled ? null : () => _send('apple'),
       icon: Icon(Icons.apple, size: widget.dense ? 16 : 18),
-      label: Text(widget.dense ? 'Apple' : 'Send Apple'),
+      label: Text(widget.dense ? 'Apple SMS' : 'Send Apple'),
     );
     final googleBtn = OutlinedButton.icon(
       onPressed: canSend ? () => _send('google') : null,
       icon: Icon(Icons.android, size: widget.dense ? 16 : 18),
-      label: Text(widget.dense ? 'Google' : 'Send Google'),
+      label: Text(widget.dense ? 'Google SMS' : 'Send Google'),
       style: OutlinedButton.styleFrom(
         foregroundColor: DriftProTheme.primaryGreen,
       ),
+    );
+    final copyIosBtn = FilledButton.tonalIcon(
+      onPressed: appleCopyDisabled ? null : () => _copy('apple'),
+      icon: Icon(Icons.copy_all_outlined, size: widget.dense ? 16 : 18),
+      label: Text(widget.dense ? 'Kopier iOS' : 'Kopier iOS-lenke'),
+    );
+    final copyAndroidBtn = FilledButton.tonalIcon(
+      onPressed: canCopy ? () => _copy('google') : null,
+      icon: Icon(Icons.link, size: widget.dense ? 16 : 18),
+      label: Text(widget.dense ? 'Kopier Android' : 'Kopier Android-lenke'),
     );
 
     return Column(
@@ -168,6 +253,8 @@ class _AppDownloadSmsButtonsState extends State<AppDownloadSmsButtons> {
           children: [
             appleBtn,
             googleBtn,
+            copyIosBtn,
+            copyAndroidBtn,
             if (_busy)
               const SizedBox(
                 width: 22,
@@ -180,7 +267,7 @@ class _AppDownloadSmsButtonsState extends State<AppDownloadSmsButtons> {
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(
-              'Apple-koder igjen: $_remaining',
+              'Apple-koder igjen: $_remaining · iOS-kopiering sletter koden fra systemet',
               style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
             ),
           ),
@@ -188,7 +275,7 @@ class _AppDownloadSmsButtonsState extends State<AppDownloadSmsButtons> {
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(
-              'Legg inn telefonnummer for å sende app-lenke',
+              'Telefon trengs for SMS. Kopier-knappene fungerer uten (lim inn i WhatsApp).',
               style: TextStyle(fontSize: 11, color: Colors.orange.shade800),
             ),
           ),
