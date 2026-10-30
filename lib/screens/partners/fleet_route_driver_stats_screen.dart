@@ -815,8 +815,10 @@ class _FleetRouteDriverStatsScreenState
                 alignment: BarChartAlignment.spaceAround,
                 maxY: maxY * 1.15,
                 barTouchData: BarTouchData(
+                  // Kun ekte trykk — hover på web åpnet ellers sjåfør-sheet «av seg selv».
+                  handleBuiltInTouches: true,
                   touchCallback: (event, response) {
-                    if (!event.isInterestedForInteractions) return;
+                    if (event is! FlTapUpEvent) return;
                     final i = response?.spot?.touchedBarGroupIndex;
                     if (i == null || i < 0 || i >= rows.length) return;
                     _showDriverDetail(rows[i]);
