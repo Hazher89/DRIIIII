@@ -1287,11 +1287,13 @@ class PartnerService {
     });
   }
 
-  /// Sletter alle ruter på en dag (kladd + publiserte) og nullstiller snapshots.
+  /// Sletter ruter på en dag og nullstiller snapshots.
+  /// [stagedOnly] = kun kladd. [unacceptedOnly] = kladd + ikke akseptert (beholder aksepterte).
   static Future<int> clearRouteSharesForCompanyDay({
     required String companyId,
     required DateTime day,
     bool stagedOnly = false,
+    bool unacceptedOnly = false,
   }) async {
     if (!_ok) return 0;
     final dn = _dayOnly(day);
@@ -1300,7 +1302,14 @@ class PartnerService {
       fromDay: dn,
       toDay: dn,
     );
-    final targets = stagedOnly ? shares.where((s) => s.isStaged).toList() : shares;
+    final targets = shares.where((s) {
+      if (stagedOnly) return s.isStaged;
+      if (unacceptedOnly) {
+        // Behold kun aksepterte — fjern kladd, venter og avvist.
+        return s.isStaged || s.ackStatus != 'accepted';
+      }
+      return true;
+    }).toList();
     for (final s in targets) {
       await deleteRouteShare(s);
     }

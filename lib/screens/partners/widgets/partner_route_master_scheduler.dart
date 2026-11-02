@@ -95,7 +95,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
       List.generate(7, (i) => DateTime(_weekStart.year, _weekStart.month, _weekStart.day + i));
 
   static const double _rowHeight = 122;
-  static const double _dayHeaderHeight = 72;
+  static const double _dayHeaderHeight = 104;
   static const double _sidebarW = 168;
 
   @override
@@ -418,39 +418,79 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
   Future<void> _clearAllRoutesForDay(DateTime day) async {
     final cid = await SupabaseService.getCurrentCompanyId();
     if (cid == null || !mounted) return;
-    final n = _weekRouteCount(day);
-    if (n == 0) return;
-    final ok = await showDialog<bool>(
+    final all = _shares.where((s) => _shareOnDay(s, day)).toList();
+    if (all.isEmpty) return;
+    final drafts = all.where((s) => s.isStaged).length;
+    final unaccepted =
+        all.where((s) => s.isStaged || s.ackStatus != 'accepted').length;
+    final mode = await showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Tøm hele dagen?'),
-        content: Text(
-          'Fjerner alle $n rute(r) fra alle sjåfører på '
-          '${DateFormat('EEEE d. MMMM yyyy', 'nb').format(day)}.\n\n'
-          'Kladd og publiserte ruter slettes. Dette kan ikke angres.',
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
-            child: const Text('Tøm dag'),
+      showDragHandle: true,
+      builder: (ctx) {
+        final label = DateFormat('EEEE d. MMMM', 'nb').format(day);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('Tøm $label', style: DriftProTheme.headingSm),
+                const SizedBox(height: 4),
+                Text(
+                  'SAP-kladder blir aldri sendt uten at du publiserer. '
+                  'Her fjerner du ruter fra kalenderen.',
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade700, height: 1.35),
+                ),
+                const SizedBox(height: 12),
+                ListTile(
+                  leading: Icon(Icons.drafts_outlined, color: Colors.orange.shade800),
+                  title: Text('Kun kladder ($drafts)'),
+                  subtitle: const Text('Fjerner oransje kladd — ikke sendt til sjåfør'),
+                  enabled: drafts > 0,
+                  onTap: () => Navigator.pop(ctx, 'staged'),
+                ),
+                ListTile(
+                  leading: Icon(Icons.hourglass_empty, color: Colors.red.shade700),
+                  title: Text('Kladd + ikke akseptert ($unaccepted)'),
+                  subtitle: const Text('Beholder grønne aksepterte ruter'),
+                  enabled: unaccepted > 0,
+                  onTap: () => Navigator.pop(ctx, 'unaccepted'),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_forever, color: Colors.red),
+                  title: Text('Alt på dagen (${all.length})'),
+                  subtitle: const Text('Sletter også aksepterte. Kan ikke angres.'),
+                  onTap: () => Navigator.pop(ctx, 'all'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Avbryt'),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        );
+      },
     );
-    if (ok != true || !mounted) return;
+    if (mode == null || !mounted) return;
     setState(() => _busy = true);
     try {
       final removed = await PartnerService.clearRouteSharesForCompanyDay(
         companyId: cid,
         day: day,
+        stagedOnly: mode == 'staged',
+        unacceptedOnly: mode == 'unaccepted',
       );
       widget.onChanged?.call();
       await _reload();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fjernet $removed rute(r) fra ${DateFormat('d.M.y', 'nb').format(day)}')),
+          SnackBar(
+            content: Text(
+              'Fjernet $removed rute(r) fra ${DateFormat('d.M.y', 'nb').format(day)}',
+            ),
+          ),
         );
       }
     } catch (e) {
@@ -548,9 +588,9 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
         icon: sapActive ? Icons.notifications_active_rounded : Icons.inbox_outlined,
         title: 'SAP-innboks',
         subtitle: hasInbox
-            ? '$_sapInboxPending PDF mottatt — ikke sendt ennå'
+            ? '$_sapInboxPending PDF — kun kladd, sendes ikke automatisk'
             : hasQueue
-                ? '$_sapStagedCount i kø — klar til kontroll'
+                ? '$_sapStagedCount kladd i kø — du må publisere selv'
                 : 'Ingen nye',
         color: sapActive ? const Color(0xFFD97706) : RoutePlannerUi.colorSap,
         badge: sapBadge,
@@ -1422,6 +1462,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
           final isFocus = _dayOnly(d) == _dayOnly(_focusDay);
           final n = _weekRouteCount(d);
           final pendingAck = _pendingAckCountForDay(d);
+          final draftN =
+              _shares.where((s) => _shareOnDay(s, d) && s.isStaged).length;
           return Expanded(
             child: Material(
               color: isFocus
@@ -1446,7 +1488,7 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                       ),
                     ),
                   ),
-                  padding: const EdgeInsets.fromLTRB(6, 8, 6, 6),
+                  padding: const EdgeInsets.fromLTRB(6, 6, 6, 4),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -1470,28 +1512,92 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w900,
-                          height: 1.2,
+                          height: 1.15,
                           color: isFocus
                               ? const Color(0xFF0F172A)
                               : const Color(0xFF334155),
                         ),
                       ),
-                      const Spacer(),
                       Text(
                         n == 0
                             ? 'Ledig'
                             : '$n rute${n == 1 ? '' : 'r'}'
-                                '${pendingAck > 0 ? ' · $pendingAck ⏳' : ''}',
+                                '${pendingAck > 0 ? ' · $pendingAck ⏳' : ''}'
+                                '${draftN > 0 ? ' · $draftN kladd' : ''}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 9.5,
                           fontWeight: FontWeight.w700,
                           color: n == 0
                               ? const Color(0xFF94A3B8)
                               : const Color(0xFF475569),
                         ),
                       ),
+                      const Spacer(),
+                      if (n > 0)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Tooltip(
+                                message: 'Tøm kladd / ikke akseptert / alt',
+                                child: OutlinedButton(
+                                  onPressed: _busy
+                                      ? null
+                                      : () => _clearAllRoutesForDay(d),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: const Size(0, 26),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                    foregroundColor: Colors.red.shade800,
+                                    side: BorderSide(
+                                      color: Colors.red.shade300,
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Tøm',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Tooltip(
+                                message: pendingAck > 0
+                                    ? 'Purr $pendingAck som ikke har akseptert'
+                                    : 'Ingen venter på aksept',
+                                child: FilledButton(
+                                  onPressed: _busy || pendingAck == 0
+                                      ? null
+                                      : () => _nudgePendingForDay(d),
+                                  style: FilledButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: const Size(0, 26),
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                    backgroundColor: pendingAck > 0
+                                        ? const Color(0xFFD97706)
+                                        : Colors.grey.shade400,
+                                  ),
+                                  child: Text(
+                                    pendingAck > 0 ? 'Purr $pendingAck' : 'Purr',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),

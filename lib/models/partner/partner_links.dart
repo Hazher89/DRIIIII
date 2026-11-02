@@ -384,7 +384,7 @@ class PartnerRouteShare {
     this.shiftId,
     this.partnerVehicleId,
     this.routeStartAt,
-    this.dispatchStatus = 'sent',
+    this.dispatchStatus = 'staged',
     this.stagedImportSource,
     this.pdfSearchText,
     this.customerCount,
@@ -422,7 +422,8 @@ class PartnerRouteShare {
       shiftId: json['shift_id'] as String?,
       partnerVehicleId: json['partner_vehicle_id'] as String?,
       routeStartAt: parseTs(json['route_start_at']),
-      dispatchStatus: (json['dispatch_status'] as String?) ?? 'sent',
+      // Mangler status = kladd. Aldri anta «sent» (da virker det som utdelt).
+      dispatchStatus: (json['dispatch_status'] as String?) ?? 'staged',
       stagedImportSource: json['staged_import_source'] as String?,
       pdfSearchText: json['pdf_search_text'] as String?,
       customerCount: json['customer_count'] as int?,

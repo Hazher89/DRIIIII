@@ -34,6 +34,7 @@ abstract final class RouteDispatchStatus {
 
   /// Enkel etikett for UI (3 hovedtilstander).
   static String simpleLabelForShare(PartnerRouteShare share) {
+    // Kladd = kun planlagt i kalender — aldri «utdelt» før eksplisitt publisering.
     if (share.isStaged) return 'Kladd';
     if (share.ackStatus == 'accepted') return 'Akseptert';
     if (share.ackStatus == 'rejected') return 'Avvist';
