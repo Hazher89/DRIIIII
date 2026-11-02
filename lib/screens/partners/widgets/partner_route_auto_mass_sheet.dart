@@ -2774,87 +2774,62 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   int get _queueTotalCount => _staged.length + _skipped.length;
 
-  /// Mottatt-total under import (Graph-fasit vinner over bare pending).
+  /// Progress under import: synlige + ventende i denne batchen (ikke gamle Graph-tall).
   int _receivedRouteTotalForProgress(int pendingBatchSize) {
     final visible = _staged.length + _skipped.length;
     final batchFloor = pendingBatchSize + _skipped.length;
-    var n = visible;
-    if (batchFloor > n) n = batchFloor;
-    if (_lastGraphMatched > n) n = _lastGraphMatched;
-    return n;
+    return batchFloor > visible ? batchFloor : visible;
   }
 
-  /// Hvor mange av mottatte som er «håndtert» (importert + allerede manuelle/utenfor pending).
   int _progressHandled(int doneInBatch, int pendingBatchSize) {
-    final outsidePending = (_lastGraphMatched - pendingBatchSize)
-        .clamp(0, _lastGraphMatched);
-    final handled = doneInBatch + outsidePending;
     final cap = _receivedRouteTotalForProgress(pendingBatchSize);
+    final handled = doneInBatch + _staged.length + _skipped.length;
     return handled > cap ? cap : handled;
   }
 
   Future<void> _clearAllStaged() async {
-    if (_staged.isEmpty && _skipped.isEmpty) return;
     final stagedN = _staged.length;
     final manualN = _skipped.length;
-    final summary = stagedN > 0 && manualN > 0
-        ? '$stagedN rute(r) og $manualN manuell(e) PDF-er'
-        : stagedN > 0
-            ? '$stagedN rute(r)'
-            : '$manualN manuell(e) PDF-er';
+    final pendingN = _sapPendingInbox;
+    final ghost = _isSap && stagedN == 0 && manualN == 0 && pendingN == 0 &&
+        (_lastGraphMatched > 0 || _receivedRouteTotal > 0);
+    if (stagedN == 0 && manualN == 0 && pendingN == 0 && !ghost && !_isSap) {
+      return;
+    }
+    final summary = [
+      if (stagedN > 0) '$stagedN i kø',
+      if (manualN > 0) '$manualN manuelle',
+      if (pendingN > 0) '$pendingN ventende SAP',
+      if (ghost) 'teller/status',
+    ].join(' · ');
 
-    final ok1 = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Tøm hele køen?'),
-        content: Text('Fjerner $summary fra køen.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Avbryt'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
-            child: const Text('Fortsett'),
-          ),
-        ],
-      ),
-    );
-    if (ok1 != true || !mounted) return;
-
-    // Andre bekreftelse — spesielt før ny SAP-hent.
     final second = await showDialog<_ClearQueueAction>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Bekreft sletting'),
+        title: const Text('Tøm alt?'),
         content: Text(
           _isSap
-              ? 'Dette sletter $summary permanent fra køen.\n\n'
-                  'Vil du hente inn nye ruter fra SAP etterpå?'
-              : 'Dette sletter $summary permanent fra køen. '
-                  'Handlingen kan ikke angres.',
+              ? 'Fjerner $summary.\n\n'
+                  'Etter tømming skal listen være tom til du trykker «Hent» '
+                  'eller ny mail kommer inn.'
+              : 'Fjerner $summary fra køen. Kan ikke angres.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, _ClearQueueAction.cancel),
             child: const Text('Avbryt'),
           ),
-          if (_isSap)
-            OutlinedButton(
-              onPressed: () => Navigator.pop(ctx, _ClearQueueAction.clearOnly),
-              child: const Text('Bare slett'),
-            ),
           FilledButton(
-            onPressed: () => Navigator.pop(
-              ctx,
-              _isSap
-                  ? _ClearQueueAction.clearAndFetchSap
-                  : _ClearQueueAction.clearOnly,
-            ),
+            onPressed: () => Navigator.pop(ctx, _ClearQueueAction.clearOnly),
             style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
-            child: Text(_isSap ? 'Slett og hent nye' : 'Ja, slett'),
+            child: const Text('Tøm alt'),
           ),
+          if (_isSap)
+            TextButton(
+              onPressed: () =>
+                  Navigator.pop(ctx, _ClearQueueAction.clearAndFetchSap),
+              child: const Text('Tøm + hent på nytt'),
+            ),
         ],
       ),
     );
@@ -2865,9 +2840,20 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
 
     final clearOnly = second == _ClearQueueAction.clearOnly;
-    // Stopp bakgrunns-import med en gang — ellers står det «Importerer…» etter Bare slett.
+    // Stopp bakgrunns-import med en gang — ellers står det «Importerer…» etter tøm.
     _haltSapBackgroundWork(pauseAutoSync: clearOnly);
-    if (mounted) setState(() => _busyUpload = true);
+    if (mounted) {
+      setState(() {
+        _busyUpload = true;
+        _lastGraphMatched = 0;
+        _lastGraphInserted = 0;
+        _lastGraphAlready = 0;
+        _sapPendingInbox = 0;
+        _pendingInboxItems = [];
+        _sapOverview = SapInboxOverview.empty;
+        _sapGraphSyncNote = null;
+      });
+    }
 
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
@@ -2884,8 +2870,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         await PartnerService.deleteRouteShare(s);
       }
       await _clearAllSkippedPdfsQuiet();
-      if (cid != null && clearOnly) {
-        // Ikke la pending/manuelle komme tilbake via live-sync.
+      // Alltid avvis ventende SAP-PDF — ellers dukker «40» opp igjen.
+      if (cid != null) {
         await PartnerService.dismissOpenSapInboxItems(cid);
       }
 
@@ -2898,17 +2884,22 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         _sapPendingInbox = 0;
         _pendingInboxItems = [];
         _identicalAlreadySent = [];
+        _lastGraphMatched = 0;
+        _lastGraphInserted = 0;
+        _lastGraphAlready = 0;
+        _lastUploadRouteCount = 0;
         _sapOverview = SapInboxOverview.empty;
         _sapSyncing = false;
         _sapGraphSyncNote = null;
         _busyUpload = false;
+        _sapWizardStep = _SapWizardStep.fetch;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             clearOnly
-                ? 'Køen er tømt ($summary). Ingen ny henting startet.'
-                : 'Køen er tømt ($summary). Henter nye fra SAP…',
+                ? 'Alt er tømt. Listen er tom til nye ruter hentes.'
+                : 'Alt er tømt. Henter fra SAP…',
           ),
         ),
       );
@@ -2916,9 +2907,6 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (second == _ClearQueueAction.clearAndFetchSap) {
         _sapAutoSyncEnabled = true;
         await _syncSapInbox();
-      } else {
-        // Lett refresh uten reopen/import.
-        await _refreshSapInboxCounts(heavyIdenticalScan: false);
       }
     } catch (e) {
       if (mounted) {
@@ -3500,25 +3488,33 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   int get _sapAttentionCount =>
       _skipped.length + _missingShiftCount + _duplicateExtraCount;
 
-  /// Totalt mottatte ruter (Graph/upload-fasit, aldri bare «i kø»).
+  /// Ruter som faktisk er synlige nå (kø + manuelle + ventende import).
+  /// Bruk ALDRI Graph «matched» her — det er alle mail i postkassen (inkl. gamle).
   int get _receivedRouteTotal {
     final visible = _staged.length + _skipped.length;
-    if (_isSap) {
-      if (_lastGraphMatched > visible) return _lastGraphMatched;
-      return visible;
-    }
+    if (_isSap) return visible + _sapPendingInbox;
     if (_lastUploadRouteCount > visible) return _lastUploadRouteCount;
     return visible;
   }
 
-  /// Synlig i veiviseren (kø + manuelle). SAP Graph / upload-fasit når høyere.
   int get _sapTotalPdfs => _receivedRouteTotal;
 
   int get _sapMissingFromQueue {
+    if (_isSap) return _sapPendingInbox;
     final visible = _staged.length + _skipped.length;
-    final expected = _isSap ? _lastGraphMatched : _lastUploadRouteCount;
-    if (expected <= visible) return 0;
-    return expected - visible;
+    if (_lastUploadRouteCount <= visible) return 0;
+    return _lastUploadRouteCount - visible;
+  }
+
+  String? get _latestSapReceivedLabel {
+    final at = _sapOverview.latestReceivedAt ??
+        (_pendingInboxItems.isEmpty
+            ? null
+            : _pendingInboxItems
+                .map((e) => e.receivedAt)
+                .reduce((a, b) => a.isAfter(b) ? a : b));
+    if (at == null) return null;
+    return DateFormat('d. MMM yyyy · HH:mm', 'nb').format(at.toLocal());
   }
 
   Widget _buildSapWizard(_MassUi ui) {
@@ -3526,14 +3522,12 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final reviewStep = step == _SapWizardStep.review;
     final missing = _sapMissingFromQueue;
     final totalHint = _isSap
-        ? (_lastGraphMatched > 0
-            ? (missing > 0
-                ? '$_lastGraphMatched fra SAP · $missing mangler i kø'
-                : '$_lastGraphMatched fra SAP')
-            : 'PDF hentet')
+        ? (_latestSapReceivedLabel != null
+            ? 'Mottatt $_latestSapReceivedLabel'
+            : (missing > 0 ? '$missing venter import' : 'Kladd i kø'))
         : (_lastUploadSplitFiles > 0
             ? 'Inkl. splittet samle-PDF'
-            : (_lastUploadRouteCount > 0 ? 'Fra opplasting' : 'PDF lastet opp'));
+            : 'Kladd i kø');
     return PartnerRouteWorkflowShell(
       accent: ui.accent,
       accentDark: ui.accentDark,
@@ -3550,35 +3544,35 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               }),
       metrics: [
         RouteWorkflowMetric(
-          label: 'Totalt',
+          label: 'I kø',
           value: '$_receivedRouteTotal',
-          icon: Icons.description_outlined,
+          icon: Icons.inventory_2_outlined,
           color: missing > 0 ? Colors.orange.shade800 : ui.accentDark,
-          hint: totalHint.isNotEmpty ? totalHint : 'Mottatte ruter',
+          hint: totalHint.isNotEmpty ? totalHint : 'Kladd — ikke sendt',
         ),
         RouteWorkflowMetric(
-          label: 'I kø',
+          label: 'Fordelt',
           value: '${_staged.length}',
           icon: Icons.local_shipping_outlined,
           color: Colors.blueGrey.shade700,
-          hint: 'Fordelt på bil',
+          hint: 'På bil',
         ),
         RouteWorkflowMetric(
           label: 'Valgt',
           value: '${_selected.length}',
           icon: Icons.check_circle_outline,
           color: Colors.green.shade700,
-          hint: 'Sendes nå',
+          hint: 'Klar til send',
         ),
         if (_skipped.isNotEmpty || missing > 0)
           RouteWorkflowMetric(
-            label: missing > 0 && _skipped.isEmpty ? 'Mangler' : 'Manuelle',
+            label: missing > 0 && _skipped.isEmpty ? 'Venter' : 'Manuelle',
             value: missing > 0 && _skipped.isEmpty
                 ? '$missing'
                 : '${_skipped.length}${missing > 0 ? '+$missing' : ''}',
             icon: Icons.warning_amber_rounded,
             color: Colors.orange.shade800,
-            hint: missing > 0 ? 'Ikke alle ruter er synlige ennå' : 'Uten sjåfør',
+            hint: missing > 0 ? 'Importeres nå' : 'Trenger sjåfør',
           ),
       ],
       sidebar: _buildSapWizardSidebar(ui),
@@ -3627,50 +3621,69 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   String _sapWizardSubtitle(_SapWizardStep step) => switch (step) {
         _SapWizardStep.fetch => _isSap
-            ? 'Henter alle Backup Form-mail automatisk — ingen limit'
-            : 'Last opp én, flere, eller én stor samle-PDF — systemet splitter og fordeler',
-        _SapWizardStep.vehicles =>
-          'Ruter fordelt på biler — manuelle øverst med direkte sjåførvalg',
-        _SapWizardStep.review =>
-          'Kontroller antall og send varsel',
+            ? (_latestSapReceivedLabel != null
+                ? 'Siste mail: $_latestSapReceivedLabel'
+                : 'Hent mail → se kø → send først når du er klar')
+            : 'Last opp PDF — systemet fordeler automatisk',
+        _SapWizardStep.vehicles => 'Sjekk bil/sjåfør — manuelle øverst',
+        _SapWizardStep.review => 'Kontroller og send varsel',
       };
 
   String _sapWizardCaption(_SapWizardStep step) => switch (step) {
         _SapWizardStep.fetch => _isSap
             ? (_sapSyncing
-                ? 'Importerer SAP-PDF til kø…'
-                : 'Steg 1: Alle ruter hentes og vises her.')
+                ? 'Henter og legger i kø…'
+                : '1 · Hent — ruter er kladd til du sender i steg 3')
             : (_busyUpload
-                ? (_uploadStatusNote ?? 'Analyserer og importerer PDF…')
-                : 'Steg 1: Last opp PDF — single, flere, eller samle-PDF.'),
-        _SapWizardStep.vehicles =>
-          'Steg 2: Se fordeling — tildel sjåfør direkte på manuelle PDF-er.',
-        _SapWizardStep.review =>
-          'Steg 3: Trippelsjekk og del ut med App / SMS / e-post.',
+                ? (_uploadStatusNote ?? 'Importerer PDF…')
+                : '1 · Last opp PDF'),
+        _SapWizardStep.vehicles => '2 · Biler — rett feil før sending',
+        _SapWizardStep.review => '3 · Sjekk og send',
       };
 
   Widget _buildSapWizardSidebar(_MassUi ui) {
     final dateLabel = DateFormat('d. MMM yyyy', 'nb').format(_routeDate);
     final busy = _isSap ? _sapSyncing : _busyUpload;
     final statusNote = _isSap ? _sapGraphSyncNote : _uploadStatusNote;
+    final canClear = _queueTotalCount > 0 ||
+        _sapPendingInbox > 0 ||
+        (_isSap && _lastGraphMatched > 0);
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            _isSap ? 'SAP-wizard' : 'AUTO MASS-wizard',
+            _isSap ? 'SAP' : 'AUTO MASS',
             style: TextStyle(
               fontWeight: FontWeight.w900,
-              fontSize: 14,
+              fontSize: 13,
               color: ui.accentDark,
             ),
           ),
+          const SizedBox(height: 4),
+          Text(
+            _isSap
+                ? '1 Hent → 2 Biler → 3 Send'
+                : '1 Last opp → 2 Biler → 3 Send',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade700, height: 1.3),
+          ),
+          if (_latestSapReceivedLabel != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Siste: $_latestSapReceivedLabel',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: ui.accentDark,
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _busyUpload || _publishing ? null : _pickDefaultRouteDate,
-            icon: const Icon(Icons.event_outlined, size: 18),
-            label: Text('Dato: $dateLabel'),
+            icon: const Icon(Icons.event_outlined, size: 16),
+            label: Text('Dato $dateLabel', style: const TextStyle(fontSize: 12)),
           ),
           const SizedBox(height: 8),
           FilledButton.icon(
@@ -3685,27 +3698,32 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                       color: Colors.white,
                     ),
                   )
-                : Icon(_isSap ? Icons.sync : Icons.upload_file),
+                : Icon(_isSap ? Icons.sync : Icons.upload_file, size: 18),
             label: Text(
               busy
                   ? (_isSap ? 'Henter…' : 'Importerer…')
-                  : (_isSap ? 'Hent alle på nytt' : 'Last opp PDF-er'),
+                  : (_isSap ? 'Hent nye' : 'Last opp PDF'),
+              style: const TextStyle(fontWeight: FontWeight.w800),
             ),
           ),
           if (busy && statusNote != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               statusNote,
-              style: TextStyle(fontSize: 11, height: 1.35, color: Colors.grey.shade800),
+              style: TextStyle(fontSize: 11, height: 1.3, color: Colors.grey.shade800),
             ),
           ],
-          if (_queueTotalCount > 0) ...[
-            const SizedBox(height: 10),
+          if (canClear) ...[
+            const SizedBox(height: 8),
             TextButton.icon(
               onPressed: _busyUpload || _publishing ? null : _clearAllStaged,
               icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-              label: Text('Tøm kø ($_queueTotalCount)'),
-              style: TextButton.styleFrom(foregroundColor: Colors.grey.shade700),
+              label: Text(
+                _queueTotalCount > 0
+                    ? 'Tøm alt ($_queueTotalCount)'
+                    : 'Tøm alt',
+              ),
+              style: TextButton.styleFrom(foregroundColor: Colors.red.shade700),
             ),
           ],
         ],
@@ -3719,81 +3737,106 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final busyFetch = busy && total == 0;
     final showUpdating = busy;
     final statusNote = _isSap ? _sapGraphSyncNote : _uploadStatusNote;
+    final receivedLabel = _latestSapReceivedLabel;
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [ui.accentDark, ui.accent],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(20),
+            color: ui.accentDark,
+            borderRadius: BorderRadius.circular(16),
           ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Tom kø: stor spinner. Ellers behold ikon/tall — kun tynn stripe under.
-              if (busyFetch)
-                const SizedBox(
-                  width: 36,
-                  height: 36,
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                    strokeWidth: 3,
+              Row(
+                children: [
+                  if (busyFetch)
+                    const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
+                    )
+                  else
+                    Icon(
+                      total > 0
+                          ? Icons.inventory_2_outlined
+                          : (_isSap
+                              ? Icons.mark_email_unread_outlined
+                              : Icons.upload_file),
+                      color: Colors.white,
+                      size: 22,
+                    ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      busyFetch
+                          ? (_isSap ? 'Henter fra SAP…' : 'Importerer…')
+                          : showUpdating
+                              ? (statusNote ?? 'Oppdaterer…')
+                              : total > 0
+                                  ? 'Klar i kø (ikke sendt)'
+                                  : (_isSap
+                                      ? 'Tom — ingen nye ruter'
+                                      : 'Ingen PDF lastet opp'),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
                   ),
-                )
-              else
-                Icon(
-                  _isSap ? Icons.mark_email_read_outlined : Icons.upload_file,
-                  color: Colors.white,
-                  size: 40,
-                ),
-              const SizedBox(height: 14),
-              Text(
-                '$total',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 56,
-                  fontWeight: FontWeight.w900,
-                  height: 1,
-                ),
+                  Text(
+                    '$total',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 34,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                busyFetch
-                    ? (_isSap ? 'Henter alle SAP-ruter…' : 'Analyserer PDF-er…')
-                    : showUpdating
-                        ? (statusNote ?? 'Oppdaterer kø uten å blinke…')
-                        : total > 0
-                            ? (_isSap ? 'SAP-ruter i kø' : 'Ruter i kø')
-                            : 'Ingen ruter ennå',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.95),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 total > 0
                     ? '${_staged.length} fordelt · ${_skipped.length} manuelle'
-                        '${_lastUploadSplitFiles > 0 && !_isSap ? ' · $_lastUploadSplitFiles samle-PDF splittet' : ''}'
-                    : (showUpdating
-                        ? (statusNote ?? 'Henter…')
-                        : (_isSap
-                            ? 'Trykk «Hent alle på nytt» hvis listen er tom'
-                            : 'Last opp single-PDF, flere PDF, eller én stor samle-PDF')),
-                textAlign: TextAlign.center,
+                        '${_sapPendingInbox > 0 ? ' · $_sapPendingInbox venter import' : ''}'
+                    : (_isSap
+                        ? 'Trykk «Hent nye» når mail har kommet. '
+                            'Tøm fjerner alt til neste henting.'
+                        : 'Last opp én eller flere PDF — systemet splitter samlefiler.'),
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.85),
+                  color: Colors.white.withValues(alpha: 0.9),
                   fontSize: 12,
                   height: 1.35,
                 ),
               ),
+              if (receivedLabel != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    'Mottatt $receivedLabel',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
               if (showUpdating && !busyFetch) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 const ClipRRect(
                   borderRadius: BorderRadius.all(Radius.circular(2)),
                   child: LinearProgressIndicator(
@@ -3806,25 +3849,20 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
+        _buildHowItWorksCard(ui),
+        const SizedBox(height: 12),
         _buildQueueSummaryStrip(ui),
         if (!_isSap) ...[
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           FilledButton.icon(
             onPressed: _busyUpload ? null : _pickPdfs,
             style: FilledButton.styleFrom(
               backgroundColor: ui.accentDark,
-              minimumSize: const Size.fromHeight(48),
+              minimumSize: const Size.fromHeight(44),
             ),
             icon: const Icon(Icons.upload_file),
             label: const Text('Velg PDF-fil(er)'),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Systemet oppdager automatisk: én rute, flere single-PDF, '
-            'eller samle-PDF (ny rute ved hver Trip Overview / strekkode-side).',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, height: 1.35, color: Colors.grey.shade700),
           ),
         ],
         if (_staged.isNotEmpty || _skipped.isNotEmpty) ...[
@@ -4591,6 +4629,88 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           );
         }),
       ],
+    );
+  }
+
+  Widget _buildHowItWorksCard(_MassUi ui) {
+    final steps = _isSap
+        ? const [
+            ('1', 'Hent', 'Henter PDF fra mail. Blir kladd — ikke sendt.'),
+            ('2', 'Biler', 'Sjekk at riktig MAVI/sjåfør er valgt.'),
+            ('3', 'Send', 'Først her varsles sjåfør. Tøm sletter alt.'),
+          ]
+        : const [
+            ('1', 'Last opp', 'PDF blir kladd i køen — ikke sendt.'),
+            ('2', 'Biler', 'Sjekk fordeling og manuelle PDF-er.'),
+            ('3', 'Send', 'Velg kanal og del ut.'),
+          ];
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Slik fungerer det',
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 12,
+              color: ui.accentDark,
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final s in steps) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 22,
+                    height: 22,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: ui.accentDark,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      s.$1,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: RichText(
+                      text: TextSpan(
+                        style: TextStyle(
+                          fontSize: 12,
+                          height: 1.35,
+                          color: Colors.grey.shade800,
+                        ),
+                        children: [
+                          TextSpan(
+                            text: '${s.$2}: ',
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          TextSpan(text: s.$3),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -6359,18 +6479,17 @@ class _MassUi {
         accentDark: const Color(0xFF1565C0),
         surfaceTint: const Color(0xFFE3F2FD),
         title: 'Ruter fra SAP',
-        badge: 'SAP · wizard',
-        tagline: 'Hent → fordel → sjekk og send',
+        badge: 'SAP',
+        tagline: 'Hent → biler → send',
         icon: Icons.mark_email_read_outlined,
-        steps: [
-          'Hent alle Backup Form-mail automatisk (ingen limit).',
-          'Se fordeling på biler — tildel manuelle PDF-er direkte øverst.',
-          'Trippelsjekk antall og del ut med App / SMS / e-post.',
+        steps: const [
+          'Hent PDF fra mail (kladd).',
+          'Sjekk bil/sjåfør.',
+          'Send først i steg 3.',
         ],
         emptyHint:
-            'Ingen SAP-ruter i kø.\n\n'
-            'SAP sender Backup Form til ${SapRoutesConfig.mailbox}. '
-            'Systemet henter alle mail automatisk ved åpning.',
+            'Tom kø. Trykk «Hent nye» når SAP-mail har kommet '
+            '(${SapRoutesConfig.mailbox}).',
       );
     }
     return _MassUi(
@@ -6378,17 +6497,15 @@ class _MassUi {
       accentDark: DriftProTheme.primaryGreen,
       surfaceTint: const Color(0xFFE8F5E9),
       title: 'AUTO MASS',
-      badge: 'PDF · wizard',
-      tagline: 'Last opp → fordel → sjekk og send',
+      badge: 'PDF',
+      tagline: 'Last opp → biler → send',
       icon: Icons.auto_awesome,
-      steps: [
-        'Last opp single-PDF, flere PDF, eller én samle-PDF (auto-split ved Trip Overview).',
-        'Se fordeling på biler — tildel manuelle PDF-er direkte øverst.',
-        'Trippelsjekk antall og del ut med App / SMS / e-post.',
+      steps: const [
+        'Last opp PDF (kladd).',
+        'Sjekk bil/sjåfør.',
+        'Send først i steg 3.',
       ],
-      emptyHint:
-          'Ingen ruter i kø.\n\nLast opp PDF-er. MAVI hentes fra Trip Overview / Resource ID. '
-          'Samle-PDF splits automatisk ved hver ny strekkode-side.',
+      emptyHint: 'Tom kø. Last opp PDF — samlefiler splits automatisk.',
     );
   }
 }
