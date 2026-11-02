@@ -3873,6 +3873,9 @@ class PartnerService {
   /// Prefiks på [reject_reason] for PDF som ligger i «Manuell»-fanen (ikke «nye»).
   static const String sapInboxManualReasonPrefix = 'MANUAL:';
 
+  /// Avvist ved «Tøm kø» — skal åpnes igjen når bruker trykker «Hent».
+  static const String sapInboxClearedReason = 'Tømt fra kø';
+
   static Future<int> countSapRouteInboxPending(String companyId) async {
     if (!_ok) return 0;
     try {
@@ -4077,9 +4080,10 @@ class PartnerService {
   /// Synk Office 365-postkasse → sap_route_inbox (krever Edge Function + secrets).
   /// Ingen mail-limit — Edge Function paginerer hele tidsvinduet.
   /// Hopper over PDF-nedlasting for mail som allerede er i innboks.
+  /// Timeout er høy fordi nye Backup Form-mail laster ned PDF én etter én.
   static Future<Map<String, dynamic>?> syncSapMailboxFromGraph({
     int hours = 168,
-    Duration timeout = const Duration(seconds: 45),
+    Duration timeout = const Duration(seconds: 180),
   }) async {
     if (!_ok) return null;
     try {
@@ -4383,7 +4387,7 @@ class PartnerService {
       try {
         await _client.from('sap_route_inbox').update({
           'status': 'rejected',
-          'reject_reason': 'Tømt fra kø',
+          'reject_reason': sapInboxClearedReason,
           'processed_at': now,
           'imported_route_share_id': null,
         }).eq('company_id', companyId).inFilter('imported_route_share_id', slice);
@@ -4393,41 +4397,80 @@ class PartnerService {
     return n;
   }
 
-  /// Avvis ventende + manuelle SAP-PDF i innboks (brukes ved «Bare slett»).
-  static Future<int> dismissOpenSapInboxItems(String companyId) async {
+  /// Avvis ventende + nylig importerte + manuelle SAP-PDF (brukes ved «Tøm»).
+  /// Inkluderer [imported] i tidsvindu — ellers åpner orphan-reopen dem igjen
+  /// når staged-share er slettet.
+  static Future<int> dismissOpenSapInboxItems(
+    String companyId, {
+    int hours = 168,
+  }) async {
     if (!_ok) return 0;
     final now = DateTime.now().toUtc().toIso8601String();
+    final since =
+        DateTime.now().toUtc().subtract(Duration(hours: hours)).toIso8601String();
     var n = 0;
-    try {
-      final pending = await _client
-          .from('sap_route_inbox')
-          .update({
-            'status': 'rejected',
-            'reject_reason': 'Tømt fra kø',
-            'processed_at': now,
-            'imported_route_share_id': null,
-          })
-          .eq('company_id', companyId)
-          .eq('status', 'pending')
-          .select('id') as List<dynamic>;
-      n += pending.length;
-    } catch (_) {}
+    for (final status in ['pending', 'imported']) {
+      try {
+        final rows = await _client
+            .from('sap_route_inbox')
+            .update({
+              'status': 'rejected',
+              'reject_reason': sapInboxClearedReason,
+              'processed_at': now,
+              'imported_route_share_id': null,
+            })
+            .eq('company_id', companyId)
+            .eq('status', status)
+            .gte('received_at', since)
+            .select('id') as List<dynamic>;
+        n += rows.length;
+      } catch (_) {}
+    }
     try {
       final manuals = await _client
           .from('sap_route_inbox')
           .update({
             'status': 'rejected',
-            'reject_reason': 'Tømt fra kø',
+            'reject_reason': sapInboxClearedReason,
             'processed_at': now,
             'imported_route_share_id': null,
           })
           .eq('company_id', companyId)
           .eq('status', 'rejected')
           .like('reject_reason', '$sapInboxManualReasonPrefix%')
+          .gte('received_at', since)
           .select('id') as List<dynamic>;
       n += manuals.length;
     } catch (_) {}
     return n;
+  }
+
+  /// Kun ved eksplisitt «Hent» / «Tøm + hent» — aldri ved åpning av arket.
+  static Future<int> reopenClearedSapInboxForRefetch(
+    String companyId, {
+    int hours = 168,
+  }) async {
+    if (!_ok) return 0;
+    try {
+      final since = DateTime.now().toUtc().subtract(Duration(hours: hours));
+      final rows = await _client
+          .from('sap_route_inbox')
+          .update({
+            'status': 'pending',
+            'reject_reason': null,
+            'processed_at': null,
+            'processed_by': null,
+            'imported_route_share_id': null,
+          })
+          .eq('company_id', companyId)
+          .eq('status', 'rejected')
+          .eq('reject_reason', sapInboxClearedReason)
+          .gte('received_at', since.toIso8601String())
+          .select('id') as List<dynamic>;
+      return rows.length;
+    } catch (_) {
+      return 0;
+    }
   }
 
   static Future<void> markSapRouteInboxRejected({
@@ -4518,6 +4561,7 @@ class PartnerService {
   }
 
   /// Oppretter staged rute fra PDF (AUTO MASS / SAP).
+  /// [reuseStoragePath]: SAP-innboks-sti — hopp over ekstra opplasting/verify.
   static Future<String> createStagedRouteShareFromPdf({
     required String companyId,
     required Partner partner,
@@ -4529,19 +4573,27 @@ class PartnerService {
     RoutePdfParseBundle? parsed,
     String stagedImportSource = stagedImportManual,
     List<FleetShiftDefinition>? fleetShifts,
+    String? reuseStoragePath,
   }) async {
-    final safeName = StoragePathSanitizer.fileName(fileName);
-    final safeUnit = StoragePathSanitizer.segment(vehicle.unitCode, fallback: 'mavi');
-    final path = StoragePathSanitizer.storagePath(
-      'company_$companyId/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${safeUnit}_$safeName',
-    );
-    final storedPath =
-        await uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
-    final reachable = await verifyRoutePdfReachable(storedPath);
-    if (!reachable) {
-      throw StateError(
-        'PDF ble ikke lagret lesbart i Dropbox/Supabase. Prøv på nytt.',
+    final String storedPath;
+    final reuse = (reuseStoragePath ?? '').trim();
+    if (reuse.isNotEmpty) {
+      storedPath = reuse;
+      RoutePdfBytesCache.putPath(storedPath, bytes);
+    } else {
+      final safeName = StoragePathSanitizer.fileName(fileName);
+      final safeUnit =
+          StoragePathSanitizer.segment(vehicle.unitCode, fallback: 'mavi');
+      final path = StoragePathSanitizer.storagePath(
+        'company_$companyId/partner_routes/${DateTime.now().millisecondsSinceEpoch}_${safeUnit}_$safeName',
       );
+      storedPath = await uploadPartnerRoutePdf(storagePath: path, bytes: bytes);
+      final reachable = await verifyRoutePdfReachable(storedPath);
+      if (!reachable) {
+        throw StateError(
+          'PDF ble ikke lagret lesbart i Dropbox/Supabase. Prøv på nytt.',
+        );
+      }
     }
     await PostalCodeRegistry.ensureLoaded();
     final List<FleetShiftDefinition> shifts;

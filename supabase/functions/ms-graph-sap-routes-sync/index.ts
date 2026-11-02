@@ -245,6 +245,14 @@ Deno.serve(async (req) => {
       downloads: 0,
     };
 
+    type WorkItem = {
+      msg: GraphMessage;
+      from: string;
+      subject: string;
+      emailId: string;
+    };
+    const work: WorkItem[] = [];
+
     for (const msg of messages) {
       const subject = msg.subject ?? "";
       const fromAddr = msg.from?.emailAddress?.address ?? "";
@@ -265,67 +273,76 @@ Deno.serve(async (req) => {
         }
         continue;
       }
+      work.push({ msg, from, subject, emailId });
+    }
 
-      try {
-        const pdfs = await listPdfAttachments(mailbox, msg.id);
-        if (pdfs.length === 0) {
-          summary.skipped.push(`${msg.id}:no_pdf`);
-          continue;
-        }
-
-        let anyStored = false;
-        for (const pdf of pdfs) {
-          const key = `${emailId}|${pdf.id}`;
-          if (existing.keys.has(key)) {
-            summary.already.push(pdf.name || pdf.id);
-            anyStored = true;
-            continue;
+    // Paralleliser nye mail (typisk 30–40 Backup Form) — sekvensiell last tok for lang tid.
+    const CONCURRENCY = 8;
+    for (let i = 0; i < work.length; i += CONCURRENCY) {
+      const slice = work.slice(i, i + CONCURRENCY);
+      await Promise.all(slice.map(async (item) => {
+        const { msg, from, subject, emailId } = item;
+        try {
+          const pdfs = await listPdfAttachments(mailbox, msg.id);
+          if (pdfs.length === 0) {
+            summary.skipped.push(`${msg.id}:no_pdf`);
+            return;
           }
 
-          const { fileName, bytes } = await downloadAttachmentBytes(
-            mailbox,
-            msg.id,
-            pdf.id,
-          );
-          summary.downloads += 1;
+          let anyStored = false;
+          for (const pdf of pdfs) {
+            const key = `${emailId}|${pdf.id}`;
+            if (existing.keys.has(key)) {
+              summary.already.push(pdf.name || pdf.id);
+              anyStored = true;
+              continue;
+            }
 
-          const outcome = await insertSapPdfToInbox(supabase, {
-            companyId,
-            emailId,
-            attachmentId: pdf.id,
-            from,
-            subject,
-            fileName,
-            bytes,
-            ignoreContentDedup: true,
-          });
-          if (outcome === "inserted") {
-            summary.inserted.push(fileName);
-            anyStored = true;
-            existing.keys.add(key);
-            const list = existing.byEmail.get(emailId) ?? [];
-            list.push({
-              resend_email_id: emailId,
-              attachment_id: pdf.id,
-              file_name: fileName,
+            const { fileName, bytes } = await downloadAttachmentBytes(
+              mailbox,
+              msg.id,
+              pdf.id,
+            );
+            summary.downloads += 1;
+
+            const outcome = await insertSapPdfToInbox(supabase, {
+              companyId,
+              emailId,
+              attachmentId: pdf.id,
+              from,
+              subject,
+              fileName,
+              bytes,
+              ignoreContentDedup: true,
             });
-            existing.byEmail.set(emailId, list);
-          } else if (outcome.includes(":duplicate")) {
-            summary.already.push(fileName);
-            anyStored = true;
-          } else {
-            summary.skipped.push(outcome);
+            if (outcome === "inserted") {
+              summary.inserted.push(fileName);
+              anyStored = true;
+              existing.keys.add(key);
+              const list = existing.byEmail.get(emailId) ?? [];
+              list.push({
+                resend_email_id: emailId,
+                attachment_id: pdf.id,
+                file_name: fileName,
+              });
+              existing.byEmail.set(emailId, list);
+            } else if (outcome.includes(":duplicate")) {
+              summary.already.push(fileName);
+              anyStored = true;
+            } else {
+              summary.skipped.push(outcome);
+            }
           }
-        }
 
-        if (markRead && anyStored) {
-          await markMessageRead(mailbox, msg.id);
+          if (markRead && anyStored) {
+            await markMessageRead(mailbox, msg.id);
+          }
+        } catch (e) {
+          summary.errors.push(
+            `${msg.id}:${e instanceof Error ? e.message : String(e)}`,
+          );
         }
-      } catch (e) {
-        summary.errors.push(
-          `${msg.id}:${e instanceof Error ? e.message : String(e)}`,
-        );
-      }
+      }));
     }
 
     return json({

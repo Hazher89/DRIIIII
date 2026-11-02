@@ -12,7 +12,7 @@ import 'staged_route_duplicate_helper.dart';
 class SapRouteImportService {
   SapRouteImportService._();
 
-  static const _downloadConcurrency = 6;
+  static const _downloadConcurrency = 10;
 
   static Future<SapRouteImportResult> importPendingToStaged({
     required String companyId,
@@ -300,6 +300,8 @@ class SapRouteImportService {
             parsed: bundle,
             stagedImportSource: PartnerService.stagedImportSap,
             fleetShifts: fleetShifts,
+            // PDF ligger allerede i sap_inbox — ingen ekstra Dropbox-runde.
+            reuseStoragePath: item.pdfStoragePath,
           );
 
           await PartnerService.markSapRouteInboxImported(
@@ -309,10 +311,26 @@ class SapRouteImportService {
           );
 
           imported++;
-          final created = await PartnerService.fetchRouteShareById(shareId);
-          if (created != null) {
-            staged = [...staged, created];
-          }
+          // Unngå fetchRouteShareById per fil — legg lokal stub for duplikatsjekk.
+          staged = [
+            ...staged,
+            PartnerRouteShare(
+              id: shareId,
+              partnerId: partner.id,
+              companyId: companyId,
+              title:
+                  'Rute ${MaviUnitCodes.normalize(vehicle.unitCode)} — ${item.fileName}',
+              pdfStoragePath: item.pdfStoragePath,
+              shareDate: bundle.schedule.routeDate,
+              isDailyShare: true,
+              createdAt: DateTime.now(),
+              dispatchStatus: 'staged',
+              stagedImportSource: PartnerService.stagedImportSap,
+              pdfSearchText:
+                  bundle.searchText.isEmpty ? null : bundle.searchText,
+              partnerVehicleId: vehicle.id,
+            ),
+          ];
           lines.add(SapRouteImportLine(
             fileName: item.fileName,
             ok: true,

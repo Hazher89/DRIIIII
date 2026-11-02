@@ -5,8 +5,10 @@ import '../../core/services/partner/partner_service.dart';
 import '../../core/services/supabase_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../models/partner/partner_route_dispatch_history.dart';
+import '../../models/partner/route_send_summary.dart';
 import '../../widgets/driftpro_loading_indicator.dart';
 import 'widgets/partner_route_partner_status.dart';
+import 'widgets/partner_route_send_summary_dialog.dart';
 import 'widgets/partner_ui.dart';
 
 /// MAVI: oversikt over når ruter ble sendt, av hvem, og når PDF ble lest.
@@ -236,6 +238,26 @@ class _PartnerRouteDispatchHistoryScreenState
                     ),
                   ),
                 ),
+                if (sent + registered > 0) ...[
+                  const SizedBox(height: 10),
+                  _DaySendSummaryCard(
+                    summary: RouteSendSummary.fromHistoryRows(
+                      _rows,
+                      routeDate: _day,
+                    ),
+                    onOpenReport: () {
+                      final summary = RouteSendSummary.fromHistoryRows(
+                        _rows,
+                        routeDate: _day,
+                      );
+                      showRouteSendSummaryDialog(
+                        context: context,
+                        summary: summary,
+                        title: 'Rapport for dagen',
+                      );
+                    },
+                  ),
+                ],
                 const SizedBox(height: 10),
                 Wrap(
                   spacing: 8,
@@ -586,6 +608,78 @@ class _InfoLine extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Kort dagsrapport — samme format som etter utsending.
+class _DaySendSummaryCard extends StatelessWidget {
+  const _DaySendSummaryCard({
+    required this.summary,
+    required this.onOpenReport,
+  });
+
+  final RouteSendSummary summary;
+  final VoidCallback onOpenReport;
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = summary.drivers.take(4).toList();
+    return Material(
+      color: DriftProTheme.primaryGreen.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onOpenReport,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    Icons.assignment_turned_in_outlined,
+                    size: 18,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      summary.headline,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: Colors.green.shade900,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: onOpenReport,
+                    child: const Text('Se rapport'),
+                  ),
+                ],
+              ),
+              if (preview.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  preview.map((d) => d.summaryLine).join(' · ')
+                      + (summary.drivers.length > preview.length
+                          ? ' · +${summary.drivers.length - preview.length} til'
+                          : ''),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.35,
+                    color: Colors.grey.shade800,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

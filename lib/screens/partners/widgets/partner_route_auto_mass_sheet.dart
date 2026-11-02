@@ -33,6 +33,9 @@ import '../../../models/partner/partner_links.dart';
 import '../../../models/partner/sap_route_inbox.dart';
 import 'partner_mass_route_queue_card.dart';
 import 'partner_route_delivery_report_dialog.dart';
+import 'partner_route_send_summary_dialog.dart';
+import '../partner_route_dispatch_history_screen.dart';
+import '../../../models/partner/route_send_summary.dart';
 import 'partner_route_pdf_actions.dart';
 import 'partner_route_pdf_thumbnail.dart';
 import 'partner_route_publish_review_dialog.dart';
@@ -357,8 +360,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (!_isSap || !mounted) return;
       _bindSapLive();
       await _refreshSapInboxCounts();
-      // Auto-hent alle SAP-mail + importer til kø ved åpning.
-      await _syncSapInbox();
+      // Ved åpning: synk kun ekte nye mail. Aldri gjenåpne «Tømt fra kø».
+      await _syncSapInbox(userRequestedFetch: false);
     });
   }
 
@@ -553,17 +556,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   Future<void> _pullFromOffice365() async {
     if (!_isSap || _sapSyncing) return;
-    _sapAutoSyncEnabled = true;
-    setState(() {
-      _sapSyncing = true;
-      _sapGraphSyncNote = 'Henter alle mail fra Office 365…';
-    });
-    try {
-      await _runOffice365Check(importNew: true);
-    } finally {
-      _sapSyncing = false;
-      if (mounted) setState(() {});
-    }
+    // Eksplisitt brukerhandling — samme som «Hent nye».
+    await _syncSapInbox(userRequestedFetch: true);
   }
 
   void _applyGraphSyncResult(Map<String, dynamic> result) {
@@ -615,7 +609,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     return added;
   }
 
-  Future<void> _syncSapInbox() async {
+  /// [userRequestedFetch]: true kun ved «Hent» / «Tøm + hent».
+  /// false ved åpning/live — da skal «Tømt» aldri komme tilbake uten ny mail.
+  Future<void> _syncSapInbox({bool userRequestedFetch = false}) async {
     if (!_isSap || _sapSyncing || _importAborted) return;
     _sapAutoSyncEnabled = true;
     final gen = ++_sapWorkGen;
@@ -625,19 +621,90 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     });
     String? cid;
     try {
+      // Alltid re-link MAVI-selskap før SAP-spørringer (unngå Demo → 0).
+      await SupabaseService.ensureSessionLinkedToCompany();
       cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null || _importAborted || gen != _sapWorkGen) return;
 
-      final reopened = await PartnerService.reopenOrphanedSapInbox(cid);
-      if (gen != _sapWorkGen || !mounted) return;
-      if (reopened > 0) {
-        setState(() {
-          _sapGraphSyncNote = 'Fant $reopened PDF uten kø — importerer…';
-        });
+      // 1) Office 365 FØRST — nye mail settes inn; allerede tømte hoppes over.
+      if (mounted) {
+        setState(() => _sapGraphSyncNote = 'Henter alle Backup Form fra Office 365…');
+      }
+      final graph = await PartnerService.syncSapMailboxFromGraph();
+      if (!mounted || _importAborted || gen != _sapWorkGen) return;
+      if (graph != null && graph['error'] == null) {
+        _applyGraphSyncResult(graph);
+        final inserted = _lastGraphInserted;
+        final matched = _lastGraphMatched;
+        final already = _lastGraphAlready;
+        if (mounted) {
+          setState(() {
+            _sapGraphSyncNote = matched > 0
+                ? 'Office 365: $matched mail · $inserted nye PDF · $already allerede inne'
+                : 'Office 365: ingen nye Backup Form i vinduet';
+          });
+        }
+      } else if (graph != null && graph['error'] != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_friendlyGraphSyncError('${graph['error']}')),
+            backgroundColor: Colors.orange.shade800,
+          ),
+        );
       }
 
-      // 1) Importer eksisterende innboks først.
+      // 2) Gjenåpne tømte/orphan KUN når bruker trykker Hent — ikke ved åpning.
+      var resurfaced = 0;
+      if (userRequestedFetch) {
+        final cleared =
+            await PartnerService.reopenClearedSapInboxForRefetch(cid);
+        final reopened = await PartnerService.reopenOrphanedSapInbox(cid);
+        resurfaced = cleared + reopened;
+        if (gen != _sapWorkGen || !mounted) return;
+        if (resurfaced > 0) {
+          setState(() {
+            _sapGraphSyncNote =
+                'Fant $resurfaced PDF på nytt — importerer til kø…';
+          });
+        }
+      }
+
+      // 3) Importer kun det som faktisk er pending (nye mail, eller etter eksplisitt Hent).
       await _runSapImportPhase(cid, label: 'Importerer til kø');
+      if (!mounted || gen != _sapWorkGen) return;
+
+      final leftover = await PartnerService.fetchSapRouteInboxPending(cid);
+      if (leftover.isNotEmpty &&
+          mounted &&
+          gen == _sapWorkGen &&
+          _sapAutoSyncEnabled &&
+          !_importAborted) {
+        setState(() {
+          _sapPendingInbox = leftover.length;
+          _pendingInboxItems = leftover;
+          _sapGraphSyncNote =
+              'Importerer ${leftover.length} ekstra PDF som kom inn underveis…';
+        });
+        await _runSapImportPhase(cid, label: 'Importerer resten');
+      }
+
+      if (userRequestedFetch &&
+          mounted &&
+          _staged.isEmpty &&
+          _skipped.isEmpty &&
+          _sapPendingInbox == 0 &&
+          resurfaced == 0 &&
+          _lastGraphInserted == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Ingen nye SAP-ruter. Tømte ruter kommer bare tilbake med «Hent» '
+              'eller når SAP sender ny Backup Form.',
+            ),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted && gen == _sapWorkGen) {
         setState(() => _sapGraphSyncNote = null);
@@ -651,7 +718,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     } finally {
       if (gen == _sapWorkGen) {
         _sapSyncing = false;
-        if (mounted) setState(() {});
+        if (mounted) setState(() => _sapGraphSyncNote = null);
       }
     }
 
@@ -659,15 +726,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       return;
     }
 
-    // 2) Office 365 i bakgrunnen (egen timeout) — knappen forblir klikkbar.
-    unawaited(_runOffice365Check(importNew: true));
-
-    // 3) Skift uten å låse Hent — kun de som mangler (ingen full PDF-storm).
+    // Skift uten å låse Hent — kun de som mangler.
     if (_staged.isNotEmpty && _missingShiftCount > 0 && !_fillingShifts) {
       unawaited(_fillAllShiftsForStaged());
     }
 
-    // 4) Én utsatt identisk-scan (ikke under import).
     unawaited(Future<void>.delayed(const Duration(seconds: 3), () async {
       if (!mounted || _sapSyncing || gen != _sapWorkGen || !_sapAutoSyncEnabled) {
         return;
@@ -675,7 +738,6 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       await _refreshSapInboxCounts(heavyIdenticalScan: true);
     }));
 
-    // 5) Live-endringer som kom under sync — én ekstra runde, ikke storm.
     if (_liveImportQueued && _sapAutoSyncEnabled) {
       _liveImportQueued = false;
       unawaited(Future<void>.delayed(const Duration(seconds: 2), () async {
@@ -686,7 +748,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             gen != _sapWorkGen) {
           return;
         }
-        if (_sapPendingInbox > 0) await _syncSapInbox();
+        // Live: bare nye pending — aldri gjenåpne tømte.
+        if (_sapPendingInbox > 0) {
+          await _syncSapInbox(userRequestedFetch: false);
+        }
       }));
     }
   }
@@ -714,23 +779,15 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (mounted) setState(() => _sapGraphSyncNote = null);
     }
 
-    // Alltid resurface + import etter Graph — også når matched allerede ligger i inbox
-    // (inserted=0). Ellers blir «47 fra SAP» stående som skjulte imported-rader.
+    // Importer kun eksisterende pending (nye Graph-inserts). Aldri gjenåpne tømte her.
     if (importNew && !_importAborted && _sapAutoSyncEnabled && gen == _sapWorkGen) {
       if (mounted) {
         setState(() {
           _sapSyncing = true;
-          _sapGraphSyncNote = 'Sikrer at alle SAP-PDF er i kø…';
+          _sapGraphSyncNote = 'Sikrer at nye SAP-PDF er i kø…';
         });
       }
       try {
-        final reopened = await PartnerService.reopenOrphanedSapInbox(cid);
-        if (!mounted || gen != _sapWorkGen || !_sapAutoSyncEnabled) return;
-        if (reopened > 0) {
-          setState(() {
-            _sapGraphSyncNote = 'Fant $reopened PDF utenfor kø — importerer…';
-          });
-        }
         await _runSapImportPhase(cid, label: 'Importerer til kø');
         if (!mounted || gen != _sapWorkGen || !_sapAutoSyncEnabled) return;
         final manuals = await _collectSapManualSkipped(cid);
@@ -1834,8 +1891,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       }
       if (!mounted) return;
 
-      final result = await runPostDispatchDeliveryReport(
-        context: context,
+      // Leveringsstatus (PDF/SMS/push) — brukes til fin rapport eller feil-dialog.
+      final report = await PartnerService.finalizeRouteDispatchReport(
         companyId: cid,
         shareIds: publishedIds,
         driverLabels: labels,
@@ -1847,24 +1904,43 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       await _reload();
       if (!mounted) return;
 
+      if (report.allOk) {
+        final summary = RouteSendSummary.fromDispatchReport(
+          report,
+          sentAt: DateTime.now(),
+        );
+        // Vis fin rapport → OK → lukk hele vinduet.
+        await showRouteSendSummaryDialog(
+          context: context,
+          summary: summary,
+          title: 'Ruter sendt til sjåførene',
+        );
+        if (!mounted) return;
+        Navigator.pop(context, true);
+        return;
+      }
+
+      // Noe feilet — teknisk rapport med mulighet for re-send.
+      final result = await showRouteDeliveryReportDialog(
+        context: context,
+        companyId: cid,
+        initialReport: report,
+        driverLabels: labels,
+        phones: phones,
+      );
+      if (!mounted) return;
+
       final shouldClose =
-          result == null ||
-          result.report.allOk ||
-          result.closeWizard ||
-          _staged.isEmpty;
+          result == null || result.closeWizard || _staged.isEmpty;
 
       if (shouldClose) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              result == null || result.report.allOk
-                  ? notifyPrefs.successMessage(publishedIds.length)
-                  : 'Publisert med ${result.report.failedCount} uløst(e) feil — '
-                      'sjekk varsler under SMS-logg ved behov.',
+              'Publisert med ${report.failedCount} uløst(e) feil — '
+              'sjekk historikk / SMS-logg ved behov.',
             ),
-            backgroundColor: result != null && !result.report.allOk
-                ? Colors.orange.shade900
-                : null,
+            backgroundColor: Colors.orange.shade900,
           ),
         );
         Navigator.pop(context, true);
@@ -1873,7 +1949,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '${result.report.failedCount} rute(r) ikke ferdig levert — '
+              '${report.failedCount} rute(r) ikke ferdig levert — '
               'sendte ruter er fjernet fra køen.',
             ),
             backgroundColor: Colors.red.shade800,
@@ -2810,8 +2886,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         content: Text(
           _isSap
               ? 'Fjerner $summary.\n\n'
-                  'Etter tømming skal listen være tom til du trykker «Hent» '
-                  'eller ny mail kommer inn.'
+                  'Etter «Tøm alt» forblir køen tom — også om du lukker og '
+                  'åpner arket på nytt. Ruter kommer først tilbake når du '
+                  'trykker «Hent nye» eller SAP sender ny Backup Form.'
               : 'Fjerner $summary fra køen. Kan ikke angres.',
         ),
         actions: [
@@ -2898,7 +2975,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         SnackBar(
           content: Text(
             clearOnly
-                ? 'Alt er tømt. Listen er tom til nye ruter hentes.'
+                ? 'Alt er tømt. Køen forblir tom til du trykker «Hent nye» '
+                    'eller SAP sender ny Backup Form.'
                 : 'Alt er tømt. Henter fra SAP…',
           ),
         ),
@@ -2906,7 +2984,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
       if (second == _ClearQueueAction.clearAndFetchSap) {
         _sapAutoSyncEnabled = true;
-        await _syncSapInbox();
+        await _syncSapInbox(userRequestedFetch: true);
       }
     } catch (e) {
       if (mounted) {
@@ -3248,6 +3326,16 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     }
     await _refreshSapInboxCounts();
     return true;
+  }
+
+  Future<void> _openDispatchHistory() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PartnerRouteDispatchHistoryScreen(
+          initialDate: _routeDate,
+        ),
+      ),
+    );
   }
 
   Future<void> _publishWithPrefs(RouteNotifyPrefs? prefs) async {
@@ -3686,8 +3774,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             label: Text('Dato $dateLabel', style: const TextStyle(fontSize: 12)),
           ),
           const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busyUpload || _publishing ? null : _openDispatchHistory,
+            icon: const Icon(Icons.history_rounded, size: 16),
+            label: const Text('Historikk', style: TextStyle(fontSize: 12)),
+          ),
+          const SizedBox(height: 8),
           FilledButton.icon(
-            onPressed: busy ? null : (_isSap ? _syncSapInbox : _pickPdfs),
+            onPressed: busy
+                ? null
+                : (_isSap
+                    ? () => _syncSapInbox(userRequestedFetch: true)
+                    : _pickPdfs),
             style: FilledButton.styleFrom(backgroundColor: ui.accentDark),
             icon: busy
                 ? const SizedBox(
@@ -3973,6 +4071,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     color: ui.accentDark,
                   ),
                 ),
+                const SizedBox(height: 6),
+                _buildRouteColorLegend(),
                 const SizedBox(height: 4),
                 Wrap(
                   spacing: 4,
@@ -4009,6 +4109,83 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             compactChrome: true,
             includeManualAtTop: true,
           ),
+        ),
+      ],
+    );
+  }
+
+  /// Forklarer fargekoding på rute-kort (grønn / lilla / oransje / rød).
+  Widget _buildRouteColorLegend() {
+    Widget chip(Color color, String title, String hint) {
+      return Tooltip(
+        message: hint,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: color.withValues(alpha: 0.45)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Farger på kortene',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 6,
+          runSpacing: 4,
+          children: [
+            chip(
+              _routeColorNormal,
+              'Grønn · 1 last',
+              'Én rute på bilen — klar til utsending.',
+            ),
+            chip(
+              _routeColorMultiLoad,
+              'Lilla · 2+ last',
+              'Samme bil har flere ruter/lass (Last A, B, …). Vanlig — ikke feil.',
+            ),
+            chip(
+              _routeColorDuplicate,
+              'Oransje · dobbel',
+              'Identisk/duplikat PDF — sjekk før du sender.',
+            ),
+            chip(
+              _routeColorMissingDriver,
+              'Rød · mangler bil',
+              'Fant ikke sjåfør/MAVI — tildel manuelt.',
+            ),
+          ],
         ),
       ],
     );
@@ -4333,7 +4510,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         const SizedBox(height: 10),
         FilledButton.icon(
           onPressed: _isSap
-              ? (_sapSyncing ? null : _syncSapInbox)
+              ? (_sapSyncing
+                  ? null
+                  : () => _syncSapInbox(userRequestedFetch: true))
               : (_busyUpload ? null : _pickPdfs),
           style: FilledButton.styleFrom(
             backgroundColor: ui.accentDark,
@@ -5207,7 +5386,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               busy: _busyUpload || _sapSyncing,
               onUpload: (_busyUpload || _sapSyncing)
                   ? null
-                  : (isSap ? _syncSapInbox : _pickPdfs),
+                  : (isSap
+                      ? () => _syncSapInbox(userRequestedFetch: true)
+                      : _pickPdfs),
               title: isSap
                   ? (_sapPendingInbox > 0
                       ? 'Importer $_sapPendingInbox SAP-PDF'
@@ -5601,16 +5782,24 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               if (_skipped.isNotEmpty) _buildManualAssignStrip(ui),
               _buildScrollListHeader(ui, showFilters: false),
               Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                child: Text(
-                  multiN > 0
-                      ? '$multiN bil(er) med 2+ last (lilla) · dobler (oransje) · mangler sjåfør (rød)'
-                      : 'Fordeling per bil · grønn = vanlig · rød = mangler sjåfør · oransje = dobbel',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: multiN > 0 ? _routeColorMultiLoad : Colors.grey.shade700,
-                  ),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (multiN > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          '$multiN bil(er) med 2+ last — se lilla kort',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: _routeColorMultiLoad,
+                          ),
+                        ),
+                      ),
+                    _buildRouteColorLegend(),
+                  ],
                 ),
               ),
               if (_selected.isNotEmpty)

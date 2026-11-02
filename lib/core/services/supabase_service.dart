@@ -2350,8 +2350,12 @@ department:departments!department_id(name)
         return SupabaseConfig.defaultCompanyId;
       }
 
-      final known = AccessSessionCache.profile?.companyId ?? _warmLinkedProfile?.companyId;
-      if (known != null && known.isNotEmpty) return known;
+      final email = currentUser?.email?.trim().toLowerCase() ?? '';
+      final known =
+          AccessSessionCache.profile?.companyId ?? _warmLinkedProfile?.companyId;
+      // MAVI-staff: aldri stol på cache alene — Demo-company ga tom SAP-kø.
+      final mustRelink = _isSuperadminEmail(email) || _isMaviEmployeeEmail(email);
+      if (!mustRelink && known != null && known.isNotEmpty) return known;
 
       final profile = await ensureSessionLinkedToCompany();
 
@@ -2361,6 +2365,7 @@ department:departments!department_id(name)
       } catch (_) {}
 
       if (profile?.companyId != null) return profile!.companyId;
+      if (known != null && known.isNotEmpty) return known;
 
       return discoverBootstrapCompanyId();
     } catch (e) {

@@ -90,17 +90,7 @@ class _PartnerRouteDeliveryReportDialogState
   void initState() {
     super.initState();
     _report = widget.initialReport;
-    // Når alt er OK: lukk automatisk så AUTO MASS forsvinner uten ekstra klikk.
-    if (_report.allOk) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        Future<void>.delayed(const Duration(milliseconds: 700), () {
-          if (mounted && _report.allOk) {
-            _close(closeWizard: true);
-          }
-        });
-      });
-    }
+    // Ikke auto-lukk — bruker skal se status / trykke Ferdig selv.
   }
 
   Future<void> _refresh() async {
