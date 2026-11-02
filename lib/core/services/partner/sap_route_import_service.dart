@@ -120,15 +120,30 @@ class SapRouteImportService {
 
         final bytes = row.bytes!;
         final bundle = row.bundle!;
-        final code = row.code;
+        // Samme som AUTO MASS: PDF-kode, ellers filnavn (BACKUP_FORM / M76 i navn).
+        final code = row.code ??
+            RoutePdfTextService.extractResourceIdFromFileName(item.fileName) ??
+            RoutePdfTextService.extractResourceIdFromFileName(
+              bundle.meta.maviCode ?? '',
+            );
         final driverName = RoutePdfTextService.parseDriverName(
           bundle.headerText.isNotEmpty ? bundle.headerText : bundle.fullText,
         );
         final vehicle = RoutePdfTextService.findVehicleInLookup(
-          vehicleMap,
-          code,
-          driverName: driverName,
-        );
+              vehicleMap,
+              code,
+              driverName: driverName,
+            ) ??
+            RoutePdfTextService.findVehicleInLookup(
+              vehicleMap,
+              code != null ? MaviUnitCodes.normalize(code) : null,
+              driverName: driverName,
+            ) ??
+            RoutePdfTextService.findVehicleInLookup(
+              vehicleMap,
+              code != null ? MaviUnitCodes.compactLabel(code) : null,
+              driverName: driverName,
+            );
 
         if (code == null && vehicle == null) {
           await _failItem(

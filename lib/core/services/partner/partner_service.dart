@@ -4358,6 +4358,69 @@ class PartnerService {
     }).eq('id', inboxId);
   }
 
+  /// Etter «Tøm kø»: ikke la orphan-reopen hente slettede ruter inn igjen.
+  static Future<int> dismissSapInboxLinkedToShares({
+    required String companyId,
+    required Iterable<String> shareIds,
+  }) async {
+    if (!_ok) return 0;
+    final ids = shareIds.where((id) => id.trim().isNotEmpty).toSet().toList();
+    if (ids.isEmpty) return 0;
+    var n = 0;
+    const chunk = 80;
+    final now = DateTime.now().toUtc().toIso8601String();
+    for (var i = 0; i < ids.length; i += chunk) {
+      final slice = ids.skip(i).take(chunk).toList();
+      try {
+        await _client.from('sap_route_inbox').update({
+          'status': 'rejected',
+          'reject_reason': 'Tømt fra kø',
+          'processed_at': now,
+          'imported_route_share_id': null,
+        }).eq('company_id', companyId).inFilter('imported_route_share_id', slice);
+        n += slice.length;
+      } catch (_) {}
+    }
+    return n;
+  }
+
+  /// Avvis ventende + manuelle SAP-PDF i innboks (brukes ved «Bare slett»).
+  static Future<int> dismissOpenSapInboxItems(String companyId) async {
+    if (!_ok) return 0;
+    final now = DateTime.now().toUtc().toIso8601String();
+    var n = 0;
+    try {
+      final pending = await _client
+          .from('sap_route_inbox')
+          .update({
+            'status': 'rejected',
+            'reject_reason': 'Tømt fra kø',
+            'processed_at': now,
+            'imported_route_share_id': null,
+          })
+          .eq('company_id', companyId)
+          .eq('status', 'pending')
+          .select('id') as List<dynamic>;
+      n += pending.length;
+    } catch (_) {}
+    try {
+      final manuals = await _client
+          .from('sap_route_inbox')
+          .update({
+            'status': 'rejected',
+            'reject_reason': 'Tømt fra kø',
+            'processed_at': now,
+            'imported_route_share_id': null,
+          })
+          .eq('company_id', companyId)
+          .eq('status', 'rejected')
+          .like('reject_reason', '$sapInboxManualReasonPrefix%')
+          .select('id') as List<dynamic>;
+      n += manuals.length;
+    } catch (_) {}
+    return n;
+  }
+
   static Future<void> markSapRouteInboxRejected({
     required String id,
     required String reason,

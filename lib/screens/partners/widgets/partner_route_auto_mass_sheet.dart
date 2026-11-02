@@ -64,7 +64,7 @@ class _PdfAssignmentRow {
 
 class _SkippedPdf {
   final String fileName;
-  final Uint8List bytes;
+  Uint8List bytes;
   final String? reason;
   final String? detectedCode;
   final String? sapInboxId;
@@ -241,6 +241,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   List<AlreadySentIdenticalMatch> _identicalScanCache = const [];
   bool _identicalScanInFlight = false;
   bool _liveImportQueued = false;
+  /// Etter «Bare slett»: ingen auto-hent før bruker trykker Hent.
+  bool _sapAutoSyncEnabled = true;
+  int _sapWorkGen = 0;
 
   bool get _isSap => widget.source == PartnerRouteMassSource.sap;
 
@@ -316,16 +319,29 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   void _ensureSettleTicker() {
-    if (!_isSap) return;
+    if (!_isSap || !_sapAutoSyncEnabled) return;
     _settleTicker?.cancel();
     if (!_sapOverview.expectingMoreRoutes && _sapOverview.isReadyForDispatch) {
       return;
     }
     // Lett telling — ikke tung PDF/identisk-scan (det gjorde appen treig).
     _settleTicker = Timer.periodic(const Duration(seconds: 30), (_) async {
-      if (!mounted || !_isSap || _sapSyncing) return;
+      if (!mounted || !_isSap || _sapSyncing || !_sapAutoSyncEnabled) return;
       await _refreshSapInboxCounts(heavyIdenticalScan: false);
     });
+  }
+
+  void _haltSapBackgroundWork({required bool pauseAutoSync}) {
+    _sapWorkGen++;
+    _liveDebounce?.cancel();
+    _settleTicker?.cancel();
+    _liveImportQueued = false;
+    if (pauseAutoSync) _sapAutoSyncEnabled = false;
+    _sapSyncing = false;
+    _sapGraphSyncNote = null;
+    _lastGraphMatched = 0;
+    _lastGraphInserted = 0;
+    _lastGraphAlready = 0;
   }
 
   @override
@@ -449,6 +465,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Future<void> _onSapInboxLiveChanged() async {
+    if (!_sapAutoSyncEnabled) {
+      await _refreshSapInboxCounts(heavyIdenticalScan: false);
+      return;
+    }
     await _refreshSapInboxCounts(heavyIdenticalScan: false);
     if (!mounted || _importAborted) return;
     if (_sapSyncing) {
@@ -533,6 +553,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   Future<void> _pullFromOffice365() async {
     if (!_isSap || _sapSyncing) return;
+    _sapAutoSyncEnabled = true;
     setState(() {
       _sapSyncing = true;
       _sapGraphSyncNote = 'Henter alle mail fra Office 365…';
@@ -575,15 +596,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         final reason = (item.rejectReason ?? '')
             .replaceFirst(PartnerService.sapInboxManualReasonPrefix, '')
             .trim();
+        final detected = item.detectedMaviCode ??
+            RoutePdfTextService.extractResourceIdFromFileName(item.fileName);
+        final preselect = _fleetRowForMaviCode(detected)?.vehicle.id;
         return _SkippedPdf(
           fileName: item.fileName,
           bytes: bytes,
           reason: reason.isEmpty
               ? 'Krever manuell tildeling'
               : PartnerService.friendlySapFailure(reason),
-          detectedCode: item.detectedMaviCode ??
-              RoutePdfTextService.extractResourceIdFromFileName(item.fileName),
+          detectedCode: detected,
           sapInboxId: item.id,
+          selectedVehicleId: preselect,
         );
       }));
       added.addAll(part.whereType<_SkippedPdf>());
@@ -593,6 +617,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   Future<void> _syncSapInbox() async {
     if (!_isSap || _sapSyncing || _importAborted) return;
+    _sapAutoSyncEnabled = true;
+    final gen = ++_sapWorkGen;
     setState(() {
       _sapSyncing = true;
       _sapGraphSyncNote = 'Forbereder kø…';
@@ -600,10 +626,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     String? cid;
     try {
       cid = await SupabaseService.getCurrentCompanyId();
-      if (cid == null || _importAborted) return;
+      if (cid == null || _importAborted || gen != _sapWorkGen) return;
 
       final reopened = await PartnerService.reopenOrphanedSapInbox(cid);
-      if (mounted && reopened > 0) {
+      if (gen != _sapWorkGen || !mounted) return;
+      if (reopened > 0) {
         setState(() {
           _sapGraphSyncNote = 'Fant $reopened PDF uten kø — importerer…';
         });
@@ -612,7 +639,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       // 1) Importer eksisterende innboks først.
       await _runSapImportPhase(cid, label: 'Importerer til kø');
     } catch (e) {
-      if (mounted) {
+      if (mounted && gen == _sapWorkGen) {
         setState(() => _sapGraphSyncNote = null);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -622,12 +649,15 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         );
       }
     } finally {
-      // Frigjør Hent med en gang kø-import er ferdig — Graph skal ikke låse knappen.
-      _sapSyncing = false;
-      if (mounted) setState(() {});
+      if (gen == _sapWorkGen) {
+        _sapSyncing = false;
+        if (mounted) setState(() {});
+      }
     }
 
-    if (_importAborted || !mounted || cid == null) return;
+    if (gen != _sapWorkGen || !_sapAutoSyncEnabled || _importAborted || !mounted || cid == null) {
+      return;
+    }
 
     // 2) Office 365 i bakgrunnen (egen timeout) — knappen forblir klikkbar.
     unawaited(_runOffice365Check(importNew: true));
@@ -639,15 +669,23 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
     // 4) Én utsatt identisk-scan (ikke under import).
     unawaited(Future<void>.delayed(const Duration(seconds: 3), () async {
-      if (!mounted || _sapSyncing) return;
+      if (!mounted || _sapSyncing || gen != _sapWorkGen || !_sapAutoSyncEnabled) {
+        return;
+      }
       await _refreshSapInboxCounts(heavyIdenticalScan: true);
     }));
 
     // 5) Live-endringer som kom under sync — én ekstra runde, ikke storm.
-    if (_liveImportQueued) {
+    if (_liveImportQueued && _sapAutoSyncEnabled) {
       _liveImportQueued = false;
       unawaited(Future<void>.delayed(const Duration(seconds: 2), () async {
-        if (!mounted || _sapSyncing || _importAborted) return;
+        if (!mounted ||
+            _sapSyncing ||
+            _importAborted ||
+            !_sapAutoSyncEnabled ||
+            gen != _sapWorkGen) {
+          return;
+        }
         if (_sapPendingInbox > 0) await _syncSapInbox();
       }));
     }
@@ -655,7 +693,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
   /// Office 365-sjekk uten å holde «Hent» disabled.
   Future<void> _runOffice365Check({required bool importNew}) async {
-    if (!mounted || _importAborted) return;
+    if (!mounted || _importAborted || !_sapAutoSyncEnabled) return;
+    final gen = _sapWorkGen;
     final cid = await SupabaseService.getCurrentCompanyId();
     if (cid == null || !mounted) return;
 
@@ -664,7 +703,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     });
 
     final graph = await PartnerService.syncSapMailboxFromGraph();
-    if (!mounted || _importAborted) return;
+    if (!mounted || _importAborted || gen != _sapWorkGen || !_sapAutoSyncEnabled) {
+      return;
+    }
 
     if (graph != null && graph['error'] == null) {
       _applyGraphSyncResult(graph);
@@ -675,7 +716,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
 
     // Alltid resurface + import etter Graph — også når matched allerede ligger i inbox
     // (inserted=0). Ellers blir «47 fra SAP» stående som skjulte imported-rader.
-    if (importNew && !_importAborted) {
+    if (importNew && !_importAborted && _sapAutoSyncEnabled && gen == _sapWorkGen) {
       if (mounted) {
         setState(() {
           _sapSyncing = true;
@@ -684,24 +725,30 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       }
       try {
         final reopened = await PartnerService.reopenOrphanedSapInbox(cid);
-        if (mounted && reopened > 0) {
+        if (!mounted || gen != _sapWorkGen || !_sapAutoSyncEnabled) return;
+        if (reopened > 0) {
           setState(() {
             _sapGraphSyncNote = 'Fant $reopened PDF utenfor kø — importerer…';
           });
         }
         await _runSapImportPhase(cid, label: 'Importerer til kø');
+        if (!mounted || gen != _sapWorkGen || !_sapAutoSyncEnabled) return;
         final manuals = await _collectSapManualSkipped(cid);
         if (mounted && manuals.isNotEmpty) {
           setState(() => _skipped.addAll(manuals));
           await _autoAssignReadySkipped(manuals);
         }
       } finally {
-        _sapSyncing = false;
-        if (mounted) setState(() => _sapGraphSyncNote = null);
+        if (gen == _sapWorkGen) {
+          _sapSyncing = false;
+          if (mounted) setState(() => _sapGraphSyncNote = null);
+        }
       }
     }
 
-    await _refreshSapInboxCounts();
+    if (_sapAutoSyncEnabled && gen == _sapWorkGen) {
+      await _refreshSapInboxCounts(heavyIdenticalScan: false);
+    }
   }
 
   String _friendlyGraphSyncError(String raw) {
@@ -718,8 +765,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Future<void> _runSapImportPhase(String cid, {required String label}) async {
-    if (_importAborted) return;
+    if (_importAborted || !_sapAutoSyncEnabled) return;
     await PartnerService.reconcileSapInboxWithStagedQueue(cid);
+    if (!_sapAutoSyncEnabled || _importAborted) return;
     final pending = await PartnerService.fetchSapRouteInboxPending(cid);
     if (!mounted || _importAborted) return;
     setState(() {
@@ -757,13 +805,16 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     final newSkipped = <_SkippedPdf>[];
     for (final s in result.skippedItems) {
       if (_skipped.any((x) => x.sapInboxId == s.inboxId)) continue;
+      final detected = s.detectedCode ??
+          RoutePdfTextService.extractResourceIdFromFileName(s.fileName);
+      final preselect = _fleetRowForMaviCode(detected)?.vehicle.id;
       newSkipped.add(_SkippedPdf(
         fileName: s.fileName,
         bytes: Uint8List.fromList(s.bytes),
         reason: s.reason,
-        detectedCode: s.detectedCode ??
-            RoutePdfTextService.extractResourceIdFromFileName(s.fileName),
+        detectedCode: detected,
         sapInboxId: s.inboxId,
+        selectedVehicleId: preselect,
       ));
     }
 
@@ -2553,8 +2604,36 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Future<bool> _tryAutoAssignSkipped(_SkippedPdf item) async {
-    if (item.selectedVehicleId == null || item.bytes.isEmpty) return false;
     if (item.reason?.toLowerCase().contains('duplikat') == true) return false;
+
+    // Samme som AUTO MASS: bruk detektert MAVI → bil før manuell valg.
+    if (item.selectedVehicleId == null) {
+      final code = item.detectedCode ??
+          RoutePdfTextService.extractResourceIdFromFileName(item.fileName);
+      final row = _fleetRowForMaviCode(code);
+      if (row != null) item.selectedVehicleId = row.vehicle.id;
+    }
+
+    // Nettverksfeil kan ha tomme bytes — last på nytt fra innboks.
+    if (item.bytes.isEmpty && (item.sapInboxId ?? '').isNotEmpty) {
+      final cid = await SupabaseService.getCurrentCompanyId();
+      if (cid != null) {
+        final manuals = await PartnerService.fetchSapRouteInboxManual(cid);
+        final pending = await PartnerService.fetchSapRouteInboxPending(cid);
+        final hit = [...manuals, ...pending]
+            .where((p) => p.id == item.sapInboxId)
+            .firstOrNull;
+        final path = hit?.pdfStoragePath.trim() ?? '';
+        if (path.isNotEmpty) {
+          final bytes = await PartnerService.downloadRoutePdfBytes(path);
+          if (bytes != null && bytes.isNotEmpty) {
+            item.bytes = bytes;
+          }
+        }
+      }
+    }
+
+    if (item.selectedVehicleId == null || item.bytes.isEmpty) return false;
 
     if ((item.shiftId ?? '').isEmpty) {
       final shiftId = await _resolveShiftIdForSkipped(item);
@@ -2785,26 +2864,61 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       return;
     }
 
-    setState(() => _busyUpload = true);
+    final clearOnly = second == _ClearQueueAction.clearOnly;
+    // Stopp bakgrunns-import med en gang — ellers står det «Importerer…» etter Bare slett.
+    _haltSapBackgroundWork(pauseAutoSync: clearOnly);
+    if (mounted) setState(() => _busyUpload = true);
+
     try {
+      final cid = await SupabaseService.getCurrentCompanyId();
+      final shareIds = _staged.map((s) => s.id).toList();
       RoutePdfBytesCache.clear();
+
+      if (cid != null && shareIds.isNotEmpty) {
+        await PartnerService.dismissSapInboxLinkedToShares(
+          companyId: cid,
+          shareIds: shareIds,
+        );
+      }
       for (final s in List<PartnerRouteShare>.from(_staged)) {
         await PartnerService.deleteRouteShare(s);
       }
       await _clearAllSkippedPdfsQuiet();
+      if (cid != null && clearOnly) {
+        // Ikke la pending/manuelle komme tilbake via live-sync.
+        await PartnerService.dismissOpenSapInboxItems(cid);
+      }
+
       if (!mounted) return;
       setState(() {
         _staged = [];
+        _skipped.clear();
         _selected.clear();
         _importLog = [];
+        _sapPendingInbox = 0;
+        _pendingInboxItems = [];
+        _identicalAlreadySent = [];
+        _sapOverview = SapInboxOverview.empty;
+        _sapSyncing = false;
+        _sapGraphSyncNote = null;
+        _busyUpload = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Køen er tømt ($summary).')),
+        SnackBar(
+          content: Text(
+            clearOnly
+                ? 'Køen er tømt ($summary). Ingen ny henting startet.'
+                : 'Køen er tømt ($summary). Henter nye fra SAP…',
+          ),
+        ),
       );
-      await _reload();
-      if (!mounted) return;
+
       if (second == _ClearQueueAction.clearAndFetchSap) {
+        _sapAutoSyncEnabled = true;
         await _syncSapInbox();
+      } else {
+        // Lett refresh uten reopen/import.
+        await _refreshSapInboxCounts(heavyIdenticalScan: false);
       }
     } catch (e) {
       if (mounted) {
