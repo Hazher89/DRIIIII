@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/config/driftpro_client.dart';
 import '../../../core/constants/mavi_fleet_roles.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/partner_service.dart';
 import '../../../models/partner/partner_links.dart';
 
-/// Ledige MAVI-biler — kompakt status per biltype (fargerik / lys stil).
+/// Ledige MAVI-biler — én kompakt rad med tall + utvidbare koder.
 class PartnerAvailableVehiclesPanel extends StatefulWidget {
   final List<FleetPartnerVehicleRow> fleet;
   final List<PartnerRouteShare> sharesToday;
@@ -28,7 +27,8 @@ class PartnerAvailableVehiclesPanel extends StatefulWidget {
     final d = DateTime(day.year, day.month, day.day);
     final busy = shares
         .where((s) {
-          final sd = DateTime(s.shareDate.year, s.shareDate.month, s.shareDate.day);
+          final sd =
+              DateTime(s.shareDate.year, s.shareDate.month, s.shareDate.day);
           return sd == d && s.partnerVehicleId != null && !s.isStaged;
         })
         .map((s) => s.partnerVehicleId!)
@@ -52,14 +52,20 @@ class PartnerAvailableVehiclesPanel extends StatefulWidget {
   }
 
   @override
-  State<PartnerAvailableVehiclesPanel> createState() => _PartnerAvailableVehiclesPanelState();
+  State<PartnerAvailableVehiclesPanel> createState() =>
+      _PartnerAvailableVehiclesPanelState();
 }
 
-class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehiclesPanel> {
-  int _roleIndex = 0;
+class _PartnerAvailableVehiclesPanelState
+    extends State<PartnerAvailableVehiclesPanel> {
+  String? _expandedRole;
 
-  Map<String, List<FleetPartnerVehicleRow>> _groupByRole(List<FleetPartnerVehicleRow> available) {
-    final map = {for (final r in MaviFleetRoles.all) r: <FleetPartnerVehicleRow>[]};
+  Map<String, List<FleetPartnerVehicleRow>> _groupByRole(
+    List<FleetPartnerVehicleRow> available,
+  ) {
+    final map = {
+      for (final r in MaviFleetRoles.all) r: <FleetPartnerVehicleRow>[],
+    };
     for (final row in available) {
       for (final role in MaviFleetRoles.normalize(row.vehicle.fleetRoles)) {
         map[role]!.add(row);
@@ -80,16 +86,18 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
     );
     final byRole = _groupByRole(available);
     final dayLabel = DateFormat('d. MMM', 'nb').format(widget.day);
-    final role = MaviFleetRoles.all[_roleIndex];
-    final list = byRole[role] ?? [];
-    final untyped = available.where((r) => MaviFleetRoles.normalize(r.vehicle.fleetRoles).isEmpty).length;
-    final accent = PartnerAvailableVehiclesPanel.roleColor(role);
+    final expanded = _expandedRole;
+    final expandedList =
+        expanded == null ? const <FleetPartnerVehicleRow>[] : (byRole[expanded] ?? []);
+    final accent = expanded == null
+        ? const Color(0xFF0D9488)
+        : PartnerAvailableVehiclesPanel.roleColor(expanded);
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
       child: Column(
@@ -97,174 +105,155 @@ class _PartnerAvailableVehiclesPanelState extends State<PartnerAvailableVehicles
         children: [
           Row(
             children: [
+              const Text(
+                'Ledige',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  color: Color(0xFF111827),
+                ),
+              ),
+              const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0D9488).withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(999),
                 ),
-                child: const Text(
-                  'FLÅTE · LEDIGE I DAG',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 11,
-                    letterSpacing: 0.4,
+                child: Text(
+                  '${available.length}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
                     color: Color(0xFF0D9488),
                   ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 6),
               Text(
-                '$dayLabel · ${available.length} ledige',
+                dayLabel,
                 style: const TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w600,
                   color: Color(0xFF6B7280),
                 ),
               ),
+              const Spacer(),
+              Text(
+                expanded == null ? 'Trykk type for koder' : 'Skjul koder',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade500,
+                ),
+              ),
             ],
           ),
-          if (untyped > 0)
-            const Padding(
-              padding: EdgeInsets.only(top: 6),
-              child: Text(
-                'Noen biler mangler biltype (sett under Bedrifter)',
-                style: TextStyle(fontSize: 11, color: Color(0xFF6B7280)),
-              ),
-            ),
-          const SizedBox(height: 12),
-          DriftProClient.isMobile
-              ? SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: List.generate(MaviFleetRoles.all.length, (i) {
-                      final r = MaviFleetRoles.all[i];
-                      final n = byRole[r]!.length;
-                      return Padding(
-                        padding: EdgeInsets.only(right: i == MaviFleetRoles.all.length - 1 ? 0 : 8),
-                        child: _roleFilterChip(
-                          role: r,
-                          count: n,
-                          selected: _roleIndex == i,
-                          onTap: () => setState(() => _roleIndex = i),
-                        ),
-                      );
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 36,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: MaviFleetRoles.all.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 6),
+              itemBuilder: (context, i) {
+                final role = MaviFleetRoles.all[i];
+                final n = byRole[role]!.length;
+                final selected = _expandedRole == role;
+                final color = PartnerAvailableVehiclesPanel.roleColor(role);
+                return Material(
+                  color: selected ? color : color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () => setState(() {
+                      _expandedRole = selected ? null : role;
                     }),
-                  ),
-                )
-              : Row(
-                  children: List.generate(MaviFleetRoles.all.length, (i) {
-                    final r = MaviFleetRoles.all[i];
-                    final n = byRole[r]!.length;
-                    return Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(left: i == 0 ? 0 : 8),
-                        child: _roleFilterChip(
-                          role: r,
-                          count: n,
-                          selected: _roleIndex == i,
-                          onTap: () => setState(() => _roleIndex = i),
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-          const SizedBox(height: 12),
-          Container(
-            constraints: const BoxConstraints(maxHeight: 92),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-            decoration: BoxDecoration(
-              color: accent.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: accent.withValues(alpha: 0.22)),
-            ),
-            child: list.isEmpty
-                ? Center(
-                    child: Text(
-                      'Ingen ledige ${MaviFleetRoles.label(role)}',
-                      style: TextStyle(fontSize: 12, color: accent, fontWeight: FontWeight.w600),
-                    ),
-                  )
-                : SingleChildScrollView(
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: list.map((row) {
-                        final mavi = MaviUnitCodes.normalize(row.vehicle.unitCode);
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: accent.withValues(alpha: 0.35)),
-                          ),
-                          child: Text(
-                            mavi,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$n',
                             style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 12,
-                              color: accent,
+                              fontWeight: FontWeight.w900,
+                              fontSize: 15,
+                              color: selected ? Colors.white : color,
                             ),
                           ),
-                        );
-                      }).toList(),
+                          const SizedBox(width: 6),
+                          Text(
+                            MaviFleetRoles.label(role),
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: selected ? Colors.white : color,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _roleFilterChip({
-    required String role,
-    required int count,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    final color = PartnerAvailableVehiclesPanel.roleColor(role);
-    return Material(
-      color: selected ? color : color.withValues(alpha: 0.08),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onTap,
-        child: Container(
-          padding: EdgeInsets.symmetric(
-            vertical: DriftProClient.isMobile ? 12 : 10,
-            horizontal: DriftProClient.isMobile ? 14 : 6,
-          ),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? color : color.withValues(alpha: 0.3),
-              width: selected ? 0 : 1.5,
+                );
+              },
             ),
           ),
-          child: Column(
-            children: [
-              Text(
-                '$count',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  fontSize: 18,
-                  color: selected ? Colors.white : color,
-                ),
+          if (expanded != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 72),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: accent.withValues(alpha: 0.22)),
               ),
-              Text(
-                MaviFleetRoles.label(role),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: DriftProClient.isMobile ? 11 : 10,
-                  fontWeight: FontWeight.w700,
-                  color: selected ? Colors.white : color,
-                ),
-              ),
-            ],
-          ),
-        ),
+              child: expandedList.isEmpty
+                  ? Center(
+                      child: Text(
+                        'Ingen ledige ${MaviFleetRoles.label(expanded)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: accent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    )
+                  : SingleChildScrollView(
+                      child: Wrap(
+                        spacing: 5,
+                        runSpacing: 5,
+                        children: expandedList.map((row) {
+                          final mavi =
+                              MaviUnitCodes.normalize(row.vehicle.unitCode);
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(7),
+                              border: Border.all(
+                                color: accent.withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: Text(
+                              mavi,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                                color: accent,
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+            ),
+          ],
+        ],
       ),
     );
   }

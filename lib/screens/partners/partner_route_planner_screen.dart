@@ -190,7 +190,7 @@ class PartnerRoutePlannerScreenState extends State<PartnerRoutePlannerScreen> {
             child: Padding(
               padding: EdgeInsets.fromLTRB(
                 12,
-                DriftProClient.isMobile ? 4 : 12,
+                DriftProClient.isMobile ? 4 : 8,
                 12,
                 0,
               ),

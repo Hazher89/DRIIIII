@@ -8,7 +8,7 @@ import '../../../models/partner/partner_links.dart';
 class RoutePlannerUi {
   RoutePlannerUi._();
 
-  static const _radius = 16.0;
+  static const _radius = 12.0;
 
   static const colorNew = Color(0xFF0D9488);
   static const colorMass = Color(0xFF7C3AED);
@@ -150,30 +150,23 @@ class RoutePlannerUi {
     );
   }
 
-  /// Fargerike verktøy-knapper.
+  /// Kompakte verktøy-knapper (én rad, uten stor seksjonstittel).
   static Widget toolChipGroup({
     required BuildContext context,
     required List<RoutePlannerTool> tools,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
       children: [
-        sectionLabel('Verktøy'),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (var i = 0; i < tools.length; i++)
-              _ToolChip(
-                icon: tools[i].icon,
-                label: tools[i].label,
-                onPressed: tools[i].onPressed,
-                emphasized: tools[i].emphasized,
-                color: tools[i].color ?? _toolPalette[i % _toolPalette.length],
-              ),
-          ],
-        ),
+        for (var i = 0; i < tools.length; i++)
+          _ToolChip(
+            icon: tools[i].icon,
+            label: tools[i].label,
+            onPressed: tools[i].onPressed,
+            emphasized: tools[i].emphasized,
+            color: tools[i].color ?? _toolPalette[i % _toolPalette.length],
+          ),
       ],
     );
   }
@@ -256,10 +249,10 @@ class RoutePlannerUi {
     }
     final pct = ((accepted / total) * 100).round();
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: colorLine),
       ),
       child: Column(
@@ -267,64 +260,38 @@ class RoutePlannerUi {
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(
-                  '$accepted av $total akseptert',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    letterSpacing: -0.2,
-                  ),
+              Text(
+                '$accepted/$total',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  color: colorInk,
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: RouteDispatchStatus.colorAccepted.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  '$pct%',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 13,
-                    color: RouteDispatchStatus.colorAccepted,
-                  ),
+              const SizedBox(width: 6),
+              Text(
+                'akseptert · $pct%',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                  color: colorMuted,
                 ),
               ),
+              const Spacer(),
+              _CountBadge(label: '$draft kladd', color: RouteDispatchStatus.colorDraft),
+              const SizedBox(width: 6),
+              _CountBadge(label: '$waiting venter', color: RouteDispatchStatus.colorWaiting),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
               value: accepted / total,
-              minHeight: 8,
-              backgroundColor: const Color(0xFFF3F4F6),
+              minHeight: 5,
+              backgroundColor: const Color(0xFFE5E7EB),
               color: RouteDispatchStatus.colorAccepted,
             ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _CountBadge(
-                label: '$draft kladd',
-                color: RouteDispatchStatus.colorDraft,
-              ),
-              _CountBadge(
-                label: '$waiting venter',
-                color: RouteDispatchStatus.colorWaiting,
-              ),
-              _CountBadge(
-                label: '$accepted akseptert',
-                color: RouteDispatchStatus.colorAccepted,
-              ),
-            ],
           ),
         ],
       ),
@@ -451,38 +418,32 @@ class RoutePlannerUi {
     String? subtitle,
   }) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Rute-planlegger',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 20,
-                  letterSpacing: -0.4,
-                  color: colorInk,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle ??
-                    'Velg dag → se sjåfører → legg til eller send ruter.',
-                style: const TextStyle(
-                  fontSize: 13,
-                  height: 1.35,
-                  color: colorMuted,
-                ),
-              ),
-            ],
+        const Text(
+          'Planlegger',
+          style: TextStyle(
+            fontWeight: FontWeight.w900,
+            fontSize: 16,
+            letterSpacing: -0.3,
+            color: colorInk,
           ),
         ),
+        if (subtitle != null) ...[
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              subtitle,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: colorMuted),
+            ),
+          ),
+        ] else
+          const Spacer(),
         if (busy)
           const SizedBox(
-            width: 22,
-            height: 22,
+            width: 18,
+            height: 18,
             child: CircularProgressIndicator(strokeWidth: 2, color: colorNew),
           ),
       ],
@@ -492,17 +453,15 @@ class RoutePlannerUi {
   static Widget refreshButton({required VoidCallback? onPressed}) {
     return Tooltip(
       message: 'Oppdater',
-      child: FilledButton(
+      child: IconButton.filled(
         onPressed: onPressed,
-        style: FilledButton.styleFrom(
+        style: IconButton.styleFrom(
           backgroundColor: colorNew,
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+          visualDensity: VisualDensity.compact,
+          minimumSize: const Size(36, 36),
         ),
-        child: const Icon(Icons.refresh_rounded),
+        icon: const Icon(Icons.refresh_rounded, size: 18),
       ),
     );
   }
@@ -662,35 +621,37 @@ class _ToolChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
-    return Material(
-      color: color.withValues(alpha: emphasized ? 0.18 : 0.1),
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: color.withValues(alpha: emphasized ? 0.55 : 0.28),
-              width: emphasized ? 1.5 : 1,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 16, color: enabled ? color : RoutePlannerUi.colorMuted),
-              const SizedBox(width: 7),
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: enabled ? color : RoutePlannerUi.colorMuted,
-                ),
+    return Tooltip(
+      message: label,
+      child: Material(
+        color: color.withValues(alpha: emphasized ? 0.16 : 0.08),
+        borderRadius: BorderRadius.circular(9),
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(9),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(9),
+              border: Border.all(
+                color: color.withValues(alpha: emphasized ? 0.5 : 0.25),
               ),
-            ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 14, color: enabled ? color : RoutePlannerUi.colorMuted),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: enabled ? color : RoutePlannerUi.colorMuted,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -711,80 +672,70 @@ class _ActionCard extends StatelessWidget {
     final card = Material(
       color: c.withValues(alpha: 0.1),
       borderRadius: BorderRadius.circular(RoutePlannerUi._radius),
-      elevation: action.glow && enabled ? 2 : 0,
-      shadowColor: c.withValues(alpha: 0.4),
+      elevation: action.glow && enabled ? 1 : 0,
+      shadowColor: c.withValues(alpha: 0.35),
       child: InkWell(
         onTap: action.onPressed,
         borderRadius: BorderRadius.circular(RoutePlannerUi._radius),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(RoutePlannerUi._radius),
-            border: Border.all(
-              color: c.withValues(alpha: action.glow && enabled ? 0.7 : 0.35),
-              width: action.glow && enabled ? 2 : 1.5,
+        child: Tooltip(
+          message: action.subtitle,
+          child: Container(
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(RoutePlannerUi._radius),
+              border: Border.all(
+                color: c.withValues(alpha: action.glow && enabled ? 0.7 : 0.32),
+                width: action.glow && enabled ? 1.5 : 1,
+              ),
             ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: c,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(action.icon, color: Colors.white, size: 24),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      action.title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 15,
-                        color: enabled ? RoutePlannerUi.colorInk : RoutePlannerUi.colorMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      action.subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.3,
-                        color: enabled
-                            ? c.withValues(alpha: 0.9)
-                            : RoutePlannerUi.colorMuted,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              if (action.badge != null) ...[
-                const SizedBox(width: 8),
+            child: Row(
+              children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                  width: 30,
+                  height: 30,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: action.badgeColor ?? c,
+                    color: c,
                     borderRadius: BorderRadius.circular(8),
                   ),
+                  child: Icon(action.icon, color: Colors.white, size: 16),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
                   child: Text(
-                    action.badge!,
-                    style: const TextStyle(
-                      fontSize: 11,
+                    action.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
                       fontWeight: FontWeight.w800,
-                      color: Colors.white,
+                      fontSize: 13,
+                      color: enabled
+                          ? RoutePlannerUi.colorInk
+                          : RoutePlannerUi.colorMuted,
                     ),
                   ),
                 ),
+                if (action.badge != null) ...[
+                  const SizedBox(width: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: action.badgeColor ?? c,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      action.badge!,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
               ],
-              Icon(Icons.arrow_forward_rounded, size: 20, color: c),
-            ],
+            ),
           ),
         ),
       ),
@@ -819,15 +770,15 @@ class _CountBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
       ),
     );
   }

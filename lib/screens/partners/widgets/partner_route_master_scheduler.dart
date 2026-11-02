@@ -798,19 +798,27 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     return Material(
       color: Colors.white,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            RoutePlannerUi.header(context: context, busy: _busy),
-            const SizedBox(height: 14),
-            RoutePlannerUi.sectionLabel('Visning'),
+            Row(
+              children: [
+                Expanded(
+                  child: RoutePlannerUi.header(context: context, busy: _busy),
+                ),
+                RoutePlannerUi.refreshButton(
+                  onPressed: _busy ? null : _reload,
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             RoutePlannerUi.dateNavigator(
               weekStart: _weekStart,
               weekEnd: _weekEnd,
               focusDay: _focusDay,
               mode: _mode,
+              compact: true,
               onModeChanged: (m) => setState(() => _mode = m),
               onPrevWeek: () => _shiftPeriod(-1),
               onNextWeek: () => _shiftPeriod(1),
@@ -824,19 +832,35 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               },
               onPickDay: _busy ? null : _pickFocusDay,
             ),
-            const SizedBox(height: 12),
-            RoutePlannerUi.searchField(controller: _searchCtrl),
-            const SizedBox(height: 14),
-            RoutePlannerUi.sectionLabel('Handlinger'),
             const SizedBox(height: 8),
-            RoutePlannerUi.actionGrid(
-              context: context,
-              actions: _plannerActions(),
-              trailing: RoutePlannerUi.refreshButton(
-                onPressed: _busy ? null : _reload,
-              ),
+            LayoutBuilder(
+              builder: (context, c) {
+                final actions = RoutePlannerUi.actionGrid(
+                  context: context,
+                  actions: _plannerActions(),
+                );
+                final search =
+                    RoutePlannerUi.searchField(controller: _searchCtrl);
+                if (c.maxWidth < 720) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      search,
+                      const SizedBox(height: 8),
+                      actions,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(flex: 2, child: search),
+                    const SizedBox(width: 8),
+                    Expanded(flex: 4, child: actions),
+                  ],
+                );
+              },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             RoutePlannerUi.acceptanceOverview(
               total: _weekTotalRoutes,
               accepted: _weekAcceptedRoutes,
@@ -844,23 +868,19 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
               waiting: _weekWaitingRoutes,
             ),
             if (widget.toolsBar != null) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               widget.toolsBar!,
             ],
-            const SizedBox(height: 12),
-            RoutePlannerUi.sectionLabel(
-              _mode == RoutePlannerViewMode.day ? 'Dagstavle' : 'Ukeoversikt',
-            ),
             const SizedBox(height: 8),
             Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: 6,
+              runSpacing: 6,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 const Text(
                   'Sorter',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF6B7280),
                   ),
@@ -870,7 +890,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                     label: Text(_fleetSortLabel(mode)),
                     selected: _fleetSort == mode,
                     onSelected: (_) => setState(() => _fleetSort = mode),
-                    visualDensity: VisualDensity.compact,
+                    visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     selectedColor: RoutePlannerUi.colorNew.withValues(alpha: 0.15),
                     backgroundColor: Colors.white,
                     side: BorderSide(
@@ -879,17 +900,17 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
                           : const Color(0xFFE5E7EB),
                     ),
                     labelStyle: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                       color: _fleetSort == mode
                           ? RoutePlannerUi.colorNew
                           : const Color(0xFF6B7280),
                     ),
                   ),
+                const SizedBox(width: 4),
+                RoutePlannerUi.statusLegend(),
               ],
             ),
-            const SizedBox(height: 10),
-            RoutePlannerUi.statusLegend(),
           ],
         ),
       ),
