@@ -6,6 +6,10 @@ PartnerRouteShare _share({
   required String id,
   String? pdfSearchText,
   String title = 'Rute NO_O_M0024',
+  String dispatchStatus = 'staged',
+  String? partnerVehicleId = 'v1',
+  int? customerCount,
+  String? notes,
 }) {
   return PartnerRouteShare(
     id: id,
@@ -16,7 +20,10 @@ PartnerRouteShare _share({
     shareDate: DateTime(2026, 6, 14),
     pdfSearchText: pdfSearchText,
     createdAt: DateTime(2026, 6, 14),
-    dispatchStatus: 'staged',
+    dispatchStatus: dispatchStatus,
+    partnerVehicleId: partnerVehicleId,
+    customerCount: customerCount,
+    notes: notes,
   );
 }
 
@@ -82,6 +89,62 @@ void main() {
       expect(groups, hasLength(1));
       expect(groups.first.shares, hasLength(2));
       expect(StagedRouteDuplicateHelper.findGroups(staged), isEmpty);
+    });
+  });
+
+  group('alreadySentIdentical', () {
+    test('finner 100% lik FO + kunder for samme bil/dag', () {
+      final staged = [
+        _share(
+          id: 'new',
+          notes: 'FO: 6102287286\nKunder: 12',
+          customerCount: 12,
+          pdfSearchText: 'Freight Order 6102287286 customers twelve',
+        ),
+      ];
+      final sent = [
+        _share(
+          id: 'old',
+          dispatchStatus: 'sent',
+          notes: 'FO: 6102287286\nKunder: 12',
+          customerCount: 12,
+          pdfSearchText: 'Freight Order 6102287286 other wrapper',
+        ),
+      ];
+      final matches = StagedRouteDuplicateHelper.findAlreadySentIdentical(
+        staged: staged,
+        alreadySent: sent,
+        routeDateOf: (s) => s.shareDate,
+      );
+      expect(matches, hasLength(1));
+      expect(matches.first.fo, '6102287286');
+      expect(matches.first.customers, 12);
+    });
+
+    test('ulik FO er ikke identisk', () {
+      final staged = [
+        _share(
+          id: 'new',
+          notes: 'FO: 111\nKunder: 12',
+          customerCount: 12,
+        ),
+      ];
+      final sent = [
+        _share(
+          id: 'old',
+          dispatchStatus: 'sent',
+          notes: 'FO: 222\nKunder: 12',
+          customerCount: 12,
+        ),
+      ];
+      expect(
+        StagedRouteDuplicateHelper.findAlreadySentIdentical(
+          staged: staged,
+          alreadySent: sent,
+          routeDateOf: (s) => s.shareDate,
+        ),
+        isEmpty,
+      );
     });
   });
 }

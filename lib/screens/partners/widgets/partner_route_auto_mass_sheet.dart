@@ -102,6 +102,8 @@ String _friendlyImportError(Object error) {
 
 enum PartnerRouteMassSource { manual, sap }
 
+enum _IdenticalRouteChoice { replace, keep, cancel }
+
 /// Tre-stegs flyt (SAP + AUTO MASS): Hent/Last opp → Biler → Sjekk.
 enum _SapWizardStep {
   fetch,
@@ -228,6 +230,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   int _lastUploadRouteCount = 0;
   int _lastUploadSplitFiles = 0;
   String? _uploadStatusNote;
+  List<AlreadySentIdenticalMatch> _identicalAlreadySent = [];
+  Timer? _settleTicker;
 
   bool get _isSap => widget.source == PartnerRouteMassSource.sap;
 
@@ -290,6 +294,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   @override
   void dispose() {
     _importAborted = true;
+    _settleTicker?.cancel();
     SapRouteInboxLive.unsubscribe(_sapLiveChannel);
     for (final c in _noteByShare.values) {
       c.dispose();
@@ -298,6 +303,18 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       s.noteCtrl.dispose();
     }
     super.dispose();
+  }
+
+  void _ensureSettleTicker() {
+    if (!_isSap) return;
+    _settleTicker?.cancel();
+    if (!_sapOverview.expectingMoreRoutes && _sapOverview.isReadyForDispatch) {
+      return;
+    }
+    _settleTicker = Timer.periodic(const Duration(seconds: 15), (_) async {
+      if (!mounted || !_isSap) return;
+      await _refreshSapInboxCounts();
+    });
   }
 
   @override
@@ -386,8 +403,20 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     SapRouteInboxLive.unsubscribe(_sapLiveChannel);
     _sapLiveChannel = SapRouteInboxLive.subscribe(
       companyId: cid,
-      onChanged: () => _refreshSapInboxCounts(),
+      onChanged: () {
+        if (!mounted) return;
+        // Nye mail kan fortsatt komme — oppdater status og trekk inn.
+        unawaited(_onSapInboxLiveChanged());
+      },
     );
+  }
+
+  Future<void> _onSapInboxLiveChanged() async {
+    await _refreshSapInboxCounts();
+    if (!mounted || _sapSyncing || _importAborted) return;
+    if (_sapPendingInbox > 0) {
+      unawaited(_syncSapInbox());
+    }
   }
 
   Future<void> _refreshSapInboxCounts() async {
@@ -396,18 +425,47 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null || !mounted) return;
       final pending = await PartnerService.fetchSapRouteInboxPending(cid);
+      final identical = await _scanIdenticalAlreadySent(cid);
       final overview = await PartnerService.fetchSapInboxOverview(
         cid,
         stagedShares: _staged,
+        duplicateExtras: _duplicateExtraCount,
+        identicalAlreadySent: identical.length,
       );
       if (mounted) {
         setState(() {
           _sapPendingInbox = pending.length;
           _pendingInboxItems = pending;
+          _identicalAlreadySent = identical;
           _sapOverview = overview;
         });
+        _ensureSettleTicker();
       }
     } catch (_) {}
+  }
+
+  Future<List<AlreadySentIdenticalMatch>> _scanIdenticalAlreadySent(
+    String companyId,
+  ) async {
+    if (_staged.isEmpty) return const [];
+    DateTime? from;
+    DateTime? to;
+    for (final s in _staged) {
+      final d = PartnerService.routeDayForShare(s);
+      from = from == null || d.isBefore(from) ? d : from;
+      to = to == null || d.isAfter(to) ? d : to;
+    }
+    if (from == null || to == null) return const [];
+    final sent = await PartnerService.fetchDispatchedRouteSharesForWindow(
+      companyId: companyId,
+      fromDay: from.subtract(const Duration(days: 1)),
+      toDay: to.add(const Duration(days: 1)),
+    );
+    return StagedRouteDuplicateHelper.findAlreadySentIdentical(
+      staged: _staged,
+      alreadySent: sent,
+      routeDateOf: PartnerService.routeDayForShare,
+    );
   }
 
   Future<void> _pullFromOffice365() async {
@@ -1244,6 +1302,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         preserveSelection: true,
       ));
       unawaited(_refreshDeliveryStatus());
+      if (_isSap) unawaited(_refreshSapInboxCounts());
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
@@ -2769,6 +2828,31 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       );
       return false;
     }
+    if (_isSap && _sapOverview.expectingMoreRoutes && _sapPendingInbox == 0) {
+      if (!mounted) return false;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Flere ruter kan komme'),
+          content: const Text(
+            'Systemet venter litt til — SAP sender ofte ruter i flere omganger.\n\n'
+            'Vil du likevel fortsette med det som allerede er i køen?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Vent litt til'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Fortsett nå'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return false;
+    }
+    if (!await _resolveAlreadySentIdenticalConflicts()) return false;
     final blocked = _selected.where(_storageBlockedShareIds.contains).toList();
     if (blocked.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2788,6 +2872,90 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       });
       return false;
     }
+    return true;
+  }
+
+  /// Samme sjåfør har allerede fått 100 % lik rute — spør erstatte eller la stå.
+  Future<bool> _resolveAlreadySentIdenticalConflicts() async {
+    final cid = await SupabaseService.getCurrentCompanyId();
+    if (cid == null) return true;
+    var matches = _identicalAlreadySent;
+    if (matches.isEmpty) {
+      matches = await _scanIdenticalAlreadySent(cid);
+    }
+    // Når noen er valgt: kun de. Ellers alle matcher i staged.
+    final toAsk = _selected.isEmpty
+        ? matches
+        : matches.where((m) => _selected.contains(m.staged.id)).toList();
+    if (toAsk.isEmpty) {
+      if (mounted) setState(() => _identicalAlreadySent = matches);
+      return true;
+    }
+
+    for (final match in List<AlreadySentIdenticalMatch>.from(toAsk)) {
+      if (!mounted) return false;
+      final row = _rowForShare(match.staged);
+      final mavi = row != null
+          ? MaviUnitCodes.compactLabel(row.vehicle.unitCode)
+          : 'MAVI';
+      final driver = (row?.vehicle.driverName ?? row?.partner.name ?? '').trim();
+      final fo = match.fo;
+      final customers = match.customers;
+      final choice = await showDialog<_IdenticalRouteChoice>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          title: const Text('100 % lik rute allerede sendt'),
+          content: Text(
+            'Samme sjåfør har allerede fått en 100 % lik rute'
+            '${driver.isNotEmpty ? ' ($driver)' : ''}'
+            '${mavi.isNotEmpty ? ' · $mavi' : ''}'
+            '${fo != null ? '\nFO $fo' : ''}'
+            '${customers != null ? ' · $customers kunder' : ''}.\n\n'
+            'Vil du erstatte den gamle med den nye, eller la den stå '
+            'og gå videre uten å endre noe?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, _IdenticalRouteChoice.cancel),
+              child: const Text('Avbryt'),
+            ),
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, _IdenticalRouteChoice.keep),
+              child: const Text('La stå — ikke endre'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, _IdenticalRouteChoice.replace),
+              child: const Text('Erstatt med ny'),
+            ),
+          ],
+        ),
+      );
+      if (choice == null || choice == _IdenticalRouteChoice.cancel) {
+        return false;
+      }
+      if (choice == _IdenticalRouteChoice.keep) {
+        // Fjern ny staged — ikke endre det sjåføren allerede har.
+        await PartnerService.deleteRouteShare(match.staged);
+        if (!mounted) return false;
+        setState(() {
+          _staged.removeWhere((s) => s.id == match.staged.id);
+          _selected.remove(match.staged.id);
+          _identicalAlreadySent
+              .removeWhere((m) => m.staged.id == match.staged.id);
+        });
+      } else if (choice == _IdenticalRouteChoice.replace) {
+        // Slett gammel utsendt, behold staged for ny utsending.
+        await PartnerService.deleteRouteShare(match.alreadySent);
+        if (!mounted) return false;
+        setState(() {
+          _identicalAlreadySent
+              .removeWhere((m) => m.staged.id == match.staged.id);
+          _selected.add(match.staged.id);
+        });
+      }
+    }
+    await _refreshSapInboxCounts();
     return true;
   }
 
@@ -3646,20 +3814,30 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   Widget _buildPendingInboxBanner(_MassUi ui) {
     if (!_isSap) return const SizedBox.shrink();
     final o = _sapOverview;
+    final ready = o.isReadyForDispatch;
+    final waitingMore = o.expectingMoreRoutes;
     final hasPending = o.pendingPdfs > 0;
-    final titleColor = hasPending ? Colors.orange.shade900 : ui.accentDark;
+    final titleColor = ready
+        ? const Color(0xFF1B5E20)
+        : (waitingMore || hasPending
+            ? Colors.orange.shade900
+            : ui.accentDark);
+    final bg = ready
+        ? const Color(0xFFE8F5E9)
+        : (waitingMore || hasPending ? Colors.orange.shade50 : ui.surfaceTint);
+    final border = ready
+        ? const Color(0xFF66BB6A)
+        : (waitingMore || hasPending
+            ? Colors.orange.shade300
+            : ui.accent.withValues(alpha: 0.3));
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Container(
         decoration: BoxDecoration(
-          color: hasPending ? Colors.orange.shade50 : ui.surfaceTint,
+          color: bg,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: hasPending
-                ? Colors.orange.shade300
-                : ui.accent.withValues(alpha: 0.3),
-          ),
+          border: Border.all(color: border),
         ),
         padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
         child: Column(
@@ -3668,24 +3846,23 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
             Row(
               children: [
                 Icon(
-                  hasPending
-                      ? Icons.mark_email_unread_outlined
-                      : Icons.inbox_outlined,
+                  ready
+                      ? Icons.verified_outlined
+                      : waitingMore || hasPending
+                          ? Icons.hourglass_top_outlined
+                          : Icons.inbox_outlined,
                   color: titleColor,
-                  size: 20,
+                  size: 22,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    hasPending
-                        ? '${o.pendingMails} mail · ${o.pendingPdfs} PDF venter'
-                        : o.stagedInQueue > 0
-                            ? '${o.stagedInQueue} i kø · ikke sendt ennå'
-                            : 'Ingen nye SAP-mail',
+                    o.readinessLabel,
                     style: TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13.5,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
                       color: titleColor,
+                      height: 1.25,
                     ),
                   ),
                 ),
@@ -3708,39 +3885,67 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               ),
               const SizedBox(height: 4),
             ],
-            if (hasPending || o.stagedInQueue > 0 || o.missingShift > 0)
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  if (o.pendingPdfs > 0)
-                    _SapStatChip(
-                      label: 'Nye PDF',
-                      value: '${o.pendingPdfs}',
-                      hint: 'Importer først',
-                      emphasize: true,
-                    ),
-                  if (o.stagedInQueue > 0)
-                    _SapStatChip(
-                      label: 'I kø',
-                      value: '${o.stagedInQueue}',
-                      hint: 'Ikke sendt',
-                    ),
-                  if (o.readyToPublish > 0)
-                    _SapStatChip(
-                      label: 'Klar',
-                      value: '${o.readyToPublish}',
-                      hint: 'Kan deles',
-                      good: true,
-                    ),
-                  if (o.missingShift > 0)
-                    _SapStatChip(
-                      label: 'Mangler skift',
-                      value: '${o.missingShift}',
-                      hint: 'Fiks før send',
-                      emphasize: true,
-                    ),
-                ],
+            if (hasPending ||
+                o.stagedInQueue > 0 ||
+                o.missingShift > 0 ||
+                o.identicalAlreadySent > 0 ||
+                o.duplicateExtras > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    if (o.pendingPdfs > 0)
+                      _SapStatChip(
+                        label: 'Nye PDF',
+                        value: '${o.pendingPdfs}',
+                        hint: 'Importer først',
+                        emphasize: true,
+                      ),
+                    if (o.stagedInQueue > 0)
+                      _SapStatChip(
+                        label: 'I kø',
+                        value: '${o.stagedInQueue}',
+                        hint: 'Ikke sendt',
+                      ),
+                    if (ready)
+                      _SapStatChip(
+                        label: 'Status',
+                        value: 'Klar',
+                        hint: 'For utsending',
+                        good: true,
+                      )
+                    else if (o.readyToPublish > 0)
+                      _SapStatChip(
+                        label: 'Med skift',
+                        value: '${o.readyToPublish}',
+                        hint: waitingMore ? 'Venter mer' : 'Se over',
+                        good: !waitingMore,
+                      ),
+                    if (o.missingShift > 0)
+                      _SapStatChip(
+                        label: 'Mangler skift',
+                        value: '${o.missingShift}',
+                        hint: 'Fiks før send',
+                        emphasize: true,
+                      ),
+                    if (o.identicalAlreadySent > 0)
+                      _SapStatChip(
+                        label: 'Allerede sendt',
+                        value: '${o.identicalAlreadySent}',
+                        hint: 'Spør ved send',
+                        emphasize: true,
+                      ),
+                    if (o.duplicateExtras > 0)
+                      _SapStatChip(
+                        label: 'Duplikat',
+                        value: '${o.duplicateExtras}',
+                        hint: 'Behold én',
+                        emphasize: true,
+                      ),
+                  ],
+                ),
               ),
             if (_pendingInboxItems.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -3754,7 +3959,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
               ),
               if (_pendingInboxItems.length > 4)
                 Text(
-                  '… +${_pendingInboxItems.length - 4} til',
+                  '… +${_pendingInboxItems.length > 4 ? _pendingInboxItems.length - 4 : 0} til',
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
                 ),
             ],

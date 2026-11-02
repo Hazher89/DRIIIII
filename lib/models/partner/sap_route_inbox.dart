@@ -60,6 +60,9 @@ class SapInboxOverview {
     required this.readyToPublish,
     required this.missingShift,
     required this.manualPending,
+    this.latestReceivedAt,
+    this.duplicateExtras = 0,
+    this.identicalAlreadySent = 0,
   });
 
   final int pendingMails;
@@ -68,6 +71,12 @@ class SapInboxOverview {
   final int readyToPublish;
   final int missingShift;
   final int manualPending;
+  final DateTime? latestReceivedAt;
+  final int duplicateExtras;
+  final int identicalAlreadySent;
+
+  /// Hvor lenge vi venter etter siste PDF før vi antar at batchen er ferdig.
+  static const settleQuiet = Duration(seconds: 90);
 
   static const empty = SapInboxOverview(
     pendingMails: 0,
@@ -80,6 +89,49 @@ class SapInboxOverview {
 
   bool get hasAnythingWaiting =>
       pendingPdfs > 0 || stagedInQueue > 0 || manualPending > 0;
+
+  /// Flere PDF kan fortsatt komme inn (eller venter i innboks).
+  bool get expectingMoreRoutes =>
+      pendingPdfs > 0 ||
+      (latestReceivedAt != null &&
+          DateTime.now().difference(latestReceivedAt!) < settleQuiet);
+
+  /// Alle mottatte er i kø med skift — trygt å se over og sende.
+  bool get isReadyForDispatch =>
+      pendingPdfs == 0 &&
+      manualPending == 0 &&
+      missingShift == 0 &&
+      duplicateExtras == 0 &&
+      identicalAlreadySent == 0 &&
+      stagedInQueue > 0 &&
+      readyToPublish > 0 &&
+      !expectingMoreRoutes;
+
+  String get readinessLabel {
+    if (pendingPdfs > 0) {
+      return 'Mottar fortsatt ruter — $pendingPdfs PDF venter på import';
+    }
+    if (expectingMoreRoutes) {
+      return 'Venter litt til — flere ruter kan komme snart';
+    }
+    if (manualPending > 0) {
+      return '$manualPending rute(r) trenger manuell tildeling';
+    }
+    if (missingShift > 0) {
+      return '$missingShift rute(r) mangler skift — fiks før utsending';
+    }
+    if (duplicateExtras > 0) {
+      return '$duplicateExtras duplikat i køen — behold én av hver';
+    }
+    if (identicalAlreadySent > 0) {
+      return '$identicalAlreadySent rute(r) er 100 % like noe sjåføren allerede har fått';
+    }
+    if (isReadyForDispatch) {
+      return 'Klar for utsending — $readyToPublish rute(r) klare';
+    }
+    if (stagedInQueue == 0) return 'Ingen ruter i kø ennå';
+    return '$stagedInQueue i kø — se over før utsending';
+  }
 }
 
 class SapRouteImportLine {

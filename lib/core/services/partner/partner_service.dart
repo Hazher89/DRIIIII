@@ -3882,6 +3882,8 @@ class PartnerService {
   static Future<SapInboxOverview> fetchSapInboxOverview(
     String companyId, {
     List<PartnerRouteShare>? stagedShares,
+    int duplicateExtras = 0,
+    int identicalAlreadySent = 0,
   }) async {
     if (!_ok) return SapInboxOverview.empty;
     try {
@@ -3898,9 +3900,19 @@ class PartnerService {
         return id.isEmpty;
       }).length;
       final mailIds = <String>{};
+      DateTime? latestReceived;
       for (final p in pending) {
         final key = (p.resendEmailId ?? '').trim();
         mailIds.add(key.isEmpty ? p.id : key);
+        if (latestReceived == null || p.receivedAt.isAfter(latestReceived)) {
+          latestReceived = p.receivedAt;
+        }
+      }
+      // Siste aktivitet i kø: nyeste staged-opprettelse eller inbox.
+      for (final s in useQueue) {
+        if (latestReceived == null || s.createdAt.isAfter(latestReceived)) {
+          latestReceived = s.createdAt;
+        }
       }
       return SapInboxOverview(
         pendingMails: mailIds.length,
@@ -3909,10 +3921,29 @@ class PartnerService {
         readyToPublish: (useQueue.length - missingShift).clamp(0, 9999),
         missingShift: missingShift,
         manualPending: manual.length,
+        latestReceivedAt: latestReceived,
+        duplicateExtras: duplicateExtras,
+        identicalAlreadySent: identicalAlreadySent,
       );
     } catch (_) {
       return SapInboxOverview.empty;
     }
+  }
+
+  /// Sendte/registrerte ruter i datovindu (for 100 %-lik-sjekk mot staged).
+  static Future<List<PartnerRouteShare>> fetchDispatchedRouteSharesForWindow({
+    required String companyId,
+    required DateTime fromDay,
+    required DateTime toDay,
+  }) async {
+    final all = await fetchRouteSharesForCalendarWindow(
+      companyId: companyId,
+      fromDay: fromDay,
+      toDay: toDay,
+      includePdfSearchText: true,
+      limitPerQuery: 4000,
+    );
+    return all.where((s) => !s.isStaged).toList();
   }
 
   /// Importerte SAP-PDF uten gyldig rute-share (slettet/mistet) → pending igjen.

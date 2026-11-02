@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import '../../../core/constants/route_dispatch_status.dart';
 import '../../../models/partner/partner_links.dart';
+import 'route_pdf_text_service.dart';
 
 class StagedRouteDuplicateGroup {
   final String fingerprint;
@@ -18,6 +20,21 @@ class StagedRouteDuplicateGroup {
   PartnerRouteShare get keeper => StagedRouteDuplicateHelper.pickKeeper(shares);
 
   String get countLabel => StagedRouteDuplicateHelper.countLabel(shares.length);
+}
+
+/// Staged-rute som er 100 % lik en rute sjåføren allerede har fått.
+class AlreadySentIdenticalMatch {
+  const AlreadySentIdenticalMatch({
+    required this.staged,
+    required this.alreadySent,
+    this.fo,
+    this.customers,
+  });
+
+  final PartnerRouteShare staged;
+  final PartnerRouteShare alreadySent;
+  final String? fo;
+  final int? customers;
 }
 
 /// Flere staged-ruter for samme MAVI på samme dag (ulike PDF-er).
@@ -85,6 +102,103 @@ abstract final class StagedRouteDuplicateHelper {
     ).firstMatch(raw)?.group(1)?.trim();
     if (sortedFreight.isEmpty && weight == null && resource == null) return '';
     return 'fu:${sortedFreight.join(",")}|w:${weight ?? ""}|r:${resource ?? ""}';
+  }
+
+  static String? foOf(PartnerRouteShare share) {
+    final fromNotes = RouteDispatchStatus.parseUsefulNotes(share.notes).fo;
+    if (fromNotes != null && fromNotes.isNotEmpty) return fromNotes;
+    final text = share.pdfSearchText ?? '';
+    if (text.isEmpty) return null;
+    return RoutePdfTextService.parseFreightOrder(text) ??
+        RoutePdfTextService.parseTrackingIds(text).fo;
+  }
+
+  static int? customersOf(PartnerRouteShare share) {
+    if (share.customerCount != null && share.customerCount! > 0) {
+      return share.customerCount;
+    }
+    final fromNotes =
+        RouteDispatchStatus.parseUsefulNotes(share.notes).customersFromNotes;
+    if (fromNotes != null && fromNotes > 0) return fromNotes;
+    final text = share.pdfSearchText ?? '';
+    if (text.isEmpty) return null;
+    final n = RoutePdfTextService.parseCustomers(text).length;
+    return n > 0 ? n : null;
+  }
+
+  /// Samme FO + samme kundetall + samme innhold (når tilgjengelig).
+  static bool isHundredPercentAlike(
+    PartnerRouteShare a,
+    PartnerRouteShare b,
+  ) {
+    final foA = foOf(a);
+    final foB = foOf(b);
+    final cA = customersOf(a);
+    final cB = customersOf(b);
+    final fpA = fingerprint(a);
+    final fpB = fingerprint(b);
+
+    if (fpA.isNotEmpty && fpB.isNotEmpty && fpA == fpB) {
+      if (foA != null && foB != null && foA != foB) return false;
+      if (cA != null && cB != null && cA != cB) return false;
+      return true;
+    }
+
+    if (foA != null &&
+        foB != null &&
+        foA == foB &&
+        cA != null &&
+        cB != null &&
+        cA == cB &&
+        cA > 0) {
+      return true;
+    }
+    return false;
+  }
+
+  static DateTime _dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  /// Staged vs allerede utsendt til samme bil/dag — 100 % like.
+  static List<AlreadySentIdenticalMatch> findAlreadySentIdentical({
+    required List<PartnerRouteShare> staged,
+    required List<PartnerRouteShare> alreadySent,
+    required DateTime Function(PartnerRouteShare share) routeDateOf,
+  }) {
+    final sentByVehicleDay = <String, List<PartnerRouteShare>>{};
+    for (final s in alreadySent) {
+      if (s.isStaged) continue;
+      final vid = s.partnerVehicleId;
+      if (vid == null || vid.isEmpty) continue;
+      final day = _dayOnly(routeDateOf(s));
+      final key = '$vid|${day.toIso8601String()}';
+      sentByVehicleDay.putIfAbsent(key, () => []).add(s);
+    }
+
+    final out = <AlreadySentIdenticalMatch>[];
+    final usedSent = <String>{};
+    for (final stagedShare in staged) {
+      if (!stagedShare.isStaged) continue;
+      final vid = stagedShare.partnerVehicleId;
+      if (vid == null || vid.isEmpty) continue;
+      final day = _dayOnly(routeDateOf(stagedShare));
+      final candidates = sentByVehicleDay['$vid|${day.toIso8601String()}'] ??
+          const <PartnerRouteShare>[];
+      for (final sent in candidates) {
+        if (usedSent.contains(sent.id)) continue;
+        if (!isHundredPercentAlike(stagedShare, sent)) continue;
+        usedSent.add(sent.id);
+        out.add(
+          AlreadySentIdenticalMatch(
+            staged: stagedShare,
+            alreadySent: sent,
+            fo: foOf(stagedShare) ?? foOf(sent),
+            customers: customersOf(stagedShare) ?? customersOf(sent),
+          ),
+        );
+        break;
+      }
+    }
+    return out;
   }
 
   /// Finn eksisterende staged-rute med samme PDF-innhold (for import-dedup).
