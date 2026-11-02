@@ -144,7 +144,7 @@ class LeaveSaldoPanel extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     'Du kan ikke søke ny egenmelding i ${periodUsage!.window.formatRange()}. '
-                    'Bruk sykmelding eller kontakt leder for manuell registrering.',
+                    'Kontakt leder — sykmelding registreres kun manuelt av leder/superadmin.',
                     style: DriftProTheme.bodySm,
                   ),
                   const SizedBox(height: 10),

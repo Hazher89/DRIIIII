@@ -112,18 +112,7 @@ Future<void> showLeaveEgenmeldingBlockedSheet(
               const SizedBox(height: 20),
               Text('Hva kan du gjøre nå?', style: DriftProTheme.labelLg),
               const SizedBox(height: 10),
-              if (onChooseAlternative != null) ...[
-                FilledButton.icon(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    onChooseAlternative(AbsenceType.sykmelding);
-                  },
-                  icon: const Icon(Icons.medical_services_outlined),
-                  label: const Text('Registrer sykmelding'),
-                ),
-                const SizedBox(height: 8),
-              ],
-              OutlinedButton.icon(
+              FilledButton.icon(
                 onPressed: () => Navigator.pop(ctx),
                 icon: const Icon(Icons.support_agent_outlined),
                 label: const Text('Kontakt nærmeste leder'),
@@ -146,8 +135,8 @@ Future<void> showLeaveEgenmeldingBlockedSheet(
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'Leder eller HR kan registrere sykmelding eller annet fravær '
-                        'manuelt på dine vegne når du har legeerklæring. '
+                        'Sykmelding kan bare registreres manuelt av avdelingsleder '
+                        'eller superadmin når du har legeerklæring. '
                         'Kilde: Lovdata / folketrygdloven kap. 8.',
                         style: DriftProTheme.caption,
                       ),

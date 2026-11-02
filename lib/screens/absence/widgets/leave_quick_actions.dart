@@ -12,6 +12,8 @@ Future<AbsenceType?> showLeaveTypePickerSheet(
   String? egenmeldingHint,
   String? syktBarnHint,
   String? employeeName,
+  /// Kun leder/superadmin som registrerer for ansatte skal se sykmelding.
+  bool allowSykmelding = false,
 }) {
   return showModalBottomSheet<AbsenceType>(
     context: context,
@@ -69,6 +71,7 @@ Future<AbsenceType?> showLeaveTypePickerSheet(
                       dense: false,
                       fullWidth: true,
                       egenmeldingBlocked: egenmeldingBlocked,
+                      allowSykmelding: allowSykmelding,
                       ferieHint: ferieHint,
                       egenmeldingHint: egenmeldingHint,
                       syktBarnHint: syktBarnHint,
@@ -98,6 +101,8 @@ class LeaveQuickActions extends StatelessWidget {
   final String? syktBarnHint;
   final bool fullWidth;
   final bool dense;
+  /// Sykmelding er kun for leder/superadmin (manuell registrering for ansatte).
+  final bool allowSykmelding;
 
   const LeaveQuickActions({
     super.key,
@@ -109,6 +114,7 @@ class LeaveQuickActions extends StatelessWidget {
     this.syktBarnHint,
     this.fullWidth = false,
     this.dense = true,
+    this.allowSykmelding = false,
   });
 
   @override
@@ -150,16 +156,17 @@ class LeaveQuickActions extends StatelessWidget {
         dense: dense,
         onTap: () => onTypeSelected(AbsenceType.syktBarn),
       ),
-      _ActionCard(
-        label: 'Sykmelding',
-        description: 'Sykdom med sykmelding fra lege',
-        icon: Icons.medical_services_outlined,
-        color: DriftProTheme.absenceSickNote,
-        isDark: isDark,
-        fullWidth: fullWidth,
-        dense: dense,
-        onTap: () => onTypeSelected(AbsenceType.sykmelding),
-      ),
+      if (allowSykmelding)
+        _ActionCard(
+          label: 'Sykmelding',
+          description: 'Sykdom med sykmelding fra lege (manuell)',
+          icon: Icons.medical_services_outlined,
+          color: DriftProTheme.absenceSickNote,
+          isDark: isDark,
+          fullWidth: fullWidth,
+          dense: dense,
+          onTap: () => onTypeSelected(AbsenceType.sykmelding),
+        ),
       _ActionCard(
         label: 'Permisjon',
         description: 'Permisjon / fri utenom ferie',

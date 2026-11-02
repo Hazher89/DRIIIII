@@ -91,6 +91,7 @@ class _LeaveEmployeeDetailScreenState extends State<LeaveEmployeeDetailScreen> {
     final type = await showLeaveTypePickerSheet(
       context,
       employeeName: widget.employee.fullName,
+      allowSykmelding: true,
     );
     if (type == null || !mounted) return;
     final saved = await Navigator.of(context).push<bool>(

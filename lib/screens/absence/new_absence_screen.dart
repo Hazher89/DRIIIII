@@ -359,6 +359,11 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
           'Avdelingsleder kan ikke registrere eller endre egen ferie/fravær. Kontakt superadmin.');
       return;
     }
+    if (widget.type == AbsenceType.sykmelding && _isSelfRequest) {
+      setState(() => _error =
+          'Du kan ikke søke sykmelding selv. Kontakt avdelingsleder eller superadmin for manuell registrering.');
+      return;
+    }
 
     final validationError = AbsenceService.validateRequest(
       type: widget.type,
@@ -676,27 +681,9 @@ class _NewAbsenceScreenState extends State<NewAbsenceScreen> {
             ),
           ),
           const SizedBox(height: 20),
-          Text('Alternativer', style: DriftProTheme.headingSm),
-          const SizedBox(height: 10),
-          FilledButton.icon(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => NewAbsenceScreen(
-                    type: AbsenceType.sykmelding,
-                    allowPickEmployee: widget.allowPickEmployee,
-                    lockedEmployee: widget.lockedEmployee,
-                  ),
-                ),
-              );
-            },
-            icon: const Icon(Icons.medical_services_outlined),
-            label: const Text('Registrer sykmelding'),
-          ),
-          const SizedBox(height: 16),
           Text(
-            'Leder eller HR kan hjelpe deg når du har sykmelding fra lege.',
+            'Sykmelding registreres kun manuelt av avdelingsleder eller superadmin '
+            'når du har legeerklæring. Kontakt nærmeste leder.',
             style: DriftProTheme.caption,
           ),
         ],
