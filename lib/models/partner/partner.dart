@@ -110,6 +110,17 @@ class Partner {
     return start.add(const Duration(days: 90));
   }
 
+  static bool _readBool(dynamic value, {required bool fallback}) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      final s = value.trim().toLowerCase();
+      if (s == 'true' || s == 't' || s == '1' || s == 'yes') return true;
+      if (s == 'false' || s == 'f' || s == '0' || s == 'no') return false;
+    }
+    return fallback;
+  }
+
   factory Partner.fromJson(Map<String, dynamic> json) {
     return Partner(
       id: json['id'] as String,
@@ -146,7 +157,7 @@ class Partner {
       nextAuditAt: json['next_audit_at'] != null
           ? DateTime.parse(json['next_audit_at'] as String)
           : null,
-      isActive: json['is_active'] as bool? ?? true,
+      isActive: _readBool(json['is_active'], fallback: true),
       routesOwnerOnly: json['routes_owner_only'] as bool? ?? true,
       ecoDrivingCompleted: json['eco_driving_completed'] as bool? ?? false,
       ecoDrivingDeadline: json['eco_driving_deadline'] != null

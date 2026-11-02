@@ -34,32 +34,44 @@ class HmsDashboardStats {
 class HmsService {
   HmsService._();
 
-  /// Badge-tall per bruker — kun moduler brukeren har tilgang til (RLS-scopet).
+  /// Badge-tall per bruker — COUNT-only (spar kvote; ikke last hele lister).
   static Future<int> loadNavBadgeTotal(UserProfile profile) async {
     final access = profile.access;
     final companyId = profile.companyId;
     if (companyId == null || companyId.isEmpty || !access.canHms) return 0;
 
     var total = 0;
+    final client = SupabaseService.client;
 
     if (access.canHmsRisk) {
-      final risks = await SupabaseService.fetchRiskAssessments(companyId: companyId);
-      total += risks.where((r) => RiskAssessmentStatuses.isOpen(r.status)).length;
+      try {
+        total += await client
+            .from('risk_assessments')
+            .count()
+            .eq('company_id', companyId)
+            .inFilter('status', const ['aktiv', 'under_behandling', 'utkast']);
+      } catch (_) {}
     }
 
     if (access.canHmsSja) {
-      final sjas = await SupabaseService.fetchSjaForms(companyId: companyId);
-      total += sjas
-          .where((s) =>
-              s.status == SjaStatus.utkast ||
-              s.status == SjaStatus.venterSignatur ||
-              s.status == SjaStatus.iGang)
-          .length;
+      try {
+        total += await client
+            .from('sja_forms')
+            .count()
+            .eq('company_id', companyId)
+            .inFilter('status', const ['utkast', 'venter_signatur', 'i_gang']);
+      } catch (_) {}
     }
 
     if (access.canHmsSafetyRound) {
-      final rounds = await SupabaseService.fetchSafetyRounds(companyId: companyId);
-      total += rounds.where((r) => r.overallStatus == 'planlagt').length;
+      try {
+        total += await client
+            .from('safety_rounds')
+            .count()
+            .eq('company_id', companyId)
+            .eq('overall_status', 'planlagt')
+            .gte('scheduled_date', DateTime.now().toIso8601String().split('T').first);
+      } catch (_) {}
     }
 
     return total;

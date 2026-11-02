@@ -312,9 +312,32 @@ class SupabaseService {
     }
 
     if (profile != null) {
-      if (profile.companyId != null) return profile;
-      if (bootstrap != null) {
-        return profile.copyWith(companyId: bootstrap);
+      if (profile.companyId != null) {
+        _rememberLinked(profile);
+        return profile;
+      }
+      // Bootstrap uten lagret company_id: skriv til DB så RLS (partners m.m.) fungerer.
+      if (bootstrap != null && profile.partnerId == null) {
+        try {
+          await client
+              .from('profiles')
+              .update({'company_id': bootstrap})
+              .eq('id', profile.id)
+              .timeout(_writeTimeout);
+          final refreshed = await fetchCurrentUserProfile();
+          if (refreshed?.companyId != null) {
+            final out = !isPortal
+                ? await _ensureSuperadminIfOwner(refreshed!)
+                : refreshed!;
+            _rememberLinked(out);
+            return out;
+          }
+        } catch (e) {
+          debugPrint('ensureSessionLinkedToCompany persist bootstrap: $e');
+        }
+        final patched = profile.copyWith(companyId: bootstrap);
+        _rememberLinked(patched);
+        return patched;
       }
       return profile;
     }

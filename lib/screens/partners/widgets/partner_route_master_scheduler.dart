@@ -104,8 +104,8 @@ class _PartnerRouteMasterSchedulerState extends State<PartnerRouteMasterSchedule
     WidgetsBinding.instance.addObserver(this);
     _searchCtrl = TextEditingController()..addListener(() => setState(() {}));
     _reload();
-    // 60s poll — Realtime dekker det meste; unngå unødvendig kvoteforbruk.
-    _sapPollTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+    // 3 min backup-poll — Realtime dekker det meste (spar REST-kvote).
+    _sapPollTimer = Timer.periodic(const Duration(minutes: 3), (_) {
       _refreshSapPendingCount();
     });
     _bindSapLive();

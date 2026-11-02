@@ -85,7 +85,8 @@ abstract final class NavBadgeService {
     _profile = profile;
     _poll?.cancel();
     unawaited(refresh());
-    _poll = Timer.periodic(const Duration(seconds: 45), (_) => unawaited(refresh()));
+    // 2 min — Realtime/chat dekker det meste; full badge-poll er dyr på free-kvote.
+    _poll = Timer.periodic(const Duration(seconds: 120), (_) => unawaited(refresh()));
   }
 
   static void stop() {
@@ -136,35 +137,44 @@ abstract final class NavBadgeService {
       () async {
         if (!access.can(AccessKeys.avvik)) return;
         try {
-          final scoped = await SupabaseService.fetchScopedTickets(profile: profile);
-          avvik = scoped.where((t) => t.isOpen).length;
+          // COUNT only — ikke last alle avvik-rader hvert poll.
+          avvik = await SupabaseService.client
+              .from('tickets')
+              .count()
+              .eq('company_id', companyId)
+              .inFilter('status', const ['aapen', 'under_behandling'])
+              .isFilter('deleted_at', null);
         } catch (_) {}
       }(),
       () async {
         if (!access.can(AccessKeys.fravaer)) return;
         try {
-          final rows = await SupabaseService.client
-              .from('absences')
-              .select('id, user_id, status')
-              .eq('company_id', companyId)
-              .eq('status', 'ventende');
-          final list = (rows as List).whereType<Map>();
-          myPendingAbsence =
-              list.where((r) => r['user_id'] == profile.id).length;
           if (access.canApproveLeave) {
-            pendingAbsence = list
-                .where((r) => r['user_id'] != profile.id)
-                .length;
+            pendingAbsence = await SupabaseService.client
+                .from('absences')
+                .count()
+                .eq('company_id', companyId)
+                .eq('status', 'ventende')
+                .neq('user_id', profile.id);
+          } else {
+            myPendingAbsence = await SupabaseService.client
+                .from('absences')
+                .count()
+                .eq('company_id', companyId)
+                .eq('status', 'ventende')
+                .eq('user_id', profile.id);
           }
         } catch (_) {}
       }(),
       () async {
         if (!profile.isSuperAdmin) return;
         try {
-          final profiles = await SupabaseService.fetchProfiles(companyId: companyId);
-          pendingUsers = profiles
-              .where((u) => !u.isApproved && !u.isPartnerPortalUser)
-              .length;
+          pendingUsers = await SupabaseService.client
+              .from('profiles')
+              .count()
+              .eq('company_id', companyId)
+              .eq('is_approved', false)
+              .isFilter('partner_id', null);
         } catch (_) {}
       }(),
       () async {
@@ -216,7 +226,7 @@ abstract final class PartnerNavBadgeService {
     _poll?.cancel();
     _ctx = _PartnerCtx(partnerId: partnerId, vehicleId: partnerVehicleId, chat: chatEnabled);
     unawaited(refresh());
-    _poll = Timer.periodic(const Duration(seconds: 50), (_) => unawaited(refresh()));
+    _poll = Timer.periodic(const Duration(seconds: 120), (_) => unawaited(refresh()));
   }
 
   static void stop() {
@@ -258,30 +268,23 @@ abstract final class PartnerNavBadgeService {
     final futures = <Future<void>>[
       () async {
         try {
-          final list = await SupabaseService.client
+          routes = await SupabaseService.client
               .from('partner_route_shares')
-              .select('id, ack_status, notify_sent_at')
-              .eq('partner_id', ctx.partnerId);
-          for (final row in (list as List).whereType<Map>()) {
-            final sent = row['notify_sent_at'];
-            final ack = row['ack_status'] as String?;
-            if (sent != null && ack == 'pending') routes++;
-          }
+              .count()
+              .eq('partner_id', ctx.partnerId)
+              .eq('ack_status', 'pending')
+              .not('notify_sent_at', 'is', null);
         } catch (_) {}
       }(),
       () async {
         try {
-          final docs = await SupabaseService.client
+          final weekAgo =
+              DateTime.now().toUtc().subtract(const Duration(days: 7));
+          documents = await SupabaseService.client
               .from('partner_documents')
-              .select('id, created_at')
+              .count()
               .eq('partner_id', ctx.partnerId)
-              .order('created_at', ascending: false)
-              .limit(20);
-          final weekAgo = DateTime.now().subtract(const Duration(days: 7));
-          for (final row in (docs as List).whereType<Map>()) {
-            final created = DateTime.tryParse('${row['created_at']}');
-            if (created != null && created.isAfter(weekAgo)) documents++;
-          }
+              .gte('created_at', weekAgo.toIso8601String());
         } catch (_) {}
       }(),
     ];

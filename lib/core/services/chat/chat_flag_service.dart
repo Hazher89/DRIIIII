@@ -82,7 +82,7 @@ abstract final class ChatFlagService {
             .subscribe();
 
         // Fallback hvis Realtime-abonnement mangler / er tregt.
-        poll = Timer.periodic(const Duration(seconds: 20), (_) async {
+        poll = Timer.periodic(const Duration(seconds: 60), (_) async {
           if (closed) return;
           final next = await fetchForCompany(companyId);
           if (!closed) controller.add(next);

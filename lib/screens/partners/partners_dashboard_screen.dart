@@ -217,8 +217,17 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       _error = null;
     });
     try {
-      final cid = await SupabaseService.getCurrentCompanyId();
-      final profile = await SupabaseService.fetchCurrentUserProfile();
+      // Bruk cache først — unngå RPC-storm på hver faneåpning.
+      var profile = AccessSessionCache.profile ??
+          await SupabaseService.fetchCurrentUserProfile();
+      var cid = profile?.companyId ??
+          await SupabaseService.getCurrentCompanyId();
+      if ((cid == null || cid.isEmpty) ||
+          (profile?.companyId == null || profile!.companyId!.isEmpty)) {
+        final linked = await SupabaseService.ensureSessionLinkedToCompany();
+        profile = linked ?? profile;
+        cid = linked?.companyId ?? cid;
+      }
       if (!mounted) return;
 
       setState(() {
@@ -235,7 +244,8 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
         return;
       }
 
-      if (!PartnerAccess.canOpenPartnersModule(profile?.access)) {
+      if (!_canCompaniesList(profile?.access) &&
+          !PartnerAccess.canOpenPartnersModule(profile?.access)) {
         setState(() => _loading = false);
         return;
       }
@@ -243,7 +253,20 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       // E-post-sync kun én gang per app-økt — sparer Supabase-kvote.
       unawaited(_syncEmailsOnce(cid));
 
-      final partners = await PartnerService.fetchPartners(companyId: cid);
+      var partners = await PartnerService.fetchPartners(companyId: cid);
+      // Tom liste én gang: relink (uten clear cache) + refetch — RLS kan trenge DB-company_id.
+      if (partners.isEmpty) {
+        final again = await SupabaseService.ensureSessionLinkedToCompany();
+        final retryCid = again?.companyId ?? cid;
+        if (mounted && (again != null || retryCid != cid)) {
+          setState(() {
+            _companyId = retryCid;
+            if (again != null) _profile = again;
+          });
+        }
+        partners = await PartnerService.fetchPartners(companyId: retryCid);
+        cid = retryCid;
+      }
       // Board skal vise alle MAVI (inkl. nettopp lagrede). Én partners-liste gjenbrukes.
       final fleet = await PartnerService.fetchCompanyFleet(
         cid,
@@ -261,6 +284,9 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
           portalAccounts: knownAccounts,
         );
         _loading = false;
+        if (partners.isEmpty) {
+          _error = null;
+        }
       });
       final accounts = await PartnerService.fetchCompanyPortalAccounts(cid);
       if (!mounted) return;
@@ -365,7 +391,10 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    if (_profile != null && !PartnerAccess.canOpenPartnersModule(_profile!.access)) {
+    if (_profile != null &&
+        !_canCompaniesList(_profile!.access) &&
+        !PartnerAccess.canOpenPartnersModule(_profile!.access) &&
+        _profile!.access.canPartnerRoutePlanning != true) {
       return Scaffold(
         appBar: AppBar(title: const Text('Samarbeidspartnere')),
         body: const Center(

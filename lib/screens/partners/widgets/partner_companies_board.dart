@@ -368,14 +368,30 @@ class _PartnerCompaniesBoardState extends State<PartnerCompaniesBoard>
             child: PartnerEmptyState(
               icon: Icons.domain_outlined,
               title: 'Ingen aktive bedrifter',
-              subtitle: 'Opprett første bedrift med Brreg og MAVI.',
-              action: _canRegister
-                  ? FilledButton.icon(
+              subtitle: widget.partners.isEmpty
+                  ? 'Fant ingen bedrifter for din bruker. '
+                      'Trekk ned for å oppdatere, eller logg ut og inn igjen. '
+                      'Hvis du nettopp hadde partnere i ruteplanen, er de '
+                      'sannsynligvis fortsatt i databasen.'
+                  : 'Opprett første bedrift med Brreg og MAVI.',
+              action: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => widget.onRefresh(),
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Oppdater'),
+                  ),
+                  if (_canRegister) ...[
+                    const SizedBox(height: 10),
+                    FilledButton.icon(
                       onPressed: _openRegister,
                       icon: const Icon(Icons.add),
                       label: const Text('Kom i gang'),
-                    )
-                  : null,
+                    ),
+                  ],
+                ],
+              ),
             ),
           )
         else if (_showingDeactivated && inactiveCount == 0)

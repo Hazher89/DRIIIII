@@ -324,8 +324,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (!_sapOverview.expectingMoreRoutes && _sapOverview.isReadyForDispatch) {
       return;
     }
-    // Lett telling — ikke tung PDF/identisk-scan (det gjorde appen treig).
-    _settleTicker = Timer.periodic(const Duration(seconds: 30), (_) async {
+    // Lett telling — ikke tung PDF/identisk-scan; 60s holder med Realtime.
+    _settleTicker = Timer.periodic(const Duration(seconds: 60), (_) async {
       if (!mounted || !_isSap || _sapSyncing || !_sapAutoSyncEnabled) return;
       await _refreshSapInboxCounts(heavyIdenticalScan: false);
     });

@@ -83,7 +83,10 @@ class PartnerAccess {
 
   static bool canOpenPartnersModule(UserAccess? access) {
     if (access == null) return false;
-    // Selve partner-siden styrer. En snarvei i Mer kan ikke holde modulen oppe.
-    return access.canPartnersTab;
+    // Må matche fanelogikk i partners_dashboard (admin/meny/detalj også).
+    return access.canPartnersTab ||
+        access.canPartnersMenu ||
+        access.canPartnersAdmin ||
+        canOpenPartnerDetail(access);
   }
 }
