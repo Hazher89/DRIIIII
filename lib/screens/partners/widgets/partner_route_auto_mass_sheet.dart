@@ -236,6 +236,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   String? _uploadStatusNote;
   List<AlreadySentIdenticalMatch> _identicalAlreadySent = [];
   Timer? _settleTicker;
+  Timer? _liveDebounce;
+  DateTime? _identicalScanAt;
+  List<AlreadySentIdenticalMatch> _identicalScanCache = const [];
+  bool _identicalScanInFlight = false;
+  bool _liveImportQueued = false;
 
   bool get _isSap => widget.source == PartnerRouteMassSource.sap;
 
@@ -299,6 +304,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   void dispose() {
     _importAborted = true;
     _settleTicker?.cancel();
+    _liveDebounce?.cancel();
     SapRouteInboxLive.unsubscribe(_sapLiveChannel);
     for (final c in _noteByShare.values) {
       c.dispose();
@@ -315,9 +321,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (!_sapOverview.expectingMoreRoutes && _sapOverview.isReadyForDispatch) {
       return;
     }
-    _settleTicker = Timer.periodic(const Duration(seconds: 15), (_) async {
-      if (!mounted || !_isSap) return;
-      await _refreshSapInboxCounts();
+    // Lett telling — ikke tung PDF/identisk-scan (det gjorde appen treig).
+    _settleTicker = Timer.periodic(const Duration(seconds: 30), (_) async {
+      if (!mounted || !_isSap || _sapSyncing) return;
+      await _refreshSapInboxCounts(heavyIdenticalScan: false);
     });
   }
 
@@ -339,8 +346,30 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     });
   }
 
-  Future<void> _auditStorageForStaged() async {
-    for (final s in List<PartnerRouteShare>.from(_staged)) {
+  Future<void> _auditStorageForStaged({bool force = false}) async {
+    // Under SAP-import: hopp over — full PDF-verify per rute gjør UI treigt.
+    if (!force && (_sapSyncing || _busyUpload)) return;
+    final targets = List<PartnerRouteShare>.from(_staged);
+    // Heuristikk først (ingen nedlasting).
+    for (final s in targets) {
+      final path = s.pdfStoragePath.trim();
+      if (path.isEmpty) {
+        _storageBlockedShareIds.add(s.id);
+      } else {
+        _storageBlockedShareIds.remove(s.id);
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _selected.removeWhere(_storageBlockedShareIds.contains);
+    });
+    // Tung verify kun for et lite utvalg uten path-signal, i bakgrunn.
+    final suspicious = targets
+        .where((s) => s.pdfStoragePath.trim().isEmpty)
+        .take(8)
+        .toList();
+    for (final s in suspicious) {
+      if (!mounted || _importAborted) return;
       await _markStorageStatusForShare(s);
     }
     if (!mounted) return;
@@ -409,27 +438,40 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       companyId: cid,
       onChanged: () {
         if (!mounted) return;
-        // Nye mail kan fortsatt komme — oppdater status og trekk inn.
-        unawaited(_onSapInboxLiveChanged());
+        // Debounce: mange Graph-inserts ellers starter sync-storm.
+        _liveDebounce?.cancel();
+        _liveDebounce = Timer(const Duration(seconds: 5), () {
+          if (!mounted) return;
+          unawaited(_onSapInboxLiveChanged());
+        });
       },
     );
   }
 
   Future<void> _onSapInboxLiveChanged() async {
-    await _refreshSapInboxCounts();
-    if (!mounted || _sapSyncing || _importAborted) return;
+    await _refreshSapInboxCounts(heavyIdenticalScan: false);
+    if (!mounted || _importAborted) return;
+    if (_sapSyncing) {
+      _liveImportQueued = true;
+      return;
+    }
     if (_sapPendingInbox > 0) {
       unawaited(_syncSapInbox());
     }
   }
 
-  Future<void> _refreshSapInboxCounts() async {
+  Future<void> _refreshSapInboxCounts({
+    bool heavyIdenticalScan = false,
+  }) async {
     if (!_isSap) return;
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null || !mounted) return;
       final pending = await PartnerService.fetchSapRouteInboxPending(cid);
-      final identical = await _scanIdenticalAlreadySent(cid);
+      var identical = _identicalAlreadySent;
+      if (heavyIdenticalScan) {
+        identical = await _scanIdenticalAlreadySent(cid);
+      }
       final overview = await PartnerService.fetchSapInboxOverview(
         cid,
         stagedShares: _staged,
@@ -440,7 +482,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         setState(() {
           _sapPendingInbox = pending.length;
           _pendingInboxItems = pending;
-          _identicalAlreadySent = identical;
+          if (heavyIdenticalScan) _identicalAlreadySent = identical;
           _sapOverview = overview;
         });
         _ensureSettleTicker();
@@ -452,24 +494,41 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     String companyId,
   ) async {
     if (_staged.isEmpty) return const [];
-    DateTime? from;
-    DateTime? to;
-    for (final s in _staged) {
-      final d = PartnerService.routeDayForShare(s);
-      from = from == null || d.isBefore(from) ? d : from;
-      to = to == null || d.isAfter(to) ? d : to;
+    final cachedAt = _identicalScanAt;
+    if (cachedAt != null &&
+        DateTime.now().difference(cachedAt) < const Duration(seconds: 90) &&
+        _identicalScanCache.isNotEmpty) {
+      return _identicalScanCache;
     }
-    if (from == null || to == null) return const [];
-    final sent = await PartnerService.fetchDispatchedRouteSharesForWindow(
-      companyId: companyId,
-      fromDay: from.subtract(const Duration(days: 1)),
-      toDay: to.add(const Duration(days: 1)),
-    );
-    return StagedRouteDuplicateHelper.findAlreadySentIdentical(
-      staged: _staged,
-      alreadySent: sent,
-      routeDateOf: PartnerService.routeDayForShare,
-    );
+    if (_identicalScanInFlight) return _identicalAlreadySent;
+    _identicalScanInFlight = true;
+    try {
+      DateTime? from;
+      DateTime? to;
+      for (final s in _staged) {
+        final d = PartnerService.routeDayForShare(s);
+        from = from == null || d.isBefore(from) ? d : from;
+        to = to == null || d.isAfter(to) ? d : to;
+      }
+      if (from == null || to == null) return const [];
+      // Lett payload — FO/kunder fra notes/customer_count (ikke hele pdf_search_text).
+      final sent = await PartnerService.fetchDispatchedRouteSharesForWindow(
+        companyId: companyId,
+        fromDay: from.subtract(const Duration(days: 1)),
+        toDay: to.add(const Duration(days: 1)),
+        includePdfSearchText: false,
+      );
+      final matches = StagedRouteDuplicateHelper.findAlreadySentIdentical(
+        staged: _staged,
+        alreadySent: sent,
+        routeDateOf: PartnerService.routeDayForShare,
+      );
+      _identicalScanAt = DateTime.now();
+      _identicalScanCache = matches;
+      return matches;
+    } finally {
+      _identicalScanInFlight = false;
+    }
   }
 
   Future<void> _pullFromOffice365() async {
@@ -573,9 +632,24 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     // 2) Office 365 i bakgrunnen (egen timeout) — knappen forblir klikkbar.
     unawaited(_runOffice365Check(importNew: true));
 
-    // 3) Skift uten å låse Hent.
+    // 3) Skift uten å låse Hent — kun de som mangler (ingen full PDF-storm).
     if (_staged.isNotEmpty && _missingShiftCount > 0 && !_fillingShifts) {
       unawaited(_fillAllShiftsForStaged());
+    }
+
+    // 4) Én utsatt identisk-scan (ikke under import).
+    unawaited(Future<void>.delayed(const Duration(seconds: 3), () async {
+      if (!mounted || _sapSyncing) return;
+      await _refreshSapInboxCounts(heavyIdenticalScan: true);
+    }));
+
+    // 5) Live-endringer som kom under sync — én ekstra runde, ikke storm.
+    if (_liveImportQueued) {
+      _liveImportQueued = false;
+      unawaited(Future<void>.delayed(const Duration(seconds: 2), () async {
+        if (!mounted || _sapSyncing || _importAborted) return;
+        if (_sapPendingInbox > 0) await _syncSapInbox();
+      }));
     }
   }
 
@@ -1147,27 +1221,66 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     required List<FleetShiftDefinition> shifts,
   }) async {
     final shiftById = <String, String>{};
+    final needWork = <PartnerRouteShare>[];
     for (final s in staged) {
+      final existing = (s.shiftId ?? '').trim();
+      if (existing.isNotEmpty) {
+        // Allerede satt ved import — ikke last PDF på nytt (hovedårsak til treighet).
+        shiftById[s.id] = existing;
+        continue;
+      }
+      needWork.add(s);
+    }
+
+    // Først: kun cached pdf_search_text / notes (ingen nedlasting).
+    final stillNeedPdf = <PartnerRouteShare>[];
+    for (final s in needWork) {
       try {
-        final pdfText = await RouteShiftResolver.loadPdfTextForShare(s);
+        final cached = s.pdfSearchText?.trim();
         final sid = await RouteShiftResolver.resolveShiftIdForStagedShare(
           share: s,
           allShifts: shifts,
-          pdfText: pdfText,
+          pdfText: cached,
         );
         if (sid != null && sid.isNotEmpty) {
           shiftById[s.id] = sid;
-          if (s.shiftId != sid) {
-            try {
-              await PartnerService.updateRouteShareFields(s.id, {'shift_id': sid});
-            } catch (_) {}
-          }
+          try {
+            await PartnerService.updateRouteShareFields(s.id, {'shift_id': sid});
+          } catch (_) {}
         } else {
-          shiftById[s.id] = s.shiftId ?? '';
+          stillNeedPdf.add(s);
+          shiftById[s.id] = '';
         }
       } catch (_) {
-        shiftById[s.id] = s.shiftId ?? '';
+        stillNeedPdf.add(s);
+        shiftById[s.id] = '';
       }
+    }
+
+    // Deretter: begrenset parallell PDF-lesing kun for de uten skift.
+    const concurrency = 3;
+    for (var i = 0; i < stillNeedPdf.length; i += concurrency) {
+      if (_importAborted || !mounted) break;
+      final slice = stillNeedPdf.skip(i).take(concurrency).toList();
+      await Future.wait(slice.map((s) async {
+        try {
+          final pdfText = await RouteShiftResolver.loadPdfTextForShare(s);
+          final sid = await RouteShiftResolver.resolveShiftIdForStagedShare(
+            share: s,
+            allShifts: shifts,
+            pdfText: pdfText,
+          );
+          if (sid != null && sid.isNotEmpty) {
+            shiftById[s.id] = sid;
+            try {
+              await PartnerService.updateRouteShareFields(
+                s.id,
+                {'shift_id': sid},
+              );
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }));
     }
     return shiftById;
   }
@@ -1307,7 +1420,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         _loading = false;
         _hasEverLoaded = true;
       });
-      unawaited(_auditStorageForStaged());
+      // Tung lagringssjekk utsettes — spesielt under SAP-import.
+      if (!_sapSyncing) unawaited(_auditStorageForStaged());
       unawaited(_enrichStagedQueue(
         companyId: cid,
         staged: staged,
@@ -1316,7 +1430,9 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         preserveSelection: true,
       ));
       unawaited(_refreshDeliveryStatus());
-      if (_isSap) unawaited(_refreshSapInboxCounts());
+      if (_isSap) {
+        unawaited(_refreshSapInboxCounts(heavyIdenticalScan: false));
+      }
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -2832,8 +2948,16 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (_fillingShifts || _staged.isEmpty) return;
     setState(() => _fillingShifts = true);
     try {
-      for (final s in _routesMissingShift) {
-        await _resolveAndStoreShift(s, force: true);
+      final missing = _routesMissingShift;
+      // Bruk først pdf_search_text / notes — last PDF kun når nødvendig.
+      const concurrency = 3;
+      for (var i = 0; i < missing.length; i += concurrency) {
+        if (!mounted || _importAborted) break;
+        final slice = missing.skip(i).take(concurrency).toList();
+        await Future.wait(
+          slice.map((s) => _resolveAndStoreShift(s, force: false)),
+        );
+        if (mounted) setState(() {});
       }
     } finally {
       if (mounted) setState(() => _fillingShifts = false);
@@ -2914,7 +3038,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       );
       if (proceed != true) return false;
     }
+    // Tung sjekk kun rett før send — ikke under henting.
+    _identicalScanAt = null;
     if (!await _resolveAlreadySentIdenticalConflicts()) return false;
+    unawaited(_auditStorageForStaged(force: true));
     final blocked = _selected.where(_storageBlockedShareIds.contains).toList();
     if (blocked.isNotEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

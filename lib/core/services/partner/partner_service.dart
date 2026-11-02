@@ -3931,17 +3931,19 @@ class PartnerService {
   }
 
   /// Sendte/registrerte ruter i datovindu (for 100 %-lik-sjekk mot staged).
+  /// Default uten pdf_search_text — FO/kunder fra notes er nok og mye raskere.
   static Future<List<PartnerRouteShare>> fetchDispatchedRouteSharesForWindow({
     required String companyId,
     required DateTime fromDay,
     required DateTime toDay,
+    bool includePdfSearchText = false,
   }) async {
     final all = await fetchRouteSharesForCalendarWindow(
       companyId: companyId,
       fromDay: fromDay,
       toDay: toDay,
-      includePdfSearchText: true,
-      limitPerQuery: 4000,
+      includePdfSearchText: includePdfSearchText,
+      limitPerQuery: includePdfSearchText ? 2500 : 4000,
     );
     return all.where((s) => !s.isStaged).toList();
   }
