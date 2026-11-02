@@ -163,8 +163,14 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
       );
     }
 
-    final buckets = buildOwnerDayBuckets(routes, sort);
     final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    final sections = upcoming
+        ? buildOwnerKommendeSections(routes)
+            .map((s) => (title: s.title, bucket: s.bucket))
+            .toList()
+        : buildOwnerDayBuckets(routes, sort)
+            .map((b) => (title: null as String?, bucket: b))
+            .toList();
 
     return RefreshIndicator(
       onRefresh: _reload,
@@ -172,12 +178,15 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(12, 4, 12, 100),
-        itemCount: buckets.length,
+        itemCount: sections.length,
         itemBuilder: (_, i) {
-          final b = buckets[i];
+          final section = sections[i];
+          final b = section.bucket;
           final day = b.day;
           final String dayLabel;
-          if (upcoming && day == today) {
+          if (section.title != null) {
+            dayLabel = section.title!;
+          } else if (upcoming && day == today) {
             dayLabel = 'I dag · ${DateFormat('d. MMM', 'nb').format(day)}';
           } else if (upcoming && day == today.add(const Duration(days: 1))) {
             dayLabel = 'I morgen · ${DateFormat('d. MMM', 'nb').format(day)}';
@@ -197,7 +206,11 @@ class _DriverPortalRoutesPageState extends State<DriverPortalRoutesPage> {
                   padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
                   child: Text(
                     dayLabel,
-                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                      color: section.title != null ? Colors.orange.shade900 : null,
+                    ),
                   ),
                 ),
                 for (final route in b.routes)

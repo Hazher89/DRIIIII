@@ -172,8 +172,8 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
   }
 
   Widget _newRoutesBody() {
-    final filtered = _sortedPendingFirst(_filtered(_data!.routesKommende));
-    final buckets = buildOwnerDayBuckets(filtered, OwnerRouteHistorySort.dateAsc);
+    final filtered = _filtered(_data!.routesKommende);
+    final sections = buildOwnerKommendeSections(filtered);
     final muted = PartnerUi.mutedText(context);
     return RefreshIndicator(
       onRefresh: _reload,
@@ -185,7 +185,7 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
               child: Text(
-                'Her ligger både nye ruter og aksepterte ruter for i dag og fremover.',
+                'Ruter som venter på aksept ligger alltid øverst.',
                 style: TextStyle(fontSize: 12.5, height: 1.35, color: muted),
               ),
             ),
@@ -210,10 +210,14 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, i) {
-                    final b = buckets[i];
-                    return _kommendeDaySection(b, muted);
+                    final section = sections[i];
+                    return _kommendeDaySection(
+                      section.bucket,
+                      muted,
+                      titleOverride: section.title,
+                    );
                   },
-                  childCount: buckets.length,
+                  childCount: sections.length,
                 ),
               ),
             ),
@@ -222,11 +226,17 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
     );
   }
 
-  Widget _kommendeDaySection(OwnerRouteDayBucket b, Color muted) {
+  Widget _kommendeDaySection(
+    OwnerRouteDayBucket b,
+    Color muted, {
+    String? titleOverride,
+  }) {
     final today = _startOfLocalDay(DateTime.now());
     final day = b.day;
     final String dayLabel;
-    if (day == today) {
+    if (titleOverride != null) {
+      dayLabel = titleOverride;
+    } else if (day == today) {
       dayLabel = 'I dag · ${DateFormat('d. MMM', 'nb').format(day)}';
     } else if (day == today.add(const Duration(days: 1))) {
       dayLabel = 'I morgen · ${DateFormat('d. MMM', 'nb').format(day)}';
@@ -244,7 +254,11 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
             padding: const EdgeInsets.fromLTRB(4, 2, 4, 10),
             child: Text(
               dayLabel,
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                fontSize: 15,
+                color: titleOverride != null ? Colors.orange.shade900 : null,
+              ),
             ),
           ),
           for (final route in b.routes)
@@ -277,16 +291,6 @@ class _OwnerPortalRoutesPageState extends State<OwnerPortalRoutesPage> {
   List<PartnerRouteShare> _filtered(List<PartnerRouteShare> routes) {
     if (_vehicleFilterId == null) return routes;
     return routes.where((r) => r.partnerVehicleId == _vehicleFilterId).toList();
-  }
-
-  List<PartnerRouteShare> _sortedPendingFirst(List<PartnerRouteShare> routes) {
-    final copy = List<PartnerRouteShare>.from(routes);
-    copy.sort((a, b) {
-      if (a.requiresAck && !b.requiresAck) return -1;
-      if (b.requiresAck && !a.requiresAck) return 1;
-      return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
-    });
-    return copy;
   }
 
   Widget _vehicleFilters() {

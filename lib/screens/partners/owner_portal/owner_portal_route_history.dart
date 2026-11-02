@@ -283,6 +283,47 @@ List<OwnerRouteDayBucket> buildOwnerDayBuckets(
   return buckets;
 }
 
+/// Kommende-liste: alle ruter som venter på aksept først (egen «seksjon»),
+/// deretter øvrige kommende ruter gruppert per dag.
+List<({String? title, OwnerRouteDayBucket bucket})> buildOwnerKommendeSections(
+  List<PartnerRouteShare> routes,
+) {
+  final pending = <PartnerRouteShare>[];
+  final rest = <PartnerRouteShare>[];
+  for (final r in routes) {
+    if (r.requiresAck) {
+      pending.add(r);
+    } else {
+      rest.add(r);
+    }
+  }
+
+  int byStart(PartnerRouteShare a, PartnerRouteShare b) {
+    final ta = a.routeStartAt ?? a.shareDate;
+    final tb = b.routeStartAt ?? b.shareDate;
+    final c = ta.compareTo(tb);
+    if (c != 0) return c;
+    return ownerRouteCalendarDay(a).compareTo(ownerRouteCalendarDay(b));
+  }
+
+  pending.sort(byStart);
+
+  final out = <({String? title, OwnerRouteDayBucket bucket})>[];
+  if (pending.isNotEmpty) {
+    final anchor = ownerRouteCalendarDay(pending.first);
+    out.add((
+      title: 'Venter på aksept',
+      bucket: OwnerRouteDayBucket(day: anchor, routes: pending),
+    ));
+  }
+
+  final restBuckets = buildOwnerDayBuckets(rest, OwnerRouteHistorySort.dateAsc);
+  for (final b in restBuckets) {
+    out.add((title: null, bucket: b));
+  }
+  return out;
+}
+
 List<OwnerRouteVehicleBucket> buildOwnerVehicleBuckets(
   List<PartnerRouteShare> routes,
   Map<String, PartnerVehicle> vehicles,

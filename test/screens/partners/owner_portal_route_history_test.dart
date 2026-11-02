@@ -39,6 +39,41 @@ void main() {
     );
   });
 
+  test('buildOwnerKommendeSections pins pending routes first', () {
+    final pendingShare = PartnerRouteShare(
+      id: 'pending',
+      partnerId: 'p1',
+      companyId: 'c1',
+      pdfStoragePath: 'pdfs/x.pdf',
+      shareDate: DateTime(2026, 11, 3),
+      routeStartAt: DateTime(2026, 11, 3, 12),
+      dispatchStatus: 'sent',
+      ackStatus: 'pending',
+      notifyChannels: const ['app'],
+      customerCount: 10,
+      createdAt: DateTime(2026, 11, 3),
+    );
+    final acceptedShare = PartnerRouteShare(
+      id: 'accepted',
+      partnerId: 'p1',
+      companyId: 'c1',
+      pdfStoragePath: 'pdfs/y.pdf',
+      shareDate: DateTime(2026, 11, 2),
+      routeStartAt: DateTime(2026, 11, 2, 11),
+      dispatchStatus: 'sent',
+      ackStatus: 'accepted',
+      notifyChannels: const ['app'],
+      customerCount: 8,
+      createdAt: DateTime(2026, 11, 2),
+    );
+    final sections = buildOwnerKommendeSections([acceptedShare, pendingShare]);
+    expect(sections.length, 2);
+    expect(sections.first.title, 'Venter på aksept');
+    expect(sections.first.bucket.routes.single.id, 'pending');
+    expect(sections.last.title, isNull);
+    expect(sections.last.bucket.routes.single.id, 'accepted');
+  });
+
   test('ownerHistoryAnchorForPeriod jumps to latest non-empty period', () {
     final past = [
       _share(day: DateTime(2026, 10, 28), customers: 8),
