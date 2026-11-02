@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/constants/route_dispatch_status.dart';
 import '../../../core/services/partner/fleet_analytics_service.dart';
 import '../../../core/services/partner/mavi_unit_codes.dart';
 import '../../../core/services/partner/route_load_letters.dart';
@@ -51,7 +52,35 @@ extension OwnerRouteHistorySortX on OwnerRouteHistorySort {
   }
 }
 
-int ownerRouteCustomerCount(PartnerRouteShare r) => r.customerCount ?? 0;
+int ownerRouteCustomerCount(PartnerRouteShare r) {
+  final stored = r.customerCount;
+  if (stored != null && stored > 0) return stored;
+  final fromNotes =
+      RouteDispatchStatus.parseUsefulNotes(r.notes).customersFromNotes;
+  if (fromNotes != null && fromNotes > 0) return fromNotes;
+  return stored ?? 0;
+}
+
+/// Velg anker slik at uke/måned treffer siste periode med faktiske tidligere ruter
+/// (ikke alltid «nå» som ofte er tom midt i en ny uke/måned).
+DateTime ownerHistoryAnchorForPeriod({
+  required List<PartnerRouteShare> pastRoutes,
+  required FleetCalendarPeriod period,
+  DateTime? now,
+}) {
+  final today = _dayOnly(now ?? DateTime.now());
+  if (pastRoutes.isEmpty) return today;
+
+  DateTime latest = ownerRouteCalendarDay(pastRoutes.first);
+  for (final r in pastRoutes) {
+    final d = ownerRouteCalendarDay(r);
+    if (d.isAfter(latest)) latest = d;
+  }
+
+  final (from, to) = ownerHistoryPeriodRange(period, today);
+  if (!latest.isBefore(from) && !latest.isAfter(to)) return today;
+  return latest;
+}
 
 class OwnerRouteDayBucket {
   const OwnerRouteDayBucket({required this.day, required this.routes});
@@ -322,9 +351,38 @@ class OwnerPortalRouteHistoryView extends StatefulWidget {
 }
 
 class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryView> {
-  FleetCalendarPeriod _period = FleetCalendarPeriod.month;
+  FleetCalendarPeriod _period = FleetCalendarPeriod.week;
   bool _allTime = false;
-  DateTime _anchor = DateTime.now();
+  late DateTime _anchor;
+
+  @override
+  void initState() {
+    super.initState();
+    _anchor = ownerHistoryAnchorForPeriod(
+      pastRoutes: widget.pastRoutes,
+      period: _period,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant OwnerPortalRouteHistoryView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_allTime &&
+        !identical(oldWidget.pastRoutes, widget.pastRoutes) &&
+        filterOwnerHistoryRoutes(
+          partnerId: widget.partnerId,
+          pastRoutes: widget.pastRoutes,
+          period: _period,
+          anchor: _anchor,
+          vehicleId: widget.vehicleFilterId,
+        ).isEmpty &&
+        widget.pastRoutes.isNotEmpty) {
+      _anchor = ownerHistoryAnchorForPeriod(
+        pastRoutes: widget.pastRoutes,
+        period: _period,
+      );
+    }
+  }
 
   List<PartnerRouteShare> get _filtered => filterOwnerHistoryRoutes(
         partnerId: widget.partnerId,
@@ -334,6 +392,22 @@ class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryVie
         vehicleId: widget.vehicleFilterId,
         allTime: _allTime,
       );
+
+  void _selectPeriod(String value) {
+    setState(() {
+      if (value == 'all') {
+        _allTime = true;
+        return;
+      }
+      _allTime = false;
+      _period =
+          value == 'week' ? FleetCalendarPeriod.week : FleetCalendarPeriod.month;
+      _anchor = ownerHistoryAnchorForPeriod(
+        pastRoutes: widget.pastRoutes,
+        period: _period,
+      );
+    });
+  }
 
   void _shiftAnchor(int delta) {
     setState(() {
@@ -417,18 +491,7 @@ class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryVie
             selected: {
               if (_allTime) 'all' else if (_period == FleetCalendarPeriod.week) 'week' else 'month',
             },
-            onSelectionChanged: (s) {
-              final v = s.first;
-              setState(() {
-                if (v == 'all') {
-                  _allTime = true;
-                } else {
-                  _allTime = false;
-                  _period = v == 'week' ? FleetCalendarPeriod.week : FleetCalendarPeriod.month;
-                  _anchor = DateTime.now();
-                }
-              });
-            },
+            onSelectionChanged: (s) => _selectPeriod(s.first),
           ),
           if (!_allTime) ...[
             const SizedBox(height: 6),
@@ -559,6 +622,21 @@ class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryVie
   }
 
   Widget _emptyState(Color muted) {
+    final latestAnchor = ownerHistoryAnchorForPeriod(
+      pastRoutes: widget.pastRoutes,
+      period: _period,
+    );
+    final canJumpToLatest = !_allTime &&
+        widget.pastRoutes.isNotEmpty &&
+        (_dayOnly(_anchor) != _dayOnly(latestAnchor) ||
+            filterOwnerHistoryRoutes(
+              partnerId: widget.partnerId,
+              pastRoutes: widget.pastRoutes,
+              period: _period,
+              anchor: latestAnchor,
+              vehicleId: widget.vehicleFilterId,
+            ).isNotEmpty);
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -578,10 +656,21 @@ class _OwnerPortalRouteHistoryViewState extends State<OwnerPortalRouteHistoryVie
             Text(
               _allTime
                   ? 'Når ruter er kjørt, dukker de opp her.'
-                  : 'Bytt til «Alle» eller bla til en annen uke/måned.',
+                  : 'Bytt til «Alle», bla med pilene, eller gå til siste uke/måned med ruter.',
               textAlign: TextAlign.center,
               style: TextStyle(color: muted, height: 1.4),
             ),
+            if (canJumpToLatest) ...[
+              const SizedBox(height: 14),
+              FilledButton.tonal(
+                onPressed: () => setState(() => _anchor = latestAnchor),
+                child: Text(
+                  _period == FleetCalendarPeriod.week
+                      ? 'Vis siste uke med ruter'
+                      : 'Vis siste måned med ruter',
+                ),
+              ),
+            ],
           ],
         ),
       ),
