@@ -267,9 +267,14 @@ class CompanyFileStorage {
 
   /// Hent midlertidig lenke for Dropbox-fil.
   static Future<String> getDropboxTemporaryLink(String dropboxPath) async {
+    var path = dropboxPath.trim();
+    if (path.startsWith(dropboxUrlScheme)) {
+      path = path.substring(dropboxUrlScheme.length);
+    }
+    if (!path.startsWith('/')) path = '/$path';
     final res = await _client.functions.invoke(
       'dropbox-storage',
-      body: {'path': dropboxPath},
+      body: {'action': 'temporary_link', 'path': path},
       queryParameters: {'action': 'temporary_link'},
     );
     final data = res.data;

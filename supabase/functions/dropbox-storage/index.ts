@@ -556,12 +556,33 @@ Deno.serve(async (req) => {
 
   try {
     const url = new URL(req.url);
-    const action = url.searchParams.get("action") ?? "";
+    // Noen klienter mister query-param på POST — les også action fra JSON-body.
+    let action = url.searchParams.get("action") ?? "";
+    let parsedBody: Record<string, unknown> | null = null;
+    if (req.method === "POST" && (req.headers.get("content-type") ?? "").includes("application/json")) {
+      try {
+        const clone = req.clone();
+        const body = await clone.json();
+        if (body && typeof body === "object") {
+          parsedBody = body as Record<string, unknown>;
+          if (!action && typeof parsedBody.action === "string") {
+            action = parsedBody.action.trim();
+          }
+        }
+      } catch {
+        // body leses på nytt per action under
+      }
+    }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     const admin = createClient(supabaseUrl, serviceKey);
+
+    async function readJsonBody<T extends Record<string, unknown>>(): Promise<T> {
+      if (parsedBody) return parsedBody as T;
+      return await req.json() as T;
+    }
 
     // Dropbox redirect uten JWT — må være først
     if (action === "oauth_callback" && req.method === "GET") {
@@ -653,7 +674,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === "resolve_file_bytes" && req.method === "POST") {
-      const { ref } = await req.json() as { ref?: string };
+      const { ref } = await readJsonBody<{ ref?: string }>();
       if (!ref?.trim()) return json({ error: "ref er påkrevd" }, 400);
 
       const { data: connRow } = await admin
@@ -750,12 +771,12 @@ Deno.serve(async (req) => {
     const root = resolveUploadRoot(conn.root_folder);
 
     if (action === "upload" && req.method === "POST") {
-      const body = await req.json() as {
+      const body = await readJsonBody<{
         file_name: string;
         category: string;
         bytes_base64: string;
         mime_type?: string;
-      };
+      }>();
 
       if (!body.file_name || !body.category || !body.bytes_base64) {
         return json({ error: "file_name, category og bytes_base64 er påkrevd" }, 400);
@@ -808,8 +829,10 @@ Deno.serve(async (req) => {
     }
 
     if (action === "download_bytes" && req.method === "POST") {
-      const { path } = await req.json() as { path: string };
-      if (!path?.startsWith("/")) return json({ error: "path må starte med /" }, 400);
+      const body = await readJsonBody<{ path?: string }>();
+      let path = (body.path ?? "").trim();
+      if (path && !path.startsWith("/")) path = `/${path}`;
+      if (!path.startsWith("/")) return json({ error: "path må starte med /" }, 400);
 
       const dlRes = await dropboxApi(token, "content", "/files/download", {
         method: "POST",
@@ -834,8 +857,10 @@ Deno.serve(async (req) => {
     }
 
     if (action === "temporary_link" && req.method === "POST") {
-      const { path } = await req.json() as { path: string };
-      if (!path?.startsWith("/")) return json({ error: "path må starte med /" }, 400);
+      const body = await readJsonBody<{ path?: string }>();
+      let path = (body.path ?? "").trim();
+      if (path && !path.startsWith("/")) path = `/${path}`;
+      if (!path.startsWith("/")) return json({ error: "path må starte med /" }, 400);
 
       const linkRes = await dropboxApi(token, "api", "/files/get_temporary_link", {
         method: "POST",

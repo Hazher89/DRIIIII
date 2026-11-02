@@ -23,6 +23,29 @@ class StorageFileAccess {
         .replaceAll(_placeholderCompany, companyId);
   }
 
+  /// Normaliser lagret Dropbox-referanse til `/company_…/fil.pdf`.
+  static String normalizeDropboxPath(String raw) {
+    var p = raw.trim();
+    if (p.startsWith(CompanyFileStorage.dropboxUrlScheme)) {
+      p = p.substring(CompanyFileStorage.dropboxUrlScheme.length);
+    }
+    if (!p.startsWith('/')) p = '/$p';
+    return p;
+  }
+
+  static Map<String, dynamic>? _asJsonMap(dynamic data) {
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    if (data is String && data.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(data);
+        if (decoded is Map<String, dynamic>) return decoded;
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return null;
+  }
+
   static String? extractSupabaseDocumentsPath(String raw) {
     final t = raw.trim();
     if (t.isEmpty) return null;
@@ -52,11 +75,17 @@ class StorageFileAccess {
     void add(String? p) {
       if (p == null) return;
       final t = p.replaceFirst(RegExp(r'^/'), '').trim();
-      if (t.isNotEmpty) seen.add(t);
+      if (t.isEmpty) return;
+      // Aldri send Dropbox-URI til Supabase Storage.
+      if (t.startsWith('dropbox:') || CompanyFileStorage.isDropboxReference(t)) {
+        return;
+      }
+      seen.add(t);
     }
 
     var base = raw.trim();
     if (base.isEmpty) return const [];
+    if (CompanyFileStorage.isDropboxReference(base)) return const [];
 
     add(extractSupabaseDocumentsPath(base));
     add(remapCompanyPlaceholder(base, companyId));
@@ -80,33 +109,17 @@ class StorageFileAccess {
 
     final cid = companyId ?? await SupabaseService.getCurrentCompanyId();
 
+    // Dropbox først når stien er Dropbox — ikke bland med Supabase-forsøk.
+    if (CompanyFileStorage.isDropboxReference(raw) ||
+        CompanyFileStorage.isDropboxPath(raw)) {
+      final bytes = await _downloadDropboxBytes(raw, companyId: cid);
+      if (bytes != null && bytes.isNotEmpty) return bytes;
+    }
+
     for (final path in candidateSupabasePaths(raw, companyId: cid)) {
       try {
         final bytes = await _client.storage.from('documents').download(path);
         if (bytes.isNotEmpty) return bytes;
-      } catch (_) {}
-    }
-
-    if (CompanyFileStorage.isDropboxReference(raw) ||
-        CompanyFileStorage.isDropboxPath(raw)) {
-      try {
-        final dropboxPath = raw.startsWith(CompanyFileStorage.dropboxUrlScheme)
-            ? raw.substring(CompanyFileStorage.dropboxUrlScheme.length)
-            : raw.startsWith('/')
-                ? raw
-                : '/$raw';
-        final res = await _client.functions
-            .invoke(
-              'dropbox-storage',
-              body: {'path': dropboxPath},
-              queryParameters: {'action': 'download_bytes'},
-            )
-            .timeout(const Duration(seconds: 20));
-        final data = res.data;
-        if (data is Map && data['ok'] == true && data['bytes_base64'] is String) {
-          final bytes = base64Decode(data['bytes_base64'] as String);
-          if (bytes.isNotEmpty) return bytes;
-        }
       } catch (_) {}
     }
 
@@ -121,17 +134,67 @@ class StorageFileAccess {
     return _downloadBytesViaEdgeResolver(raw);
   }
 
+  static Future<Uint8List?> _downloadDropboxBytes(
+    String raw, {
+    String? companyId,
+  }) async {
+    final normalized = normalizeDropboxPath(raw);
+    final candidates = <String>{
+      normalized,
+      remapCompanyPlaceholder(normalized, companyId),
+    };
+
+    for (final dropboxPath in candidates) {
+      try {
+        final res = await _client.functions
+            .invoke(
+              'dropbox-storage',
+              body: {
+                'action': 'download_bytes',
+                'path': dropboxPath,
+              },
+              queryParameters: {'action': 'download_bytes'},
+            )
+            .timeout(const Duration(seconds: 45));
+        final data = _asJsonMap(res.data);
+        final b64 = data?['bytes_base64'];
+        if (data?['ok'] == true && b64 is String && b64.isNotEmpty) {
+          final bytes = base64Decode(b64);
+          if (bytes.isNotEmpty) return bytes;
+        }
+      } catch (_) {}
+
+      // Fallback: midlertidig lenke + HTTP GET (samme fil i Dropbox).
+      try {
+        final link = await CompanyFileStorage.getDropboxTemporaryLink(dropboxPath);
+        final res = await http.get(Uri.parse(link)).timeout(const Duration(seconds: 45));
+        if (res.statusCode == 200 && res.bodyBytes.isNotEmpty) {
+          return res.bodyBytes;
+        }
+      } catch (_) {}
+    }
+
+    // Siste utvei: edge resolve (prøver Dropbox + Supabase med service-rolle).
+    return _downloadBytesViaEdgeResolver(raw);
+  }
+
   /// Service role via edge function — omgår bucket/RLS-problemer for rute-PDF.
   static Future<Uint8List?> _downloadBytesViaEdgeResolver(String ref) async {
     try {
-      final res = await _client.functions.invoke(
-        'dropbox-storage',
-        body: {'ref': ref.trim()},
-        queryParameters: {'action': 'resolve_file_bytes'},
-      );
-      final data = res.data;
-      if (data is Map && data['ok'] == true && data['bytes_base64'] is String) {
-        final bytes = base64Decode(data['bytes_base64'] as String);
+      final res = await _client.functions
+          .invoke(
+            'dropbox-storage',
+            body: {
+              'action': 'resolve_file_bytes',
+              'ref': ref.trim(),
+            },
+            queryParameters: {'action': 'resolve_file_bytes'},
+          )
+          .timeout(const Duration(seconds: 45));
+      final data = _asJsonMap(res.data);
+      final b64 = data?['bytes_base64'];
+      if (data?['ok'] == true && b64 is String && b64.isNotEmpty) {
+        final bytes = base64Decode(b64);
         if (bytes.isNotEmpty) return bytes;
       }
     } catch (_) {}

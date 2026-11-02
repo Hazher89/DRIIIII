@@ -92,10 +92,15 @@ class PartnerRoutePdfActions {
       }
 
       if (context.mounted) {
+        final onDropbox = path.startsWith('dropbox://') ||
+            path.contains('/company_') ||
+            path.startsWith('company_');
         _snack(
           context,
-          'Kunne ikke hente PDF fra lagring. Sjekk at skylagring er koblet '
-          'eller at Storage-bucket «documents» finnes i Supabase.',
+          onDropbox
+              ? 'Kunne ikke hente rute-PDF fra Dropbox. Prøv igjen — '
+                  'filen skal ligge i skylagring for bedriften.'
+              : 'Kunne ikke hente PDF fra lagring. Prøv igjen om litt.',
           isError: true,
         );
       }
