@@ -64,8 +64,17 @@ function encodeMailbox(mailbox: string): string {
 async function listCandidateMessages(
   mailbox: string,
   hours: number,
+  /** Kun mail mottatt ETTER «Tøm»-stempel (eksklusivt). */
+  clearedAfter?: Date | null,
 ): Promise<GraphMessage[]> {
-  const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+  const windowSince = new Date(Date.now() - hours * 60 * 60 * 1000);
+  let sinceDate = windowSince;
+  if (clearedAfter && !Number.isNaN(clearedAfter.getTime())) {
+    // +1s: aldri hent mail fra samme sekund som Tøm (eller eldre).
+    const afterClear = new Date(clearedAfter.getTime() + 1000);
+    if (afterClear > sinceDate) sinceDate = afterClear;
+  }
+  const since = sinceDate.toISOString();
   const filter = `receivedDateTime ge ${since}`;
   let next:
     | string
@@ -204,16 +213,21 @@ Deno.serve(async (req) => {
 
     let hours = 168;
     let markRead = true;
+    let clearedAfterBody: string | undefined;
     try {
       const body = await req.json() as {
         hours?: number;
         limit?: number;
         markRead?: boolean;
+        clearedAfter?: string;
       };
       if (typeof body.hours === "number" && body.hours > 0) {
         hours = Math.min(body.hours, 24 * 30);
       }
       if (typeof body.markRead === "boolean") markRead = body.markRead;
+      if (typeof body.clearedAfter === "string" && body.clearedAfter.trim()) {
+        clearedAfterBody = body.clearedAfter.trim();
+      }
     } catch {
       // empty body ok
     }
@@ -228,14 +242,34 @@ Deno.serve(async (req) => {
     const companyId = sapRoutesCompanyId();
     const mailbox = graphMailbox();
 
+    // Les Tøm-stempel fra DB (kanonisk) — body er backup.
+    let clearedAfter: Date | null = null;
+    try {
+      const { data: company } = await supabase
+        .from("companies")
+        .select("sap_routes_cleared_at")
+        .eq("id", companyId)
+        .maybeSingle();
+      const raw = (company as { sap_routes_cleared_at?: string | null } | null)
+        ?.sap_routes_cleared_at;
+      if (raw) clearedAfter = new Date(raw);
+    } catch (e) {
+      console.warn("Could not load sap_routes_cleared_at", e);
+    }
+    if (!clearedAfter && clearedAfterBody) {
+      const d = new Date(clearedAfterBody);
+      if (!Number.isNaN(d.getTime())) clearedAfter = d;
+    }
+
     const [messages, existing] = await Promise.all([
-      listCandidateMessages(mailbox, hours),
+      listCandidateMessages(mailbox, hours, clearedAfter),
       loadExistingGraphInbox(supabase, companyId),
     ]);
 
     const summary = {
       mailbox,
       hours,
+      cleared_after: clearedAfter?.toISOString() ?? null,
       scanned: messages.length,
       matched: 0,
       inserted: [] as string[],
@@ -262,6 +296,19 @@ Deno.serve(async (req) => {
       if (!senderAllowed(fromAddr) || !subjectMatches(subject)) {
         continue;
       }
+
+      // Ekstra sikring: hopp over mail mottatt før/ved Tøm-stempel.
+      if (clearedAfter && msg.receivedDateTime) {
+        const received = new Date(msg.receivedDateTime);
+        if (
+          !Number.isNaN(received.getTime()) &&
+          received.getTime() <= clearedAfter.getTime()
+        ) {
+          summary.skipped.push(`${msg.id}:before_clear`);
+          continue;
+        }
+      }
+
       summary.matched += 1;
 
       const emailId = `graph:${msg.id}`;

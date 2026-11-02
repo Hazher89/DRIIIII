@@ -630,7 +630,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (mounted) {
         setState(() => _sapGraphSyncNote = 'Henter alle Backup Form fra Office 365…');
       }
-      final graph = await PartnerService.syncSapMailboxFromGraph();
+      final graph = await PartnerService.syncSapMailboxFromGraph(companyId: cid);
       if (!mounted || _importAborted || gen != _sapWorkGen) return;
       if (graph != null && graph['error'] == null) {
         _applyGraphSyncResult(graph);
@@ -641,7 +641,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           setState(() {
             _sapGraphSyncNote = matched > 0
                 ? 'Office 365: $matched mail · $inserted nye PDF · $already allerede inne'
-                : 'Office 365: ingen nye Backup Form i vinduet';
+                : 'Office 365: ingen nye Backup Form etter siste Tøm';
           });
         }
       } else if (graph != null && graph['error'] != null && mounted) {
@@ -653,23 +653,19 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         );
       }
 
-      // 2) Gjenåpne tømte/orphan KUN når bruker trykker Hent — ikke ved åpning.
-      var resurfaced = 0;
+      // 2) Kun orphan etter Tøm-stempel (aldri gjenåpne tømte gamle).
       if (userRequestedFetch) {
-        final cleared =
-            await PartnerService.reopenClearedSapInboxForRefetch(cid);
         final reopened = await PartnerService.reopenOrphanedSapInbox(cid);
-        resurfaced = cleared + reopened;
         if (gen != _sapWorkGen || !mounted) return;
-        if (resurfaced > 0) {
+        if (reopened > 0) {
           setState(() {
             _sapGraphSyncNote =
-                'Fant $resurfaced PDF på nytt — importerer til kø…';
+                'Fant $reopened nye PDF uten kø — importerer…';
           });
         }
       }
 
-      // 3) Importer kun det som faktisk er pending (nye mail, eller etter eksplisitt Hent).
+      // 3) Importer kun pending mottatt ETTER siste Tøm.
       await _runSapImportPhase(cid, label: 'Importerer til kø');
       if (!mounted || gen != _sapWorkGen) return;
 
@@ -693,15 +689,14 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           _staged.isEmpty &&
           _skipped.isEmpty &&
           _sapPendingInbox == 0 &&
-          resurfaced == 0 &&
           _lastGraphInserted == 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Ingen nye SAP-ruter. Tømte ruter kommer bare tilbake med «Hent» '
-              'eller når SAP sender ny Backup Form.',
+              'Ingen nye SAP-ruter etter siste Tøm. '
+              'Gamle tømte ruter hentes aldri igjen — vent på ny Backup Form fra SAP.',
             ),
-            duration: Duration(seconds: 5),
+            duration: Duration(seconds: 6),
           ),
         );
       }
@@ -767,7 +762,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       _sapGraphSyncNote = 'Sjekker Office 365 for nye mail…';
     });
 
-    final graph = await PartnerService.syncSapMailboxFromGraph();
+    final graph =
+        await PartnerService.syncSapMailboxFromGraph(companyId: cid);
     if (!mounted || _importAborted || gen != _sapWorkGen || !_sapAutoSyncEnabled) {
       return;
     }
@@ -2886,9 +2882,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         content: Text(
           _isSap
               ? 'Fjerner $summary.\n\n'
-                  'Etter «Tøm alt» forblir køen tom — også om du lukker og '
-                  'åpner arket på nytt. Ruter kommer først tilbake når du '
-                  'trykker «Hent nye» eller SAP sender ny Backup Form.'
+                  'Klokkeslett stempleres nå. Alle ruter mottatt før dette '
+                  'slettes fra køen og hentes ALDRI igjen — heller ikke med '
+                  '«Hent nye». Kun Backup Form som SAP sender ETTER tømming '
+                  'kommer inn.'
               : 'Fjerner $summary fra køen. Kan ikke angres.',
         ),
         actions: [
@@ -2947,9 +2944,11 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         await PartnerService.deleteRouteShare(s);
       }
       await _clearAllSkippedPdfsQuiet();
-      // Alltid avvis ventende SAP-PDF — ellers dukker «40» opp igjen.
+      // Stempel klokkeslett + avvis ALT før stempelet — aldri hent igjen.
+      DateTime? clearedAt;
       if (cid != null) {
-        await PartnerService.dismissOpenSapInboxItems(cid);
+        final purge = await PartnerService.purgeSapQueueOnClear(cid);
+        clearedAt = purge.clearedAt.toLocal();
       }
 
       if (!mounted) return;
@@ -2971,20 +2970,25 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         _busyUpload = false;
         _sapWizardStep = _SapWizardStep.fetch;
       });
+      final stampLabel = clearedAt == null
+          ? ''
+          : ' Stemplet ${DateFormat('HH:mm:ss', 'nb').format(clearedAt)}.';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             clearOnly
-                ? 'Alt er tømt. Køen forblir tom til du trykker «Hent nye» '
-                    'eller SAP sender ny Backup Form.'
-                : 'Alt er tømt. Henter fra SAP…',
+                ? 'Alt er tømt.$stampLabel Gamle ruter hentes aldri igjen — '
+                    'kun nye fra SAP etter dette tidspunktet.'
+                : 'Alt er tømt.$stampLabel Sjekker kun nye mail etter stempelet…',
           ),
+          duration: const Duration(seconds: 6),
         ),
       );
 
       if (second == _ClearQueueAction.clearAndFetchSap) {
         _sapAutoSyncEnabled = true;
-        await _syncSapInbox(userRequestedFetch: true);
+        // Aldri gjenåpne tømte — kun mail mottatt ETTER stempelet.
+        await _syncSapInbox(userRequestedFetch: false);
       }
     } catch (e) {
       if (mounted) {
@@ -3905,8 +3909,8 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                     ? '${_staged.length} fordelt · ${_skipped.length} manuelle'
                         '${_sapPendingInbox > 0 ? ' · $_sapPendingInbox venter import' : ''}'
                     : (_isSap
-                        ? 'Trykk «Hent nye» når mail har kommet. '
-                            'Tøm fjerner alt til neste henting.'
+                        ? 'Trykk «Hent nye» for nye mail etter siste Tøm. '
+                            'Tøm stempler tid — gamle ruter hentes aldri igjen.'
                         : 'Last opp én eller flere PDF — systemet splitter samlefiler.'),
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.9),
@@ -4816,7 +4820,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         ? const [
             ('1', 'Hent', 'Henter PDF fra mail. Blir kladd — ikke sendt.'),
             ('2', 'Biler', 'Sjekk at riktig MAVI/sjåfør er valgt.'),
-            ('3', 'Send', 'Først her varsles sjåfør. Tøm sletter alt.'),
+            ('3', 'Send', 'Først her varsles sjåfør. Tøm stempler tid — gamle hentes aldri.'),
           ]
         : const [
             ('1', 'Last opp', 'PDF blir kladd i køen — ikke sendt.'),

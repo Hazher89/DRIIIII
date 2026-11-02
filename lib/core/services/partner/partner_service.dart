@@ -3963,10 +3963,19 @@ class PartnerService {
   /// Importerte SAP-PDF uten gyldig rute-share (slettet/mistet) → pending igjen.
   /// Åpner IKKE på nytt når ruten allerede er sendt/registrert — bare når share
   /// mangler helt (ellers dukker «28 nye» opp etter full utsending).
+  /// Respekterer «Tøm»-stempel: aldri gjenåpne mail mottatt før cleared_at.
   static Future<int> reopenOrphanedSapInbox(String companyId, {int hours = 168}) async {
     if (!_ok) return 0;
     try {
-      final since = DateTime.now().toUtc().subtract(Duration(hours: hours));
+      final clearedAt = await fetchSapRoutesClearedAt(companyId);
+      final windowStart =
+          DateTime.now().toUtc().subtract(Duration(hours: hours));
+      // Kun etter tømme-stempel (+1s) — ellers kommer gamle ruter tilbake.
+      final since = clearedAt == null
+          ? windowStart
+          : (clearedAt.add(const Duration(seconds: 1)).isAfter(windowStart)
+              ? clearedAt.add(const Duration(seconds: 1))
+              : windowStart);
       final rows = await _client
           .from('sap_route_inbox')
           .select(
@@ -4077,22 +4086,58 @@ class PartnerService {
     }
   }
 
+  /// Sist «Tøm alt» for SAP — kun mail mottatt ETTER dette skal hentes.
+  static Future<DateTime?> fetchSapRoutesClearedAt(String companyId) async {
+    if (!_ok) return null;
+    try {
+      final row = await _client
+          .from('companies')
+          .select('sap_routes_cleared_at')
+          .eq('id', companyId)
+          .maybeSingle();
+      final raw = row?['sap_routes_cleared_at']?.toString();
+      if (raw == null || raw.isEmpty) return null;
+      return DateTime.tryParse(raw)?.toUtc();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Stempler tømme-tidspunkt (UTC). Alt før dette skal aldri hentes igjen.
+  static Future<DateTime> stampSapRoutesClearedAt(String companyId) async {
+    final now = DateTime.now().toUtc();
+    if (!_ok) return now;
+    await _client.from('companies').update({
+      'sap_routes_cleared_at': now.toIso8601String(),
+    }).eq('id', companyId);
+    return now;
+  }
+
   /// Synk Office 365-postkasse → sap_route_inbox (krever Edge Function + secrets).
   /// Ingen mail-limit — Edge Function paginerer hele tidsvinduet.
   /// Hopper over PDF-nedlasting for mail som allerede er i innboks.
   /// Timeout er høy fordi nye Backup Form-mail laster ned PDF én etter én.
+  /// Respekterer [companies.sap_routes_cleared_at] — aldri gamle mail før Tøm.
   static Future<Map<String, dynamic>?> syncSapMailboxFromGraph({
     int hours = 168,
     Duration timeout = const Duration(seconds: 180),
+    String? companyId,
   }) async {
     if (!_ok) return null;
     try {
+      DateTime? clearedAt;
+      final cid = (companyId ?? '').trim();
+      if (cid.isNotEmpty) {
+        clearedAt = await fetchSapRoutesClearedAt(cid);
+      }
       final res = await _client.functions
           .invoke(
             'ms-graph-sap-routes-sync',
             body: {
               'hours': hours,
               'markRead': true,
+              if (clearedAt != null)
+                'clearedAfter': clearedAt.toIso8601String(),
             },
           )
           .timeout(timeout);
@@ -4324,12 +4369,21 @@ class PartnerService {
   ) async {
     if (!_ok) return const [];
     try {
-      final data = await _client
+      final clearedAt = await fetchSapRoutesClearedAt(companyId);
+      var q = _client
           .from('sap_route_inbox')
           .select()
           .eq('company_id', companyId)
-          .eq('status', 'pending')
-          .order('received_at', ascending: false) as List<dynamic>;
+          .eq('status', 'pending');
+      // Kun mail mottatt ETTER siste Tøm — sekunder etter stempel teller.
+      if (clearedAt != null) {
+        q = q.gt(
+          'received_at',
+          clearedAt.add(const Duration(seconds: 1)).toIso8601String(),
+        );
+      }
+      final data =
+          await q.order('received_at', ascending: false) as List<dynamic>;
       return data
           .map((e) => SapRouteInboxItem.fromJson(e as Map<String, dynamic>))
           .toList();
@@ -4397,80 +4451,83 @@ class PartnerService {
     return n;
   }
 
-  /// Avvis ventende + nylig importerte + manuelle SAP-PDF (brukes ved «Tøm»).
-  /// Inkluderer [imported] i tidsvindu — ellers åpner orphan-reopen dem igjen
-  /// når staged-share er slettet.
+  /// «Tøm alt»: stempel klokkeslett + avvis ALT mottatt før/ved stempel.
+  /// Gamle ruter skal aldri kunne hentes eller gjenåpnes etter dette.
+  static Future<({DateTime clearedAt, int dismissed})> purgeSapQueueOnClear(
+    String companyId,
+  ) async {
+    final clearedAt = await stampSapRoutesClearedAt(companyId);
+    final dismissed = await dismissOpenSapInboxItems(
+      companyId,
+      clearedAt: clearedAt,
+    );
+    return (clearedAt: clearedAt, dismissed: dismissed);
+  }
+
+  /// Avvis SAP-PDF mottatt før/ved [clearedAt] (brukes ved «Tøm»).
+  /// Uten [clearedAt]: siste [hours] som før.
   static Future<int> dismissOpenSapInboxItems(
     String companyId, {
     int hours = 168,
+    DateTime? clearedAt,
   }) async {
     if (!_ok) return 0;
-    final now = DateTime.now().toUtc().toIso8601String();
-    final since =
-        DateTime.now().toUtc().subtract(Duration(hours: hours)).toIso8601String();
+    final now = DateTime.now().toUtc();
+    final stamp = (clearedAt ?? now).toUtc();
+    final stampIso = stamp.toIso8601String();
+    final nowIso = now.toIso8601String();
+    final since = clearedAt == null
+        ? now.subtract(Duration(hours: hours)).toIso8601String()
+        : null;
     var n = 0;
-    for (final status in ['pending', 'imported']) {
+    for (final status in ['pending', 'imported', 'duplicate']) {
       try {
-        final rows = await _client
+        var q = _client
             .from('sap_route_inbox')
             .update({
               'status': 'rejected',
               'reject_reason': sapInboxClearedReason,
-              'processed_at': now,
+              'processed_at': nowIso,
               'imported_route_share_id': null,
             })
             .eq('company_id', companyId)
             .eq('status', status)
-            .gte('received_at', since)
-            .select('id') as List<dynamic>;
+            .lte('received_at', stampIso);
+        if (since != null) {
+          q = q.gte('received_at', since);
+        }
+        final rows = await q.select('id') as List<dynamic>;
         n += rows.length;
       } catch (_) {}
     }
     try {
-      final manuals = await _client
+      var q = _client
           .from('sap_route_inbox')
           .update({
             'status': 'rejected',
             'reject_reason': sapInboxClearedReason,
-            'processed_at': now,
+            'processed_at': nowIso,
             'imported_route_share_id': null,
           })
           .eq('company_id', companyId)
           .eq('status', 'rejected')
           .like('reject_reason', '$sapInboxManualReasonPrefix%')
-          .gte('received_at', since)
-          .select('id') as List<dynamic>;
+          .lte('received_at', stampIso);
+      if (since != null) {
+        q = q.gte('received_at', since);
+      }
+      final manuals = await q.select('id') as List<dynamic>;
       n += manuals.length;
     } catch (_) {}
     return n;
   }
 
-  /// Kun ved eksplisitt «Hent» / «Tøm + hent» — aldri ved åpning av arket.
+  /// DEPRECATED: Tømte ruter skal ALDRI gjenåpnes — kun nye SAP-mail etter stempel.
   static Future<int> reopenClearedSapInboxForRefetch(
     String companyId, {
     int hours = 168,
   }) async {
-    if (!_ok) return 0;
-    try {
-      final since = DateTime.now().toUtc().subtract(Duration(hours: hours));
-      final rows = await _client
-          .from('sap_route_inbox')
-          .update({
-            'status': 'pending',
-            'reject_reason': null,
-            'processed_at': null,
-            'processed_by': null,
-            'imported_route_share_id': null,
-          })
-          .eq('company_id', companyId)
-          .eq('status', 'rejected')
-          .eq('reject_reason', sapInboxClearedReason)
-          .gte('received_at', since.toIso8601String())
-          .select('id') as List<dynamic>;
-      return rows.length;
-    } catch (_) {
-      return 0;
-    }
+    return 0;
   }
 
   static Future<void> markSapRouteInboxRejected({
