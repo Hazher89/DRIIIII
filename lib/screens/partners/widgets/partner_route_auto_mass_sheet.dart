@@ -104,6 +104,8 @@ enum PartnerRouteMassSource { manual, sap }
 
 enum _IdenticalRouteChoice { replace, keep, cancel }
 
+enum _ClearQueueAction { cancel, clearOnly, clearAndFetchSap }
+
 /// Tre-stegs flyt (SAP + AUTO MASS): Hent/Last opp → Biler → Sjekk.
 enum _SapWizardStep {
   fetch,
@@ -184,6 +186,8 @@ typedef PartnerRouteAutoMassSheet = PartnerRouteMassDispatchSheet;
 
 class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatchSheet> {
   bool _loading = true;
+  /// Etter første lasting: aldri blanke hele wizard (unngår blink ved SAP-hent).
+  bool _hasEverLoaded = false;
   bool _busyUpload = false;
   bool _publishing = false;
   List<PartnerRouteShare> _staged = [];
@@ -1251,11 +1255,20 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
   }
 
   Future<void> _reload({bool preferRoutesTab = false, int expectedMinStaged = 0}) async {
-    setState(() => _loading = true);
+    // Kun første åpning får fullskjerm-loader — ellers blinker hele siden ved hver hent.
+    final fullScreenLoader = !_hasEverLoaded;
+    if (fullScreenLoader && mounted) {
+      setState(() => _loading = true);
+    }
     try {
       final cid = await SupabaseService.getCurrentCompanyId();
       if (cid == null) {
-        if (mounted) setState(() => _loading = false);
+        if (mounted) {
+          setState(() {
+            _loading = false;
+            _hasEverLoaded = true;
+          });
+        }
         return;
       }
       try {
@@ -1292,6 +1305,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           preferRoutesTab: preferRoutesTab,
         );
         _loading = false;
+        _hasEverLoaded = true;
       });
       unawaited(_auditStorageForStaged());
       unawaited(_enrichStagedQueue(
@@ -1305,7 +1319,10 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
       if (_isSap) unawaited(_refreshSapInboxCounts());
     } catch (e) {
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+          _hasEverLoaded = true;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Kunne ikke laste rute-kø: $e'),
@@ -2585,28 +2602,73 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
     if (_staged.isEmpty && _skipped.isEmpty) return;
     final stagedN = _staged.length;
     final manualN = _skipped.length;
-    final ok = await showDialog<bool>(
+    final summary = stagedN > 0 && manualN > 0
+        ? '$stagedN rute(r) og $manualN manuell(e) PDF-er'
+        : stagedN > 0
+            ? '$stagedN rute(r)'
+            : '$manualN manuell(e) PDF-er';
+
+    final ok1 = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Tøm hele køen?'),
-        content: Text(
-          stagedN > 0 && manualN > 0
-              ? 'Fjerner $stagedN rute(r) fra køen og $manualN manuell(e) PDF-er.'
-              : stagedN > 0
-                  ? 'Fjerner alle $stagedN rute(r) fra køen.'
-                  : 'Fjerner alle $manualN manuell(e) PDF-er fra køen.',
-        ),
+        content: Text('Fjerner $summary fra køen.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Avbryt')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Avbryt'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
-            child: const Text('Tøm alt'),
+            child: const Text('Fortsett'),
           ),
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok1 != true || !mounted) return;
+
+    // Andre bekreftelse — spesielt før ny SAP-hent.
+    final second = await showDialog<_ClearQueueAction>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Bekreft sletting'),
+        content: Text(
+          _isSap
+              ? 'Dette sletter $summary permanent fra køen.\n\n'
+                  'Vil du hente inn nye ruter fra SAP etterpå?'
+              : 'Dette sletter $summary permanent fra køen. '
+                  'Handlingen kan ikke angres.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _ClearQueueAction.cancel),
+            child: const Text('Avbryt'),
+          ),
+          if (_isSap)
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, _ClearQueueAction.clearOnly),
+              child: const Text('Bare slett'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+              ctx,
+              _isSap
+                  ? _ClearQueueAction.clearAndFetchSap
+                  : _ClearQueueAction.clearOnly,
+            ),
+            style: FilledButton.styleFrom(backgroundColor: DriftProTheme.error),
+            child: Text(_isSap ? 'Slett og hent nye' : 'Ja, slett'),
+          ),
+        ],
+      ),
+    );
+    if (second == null ||
+        second == _ClearQueueAction.cancel ||
+        !mounted) {
+      return;
+    }
+
     setState(() => _busyUpload = true);
     try {
       RoutePdfBytesCache.clear();
@@ -2614,20 +2676,20 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
         await PartnerService.deleteRouteShare(s);
       }
       await _clearAllSkippedPdfsQuiet();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              stagedN > 0 && manualN > 0
-                  ? 'Køen er tømt ($stagedN ruter + $manualN manuelle PDF-er).'
-                  : stagedN > 0
-                      ? 'Alle $stagedN ruter er fjernet fra køen.'
-                      : 'Alle $manualN manuelle PDF-er er fjernet.',
-            ),
-          ),
-        );
-      }
+      if (!mounted) return;
+      setState(() {
+        _staged = [];
+        _selected.clear();
+        _importLog = [];
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Køen er tømt ($summary).')),
+      );
       await _reload();
+      if (!mounted) return;
+      if (second == _ClearQueueAction.clearAndFetchSap) {
+        await _syncSapInbox();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3431,11 +3493,15 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
           ),
           child: Column(
             children: [
-              if (busyFetch || showUpdating)
+              // Tom kø: stor spinner. Ellers behold ikon/tall — kun tynn stripe under.
+              if (busyFetch)
                 const SizedBox(
                   width: 36,
                   height: 36,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 3,
+                  ),
                 )
               else
                 Icon(
@@ -3458,7 +3524,7 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                 busyFetch
                     ? (_isSap ? 'Henter alle SAP-ruter…' : 'Analyserer PDF-er…')
                     : showUpdating
-                        ? 'Importerer…'
+                        ? (statusNote ?? 'Oppdaterer kø uten å blinke…')
                         : total > 0
                             ? (_isSap ? 'SAP-ruter i kø' : 'Ruter i kø')
                             : 'Ingen ruter ennå',
@@ -3485,6 +3551,17 @@ class _PartnerRouteMassDispatchSheetState extends State<PartnerRouteMassDispatch
                   height: 1.35,
                 ),
               ),
+              if (showUpdating && !busyFetch) ...[
+                const SizedBox(height: 12),
+                const ClipRRect(
+                  borderRadius: BorderRadius.all(Radius.circular(2)),
+                  child: LinearProgressIndicator(
+                    minHeight: 3,
+                    backgroundColor: Color(0x33FFFFFF),
+                    color: Colors.white,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
