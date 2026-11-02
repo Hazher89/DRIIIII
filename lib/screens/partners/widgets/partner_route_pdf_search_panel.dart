@@ -319,35 +319,129 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
     );
   }
 
+  String? _shortMaviFor(PartnerRouteShare share) {
+    final raw = _maviForShare(share);
+    if (raw == null || raw.isEmpty) {
+      return MaviUnitCodes.extractShortLabel(share.title) ??
+          MaviUnitCodes.extractShortLabel(share.notes);
+    }
+    return MaviUnitCodes.compactLabel(raw);
+  }
+
+  /// Kundenummer = bilag (sales order) som matcher søket.
+  String? _matchedCustomerNumber(_PdfSearchHit hit) {
+    final q = _ctrl.text.trim();
+    final digits = q.replaceAll(RegExp(r'\D'), '');
+    final matched = _matchedCustomer(hit);
+    if ((matched?.salesOrder ?? '').isNotEmpty) return matched!.salesOrder;
+    if (RegExp(r'^2\d{8,}$').hasMatch(digits)) {
+      for (final b in hit.bilags) {
+        if (b.contains(digits) || digits.contains(b)) return b;
+      }
+      return digits;
+    }
+    for (final b in hit.bilags) {
+      if (q.isNotEmpty && (b.contains(q) || q.contains(b))) return b;
+    }
+    return null;
+  }
+
+  RoutePdfCustomer? _matchedCustomer(_PdfSearchHit hit) {
+    final q = _ctrl.text.trim().toLowerCase();
+    if (q.length < 2) return null;
+    final digits = q.replaceAll(RegExp(r'\D'), '');
+
+    for (final c in hit.customers) {
+      final so = (c.salesOrder ?? '').toLowerCase();
+      final fu = (c.freightUnit ?? '').toLowerCase();
+      if (so.isNotEmpty && (so == q || so.contains(q) || (digits.length >= 8 && so.contains(digits)))) {
+        return c;
+      }
+      if (fu.isNotEmpty && (fu == q || fu.contains(q) || (digits.length >= 8 && fu.contains(digits)))) {
+        return c;
+      }
+    }
+    if (digits.length >= 6) {
+      for (final c in hit.customers) {
+        if (c.phoneNormalizedKey.contains(digits)) return c;
+      }
+    }
+    for (final c in hit.customers) {
+      if (c.name.toLowerCase().contains(q)) return c;
+      if ((c.addressHint ?? '').toLowerCase().contains(q)) return c;
+    }
+    return null;
+  }
+
+  String _matchSummary(_PdfSearchHit hit) {
+    final mavi = _shortMaviFor(hit.share);
+    final fo = hit.fo;
+    final kundeNr = _matchedCustomerNumber(hit);
+    final customer = _matchedCustomer(hit);
+    final name = customer?.name;
+
+    if (mavi != null && fo != null && kundeNr != null) {
+      final who = (name != null && name.isNotEmpty) ? ' ($name)' : '';
+      return 'Fant det du søkte etter: Den har vært på $mavi med FO $fo '
+          'og kundenummer $kundeNr$who på kjørelista.';
+    }
+    if (mavi != null && fo != null) {
+      return 'Fant treff på $mavi med FO $fo på kjørelista'
+          '${kundeNr != null ? ' · kundenummer $kundeNr' : ''}.';
+    }
+    if (mavi != null) {
+      return 'Fant treff på $mavi'
+          '${fo != null ? ' · FO $fo' : ''}'
+          '${kundeNr != null ? ' · kundenummer $kundeNr' : ''} '
+          'på kjørelista.';
+    }
+    return 'Fant treff i kjørelista'
+        '${fo != null ? ' · FO $fo' : ''}'
+        '${kundeNr != null ? ' · kundenummer $kundeNr' : ''}.';
+  }
+
   Widget _hitCard(_PdfSearchHit hit) {
-    final mavi = _maviForShare(hit.share);
+    final mavi = _shortMaviFor(hit.share);
     final selected = _selected?.share.id == hit.share.id;
-    final df = DateFormat('dd.MM.yyyy');
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: selected ? const Color(0xFFE3F2FD) : null,
+    final df = DateFormat('d. MMM yyyy', 'nb_NO');
+    final matchedNr = selected ? _matchedCustomerNumber(hit) : null;
+    return Material(
+      color: selected ? const Color(0xFFE8F5E9) : Colors.white,
+      borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: () => setState(() => _selected = hit),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? DriftProTheme.primaryGreen
+                  : Colors.grey.shade300,
+              width: selected ? 1.5 : 1,
+            ),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.picture_as_pdf, color: Colors.red, size: 22),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      hit.share.title ?? 'Rute-PDF',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                  Text(
+                    mavi != null ? 'Rute $mavi' : 'Rute',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
                     ),
                   ),
+                  const Spacer(),
                   if (hit.archived)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.brown.shade100,
                         borderRadius: BorderRadius.circular(4),
@@ -364,26 +458,36 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
                 ],
               ),
               const SizedBox(height: 4),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: [
-                  _chip(df.format(hit.share.shareDate), Icons.event),
-                  if (mavi != null) _chip(mavi, Icons.local_shipping_outlined),
-                  if (hit.fo != null) _chip('FO ${hit.fo}', Icons.qr_code_2),
-                  if (hit.bilags.isNotEmpty) _chip('Bilag ${hit.bilags.first}', Icons.receipt_long),
-                  if (hit.fus.isNotEmpty) _chip('FU ${hit.fus.first}', Icons.inventory_2_outlined),
-                  if (hit.driver != null) _chip(hit.driver!, Icons.person_outline),
-                  _chip('${hit.customers.length} kunder', Icons.people_outline),
-                ],
-              ),
-              const SizedBox(height: 4),
               Text(
-                hit.snippet,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                df.format(hit.share.shareDate),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade700,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
+              if (hit.fo != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'FO ${hit.fo}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ],
+              if (matchedNr != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  'Kundenr. $matchedNr',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: DriftProTheme.primaryGreen,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -391,76 +495,144 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
     );
   }
 
-  Widget _chip(String t, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade200,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: Colors.grey.shade700),
-          const SizedBox(width: 3),
-          Text(t, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-
   Widget _detailPane(_PdfSearchHit hit) {
-    final mavi = _maviForShare(hit.share);
-    final df = DateFormat('EEEE d. MMMM yyyy', 'nb_NO');
+    final mavi = _shortMaviFor(hit.share);
+    final df = DateFormat('d. MMMM yyyy', 'nb_NO');
+    final weekday = DateFormat('EEEE', 'nb_NO').format(hit.share.shareDate);
+    final matched = _matchedCustomer(hit);
+    final kundeNr = _matchedCustomerNumber(hit);
+
     return ListView(
-      padding: const EdgeInsets.all(4),
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
       children: [
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
-              child: Text(
-                hit.share.title ?? 'Rute',
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    mavi != null ? 'Rute $mavi' : 'Rute',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 22,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$weekday ${df.format(hit.share.shareDate)}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                ],
               ),
             ),
-            FilledButton.tonalIcon(
+            FilledButton.icon(
               onPressed: () => _openPdf(hit.share),
-              icon: const Icon(Icons.open_in_new, size: 16),
+              style: FilledButton.styleFrom(
+                backgroundColor: DriftProTheme.primaryGreen,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              ),
+              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
               label: const Text('Åpne PDF'),
             ),
           ],
         ),
-        const SizedBox(height: 6),
-        Text(
-          df.format(hit.share.shareDate),
-          style: TextStyle(fontSize: 12, color: Colors.grey[700]),
-        ),
-        if (hit.archived)
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: Text(
-              'Historisk Connecteam-arkiv — sjåfør/MAVI finnes ikke i dagens aktive flåte.',
-              style: TextStyle(fontSize: 11, color: Colors.brown.shade800),
-            ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5E9),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: DriftProTheme.primaryGreen.withValues(alpha: 0.35)),
           ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.check_circle_outline,
+                color: DriftProTheme.primaryGreen,
+                size: 22,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _matchSummary(hit),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
           children: [
-            if (mavi != null) _copyTile('MAVI', mavi),
-            if (hit.fo != null) _copyTile('Freight Order', hit.fo!),
-            if (hit.driver != null) _copyTile('Sjåfør (PDF)', hit.driver!),
-            ...hit.bilags.take(6).map((b) => _copyTile('Bilag', b)),
-            ...hit.fus.take(6).map((f) => _copyTile('Freight Unit', f)),
+            Expanded(
+              child: _metaCell(
+                'MAVI',
+                mavi ?? '–',
+                onTap: mavi == null ? null : () => _copy('MAVI', mavi),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _metaCell(
+                'Dato',
+                df.format(hit.share.shareDate),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _metaCell(
+                'FO',
+                hit.fo ?? '–',
+                mono: true,
+                onTap: hit.fo == null ? null : () => _copy('FO', hit.fo!),
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 14),
+        if (kundeNr != null) ...[
+          const SizedBox(height: 8),
+          _metaCell(
+            'Kundenummer (søk)',
+            kundeNr,
+            mono: true,
+            highlight: true,
+            onTap: () => _copy('Kundenummer', kundeNr),
+          ),
+        ],
+        if (hit.archived) ...[
+          const SizedBox(height: 8),
+          Text(
+            'Historisk arkiv — MAVI finnes ikke i dagens aktive flåte.',
+            style: TextStyle(fontSize: 11, color: Colors.brown.shade800),
+          ),
+        ],
+        const SizedBox(height: 18),
         Text(
-          'Kunder i PDF (${hit.customers.length})',
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          'Kunder på kjørelista (${hit.customers.length})',
+          style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
         ),
-        const SizedBox(height: 6),
+        if (matched != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            'Markert stopp matcher søket ditt.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade700,
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
         if (hit.customers.isEmpty)
           Text(
             'Ingen kundeliste ekstrahert — åpne PDF for full detalj.',
@@ -468,72 +640,193 @@ class _PartnerRoutePdfSearchPanelState extends State<PartnerRoutePdfSearchPanel>
           )
         else
           ...hit.customers.map((c) {
-            return Card(
-              margin: const EdgeInsets.only(bottom: 6),
-              child: ListTile(
-                dense: true,
-                title: Text(
-                  '${c.sequence}. ${c.name}',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if ((c.addressHint ?? '').isNotEmpty)
-                      Text(c.addressHint!, style: const TextStyle(fontSize: 11)),
-                    if (c.phoneDisplay.isNotEmpty)
-                      Text(c.phoneDisplay, style: const TextStyle(fontSize: 11)),
-                    Wrap(
-                      spacing: 6,
-                      children: [
-                        if ((c.freightUnit ?? '').isNotEmpty)
-                          Text('FU ${c.freightUnit}', style: const TextStyle(fontSize: 10)),
-                        if ((c.salesOrder ?? '').isNotEmpty)
-                          Text('Bilag ${c.salesOrder}', style: const TextStyle(fontSize: 10)),
-                        if ((c.deliveryWindow ?? '').isNotEmpty)
-                          Text(c.deliveryWindow!, style: const TextStyle(fontSize: 10)),
-                      ],
-                    ),
-                  ],
-                ),
-                trailing: c.phoneDisplay.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Kopier telefon',
-                        icon: const Icon(Icons.copy, size: 18),
-                        onPressed: () => _copy('Telefon', c.phoneDisplay),
-                      ),
-              ),
-            );
+            final highlighted = matched != null &&
+                matched.sequence == c.sequence &&
+                matched.name == c.name &&
+                matched.salesOrder == c.salesOrder &&
+                matched.freightUnit == c.freightUnit;
+            return _customerRow(c, highlighted: highlighted);
           }),
       ],
     );
   }
 
-  Widget _copyTile(String label, String value) {
-    return InkWell(
-      onTap: () => _copy(label, value),
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        decoration: BoxDecoration(
-          border: Border.all(color: Colors.grey.shade300),
-          borderRadius: BorderRadius.circular(8),
+  Widget _metaCell(
+    String label,
+    String value, {
+    bool mono = false,
+    bool highlight = false,
+    VoidCallback? onTap,
+  }) {
+    final child = Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: highlight
+            ? const Color(0xFFFFF8E1)
+            : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: highlight
+              ? const Color(0xFFFFB300)
+              : Colors.grey.shade300,
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: TextStyle(fontSize: 10, color: Colors.grey[600])),
-            Row(
-              mainAxisSize: MainAxisSize.min,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.w900,
+              fontSize: 15,
+              fontFamily: mono ? 'monospace' : null,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (onTap == null) return child;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: child,
+    );
+  }
+
+  Widget _customerRow(RoutePdfCustomer c, {required bool highlighted}) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: highlighted ? const Color(0xFFFFF8E1) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: highlighted
+              ? const Color(0xFFFFB300)
+              : Colors.grey.shade300,
+          width: highlighted ? 1.6 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: highlighted
+                      ? const Color(0xFFFFB300).withValues(alpha: 0.25)
+                      : const Color(0xFF1565C0).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${c.sequence}',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 12,
+                    color: highlighted
+                        ? const Color(0xFFF57F17)
+                        : const Color(0xFF1565C0),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  c.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+              if (highlighted)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFB300),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'Treff',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if ((c.salesOrder ?? '').isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Kundenummer ${c.salesOrder}',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                fontFamily: 'monospace',
+                color: highlighted
+                    ? const Color(0xFFF57F17)
+                    : Colors.black87,
+              ),
+            ),
+          ],
+          if ((c.addressHint ?? '').isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              c.addressHint!,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+          ],
+          if (c.phoneDisplay.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              c.phoneDisplay,
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+          ],
+          if ((c.freightUnit ?? '').isNotEmpty ||
+              (c.deliveryWindow ?? '').isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
               children: [
-                Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
-                const SizedBox(width: 4),
-                Icon(Icons.copy, size: 14, color: Colors.grey[600]),
+                if ((c.freightUnit ?? '').isNotEmpty)
+                  _miniPill('FU ${c.freightUnit}'),
+                if ((c.deliveryWindow ?? '').isNotEmpty)
+                  _miniPill(c.deliveryWindow!),
               ],
             ),
           ],
-        ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniPill(String t) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        t,
+        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
       ),
     );
   }
