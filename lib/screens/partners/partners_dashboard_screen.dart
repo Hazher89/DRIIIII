@@ -217,13 +217,20 @@ class _PartnersDashboardScreenState extends State<PartnersDashboardScreen>
       _error = null;
     });
     try {
-      // Bruk cache først — unngå RPC-storm på hver faneåpning.
+      // Cache først, men alltid relink for MAVI-eier/ansatt (kan ha Demo company i cache).
       var profile = AccessSessionCache.profile ??
           await SupabaseService.fetchCurrentUserProfile();
       var cid = profile?.companyId ??
           await SupabaseService.getCurrentCompanyId();
-      if ((cid == null || cid.isEmpty) ||
-          (profile?.companyId == null || profile!.companyId!.isEmpty)) {
+      final email = (profile?.email ?? '').trim().toLowerCase();
+      final forceRelink = cid == null ||
+          cid.isEmpty ||
+          profile?.companyId == null ||
+          profile!.companyId!.isEmpty ||
+          email.endsWith('@mavilogistikk.no') ||
+          email.endsWith('@mavi-employees.driftpro.no') ||
+          profile.isSuperAdmin;
+      if (forceRelink) {
         final linked = await SupabaseService.ensureSessionLinkedToCompany();
         profile = linked ?? profile;
         cid = linked?.companyId ?? cid;

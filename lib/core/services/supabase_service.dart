@@ -96,7 +96,9 @@ class SupabaseService {
 
   static bool _isMaviEmployeeEmail(String? email) {
     if (email == null) return false;
-    return email.trim().toLowerCase().endsWith('@mavi-employees.driftpro.no');
+    final e = email.trim().toLowerCase();
+    return e.endsWith('@mavi-employees.driftpro.no') ||
+        e.endsWith('@mavilogistikk.no');
   }
 
   static bool emailLooksLikePortal(String? email) {
@@ -227,18 +229,26 @@ class SupabaseService {
     if (!isConfigured) return null;
     final user = currentUser;
     if (user == null) return null;
+    final email = user.email?.trim().toLowerCase() ?? '';
     final session = AccessSessionCache.profile;
     final warm = session != null &&
             session.id == user.id &&
             (session.companyId ?? '').isNotEmpty
         ? session
         : _warmLinkedProfile;
-    if (warm != null && (warm.companyId ?? '').isNotEmpty) {
-      _rememberLinked(warm);
+    // MAVI-eier/ansatt: ikke stol på cache hvis den peker på Demo/feil selskap.
+    final bootstrapHint = await discoverBootstrapCompanyId();
+    final warmOk = warm != null &&
+        (warm.companyId ?? '').isNotEmpty &&
+        !((_isSuperadminEmail(email) || _isMaviEmployeeEmail(email)) &&
+            bootstrapHint != null &&
+            warm.companyId != bootstrapHint &&
+            warm.partnerId == null);
+    if (warmOk) {
+      _rememberLinked(warm!);
       return warm;
     }
 
-    final email = user.email?.trim().toLowerCase() ?? '';
     final isStaff = isInternalStaffSession(email: email);
     final hasPortalAccount =
         !isStaff && await currentSessionHasActivePortalAccount();
@@ -271,10 +281,18 @@ class SupabaseService {
 
     final bootstrap = await discoverBootstrapCompanyId();
 
-    if (profile != null &&
-        profile.companyId == null &&
+    // MAVI-ansatte/eier: aldri bli hengende på Demo/annen company (Bedrifter → 0).
+    final mustUseBootstrap = !isPortal &&
+        bootstrap != null &&
+        profile != null &&
         profile.partnerId == null &&
-        bootstrap != null) {
+        (_isSuperadminEmail(email) || _isMaviEmployeeEmail(email));
+
+    if (profile != null &&
+        profile.partnerId == null &&
+        bootstrap != null &&
+        (profile.companyId == null ||
+            (mustUseBootstrap && profile.companyId != bootstrap))) {
       try {
         await client
             .from('profiles')
