@@ -3,19 +3,18 @@ import 'package:flutter/material.dart';
 import '../core/constants/driftpro_brand.dart';
 import '../core/theme/app_theme.dart';
 import '../core/theme/driftpro_theme_context.dart';
-import 'driftpro_mascot_mark.dart';
 
 enum DriftProBrandDensity { bar, compact, header, comfortable, hero }
 
-/// DriftPro-logo: maskot ved siden av ordmerke.
+/// DriftPro-logo: statisk ikon ved siden av ordmerke.
 class DriftProBrandLogo extends StatelessWidget {
   const DriftProBrandLogo({
     super.key,
     this.density = DriftProBrandDensity.compact,
     this.showSubtitle = true,
     this.alignment = Alignment.centerLeft,
-    @Deprecated('Animert D er fjernet — parameter beholdes for API-kompatibilitet')
-    this.animateIcon = true,
+    @Deprecated('Animert maskot er fjernet — parameter beholdes for API-kompatibilitet')
+    this.animateIcon = false,
   });
 
   final DriftProBrandDensity density;
@@ -106,7 +105,14 @@ class DriftProBrandLogo extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              DriftProMascotMark(size: _iconSize),
+              Image.asset(
+                DriftProBrand.logoIcon,
+                width: _iconSize,
+                height: _iconSize,
+                fit: BoxFit.contain,
+                filterQuality: FilterQuality.high,
+                gaplessPlayback: true,
+              ),
               SizedBox(width: density == DriftProBrandDensity.header ? 10 : 8),
               wordmark,
             ],
